@@ -14,28 +14,36 @@ enum ChatRowBuilder {
     static func makeRows(
         from messages: [ChatMessage], agents: ChatViewController.SubagentPlacement,
         runs: [String: WorkflowRun] = [:], turnOpen: Bool = false, memo: SegmentRowMemo? = nil,
-        modelName: (ModelSelection) -> String? = { _ in nil }
+        brains: BrainLayout = .none, modelName: (ModelSelection) -> String? = { _ in nil }
     ) -> [ChatRow] {
         defer { memo?.sweep() }
         var rows: [ChatRow] = []
         var lastDate: Date?
         var seenMessageIDs = Set<String>()
         var pendingUnattached = agents.unattached
-        let boardCalls = messages.flatMap { message in
-            message.parts.compactMap { part -> ToolCall? in
-                guard case .tool(let call) = part.kind, TaskBoard.isBoardCall(call.name) else {
-                    return nil
+        var boardCalls: [ToolCall] = []
+        for message in messages {
+            for part in message.parts {
+                if case .tool(let call) = part.kind, Self.isBoardCall(call.name) {
+                    boardCalls.append(call)
                 }
-                return call
             }
         }
+        let statsEnabled = ResponseStatsSetting.isEnabled
         let board = TaskBoard.fold(boardCalls)
         let boardCallID = board.isEmpty ? nil : Self.boardAnchor(boardCalls)
         let writing = messages.last?.id
         var lastPrompt: ChatMessage?
+        var brain: BrainLayout.Turn?
         for message in messages {
             guard seenMessageIDs.insert(message.id).inserted else { continue }
             defer { if message.role == .user { lastPrompt = message } }
+            switch message.role {
+            case .user: brain = nil
+            case .assistant:
+                if brain == nil, !brains.isEmpty { brain = brains.turn(startingAt: message.id) }
+            case .system: break
+            }
             if let prev = lastDate, message.createdAt.timeIntervalSince(prev) > 300 {
                 rows.append(ChatRow(
                     id: "ts:\(message.id)", messageID: message.id, role: .system,
@@ -44,6 +52,23 @@ enum ChatRowBuilder {
             if lastDate == nil || message.createdAt > (lastDate ?? .distantPast) {
                 lastDate = message.createdAt
             }
+            let context = SegmentRowMemo.MessageContext(
+                promptID: lastPrompt?.id, promptAt: lastPrompt?.createdAt,
+                stats: statsEnabled, brainStamp: brain?.row.stamp,
+                brainShowsRows: brain?.row.showsRows ?? false,
+                brainAnchor: brain.map { turn in message.parts.contains { "\(message.id):\($0.id)" == turn.anchor } }
+                    ?? false)
+            let settled = !message.isStreaming && message.id != writing
+            if settled, let cached = memo?.rows(
+                forMessage: message, context: context,
+                isClaimed: { agents.byToolUse[$0] != nil || runs[$0] != nil })
+            {
+                rows.append(contentsOf: cached)
+                continue
+            }
+            let firstRow = rows.count
+            var plain = settled
+            var toolIDs: [String] = []
             var steps: [ActivityStep] = []
             var activityRuns = 0
 
@@ -78,12 +103,25 @@ enum ChatRowBuilder {
 
             for part in message.parts {
                 let id = "\(message.id):\(part.id)"
+                if let turn = brain {
+                    if turn.anchor == id {
+                        flushActivity()
+                        rows.append(
+                            ChatRow(
+                                id: NeuralOpenPolicy.rowID(turnID: turn.id), messageID: message.id,
+                                role: .assistant, content: .brain(turn.row)))
+                    }
+                    if brains.hides(id, in: turn) { continue }
+                }
                 switch part.kind {
                 case .reasoning(let text):
                     if text.isEmpty { continue }
                     steps.append(.reasoning(text))
                 case .tool(let call):
+                    toolIDs.append(call.id)
+                    if call.summaryKind == .workflow { plain = false }
                     if var card = agents.byToolUse[call.id] {
+                        plain = false
                         flushActivity()
                         card.spawnSummary = call.summary.displayOutput ?? call.sanitizedOutput
                         rows.append(
@@ -93,6 +131,7 @@ enum ChatRowBuilder {
                         continue
                     }
                     if !board.isEmpty, TaskBoard.isBoardCall(call.name) {
+                        plain = false
                         flushActivity()
                         if call.id == boardCallID {
                             rows.append(
@@ -105,6 +144,7 @@ enum ChatRowBuilder {
                         continue
                     }
                     if let sighting = DesignReading.sighting(of: call, in: message) {
+                        plain = false
                         flushActivity()
                         rows.append(
                             ChatRow(
@@ -113,6 +153,7 @@ enum ChatRowBuilder {
                         continue
                     }
                     if let run = runs[call.id] {
+                        plain = false
                         flushActivity()
                         rows.append(
                             ChatRow(
@@ -176,6 +217,7 @@ enum ChatRowBuilder {
                             content: .compaction(
                                 CompactionRow(id: id, state: .done(compaction)))))
                 case .note(let note):
+                    plain = false
                     flushActivity()
                     rows.append(
                         ChatRow(
@@ -196,12 +238,17 @@ enum ChatRowBuilder {
                     id: "\(message.id):answerless", messageID: message.id, role: message.role,
                     content: .answerless(answerless)))
             }
-            if ResponseStatsSetting.isEnabled,
+            if statsEnabled,
                 let stats = ResponseStats(turn: message, promptedAt: lastPrompt?.createdAt)
             {
                 rows.append(ChatRow(
                     id: "\(message.id):stats", messageID: message.id, role: message.role,
                     content: .responseStats(stats)))
+            }
+            if plain {
+                memo?.keep(
+                    message: message, context: context, toolIDs: toolIDs,
+                    rows: Array(rows[firstRow...]))
             }
         }
         rows.append(
@@ -212,9 +259,45 @@ enum ChatRowBuilder {
         #if DEBUG
             rows.append(contentsOf: Self.stagedRuleRows())
         #endif
+        #if DEBUG
+            let t0 = ContinuousClock.now
+        #endif
         let fused = fuseActivity(rows)
-        return dockPictures(dockRails(fused, turnOpen: turnOpen, memo: memo))
+        #if DEBUG
+            let t1 = ContinuousClock.now
+        #endif
+        let railed = dockRails(fused, turnOpen: turnOpen, memo: memo)
+        #if DEBUG
+            let t2 = ContinuousClock.now
+        #endif
+        let docked = dockPictures(railed)
+        #if DEBUG
+            let t3 = ContinuousClock.now
+            BuilderTimings.fuse += Self.ms(t1 - t0)
+            BuilderTimings.rails += Self.ms(t2 - t1)
+            BuilderTimings.pictures += Self.ms(t3 - t2)
+        #endif
+        return docked
     }
+
+    private static let boardNames = BoardNameMemo()
+
+    /// Whether a tool name is one the folded board is made of. Asked of every call of the
+    /// conversation on every build, and the answer lowercases the name, so it is asked once per
+    /// distinct name instead.
+    private static func isBoardCall(_ name: String) -> Bool { boardNames.isBoard(name) }
+
+    #if DEBUG
+        enum BuilderTimings {
+            nonisolated(unsafe) static var fuse = 0.0
+            nonisolated(unsafe) static var rails = 0.0
+            nonisolated(unsafe) static var pictures = 0.0
+        }
+
+        static func ms(_ duration: Duration) -> Double {
+            Double(duration.components.seconds) * 1000 + Double(duration.components.attoseconds) / 1e15
+        }
+    #endif
 
     #if DEBUG
         /// `TAILSCODE_DEBUG_RULE=1` ends the transcript with a paragraph, a markdown rule and
@@ -488,4 +571,20 @@ enum ChatRowBuilder {
         return merged
     }
 
+}
+
+/// The answers `TaskBoard.isBoardCall` has given, by name. A conversation uses a handful of tool
+/// names and asks about thousands of calls.
+private final class BoardNameMemo: @unchecked Sendable {
+    private let lock = NSLock()
+    private var answers: [String: Bool] = [:]
+
+    func isBoard(_ name: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if let known = answers[name] { return known }
+        let answer = TaskBoard.isBoardCall(name)
+        answers[name] = answer
+        return answer
+    }
 }

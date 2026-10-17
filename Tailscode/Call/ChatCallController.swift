@@ -140,6 +140,13 @@ final class ChatCallController {
         if attached == nil { dock.hide() }
     }
 
+    /// The face of the call standing now, for what draws it beside the conversation; nil when no
+    /// call is attached or the one that was has ended.
+    var currentFace: VoiceCallFace? {
+        guard attached != nil, snapshot?.end == nil else { return nil }
+        return snapshot?.face
+    }
+
     /// The conversation moved: hand the call the agent's new account, and chime when something
     /// started waiting for the person.
     func conversationChanged() {

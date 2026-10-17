@@ -77,22 +77,32 @@ final class PictureStripCell: UICollectionViewCell {
     }
 
     private func load(_ file: FileReference, into thumb: PictureThumb, backend: any CodingAgentBackend) {
-        if let cached = AttachmentImageStore.shared.cached(file) {
-            thumb.show(cached, file: file, data: AttachmentImageStore.shared.cachedData(file))
+        let store = AttachmentImageStore.shared
+        let box = Self.thumbnailBox
+        if let cached = store.cachedThumbnail(file, box: box) {
+            thumb.show(cached, file: file, data: store.cachedData(file))
             return
         }
         let token = loadToken
         Task { [weak self, weak thumb] in
-            let image = await AttachmentImageStore.shared.image(for: file, using: backend)
+            let image = await store.thumbnail(for: file, box: box, using: backend)
             guard let self, let thumb, self.loadToken == token else { return }
             if let image {
-                thumb.show(image, file: file, data: AttachmentImageStore.shared.cachedData(file))
+                thumb.show(image, file: file, data: store.cachedData(file))
             } else {
                 thumb.showFailure(file)
             }
             self.setNeedsLayout()
             self.onLoaded?()
         }
+    }
+
+    /// The frame a thumbnail is cut to: the strip's own height and the widest a line can be, at the
+    /// screen's width, so the same picture asks for the same pixels wherever it is drawn.
+    private static var thumbnailBox: ThumbnailBox {
+        .pinnedHeight(
+            CGFloat(Theme.Chat.metrics.imageMaxHeight),
+            maxWidth: max(0, UIScreen.main.bounds.width - 2 * inset), scale: UIScreen.main.scale)
     }
 
     #if DEBUG
@@ -130,7 +140,20 @@ final class PictureStripCell: UICollectionViewCell {
 final class PictureThumb: UIImageView {
     var onTap: (() -> Void)?
     var menuProvider: ((ImagePayload) -> UIMenu?)?
-    private(set) var payload: ImagePayload?
+    private var source: FileReference?
+    private var data: Data?
+    private var thumbnail: UIImage?
+
+    /// What a menu or a drag hands on is the picture, never the thumbnail the strip draws: the
+    /// bitmap the viewer already holds, or one made lazily from the original bytes, which costs
+    /// nothing until something reads its pixels. The thumbnail itself only when neither exists.
+    var payload: ImagePayload? {
+        guard let source, let thumbnail else { return nil }
+        let full =
+            AttachmentImageStore.shared.cached(source) ?? data.flatMap { UIImage(data: $0) }
+            ?? thumbnail
+        return ImagePayload(image: full, data: data, filename: source.displayName)
+    }
 
     /// Width over height of the picture once it is known; nil while it is on its way.
     var aspect: Double? {
@@ -158,12 +181,16 @@ final class PictureThumb: UIImageView {
 
     func show(_ picture: UIImage, file: FileReference, data: Data?) {
         image = picture
-        payload = ImagePayload(image: picture, data: data, filename: file.displayName)
+        thumbnail = picture
+        source = file
+        self.data = data
     }
 
     func showFailure(_ file: FileReference) {
         image = nil
-        payload = nil
+        thumbnail = nil
+        source = nil
+        data = nil
         accessibilityValue = String(localized: "Couldn't load \(file.displayName)")
     }
 

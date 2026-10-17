@@ -25,6 +25,8 @@ enum ChatFind {
                     return "\(call.name) \(call.title ?? "") \(call.output?.prefix(4000) ?? "")"
                 }
             }.joined(separator: " ")
+        case .brain(let brain):
+            return brain.search
         case .subagent(let card):
             return "\(card.agentType ?? "") \(card.title)"
         case .workflow(let run):

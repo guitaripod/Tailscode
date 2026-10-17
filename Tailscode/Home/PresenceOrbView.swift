@@ -61,31 +61,17 @@ final class PresenceOrbView: UIView {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     private func configureMetal() {
-        guard let device = MTLCreateSystemDefaultDevice(),
-            let library = device.makeDefaultLibrary(),
-            let vertex = library.makeFunction(name: "orb_vertex"),
-            let fragment = library.makeFunction(name: "orb_fragment")
+        guard let context = NeuralMetalContext.shared,
+            let pipeline = context.premultipliedPipeline(
+                vertex: "orb_vertex", fragment: "orb_fragment", format: .bgra8Unorm)
         else {
             isHidden = true
             return
         }
+        let device = context.device
         self.device = device
-        queue = device.makeCommandQueue()
-        let descriptor = MTLRenderPipelineDescriptor()
-        descriptor.vertexFunction = vertex
-        descriptor.fragmentFunction = fragment
-        let attachment = descriptor.colorAttachments[0]!
-        attachment.pixelFormat = .bgra8Unorm
-        attachment.isBlendingEnabled = true
-        attachment.sourceRGBBlendFactor = .one
-        attachment.sourceAlphaBlendFactor = .one
-        attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha
-        attachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
-        pipeline = try? device.makeRenderPipelineState(descriptor: descriptor)
-        guard pipeline != nil else {
-            isHidden = true
-            return
-        }
+        queue = context.queue
+        self.pipeline = pipeline
         metalView.device = device
         metalView.delegate = self
         metalView.isOpaque = false

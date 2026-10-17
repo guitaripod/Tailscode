@@ -70,6 +70,10 @@ A notification content extension draws the card in the mock: the face, the chat'
 
 The system opens the look at `UNNotificationExtensionInitialContentSizeRatio` of the width and grows it to the extension's `preferredContentSize`. The card reports its own height (`onGeometryChange` under `fixedSize`, so the proposal cannot shorten it) every time its content or width changes, and the controller sets `preferredContentSize` from that. A height measured once in `didReceive` left the first build's look stuck at the opening size with the stat tiles cut off. `--notice-long-look <sample>` in a debug build hosts the real `NotificationViewController` in a clipped card that opens at the ratio and follows `preferredContentSize` like the notification centre, and reproduced the clipping before the fix.
 
+### The head
+
+A notice may carry the head its turn drew (`NoticeWire.glyph`, an optional `NeuralGlyphWire`: six zone counts, a bit per zone that failed and was never put right, the zone ringed, the eye's tone, the family's hue for a dark and a light ground, and how many of the sense calls were reads and how many distinct files were written). The face is then a dark tile tinted by the eye with the head drawn on it (`NoticeHead`, one Core Graphics drawing the service, the long look and the app share), and the long look writes what the work did from the same counts (`NeuralNoticeLine`, the sentence `NeuralReading.notice` writes from steps) under the stat tiles. A notice without the field wears the symbol it always did; the field is additive and a bridge that has never heard of it is read as before. The Live Activity carries the same wire in its content state (`glyph`) and draws it in SwiftUI from the same plan (`NeuralGlyphPlan`).
+
 ### The badge
 
 `NoticeBadge` mirrors the Missed list's count into the app group. The app sets the icon badge whenever the list changes; the service, which cannot see the list, counts up from the mirror when it badges a push, and the app's next look puts it right.

@@ -45,9 +45,19 @@ final class ImageBubbleCell: UICollectionViewCell {
     var imageContainer: UIView { imageView }
 
     var payload: ImagePayload? {
-        guard let image = imageView.image else { return nil }
+        guard let shown = imageView.image else { return nil }
         return ImagePayload(
-            image: image, data: originalData, filename: file?.displayName ?? "")
+            image: fullImage(standingInFor: shown), data: originalData,
+            filename: file?.displayName ?? "")
+    }
+
+    /// What a menu or a drag hands on is the picture, never the thumbnail the bubble draws: the
+    /// bitmap the viewer already holds, or one made lazily from the original bytes, which costs
+    /// nothing until something reads its pixels. The thumbnail itself only when neither exists.
+    private func fullImage(standingInFor shown: UIImage) -> UIImage {
+        if let file, let held = AttachmentImageStore.shared.cached(file) { return held }
+        if let originalData, let full = UIImage(data: originalData) { return full }
+        return shown
     }
 
     override init(frame: CGRect) {
@@ -153,29 +163,55 @@ final class ImageBubbleCell: UICollectionViewCell {
         self.file = file
         self.originalData = localData
         imageView.accessibilityLabel = file.displayName
-        if let cached = AttachmentImageStore.shared.cached(file) {
-            originalData = localData ?? AttachmentImageStore.shared.cachedData(file)
+        loadToken = UUID()
+        let token = loadToken
+        let box = thumbnailBox(mine: isUser)
+        let store = AttachmentImageStore.shared
+        if let thumbnail = store.cachedThumbnail(file, box: box) {
+            originalData = localData ?? store.cachedData(file)
+            show(thumbnail, animated: false)
+            return
+        }
+        if let data = localData ?? store.cachedData(file) {
+            originalData = data
+            if localData != nil { store.keep(data, for: file) }
+            startShimmer(aspect: ImageThumbnail.aspect(of: data))
+            Task { [weak self] in
+                let thumbnail = await store.thumbnail(for: file, data: data, box: box)
+                self?.finishLoading(thumbnail, file: file, token: token)
+            }
+            return
+        }
+        if let cached = store.cached(file) {
             show(cached, animated: false)
             return
         }
-        if let localData, let image = UIImage(data: localData) {
-            AttachmentImageStore.shared.store(image, for: file, data: localData)
-            show(image, animated: false)
+        startShimmer()
+        Task { [weak self] in
+            let thumbnail = await store.thumbnail(for: file, box: box, using: backend)
+            self?.finishLoading(thumbnail, file: file, token: token)
+        }
+    }
+
+    private func finishLoading(_ thumbnail: UIImage?, file: FileReference, token: UUID) {
+        guard loadToken == token else { return }
+        guard let thumbnail else {
+            showFailure(file)
             return
         }
-        startShimmer()
-        let token = loadToken
-        Task { [weak self] in
-            let image = await AttachmentImageStore.shared.image(for: file, using: backend)
-            guard let self, self.loadToken == token else { return }
-            guard let image else {
-                self.showFailure(file)
-                return
-            }
-            self.originalData = AttachmentImageStore.shared.cachedData(file)
-            self.show(image, animated: true)
-            self.onLoaded?()
-        }
+        originalData = originalData ?? AttachmentImageStore.shared.cachedData(file)
+        show(thumbnail, animated: true)
+        onLoaded?()
+    }
+
+    /// The bubble's frame in points, for the thumbnail to be cut to: the screen's width is the
+    /// widest the bubble can ever be, so the same picture asks for the same pixels wherever it is
+    /// drawn and a cell scrolled back into view finds its thumbnail waiting.
+    private func thumbnailBox(mine: Bool) -> ThumbnailBox {
+        let share = CGFloat(ImagePreview.share(Double(Self.bubbleShare), mine: mine))
+        return .pinnedWidth(
+            UIScreen.main.bounds.width * share, maxHeight: maxHeightPin.constant,
+            scale: UIScreen.main.scale)
     }
 
     /// A picture you sent is a receipt, not something to read: it keeps the same shape and the
@@ -204,18 +240,20 @@ final class ImageBubbleCell: UICollectionViewCell {
         stopShimmer()
         failure.isHidden = true
         imageView.image = image
-        ratio?.isActive = false
-        let aspect = max(image.size.width, 1) / max(image.size.height, 1)
-        let clamped = min(max(aspect, 0.55), 2.4)
-        ratio = imageView.widthAnchor.constraint(
-            equalTo: imageView.heightAnchor, multiplier: clamped)
-        ratio?.priority = UILayoutPriority(998)
-        ratio?.isActive = true
+        setRatio(Double(max(image.size.width, 1) / max(image.size.height, 1)))
         guard animated else { return }
         imageView.alpha = 0
         UIView.animate(withDuration: 0.28, delay: 0, options: [.curveEaseOut]) {
             self.imageView.alpha = 1
         }
+    }
+
+    private func setRatio(_ aspect: Double) {
+        ratio?.isActive = false
+        ratio = imageView.widthAnchor.constraint(
+            equalTo: imageView.heightAnchor, multiplier: CGFloat(PictureStripLayout.shape(of: aspect)))
+        ratio?.priority = UILayoutPriority(998)
+        ratio?.isActive = true
     }
 
     private func showFailure(_ file: FileReference) {
@@ -228,13 +266,13 @@ final class ImageBubbleCell: UICollectionViewCell {
         ratio?.isActive = true
     }
 
-    private func startShimmer() {
+    /// The wait for the pixels. A picture whose shape is already known from its header takes its
+    /// final frame now, so the row is the height it will keep and nothing moves when the thumbnail
+    /// lands; one fetched from the server holds a placeholder frame until its bytes arrive.
+    private func startShimmer(aspect: Double? = nil) {
         shimmer.isHidden = false
         slideShimmer()
-        ratio?.isActive = false
-        ratio = imageView.widthAnchor.constraint(equalTo: imageView.heightAnchor, multiplier: 1.4)
-        ratio?.priority = UILayoutPriority(998)
-        ratio?.isActive = true
+        setRatio(aspect ?? PictureStripLayout.placeholderAspect)
     }
 
     /// The wait's own motion, laid on apart from the shape it waits in, so a reader who changes

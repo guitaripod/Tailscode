@@ -12,7 +12,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: windowScene)
         #if DEBUG
-            if let preview = NoticeCardPreview.viewControllerIfRequested() {
+            if let preview = AwayPreview.viewControllerIfRequested()
+                ?? NoticeCardPreview.viewControllerIfRequested()
+            {
                 window.rootViewController = preview
                 window.makeKeyAndVisible()
                 self.window = window

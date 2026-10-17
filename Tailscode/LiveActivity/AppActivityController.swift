@@ -186,7 +186,8 @@ final class AppActivityController {
         let startedAt = revived ? min(reading.startedAt ?? Date(), Date()) : shown.startedAt
         let toolCount = revived ? reading.toolCount : max(shown.toolCount, reading.toolCount)
         let state = Self.liveState(
-            reading, startedAt: startedAt, toolCount: toolCount, title: entry.title)
+            reading, startedAt: startedAt, toolCount: toolCount, title: entry.title,
+            carrying: revived ? nil : shown.glyph)
         let becameWaiting = reading.detail.wantsYou && (revived || shown.phase != .approval)
         let due = Date().timeIntervalSince(entry.pushedAt) > Self.refreshAfter
         guard becameWaiting || due || revived || !Self.sameFacts(state, shown) else {
@@ -243,7 +244,8 @@ final class AppActivityController {
             lastTool: nil, toolCount: toolCount, startedAt: shown.startedAt, endedAt: endedAt,
             title: entry.title, symbol: face.symbol, tone: face.tone.rawValue,
             detail: reading.detail.rawValue,
-            background: reading.background > 0 ? reading.background : nil)
+            background: reading.background > 0 ? reading.background : nil,
+            glyph: reading.glyph ?? shown.glyph.map { $0.retoned(Self.eye(of: face.tone)) })
         guard !(shown.isSettled && Self.sameFacts(state, shown)) else {
             entries[sessionID] = entry
             scheduleRetirement(sessionID, settledAt: endedAt)
@@ -482,7 +484,8 @@ final class AppActivityController {
     }
 
     private static func liveState(
-        _ reading: LiveActivityReading, startedAt: Date, toolCount: Int, title: String?
+        _ reading: LiveActivityReading, startedAt: Date, toolCount: Int, title: String?,
+        carrying glyph: NeuralGlyphWire? = nil
     ) -> State {
         let face = reading.face
         return State(
@@ -490,7 +493,13 @@ final class AppActivityController {
             statusText: reading.detail.line(tool: reading.tool, toolCount: toolCount),
             lastTool: reading.tool, toolCount: toolCount, startedAt: startedAt, endedAt: nil,
             title: title, symbol: face.symbol, tone: face.tone.rawValue,
-            detail: reading.detail.rawValue, background: nil)
+            detail: reading.detail.rawValue, background: nil,
+            glyph: reading.glyph ?? glyph.map { $0.retoned(eye(of: face.tone)) })
+    }
+
+    /// The tone the head's eye wears for a card whose state names only the face's meaning.
+    private static func eye(of tone: ActivityTone) -> NeuralTone {
+        NeuralTone(rawValue: tone.rawValue) ?? .quiet
     }
 
     /// Whether two states draw the same card. The words and the face are written from the detail
@@ -500,6 +509,7 @@ final class AppActivityController {
     private static func sameFacts(_ a: State, _ b: State) -> Bool {
         a.phase == b.phase && a.detail == b.detail && a.lastTool == b.lastTool
             && a.toolCount == b.toolCount && a.title == b.title && a.background == b.background
+            && a.glyph == b.glyph
             && sameMoment(a.startedAt, b.startedAt) && a.isSettled == b.isSettled
             && sameMoment(a.endedAt ?? a.startedAt, b.endedAt ?? b.startedAt)
     }

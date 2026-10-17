@@ -98,8 +98,7 @@ struct ChatRowFacts: Equatable {
         if let news { parts.append(news) }
         if unread { parts.append(String(localized: "Unread")) }
         if pinned { parts.append(String(localized: "Pinned")) }
-        parts.append(
-            RelativeDateTimeFormatter().localizedString(for: updatedAt, relativeTo: Date()))
+        parts.append(RelativeDateFormat.string(for: updatedAt))
         return parts.joined(separator: ", ")
     }
 }

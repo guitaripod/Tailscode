@@ -130,7 +130,7 @@ enum Theme {
                 let hex =
                     traits.palette.map { ModelTint.hex(family, in: $0) }
                     ?? ModelTint.hex(family, onCanvas: systemCanvas(dark: dark), isDark: dark)
-                return UIColor(hex: hex) ?? .secondaryLabel
+                return UIColor.cached(hex: hex) ?? .secondaryLabel
             }
         }
 
@@ -143,7 +143,7 @@ enum Theme {
                 let canvas = traits.palette?.canvas ?? systemCanvas(dark: dark)
                 let hex = ModelTint.identityHex(
                     family: chip.family, name: chip.name, onCanvas: canvas, isDark: dark)
-                return UIColor(hex: hex) ?? .secondaryLabel
+                return UIColor.cached(hex: hex) ?? .secondaryLabel
             }
         }
 
@@ -153,7 +153,7 @@ enum Theme {
                 let dark = traits.userInterfaceStyle == .dark
                 let canvas = traits.palette?.canvas ?? systemCanvas(dark: dark)
                 guard let hex = ModelTint.effortHex(effort, onCanvas: canvas),
-                    let color = UIColor(hex: hex)
+                    let color = UIColor.cached(hex: hex)
                 else { return .secondaryLabel }
                 return color
             }
@@ -165,7 +165,7 @@ enum Theme {
                 let canvas = traits.palette?.canvas ?? systemCanvas(dark: dark)
                 let letters = ModelTint.rainbow(letters: count, onCanvas: canvas)
                 guard letters.indices.contains(index) else { return .label }
-                return UIColor(hex: letters[index]) ?? .label
+                return UIColor.cached(hex: letters[index]) ?? .label
             }
         }
 
@@ -235,7 +235,18 @@ enum Theme {
         /// here on every configure.
         private static let proseBase = Double(baseSize(of: .body))
 
+        private static let memo = FontMemo()
+
+        /// A role's font, built once per content size: every label on a busy screen asks for one on
+        /// every configure, and the answer only changes when the person changes their text size.
         static func font(_ role: TypeRole) -> UIFont {
+            if let kept = memo.font(for: role) { return kept }
+            let made = build(role)
+            memo.keep(made, for: role)
+            return made
+        }
+
+        private static func build(_ role: TypeRole) -> UIFont {
             let spec = Typography.spec(role)
             let size = CGFloat(spec.size(base: base(spec.axis)))
             let weight = weight(spec.weight)
@@ -528,5 +539,43 @@ extension UIColor {
             green: tg * ta + bg * (1 - ta),
             blue: tb * ta + bb * (1 - ta),
             alpha: 1)
+    }
+}
+
+/// The ramp's fonts, one per role, dropped whenever the content size category changes. The ramp
+/// is asked from any thread, so the table is behind a lock rather than an actor.
+private final class FontMemo: @unchecked Sendable {
+    private let lock = NSLock()
+    private var fonts: [TypeRole: UIFont] = [:]
+    private var observer: NSObjectProtocol?
+
+    init() {
+        observer = NotificationCenter.default.addObserver(
+            forName: UIContentSizeCategory.didChangeNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            self?.reset()
+        }
+    }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    func font(for role: TypeRole) -> UIFont? {
+        lock.lock()
+        defer { lock.unlock() }
+        return fonts[role]
+    }
+
+    func keep(_ font: UIFont, for role: TypeRole) {
+        lock.lock()
+        fonts[role] = font
+        lock.unlock()
+    }
+
+    private func reset() {
+        lock.lock()
+        fonts.removeAll()
+        lock.unlock()
     }
 }

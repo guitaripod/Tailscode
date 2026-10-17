@@ -11,6 +11,11 @@ struct CascadeTail {
     let revealed: Int
     let span: Int
     let phase: Double
+    /// Which arrival of text this frame is for (`LiveCascade.textRevision` and the source's own
+    /// fingerprint, counted by the driver). A cell keys the work
+    /// that depends on the words, rendering them and comparing them with what it already holds, on
+    /// this instead of on the words, so a frame in which only colours moved never reads the answer.
+    let textRevision: Int
     let edge: UIColor
     let spark: UIColor
     /// The traits of the view this frame is for. A frame is built off the display's clock, outside
@@ -187,6 +192,12 @@ enum CascadeTint {
 final class CascadeDriver {
     private var live = LiveCascade()
     private var link: CADisplayLink?
+    private var linkTempo: CascadeTempo = .stopped
+    #if DEBUG
+        private var ticks = 0
+        private var painted = 0
+        private var startedAt: Double?
+    #endif
     private var watchdog: Timer?
     private var ultracode = false
     private var clock = CACurrentMediaTime()
@@ -209,6 +220,7 @@ final class CascadeDriver {
     var onStalled: (() -> Void)?
 
     var key: String? { live.id }
+    var tempo: CascadeTempo { live.tempo }
     var isActive: Bool { live.isActive }
     var isSettled: Bool { live.isSettled }
     var owes: Bool { live.owes }
@@ -222,7 +234,7 @@ final class CascadeDriver {
     ///
     /// The wave may decline the row — Core refuses one it has already written to that length — so
     /// the caller reads `key` back afterwards rather than assuming it took.
-    func focus(_ id: String?, length: Int, sealed: Bool, ultracode: Bool) {
+    func focus(_ id: String?, length: Int, sealed: Bool, ultracode: Bool, source: String? = nil) {
         self.ultracode = ultracode
         guard Self.motionAllowed, let id else {
             release()
@@ -233,12 +245,17 @@ final class CascadeDriver {
             arrival = AuroraArrival()
         }
         live.focus(id, length: length, sealed: sealed, at: CACurrentMediaTime())
+        noteSource(source)
         guard live.isActive else {
             stop()
             unwatch()
             return
         }
-        start()
+        if live.tempo == .stopped, !isArriving {
+            pause()
+        } else {
+            start()
+        }
         watch()
     }
 
@@ -246,6 +263,24 @@ final class CascadeDriver {
         live.focus(nil, rendered: "", sealed: true, at: CACurrentMediaTime())
         stop()
     }
+
+    /// Counts the arrivals of the words themselves. Core counts a text revision when the rendered
+    /// length moves; the words can change without it (a closing marker is swallowed by the
+    /// renderer), so the controller hands over the source once per arrival and its fingerprint is
+    /// read here, never per frame.
+    private func noteSource(_ source: String?) {
+        let fingerprint = source?.hashValue
+        defer {
+            lastRevision = live.textRevision
+            lastFingerprint = fingerprint
+        }
+        guard live.textRevision != lastRevision || fingerprint != lastFingerprint else { return }
+        stamp += 1
+    }
+
+    private var stamp = 0
+    private var lastRevision = -1
+    private var lastFingerprint: Int?
 
     /// The markdown-safe prefix of what the agent has written, held only while a closer might still
     /// be coming. The judgement is Core's: a cut that stops moving is the end of a part, not a
@@ -307,8 +342,9 @@ final class CascadeDriver {
         let edge = CascadeTint.edge(ultracode: ultracode, phase: live.phase)
         let spark = CascadeTint.spark(for: edge, traits: traits)
         return CascadeTail(
-            revealed: live.revealed, span: StreamCascade.span, phase: live.phase, edge: edge,
-            spark: spark, traits: traits, aurora: auroraFrame(edge: edge, spark: spark))
+            revealed: live.revealed, span: StreamCascade.span, phase: live.phase,
+            textRevision: stamp, edge: edge, spark: spark, traits: traits,
+            aurora: auroraFrame(edge: edge, spark: spark))
     }
 
     /// The alpha renderer's own half of the frame, offered only where it can actually be run. A
@@ -321,17 +357,54 @@ final class CascadeDriver {
             spark: spark, motion: true, arrival: arrival.level)
     }
 
+    /// Whether the alpha renderer's arrival effect is still fading: the one thing besides the
+    /// reveal and the band that asks for frames. The settled renderer has no such effect.
+    private var isArriving: Bool { renderer == .aurora && arrival.level > 0 }
+
+    /// The range the display is asked for at a tempo: the cascade's own while characters are being
+    /// revealed, the vocabulary's while only the band finishes its pass.
+    private static func range(for tempo: CascadeTempo) -> CAFrameRateRange {
+        tempo == .display ? .cascadeTempo : .activityTempo
+    }
+
     private func start() {
-        guard link == nil else { return }
+        let wanted = live.tempo == .stopped ? CascadeTempo.activity : live.tempo
+        if let link {
+            guard wanted != linkTempo else { return }
+            link.preferredFrameRateRange = Self.range(for: wanted)
+            linkTempo = wanted
+            return
+        }
+        #if DEBUG
+            startedAt = startedAt ?? CACurrentMediaTime()
+        #endif
         let link = CADisplayLink(target: self, selector: #selector(tick))
-        link.preferredFrameRateRange = .cascadeTempo
+        link.preferredFrameRateRange = Self.range(for: wanted)
         link.add(to: .main, forMode: .common)
         self.link = link
+        linkTempo = wanted
+    }
+
+    /// Takes the frame clock down while the row holds still, leaving the watchdog: a row that is
+    /// resting has been painted, and the next arrival starts the clock again from `focus`.
+    private func pause() {
+        #if DEBUG
+            if link != nil, let began = startedAt {
+                AppLogger.performance.info(
+                    "cascade pause ticks=\(ticks) painted=\(painted) seconds=\(String(format: "%.2f", CACurrentMediaTime() - began))"
+                )
+                ticks = 0
+                painted = 0
+                startedAt = nil
+            }
+        #endif
+        link?.invalidate()
+        link = nil
+        linkTempo = .stopped
     }
 
     private func stop() {
-        link?.invalidate()
-        link = nil
+        pause()
         unwatch()
     }
 
@@ -339,10 +412,23 @@ final class CascadeDriver {
         let before = live.revealed
         clock = link.timestamp
         let moving = live.advance(to: link.timestamp)
-        let landing = arrival.advance(to: link.timestamp, settled: live.isSettled) > 0
-        guard moving || landing else { return }
-        onFrame?(live.revealed != before)
-        if !live.isActive { stop() }
+        let landing =
+            renderer == .aurora
+            && arrival.advance(to: link.timestamp, settled: live.isSettled) > 0
+        #if DEBUG
+            ticks += 1
+            if moving || landing { painted += 1 }
+        #endif
+        if moving || landing { onFrame?(live.revealed != before) }
+        guard live.isActive else {
+            stop()
+            return
+        }
+        if live.tempo == .stopped, !isArriving {
+            pause()
+        } else {
+            start()
+        }
     }
 }
 

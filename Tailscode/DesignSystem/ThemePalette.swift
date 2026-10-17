@@ -65,7 +65,7 @@ enum ThemePalette {
     nonisolated static func color(_ slot: KeyPath<Palette, String> & Sendable, system: UIColor) -> UIColor {
         UIColor { traits in
             guard let palette = traits.palette else { return system.resolvedColor(with: traits) }
-            return UIColor(hex: palette[keyPath: slot])
+            return UIColor.cached(hex: palette[keyPath: slot])
                 ?? system.resolvedColor(with: traits)
         }
     }
@@ -79,9 +79,8 @@ enum ThemePalette {
     ) -> UIColor {
         UIColor { traits in
             guard let palette = traits.palette,
-                let mixed = Contrast.blend(
-                    palette[keyPath: slot], palette[keyPath: other], amount),
-                let color = UIColor(hex: mixed)
+                let color = UIColor.cachedBlend(
+                    palette[keyPath: slot], palette[keyPath: other], amount)
             else { return system.resolvedColor(with: traits) }
             return color
         }
@@ -109,7 +108,7 @@ enum ThemePalette {
                 syntaxTables[key] = table
             }
             lock.unlock()
-            guard let hex = table[role], let color = UIColor(hex: hex) else {
+            guard let hex = table[role], let color = UIColor.cached(hex: hex) else {
                 return system.resolvedColor(with: traits)
             }
             return color
@@ -123,7 +122,7 @@ enum ThemePalette {
         UIColor { traits in
             guard let palette = traits.palette else { return system.resolvedColor(with: traits) }
             guard let hex = SyntaxPalette.diffLineBackground(kind, in: palette),
-                let color = UIColor(hex: hex)
+                let color = UIColor.cached(hex: hex)
             else { return .clear }
             return color
         }
@@ -135,7 +134,7 @@ enum ThemePalette {
         _ slot: KeyPath<Palette, String> & Sendable, alpha: CGFloat, system: UIColor
     ) -> UIColor {
         UIColor { traits in
-            guard let palette = traits.palette, let color = UIColor(hex: palette[keyPath: slot])
+            guard let palette = traits.palette, let color = UIColor.cached(hex: palette[keyPath: slot])
             else { return system.resolvedColor(with: traits).withAlphaComponent(alpha) }
             return color.withAlphaComponent(alpha)
         }
@@ -150,5 +149,36 @@ extension UIColor {
         self.init(
             red: CGFloat(channels.red), green: CGFloat(channels.green),
             blue: CGFloat(channels.blue), alpha: 1)
+    }
+
+    /// Colours already made from a hex, or from a blend of two. Both are asked for by the dynamic
+    /// colour providers above, which run again for every trait resolution, and a ring or a wave
+    /// that resolves a theme colour each frame turns a string parse (and for a blend an OKLab walk)
+    /// into per-frame work. The same text always makes the same colour, so nothing here can change
+    /// which one comes out; only the invalid ones are never remembered.
+    nonisolated(unsafe) private static let made: NSCache<NSString, UIColor> = {
+        let cache = NSCache<NSString, UIColor>()
+        cache.countLimit = 2048
+        return cache
+    }()
+
+    /// `UIColor(hex:)` through the cache. `NSCache` is safe to call from any thread, which a
+    /// colour provider needs, because the system resolves them wherever it happens to be drawing.
+    nonisolated static func cached(hex: String) -> UIColor? {
+        let key = hex as NSString
+        if let hit = made.object(forKey: key) { return hit }
+        guard let color = UIColor(hex: hex) else { return nil }
+        made.setObject(color, forKey: key)
+        return color
+    }
+
+    /// `Contrast.blend` read into a colour, through the same cache.
+    nonisolated static func cachedBlend(_ from: String, _ to: String, _ amount: Double) -> UIColor? {
+        let key = "\(from)|\(to)|\(amount)" as NSString
+        if let hit = made.object(forKey: key) { return hit }
+        guard let mixed = Contrast.blend(from, to, amount), let color = UIColor(hex: mixed)
+        else { return nil }
+        made.setObject(color, forKey: key)
+        return color
     }
 }

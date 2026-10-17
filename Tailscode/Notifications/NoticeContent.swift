@@ -23,7 +23,8 @@ enum NoticeContent {
         let reading = NoticeWords.reading(wire)
         let presentation = NoticePresentation.of(wire.kind)
         if let title, !title.isEmpty { content.title = title }
-        let rest = reading.rest.joined(separator: "\n")
+        let rest = (reading.rest.isEmpty && !reading.touched.isEmpty ? [reading.touched] : reading.rest)
+            .joined(separator: "\n")
         if rest.isEmpty {
             content.subtitle = ""
             content.body = reading.lead.isEmpty ? presentation.hiddenBody : reading.lead
@@ -44,7 +45,7 @@ enum NoticeContent {
         if let value = wire.userInfoValue() { userInfo[NoticeWire.key] = value }
         content.userInfo = userInfo
         if withFace, content.attachments.isEmpty,
-            let face = NoticeFace.attachment(for: presentation)
+            let face = NoticeFace.attachment(for: presentation, glyph: wire.glyph)
         {
             content.attachments = [face]
         }

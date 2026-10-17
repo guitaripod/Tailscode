@@ -65,9 +65,10 @@ struct NoticeCardView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Image(uiImage: NoticeFace.image(for: presentation, side: 144))
+            Image(uiImage: NoticeFace.image(for: presentation, glyph: model.wire?.glyph, side: 144))
                 .resizable()
                 .frame(width: 46, height: 46)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(model.title)
                     .font(.headline)
@@ -115,7 +116,12 @@ struct NoticeCardView: View {
     private func content(_ wire: NoticeWire, _ reading: NoticeReading) -> some View {
         switch wire.kind {
         case .done:
-            if let stats = stats(wire) { stats }
+            let tiles = stats(wire)
+            if let tiles { tiles }
+            let account = tiles == nil ? reading.summary : reading.touched
+            if !account.isEmpty {
+                Text(account).font(.subheadline).foregroundStyle(.secondary)
+            }
             if !reading.passage.isEmpty {
                 Text(reading.passage).font(.body).lineLimit(9)
             }

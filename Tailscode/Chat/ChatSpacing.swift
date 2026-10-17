@@ -31,6 +31,8 @@ enum ChatSpacing {
         case .code, .table, .tableDraft, .subagent, .workflow, .taskBoard, .designBoard, .failed,
             .answerless:
             return .code
+        case .brain(let brain):
+            return brain.isOpen ? .code : .furniture
         case .activity, .subagentGroup, .timestamp, .responseStats:
             return .furniture
         case .compaction, .note:

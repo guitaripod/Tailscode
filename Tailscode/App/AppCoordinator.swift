@@ -17,6 +17,7 @@ final class AppCoordinator: NSObject {
 
     func start() {
         SessionSeenStore.bootstrapIfNeeded()
+        NeuralMetalContext.warm()
         DraftStore.warm()
         UpdateMonitor.start()
         AppPreferences.adoptThemeDefaults()

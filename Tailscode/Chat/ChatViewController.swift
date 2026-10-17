@@ -300,6 +300,9 @@ final class ChatViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(chatDensityDidChange),
             name: ChatDensitySetting.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(activityStyleDidChange),
+            name: ActivityStyleSetting.didChange, object: nil)
         for name: Notification.Name in [
             UIApplication.willResignActiveNotification,
             UIApplication.didEnterBackgroundNotification,
@@ -922,7 +925,9 @@ final class ChatViewController: UIViewController {
             let attributes = collectionView.layoutAttributesForItem(at: indexPath),
             let cell = collectionView.cellForItem(at: indexPath)
         else { return nil }
-        guard indexPath.item == dataSource.snapshot().numberOfItems - 1 else { return contentHeight }
+        guard indexPath.item == collectionView.numberOfItems(inSection: 0) - 1 else {
+            return contentHeight
+        }
         let bottom: CGFloat
         switch (row.content, cell) {
         case (.text, let bubble as TextBubbleCell):
@@ -1097,6 +1102,8 @@ final class ChatViewController: UIViewController {
         collectionView.register(PermissionCell.self, forCellWithReuseIdentifier: PermissionCell.reuseID)
         collectionView.register(
             ActivityGroupCell.self, forCellWithReuseIdentifier: ActivityGroupCell.reuseID)
+        collectionView.register(
+            NeuralBrainCell.self, forCellWithReuseIdentifier: NeuralBrainCell.reuseID)
         collectionView.register(
             SubagentCardCell.self, forCellWithReuseIdentifier: SubagentCardCell.reuseID)
         collectionView.register(
@@ -2008,6 +2015,11 @@ final class ChatViewController: UIViewController {
                 onToolOpen: { [weak self] call in self?.inspect(tool: call) ?? false },
                 onLinkTap: { [weak self] url in self?.openWebLink(url) })
             return cell
+        case .brain(let brainRow):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: NeuralBrainCell.reuseID, for: indexPath) as! NeuralBrainCell
+            cell.configure(brainRow, store: self.brain.store, actions: self.brainActions)
+            return cell
         case .workflow(let run):
             let cell = collectionView.dequeueReusableCell(
                 withReuseIdentifier: WorkflowCardCell.reuseID, for: indexPath)
@@ -2234,7 +2246,8 @@ final class ChatViewController: UIViewController {
             row: live.id, source, sealed: sealed, markdown: live.streamsMarkdown)
         let row = safe == source ? live : live.held(to: safe)
         cascade.focus(
-            row.id, length: renderedLength(of: row), sealed: sealed, ultracode: cascadeUltracode)
+            row.id, length: renderedLength(of: row), sealed: sealed, ultracode: cascadeUltracode,
+            source: row.streamedText)
         guard cascade.key == row.id else {
             if rowsByID[live.id] != live {
                 rowsByID[live.id] = live
@@ -2273,7 +2286,9 @@ final class ChatViewController: UIViewController {
         let row = safe == source ? whole : whole.held(to: safe)
         let length = renderedLength(of: row)
         guard length > cascade.revealed else { return false }
-        cascade.focus(key, length: length, sealed: sealed, ultracode: cascadeUltracode)
+        cascade.focus(
+            key, length: length, sealed: sealed, ultracode: cascadeUltracode,
+            source: row.streamedText)
         guard cascade.key == key else { return false }
         rowsByID[key] = row
         var snapshot = dataSource.snapshot()
@@ -2311,7 +2326,8 @@ final class ChatViewController: UIViewController {
         let row = safe == source ? whole : whole.held(to: safe)
         rowsByID[key] = row
         cascade.focus(
-            key, length: renderedLength(of: row), sealed: true, ultracode: cascadeUltracode)
+            key, length: renderedLength(of: row), sealed: true, ultracode: cascadeUltracode,
+            source: row.streamedText)
         return cascade.owes
     }
 
@@ -2333,7 +2349,8 @@ final class ChatViewController: UIViewController {
     private func refocusCascade(on id: String) {
         guard cascade.key == id, let row = rowsByID[id] else { return }
         cascade.focus(
-            id, length: renderedLength(of: row), sealed: turnIsOver, ultracode: cascadeUltracode)
+            id, length: renderedLength(of: row), sealed: turnIsOver, ultracode: cascadeUltracode,
+            source: row.streamedText)
     }
 
     /// The reveal stopped moving while it still owed the reader text — the display link stopped
@@ -2525,6 +2542,7 @@ final class ChatViewController: UIViewController {
     private func render(_ state: ConversationState) {
         lastRenderedState = state
         compose(state, rebuild: rebuildTranscript(state))
+        refreshBrainCells()
         noteOpened(state)
         keepRead(state)
         callController.conversationChanged()
@@ -2549,10 +2567,37 @@ final class ChatViewController: UIViewController {
         guard !setAsideUnread else { return }
         let now = CACurrentMediaTime()
         let ended = wasRunningWhenMarked && !running
-        guard ended || now - lastReadMarkAt >= Self.readMarkInterval else { return }
+        let stamp = Self.readStamp(state)
+        guard ended || (stamp != lastReadStamp && now - lastReadMarkAt >= Self.readMarkInterval)
+        else { return }
         lastReadMarkAt = now
+        lastReadStamp = stamp
         SessionSeenStore.markSeen(viewModel.session.id)
     }
+
+    /// What the newest message looks like, in one integer: its identity, how many parts it has and
+    /// how much it has written. A state that moved something else, a connection phase or a quota,
+    /// leaves it as it was and marks nothing, so the seen store is written when there is something
+    /// new to have seen.
+    private static func readStamp(_ state: ConversationState) -> Int {
+        var hasher = Hasher()
+        hasher.combine(state.messages.count)
+        if let last = state.messages.last {
+            hasher.combine(last.id)
+            hasher.combine(last.parts.count)
+            hasher.combine(last.isStreaming)
+            if let part = last.parts.last {
+                switch part.kind {
+                case .text(let text), .reasoning(let text): hasher.combine(text.utf8.count)
+                case .tool(let call): hasher.combine(call.status)
+                default: break
+                }
+            }
+        }
+        return hasher.finalize()
+    }
+
+    private var lastReadStamp = 0
 
     private let openedAt = ContinuousClock.now
     private var openTimed = false
@@ -2562,6 +2607,9 @@ final class ChatViewController: UIViewController {
     private func noteOpened(_ state: ConversationState) {
         guard !openTimed, !state.messages.isEmpty else { return }
         openTimed = true
+        #if DEBUG
+            startBrainWalk()
+        #endif
         AppLogger.performance.info(
             "journey open session=\(viewModel.session.id) ms=\(FirstAnswerClock.milliseconds(since: openedAt)) messages=\(state.messages.count) rows=\(orderedIDs.count)")
     }
@@ -2583,9 +2631,11 @@ final class ChatViewController: UIViewController {
     private struct TranscriptRebuild {
         let previous: [String: ChatRow]
         let rows: [ChatRow]
+        let facts: StatusFacts
     }
 
     private let segmentMemo = SegmentRowMemo()
+    private let brain = ChatBrainController()
 
     /// Where every tool call stood when the transcript was last built, so a call that has just
     /// completed is told from one that was already done without keeping a second copy of every row.
@@ -2596,10 +2646,19 @@ final class ChatViewController: UIViewController {
             messages: state.messages, agents: viewModel.trackedSubagents)
         workflowRuns = runs
         updateWorkflowTicker()
+        refreshTranscriptFill(state)
+        let facts = makeFacts(state)
+        let stalled: Bool
+        if case .stalled = facts.phase { stalled = true } else { stalled = false }
+        let reading = brain.reading(of: state, stalled: stalled)
+        let layout = brain.layout(
+            reading: reading, facts: facts, call: callController.currentFace,
+            providerID: viewModel.displayedModel?.providerID,
+            effortOptions: viewModel.reasoningEffortOptions)
         var rows = ChatRowBuilder.makeRows(
-            from: state.messages, agents: subagentPlacement(for: state.messages),
+            from: reading.messages, agents: subagentPlacement(for: reading.messages),
             runs: Dictionary(runs.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest }),
-            turnOpen: state.status == .running, memo: segmentMemo,
+            turnOpen: reading.running, memo: segmentMemo, brains: layout,
             modelName: { [contextID = viewModel.contextID] selection in
                 ModelCatalog.cached(for: contextID).first { $0.selection == selection }?.name
             })
@@ -2630,7 +2689,7 @@ final class ChatViewController: UIViewController {
                 expandedReasoning.subtract(oldest)
             }
         }
-        return TranscriptRebuild(previous: previous, rows: rows)
+        return TranscriptRebuild(previous: previous, rows: rows, facts: facts)
     }
 
     private func compose(_ state: ConversationState, rebuild: TranscriptRebuild?) {
@@ -2778,10 +2837,11 @@ final class ChatViewController: UIViewController {
         }
         if let rebuild {
             let currentToolStatuses = Self.collectToolStatuses(
-                from: rebuild.rows.lazy.flatMap { row -> [ActivityStep] in
-                    if case .activity(let steps) = row.content { return steps }
-                    return []
-                })
+                from: rebuild.rows.lazy.reversed().prefix(while: { $0.role != .user })
+                    .flatMap { row -> [ActivityStep] in
+                        if case .activity(let steps) = row.content { return steps }
+                        return []
+                    })
             for (id, previousStatus) in lastToolStatuses {
                 if let currentStatus = currentToolStatuses[id],
                     previousStatus != currentStatus, currentStatus == .completed
@@ -2845,7 +2905,7 @@ final class ChatViewController: UIViewController {
 
         composer.setBusy(viewModel.isBusy)
         syncFAB()
-        updateNavStatus(for: state, messagesMoved: rebuild != nil)
+        updateNavStatus(for: state, messagesMoved: rebuild != nil, facts: rebuild?.facts)
         if wasRunning && state.status != .running {
             if state.messages.last?.isAnswerless == true {
                 Theme.Haptics.warning()
@@ -2901,7 +2961,7 @@ final class ChatViewController: UIViewController {
                     ?? String(localized: "The agent has a question."),
                 identifier: "question:\(question.id)", sessionID: viewModel.session.id,
                 profileID: viewModel.contextID, question: question,
-                notice: NoticeReader.wire(question: question).located(
+                notice: NoticeReader.wire(question: question, in: state).located(
                     on: viewModel.serverName, agent: viewModel.backend.agentType.rawValue),
                 activity: .needsAnswer)
         }
@@ -3241,27 +3301,14 @@ final class ChatViewController: UIViewController {
     /// - Parameter messagesMoved: whether the transcript itself changed. When it did not — a
     ///   redraw of what this device is holding — the two readings that walk every message in the
     ///   conversation would return exactly what they returned last time, at the same cost.
-    private func updateNavStatus(for state: ConversationState, messagesMoved: Bool = true) {
+    private func updateNavStatus(
+        for state: ConversationState, messagesMoved: Bool = true, facts given: StatusFacts? = nil
+    ) {
         turnStartedAt = StatusFacts.turnStart(in: state)
-        if messagesMoved {
-            countedMessages = state.messages.count
-            transcriptFill = ContextFill.read(
-                messages: state.messages, sessionModel: viewModel.session.model,
-                catalog: availableModels)
-            spendReading.note(messages: state.messages, for: viewModel.session.id)
-        }
+        if messagesMoved, given == nil { refreshTranscriptFill(state) }
         updateContextChip()
         updateSpendChip()
-        var facts = StatusFacts.from(
-            state: state, agents: viewModel.trackedSubagents,
-            usage: nil, attachments: pendingAttachments.count, context: contextFill,
-            queued: viewModel.queued.count)
-        #if DEBUG
-            if ProcessInfo.processInfo.environment["TAILSCODE_DEMO_AGENTS"] == "background" {
-                facts.phase = .background(tasks: 2)
-                facts.activity = .inBackground(tasks: 2)
-            }
-        #endif
+        let facts = given ?? makeFacts(state)
         updateBackgroundChip(for: facts)
         refreshAgentsChip()
         var text: String?
@@ -3327,7 +3374,150 @@ final class ChatViewController: UIViewController {
         }
     }
 
+    /// The transcript's own size and what it has cost, read again because the messages moved.
+    private func refreshTranscriptFill(_ state: ConversationState) {
+        countedMessages = state.messages.count
+        transcriptFill = ContextFill.read(
+            messages: state.messages, sessionModel: viewModel.session.model,
+            catalog: availableModels)
+        spendReading.note(messages: state.messages, for: viewModel.session.id)
+    }
+
+    /// Everything true about the turn right now, read once per state and shared by the nav status
+    /// and the brains, so the two cannot be in different phases.
+    private func makeFacts(_ state: ConversationState) -> StatusFacts {
+        var facts = StatusFacts.from(
+            state: state, agents: viewModel.trackedSubagents,
+            usage: nil, attachments: pendingAttachments.count, context: contextFill,
+            queued: viewModel.queued.count)
+        #if DEBUG
+            if ProcessInfo.processInfo.environment["TAILSCODE_DEMO_AGENTS"] == "background" {
+                facts.phase = .background(tasks: 2)
+                facts.activity = .inBackground(tasks: 2)
+            }
+        #endif
+        return facts
+    }
+
+    private var brainActions: BrainActions {
+        BrainActions(
+            toggle: { [weak self] id in self?.toggleBrain(id) },
+            rows: { [weak self] id in self?.toggleBrainRows(id) },
+            replay: { [weak self] id in self?.replayBrain(id) },
+            share: { [weak self] id in self?.shareBrain(id) },
+            revealAgent: { [weak self] turn, step in self?.revealAgent(turn: turn, step: step) })
+    }
+
+    /// Opening a brain is a reading gesture like opening any row: the transcript stops chasing the
+    /// bottom, the policy closes the one that was open, and the view moves only as far as the
+    /// opened body needs.
+    private func toggleBrain(_ turnID: String) {
+        userScrolledUp = true
+        let opening = !brain.store.isOpen(turnID)
+        brain.store.toggle(turnID)
+        render(lastRenderedState ?? viewModel.state)
+        if opening { revealToggledRow(NeuralOpenPolicy.rowID(turnID: turnID)) }
+    }
+
+    private func toggleBrainRows(_ turnID: String) {
+        userScrolledUp = true
+        brain.store.toggleRows(turnID)
+        render(lastRenderedState ?? viewModel.state)
+    }
+
+    /// Replay starts from the first step, and opens the brain first when it is closed: a replay
+    /// is a thing to be watched.
+    private func replayBrain(_ turnID: String) {
+        userScrolledUp = true
+        let opening = !brain.store.isOpen(turnID)
+        if opening { brain.store.toggle(turnID) }
+        brain.store.mutate(turnID) { $0.startReplay(now: CACurrentMediaTime()) }
+        render(lastRenderedState ?? viewModel.state)
+        if opening { revealToggledRow(NeuralOpenPolicy.rowID(turnID: turnID)) }
+    }
+
+    /// Sends a settled turn out as its poster: the sheet draws it at the look the person last chose
+    /// for cards, with the words that started the turn as its quote.
+    private func shareBrain(_ turnID: String) {
+        guard let model = brain.store.model(for: turnID), model.turn.outcome != .running else {
+            return
+        }
+        let messages = viewModel.state.messages
+        let start = messages.firstIndex { $0.id == turnID } ?? messages.endIndex
+        let prompt = messages[..<start].last { $0.role == .user }.map { message -> String in
+            message.parts.compactMap { part -> String? in
+                if case .text(let words) = part.kind { return words }
+                return nil
+            }.joined(separator: "\n")
+        } ?? ""
+        Theme.Haptics.tap()
+        NeuralShareViewController.present(
+            turn: model.turn, prompt: prompt, look: CardStyleSelection.current, from: self)
+    }
+
+    /// A double tap on a delegate node goes to the card of the agent it spawned, inside this
+    /// conversation, never to a chat of its own.
+    private func revealAgent(turn turnID: String, step stepID: String) {
+        guard let call = toolCall(forStep: stepID) else { return }
+        revealSubagent(spawnedBy: call)
+    }
+
+    private func toolCall(forStep stepID: String) -> ToolCall? {
+        for message in viewModel.state.messages.reversed() {
+            guard stepID.hasPrefix(message.id + ":") else { continue }
+            for part in message.parts where "\(message.id):\(part.id)" == stepID {
+                if case .tool(let call) = part.kind { return call }
+            }
+        }
+        return nil
+    }
+
+    #if DEBUG
+        /// Plays `TAILSCODE_NEURAL_WALK` against the open brain on its own clock.
+        private func startBrainWalk() {
+            for step in BrainDebug.walk {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(step.delay))
+                    self?.brainWalkStep(step.verb, step.value)
+                }
+            }
+        }
+
+        private func brainWalkStep(_ verb: String, _ value: String) {
+            guard let turnID = brain.store.openTurnID ?? brain.store.latestTurnID else { return }
+            let stage = collectionView.visibleCells.compactMap { ($0 as? NeuralBrainCell)?.brainStage }
+                .first
+            switch verb {
+            case "pin": stage?.walk(pin: Int(value), hover: nil, dive: nil)
+            case "hover": stage?.walk(pin: nil, hover: Int(value), dive: nil)
+            case "dive": stage?.walk(pin: nil, hover: nil, dive: value)
+            case "replay":
+                brain.store.mutate(turnID) { $0.scrub(to: Double(value) ?? 0.5) }
+                stage?.refresh()
+            case "prov":
+                guard let model = brain.store.model(for: turnID) else { return }
+                let tokens = model.answerTokens(in: brain.store.answerText(for: turnID)).map(\.text)
+                if let index = Int(value), tokens.indices.contains(index) {
+                    brain.store.mutate(turnID) { $0.setProvenance(token: tokens[index]) }
+                    stage?.refresh()
+                    refreshBrainCells()
+                }
+            case "rows": toggleBrainRows(turnID)
+            case "share": shareBrain(turnID)
+            case "close": toggleBrain(turnID)
+            default: break
+            }
+        }
+    #endif
+
+    /// Reads the brain cells on screen again: the ticker's latest step, the chips, the line's
+    /// clock. Nothing is rebuilt, and a row whose value did not change is not reconfigured.
+    private func refreshBrainCells() {
+        for case let cell as NeuralBrainCell in collectionView.visibleCells { cell.refreshLive() }
+    }
+
     private func renderNavStatus() {
+        refreshBrainCells()
         guard !lastStatusPhaseText.isEmpty else { return }
         guard let started = turnStartedAt else {
             setNavStatusText(lastStatusPhaseText)
@@ -3932,6 +4122,12 @@ final class ChatViewController: UIViewController {
         var snapshot = dataSource.snapshot()
         snapshot.reloadItems(snapshot.itemIdentifiers)
         dataSource.apply(snapshot, animatingDifferences: false)
+    }
+
+    /// Brain or lines is what every turn's work is made of, so a chat left open behind the settings
+    /// screen is built again at once, the same way a switch on the response strip is.
+    @objc private func activityStyleDidChange() {
+        render(viewModel.state)
     }
 
     @objc private func catalogDidChange(_ note: Notification) {
@@ -5122,6 +5318,8 @@ final class ChatViewController: UIViewController {
                     case .tool(let call): return "[\(call.title ?? call.name)]"
                     }
                 }.joined(separator: "\n")
+            case .brain(let brainRow):
+                body = brain.markdown(for: brainRow.turnID)
             case .subagent(let card):
                 body = Self.subagentMarkdown(card)
             case .workflow(let run):
@@ -5682,13 +5880,19 @@ final class ChatViewController: UIViewController {
         }
         guard !userScrolledUp, !isFingerDown, isNearBottom() else {
             followClock = nil
+            followGliding = false
             return
         }
+        guard revealMoved || followGliding else { return }
         followVisibleEnd(gliding: true)
     }
 
     /// When the follow last moved, so a glide knows how much time one frame was.
     private var followClock: CFTimeInterval?
+
+    /// Whether the last frame's glide was still on its way to where the writing ends. A frame that
+    /// moved only the band, with the glide settled, has nowhere to follow to and measures nothing.
+    private var followGliding = false
 
     /// Puts the last written line at the bottom of the viewport. Nothing happens when the live
     /// row is already whole, which is when following the bottom means what it always did.
@@ -5699,8 +5903,9 @@ final class ChatViewController: UIViewController {
     /// writing only grows, and a target behind the offset is a layout that has not caught up
     /// yet, not a place to go.
     private func followVisibleEnd(gliding: Bool = false) {
-        guard let unrevealed = unrevealedHeight(), unrevealed > 0, let end = visibleEnd() else {
+        guard let end = visibleEnd(), collectionView.contentSize.height - end > 0 else {
             followClock = nil
+            followGliding = false
             return
         }
         let inset = collectionView.adjustedContentInset
@@ -5716,6 +5921,7 @@ final class ChatViewController: UIViewController {
         let next = gliding && !UIAccessibility.isReduceMotionEnabled
             ? CGFloat(FreshCanvas.glide(current: current, target: target, elapsed: elapsed))
             : max(current, target)
+        followGliding = gliding && abs(target - current) > 0.5
         guard abs(next - current) > 0.01 else { return }
         collectionView.contentOffset.y = next
     }
@@ -6389,6 +6595,8 @@ extension ChatViewController: UICollectionViewDelegate {
                 case .tool(let call): return call.output ?? call.title ?? call.name
                 }
             }.joined(separator: "\n\n")
+        case .brain(let brainRow):
+            return brain.markdown(for: brainRow.turnID)
         case .subagent(let card):
             return Self.subagentMarkdown(card)
         case .workflow(let run):

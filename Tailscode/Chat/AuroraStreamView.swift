@@ -22,7 +22,10 @@ struct AuroraFrame {
 ///
 /// A transcript writes into one row at a time, so at most a couple of these overlays exist at
 /// once — but each of them building its own command queue and compiling its own pipeline would
-/// spend, per row, what the process only ever needs to spend once.
+/// spend, per row, what the process only ever needs to spend once. The device, the queue, the
+/// library and the compiled pipelines are the process's one `NeuralMetalContext`, shared with the
+/// presence orb and the head and warmed off the main thread at launch; only the sampler is this
+/// engine's own.
 @MainActor
 final class AuroraEngine {
     static let shared = AuroraEngine()
@@ -34,30 +37,12 @@ final class AuroraEngine {
     let sampler: MTLSamplerState
 
     private init?() {
-        guard let device = MTLCreateSystemDefaultDevice(),
-            let queue = device.makeCommandQueue(),
-            let library = device.makeDefaultLibrary()
-        else { return nil }
-
-        func pipeline(_ vertex: String, _ fragment: String) -> MTLRenderPipelineState? {
-            guard let vertexFunction = library.makeFunction(name: vertex),
-                let fragmentFunction = library.makeFunction(name: fragment)
-            else { return nil }
-            let descriptor = MTLRenderPipelineDescriptor()
-            descriptor.vertexFunction = vertexFunction
-            descriptor.fragmentFunction = fragmentFunction
-            guard let attachment = descriptor.colorAttachments[0] else { return nil }
-            attachment.pixelFormat = .bgra8Unorm
-            attachment.isBlendingEnabled = true
-            attachment.sourceRGBBlendFactor = .one
-            attachment.sourceAlphaBlendFactor = .one
-            attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha
-            attachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
-            return try? device.makeRenderPipelineState(descriptor: descriptor)
-        }
-
-        guard let glyphs = pipeline("aurora_glyph_vertex", "aurora_glyph_fragment"),
-            let nib = pipeline("aurora_nib_vertex", "aurora_nib_fragment")
+        guard let context = NeuralMetalContext.shared,
+            let glyphs = context.premultipliedPipeline(
+                vertex: "aurora_glyph_vertex", fragment: "aurora_glyph_fragment",
+                format: .bgra8Unorm),
+            let nib = context.premultipliedPipeline(
+                vertex: "aurora_nib_vertex", fragment: "aurora_nib_fragment", format: .bgra8Unorm)
         else { return nil }
 
         let sampling = MTLSamplerDescriptor()
@@ -66,10 +51,10 @@ final class AuroraEngine {
         sampling.mipFilter = .linear
         sampling.sAddressMode = .clampToEdge
         sampling.tAddressMode = .clampToEdge
-        guard let sampler = device.makeSamplerState(descriptor: sampling) else { return nil }
+        guard let sampler = context.device.makeSamplerState(descriptor: sampling) else { return nil }
 
-        self.device = device
-        self.queue = queue
+        self.device = context.device
+        self.queue = context.queue
         self.glyphs = glyphs
         self.nib = nib
         self.sampler = sampler
@@ -266,8 +251,17 @@ private struct AuroraUniforms {
 /// on, and the paragraph under it was measured when it arrived and is never measured again.
 @MainActor
 final class AuroraStreamView: UIView {
+    private struct KeptInks {
+        let edge: UIColor
+        let spark: UIColor
+        let traits: UITraitCollection
+        let edgeChannels: SIMD4<Float>
+        let sparkChannels: SIMD4<Float>
+    }
+
     private let metalLayer = CAMetalLayer()
     private let engine: AuroraEngine?
+    private var keptInks: KeptInks?
     private var quads: [AuroraQuad] = []
     private var quadBuffer: MTLBuffer?
     private var ink: MTLTexture?
@@ -452,9 +446,10 @@ final class AuroraStreamView: UIView {
     /// would land again differently.
     private func uniforms(_ frame: AuroraFrame, ink: MTLTexture) -> AuroraUniforms {
         let motion: Float = frame.motion ? 1 : 0
+        let inks = inks(for: frame)
         return AuroraUniforms(
-            edge: Self.channels(frame.edge, traits: traitCollection),
-            spark: Self.channels(frame.spark, traits: traitCollection),
+            edge: inks.edge,
+            spark: inks.spark,
             nib: nibPlacement(progress: frame.progress, rate: frame.rate, motion: frame.motion),
             regionSize: SIMD2(Float(region.width), Float(region.height)),
             inkSize: inkScale,
@@ -607,6 +602,25 @@ final class AuroraStreamView: UIView {
             Float(region.width * scale / capacity.width),
             Float(region.height * scale / capacity.height))
         return ink
+    }
+
+    /// The wave's two inks as the shader reads them. Resolving a dynamic colour against a trait
+    /// collection is not free and a frame asks for the same two colours until the theme, the
+    /// appearance or the ultracode rainbow changes them, so the last answer is kept and a frame
+    /// that asks again is handed it.
+    private func inks(for frame: AuroraFrame) -> (edge: SIMD4<Float>, spark: SIMD4<Float>) {
+        let traits = traitCollection
+        if let kept = keptInks, kept.edge == frame.edge, kept.spark == frame.spark,
+            kept.traits == traits
+        {
+            return (kept.edgeChannels, kept.sparkChannels)
+        }
+        let edge = Self.channels(frame.edge, traits: traits)
+        let spark = Self.channels(frame.spark, traits: traits)
+        keptInks = KeptInks(
+            edge: frame.edge, spark: frame.spark, traits: traits, edgeChannels: edge,
+            sparkChannels: spark)
+        return (edge, spark)
     }
 
     private static func channels(_ colour: UIColor, traits: UITraitCollection) -> SIMD4<Float> {

@@ -1,13 +1,15 @@
 import TailscodeCore
 import UIKit
 
-/// The call's face at call size: the face's own symbol in its own tone on an opaque disc. Every
-/// frame is arithmetic on absolute time from the display's clock through `VoiceCallFace.intensity`,
-/// so connecting turns, listening and the agent working breathe, and speaking breathes with the
-/// voice's level, eased by `VoiceCallLevels` so a word is seen when it starts and the light does
-/// not flicker between syllables. Hearing, a degraded voice and an ended call hold perfectly still
-/// and run no clock at all, and so does everything under Reduce Motion. A frame changes light and
-/// a transform, never a size layout depends on.
+/// The call's face at call size: the face's own symbol in its own tone on an opaque disc. Connecting
+/// turns and listening and the agent working breathe as render-server animation sampled from the
+/// face's own motion and begun at media time zero (`CALayer.setActivityMotion`), so they keep
+/// absolute phase and cost the main thread nothing per frame. Only speaking, which breathes with
+/// the voice's level, eased by `VoiceCallLevels` so a word is seen when it starts and the light
+/// does not flicker between syllables, is not a function of time alone, and it alone runs a clock
+/// through `VoiceCallFace.intensity`. Hearing, a degraded voice and an ended call hold perfectly
+/// still and run nothing at all, and so does everything under Reduce Motion. A frame changes light
+/// and a transform, never a size layout depends on.
 @MainActor
 final class CallFaceView: UIView {
     private let disc = UIView()
@@ -104,14 +106,27 @@ final class CallFaceView: UIView {
     }
 
     private func reset() {
+        glyph.layer.removeAnimation(forKey: Self.motionKey)
         glyph.alpha = 1
         glyph.transform = .identity
         eased = 0
         lastStamp = 0
     }
 
+    private static let motionKey = "activity"
+
+    private var drivenByLevel: Bool {
+        if case .speaking = face { return true }
+        return false
+    }
+
     private func startIfNeeded() {
-        guard link == nil, animated, window != nil else { return }
+        guard animated, window != nil else { return }
+        guard drivenByLevel else {
+            glyph.layer.setActivityMotion(face.motion, forKey: Self.motionKey)
+            return
+        }
+        guard link == nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(step))
         link.runAtActivityTempo()
         link.add(to: .main, forMode: .common)
@@ -121,6 +136,7 @@ final class CallFaceView: UIView {
     private func stop() {
         link?.invalidate()
         link = nil
+        glyph.layer.removeAnimation(forKey: Self.motionKey)
     }
 
     @objc private func motionPreferenceChanged() {

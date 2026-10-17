@@ -20,6 +20,8 @@ struct ChatRow: Hashable {
         /// A table still being written: its card, its count, and none of its rows measured.
         case tableDraft(TableDraft)
         case activity([ActivityStep])
+        /// Everything one turn did before its answer, drawn as one head.
+        case brain(BrainRow)
         case subagent(SubagentCard)
         case workflow(WorkflowRun)
         case subagentGroup(SubagentGroup)
@@ -126,6 +128,7 @@ final class TextBubbleCell: UICollectionViewCell {
     private var textTop: NSLayoutConstraint!
     private var textBottom: NSLayoutConstraint!
     private lazy var aurora = AuroraTextPainter(textView: textView, host: bubble)
+    private var cascadeBase: (revision: Int, reasoning: Bool, text: NSAttributedString)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -200,6 +203,7 @@ final class TextBubbleCell: UICollectionViewCell {
         timestampLeading?.isActive = false
         timestampTrailing?.isActive = false
         aurora.release()
+        cascadeBase = nil
     }
 
     override func layoutSubviews() {
@@ -247,6 +251,7 @@ final class TextBubbleCell: UICollectionViewCell {
 
         padText(isUser && !timestamp ? CGFloat(Theme.Chat.metrics.promptBubblePadding) : 0)
         aurora.release()
+        cascadeBase = nil
         timestampLeading?.isActive = false
         timestampTrailing?.isActive = false
         applyHorizontalInsets(
@@ -285,9 +290,10 @@ final class TextBubbleCell: UICollectionViewCell {
                     string: text,
                     attributes: Theme.Ramp.attributes(
                         .thought, color: Theme.Color.secondaryLabel))
-                if !paintAurora(string, cascade: cascade, text: text, reasoning: true) {
+                if !paintAurora(string, cascade: cascade, reasoning: true) {
                     textView.attributedText = cascade.paint(
                         string, settled: Theme.Color.secondaryLabel)
+                    cascadeBase = (cascade.textRevision, true, string)
                 }
             } else {
                 textView.text = text
@@ -309,12 +315,11 @@ final class TextBubbleCell: UICollectionViewCell {
             textView.textColor = Theme.Color.label
             textView.font = Theme.Ramp.font(.answer)
             let rendered = Self.rendered(text, color: Theme.Color.label)
-            let drawn =
-                cascade.map { paintAurora(rendered, cascade: $0, text: text, reasoning: false) }
-                ?? false
+            let drawn = cascade.map { paintAurora(rendered, cascade: $0, reasoning: false) } ?? false
             if !drawn {
                 textView.attributedText =
                     cascade.map { $0.paint(rendered, settled: Theme.Color.label) } ?? rendered
+                if let cascade { cascadeBase = (cascade.textRevision, false, rendered) }
             }
             textView.linkTextAttributes = [
                 .foregroundColor: Theme.Color.accent,
@@ -326,18 +331,32 @@ final class TextBubbleCell: UICollectionViewCell {
     /// A frame of the wave. When the glyphs did not change, only colours move, so the storage is
     /// re-tinted in place and nothing re-measures; when text arrived, the full render lands at
     /// once. Either way the paragraph is measured once per arrival and never again.
+    ///
+    /// What the glyphs are is decided by `CascadeTail.textRevision`, never by reading the words:
+    /// the answer is rendered and compared with the storage once per arrival, and every frame
+    /// between two arrivals goes straight to the tail.
     func applyCascade(_ cascade: CascadeTail, text: String, reasoning: Bool) {
+        if let held = cascadeBase, held.revision == cascade.textRevision, held.reasoning == reasoning,
+            !aurora.isLit, cascade.aurora == nil,
+            textView.textStorage.length == held.text.length
+        {
+            cascade.repaint(
+                textView.textStorage, base: held.text,
+                settled: reasoning ? Theme.Color.secondaryLabel : Theme.Color.label)
+            return
+        }
         if reasoning {
             let string = NSAttributedString(
                 string: text,
                 attributes: Theme.Ramp.attributes(.thought, color: Theme.Color.secondaryLabel))
-            if paintAurora(string, cascade: cascade, text: text, reasoning: true) { return }
+            if paintAurora(string, cascade: cascade, reasoning: true) { return }
             aurora.release()
             textView.attributedText = cascade.paint(string, settled: Theme.Color.secondaryLabel)
+            cascadeBase = (cascade.textRevision, true, string)
             return
         }
         let rendered = Self.rendered(text, color: Theme.Color.label)
-        if paintAurora(rendered, cascade: cascade, text: text, reasoning: false) { return }
+        if paintAurora(rendered, cascade: cascade, reasoning: false) { return }
         aurora.release()
         if textView.textStorage.length == rendered.length,
             textView.textStorage.string == rendered.string
@@ -346,12 +365,15 @@ final class TextBubbleCell: UICollectionViewCell {
         } else {
             textView.attributedText = cascade.paint(rendered, settled: Theme.Color.label)
         }
+        cascadeBase = (cascade.textRevision, false, rendered)
     }
 
     private func paintAurora(
-        _ rendered: NSAttributedString, cascade: CascadeTail, text: String, reasoning: Bool
+        _ rendered: NSAttributedString, cascade: CascadeTail, reasoning: Bool
     ) -> Bool {
-        aurora.paint(rendered, cascade: cascade, key: (reasoning ? "thought:" : "answer:") + text)
+        aurora.paint(
+            rendered, cascade: cascade,
+            key: (reasoning ? "thought:" : "answer:") + String(cascade.textRevision))
     }
 
     /// Where the last written glyph ends, in this cell's coordinates — the bottom edge of the
@@ -824,6 +846,9 @@ final class CodeBlockCell: UICollectionViewCell {
     /// The glyphs the label is currently showing, kept so a frame of the wave can be tinted over
     /// them rather than built again from the highlighter's output.
     private var paintedStorage: NSMutableAttributedString?
+    /// What the last arrival of the wave laid out and highlighted, so the frames between two
+    /// arrivals do not split and highlight the whole block again.
+    private var cascadeLaid: (revision: Int, expanded: Bool, text: String, base: NSAttributedString)?
     /// The text the label was last given, which is what decides whether this row is still the row
     /// the reader was reading sideways.
     private var laidOutText = ""
@@ -945,7 +970,11 @@ final class CodeBlockCell: UICollectionViewCell {
         rewindIfAnotherBlock(layout.text)
         let base = Self.highlightedCode(layout.text, language: block.language)
         releaseAurora()
-        let drawn = cascade.map { paintAurora(base, cascade: $0, key: layout.text) } ?? false
+        cascadeLaid = cascade.map { ($0.textRevision, expanded, layout.text, base) }
+        let drawn =
+            cascade.map {
+                paintAurora(base, cascade: $0, key: Self.auroraKey($0, expanded: expanded))
+            } ?? false
         if !drawn {
             let storage = NSMutableAttributedString(
                 attributedString: cascade.map { $0.paint(base, settled: Theme.Color.label) } ?? base)
@@ -1038,12 +1067,23 @@ final class CodeBlockCell: UICollectionViewCell {
     /// the gutter still numbering fourteen — a frame is allowed to change light, never a size the
     /// layout depends on.
     func applyCascade(_ cascade: CascadeTail, block: CodeBlock, expanded: Bool) {
-        let laid = Self.laidOut(block.source, expanded: expanded).text
-        let base = Self.highlightedCode(laid, language: block.language)
-        if paintAurora(base, cascade: cascade, key: laid) { return }
+        let base: NSAttributedString
+        let reused: Bool
+        if let held = cascadeLaid, held.revision == cascade.textRevision, held.expanded == expanded {
+            base = held.base
+            reused = true
+        } else {
+            let laid = Self.laidOut(block.source, expanded: expanded).text
+            base = Self.highlightedCode(laid, language: block.language)
+            cascadeLaid = (cascade.textRevision, expanded, laid, base)
+            reused = false
+        }
+        if paintAurora(base, cascade: cascade, key: Self.auroraKey(cascade, expanded: expanded)) {
+            return
+        }
         releaseAurora()
         if let storage = paintedStorage, storage.length == base.length,
-            storage.string == base.string
+            reused || storage.string == base.string
         {
             cascade.repaint(storage, base: base, settled: Theme.Color.label)
             codeLabel.repaint(storage)
@@ -1053,6 +1093,12 @@ final class CodeBlockCell: UICollectionViewCell {
             attributedString: cascade.paint(base, settled: Theme.Color.label))
         paintedStorage = storage
         codeLabel.attributedText = storage
+    }
+
+    /// What names one laid-out arrival of a block for the alpha renderer: the arrival and whether
+    /// the reader has the whole block open, never the source itself.
+    private static func auroraKey(_ cascade: CascadeTail, expanded: Bool) -> String {
+        "\(cascade.textRevision):\(expanded)"
     }
 
     /// One frame of the alpha renderer over a block of code.
@@ -1126,6 +1172,7 @@ final class CodeBlockCell: UICollectionViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         releaseAurora()
+        cascadeLaid = nil
     }
 
     private static func lineNumbers(count: Int) -> String {
@@ -1569,8 +1616,6 @@ final class ThinkingCell: UICollectionViewCell {
     private let bubble = UIView()
     private lazy var bubbleTop = bubble.topAnchor.constraint(equalTo: contentView.topAnchor)
     private let dots = (0..<3).map { _ in UIView() }
-    private var link: CADisplayLink?
-    private var motion: ActivityMotion = .still
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -1622,12 +1667,11 @@ final class ThinkingCell: UICollectionViewCell {
         contentView.layer.removeAllAnimations()
         contentView.alpha = 1
         contentView.transform = .identity
+        stop()
     }
 
-    /// A row that has left the window stops its clock: a transcript would otherwise keep one
-    /// running for a bubble nobody is looking at. A display link needs no help across a trip
-    /// through the background — it is paused and resumed with the app, where a repeating layer
-    /// animation is stripped off a cell that never moved and has to be laid on again.
+    /// A repeating layer animation is stripped off a layer that leaves the window, so the swell is
+    /// laid on again whenever the row comes back, and taken off for a row nobody can see.
     override func didMoveToWindow() {
         super.didMoveToWindow()
         window == nil ? stop() : start()
@@ -1643,29 +1687,15 @@ final class ThinkingCell: UICollectionViewCell {
     }
 
     private func start() {
-        motion = ActivityMotion.working.honoring(
-            reduceMotion: UIAccessibility.isReduceMotionEnabled)
-        guard motion.isAnimated else {
-            stop()
-            for dot in dots { dot.alpha = 1 }
-            return
+        for (index, dot) in dots.enumerated() {
+            dot.alpha = 1
+            dot.layer.setActivityMotion(
+                ActivityMotion.working, lag: Self.lag(of: index, in: dots.count))
         }
-        guard link == nil else { return }
-        let made = CADisplayLink(target: self, selector: #selector(step))
-        made.runAtActivityTempo()
-        made.add(to: .main, forMode: .common)
-        link = made
     }
 
     private func stop() {
-        link?.invalidate()
-        link = nil
-    }
-
-    @objc private func step(_ link: CADisplayLink) {
-        for (index, dot) in dots.enumerated() {
-            dot.alpha = motion.intensity(at: link.timestamp - Self.lag(of: index, in: dots.count))
-        }
+        for dot in dots { dot.layer.removeAnimation(forKey: "activity") }
     }
 
     /// How far behind the swell one dot sits: a whole period spread evenly over the dots, so the

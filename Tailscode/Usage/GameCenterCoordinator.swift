@@ -25,10 +25,46 @@ final class GameCenterCoordinator: NSObject {
     private var signInSheet: UIViewController?
     private var latest: UsageAnalytics?
     private var started = false
+    private var waiting = false
+
+    /// How long after the app is first in front or first behind the user the sign-in waits, so the
+    /// first frames of the first screen are never drawn beside Game Center's own start-up.
+    private static let settleDelay: Duration = .milliseconds(500)
 
     private static let reportedKey = "tailscode.gamecenter.reported"
     private static let scoresKey = "tailscode.gamecenter.scores"
     private static let playerKey = "tailscode.gamecenter.player"
+
+    /// Starts Game Center once the first screen has been drawn rather than inside launch.
+    ///
+    /// Authenticating spends the launch's main-thread budget on an account the first screen does
+    /// not need, and nothing here is a wall. Waits for the app's first activation, then a moment
+    /// more; an app launched straight into the background has no first frame to wait for and
+    /// starts on the next turn, and one sent to the background before it was ever active starts
+    /// then. Whichever of those comes first runs `start()`, which runs once.
+    func startWhenIdle() {
+        guard !started, !waiting else { return }
+        waiting = true
+        if UIApplication.shared.applicationState == .background {
+            DispatchQueue.main.async { MainActor.assumeIsolated { self.start() } }
+            return
+        }
+        let center = NotificationCenter.default
+        nonisolated(unsafe) var tokens: [NSObjectProtocol] = []
+        let fire: @Sendable (Notification) -> Void = { _ in
+            MainActor.assumeIsolated {
+                tokens.forEach { center.removeObserver($0) }
+                tokens = []
+                Task {
+                    try? await Task.sleep(for: Self.settleDelay)
+                    self.start()
+                }
+            }
+        }
+        tokens = [
+            UIApplication.didBecomeActiveNotification, UIApplication.didEnterBackgroundNotification,
+        ].map { center.addObserver(forName: $0, object: nil, queue: .main, using: fire) }
+    }
 
     func start() {
         guard !started else { return }

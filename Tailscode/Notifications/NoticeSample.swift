@@ -33,31 +33,46 @@ enum NoticeSample: String, CaseIterable, Sendable {
         switch self {
         case .finished:
             return NoticeWire(
-                kind: .done, seconds: 252, tools: 12, added: 24, removed: 6,
+                kind: .done, seconds: 505, tools: 25, added: 5, removed: 2,
                 text: String(
                     localized: "Notifications are working. This is what a finished turn looks like."),
-                server: "arch", agent: "claudeCode")
+                server: "arch", agent: "claudeCode",
+                glyph: NeuralGlyphWire(
+                    zones: [2, 3, 2, 18, 2, 2], eye: NeuralTone.identity.rawValue, hue: "#d97757",
+                    hueLight: "#d97757", reads: 3))
         case .failed:
             return NoticeWire(
                 kind: .failed, seconds: 241, tools: 3,
                 text: "The provider returned an error: overloaded, try again shortly",
                 prompt: "Write the release notes from the commit log since the last release",
-                server: "arch", agent: "claudeCode")
+                server: "arch", agent: "claudeCode",
+                glyph: NeuralGlyphWire(
+                    zones: [1, 2, 0, 4, 0, 1], failed: 1 << NeuralZone.shell.rawValue,
+                    active: NeuralZone.shell.rawValue, eye: NeuralTone.danger.rawValue))
         case .approval:
             return NoticeWire(
                 kind: .approval, text: "rm -rf build/ && swift build -c release", subject: "Bash",
-                server: "arch", agent: "opencode")
+                server: "arch", agent: "opencode",
+                glyph: NeuralGlyphWire(
+                    zones: [1, 3, 1, 5, 0, 0], active: NeuralZone.shell.rawValue,
+                    eye: NeuralTone.attention.rawValue))
         case .question:
             return NoticeWire(
                 kind: .question, text: "Which database should the notes live in?", free: true,
-                server: "arch", agent: "claudeCode")
+                server: "arch", agent: "claudeCode",
+                glyph: NeuralGlyphWire(
+                    zones: [2, 3, 1, 2, 0, 0], active: NeuralZone.think.rawValue,
+                    eye: NeuralTone.attention.rawValue))
         case .choices:
             return NoticeWire(
                 kind: .question, text: "Which database should the notes live in?",
                 options: [
                     NoticeWire.Option(label: "Postgres", detail: "A shared server, backups, concurrent writers."),
                     NoticeWire.Option(label: "SQLite", detail: "One file, no service to run, fine below ten users."),
-                ], multiple: false, free: true, server: "arch", agent: "claudeCode")
+                ], multiple: false, free: true, server: "arch", agent: "claudeCode",
+                glyph: NeuralGlyphWire(
+                    zones: [2, 3, 1, 2, 0, 0], active: NeuralZone.think.rawValue,
+                    eye: NeuralTone.attention.rawValue))
         }
     }
 }

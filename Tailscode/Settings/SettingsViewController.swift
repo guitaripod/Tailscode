@@ -192,6 +192,7 @@ final class SettingsViewController: UIViewController {
         case streamRenderer
         case appearance
         case chatDensity
+        case activityStyle
         case pro
         case viewLogs
         case testAll
@@ -743,6 +744,15 @@ final class SettingsViewController: UIViewController {
             cell.accessories = [
                 .label(text: ChatDensitySetting.current.title), .disclosureIndicator(),
             ]
+        case .activityStyle:
+            content.text = ActivityStyleSetting.title
+            content.secondaryText = ActivityStyleSetting.current.explanation
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "brain.head.profile")
+            content.imageProperties.tintColor = Theme.Color.accent
+            cell.accessories = [
+                .label(text: ActivityStyleSetting.current.title), .disclosureIndicator(),
+            ]
         case .pro:
             content.text = "Tailscode Pro"
             if ProStore.shared.isPro {
@@ -991,6 +1001,30 @@ final class SettingsViewController: UIViewController {
         present(sheet, animated: true)
     }
 
+    /// How a turn's work is drawn, as a sheet over the row for the same reason the density is: the
+    /// choice is two words. A chat left open behind this screen answers it at once.
+    private func chooseActivityStyle(from indexPath: IndexPath) {
+        Theme.Haptics.tap()
+        let sheet = UIAlertController(
+            title: ActivityStyleSetting.title, message: ActivityStyleSetting.explanation,
+            preferredStyle: .actionSheet)
+        for style in ActivityStyle.allCases {
+            let current = style == ActivityStyleSetting.current
+            sheet.addAction(
+                UIAlertAction(title: current ? style.title + " ✓" : style.title, style: .default) {
+                    [weak self] _ in
+                    Theme.Haptics.selection()
+                    ActivityStyleSetting.set(style)
+                    self?.reconfigure([.activityStyle])
+                })
+        }
+        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        sheet.popoverPresentationController?.sourceView = collectionView
+        sheet.popoverPresentationController?.sourceRect =
+            collectionView.cellForItem(at: indexPath)?.frame ?? .zero
+        present(sheet, animated: true)
+    }
+
     /// The row states the choice rather than offering it: which identity, and which of its two
     /// faces. Both are one screen away, where they can be seen instead of read.
     private static var themeSummary: String {
@@ -1043,7 +1077,7 @@ final class SettingsViewController: UIViewController {
                     .keyboardShortcuts,
                 ]
             ),
-            (.appearance, [.appearance, .chatDensity, .toggle(.presenceOrb)]),
+            (.appearance, [.appearance, .chatDensity, .activityStyle, .toggle(.presenceOrb)]),
             (.pro, [.pro]),
             (.diagnostics, [.viewLogs, .testAll, .copyDiagnostics, .emailDiagnostics]),
             (.about, [.version, .rate, .share, .source, .privacy, .support, .licenses]),
@@ -1197,6 +1231,9 @@ final class SettingsViewController: UIViewController {
                 + String(
                     localized: "density compact comfortable spacing rows tight airy",
                     comment: "search keywords")
+        case .activityStyle:
+            return "\(ActivityStyleSetting.title) "
+                + Localized.text("brain head lines tools thinking activity neural nodes style")
         case .pro:
             return String(
                 localized: "pro purchase upgrade supporter restore tip", comment: "search keywords")
@@ -1239,9 +1276,7 @@ final class SettingsViewController: UIViewController {
     private static var copyright: String { "© 2026 Midgar Oy" }
 
     private static func relative(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter.localizedString(for: date, relativeTo: Date())
+        RelativeDateFormat.string(for: date, style: .full)
     }
 
     private func removeProfile(_ profile: ConnectionProfile) {
@@ -1508,6 +1543,8 @@ extension SettingsViewController: UICollectionViewDelegate {
             navigationController?.pushViewController(picker, animated: true)
         case .chatDensity:
             chooseDensity(from: indexPath)
+        case .activityStyle:
+            chooseActivityStyle(from: indexPath)
         case .midgar, .toggle, .version, .tailnetScan:
             break
         }

@@ -15,12 +15,13 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             for: .documentDirectory, in: .userDomainMask
         ).first
         ProStore.shared.start()
-        GameCenterCoordinator.shared.start()
+        GameCenterCoordinator.shared.startWhenIdle()
         UNUserNotificationCenter.current().delegate = NotificationRouter.shared
         NotificationManager.registerCategories()
         NotificationManager.syncBadge()
         #if DEBUG
             NoticeDebug.runIfRequested()
+            ChatRebuildBench.runIfRequested()
         #endif
         NotificationCenter.default.addObserver(
             forName: ActivityInbox.didChange, object: nil, queue: .main

@@ -21,8 +21,14 @@ enum NoticeFace {
         }
     }
 
-    /// The face at `side` points, opaque so it reads on both a light and a dark lock screen.
-    static func image(for presentation: NoticePresentation, side: CGFloat = 256) -> UIImage {
+    /// The face at `side` points, opaque so it reads on both a light and a dark lock screen. A
+    /// notice that carries the head its turn drew wears the head, tinted by the eye; any other
+    /// wears its symbol, because a head with no counts behind it would say nothing the symbol does
+    /// not.
+    static func image(
+        for presentation: NoticePresentation, glyph: NeuralGlyphWire? = nil, side: CGFloat = 256
+    ) -> UIImage {
+        if let plan = glyph?.plan() { return NoticeHead.image(for: plan, side: side) }
         let size = CGSize(width: side, height: side)
         let tint = tint(presentation.tone)
         let format = UIGraphicsImageRendererFormat.default()
@@ -54,8 +60,10 @@ enum NoticeFace {
     }
 
     /// Written fresh per notification, because the system takes ownership of the file it is handed.
-    static func attachment(for presentation: NoticePresentation) -> UNNotificationAttachment? {
-        guard let data = image(for: presentation).pngData() else { return nil }
+    static func attachment(
+        for presentation: NoticePresentation, glyph: NeuralGlyphWire? = nil
+    ) -> UNNotificationAttachment? {
+        guard let data = image(for: presentation, glyph: glyph).pngData() else { return nil }
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("notice-face-\(UUID().uuidString).png")
         do {
@@ -68,9 +76,11 @@ enum NoticeFace {
 
     /// What a turn drew, as a square with the face in its corner, so a notice about a picture shows
     /// the picture and still says what kind of notice it is.
-    static func attachment(picture: Data, presentation: NoticePresentation) -> UNNotificationAttachment? {
+    static func attachment(
+        picture: Data, presentation: NoticePresentation, glyph: NeuralGlyphWire? = nil
+    ) -> UNNotificationAttachment? {
         guard let source = UIImage(data: picture), source.size.width > 0, source.size.height > 0
-        else { return attachment(for: presentation) }
+        else { return attachment(for: presentation, glyph: glyph) }
         let side: CGFloat = 256
         let size = CGSize(width: side, height: side)
         let format = UIGraphicsImageRendererFormat.default()
@@ -92,17 +102,17 @@ enum NoticeFace {
                 .insetBy(dx: -side * 0.025, dy: -side * 0.025)
             UIColor(white: 0.08, alpha: 1).setFill()
             UIBezierPath(ovalIn: ring).fill()
-            image(for: presentation, side: badge * 2).draw(
+            image(for: presentation, glyph: glyph, side: badge * 2).draw(
                 in: CGRect(origin: origin, size: CGSize(width: badge, height: badge)))
         }
-        guard let data = composed.pngData() else { return attachment(for: presentation) }
+        guard let data = composed.pngData() else { return attachment(for: presentation, glyph: glyph) }
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("notice-picture-\(UUID().uuidString).png")
         do {
             try data.write(to: url)
             return try UNNotificationAttachment(identifier: "picture", url: url)
         } catch {
-            return attachment(for: presentation)
+            return attachment(for: presentation, glyph: glyph)
         }
     }
 

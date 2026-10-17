@@ -300,7 +300,7 @@ enum NotificationManager {
         }
         content.userInfo = userInfo
         if let picture, let attachment = NoticeFace.attachment(
-            picture: picture, presentation: NoticePresentation.of(wire.kind))
+            picture: picture, presentation: NoticePresentation.of(wire.kind), glyph: wire.glyph)
         {
             content.attachments = [attachment]
         }

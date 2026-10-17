@@ -6,8 +6,9 @@ import UIKit
 ///
 /// A mark nobody has opened, or whose card has something newer than the version it was last opened
 /// at, is announced once by a single pass of light across the capsule and then holds perfectly
-/// still. The pass is read from absolute time off the display's clock, at most once per process per
-/// feature, and the clock comes off the moment the pass ends; a settled mark runs none.
+/// still. The pass is one animation the render server runs, sampled from `BetaSheen.progress` over
+/// its own duration and played at most once per process per feature; the main thread writes
+/// nothing while it crosses, and a settled mark runs none.
 @MainActor
 final class BetaBadge: UIControl {
     private static var announced: Set<BetaFeature> = []
@@ -18,8 +19,9 @@ final class BetaBadge: UIControl {
     private let label = UILabel()
     private let symbol = UIImageView(image: UIImage(systemName: "sparkles"))
     private let sheen = CAGradientLayer()
-    private var link: CADisplayLink?
-    private var passStart: CFTimeInterval = 0
+    private var passing = false
+    private var passSize: CGSize = .zero
+    private var passGeneration = 0
     private var hasCheckedFreshness = false
 
     init(feature: BetaFeature, reportLines: @escaping () -> [String], interactive: Bool = true) {
@@ -83,6 +85,7 @@ final class BetaBadge: UIControl {
     override func layoutSubviews() {
         super.layoutSubviews()
         layer.cornerRadius = bounds.height / 2
+        if passing, bounds.size != passSize { endPass() }
         sheen.bounds = CGRect(x: 0, y: 0, width: bounds.width * Self.sheenShare, height: bounds.height)
         if !hasCheckedFreshness, isOnScreen { announceIfFresh() }
     }
@@ -152,26 +155,41 @@ final class BetaBadge: UIControl {
     }
 
     private func startPass() {
-        guard link == nil else { return }
-        passStart = CACurrentMediaTime()
+        guard !passing else { return }
+        passing = true
+        passSize = bounds.size
+        passGeneration += 1
+        let generation = passGeneration
         sheen.isHidden = false
-        let link = CADisplayLink(target: self, selector: #selector(step))
-        link.runAtActivityTempo()
-        link.add(to: .main, forMode: .common)
-        self.link = link
         place(progress: 0)
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self] in
+            MainActor.assumeIsolated { self?.finishPass(generation) }
+        }
+        sheen.add(crossing(), forKey: Self.passKey)
+        CATransaction.commit()
     }
 
-    @objc private func step(_ link: CADisplayLink) {
-        let elapsed = max(0, link.timestamp - passStart)
-        guard
-            let progress = BetaSheen.progress(
-                elapsed: elapsed, reducedMotion: UIAccessibility.isReduceMotionEnabled)
-        else {
-            endPass()
-            return
+    private static let passKey = "sheen"
+
+    private static let keyframeCount = Int(
+        (BetaSheen.duration * ActivityTuning.frameRate * 2).rounded(.up))
+
+    /// The light's horizontal travel as keyframes of `BetaSheen.progress`, so the pass is the same
+    /// curve the desks draw, carried by the render server instead of stepped by hand.
+    private func crossing() -> CAKeyframeAnimation {
+        let width = sheen.bounds.width
+        let travel = bounds.width + width
+        let values = (0...Self.keyframeCount).map { index -> NSNumber in
+            let elapsed = Double(index) / Double(Self.keyframeCount) * BetaSheen.duration
+            let progress = BetaSheen.progress(elapsed: elapsed, reducedMotion: false) ?? 1
+            return NSNumber(value: Double(-width / 2 + travel * CGFloat(progress)))
         }
-        place(progress: progress)
+        let animation = CAKeyframeAnimation(keyPath: "position.x")
+        animation.values = values
+        animation.calculationMode = .linear
+        animation.duration = BetaSheen.duration
+        return animation
     }
 
     private func place(progress: Double) {
@@ -183,14 +201,19 @@ final class BetaBadge: UIControl {
         CATransaction.commit()
     }
 
+    private func finishPass(_ generation: Int) {
+        guard generation == passGeneration else { return }
+        endPass()
+    }
+
     private func endPass() {
-        link?.invalidate()
-        link = nil
+        passing = false
+        sheen.removeAnimation(forKey: Self.passKey)
         sheen.isHidden = true
     }
 
     @objc private func settle() {
-        guard link != nil else { return }
+        guard passing else { return }
         endPass()
     }
 

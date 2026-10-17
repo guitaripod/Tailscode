@@ -101,23 +101,131 @@ extension CALayer {
     }
 }
 
+extension ActivityMotion {
+    /// The seconds one cycle of this motion lasts, read from the motion itself so no client ever
+    /// types a period of its own; nil for stillness, which has none.
+    var period: TimeInterval? {
+        switch self {
+        case .still: return nil
+        case .breath(let pulse), .heartbeat(let pulse): return pulse.period
+        case .sweep(let period): return max(0.05, period)
+        }
+    }
+
+    /// How many keyframes a cycle is sampled at for every frame of the tempo it spans.
+    ///
+    /// Twice the tempo is enough that the narrowest thing the vocabulary draws, one of a
+    /// heartbeat's two knocks, is carried by a dozen keyframes rather than being cut by the
+    /// sampling.
+    private static let keyframesPerTempoFrame = 2.0
+
+    /// The fewest keyframes a cycle may be sampled at, however short it is.
+    private static let minimumKeyframes = 48
+
+    /// How many segments one cycle is cut into.
+    private func segments(over period: TimeInterval) -> Int {
+        max(Self.minimumKeyframes, Int((ActivityTuning.frameRate * period * Self.keyframesPerTempoFrame).rounded(.up)))
+    }
+
+    /// The motion as animation the render server runs, built from exactly the arithmetic the
+    /// display-link version stepped by hand: `intensity(at:)` as opacity, `scale(at:)` as
+    /// `transform.scale`, `rotation(at:)` as `transform.rotation.z`.
+    ///
+    /// One group, one cycle long, repeating for ever. A swell is sampled over its own period at
+    /// evenly spaced keyframes and joined linearly, with the seam closed on the first sample so
+    /// the repeat cannot tick; a sweep is a plain linear turn through a full circle. `lag` is how
+    /// far this mark runs behind the common clock, for a row of marks that pass one swell along
+    /// (the three dots of a wait): sample `n` reads `time - lag`, the same shift the stepped
+    /// version applied to its timestamp.
+    ///
+    /// The group carries no phase of its own. Laid on a layer through `CALayer.setActivityMotion`
+    /// it is begun at media time zero, which is what keeps every mark on screen in step. Nil for
+    /// `.still`, which runs nothing.
+    func activityAnimation(lag: TimeInterval = 0) -> CAAnimationGroup? {
+        guard let period else { return nil }
+        let count = segments(over: period)
+        var animations: [CAAnimation] = []
+        switch self {
+        case .still:
+            return nil
+        case .breath:
+            animations.append(
+                keyframes("opacity", period: period, count: count, lag: lag) { intensity(at: $0) })
+            animations.append(
+                keyframes("transform.scale", period: period, count: count, lag: lag) { scale(at: $0) })
+        case .heartbeat:
+            animations.append(
+                keyframes("opacity", period: period, count: count, lag: lag) { intensity(at: $0) })
+        case .sweep:
+            let from = rotation(at: -lag)
+            let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+            turn.fromValue = from
+            turn.toValue = from + 2 * Double.pi
+            turn.duration = period
+            turn.timingFunction = CAMediaTimingFunction(name: .linear)
+            animations.append(turn)
+        }
+        let group = CAAnimationGroup()
+        group.animations = animations
+        group.duration = period
+        group.repeatCount = .infinity
+        return group
+    }
+
+    private func keyframes(
+        _ keyPath: String, period: TimeInterval, count: Int, lag: TimeInterval,
+        value: (TimeInterval) -> Double
+    ) -> CAKeyframeAnimation {
+        var values = (0..<count).map {
+            NSNumber(value: value(Double($0) / Double(count) * period - lag))
+        }
+        values.append(values[0])
+        let animation = CAKeyframeAnimation(keyPath: keyPath)
+        animation.values = values
+        animation.calculationMode = .linear
+        animation.duration = period
+        return animation
+    }
+}
+
+extension CALayer {
+    /// Lays an activity motion on this layer as render-server animation, begun at media time zero
+    /// so its phase is absolute: every layer given the same motion swells together, and one that
+    /// scrolls back into view arrives already in time, exactly as the display-link version did by
+    /// reading `link.timestamp`.
+    ///
+    /// Goes through `setRepeatingMotion`, so the old animation under `key` always comes off first,
+    /// reduced motion lays nothing, and the tempo is pinned. Handing it a motion that does not
+    /// move takes the animation off and leaves the layer exactly as it is. A layer that leaves the
+    /// window loses its animations, so a view calls this again when it returns.
+    @MainActor func setActivityMotion(
+        _ motion: ActivityMotion, lag: TimeInterval = 0, forKey key: String = "activity"
+    ) {
+        guard let animation = motion.activityAnimation(lag: lag) else {
+            removeAnimation(forKey: key)
+            return
+        }
+        animation.beginTime = convertTime(0, from: nil)
+        setRepeatingMotion(animation, forKey: key, meaning: motion)
+    }
+}
+
 /// The one moving thing a busy surface is allowed: the state's own symbol, breathing, knocking or
 /// sweeping the way that state means.
 ///
-/// Frames come from `CADisplayLink`, asked for the vocabulary's own tempo rather than the panel's,
-/// and the phase is read from that clock rather than counted, so every badge on screen swells
-/// together and one that scrolls back into view arrives already in time with the rest — and a
-/// badge that is handed fewer frames under load loses frames, never its place in the swell. It
-/// draws at the rate the desks draw at, not the rate this screen could. Nothing here changes a
-/// size that layout depends on: the swell is opacity and a transform, both of which the
-/// compositor applies without a pass.
+/// The motion is animation the render server runs (`ActivityMotion.activityAnimation`), sampled from
+/// the vocabulary's own arithmetic over one period and begun at media time zero, so the phase is
+/// absolute: every badge on screen swells together and one that scrolls back into view arrives
+/// already in time with the rest. The main thread writes nothing per frame; it lays the animation
+/// once, at the vocabulary's tempo rather than the panel's. Nothing here changes a size that
+/// layout depends on: the swell is opacity and a transform, both of which the compositor applies
+/// without a pass.
 ///
-/// A badge that leaves the window stops its link. A list of forty rows would otherwise keep forty
-/// clocks running for the three the reader can see.
+/// A badge that leaves the window loses its animation, because the render server drops a layer's
+/// animations with it, and lays it again on return.
 @MainActor
 final class ActivityBadgeView: UIView {
     private let imageView = UIImageView()
-    private var link: CADisplayLink?
     private var motion: ActivityMotion = .still
     private var pointSize: CGFloat
 
@@ -244,30 +352,19 @@ final class ActivityBadgeView: UIView {
     }
 
     private func start() {
-        guard link == nil, motion.isAnimated, window != nil else { return }
-        let link = CADisplayLink(target: self, selector: #selector(step))
-        link.runAtActivityTempo()
-        link.add(to: .main, forMode: .common)
-        self.link = link
+        guard motion.isAnimated, window != nil else { return }
+        imageView.layer.setActivityMotion(motion, forKey: Self.motionKey)
     }
 
     private func stop() {
-        link?.invalidate()
-        link = nil
+        imageView.layer.removeAnimation(forKey: Self.motionKey)
     }
+
+    private static let motionKey = "activity"
 
     private func resetTransform() {
         imageView.alpha = 1
         imageView.transform = .identity
-    }
-
-    @objc private func step(_ link: CADisplayLink) {
-        let time = link.timestamp
-        imageView.alpha = motion.intensity(at: time)
-        let scale = motion.scale(at: time)
-        let rotation = motion.rotation(at: time)
-        imageView.transform = CGAffineTransform(rotationAngle: rotation)
-            .scaledBy(x: scale, y: scale)
     }
 }
 

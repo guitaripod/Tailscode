@@ -1,5 +1,6 @@
 import ActivityKit
 import Foundation
+import TailscodeCore
 
 struct ChatActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable, Sendable {
@@ -32,6 +33,10 @@ struct ChatActivityAttributes: ActivityAttributes {
         var detail: String?
         /// Tasks the machine is still carrying for the conversation when its turn settled.
         var background: Int?
+        /// The head the turn has drawn, as counts. The Lock Screen card and the expanded island
+        /// draw it where they used to draw the face's symbol. Optional and additive: a card a
+        /// server wrote carries none, and its head is drawn plain with only an eye in the tone.
+        var glyph: NeuralGlyphWire?
 
         var isSettled: Bool { endedAt != nil }
     }

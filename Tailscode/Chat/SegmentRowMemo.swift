@@ -27,10 +27,58 @@ final class SegmentRowMemo {
         let addresses: [String]
     }
 
+    /// What a message's rows depend on besides the message: the prompt that opened its turn, the
+    /// response strip, and the brain that consumes some of its parts.
+    struct MessageContext: Hashable {
+        let promptID: String?
+        let promptAt: Date?
+        let stats: Bool
+        let brainStamp: Int?
+        let brainShowsRows: Bool
+        let brainAnchor: Bool
+    }
+
+    private struct MessageEntry {
+        let message: ChatMessage
+        let context: MessageContext
+        let toolIDs: [String]
+        let rows: [ChatRow]
+    }
+
     private var entries: [String: Entry] = [:]
+    private var messageEntries: [String: MessageEntry] = [:]
+    private var keptMessages: [String: MessageEntry] = [:]
+    private(set) var messageHits = 0
+    private(set) var messageBuilds = 0
     private var kept: [String: Entry] = [:]
     private var links: [String: Links] = [:]
     private var keptLinks: [String: Links] = [:]
+
+    /// The rows a message made last time, when nothing it depends on has moved: the message is
+    /// equal to the one the rows were made from (a comparison that is a pointer check for text that
+    /// was never touched), its context is the same, and no call in it has since been claimed by a
+    /// card of its own. A transcript is built again for every token, and a settled message is the
+    /// same rows every time.
+    func rows(
+        forMessage message: ChatMessage, context: MessageContext, isClaimed: (String) -> Bool
+    ) -> [ChatRow]? {
+        guard let hit = messageEntries[message.id] ?? keptMessages[message.id],
+            hit.context == context, hit.message == message,
+            !hit.toolIDs.contains(where: isClaimed)
+        else { return nil }
+        keptMessages[message.id] = hit
+        messageHits += 1
+        return hit.rows
+    }
+
+    /// Remembers the rows a settled, plain message made.
+    func keep(
+        message: ChatMessage, context: MessageContext, toolIDs: [String], rows: [ChatRow]
+    ) {
+        messageBuilds += 1
+        keptMessages[message.id] = MessageEntry(
+            message: message, context: context, toolIDs: toolIDs, rows: rows)
+    }
 
     func rows(
         for id: String, text: String, role: MessageRole, sealed: Bool,
@@ -64,6 +112,8 @@ final class SegmentRowMemo {
     /// Ends one build. A part this build never asked about has left the conversation (or the
     /// window being drawn), so it is dropped instead of being carried for the life of the chat.
     func sweep() {
+        messageEntries = keptMessages
+        keptMessages = [:]
         entries = kept
         kept = [:]
         links = keptLinks
