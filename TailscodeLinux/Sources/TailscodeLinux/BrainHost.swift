@@ -11,7 +11,7 @@ import TailscodeCore
 /// the turn it was chosen against is the latest (`NeuralOpenPolicy`); the pane hands it to the row
 /// builder, which decides each row's `open` from it, so the rule lives in Core and this is only
 /// where the answer is kept. Everything here runs on the main loop.
-final class BrainHost {
+final class BrainHost: @unchecked Sendable {
     private final class Weak {
         weak var view: BrainView?
         init(_ view: BrainView) { self.view = view }
@@ -29,6 +29,15 @@ final class BrainHost {
     var userToggled: (() -> Void)?
     /// The open policy the last row build made, for the pane's own turns.
     var policy: (() -> NeuralOpenPolicy?)?
+    /// Whether a brain's row is in the part of the transcript the reader can see, which is what
+    /// decides between a move and the end state alone.
+    var onScreen: ((BrainView) -> Bool)?
+    /// Scrolls to the approval or question card the readout's ask points at.
+    var revealApproval: (() -> Void)?
+    /// A zone a card's chip asked to open the brain diving into, by turn.
+    var pendingDive: [String: NeuralZone] = [:]
+    private var swapping: Set<String> = []
+    private var scrollPending = false
     var sessionKey = "none" {
         didSet { if sessionKey != oldValue { views.removeAll() } }
     }
@@ -94,15 +103,35 @@ final class BrainHost {
     func toggleOpen(turnID: String) {
         guard let policy = policy?() else { return }
         userToggled?()
+        noteSwap(policy: policy, toggling: turnID)
         choices = policy.toggle(turnID: turnID)
         changed?()
     }
 
     func setOpen(_ open: Bool, turnID: String) {
         guard let policy = policy?(), policy.isOpen(turnID: turnID) != open else { return }
+        noteSwap(policy: policy, toggling: turnID)
         choices = policy.toggle(turnID: turnID)
         changed?()
     }
+
+    /// Opening one brain closes the one that was open: the two moves are one, run together.
+    private func noteSwap(policy: NeuralOpenPolicy, toggling turnID: String) {
+        swapping = []
+        guard let open = policy.openTurnID, open != turnID else { return }
+        swapping = [open, turnID]
+    }
+
+    /// Whether this turn's move is half of a swap, asked once as the move begins.
+    func consumeSwap(_ turnID: String) -> Bool {
+        swapping.remove(turnID) != nil
+    }
+
+    func isOnScreen(_ view: BrainView) -> Bool { onScreen?(view) ?? true }
+
+    func userOpened() {}
+
+    func moveFinished(_ view: BrainView, opening: Bool) {}
 
     func toggleRows(turnID: String) {
         var shown = rowsShown
@@ -125,7 +154,31 @@ final class BrainHost {
     /// The governor moved: heads that cannot afford their stage give it up, heads that can again
     /// take it, and every clock is asked again what it may run at.
     func budgetChanged() {
+        BrainBudget.observe { [weak self] in self?.allowanceChanged() }
+        for view in liveViews { view.motionChanged() }
+    }
+
+    /// The debounced verdict on the stage flipped.
+    func allowanceChanged() {
         for view in liveViews { view.budgetChanged() }
+    }
+
+    /// The reader scrolled: every brain asks again whether it is in view, at most ten times a
+    /// second however fast the wheel turns.
+    func scrolled() {
+        guard !scrollPending else { return }
+        scrollPending = true
+        Gtk.after(100) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.scrollPending = false
+                self.viewportMoved()
+            }
+        }
+    }
+
+    func viewportMoved() {
+        for view in liveViews { view.viewportMoved() }
     }
 
     /// A head held by a pane that is hidden owns no clock, no compositor and no surface.

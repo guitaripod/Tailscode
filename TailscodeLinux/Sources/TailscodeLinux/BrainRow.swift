@@ -139,8 +139,10 @@ final class BrainLedger: @unchecked Sendable {
             if !records.isEmpty { reset() }
             return nil
         }
-        let turns = cache.partition(messages: messages, running: running, awaiting: awaiting)
-            .filter(NeuralOpenPolicy.isBrain(turn:))
+        let turns = Self.droppingLeadingPartial(
+            cache.partition(messages: messages, running: running, awaiting: awaiting)
+                .filter(NeuralOpenPolicy.isBrain(turn:)),
+            messages: messages)
         let policy = NeuralOpenPolicy(
             turnIDs: turns.map(\.id), isRunning: running, choices: settings.choices)
         self.policy = policy
@@ -175,6 +177,18 @@ final class BrainLedger: @unchecked Sendable {
                 prompt: isOpen && turn.outcome != .running ? Self.prompt(before: turn, in: messages) : nil)
         }
         return pass
+    }
+
+    /// A window of the conversation that starts in the middle of a turn gives that turn the id of
+    /// the first message it can see, and the id changes every time the window slides by a message,
+    /// which destroyed and rebuilt its row at the top on every arrival. The leading partial turn
+    /// keeps today's rows instead; every turn after it begins at a message the person wrote and
+    /// has an id that stays.
+    static func droppingLeadingPartial(_ turns: [NeuralTurn], messages: [ChatMessage]) -> [NeuralTurn] {
+        guard let first = messages.first, first.role != .user, let lead = turns.first,
+            lead.id == first.id
+        else { return turns }
+        return Array(turns.dropFirst())
     }
 
     private func remove(_ turnID: String) {

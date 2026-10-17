@@ -211,58 +211,7 @@ enum MatrixTheme {
         .tool-line, .mono { \(t(.toolDetail)) }
         .tool-name { color: \(info); \(t(.toolName)) }
         .tool-detail { color: \(textDim); \(t(.toolDetail)) }
-        .brain-row { }
-        .brain-lead { min-height: \(flat)px; }
-        .brain-pill {
-            \(t(.pill))
-            color: \(textDim);
-            background-color: transparent;
-            background-image: none;
-            border: 1px solid alpha(\(textDim), 0.45);
-            border-radius: 999px;
-            padding: 0px 9px;
-            min-height: 0;
-            box-shadow: none;
-        }
-        .brain-pill:hover { color: \(accent); border-color: alpha(\(accent), 0.7); }
-        .brain-pill:focus-visible { outline: 2px solid alpha(\(accent), 0.55); outline-offset: 1px; }
-        .brain-pill.on { color: \(accent); border-color: alpha(\(accent), 0.7); }
-        .brain-chevron {
-            color: \(textDim);
-            background-image: none;
-            background-color: transparent;
-            border: none;
-            box-shadow: none;
-            padding: 0px 6px;
-            min-height: 0;
-            min-width: 0;
-        }
-        .brain-chevron:hover { color: \(accent); }
-        .brain-failure { color: \(textDim); \(t(.toolDetail)) }
-        .brain-failure-hard { color: \(danger); }
-        .brain-stage {
-            border-radius: 10px;
-            background-color: alpha(\(canvas), 0.0);
-        }
-        .brain-stage:focus-visible { outline: 2px solid alpha(\(accent), 0.55); outline-offset: 2px; }
-        .brain-ticker { color: \(textDim); \(t(.toolDetail)) padding: 0px 2px; }
-        .brain-scrub { min-height: 0; margin: 0px 2px; }
-        .brain-chip {
-            \(t(.toolDetail))
-            color: \(info);
-            background-color: transparent;
-            background-image: none;
-            border: 1px solid alpha(\(info), 0.45);
-            border-radius: 6px;
-            padding: 1px 8px;
-            min-height: 0;
-            box-shadow: none;
-        }
-        .brain-chip:hover, .brain-chip:focus-visible { border-color: \(info); background-color: alpha(\(info), 0.12); }
-        .brain-chip-lead { color: \(textDim); \(t(.hint)) }
-        .brain-dive-row { padding: 2px 6px; border-radius: 6px; }
-        .brain-dive-row:hover { background-color: alpha(\(text), 0.05); }
-        .brain-dive-number { color: \(textDim); \(t(.toolDetail)) min-width: 22px; }
+        \(BrainCSS.rules(palette: palette, t: t))
         .glyph-done { color: alpha(\(accent), 0.72); }
         .glyph-running { color: \(accent); }
         .glyph-needs { color: \(warn); }

@@ -20,6 +20,12 @@ struct BrainScene {
     var crowded = false
     var hotZone: NeuralZone?
     var focused = false
+    /// How far each node has come in while a card is becoming the stage, and how much of the wires
+    /// and ties and of the zone names is drawn; a stage at rest draws everything.
+    var reveal: NeuralNodeReveal?
+    var wireDraw = 1.0
+    var tieDraw = 1.0
+    var labelAlpha = 1.0
 }
 
 enum BrainPainter {
@@ -30,8 +36,9 @@ enum BrainPainter {
     static func paint(
         _ cr: OpaquePointer, width: Int32, height: Int32, scene: BrainScene, inks: BrainInks
     ) {
-        let scale = Double(width) / NeuralDesign.width
+        let scale = Double(width) / NeuralStageMetrics.designWidth
         cairo_save(cr)
+        cairo_translate(cr, -NeuralStageMetrics.designCrop.x * scale, 0)
         cairo_translate(cr, scene.zoomCenter.x * scale, scene.zoomCenter.y * scale)
         cairo_scale(cr, scene.zoom, scene.zoom)
         cairo_translate(cr, -scene.zoomCenter.x * scale, -scene.zoomCenter.y * scale)
@@ -39,32 +46,11 @@ enum BrainPainter {
         zoneLabels(cr, scene: scene, inks: inks, scale: scale)
         ties(cr, scene: scene, inks: inks)
         wires(cr, scene: scene, inks: inks)
-        for node in scene.draws { self.node(cr, node, scene: scene, inks: inks) }
+        for (index, node) in scene.draws.enumerated() {
+            self.node(cr, node, index: index, scene: scene, inks: inks)
+        }
         if scene.orbit { satellite(cr, scene: scene, inks: inks) }
         cairo_restore(cr)
-    }
-
-    /// The card of the node being pointed at, drawn over the front so the chassis never cuts it.
-    static func paintCard(
-        _ cr: OpaquePointer, width: Int32, height: Int32, scene: BrainScene, inks: BrainInks
-    ) {
-        guard let card = scene.card, let id = scene.cardNode,
-            let node = scene.draws.first(where: { $0.id == id })
-        else { return }
-        let scale = Double(width) / NeuralDesign.width
-        let anchor = screen(node.point, scene: scene, scale: scale)
-        _ = Self.card(
-            cr, card: card, anchor: anchor, reach: node.radius * scale * scene.zoom,
-            bounds: (Double(width), Double(height)), inks: inks,
-            others: scene.draws.filter { $0.id != id }.map {
-                screen($0.point, scene: scene, scale: scale)
-            })
-    }
-
-    static func screen(_ point: NeuralPoint, scene: BrainScene, scale: Double) -> NeuralPoint {
-        NeuralPoint(
-            (scene.zoomCenter.x + (point.x - scene.zoomCenter.x) * scene.zoom) * scale,
-            (scene.zoomCenter.y + (point.y - scene.zoomCenter.y) * scene.zoom) * scale)
     }
 
     static func zoneLabelRect(_ zone: NeuralZone) -> (x: Double, y: Double, width: Double, height: Double) {
@@ -80,7 +66,9 @@ enum BrainPainter {
         for zone in NeuralZone.allCases {
             let on = scene.usedZones.contains(zone)
             let color = on ? inks.zone(zone) : inks.domeDim
-            let alpha = on ? (scene.hotZone == nil || scene.hotZone == zone ? 1.0 : 0.4) : 0.55
+            let alpha =
+                (on ? (scene.hotZone == nil || scene.hotZone == zone ? 1.0 : 0.4) : 0.55)
+                * scene.labelAlpha
             let rect = zoneLabelRect(zone)
             var spaced = ""
             for character in zone.label { spaced += "\(character)\u{200A}" }
@@ -109,16 +97,21 @@ enum BrainPainter {
         let crowded = scene.crowded
         cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND)
         cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
+        let drawn = scene.wireDraw
         for wire in scene.wires?.routes ?? [] {
-            guard wire.points.count >= 2 else { continue }
+            guard wire.points.count >= 2, drawn > 0 else { continue }
             let faded = (scene.hasSelection && !wire.hot) || wire.dimmed
             let fade = faded ? 0.1 : 1.0
             let tone = inks.zone(wire.zone)
-            path(cr, wire.points)
+            if drawn < 1 {
+                partial(cr, wire.points, from: 0, to: drawn)
+            } else {
+                path(cr, wire.points)
+            }
             cairo_set_line_width(cr, wire.hot ? 2.4 : 1.2)
             setColor(cr, inks.domeDim, (crowded ? 0.16 : 0.28) * fade)
             cairo_stroke(cr)
-            let lit = Double(wire.lit)
+            let lit = Double(wire.lit) * (drawn < 1 ? drawn : 1)
             guard lit > 0 else { continue }
             if lit >= 1 {
                 path(cr, wire.points)
@@ -136,7 +129,7 @@ enum BrainPainter {
                 cairo_stroke(cr)
             }
         }
-        for via in scene.wires?.vias ?? [] {
+        for via in scene.wires?.vias ?? [] where scene.wireDraw > 0.5 {
             let fade = (scene.hasSelection && !via.hot) || via.dimmed ? 0.1 : 1.0
             cairo_new_path(cr)
             cairo_arc(cr, via.point.x, via.point.y, 3.4, 0, 2 * .pi)
@@ -195,9 +188,9 @@ enum BrainPainter {
     }
 
     private static func ties(_ cr: OpaquePointer, scene: BrainScene, inks: BrainInks) {
-        for tie in scene.wires?.ties ?? [] where tie.lit > 0 {
+        for tie in scene.wires?.ties ?? [] where tie.lit > 0 && scene.tieDraw > 0 {
             let faded = (scene.hasSelection && !tie.hot) || tie.dimmed && !tie.hot
-            let alpha = (tie.hot ? 1.0 : 0.55) * (faded ? 0.15 : 1) * Double(tie.lit)
+            let alpha = (tie.hot ? 1.0 : 0.55) * (faded ? 0.15 : 1) * Double(tie.lit) * scene.tieDraw
             dash(cr, [3, 4])
             cairo_set_line_width(cr, tie.hot ? 1.8 : 1.3)
             for arc in tie.arcs {
@@ -212,7 +205,7 @@ enum BrainPainter {
                 cairo_stroke(cr)
             }
             dash(cr, [])
-            if let last = tie.arcs.last, !tie.label.isEmpty, tie.hot || !faded {
+            if let last = tie.arcs.last, !tie.label.isEmpty, tie.hot {
                 label(
                     cr, tie.label, at: NeuralPoint(last.to.x + 9, last.to.y - 11), inks: inks,
                     alpha: tie.hot ? 1 : 0.7 * Double(tie.lit))
@@ -325,8 +318,11 @@ enum BrainPainter {
     }
 
     private static func node(
-        _ cr: OpaquePointer, _ node: NeuralNodeDraw, scene: BrainScene, inks: BrainInks
+        _ cr: OpaquePointer, _ node: NeuralNodeDraw, index: Int, scene: BrainScene, inks: BrainInks
     ) {
+        let revealAlpha = scene.reveal?.alpha(index) ?? 1
+        let revealScale = scene.reveal?.scale(index) ?? 1
+        guard revealAlpha > 0.002 else { return }
         let color = inks.color(of: node.tone, zone: node.zone)
         let moving = node.motion.level(at: scene.time, reduceMotion: scene.reduceMotion)
         let floor: Double
@@ -348,9 +344,11 @@ enum BrainPainter {
         let dimmed = node.dimmed || unfired
         if scene.hasSelection && !node.hot { alpha *= 0.42 }
         alpha *= unfired ? 0.18 + 0.82 * lit : 1
+        alpha *= revealAlpha
         let radius = node.radius
         cairo_save(cr)
         cairo_translate(cr, node.point.x, node.point.y)
+        cairo_scale(cr, revealScale, revealScale)
         if node.hot || node.pinned || node.flash > 0 {
             let reach = radius * 2.6
             let glow = cairo_pattern_create_radial(0, 0, radius * 0.4, 0, 0, reach)

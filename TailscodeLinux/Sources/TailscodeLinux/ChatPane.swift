@@ -463,6 +463,7 @@ final class ChatPane: @unchecked Sendable {
             }
             Gtk.connect(UnsafeMutableRawPointer(adjustment), "value-changed") { [weak self] in
                 guard let self else { return }
+                self.brains.scrolled()
                 if self.isAutoScrolling {
                     self.scheduleHoverRefresh()
                     return
@@ -993,6 +994,8 @@ final class ChatPane: @unchecked Sendable {
         brains.anchor = { [weak self] in self?.holdScrollAnchor() }
         brains.userToggled = { [weak self] in self?.followsBottom = false }
         brains.policy = { [weak self] in self?.rowBuilder.brainPolicy }
+        brains.onScreen = { [weak self] view in self?.brainOnScreen(view) ?? true }
+        brains.revealApproval = { [weak self] in self?.scroll(toEnd: true) }
         context.openSubagent = { [weak self] key in
             Gtk.onMain { [weak self] in self?.openSubagentCard(key) }
         }
@@ -4974,6 +4977,19 @@ final class ChatPane: @unchecked Sendable {
     func holdScrollAnchor() {
         guard !followsBottom, canvasPromptKey == nil, fillComplete else { return }
         scrollAnchor?.capture()
+    }
+
+    /// Whether a brain's row is within a screenful of the reader's place, which decides whether
+    /// the brain keeps a clock and builds the words of its card.
+    func brainOnScreen(_ view: BrainView) -> Bool {
+        guard let canvas = canvasBox, let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller)),
+            let box = Gtk.bounds(of: view.widget, in: canvas)
+        else { return true }
+        let page = gtk_adjustment_get_page_size(adjustment)
+        guard page > 0 else { return true }
+        let top = gtk_adjustment_get_value(adjustment)
+        return box.y + box.height > top - 120 && box.y < top + page + 120
     }
 
     /// The row the scroll anchor is holding, for the harness.

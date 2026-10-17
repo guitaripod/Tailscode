@@ -21,6 +21,11 @@ GtkWidget *tailscode_layer_new(gboolean opaque);
 /// per logical one, cleared to transparent. A layer already that size is left as it is.
 void tailscode_layer_resize(GtkWidget *layer, int width, int height, int scale);
 
+/// The same with a fractional scale, which is how a picture rendered smaller than the layer is
+/// stretched back to it: the surface is `width` by `height` device pixels and the layer paints it
+/// `width / scale` points wide, smoothly whenever that is not a whole pixel per pixel.
+void tailscode_layer_resize_scaled(GtkWidget *layer, int width, int height, double scale);
+
 /// Frees the surface and leaves the layer blank, for a pane that is parked.
 void tailscode_layer_release(GtkWidget *layer);
 
@@ -32,6 +37,15 @@ void tailscode_layer_blit(
 /// Paints the surface scaled by `scale` about the point (`cx`, `cy`) given as fractions of the
 /// layer, which is the interior and the nodes following a dive. A scale of one is pixel-exact.
 void tailscode_layer_zoom(GtkWidget *layer, double cx, double cy, double scale);
+
+/// Where the surface sits behind the layer's window, in logical pixels: the layer paints it
+/// shifted left and up by this much, which is how a stage shows a head trimmed to its own bounds
+/// from a picture rendered over the whole design space.
+void tailscode_layer_set_offset(GtkWidget *layer, double ox, double oy);
+
+/// The cairo surface the layer paints, borrowed and never to be destroyed by the caller; NULL
+/// before the layer has one. A move paints it scaled, which is how the head travels.
+cairo_surface_t *tailscode_layer_surface(GtkWidget *layer);
 
 /// What the layer's surface holds, in bytes, for the harness.
 gsize tailscode_layer_footprint(GtkWidget *layer);
@@ -82,3 +96,42 @@ void tailscode_aspect_set_child(GtkWidget *aspect, GtkWidget *child);
 /// Hands the allocator's free pages back to the system, for the moment after the head's layers
 /// are decoded and resampled and their transient copies are gone.
 void tailscode_malloc_trim(void);
+
+/// The brain's row: one container whose children are placed by rectangles Swift computes at the
+/// moment of allocation, in the order they were added (which is also their stacking order and
+/// their focus order). It asks for almost no width, so a narrow pane is never widened by it, and
+/// for the height Swift gives for the width it is about to be allocated. A child the solver does
+/// not place is hidden with `set_child_visible`, which keeps it realised and out of every pointer
+/// and focus walk, so a move between the card and the stage never re-parents anything.
+typedef struct TailscodeBrainRowSink TailscodeBrainRowSink;
+typedef void (*TailscodeBrainRowSolve)(int width, int height, TailscodeBrainRowSink *sink, void *data);
+typedef int (*TailscodeBrainRowHeight)(int width, void *data);
+
+GtkWidget *tailscode_brain_row_new(
+    TailscodeBrainRowSolve solve, TailscodeBrainRowHeight height, void *data,
+    void (*destroy)(void *));
+void tailscode_brain_row_add(GtkWidget *row, GtkWidget *child);
+void tailscode_brain_row_remove(GtkWidget *row, GtkWidget *child);
+/// Moves a child to the top of the stacking and focus order.
+void tailscode_brain_row_raise(GtkWidget *row, GtkWidget *child);
+/// Asks for another allocation pass, which runs the solver again.
+void tailscode_brain_row_invalidate(GtkWidget *row);
+/// Asks for another measure, which asks Swift for the height again.
+void tailscode_brain_row_remeasure(GtkWidget *row);
+void tailscode_brain_row_place(
+    TailscodeBrainRowSink *sink, GtkWidget *child, int x, int y, int width, int height);
+
+/// Focus arriving on `widget` or one of its descendants, and leaving it, announced once each way.
+/// The widget keeps its own behaviour; the handler's data is released with it.
+void tailscode_on_focus_change(
+    GtkWidget *widget, void (*enter)(void *), void (*leave)(void *), void *data);
+
+/// The font a widget's style gives its text, as a Pango description string (free with `g_free`):
+/// how a canvas draws a word in the same face, weight and size as the labels beside it.
+char *tailscode_widget_font(GtkWidget *widget);
+
+/// The height of a label's laid-out text, in pixels.
+double tailscode_label_line_height(GtkWidget *label);
+
+/// How the text layout cache has done since launch: hits, misses and the layouts it holds.
+void tailscode_text_cache_stats(long *hits, long *misses, int *entries);
