@@ -13,14 +13,18 @@ extension BrainView {
     /// events that did not come from the list itself (a filter's click, the search field's typing,
     /// a wheel), which must not take the keyboard from where the person put it.
     func browse(
-        _ action: NeuralBrowse.Action, grabFocus: Bool = true, menuAt: (Double, Double)? = nil
+        _ action: NeuralBrowse.Action, grabFocus: Bool = true, menuAt: (Double, Double)? = nil,
+        menuParent: UnsafeMutablePointer<GtkWidget>? = nil
     ) {
         guard !disposed, stage != nil else { return }
         let effects = model.browse(action)
-        applyBrowse(effects, grabFocus: grabFocus, menuAt: menuAt)
+        applyBrowse(effects, grabFocus: grabFocus, menuAt: menuAt, menuParent: menuParent)
     }
 
-    func applyBrowse(_ effects: [NeuralBrowse.Effect], grabFocus: Bool = true, menuAt: (Double, Double)? = nil) {
+    func applyBrowse(
+        _ effects: [NeuralBrowse.Effect], grabFocus: Bool = true, menuAt: (Double, Double)? = nil,
+        menuParent: UnsafeMutablePointer<GtkWidget>? = nil
+    ) {
         for effect in effects {
             switch effect {
             case .scrollTo(let id):
@@ -32,13 +36,13 @@ extension BrainView {
             case .copyMarkdown(let id):
                 copyText(id) { NeuralBrowse.markdown(of: $0) }
             case .focusReadout:
-                if grabFocus, readout?.focusFirstControl() != true { returnFocusToList() }
+                if grabFocus { focusReadoutOrAccount() }
             case .focusList:
                 if grabFocus { focusList() }
             case .focusSearch:
                 focusSearch()
             case .expandOutputToggle:
-                readout?.toggleOutput()
+                if account?.toggleCardOutput() != true { readout?.toggleOutput() }
             case .showLegend:
                 presentLegend()
             case .hideLegend:
@@ -52,11 +56,12 @@ extension BrainView {
             case .announce(let words):
                 announce(words)
             case .showMenu(let id, let items):
-                presentMenu(for: id, items: items, at: menuAt)
+                presentMenu(for: id, items: items, at: menuAt, parent: menuParent)
             case .showInRows(let id):
                 showInRows(id)
             }
         }
+        drainAccountEffects()
         afterBrowse()
     }
 
@@ -250,7 +255,7 @@ extension BrainView {
             guard let ancestor else { return false }
             return focused == ancestor || gtk_widget_is_ancestor(focused, ancestor) != 0
         }
-        return within(list?.canvas) || within(stage?.hit) || within(readout?.widget)
+        return within(list?.canvas) || within(stage?.hit) || within(readout?.widget) || within(account?.root)
     }
 
     // MARK: keys
@@ -342,23 +347,10 @@ extension BrainView {
         stage?.invalidate()
     }
 
-    /// An accordion opens the cursor's row to the readout's content and no other; any other
-    /// layout, or no cursor, closes it.
+    /// A narrow brain has no list to open a row of: its account is the list. The step list's
+    /// expanded row stays closed in every layout.
     func refreshAccordion() {
-        guard let list else { return }
-        let m = currentMetrics
-        guard m.arrangement == .accordion, let cursor = model.pinnedStep, model.browseState.list.isVisible(cursor)
-        else {
-            list.setExpanded(nil, contentHeight: 0)
-            return
-        }
-        list.setExpanded(cursor, contentHeight: accordionContentHeight(m))
-        list.scrollTo(cursor)
-    }
-
-    private func accordionContentHeight(_ m: NeuralStageMetrics) -> Double {
-        let natural = readout?.naturalHeight(width: m.accordionContentWidth + NeuralStageMetrics.accordionContentInset) ?? m.accordionContentMaxHeight
-        return min(max(natural, 160), m.accordionContentMaxHeight)
+        list?.setExpanded(nil, contentHeight: 0)
     }
 
     // MARK: legend and menu
@@ -369,14 +361,16 @@ extension BrainView {
 
     func presentLegend() {
         dismissLegend()
-        guard let anchor = list?.canvas else { return }
+        let narrow = currentMetrics.arrangement == .accordion
+        guard let anchor = narrow ? account?.root : list?.canvas else { return }
         let popover = gtk_popover_new()!
         gtk_widget_set_parent(popover, anchor)
         gtk_popover_set_has_arrow(ptr(popover), 0)
         gtk_popover_set_autohide(ptr(popover), 0)
         let m = currentMetrics
         var rect = GdkRectangle(
-            x: gint(m.list.width / 2), y: gint(NeuralStageMetrics.listHeaderHeight + 24), width: 1, height: 1)
+            x: gint((narrow ? m.width : m.list.width) / 2), y: gint(NeuralStageMetrics.listHeaderHeight + 24),
+            width: 1, height: 1)
         gtk_popover_set_pointing_to(ptr(popover), &rect)
         gtk_popover_set_position(ptr(popover), GTK_POS_BOTTOM)
         Gtk.addClass(popover, "bn-legend")
@@ -442,11 +436,12 @@ extension BrainView {
     }
 
     func presentMenu(
-        for id: String, items: [NeuralBrowse.MenuItem], at point: (Double, Double)?, holding: Bool = false
+        for id: String, items: [NeuralBrowse.MenuItem], at point: (Double, Double)?, holding: Bool = false,
+        parent: UnsafeMutablePointer<GtkWidget>? = nil
     ) {
         guard let list, let row = model.browseState.list.row(id: id) else { return }
         let popover = gtk_popover_new()!
-        gtk_widget_set_parent(popover, list.canvas)
+        gtk_widget_set_parent(popover, parent ?? list.canvas)
         gtk_popover_set_has_arrow(ptr(popover), 0)
         let at = point ?? (120, 60)
         var rect = GdkRectangle(x: gint(at.0), y: gint(at.1), width: 1, height: 1)

@@ -23,7 +23,7 @@ extension SelfTest {
         var open = brains[1]
         open.open = true
         let policy: () -> NeuralOpenPolicy? = { builder.brainPolicy }
-        let bed = try BrainBed(row: open, width: 1100, key: "st-swap", policy: policy)
+        let bed = try BrainBed(row: open, width: 1440, key: "st-swap", policy: policy)
         defer { bed.close() }
         _ = brainPump(10) { bed.view.stage?.hasPicture == true }
         _ = brainPump(0.5)
@@ -32,7 +32,7 @@ extension SelfTest {
         try expect(readout.reading.hasPrefix("digest"), "a settled turn's readout opens on its digest")
 
         let steps = view.model.steps
-            .filter { view.model.layout.representative(of: $0.id) == $0.id }
+            .filter { view.model.layout.representative(of: $0.id) == $0.id && NeuralReading.isTool($0) }
             .map(\.id)
         guard steps.count >= 4 else { throw SelfTestFailure("readout swap: the demo has \(steps.count) steps") }
 

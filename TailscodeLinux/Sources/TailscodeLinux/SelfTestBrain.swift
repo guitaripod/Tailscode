@@ -38,13 +38,25 @@ extension SelfTest {
     }
 
     static func brainBuilder(
-        style: ActivityStyle, rowsShown: Set<String> = []
+        style: ActivityStyle, rowsShown: Set<String> = [], choices: [String: Bool] = [:]
     ) -> TranscriptRowBuilder {
         let builder = TranscriptRowBuilder()
         builder.setBrains(
             BrainBuildSettings(
-                style: style, choices: [:], rowsShown: rowsShown, look: MatrixTheme.palette.name))
+                style: style, choices: choices, rowsShown: rowsShown, look: MatrixTheme.palette.name))
         return builder
+    }
+
+    /// A builder for `messages` that has the person's choice of the newest turn open, because
+    /// nothing opens by itself.
+    static func brainBuilderOpeningLatest(_ messages: [ChatMessage], running: Bool = false) -> TranscriptRowBuilder {
+        let probe = brainBuilder(style: .brain)
+        let rows = probe.rows(state: brainState(messages, running: running))
+        var latest: String?
+        for row in rows {
+            if case .brain(let brain) = row.kind { latest = brain.turn.id }
+        }
+        return brainBuilder(style: .brain, choices: latest.map { [$0: true] } ?? [:])
     }
 
     private static func isBrain(_ row: TranscriptRow) -> Bool {
@@ -72,8 +84,8 @@ extension SelfTest {
             rows.filter(isBrain).map(\.key) == ["brain:a-m1", "brain:b-m1"],
             "a brain row is named for its turn, in the order of the turns")
         try expect(
-            brains.map(\.open) == [false, true],
-            "the latest turn is open by default and the earlier one is closed")
+            brains.map(\.open) == [false, false],
+            "nothing opens by itself: every turn is a card until the person opens it, the latest included")
         try expect(
             !rows.contains(where: isStepRow),
             "the parts a brain consumes build no rows of their own")
@@ -127,23 +139,30 @@ extension SelfTest {
             "in-conversation find reads a brain's step titles and details")
 
         let builder = brainBuilder(style: .brain)
-        _ = builder.rows(state: state)
+        let firstRows = builder.rows(state: state)
         let first = builder.brainReadings
         var growing = messages
         guard var answer = growing.popLast() else { throw SelfTestFailure("brain: no answer") }
+        var lastRows = firstRows
         for length in stride(from: 10, through: 60, by: 10) {
             answer.parts = [MessagePart(id: "p0", kind: .text(String(repeating: "x", count: length)))]
             answer.isStreaming = true
-            _ = builder.rows(state: brainState(growing + [answer], running: true))
+            lastRows = builder.rows(state: brainState(growing + [answer], running: true))
         }
         let after = builder.brainReadings
         let streamed = after.partitions - first.partitions
         try expect(
             streamed <= 6 + 2,
             "six streamed tokens read the turn being written and not the conversation (read \(streamed))")
+        func brainTurn(_ rows: [TranscriptRow]) -> NeuralTurn? {
+            for row in rows {
+                if case .brain(let brain) = row.kind { return brain.turn }
+            }
+            return nil
+        }
         try expect(
-            after.reuses - first.reuses >= 6,
-            "and the turn that finished is handed back from the cache each time")
+            brainTurn(firstRows) != nil && brainTurn(firstRows) == brainTurn(lastRows),
+            "and the turn that finished is handed back whole each time")
     }
 
     private static func checkBrainFallbacks(_ expect: (Bool, String) throws -> Void) throws {
@@ -200,7 +219,7 @@ extension SelfTest {
 
         let messages = NeuralDemo.turn(prefix: "w-", origin: Date().timeIntervalSince1970 - 600)
         let state = brainState(messages)
-        let builder = brainBuilder(style: .brain)
+        let builder = brainBuilderOpeningLatest(messages)
         let rows = builder.rows(state: state)
         guard let row = rows.first(where: isBrain), case .brain(let brain) = row.kind else {
             throw SelfTestFailure("brain: the scripted turn made no brain row")
@@ -294,7 +313,6 @@ extension SelfTest {
             pump(10) { stage.hasRenderer && stage.footprint > 0 },
             "and takes them again when it is shown")
 
-        let running = brainBuilder(style: .brain)
         let runningMessages = NeuralDemo.turn(
             prefix: "r-", origin: Date().timeIntervalSince1970 - 90, answer: false)
         var live = runningMessages
@@ -303,6 +321,7 @@ extension SelfTest {
             last.completedAt = nil
             live.append(last)
         }
+        let running = brainBuilderOpeningLatest(live, running: true)
         let liveRows = running.rows(state: brainState(live, running: true))
         guard let liveRow = liveRows.first(where: isBrain), case .brain(let liveBrain) = liveRow.kind
         else { throw SelfTestFailure("brain: no brain for a running turn") }
@@ -354,7 +373,7 @@ extension SelfTest {
 
     private static func settledBrain() throws -> (row: BrainRow, builder: TranscriptRowBuilder) {
         let messages = NeuralDemo.conversation()
-        let builder = brainBuilder(style: .brain)
+        let builder = brainBuilderOpeningLatest(messages)
         let rows = builder.rows(state: brainState(messages))
         let brains = rows.compactMap { row -> BrainRow? in
             if case .brain(let brain) = row.kind { return brain }
@@ -372,7 +391,7 @@ extension SelfTest {
         try expect(
             brain.open && brain.prompt?.contains("product demonstration") == true,
             "the open settled brain carries the words that began its turn")
-        let rows = brainBuilder(style: .brain).rows(state: brainState(NeuralDemo.conversation()))
+        let rows = brainBuilderOpeningLatest(NeuralDemo.conversation()).rows(state: brainState(NeuralDemo.conversation()))
         let earlier = rows.compactMap { row -> BrainRow? in
             if case .brain(let brain) = row.kind { return brain }
             return nil

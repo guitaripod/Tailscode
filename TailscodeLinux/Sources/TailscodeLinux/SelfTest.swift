@@ -18,8 +18,9 @@ public enum SelfTest {
     /// a conversation with words in it makes the stronger subject, and an empty one only stands in
     /// when every server's newest chat is empty.
     public static func run() async -> Never {
-        startWatchdog()
-        if let only = ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_ONLY"] { runOnly(only) }
+        let only = ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_ONLY"]
+        startWatchdog(seconds: only == nil ? 150 : 600)
+        if let only { runOnly(only) }
         var failures = 0
 
         let tailnet = TailnetStatusLinux.read()
@@ -4961,9 +4962,9 @@ public enum SelfTest {
         return sorted.first { !$0.isWorking } ?? sorted.first
     }
 
-    private static func startWatchdog() {
+    private static func startWatchdog(seconds: Int) {
         Task.detached {
-            try? await Task.sleep(for: .seconds(150))
+            try? await Task.sleep(for: .seconds(seconds))
             FileHandle.standardOutput.write(Data("SELFTEST_TIMEOUT\n".utf8))
             exit(2)
         }

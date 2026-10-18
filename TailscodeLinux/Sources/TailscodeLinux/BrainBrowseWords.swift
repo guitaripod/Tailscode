@@ -34,7 +34,7 @@ extension BrainWords {
 
     /// What a filter set says it holds, for the empty list: "DELEGATE + failed + \u{201C}cut\u{201D}".
     static func filterDescription(_ filter: NeuralStepList.Filter) -> String {
-        var parts = NeuralZone.allCases.filter { filter.zones.contains($0) }.map(\.label)
+        var parts = NeuralZone.allCases.filter { filter.zones.contains($0) }.map(\.displayLabel)
         if filter.failedOnly { parts.append(Localized.text("failed")) }
         if !filter.query.isEmpty { parts.append("\u{201C}\(filter.query)\u{201D}") }
         return parts.joined(separator: " + ")

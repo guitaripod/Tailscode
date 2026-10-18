@@ -34,6 +34,10 @@ final class BrainHost: @unchecked Sendable {
     var onScreen: ((BrainView) -> Bool)?
     /// Scrolls to the approval or question card the readout's ask points at.
     var revealApproval: (() -> Void)?
+    /// Puts a quote of what the agent said in the pane's composer, focused, sending nothing.
+    var reply: ((String) -> Void)?
+    /// Scrolls the transcript to the answer under a turn's brain.
+    var revealAnswer: ((String) -> Void)?
     /// How tall the part of the transcript the reader sees is, which sets how many list rows an
     /// open brain asks for.
     var viewport: (() -> Double?)?

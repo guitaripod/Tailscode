@@ -218,6 +218,16 @@ final class BrainReadout: @unchecked Sendable {
         }
     }
 
+    /// The panel stands as the account's second column: a zone-toned rule on its left edge instead
+    /// of the hairline, set by the page it shows.
+    func setDetail(_ detail: Bool) {
+        if detail {
+            gtk_widget_add_css_class(widget, "bn-detail")
+        } else {
+            gtk_widget_remove_css_class(widget, "bn-detail")
+        }
+    }
+
     /// Moves the keyboard to the first button the panel offers; false when it offers none.
     func focusFirstControl() -> Bool {
         guard let page else { return false }
@@ -516,8 +526,17 @@ final class BrainReadout: @unchecked Sendable {
     }
 
     private func statusChip(_ chip: NeuralReadout.Chip) -> UnsafeMutablePointer<GtkWidget> {
-        let widget = BrainUI.label(chip.word, "bn-chip", Self.toneClass(chip.tone))
+        let widget = BrainUI.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6, "bn-chip", Self.toneClass(chip.tone), "bn-chip-mark")
+        let inks = self.inks
+        gtk_box_append(
+            ptr(widget),
+            BrainUI.verdictGlyph(
+                BrainUI.stepVerdict(for: chip.kind), size: 12, inks: inks,
+                color: BrainDraw.toneColor(chip.tone, inks: inks)))
+        let word = BrainUI.label(chip.word, "bn-chip-word")
+        gtk_box_append(ptr(widget), word)
         gtk_widget_set_valign(widget, GTK_ALIGN_CENTER)
+        tailscode_set_accessible_label(widget, chip.plainWord)
         return widget
     }
 

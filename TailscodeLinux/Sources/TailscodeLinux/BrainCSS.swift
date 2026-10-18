@@ -83,6 +83,7 @@ enum BrainCSS {
         .bn-tone-danger { color: \(danger); }
         .bn-tone-attention { color: \(warn); }
         .bn-tone-quiet { color: \(dim); }
+        .bn-tone-live { color: \(accent); }
         .bn-dim { color: \(dim); }
         button.bn-zchip, .bn-zchip-still {
             background-color: \(canvas);
@@ -115,6 +116,9 @@ enum BrainCSS {
             min-height: 18px;
             color: \(dim);
         }
+        .bn-chip-word { \(t(.badge)) color: inherit; }
+        .bn-chip-mark { padding: 0px 8px 0px 6px; }
+        .bn-fixed-detail { \(t(.rowNote)) color: \(warn); }
         .bn-chip-live { color: \(accent); }
         .bn-chip-attention { color: \(warn); }
         .bn-chip-danger { color: \(danger); }
@@ -180,7 +184,7 @@ enum BrainCSS {
         .bn-fail-no { \(t(.rowMeta)) color: \(danger); }
         .bn-fail-title { \(t(.toolDetail)) color: \(text); }
         .bn-fail-line { \(t(.rowDetail)) color: \(dim); }
-        .bn-fail-re { \(t(.rowMeta)) color: \(accent); }
+        .bn-fail-re { \(t(.rowMeta)) color: \(warn); }
         .bn-fail-never { color: \(danger); }
         .bn-changed-path { \(t(.toolDetail)) color: \(text); }
         .bn-answer { \(t(.cardBody)) color: \(text); }
@@ -278,6 +282,7 @@ enum BrainCSS {
         button.bn-menu-item { min-height: 26px; padding: 2px 10px; border-radius: 6px; }
         .bn-menu-title { \(t(.control)) color: \(text); }
         .bn-menu-key { \(t(.rowStamp)) color: \(dim); }
+        \(BrainAccountCSS.rules(palette: palette, t: t))
         """
     }
 }

@@ -1002,6 +1002,8 @@ final class ChatPane: @unchecked Sendable {
         brains.policy = { [weak self] in self?.rowBuilder.brainPolicy }
         brains.onScreen = { [weak self] view in self?.brainOnScreen(view) ?? true }
         brains.revealApproval = { [weak self] in self?.scroll(toEnd: true) }
+        brains.reply = { [weak self] quote in self?.replyWithQuote(quote) }
+        brains.revealAnswer = { [weak self] turnID in self?.revealAnswer(afterBrain: turnID) }
         brains.viewport = { [weak self] in
             guard let scroller = self?.transcriptScroller,
                 let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
@@ -6132,6 +6134,37 @@ final class ChatPane: @unchecked Sendable {
 
     func focusComposer() {
         gtk_widget_grab_focus(entryView)
+    }
+
+    /// Puts a quote of what the agent said into the box at the caret and leaves the caret under
+    /// it, in insert mode: nothing is sent, and the reply goes out through the ordinary send.
+    func replyWithQuote(_ quote: String) {
+        editor.insertReplyQuote(quote)
+        updateVimBadge()
+    }
+
+    /// The row under a turn's brain, which is its answer, put at the top of the window.
+    func revealAnswer(afterBrain turnID: String) {
+        guard let scroller = transcriptScroller, let canvas = canvasBox,
+            gtk_scrolled_window_get_vadjustment(op(scroller)) != nil
+        else { return }
+        var found: Int?
+        for (index, row) in renderedRows.enumerated() {
+            if case .brain(let brain) = row.kind, brain.turn.id == turnID {
+                found = index
+                break
+            }
+        }
+        guard let found else { return }
+        let target = min(found + 1, rowWidgets.count - 1)
+        guard target >= 0, let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[target]) else { return }
+        var x = 0.0
+        var y = 0.0
+        var width = 0.0
+        var height = 0.0
+        guard tailscode_widget_bounds_in(ptr(raw), canvas, &x, &y, &width, &height) != 0 else { return }
+        followsBottom = false
+        adjust { _ in y - 8 }
     }
 
     /// A scrolled window conjures its own viewport, and a conjured one scrolls to whatever takes

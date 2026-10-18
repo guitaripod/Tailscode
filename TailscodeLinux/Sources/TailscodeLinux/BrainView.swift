@@ -37,6 +37,7 @@ final class BrainView: @unchecked Sendable {
     private(set) var readout: BrainReadout?
     private(set) var list: BrainList?
     private(set) var filters: BrainFilters?
+    private(set) var account: BrainAccount?
     private(set) var readoutClip: UnsafeMutablePointer<GtkWidget>?
     var dimmedNodes: Set<String> = []
     var legendPopover: Gtk.WeakWidget?
@@ -47,6 +48,7 @@ final class BrainView: @unchecked Sendable {
     var menuPopover: Gtk.WeakWidget?
     private(set) var footer: BrainFooter?
     var moveCanvas: UnsafeMutablePointer<GtkWidget>?
+    var edgeCanvas: UnsafeMutablePointer<GtkWidget>?
     lazy var clock = BrainClock { [weak self] time in self?.step(time) }
     private(set) var isSuspended = false
     private var context: TranscriptContext?
@@ -227,12 +229,15 @@ final class BrainView: @unchecked Sendable {
         disposed = true
         dropPopovers()
         teardown()
+        account?.teardown()
+        account = nil
         readout = nil
         list = nil
         filters = nil
         readoutClip = nil
         footer = nil
         moveCanvas = nil
+        edgeCanvas = nil
         moveState = nil
     }
 
@@ -267,8 +272,18 @@ final class BrainView: @unchecked Sendable {
         return metrics(forWidth: width > 0 ? width : lastWidth > 0 ? lastWidth : 600)
     }
 
-    /// How much taller an accordion is than its closed list while the cursor's row is open.
-    var accordionExtra: Double { list?.extra ?? 0 }
+    /// How much taller a narrow brain is than the step list it replaces: the account there is as
+    /// tall as the window allows, not as tall as eight rows.
+    func narrowExtra(_ m: NeuralStageMetrics) -> Double {
+        guard m.arrangement == .accordion else { return 0 }
+        return max(0, narrowAccountHeight(m) - m.list.height)
+    }
+
+    /// The account of a narrow brain: 62 percent of what the reader sees, between 340 and 640.
+    func narrowAccountHeight(_ m: NeuralStageMetrics) -> Double {
+        let viewport = host?.viewportHeight ?? 700
+        return min(max((viewport * 0.62).rounded(), 340), 640)
+    }
 
     func height(forWidth width: Int) -> Int {
         let m = metrics(forWidth: Double(max(width, 1)))
@@ -276,7 +291,7 @@ final class BrainView: @unchecked Sendable {
         case .closed:
             return Int(m.card.height.rounded())
         case .open:
-            return Int((m.rowHeight + accordionExtra).rounded())
+            return Int((m.rowHeight + narrowExtra(m)).rounded())
         case .moving:
             return Int((moveState?.frame.rowHeight ?? m.rowHeight).rounded())
         }
@@ -323,6 +338,7 @@ final class BrainView: @unchecked Sendable {
     ) {
         let cardHeight = height ?? m.card.height
         place(sink, card.surface, NeuralRect(x: 0, y: 0, width: m.width, height: cardHeight))
+        place(sink, card.edgeLive, NeuralRect(x: 0, y: 0, width: 3, height: cardHeight))
         place(sink, card.picture, m.card.picture)
         let textRect = m.card.text
         if m.card.layout == .wide {
@@ -361,8 +377,7 @@ final class BrainView: @unchecked Sendable {
         placeLeader(sink, m, stage: stage)
         place(sink, stage.hit, m.stageHover)
         placeBrowse(sink, m, readoutRect: nil)
-        let shift = accordionExtra
-        place(sink, footer?.widget, m.footer, dy: shift)
+        place(sink, footer?.widget, m.footer, dy: narrowExtra(m))
     }
 
     /// The leader's own canvas covers the head and the gutter, in the head's coordinates, so the
@@ -375,31 +390,52 @@ final class BrainView: @unchecked Sendable {
             NeuralRect(x: m.stage.x, y: m.stage.y, width: leaderWidth, height: region))
     }
 
-    /// The filter panel or chips, the list with its search field, and the readout: beside the list
-    /// in a split, inside the cursor's row in an accordion.
+    /// The filter chips, the list with its search field, the account beside them, and the detail of
+    /// the open step in the account's second column. A narrow brain has no list: its account stands
+    /// where the list would, and the search field opens in the account's header.
     private func placeBrowse(_ sink: OpaquePointer, _ m: NeuralStageMetrics, readoutRect: NeuralRect?) {
         if let rect = m.filterPanel ?? m.filterChips { place(sink, filters?.canvas, rect) }
         guard let list else { return }
+        let narrow = m.arrangement == .accordion
         list.configure(metrics: m)
         filters?.configure(metrics: m)
-        let canvasRect = NeuralRect(
-            x: m.list.x, y: m.list.y, width: list.canvasWidth, height: list.canvasHeight)
-        place(sink, list.canvas, canvasRect)
+        if !narrow {
+            let canvasRect = NeuralRect(
+                x: m.list.x, y: m.list.y, width: list.canvasWidth, height: list.canvasHeight)
+            place(sink, list.canvas, canvasRect)
+        }
+        var base = narrow
+            ? NeuralRect(x: 0, y: m.list.y, width: m.width, height: narrowAccountHeight(m)) : m.readout
+        if let moved = readoutRect {
+            base = narrow ? base.offsetBy(dx: moved.x, dy: moved.y) : moved
+        }
         if list.searchOpen {
-            place(
-                sink, list.entry,
-                NeuralRect(x: m.list.x + 4, y: m.list.y + 4, width: min(240, m.list.width - 90), height: 28))
+            if narrow {
+                place(
+                    sink, list.entry,
+                    NeuralRect(x: base.x + 16, y: base.y + 6, width: min(240, base.width - 32), height: 28))
+            } else {
+                place(
+                    sink, list.entry,
+                    NeuralRect(x: m.list.x + 4, y: m.list.y + 4, width: min(240, m.list.width - 90), height: 28))
+            }
+        }
+        if let account {
+            place(sink, account.root, base)
+            account.touchFrame(width: base.width, height: base.height)
         }
         guard let clip = readoutClip else { return }
-        if m.arrangement == .split {
-            let rect = readoutRect ?? m.readout
+        var inside: NeuralRect?
+        if m.arrangement == .split, m.accountLayout == .split, let detail = account?.detailRect() {
+            inside = detail
+        } else if readoutHoldsBody, let body = account?.bodyRect() {
+            inside = body
+        }
+        if let inside {
+            let rect = inside.offsetBy(dx: base.x, dy: base.y)
             place(sink, clip, rect)
-            readout?.fit(width: rect.width, height: rect.height, at: (0, 0), inline: false)
-        } else if let content = list.accordionRect() {
-            let viewport = list.viewportRect
-            place(sink, clip, viewport)
-            let offset = content.y - viewport.y
-            readout?.fit(width: content.width - 3, height: content.height, at: (3, offset), inline: true)
+            readout?.fit(width: rect.width, height: rect.height, at: (0, 0), inline: true)
+            readout?.setDetail(m.accountLayout == .split && !readoutHoldsBody)
         }
     }
 
@@ -411,6 +447,10 @@ final class BrainView: @unchecked Sendable {
         let f = move.frame
         placeCard(sink, m, offset: f.cardTextOffsetX)
         place(sink, moveCanvas, f.traveller)
+        let picture = m.card.picture
+        place(
+            sink, edgeCanvas,
+            NeuralRect(x: f.edge.x, y: picture.y, width: 3, height: picture.height))
         let target = move.openingGeometry
         if let stage { placeLeader(sink, m, stage: stage) }
         placeBrowse(
@@ -430,6 +470,7 @@ final class BrainView: @unchecked Sendable {
         readout?.retheme()
         list?.configure(metrics: m)
         filters?.configure(metrics: m)
+        account?.geometryChanged()
         refreshReadout(animate: false)
         refreshAccordion()
         if let move = moveState, abs(move.metricsWidth - m.width) > 0.5 { finishMove(snapTo: move.opening) }
@@ -468,6 +509,7 @@ final class BrainView: @unchecked Sendable {
             readout?.retheme()
             list?.retheme()
             filters?.retheme()
+            account?.retheme()
         }
         card.refresh()
         if old.open != next.open {
@@ -496,6 +538,7 @@ final class BrainView: @unchecked Sendable {
         let effects = model.drainBrowseEffects()
         list?.modelChanged()
         filters?.invalidate()
+        account?.refresh()
         if model.stepList.isFiltered { refreshDimming() }
         if !effects.isEmpty { applyBrowse(effects, grabFocus: false) }
     }
@@ -520,6 +563,7 @@ final class BrainView: @unchecked Sendable {
         readout?.retheme()
         list?.retheme()
         filters?.retheme()
+        account?.retheme()
         refreshReadout(animate: false)
         redrawNow()
     }
@@ -656,6 +700,9 @@ final class BrainView: @unchecked Sendable {
         for part in made.widgets { tailscode_brain_row_add(widget, part) }
         let readout = BrainReadout(owner: self)
         self.readout = readout
+        let accountPart = BrainAccount(owner: self)
+        account = accountPart
+        tailscode_brain_row_add(widget, accountPart.root)
         let clip = gtk_fixed_new()!
         gtk_widget_set_overflow(clip, GTK_OVERFLOW_HIDDEN)
         gtk_fixed_put(ptr(clip), readout.widget, 0, 0)
@@ -671,6 +718,8 @@ final class BrainView: @unchecked Sendable {
             scaleFactor: max(1, Int(gtk_widget_get_scale_factor(widget))))
         footer.configure(width: m.width, running: model.turn.outcome == .running)
         footer.rebuildChips(width: m.width)
+        accountPart.proseProbe = BrainAccount.probe()
+        accountPart.refresh(immediate: true)
         if isSuspended { made.suspend() }
     }
 
@@ -685,8 +734,14 @@ final class BrainView: @unchecked Sendable {
         if let list { for part in list.widgets { tailscode_brain_row_remove(widget, part) } }
         if let filters { tailscode_brain_row_remove(widget, filters.canvas) }
         if let readoutClip { tailscode_brain_row_remove(widget, readoutClip) }
+        if let account {
+            account.teardown()
+            tailscode_brain_row_remove(widget, account.root)
+        }
         if let footer { tailscode_brain_row_remove(widget, footer.widget) }
         if let moveCanvas { tailscode_brain_row_remove(widget, moveCanvas) }
+        if let edgeCanvas { tailscode_brain_row_remove(widget, edgeCanvas) }
+        account = nil
         readout = nil
         list = nil
         filters = nil
@@ -696,6 +751,7 @@ final class BrainView: @unchecked Sendable {
         pendingHover = nil
         footer = nil
         moveCanvas = nil
+        edgeCanvas = nil
         model.clearSelection()
         model.browse(.hoverLeft)
         model.setBrowseFocus(.list)
@@ -1081,6 +1137,7 @@ final class BrainView: @unchecked Sendable {
     }
 
     private func step(_ time: Double) {
+        card.tickLive(time)
         if moveState != nil {
             moveStep(time)
             return
@@ -1106,8 +1163,11 @@ final class BrainView: @unchecked Sendable {
         }
         lap("footer")
         readout?.tickPulses()
+        account?.tickPulses()
         lap("pulses")
         list?.tick(time)
+        account?.tick(time)
+        account?.tickSecond(time)
         lap("list")
         tickLeader(time)
         lap("leader")
@@ -1142,7 +1202,12 @@ final class BrainView: @unchecked Sendable {
             }
             if needsDraw, tempo == .stopped { tempo = .activity }
         }
-        let moving = moveState != nil || leaderAnimating || contentFade != nil || (list?.isAnimating ?? false)
+        let busy = leaderAnimating || contentFade != nil || (list?.isAnimating ?? false) || (account?.isAnimating ?? false)
+        let moving = moveState != nil || (busy && isVisible)
+        let now = BrainClock.now
+        if tempo == .stopped, isVisible, card.needsLiveClock(at: now) {
+            tempo = card.isSettling(at: now) ? .display : .activity
+        }
         if moving { tempo = .display }
         if tempo != .stopped, !moving, !isVisible { tempo = .stopped }
         clock.run(on: widget, tempo: tempo)
@@ -1199,13 +1264,13 @@ final class BrainView: @unchecked Sendable {
 
     var reading: String {
         let timings = stage?.timings
-        return "turn=\(turnID) open=\(row.open) phase=\(phase) stage=\(stage != nil) renderer=\(stage?.hasRenderer == true) "
+        return "turn=\(turnID) open=\(row.open) phase=\(phase) stage=\(stage != nil) renderer=\(stage?.hasRenderer == true) visible=\(isVisible) mapped=\(gtk_widget_get_mapped(widget)) "
             + "clock=\(clock.isRunning)/\(clock.tempo) steps=\(model.steps.count) nodes=\(model.nodeCount) "
             + "selected=\(model.selected ?? "-") pinned=\(model.pinned ?? "-") "
             + "focus=\(stage.map { gtk_widget_has_focus($0.hit) != 0 } ?? false) "
             + "state=\(model.state.label) running=\(model.steps.filter { $0.status == .running }.count) "
             + "outcome=\(model.turn.outcome) replay=\(model.isReplaying) frames=\(stage?.frames ?? 0) fulls=\(timings?.fulls ?? 0) "
             + "deltas=\(timings?.deltas ?? 0) height=\(gtk_widget_get_height(widget)) \(card.reading) "
-            + "readout=[\(readout?.reading ?? "-")] leader=\(leaderState.reading)"
+            + "readout=[\(readout?.reading ?? "-")] leader=\(leaderState.reading) account=[\(account?.reading ?? "-")]"
     }
 }

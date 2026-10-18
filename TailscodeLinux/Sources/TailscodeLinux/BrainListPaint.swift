@@ -17,6 +17,7 @@ struct BrainListFonts {
     let panelName: String
     let panelCount: String
     let pill: String
+    let said: String
     let lineHeight: Double
     let monoWidth: Double
     let capHeight: Double
@@ -33,6 +34,7 @@ struct BrainListFonts {
         panelName = probe("bn-lr-panel")
         panelCount = probe("bn-lr-panelcount")
         pill = probe("bn-lr-pill")
+        said = BrainDraw.scaled(probe("bn-lr-panel"), by: 1)
         var width = 0.0
         var height = 0.0
         tailscode_text_measure("MMMMMMMMMMMMMMMMMMMM", argument, 0, 1, &width, &height)

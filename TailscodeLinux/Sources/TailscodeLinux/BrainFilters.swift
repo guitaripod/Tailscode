@@ -88,27 +88,32 @@ final class BrainFilters: @unchecked Sendable {
         let y: Double
         let width: Double
         let height: Double
+        /// The word a chip carries beside its count: only the one for what the agent said.
+        var label: String? = nil
     }
 
     private func entries(width: Double, height: Double) -> [Entry] {
         guard let model = ref.view?.model else { return [] }
         let list = model.browseState.list
         let chips = list.zoneChips
-        let offersFailed = list.offersFailedFilter || list.filter.failedOnly
-        var widths = chips.map { chipWidth(count: $0.count, compact: false) }
+        let offersFailed = false
+        var widths = chips.map { chipWidth(count: $0.count, compact: false) + labelRoom(for: $0.zone) }
         if offersFailed { widths.append(chipWidth(count: list.failedCount, compact: false)) }
-        let gap = 6.0
+        let gap = 4.0
         let needed = widths.reduce(0, +) + gap * Double(max(widths.count - 1, 0))
         let compact = needed > width
         var made: [Entry] = []
         var x = 0.0
         for chip in chips {
-            let w = compact ? chipWidth(count: chip.count, compact: true) : chipWidth(count: chip.count, compact: false)
+            let w =
+                (compact ? chipWidth(count: chip.count, compact: true) : chipWidth(count: chip.count, compact: false))
+                + labelRoom(for: chip.zone)
             made.append(
                 Entry(
                     target: .zone(chip.zone), zone: chip.zone, count: chip.count, isOn: chip.isOn, x: x, y: 0,
-                    width: w, height: NeuralStageMetrics.chipsHeight))
-            x += w + (compact ? 4 : gap)
+                    width: w, height: NeuralStageMetrics.chipsHeight,
+                    label: chip.zone == .say ? chip.zone.displayLabel : nil))
+            x += w + gap
         }
         if offersFailed {
             let w = chipWidth(count: list.failedCount, compact: compact)
@@ -120,9 +125,20 @@ final class BrainFilters: @unchecked Sendable {
         return made
     }
 
+    /// What a labelled chip adds to a bare one: its word and the air before it.
+    private func labelRoom(for zone: NeuralZone) -> Double {
+        guard zone == .say else { return 0 }
+        return BrainDraw.measure(zone.displayLabel, fonts.said) + 8
+    }
+
+    private func labelRoom(forLabel label: String?) -> Double {
+        guard let label else { return 0 }
+        return BrainDraw.measure(label, fonts.said) + 8
+    }
+
     private func chipWidth(count: Int, compact: Bool) -> Double {
         let digits = BrainDraw.measure("\(count)", fonts.panelCount)
-        return (compact ? 4 : 6) + 18 + 4 + digits + (compact ? 8 : 10)
+        return (compact ? 4 : 5) + 18 + 4 + digits + 8
     }
 
     private func target(atX x: Double, y: Double) -> (Target, Entry)? {
@@ -179,6 +195,15 @@ final class BrainFilters: @unchecked Sendable {
         return NeuralPoint(rect.x + entry.x + entry.width / 2, rect.y + entry.y + entry.height / 2)
     }
 
+    /// The chips as they are drawn, left to right, for the harness: the zone, the word it carries
+    /// beside its count (only the voice's), and the count.
+    var chipSummary: [(zone: NeuralZone, label: String?, count: Int)] {
+        guard let rect else { return [] }
+        return entries(width: rect.width, height: rect.height).compactMap { entry in
+            entry.zone.map { ($0, entry.label, entry.count) }
+        }
+    }
+
     var reading: String {
         guard let rect, let model = ref.view?.model else { return "-" }
         let list = model.browseState.list
@@ -206,20 +231,29 @@ final class BrainFilters: @unchecked Sendable {
     }
 
     private func paintChip(_ cr: OpaquePointer, _ entry: Entry, inks: BrainInks) {
-        let color = tone(entry, inks: inks)
+        let isSaid = entry.label != nil
+        let color = isSaid ? inks.accent : tone(entry, inks: inks)
         let hot = hover == entry.target
         let height = NeuralStageMetrics.chipsHeight
         BrainDraw.roundedRect(cr, entry.x + 0.5, 0.5, entry.width - 1, height - 1, height / 2)
         BrainDraw.fill(cr, entry.isOn ? color : inks.card, entry.isOn ? 0.18 : 1)
         cairo_fill_preserve(cr)
-        BrainDraw.fill(cr, entry.isOn ? color : (hot ? inks.accent : inks.rule2), 1)
+        let rest = isSaid ? BrainInks.mix(inks.rule2, inks.accent, 0.55) : inks.rule2
+        BrainDraw.fill(cr, entry.isOn ? color : (hot ? inks.accent : rest), 1)
         cairo_set_line_width(cr, 1)
         cairo_stroke(cr)
-        let compact = entry.width < chipWidth(count: entry.count, compact: false) - 0.5
+        let compact = entry.width - labelRoom(forLabel: entry.label) < chipWidth(count: entry.count, compact: false) - 0.5
         let glyphX = entry.x + (compact ? 4 : 6) + 9
         paintGlyph(cr, entry, cx: glyphX, cy: height / 2, inks: inks)
+        var textX = glyphX + 13
+        if let word = entry.label {
+            BrainDraw.line(
+                cr, word, font: fonts.said, lineHeight: fonts.lineHeight, x: textX, top: 0, height: height,
+                color: inks.accent)
+            textX += BrainDraw.measure(word, fonts.said) + 8
+        }
         BrainDraw.line(
-            cr, "\(entry.count)", font: fonts.panelCount, lineHeight: fonts.lineHeight, x: glyphX + 13,
+            cr, "\(entry.count)", font: fonts.panelCount, lineHeight: fonts.lineHeight, x: textX,
             top: 0, height: height, color: entry.target == .failed ? inks.cDanger : inks.ink)
     }
 }

@@ -713,3 +713,36 @@ double tailscode_label_line_height(GtkWidget *label) {
     pango_layout_get_pixel_size(layout, &width, &height);
     return height;
 }
+
+typedef struct {
+    gboolean (*handler)(double, void *);
+    void *data;
+} BrainScrollWatch;
+
+static gboolean brain_scroll_trampoline(
+    GtkEventControllerScroll *controller, double dx, double dy, gpointer raw) {
+    (void)controller;
+    (void)dx;
+    BrainScrollWatch *watch = raw;
+    return watch->handler(dy, watch->data);
+}
+
+static void brain_scroll_free(gpointer raw, GClosure *closure) {
+    (void)closure;
+    BrainScrollWatch *watch = raw;
+    if (watch->data) tailscode_box_release_call(watch->data);
+    g_free(watch);
+}
+
+void tailscode_connect_scroll_bubble(
+    GtkWidget *widget, gboolean (*handler)(double dy, void *), void *data) {
+    BrainScrollWatch *watch = g_new0(BrainScrollWatch, 1);
+    watch->handler = handler;
+    watch->data = data;
+    GtkEventController *controller = gtk_event_controller_scroll_new(
+        GTK_EVENT_CONTROLLER_SCROLL_VERTICAL | GTK_EVENT_CONTROLLER_SCROLL_DISCRETE);
+    gtk_event_controller_set_propagation_phase(controller, GTK_PHASE_BUBBLE);
+    g_signal_connect_data(
+        controller, "scroll", G_CALLBACK(brain_scroll_trampoline), watch, brain_scroll_free, 0);
+    gtk_widget_add_controller(widget, controller);
+}

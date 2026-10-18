@@ -68,7 +68,7 @@ enum BrainPainter {
 
     static func zoneLabelRect(_ zone: NeuralZone) -> (x: Double, y: Double, width: Double, height: Double) {
         let well = zone.well
-        let width = Double(zone.label.count) * 8.2 + 8
+        let width = Double(zone.displayLabel.count) * 8.2 + 8
         return (zone.center.x - width / 2, zone.center.y - well.ry - 8 - 11, width, 14)
     }
 
@@ -84,7 +84,7 @@ enum BrainPainter {
                 * scene.labelAlpha
             let rect = zoneLabelRect(zone)
             var spaced = ""
-            for character in zone.label { spaced += "\(character)\u{200A}" }
+            for character in zone.displayLabel { spaced += "\(character)\u{200A}" }
             var measured = 0.0
             var height = 0.0
             tailscode_text_measure(spaced, "\(mono) Bold \(size)px", 0, 1, &measured, &height)
@@ -424,10 +424,13 @@ enum BrainPainter {
         _ = tailscode_text_draw(
             cr, node.label, "\(mono) Bold \(size)px", -radius * 1.2, -size * 0.62, radius * 2.4, 1, 1,
             numberColor.red, numberColor.green, numberColor.blue, alpha)
-        if node.status == .failed {
+        if node.status == .failed, node.isRecovered {
+            BrainDraw.retryArrow(
+                cr, cx: radius * 1.2, cy: -radius * 1.5, size: max(8, radius * 1.1), color: inks.warn, alpha: alpha)
+        } else if node.status == .failed {
             cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
             cairo_set_line_width(cr, 2)
-            setColor(cr, inks.danger, node.isRecovered ? alpha * 0.6 : alpha)
+            setColor(cr, inks.danger, alpha)
             cairo_new_path(cr)
             cairo_move_to(cr, radius * 0.55, -radius * 1.15)
             cairo_rel_line_to(cr, radius * 0.7, -radius * 0.7)

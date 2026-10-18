@@ -83,6 +83,14 @@ extension BrainReadout {
         let body = page.body
         page.subject = SubjectParts(stepID: step.stepID, copyText: step.subject.copyText)
         gtk_box_append(ptr(body), subjectSection(step, page: page))
+        if let detail = step.header.chip.detail {
+            let row = BrainUI.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8, "bn-sec")
+            gtk_box_append(
+                ptr(row),
+                BrainUI.verdictGlyph(.fixed, size: 12, inks: inks, color: BrainDraw.toneColor(.attention, inks: inks)))
+            gtk_box_append(ptr(row), BrainUI.label(detail, "bn-fixed-detail", wrap: true, selectable: true))
+            gtk_box_append(ptr(body), row)
+        }
         if !step.relations.isEmpty {
             let relations = section()
             gtk_box_append(ptr(relations), BrainUI.label(BrainWords.relations, "bn-label"))
@@ -257,7 +265,7 @@ extension BrainReadout {
 
     private func resultSection(_ result: R.Result, step: StepParts, page: Page) -> UnsafeMutablePointer<GtkWidget> {
         let box = section()
-        let failed = step.header.chip.kind == .failed
+        let failed = step.header.chip.kind == .failed || step.header.chip.kind == .fixed
         switch result {
         case .shell(let output):
             gtk_box_append(
@@ -399,9 +407,17 @@ extension BrainReadout {
         let turn = owner.model.turn
         let label = BrainUI.label(BrainWords.turn, "bn-zone", "bn-dim")
         gtk_widget_set_valign(label, GTK_ALIGN_CENTER)
-        let (word, tone) = outcomeChip(turn.outcome)
-        let chip = BrainUI.label(word, "bn-chip", Self.toneClass(tone))
+        let verdict = NeuralVerdict.read(turn).verdict
+        let tone = verdict.pillTone
+        let chip = BrainUI.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6, "bn-chip", Self.toneClass(tone), "bn-chip-mark")
+        gtk_box_append(
+            ptr(chip),
+            BrainUI.verdictGlyph(
+                BrainAccount.stepVerdict(for: verdict), size: 12, inks: inks,
+                color: BrainDraw.toneColor(tone, inks: inks)))
+        gtk_box_append(ptr(chip), BrainUI.label(verdict.pillWord.uppercased(), "bn-chip-word"))
         gtk_widget_set_valign(chip, GTK_ALIGN_CENTER)
+        tailscode_set_accessible_label(chip, verdict.word)
         let duration = NeuralReading.line(for: turn).duration
         let right = BrainUI.label(
             BrainWords.count(digest.ticks.count, steps: BrainWords.steps(digest.ticks.count), duration: duration),
@@ -409,14 +425,6 @@ extension BrainReadout {
         gtk_widget_set_hexpand(right, 1)
         gtk_label_set_xalign(op(right), 1)
         BrainUI.add(page.header, label, chip, right)
-    }
-
-    private func outcomeChip(_ outcome: NeuralOutcome) -> (String, NeuralTone) {
-        switch outcome {
-        case .settled, .running: return (BrainWords.settled.uppercased(), .live)
-        case .failed: return (NeuralReading.chipWord(.failed), .danger)
-        case .stopped, .interrupted, .answerless: return (NeuralReading.chipWord(.stopped), .quiet)
-        }
     }
 
     func digestFoot(_ digest: R.Digest, in page: Page) {
@@ -450,7 +458,7 @@ extension BrainReadout {
         if !digest.failures.isEmpty {
             let box = section()
             gtk_box_append(
-                ptr(box), labelRow(BrainWords.failures, right: rightLabel(String(digest.failures.count))))
+                ptr(box), labelRow(digest.failuresTitle, right: rightLabel(String(digest.failures.count))))
             for failure in digest.failures.prefix(Self.digestRows) { gtk_box_append(ptr(box), failureRow(failure)) }
             if digest.failures.count > Self.digestRows {
                 let ref = self.ref
@@ -741,9 +749,11 @@ extension BrainReadout {
         let first = BrainUI.label(failure.firstLine, "bn-fail-line", ellipsize: true)
         BrainUI.add(text, title, first)
         let retried = BrainUI.label(failure.label, "bn-fail-re")
-        if failure.retriedAt == nil { Gtk.addClass(retried, "bn-fail-never") }
+        if failure.verdict == .failed { Gtk.addClass(retried, "bn-fail-never") }
         gtk_widget_set_valign(retried, GTK_ALIGN_CENTER)
-        BrainUI.add(row, number, text, retried)
+        let mark = BrainUI.verdictGlyph(failure.verdict, size: 14, inks: inks)
+        BrainUI.add(row, number, text, mark, retried)
+        tailscode_set_accessible_label(row, "\(failure.verdictWord), \(failure.label)")
         let id = failure.stepID
         let ref = self.ref
         BrainUI.clickable(row) { ref.view?.pin(id) }

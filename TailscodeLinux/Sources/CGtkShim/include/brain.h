@@ -138,3 +138,9 @@ double tailscode_label_line_height(GtkWidget *label);
 
 /// How the text layout cache has done since launch: hits, misses and the layouts it holds.
 void tailscode_text_cache_stats(long *hits, long *misses, int *entries);
+
+/// A wheel controller on `widget` that sees each notch after the widgets inside it have had it:
+/// a scrolled region in a card scrolls first, and the notch it cannot use reaches the handler.
+/// Returning true keeps the notch from scrolling whatever the widget sits in.
+void tailscode_connect_scroll_bubble(
+    GtkWidget *widget, gboolean (*handler)(double dy, void *), void *data);

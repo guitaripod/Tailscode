@@ -174,7 +174,7 @@ final class BrainLedger: @unchecked Sendable {
                 turn: turn, open: isOpen, showRows: settings.rowsShown.contains(turn.id),
                 answer: isOpen && turn.outcome != .running ? Self.answer(of: turn, in: messages) : "",
                 look: settings.look,
-                prompt: isOpen && turn.outcome != .running ? Self.prompt(before: turn, in: messages) : nil)
+                prompt: isOpen ? Self.prompt(before: turn, in: messages) : nil)
         }
         return pass
     }

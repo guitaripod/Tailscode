@@ -17,7 +17,10 @@ final class BrainList: @unchecked Sendable {
     let entry: UnsafeMutablePointer<GtkWidget>
 
     private(set) var layout: NeuralStageMetrics
-    private var fonts = BrainListFonts()
+    private var fonts = BrainListFonts() {
+        didSet { painter = BrainRowPainter(fonts: fonts, input: layout.input) }
+    }
+    private var painter: BrainRowPainter
     private(set) var scroll = 0.0
     private(set) var target = 0.0
     private(set) var extra = 0.0
@@ -55,12 +58,14 @@ final class BrainList: @unchecked Sendable {
         case copy(String)
         case pill
         case clearFilters
+        case failed
         case hintKeys
     }
 
     init(owner: BrainView) {
         ref = WeakBrainView(owner)
         layout = owner.currentMetrics
+        painter = BrainRowPainter(fonts: BrainListFonts(), input: owner.currentMetrics.input)
         let holder = DrawHolder()
         _ = Gtk.releaseInstalled
         canvas = tailscode_list_canvas_new(
@@ -273,7 +278,7 @@ final class BrainList: @unchecked Sendable {
                 BrainWords.stepList + ": "
                     + BrainWords.stepRowLabel(
                         number: row.number, total: list.total, title: row.title, argument: row.argument,
-                        status: NeuralReading.statusWord(row.status)))
+                        status: row.verdict.word))
         } else {
             tailscode_set_accessible_label(canvas, BrainWords.stepList + ": " + list.countLabel)
         }
@@ -418,6 +423,7 @@ final class BrainList: @unchecked Sendable {
         let list = model.browseState.list
         let width = layout.list.width
         if y < Self.headerHeight {
+            if let pill = failedPillRect, pill.contains(NeuralPoint(x, y)) { return .failed }
             if x < 130, !searchOpen { return .search }
             return .none
         }
@@ -451,6 +457,20 @@ final class BrainList: @unchecked Sendable {
     }
 
     private var hintKeysX: Double { 0 }
+
+    /// The failed toggle in the header, after the search: a cross, how many failed and the word.
+    /// Hidden while the search field is open, which takes its place.
+    private var failedPillRect: NeuralRect? {
+        guard let list = model?.browseState.list, !searchOpen, list.offersFailedFilter || list.filter.failedOnly
+        else { return nil }
+        let searchWidth = BrainDraw.measure(BrainWords.search, fonts.status)
+        let capWidth = max(16, BrainDraw.measure("/", fonts.cap) + 8)
+        let x = 28 + searchWidth + 8 + capWidth + 14
+        let word = BrainWords.failedWord.lowercased()
+        let width = 10 + 12 + 6 + BrainDraw.measure("\(list.failedCount)", fonts.status) + 6
+            + BrainDraw.measure(word, fonts.status) + 10
+        return NeuralRect(x: x, y: (Self.headerHeight - 24) / 2, width: width, height: 24)
+    }
     private var pillRect: NeuralRect {
         let width = BrainDraw.measure(BrainWords.followingPaused, fonts.pill) + 20 + 40
         let x = (layout.list.width - width) / 2
@@ -466,9 +486,7 @@ final class BrainList: @unchecked Sendable {
     }
 
     private func copyRect(for row: NeuralStepList.Row, width: Double) -> NeuralRect {
-        let label = copied?.id == row.id ? BrainWords.copied : BrainWords.copy
-        let size = BrainDraw.measure(label, fonts.status) + 18
-        return NeuralRect(x: width - 6 - size, y: (row.height(input: input) - 24) / 2, width: size, height: 24)
+        painter.copyRect(for: row, width: width, touch: BrainRowPainter.Touch(copiedID: copied?.id, copyHotID: nil))
     }
 
     private func pointerMoved(x: Double, y: Double) {
@@ -544,6 +562,7 @@ final class BrainList: @unchecked Sendable {
         case .search: view.openSearch()
         case .row(let id): view.browse(.click(id, double: presses >= 2))
         case .copy(let id): view.copyStep(id)
+        case .failed: view.browse(.failedToggle, grabFocus: false)
         case .pill: view.browse(.jumpToLatest)
         case .clearFilters: view.clearAllFilters()
         case .hintKeys: view.toggleLegend()
@@ -573,6 +592,8 @@ final class BrainList: @unchecked Sendable {
             let cursor = model.pinnedStep
             let hovered = model.browseState.hovered
             let query = list.filter.query
+            let touch = BrainRowPainter.Touch(
+                copiedID: copied?.id, copyHotID: hoverCopy ? hoverRow : nil)
             let firstContent = max(0, scroll - 1)
             var position = position(atContentY: firstContent) ?? (expandedPosition.map { $0 + 1 } ?? 0)
             position = max(0, min(position, list.visibleCount - 1))
@@ -599,11 +620,11 @@ final class BrainList: @unchecked Sendable {
                         slide = NeuralRowReveal.travel * (1 - NeuralTransition.easeOutCubic(t))
                         alpha = t
                     }
-                    paintRow(
+                    painter.paintRow(
                         cr, row: row, previous: previous, next: next, y: viewTop + rowTop + slide,
                         height: rowH, width: listWidth, inks: inks, isCursor: cursor == row.id,
                         isHovered: hovered == row.id, pointerHere: hoverRow == row.id, alpha: alpha,
-                        query: query)
+                        query: query, touch: touch)
                     drawn += 1
                 }
                 previous = row
@@ -639,6 +660,7 @@ final class BrainList: @unchecked Sendable {
             BrainDraw.keyCap(
                 cr, "/", x: wordX + wordWidth + 8, midY: mid, fonts: fonts, inks: inks, alpha: alpha)
         }
+        if let pill = failedPillRect { paintFailedPill(cr, pill, list: list, inks: inks, alpha: alpha) }
         let label = list.countLabel
         let color = list.isFiltered ? inks.accent : inks.dim
         BrainDraw.line(
@@ -646,181 +668,28 @@ final class BrainList: @unchecked Sendable {
             height: Self.headerHeight, width: width - 8, align: 2, color: color, alpha: alpha)
     }
 
-    private func paintRow(
-        _ cr: OpaquePointer, row: NeuralStepList.Row, previous: NeuralStepList.Row?,
-        next: NeuralStepList.Row?, y: Double, height rowH: Double, width: Double, inks: BrainInks,
-        isCursor: Bool, isHovered: Bool, pointerHere: Bool, alpha: Double, query: String
+    private func paintFailedPill(
+        _ cr: OpaquePointer, _ rect: NeuralRect, list: NeuralStepList, inks: BrainInks, alpha: Double
     ) {
-        let zone = inks.corrected(row.zone)
-        cairo_save(cr)
-        if row.status == .failed {
-            BrainDraw.fill(cr, inks.cDanger, 0.08 * alpha)
-            cairo_rectangle(cr, 0, y, width, rowH)
-            cairo_fill(cr)
-        }
-        if isCursor {
-            BrainDraw.fill(cr, inks.accent, 0.14 * alpha)
-            cairo_rectangle(cr, 0, y, width, rowH)
-            cairo_fill(cr)
-        } else if isHovered {
-            BrainDraw.fill(cr, inks.ink, 0.06 * alpha)
-            cairo_rectangle(cr, 0, y, width, rowH)
-            cairo_fill(cr)
-        }
-        BrainDraw.fill(cr, zone, alpha)
-        cairo_rectangle(cr, 0, y, 3, rowH)
-        cairo_fill(cr)
-        if isCursor {
-            BrainDraw.fill(cr, inks.accent, alpha)
-            cairo_rectangle(cr, 3, y, 2, rowH)
-            cairo_fill(cr)
-            cairo_set_line_width(cr, 1)
-            BrainDraw.roundedRect(cr, 0.5, y + 0.5, width - 1, rowH - 1, 2)
-            BrainDraw.fill(cr, inks.accent, 0.9 * alpha)
-            cairo_stroke(cr)
-        }
-        paintBracket(cr, row: row, previous: previous, next: next, y: y, height: rowH, inks: inks, alpha: alpha)
-        let said = row.isSaid
-        let lineBand = said ? 28.0 : rowH
-        let mid = y + lineBand / 2
-        BrainDraw.zoneGlyph(cr, zone: row.zone, cx: 34, cy: mid, color: zone, alpha: alpha)
-        BrainDraw.line(
-            cr, "\(row.number)", font: fonts.number, lineHeight: fonts.lineHeight, x: 51, top: y,
-            height: lineBand, width: 24, align: 2, color: inks.dim, alpha: alpha)
-        let statusLeft = paintStatus(
-            cr, row: row, y: y, height: rowH, width: width, inks: inks, alpha: alpha,
-            showCopy: pointerHere || copied?.id == row.id)
-        let textLimit = statusLeft - 12
-        if row.kind == .tool {
-            BrainDraw.line(
-                cr, row.title, font: fonts.title, lineHeight: fonts.lineHeight, x: 83, top: y, height: rowH,
-                width: 60, color: inks.ink, alpha: alpha)
-            let argumentX = 151.0
-            let room = max(0, textLimit - argumentX)
-            let chars = max(0, Int(room / fonts.monoWidth))
-            let shown = row.argument(fittingChars: chars)
-            if !query.isEmpty { highlight(cr, text: shown, x: argumentX, y: y, query: query, inks: inks, alpha: alpha) }
-            BrainDraw.line(
-                cr, shown, font: fonts.argument, lineHeight: fonts.lineHeight, x: argumentX, top: y,
-                height: rowH, width: room, color: inks.dim, alpha: alpha)
-        } else if said {
-            let room = max(0, textLimit - 83)
-            for (index, line) in row.lines.prefix(2).enumerated() {
-                BrainDraw.text(
-                    cr, line, font: fonts.note, x: 83, y: y + 4 + Double(index) * fonts.lineHeight, width: room,
-                    color: inks.ink, alpha: alpha)
-            }
-        } else {
-            let room = max(0, textLimit - 83)
-            BrainDraw.line(
-                cr, row.argument, font: fonts.note, lineHeight: fonts.lineHeight, x: 83, top: y,
-                height: rowH, width: room, color: inks.dim, alpha: alpha)
-        }
-        cairo_restore(cr)
-    }
-
-    private func highlight(
-        _ cr: OpaquePointer, text: String, x: Double, y: Double, query: String, inks: BrainInks, alpha: Double
-    ) {
-        guard let range = text.range(of: query, options: .caseInsensitive) else { return }
-        let start = text.distance(from: text.startIndex, to: range.lowerBound)
-        let length = text.distance(from: range.lowerBound, to: range.upperBound)
-        BrainDraw.fill(cr, inks.warn, 0.34 * alpha)
-        BrainDraw.roundedRect(
-            cr, x + Double(start) * fonts.monoWidth - 1, y + 5, Double(length) * fonts.monoWidth + 2,
-            rowHeight - 10, 3)
-        cairo_fill(cr)
-    }
-
-    private func paintBracket(
-        _ cr: OpaquePointer, row: NeuralStepList.Row, previous: NeuralStepList.Row?,
-        next: NeuralStepList.Row?, y: Double, height rowH: Double, inks: BrainInks, alpha: Double
-    ) {
-        guard row.bracket != .none else { return }
-        let joinsAbove = previous.map { $0.group == row.group && $0.bracket != .none } ?? false
-        let joinsBelow = next.map { $0.group == row.group && $0.bracket != .none } ?? false
-        guard joinsAbove || joinsBelow else { return }
-        let mid = y + rowH / 2
-        cairo_save(cr)
-        BrainDraw.fill(cr, inks.dim, 0.75 * alpha)
+        let on = list.filter.failedOnly
+        let hot = hoverKind == .failed
+        BrainDraw.roundedRect(cr, rect.x + 0.5, rect.y + 0.5, rect.width - 1, rect.height - 1, rect.height / 2)
+        BrainDraw.fill(cr, on ? inks.cDanger : inks.card, on ? 0.18 * alpha : alpha)
+        cairo_fill_preserve(cr)
+        BrainDraw.fill(cr, on ? inks.cDanger : (hot ? inks.accent : inks.rule2), alpha)
         cairo_set_line_width(cr, 1)
-        cairo_new_path(cr)
-        let x = 9.5
-        cairo_move_to(cr, x, joinsAbove ? y : mid)
-        cairo_line_to(cr, x, joinsBelow ? y + rowH : mid)
-        cairo_move_to(cr, x, mid)
-        cairo_line_to(cr, x + 6, mid)
         cairo_stroke(cr)
-        cairo_restore(cr)
-    }
-
-    /// The mark on the right of a row and the left edge it begins at; the copy button of a
-    /// hovered row stands in its place.
-    private func paintStatus(
-        _ cr: OpaquePointer, row: NeuralStepList.Row, y: Double, height rowH: Double, width: Double,
-        inks: BrainInks, alpha: Double, showCopy: Bool
-    ) -> Double {
-        let band = row.isSaid ? 28.0 : rowH
-        let mid = y + band / 2
-        if showCopy {
-            let rect = copyRect(for: row, width: width)
-            let label = copied?.id == row.id ? BrainWords.copied : BrainWords.copy
-            BrainDraw.roundedRect(cr, rect.x + 0.5, y + rect.y + 0.5, rect.width - 1, rect.height - 1, 12)
-            BrainDraw.fill(cr, inks.card, 0.95 * alpha)
-            cairo_fill_preserve(cr)
-            BrainDraw.fill(cr, hoverCopy && hoverRow == row.id ? inks.accent : inks.rule2, alpha)
-            cairo_set_line_width(cr, 1)
-            cairo_stroke(cr)
-            BrainDraw.line(
-                cr, label, font: fonts.status, lineHeight: fonts.lineHeight, x: rect.x, top: y + rect.y,
-                height: rect.height, width: rect.width, align: 1, color: inks.ink, alpha: alpha)
-            return rect.x
-        }
-        let right = width - 10
-        switch row.mark {
-        case .none:
-            return right
-        case .failed:
-            let word = NeuralReading.statusWord(.failed)
-            let size = BrainDraw.measure(word, fonts.status)
-            BrainDraw.line(
-                cr, word, font: fonts.status, lineHeight: fonts.lineHeight, x: right - size, top: y,
-                height: band, color: inks.cDanger, alpha: alpha)
-            BrainDraw.cross(cr, cx: right - size - 12, cy: mid, size: 3.5, color: inks.cDanger, alpha: alpha)
-            return right - size - 20
-        case .retried:
-            let word = row.related?.label ?? NeuralReading.retriedWord
-            let size = BrainDraw.measure(word, fonts.status)
-            BrainDraw.line(
-                cr, word, font: fonts.status, lineHeight: fonts.lineHeight, x: right - size, top: y,
-                height: band, color: inks.accent, alpha: alpha)
-            BrainDraw.dashedRing(cr, cx: right - size - 12, cy: mid, radius: 4.5, color: inks.accent, alpha: alpha)
-            return right - size - 20
-        case .waiting:
-            return markWord(cr, NeuralReading.statusWord(row.status), color: inks.warn, y: y, band: band, right: right, inks: inks, alpha: alpha, dot: true)
-        case .running:
-            return markWord(cr, NeuralReading.statusWord(.running), color: inks.live, y: y, band: band, right: right, inks: inks, alpha: alpha, dot: true)
-        case .stopped:
-            let word = NeuralReading.statusWord(.stopped)
-            let size = BrainDraw.measure(word, fonts.status)
-            BrainDraw.line(
-                cr, word, font: fonts.status, lineHeight: fonts.lineHeight, x: right - size, top: y,
-                height: band, color: inks.dim, alpha: alpha)
-            BrainDraw.dashedRing(cr, cx: right - size - 12, cy: mid, radius: 4.5, color: inks.dim, alpha: alpha)
-            return right - size - 20
-        }
-    }
-
-    private func markWord(
-        _ cr: OpaquePointer, _ word: String, color: BrainInks.RGB, y: Double, band: Double, right: Double,
-        inks: BrainInks, alpha: Double, dot: Bool
-    ) -> Double {
-        let size = BrainDraw.measure(word, fonts.status)
+        let mid = rect.y + rect.height / 2
+        BrainDraw.cross(cr, cx: rect.x + 10 + 6, cy: mid, size: 4, color: inks.cDanger, alpha: alpha)
+        var x = rect.x + 10 + 12 + 6
+        let count = "\(list.failedCount)"
         BrainDraw.line(
-            cr, word, font: fonts.status, lineHeight: fonts.lineHeight, x: right - size, top: y,
-            height: band, color: inks.dim, alpha: alpha)
-        BrainDraw.dot(cr, cx: right - size - 10, cy: y + band / 2, radius: 3.5, color: color, alpha: alpha)
-        return right - size - 18
+            cr, count, font: fonts.count, lineHeight: fonts.lineHeight, x: x, top: rect.y, height: rect.height,
+            color: inks.ink, alpha: alpha)
+        x += BrainDraw.measure(count, fonts.count) + 6
+        BrainDraw.line(
+            cr, BrainWords.failedWord.lowercased(), font: fonts.status, lineHeight: fonts.lineHeight, x: x,
+            top: rect.y, height: rect.height, color: inks.dim, alpha: alpha)
     }
 
     private func paintEmpty(_ cr: OpaquePointer, list: NeuralStepList, inks: BrainInks, width: Double) {

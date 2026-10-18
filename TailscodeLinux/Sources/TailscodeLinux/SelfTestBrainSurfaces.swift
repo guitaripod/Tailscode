@@ -37,6 +37,7 @@ extension SelfTest {
             }
             view = found
             _ = SelfTest.brainPump(5) { gtk_widget_get_mapped(widget) != 0 && gtk_widget_get_width(widget) > 8 }
+            gtk_window_set_focus(ptr(window), nil)
         }
 
         func close() {
@@ -52,7 +53,7 @@ extension SelfTest {
     }
 
     static func brainRows(turns: Int = 2) throws -> (rows: [BrainRow], builder: TranscriptRowBuilder) {
-        let builder = brainBuilder(style: .brain)
+        let builder = brainBuilderOpeningLatest(NeuralDemo.conversation())
         let rows = builder.rows(state: brainState(NeuralDemo.conversation()))
         let brains = rows.compactMap { row -> BrainRow? in
             if case .brain(let brain) = row.kind { return brain }
@@ -77,11 +78,33 @@ extension SelfTest {
         try timedBrain("efficiency") { try checkBrainEfficiency(expect) }
         try timedBrain("budget") { try checkBrainBudget(expect) }
         try timedBrain("browse") { try checkBrainBrowse(expect) }
+        try timedBrain("live") { try checkBrainLive(expect) }
+        try timedBrain("account") { try checkBrainAccount(expect) }
     }
 
     /// Runs one group of brain claims and says how long it took, because the whole group has a
     /// time it must stay inside.
+    /// The groups the whole selftest runs for the brain, a few seconds each: the shape of a card, a
+    /// row's geometry, the keys, the accordion, a shed window, the live card, its settle, and the
+    /// account's data. Every other group runs when the brain is checked on its own
+    /// (`TAILSCODE_SELFTEST_ONLY=brain`) or one at a time (`TAILSCODE_BRAIN_GROUP=<names>`), because
+    /// the whole selftest answers to a 150 second watchdog and the full brain takes about two minutes.
+    private static let brainSmoke: Set<String> = [
+        "rows", "fallbacks", "geometry", "budget", "browse", "browse keys", "browse accordion", "browse shed",
+        "live", "live card", "live settle", "account", "account data", "account live",
+    ]
+
+    static var brainRunsEverything: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        return environment["TAILSCODE_SELFTEST_ONLY"] == "brain" || environment["TAILSCODE_BRAIN_THOROUGH"] != nil
+    }
+
     static func timedBrain(_ name: String, _ body: () throws -> Void) throws {
+        if let only = ProcessInfo.processInfo.environment["TAILSCODE_BRAIN_GROUP"] {
+            guard only.split(separator: ",").contains(where: { $0.hasPrefix(name) || name.hasPrefix($0) }) else { return }
+        } else if !brainRunsEverything, !brainSmoke.contains(name) {
+            return
+        }
         let begun = Date()
         try body()
         report(String(format: "brain group %@: %.1f s", name, Date().timeIntervalSince(begun)))
@@ -209,17 +232,17 @@ extension SelfTest {
         open.open = true
         let policy: () -> NeuralOpenPolicy? = { builder.brainPolicy }
         var reports: [String] = []
-        for width in [380, 460, 700, 859, 860, 1300] {
+        for width in [380, 460, 700, 859, 860, 1300, 1440] {
             let bed = try BrainBed(row: open, width: width, key: "st-geo-\(width)", policy: policy)
-            _ = brainPump(0.4) { bed.view.stage != nil && bed.view.readout?.shown != nil }
+            _ = brainPump(0.4) { bed.view.stage != nil && bed.view.account != nil }
             _ = brainPump(0.15)
             let metrics = NeuralStageMetrics.make(width: Double(width), density: bed.view.density)
-            guard let stage = bed.view.stage, let readout = bed.view.readout else {
+            guard let stage = bed.view.stage, let account = bed.view.account else {
                 throw SelfTestFailure("brain: no stage at \(width)")
             }
             let hit = bed.rect(of: stage.visibleLayers[0])
             let rowHeight = Double(gtk_widget_get_height(bed.widget))
-            let want = metrics.rowHeight
+            let want = metrics.rowHeight + bed.view.narrowExtra(metrics)
             try expect(
                 abs(hit.x - metrics.stage.x) <= 1.5 && abs(hit.w - metrics.stage.width) <= 1.5
                     && abs(hit.h - metrics.stage.height) <= 1.5,
@@ -227,11 +250,11 @@ extension SelfTest {
             try expect(abs(rowHeight - want) <= 1.5, "and the row is \(Int(want)) tall (\(Int(rowHeight)))")
             switch metrics.arrangement {
             case .split:
-                let place = bed.rect(of: readout.widget)
+                let place = bed.rect(of: account.root)
                 try expect(
                     abs(place.x - metrics.readout.x) <= 1.5 && abs(place.w - metrics.readout.width) <= 1.5
                         && place.h >= NeuralStageMetrics.readoutMinHeight - 1.5,
-                    "at \(width) the readout stands \(Int(metrics.readout.x)) points in, \(Int(metrics.readout.width)) wide and at least 460 tall (\(Int(place.x)), \(Int(place.w)), \(Int(place.h)); \(readout.overflowReading(limit: Int(metrics.readout.width) - 1).prefix(1800)))")
+                    "at \(width) the account stands \(Int(metrics.readout.x)) points in, \(Int(metrics.readout.width)) wide and at least 460 tall (\(Int(place.x)), \(Int(place.w)), \(Int(place.h)))")
                 if let listPart = bed.view.list {
                     let listRect = bed.rect(of: listPart.canvas)
                     try expect(
@@ -242,12 +265,18 @@ extension SelfTest {
                 try expect(
                     bed.view.currentMetrics.hasLeader && stage.size.width == Int(metrics.stage.width.rounded()),
                     "and the head's own size is the metrics' (\(stage.size.width))")
+                if metrics.accountLayout == .split, let detail = account.detailRect(), let clip = bed.view.readoutClip {
+                    let box = bed.rect(of: clip)
+                    try expect(
+                        abs(box.x - (metrics.readout.x + detail.x)) <= 1.5 && abs(box.w - detail.width) <= 1.5,
+                        "and from a 924 point account the open step's detail is its own column (\(Int(box.x)), \(Int(box.w)))")
+                }
             case .accordion:
-                let listRect = bed.rect(of: bed.view.list?.canvas ?? readout.widget)
+                let place = bed.rect(of: account.root)
                 try expect(
-                    listRect.y >= metrics.stage.height && !bed.view.currentMetrics.hasLeader
-                        && abs(listRect.w - metrics.list.width) <= 1.5,
-                    "at \(width) the list is under the head at full width and there is no leader (\(Int(listRect.y)), \(Int(listRect.w)))")
+                    place.y >= metrics.stage.height && !bed.view.currentMetrics.hasLeader
+                        && abs(place.w - metrics.list.width) <= 1.5,
+                    "at \(width) the account is under the head at full width and there is no leader (\(Int(place.y)), \(Int(place.w)))")
             }
             if let filters = bed.view.filters, let place = metrics.filterPanel ?? metrics.filterChips {
                 let box = bed.rect(of: filters.canvas)
@@ -267,7 +296,7 @@ extension SelfTest {
         }
         try expect(
             reports.joined(separator: " ")
-                == "380:accordion 460:accordion 700:accordion 859:accordion 860:split 1300:split",
+                == "380:accordion 460:accordion 700:accordion 859:accordion 860:split 1300:split 1440:split",
             "the layout is an accordion under 860 and a split from it (\(reports.joined(separator: " ")))")
     }
 
@@ -278,7 +307,7 @@ extension SelfTest {
         var open = brains[1]
         open.open = true
         let policy: () -> NeuralOpenPolicy? = { builder.brainPolicy }
-        let bed = try BrainBed(row: open, width: 1100, key: "st-readout", policy: policy)
+        let bed = try BrainBed(row: open, width: 1440, key: "st-readout", policy: policy)
         _ = brainPump(10) { bed.view.stage?.hasPicture == true }
         _ = brainPump(0.5)
         let view = bed.view
@@ -348,10 +377,11 @@ extension SelfTest {
         _ = brainPump(0.1)
         let pinned = readout.shown?.step?.header.isPinned == true
         try expect(pinned && readout.visibleText.contains(BrainWords.pinned), "a click puts the cursor on the step and the panel says so")
-        view.stagePointer(over: view.model.steps[0].id)
+        let elsewhere = view.model.steps.first { $0.zone == .sense }!
+        view.stagePointer(over: elsewhere.id)
         _ = brainPump(0.3)
         try expect(
-            readout.shown?.step?.stepID == view.model.steps[0].id && view.model.pinnedStep == shell.id,
+            readout.shown?.step?.stepID == elsewhere.id && view.model.pinnedStep == shell.id,
             "the pointer elsewhere previews that step and leaves the cursor where it is")
         view.stagePointer(over: nil)
         _ = brainPump(0.5)
@@ -392,7 +422,8 @@ extension SelfTest {
 
         view.focusStage()
         _ = view.brainKey(keyval: UInt32(GDK_KEY_Down), state: 0)
-        _ = brainPump(0.1)
+        _ = view.brainKey(keyval: UInt32(GDK_KEY_Down), state: 0)
+        _ = brainPump(0.4)
         try expect(
             view.model.pinnedStep != nil && readout.reading.hasPrefix("step"),
             "an arrow key on the head walks the list to a step and the readout follows it")

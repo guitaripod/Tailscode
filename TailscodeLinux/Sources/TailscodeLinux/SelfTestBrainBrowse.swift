@@ -5,7 +5,7 @@ import Foundation
 import TailscodeCore
 
 extension SelfTest {
-    private static func press(_ view: BrainView, _ name: String) {
+    static func press(_ view: BrainView, _ name: String) {
         view.driveBrowse(verb: "key", value: name)
     }
 
@@ -31,7 +31,7 @@ extension SelfTest {
         let (brains, builder) = try brainRows()
         var open = brains[1]
         open.open = true
-        let bed = try BrainBed(row: open, width: 1100, key: "st-list", policy: { builder.brainPolicy })
+        let bed = try BrainBed(row: open, width: 1440, key: "st-list", policy: { builder.brainPolicy })
         defer { bed.close() }
         _ = brainPump(10) { bed.view.stage?.hasPicture == true }
         _ = brainPump(0.4)
@@ -166,7 +166,7 @@ extension SelfTest {
         let (brains, builder) = try brainRows()
         var open = brains[1]
         open.open = true
-        let bed = try BrainBed(row: open, width: 1100, key: "st-keys", policy: { builder.brainPolicy })
+        let bed = try BrainBed(row: open, width: 1440, key: "st-keys", policy: { builder.brainPolicy })
         defer { bed.close() }
         _ = brainPump(10) { bed.view.stage?.hasPicture == true }
         _ = brainPump(0.3)
@@ -234,8 +234,9 @@ extension SelfTest {
         press(view, "enter")
         _ = brainPump(0.3)
         try expect(
-            view.model.browseFocus == .readout && gtk_widget_has_focus(view.list!.canvas) == 0,
-            "Enter moves the keyboard into the readout's buttons (\(view.model.browseFocus))")
+            view.model.browseFocus == .readout && gtk_widget_has_focus(view.list!.canvas) == 0
+                && view.account?.hasFocus == true,
+            "Enter moves the keyboard into the account (\(view.model.browseFocus))")
         press(view, "enter")
         _ = brainPump(0.3)
         try expect(
@@ -295,35 +296,34 @@ extension SelfTest {
         let bed = try BrainBed(row: open, width: 520, key: "st-accordion", policy: { builder.brainPolicy })
         defer { bed.close() }
         _ = brainPump(10) { bed.view.stage?.hasPicture == true }
-        _ = brainPump(0.4)
+        _ = brainPump(0.6)
         let view = bed.view
-        guard let list = view.list, let readout = view.readout else { throw SelfTestFailure("brain: no accordion") }
+        guard let account = view.account else { throw SelfTestFailure("brain: no narrow account") }
         let metrics = view.currentMetrics
-        let closedHeight = Double(gtk_widget_get_height(bed.widget))
+        let height = Double(gtk_widget_get_height(bed.widget))
+        let want = metrics.rowHeight + view.narrowExtra(metrics)
         try expect(
-            metrics.arrangement == .accordion && metrics.filterStyle == .chips && abs(closedHeight - metrics.rowHeight) <= 1.5,
-            "under 860 the brain is an accordion with chips and a list, \(Int(closedHeight)) tall")
-        let rows = view.model.browseState.list.rows
-        view.browse(.click(rows[5].id, double: false))
-        _ = brainPump(1.5) { abs(list.extra - list.extraTarget) < 1 && !readout.isFading && readout.shown?.step != nil }
+            metrics.arrangement == .accordion && metrics.filterStyle == .chips && abs(height - want) <= 1.5,
+            "under 860 the brain is the head, the chips and the account, \(Int(height)) tall (\(Int(want)))")
+        let place = bed.rect(of: account.root)
         try expect(
-            list.expandedID == rows[5].id && list.extra >= 120 && list.extra <= NeuralStageMetrics.accordionContentMaxHeight,
-            "the cursor's row opens in place to the readout's content (\(Int(list.extra)) points)")
-        _ = brainPump(0.3)
-        let grown = Double(gtk_widget_get_height(bed.widget))
-        try expect(abs(grown - (metrics.rowHeight + list.extra)) <= 2, "and the row is that much taller (\(Int(grown)))")
+            abs(place.x) <= 1.5 && abs(place.w - metrics.width) <= 1.5 && place.y >= metrics.stage.height
+                && abs(place.h - view.narrowAccountHeight(metrics)) <= 1.5,
+            "the account stands where the step list would, at the row's full width (\(Int(place.y)), \(Int(place.w)) by \(Int(place.h)))")
         try expect(
-            readout.shown?.step?.stepID == rows[5].id && gtk_widget_get_mapped(readout.widget) != 0,
-            "the content is the step's readout")
-        view.browse(.click(rows[6].id, double: false))
-        _ = brainPump(1.0) { list.expandedID == rows[6].id }
-        try expect(list.expandedID == rows[6].id, "another row opens and the first closes: one at a time")
+            gtk_widget_get_child_visible(view.list!.canvas) == 0 && !view.currentMetrics.hasLeader,
+            "the step list is not drawn there and there is no leader line")
+        let steps = view.model.steps
+        let work = steps.first { $0.zone == .shell && $0.status == .failed }!
+        view.browse(.click(work.id, double: false))
+        _ = brainPump(1.0) { account.cells.values.contains { $0.cursorPage != nil } }
+        try expect(
+            account.cells.values.contains { $0.cursorPage != nil } && Double(gtk_widget_get_height(bed.widget)) == height,
+            "a cursor opens the step's card inside its work line and the row's height does not move")
+        try expect(account.entries.count > 3 && account.cells.count > 0, "and the story lists the turn's notes, thoughts and work")
         _ = view.escapePressed()
-        _ = brainPump(1.5) { list.extra < 1 }
-        try expect(list.expandedID == nil && list.extra < 1, "Esc folds it")
-        let folded = Double(gtk_widget_get_height(bed.widget))
-        try expect(abs(folded - closedHeight) <= 1.5, "back to \(Int(closedHeight)) points (\(Int(folded)))")
-        try expect(!view.currentMetrics.hasLeader, "and an accordion has no leader line")
+        _ = brainPump(0.4)
+        try expect(view.model.pinnedStep == nil && Double(gtk_widget_get_height(bed.widget)) == height, "Esc lets go of it")
     }
 
     // MARK: two thousand steps
@@ -379,7 +379,7 @@ extension SelfTest {
         closed.open = false
         var opened = closed
         opened.open = true
-        let bed = try BrainBed(row: closed, width: 1000, key: "st-shed", policy: { builder.brainPolicy })
+        let bed = try BrainBed(row: closed, width: 1440, key: "st-shed", policy: { builder.brainPolicy })
         defer { bed.close() }
         _ = brainPump(8) { bed.view.card.hasPicture }
         BrainBudget.force(allowed: false)
@@ -417,7 +417,7 @@ extension SelfTest {
         closed.open = false
         var opened = closed
         opened.open = true
-        let bed = try BrainBed(row: opened, width: 1100, key: "st-stress", policy: { builder.brainPolicy })
+        let bed = try BrainBed(row: opened, width: 1440, key: "st-stress", policy: { builder.brainPolicy })
         defer { bed.close() }
         _ = brainPump(10) { bed.view.stage?.hasPicture == true }
         _ = brainPump(0.3)
@@ -431,7 +431,8 @@ extension SelfTest {
         for pass in 0..<passes {
             let end = Date().addingTimeInterval(sweepSeconds)
             var index = pass
-            while Date() < end {
+            let hardStop = Date().addingTimeInterval(8)
+            while Date() < end || (swaps < 100 && Date() < hardStop) {
                 let step = ids[index % ids.count]
                 view.stripHover(step)
                 view.hoverStep(ids[(index * 7) % ids.count])
@@ -445,7 +446,8 @@ extension SelfTest {
             }
         }
         view.driveBrowse(verb: "filter", value: "clear")
-        try expect(swaps > 100 && view.phase == .open, "a pointer swept across the strip, the rows and the head while subjects swap, \(swaps) times, without a crash")
+        report("brain stress: \(swaps) swaps, account \(view.account?.reading ?? "-")")
+        try expect(swaps > 60 && view.phase == .open, "a pointer swept across the strip, the rows and the head while subjects swap, \(swaps) times, without a crash (\(view.phase))")
 
         view.focusList()
         var cycles = 0

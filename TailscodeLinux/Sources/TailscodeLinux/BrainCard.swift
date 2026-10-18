@@ -13,6 +13,7 @@ final class BrainCard: @unchecked Sendable {
     unowned let owner: BrainView
     private let viewRef: WeakBrainView
     let surface: UnsafeMutablePointer<GtkWidget>
+    let edgeLive: UnsafeMutablePointer<GtkWidget>
     let picture: UnsafeMutablePointer<GtkWidget>
     let text: UnsafeMutablePointer<GtkWidget>
     let buttons: UnsafeMutablePointer<GtkWidget>
@@ -21,16 +22,24 @@ final class BrainCard: @unchecked Sendable {
 
     private(set) var card: NeuralBrainCard
     private var layout = NeuralStageMetrics.CardLayout.wide
+    let live = BrainCardLive()
+    var liveLow: BrainPicture?
+    var liveHigh: BrainPicture?
+    var liveLowKey: BrainPictures.Key?
+    var liveHighKey: BrainPictures.Key?
+    var livePending = false
+    var settledHeadWidgets: [UnsafeMutablePointer<GtkWidget>] = []
+    var settledThirdWidgets: [UnsafeMutablePointer<GtkWidget>] = []
     private(set) var hovered = false
     private(set) var hasContent = false
     private var contentTicket = 0
     private var contentSignature = ""
     private var builtDensity = ChatDensity.comfortable
-    private var width = 0.0
+    private(set) var width = 0.0
     private var picturePending = false
-    private var restPicture: BrainPicture?
+    var restPicture: BrainPicture?
     private var restKey: BrainPictures.Key?
-    private var pictureRect = NeuralRect.zero
+    var pictureRect = NeuralRect.zero
     private var sized = (width: 0.0, height: 0.0, scale: 0)
 
     private var chipRow: UnsafeMutablePointer<GtkWidget>?
@@ -48,8 +57,10 @@ final class BrainCard: @unchecked Sendable {
         card = owner.model.brainCard(now: Date())
         let surfaceHolder = Holder()
         let pictureHolder = Holder()
+        let edgeHolder = Holder()
         surface = surfaceHolder.make(kind: .surface)
         picture = pictureHolder.make(kind: .picture)
+        edgeLive = edgeHolder.make(kind: .edge)
         text = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
         buttons = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         replay = Gtk.button(NeuralReading.replayLabel, css: ["brain-pill", "bn-card-button"]) {
@@ -60,11 +71,12 @@ final class BrainCard: @unchecked Sendable {
         }
         surfaceHolder.card = self
         pictureHolder.card = self
+        edgeHolder.card = self
         build()
     }
 
     private final class Holder: @unchecked Sendable {
-        enum Kind { case surface, picture }
+        enum Kind { case surface, picture, edge }
         weak var card: BrainCard?
         var kind = Kind.surface
 
@@ -79,6 +91,7 @@ final class BrainCard: @unchecked Sendable {
                     switch holder.kind {
                     case .surface: card.paintSurface(cr, width: Double(width), height: Double(height))
                     case .picture: card.paintPicture(cr, width: Double(width), height: Double(height))
+                    case .edge: card.paintLiveEdge(cr, width: Double(width), height: Double(height))
                     }
                 }, Unmanaged.passRetained(self).toOpaque(),
                 { raw in
@@ -89,7 +102,7 @@ final class BrainCard: @unchecked Sendable {
     }
 
     private func build() {
-        for widget in [surface, picture] {
+        for widget in [surface, picture, edgeLive] {
             gtk_widget_set_can_target(widget, 0)
             gtk_widget_set_can_focus(widget, 0)
             tailscode_set_accessible_hidden(widget, 1)
@@ -109,14 +122,16 @@ final class BrainCard: @unchecked Sendable {
     }
 
     /// The widgets the row stacks for a card, bottom to top.
-    var widgets: [UnsafeMutablePointer<GtkWidget>] { [surface, picture, text, buttons] }
+    var widgets: [UnsafeMutablePointer<GtkWidget>] { [surface, edgeLive, picture, text, buttons] }
 
     // MARK: state
 
     func refresh() {
         card = owner.model.brainCard(now: Date())
+        refreshLive()
         let signature = Self.signature(of: card)
         if hasContent, signature != contentSignature { buildContent() }
+        if hasContent { syncLiveVisibility() }
         let running = owner.model.turn.outcome == .running
         gtk_widget_set_sensitive(replay, running || owner.model.steps.count <= 1 ? 0 : 1)
         gtk_widget_remove_css_class(rows, "on")
@@ -126,10 +141,12 @@ final class BrainCard: @unchecked Sendable {
         gtk_button_set_label(ptr(replay), replaying ? Localized.text("Stop") : NeuralReading.replayLabel)
         requestPicture()
         redraw()
+        owner.updateClock()
     }
 
     func redraw() {
         gtk_widget_queue_draw(surface)
+        gtk_widget_queue_draw(edgeLive)
         gtk_widget_queue_draw(picture)
     }
 
@@ -140,12 +157,17 @@ final class BrainCard: @unchecked Sendable {
     }
 
     private static func signature(of card: NeuralBrainCard) -> String {
-        card.headline.pieces.map(\.text).joined(separator: "|")
+        (card.live == nil ? "" : "live#")
+            + card.headline.pieces.map(\.text).joined(separator: "|")
             + "#" + card.chips.map { "\($0.zone)\($0.count)\($0.tone)" }.joined(separator: ",")
-            + "#" + card.digest
+            + "#" + card.digest + "#" + (card.quote.map { $0.speaker + $0.words } ?? "") + "#" + card.verdict.word
     }
 
     func retheme() {
+        resetLiveFonts()
+        dropLivePictures()
+        liveLowKey = nil
+        liveHighKey = nil
         restPicture = nil
         restKey = nil
         contentSignature = ""
@@ -182,15 +204,17 @@ final class BrainCard: @unchecked Sendable {
             shown.remove(.zoneStrip)
             shown.remove(.digest)
         }
-        if owner.density == .compact { shown.remove(.digest) }
+        if owner.density == .compact, !card.hasQuote { shown.remove(.digest) }
         return shown
     }
 
     // MARK: the picture
 
-    private func requestPicture() {
+    func requestPicture() {
         guard pictureRect.width > 1, NeuralAssetFiles.isAvailable, BrainBudget.stageAllowed else { return }
         let scale = max(1, Int(gtk_widget_get_scale_factor(owner.widget)))
+        requestLivePictures(scale: scale)
+        if live.reading != nil { return }
         let table = NeuralToneTable(palette: MatrixTheme.palette, face: owner.model.face)
         let frame = owner.model.frame(time: 0, reduceMotion: true)
         let wholeWidth = pictureRect.width * NeuralDesign.width / NeuralStageMetrics.designWidth
@@ -213,7 +237,7 @@ final class BrainCard: @unchecked Sendable {
         }
     }
 
-    var hasPicture: Bool { restPicture != nil }
+    var hasPicture: Bool { restPicture != nil || liveLow != nil }
 
     private func paintPicture(_ cr: OpaquePointer, width: Double, height: Double) {
         let inks = owner.inks
@@ -223,7 +247,9 @@ final class BrainCard: @unchecked Sendable {
         cairo_clip(cr)
         cairo_set_source_rgba(cr, inks.canvas.red, inks.canvas.green, inks.canvas.blue, 1)
         cairo_paint(cr)
-        if let restPicture {
+        let liveHead = paintLiveHead(cr, rect: rect)
+        if liveHead {
+        } else if let restPicture {
             BrainCardPainter.head(cr, picture: restPicture, rect: rect)
         } else {
             let glyph = owner.model.glyph(dim: false)
@@ -239,8 +265,9 @@ final class BrainCard: @unchecked Sendable {
         cairo_save(cr)
         BrainPainter.round(cr, 0, 0, width, height, 8)
         cairo_clip(cr)
-        if restPicture != nil {
-            BrainCardPainter.lights(cr, card: card, mapping: mapping, inks: inks, hovered: hovered)
+        if restPicture != nil || liveLow != nil {
+            BrainCardPainter.lights(
+                cr, card: card, mapping: mapping, inks: inks, hovered: hovered, breathing: breathingLight())
             BrainCardPainter.rings(cr, card: card, mapping: mapping, inks: inks)
         }
         cairo_restore(cr)
@@ -264,7 +291,8 @@ final class BrainCard: @unchecked Sendable {
         BrainPainter.round(cr, 0.5, 0.5, width - 1, height - 1, 12)
         cairo_clip(cr)
         cairo_set_source_rgba(cr, tone.red, tone.green, tone.blue, 1)
-        if card.edge == .stopped {
+        if edgeIsLive {
+        } else if card.edge == .stopped {
             var y = 0.0
             while y < height {
                 cairo_rectangle(cr, 0, y, 3, min(6, height - y))
@@ -328,13 +356,29 @@ final class BrainCard: @unchecked Sendable {
             return row
         }
         let wide = layout == .wide
-        gtk_box_append(ptr(text), head(clauses: wide))
+        live.headCanvas = nil
+        live.nowCanvas = nil
+        settledHeadWidgets = []
+        settledThirdWidgets = []
+        let settledHead = head(clauses: wide)
+        let headStack = gtk_overlay_new()!
+        gtk_overlay_set_child(op(headStack), settledHead)
+        let headCanvas = makeLiveCanvas(isHead: true)
+        gtk_widget_set_size_request(headCanvas, -1, 28)
+        gtk_widget_set_halign(headCanvas, GTK_ALIGN_FILL)
+        gtk_widget_set_valign(headCanvas, GTK_ALIGN_START)
+        gtk_overlay_add_overlay(op(headStack), headCanvas)
+        gtk_widget_set_visible(headCanvas, 0)
+        live.headCanvas = headCanvas
+        settledHeadWidgets = [settledHead]
+        gtk_box_append(ptr(text), headStack)
         if !wide {
             let sub = BrainUI.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
             gtk_box_append(ptr(sub), clauses(inks: inks))
             gtk_box_append(ptr(text), sub)
+            settledHeadWidgets.append(sub)
         }
-        if wide {
+        if wide || card.hasQuote {
             let strip = BrainUI.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6, "bn-zone-strip")
             gtk_widget_set_overflow(strip, GTK_OVERFLOW_HIDDEN)
             for chip in card.chips {
@@ -348,10 +392,23 @@ final class BrainCard: @unchecked Sendable {
             }
             chipRow = strip
             gtk_box_append(ptr(text), strip)
-            let digest = BrainUI.label(card.digest, "bn-digest")
+            let digest = BrainUI.markup(BrainUI.escape(card.digest), "bn-digest", wrap: false)
+            gtk_label_set_ellipsize(op(digest), PANGO_ELLIPSIZE_END)
             gtk_widget_set_hexpand(digest, 1)
             digestLabel = digest
-            gtk_box_append(ptr(text), digest)
+            gtk_widget_set_size_request(digest, -1, 22)
+            gtk_widget_set_valign(digest, GTK_ALIGN_CENTER)
+            let third = gtk_overlay_new()!
+            gtk_overlay_set_child(op(third), digest)
+            let nowCanvas = makeLiveCanvas(isHead: false)
+            gtk_widget_set_size_request(nowCanvas, -1, 22)
+            gtk_widget_set_halign(nowCanvas, GTK_ALIGN_FILL)
+            gtk_widget_set_valign(nowCanvas, GTK_ALIGN_FILL)
+            gtk_overlay_add_overlay(op(third), nowCanvas)
+            gtk_widget_set_visible(nowCanvas, 0)
+            live.nowCanvas = nowCanvas
+            settledThirdWidgets = [digest]
+            gtk_box_append(ptr(text), third)
         }
         drawn = (
             card.headline.pieces.map(\.text).joined(separator: " "),
@@ -359,6 +416,7 @@ final class BrainCard: @unchecked Sendable {
         let spoken = card.spoken
         tailscode_set_accessible_label(owner.widget, spoken)
         fitContent()
+        syncLiveVisibility()
     }
 
     private func children(of box: UnsafeMutablePointer<GtkWidget>) -> [UnsafeMutablePointer<GtkWidget>] {
@@ -385,17 +443,23 @@ final class BrainCard: @unchecked Sendable {
             gtk_widget_set_hexpand(label, 0)
             gtk_box_append(ptr(row), label)
         }
-        for kind in [NeuralBrainCard.Piece.Kind.failure, .state] {
-            guard let piece = card.headline.piece(kind) else { continue }
-            let label = BrainUI.label(piece.text, "bn-clause")
-            switch piece.tone {
-            case .danger?: Gtk.addClass(label, "bn-tone-danger")
-            case .attention?: Gtk.addClass(label, "bn-tone-attention")
-            case .quiet?: Gtk.addClass(label, "bn-tone-quiet")
-            default: break
-            }
-            gtk_box_append(ptr(row), label)
+        let piece = card.headline.piece(.failure) ?? card.headline.piece(.state)
+        let tone = piece?.tone ?? card.verdict.tone
+        let face = BrainUI.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6, "bn-verdict")
+        let mark = BrainUI.verdictGlyph(
+            BrainAccount.stepVerdict(for: card.verdict), size: 12, inks: inks,
+            color: BrainDraw.toneColor(tone, inks: inks))
+        let words = piece.flatMap { $0.kind == .state ? nil : $0.text } ?? card.verdict.word
+        let label = BrainUI.label(words, "bn-clause")
+        switch tone {
+        case .danger: Gtk.addClass(label, "bn-tone-danger")
+        case .attention: Gtk.addClass(label, "bn-tone-attention")
+        case .quiet: Gtk.addClass(label, "bn-tone-quiet")
+        case .live, .identity: Gtk.addClass(label, "bn-tone-live")
         }
+        BrainUI.add(face, mark, label)
+        tailscode_set_accessible_label(face, words)
+        gtk_box_append(ptr(row), face)
         for child in children(of: row) { gtk_widget_set_valign(child, GTK_ALIGN_BASELINE_FILL) }
         return row
     }
@@ -403,14 +467,14 @@ final class BrainCard: @unchecked Sendable {
     /// Shows the zone chips that fit whole and the digest cut by whole clauses, which is all a
     /// narrower card gives up before its picture, its headline, Replay and Rows.
     func fitContent() {
-        guard hasContent, layout == .wide else { return }
+        guard hasContent, layout == .wide || card.hasQuote else { return }
         let textWidth = max(0, width - Self.textInset(for: layout) - 12)
         let shown = parts
         var room = textWidth
         var visibleChips = 0
         for chip in chipWidgets {
             let need = Double(naturalWidth(chip)) + 6
-            let allowed = shown.contains(.zoneStrip) && need <= room + 6
+            let allowed = shown.contains(.zoneStrip) && layout == .wide && need <= room + 6
             gtk_widget_set_visible(chip, allowed ? 1 : 0)
             if allowed {
                 room -= need
@@ -422,11 +486,50 @@ final class BrainCard: @unchecked Sendable {
         if let chipRow { gtk_widget_set_visible(chipRow, visibleChips > 0 ? 1 : 0) }
         guard let digest = digestLabel else { return }
         gtk_widget_set_visible(digest, shown.contains(.digest) ? 1 : 0)
+        if card.hasQuote {
+            let markup = fittedQuote(width: textWidth, label: digest)
+            if markup != digestFitted {
+                digestFitted = markup
+                gtk_label_set_markup(op(digest), markup)
+            }
+            return
+        }
         let fitted = fittedDigest(width: textWidth, label: digest)
         if fitted != digestFitted {
             digestFitted = fitted
-            gtk_label_set_text(op(digest), fitted)
+            gtk_label_set_markup(op(digest), BrainUI.escape(fitted))
         }
+    }
+
+    /// The agent's own first words as the card's third line: the quote mark and its name in the
+    /// accent, the words in italic ink, cut at a whole word to what the line can say.
+    private func fittedQuote(width: Double, label: UnsafeMutablePointer<GtkWidget>) -> String {
+        guard let quote = card.quote else { return "" }
+        let hex = owner.inks.hex
+        func markup(_ words: String) -> String {
+            "<span foreground=\"\(hex.accent)\" weight=\"bold\">\u{201C}</span>  <span foreground=\"\(hex.accent)\" weight=\"600\">\(BrainUI.escape(quote.speaker))</span>  <span style=\"italic\" foreground=\"\(hex.text)\">\(BrainUI.escape(words))</span>"
+        }
+        var best = markup(NeuralAccount.quote(of: quote.words, maxChars: 8))
+        var characters = 12
+        let limit = quote.words.count + 8
+        while characters <= limit + 12 {
+            let words = NeuralAccount.quote(of: quote.words, maxChars: characters)
+            let candidate = markup(words)
+            guard measureMarkup(candidate, in: label) <= width else { break }
+            best = candidate
+            if words == NeuralAccount.quote(of: quote.words, maxChars: Int.max / 4) { break }
+            characters += 4
+        }
+        return best
+    }
+
+    private func measureMarkup(_ markup: String, in label: UnsafeMutablePointer<GtkWidget>) -> Double {
+        guard let layout = gtk_widget_create_pango_layout(label, nil) else { return 0 }
+        defer { g_object_unref(UnsafeMutableRawPointer(layout)) }
+        pango_layout_set_markup(layout, markup, -1)
+        var measured: Int32 = 0
+        pango_layout_get_pixel_size(layout, &measured, nil)
+        return Double(measured)
     }
 
     /// The card's digest cut by whole clauses to what the line can say.

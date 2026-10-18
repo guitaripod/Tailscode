@@ -54,12 +54,12 @@ final class BrainMove: @unchecked Sendable {
         stageRect = metrics.stage
         cardPicture = metrics.card.picture
         metricsWidth = metrics.width
-        frame = transition.frame(at: 0)
+        frame = transition.frame(at: 0, clock: BrainClock.now)
     }
 
-    func advance(to u: Double) {
+    func advance(to u: Double, clock: Double = BrainClock.now) {
         progress = u
-        frame = transition.frame(at: u)
+        frame = transition.frame(at: u, clock: clock)
     }
 
     /// The part of the move's travel the head has made, from the card's picture to the stage.
@@ -91,7 +91,8 @@ extension BrainView {
             opening ? (swapped ? .swap : .open) : (swapped ? .swapClose : .close)
         let transition = NeuralTransition.make(
             direction, metrics: metrics, nodeCount: max(1, model.nodeCount),
-            reduceMotion: BrainBudget.reduceMotion, level: CascadeBudget.level)
+            reduceMotion: BrainBudget.reduceMotion, level: CascadeBudget.level,
+            live: model.turn.outcome == .running)
         let move = BrainMove(
             transition: transition, start: BrainClock.now, opening: opening, swapped: swapped,
             metrics: metrics)
@@ -103,6 +104,7 @@ extension BrainView {
         }
         refreshReadout(animate: false)
         readout?.setBodyAlpha(opening ? 0 : 1)
+        account?.setBodyAlpha(1)
         footer?.sync(BrainClock.now)
         if !opening { card.refresh() }
         setPhase(.moving)
@@ -122,8 +124,10 @@ extension BrainView {
         move.lastTick = nil
         if move.opening {
             readout?.setBodyAlpha(0)
+            account?.setBodyAlpha(1)
         } else {
             readout?.setBodyAlpha(1)
+            account?.setBodyAlpha(1)
             contentFade = nil
         }
         applyMove(at: now)
@@ -141,7 +145,7 @@ extension BrainView {
             finishMove(snapTo: move.opening)
             return
         }
-        move.advance(to: max(0, u))
+        move.advance(to: max(0, u), clock: time)
         applyMove(at: time)
     }
 
@@ -150,10 +154,13 @@ extension BrainView {
         let started = DispatchTime.now().uptimeNanoseconds
         let f = move.frame
         gtk_widget_set_opacity(card.surface, f.cardSurfaceAlpha)
+        gtk_widget_set_opacity(card.edgeLive, f.cardSurfaceAlpha)
         gtk_widget_set_opacity(card.text, f.cardTextAlpha)
         gtk_widget_set_opacity(card.buttons, f.cardTextAlpha)
         gtk_widget_set_opacity(card.picture, f.cardPictureAlpha)
+        if let edgeCanvas { gtk_widget_set_opacity(edgeCanvas, f.edge.alpha) }
         if let readout { gtk_widget_set_opacity(readout.widget, f.readoutAlpha) }
+        if let account { gtk_widget_set_opacity(account.root, f.readoutAlpha) }
         if let footer { gtk_widget_set_opacity(footer.widget, f.footerAlpha) }
         if let filters { gtk_widget_set_opacity(filters.canvas, f.panelAlpha) }
         list?.setReveal(f.listRows, headerAlpha: f.listHeaderAlpha)
@@ -162,6 +169,7 @@ extension BrainView {
         revealOverride = BrainMove.Reveal(nodes: f.nodes, wires: f.wireDraw, ties: f.tieDraw, labels: labels)
         stage?.refreshScene(time)
         if let moveCanvas { gtk_widget_queue_draw(moveCanvas) }
+        if let edgeCanvas { gtk_widget_queue_draw(edgeCanvas) }
         relayout()
         move.applyMicroseconds.append(Double(DispatchTime.now().uptimeNanoseconds - started) / 1000)
     }
@@ -173,10 +181,12 @@ extension BrainView {
         host?.anchor?()
         moveState = nil
         revealOverride = nil
-        for part in [card.surface, card.text, card.buttons, card.picture] {
+        for part in [card.surface, card.edgeLive, card.text, card.buttons, card.picture] {
             gtk_widget_set_opacity(part, 1)
         }
+        if let edgeCanvas { gtk_widget_set_opacity(edgeCanvas, 0) }
         if let readout { gtk_widget_set_opacity(readout.widget, 1) }
+        if let account { gtk_widget_set_opacity(account.root, 1) }
         if let footer { gtk_widget_set_opacity(footer.widget, 1) }
         if let filters { gtk_widget_set_opacity(filters.canvas, 1) }
         list?.setReveal(nil, headerAlpha: 1)
@@ -192,6 +202,7 @@ extension BrainView {
             contentFadeStart = BrainClock.now
             contentFade = BrainBudget.reduceMotion ? nil : 0
             readout?.setBodyAlpha(contentFade == nil ? 1 : 0)
+            account?.setBodyAlpha(1)
             applyPendingDive()
             refitFooterSoon()
         } else {
@@ -237,6 +248,32 @@ extension BrainView {
         tailscode_set_accessible_hidden(canvas, 1)
         tailscode_brain_row_add(widget, canvas)
         moveCanvas = canvas
+        let edgeHolder = MoveHolder()
+        edgeHolder.view = self
+        let edge = tailscode_canvas_new(
+            { cr, width, height, raw in
+                guard let cr, let raw else { return }
+                Unmanaged<MoveHolder>.fromOpaque(raw).takeUnretainedValue().view?.paintEdge(
+                    cr, width: Double(width), height: Double(height))
+            }, Unmanaged.passRetained(edgeHolder).toOpaque(),
+            { raw in
+                guard let raw else { return }
+                Unmanaged<MoveHolder>.fromOpaque(raw).release()
+            })!
+        gtk_widget_set_can_target(edge, 0)
+        gtk_widget_set_can_focus(edge, 0)
+        tailscode_set_accessible_hidden(edge, 1)
+        gtk_widget_set_opacity(edge, 0)
+        tailscode_brain_row_add(widget, edge)
+        edgeCanvas = edge
+    }
+
+    /// The card's tone edge as it rides the head's left side for the first moments of a move.
+    private func paintEdge(_ cr: OpaquePointer, width: Double, height: Double) {
+        let tone = inks.corrected(card.card.edgeTone)
+        BrainPainter.round(cr, 0, 0, width, height, 1.5)
+        cairo_set_source_rgba(cr, tone.red, tone.green, tone.blue, 1)
+        cairo_fill(cr)
     }
 
     final class MoveHolder: @unchecked Sendable {
@@ -263,8 +300,15 @@ extension BrainView {
         let mapping = BrainCardPainter.Mapping(
             x: 0, y: 0, scale: width / NeuralStageMetrics.designWidth)
         let lift = 1 - f.zoneLift
+        let breath = move.transition.live ? card.card.live?.activeZone : nil
         BrainCardPainter.lights(
-            cr, card: card.card, mapping: mapping, inks: inks, hovered: false, lift: lift)
+            cr, card: card.card, mapping: mapping, inks: inks, hovered: false, lift: lift,
+            breathing: breath.map { ($0, f.travellerSwell) })
+        if let zone = breath {
+            BrainCardPainter.lights(
+                cr, card: card.card, mapping: mapping, inks: inks, hovered: false,
+                lift: (1 - lift) * 0.5 * f.travellerSwell, only: zone)
+        }
         BrainCardPainter.rings(cr, card: card.card, mapping: mapping, inks: inks, alpha: lift)
         BrainPainter.paint(cr, width: Int32(width.rounded()), height: Int32(height.rounded()), scene: stage.scene, inks: inks)
         BrainCardPainter.layer(
@@ -320,7 +364,8 @@ extension BrainView {
         let direction: NeuralTransition.Direction = opening ? .open : .close
         let transition = NeuralTransition.make(
             direction, metrics: metrics, nodeCount: max(1, model.nodeCount),
-            reduceMotion: BrainBudget.reduceMotion, level: CascadeBudget.level)
+            reduceMotion: BrainBudget.reduceMotion, level: CascadeBudget.level,
+            live: model.turn.outcome == .running)
         let move = BrainMove(
             transition: transition, start: .infinity, opening: opening, swapped: false, metrics: metrics)
         move.advance(to: progress)
@@ -328,6 +373,7 @@ extension BrainView {
         frozen = true
         refreshReadout(animate: false)
         readout?.setBodyAlpha(opening ? (progress >= 1 ? 1 : 0) : 1)
+        account?.setBodyAlpha(1)
         setPhase(.moving)
         applyMove(at: BrainClock.now)
     }

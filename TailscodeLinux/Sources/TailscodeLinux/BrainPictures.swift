@@ -209,15 +209,18 @@ enum BrainCardPainter {
     /// card and falls to nothing as the card becomes the stage.
     static func lights(
         _ cr: OpaquePointer, card: NeuralBrainCard, mapping: Mapping, inks: BrainInks,
-        hovered: Bool, lift: Double = 1
+        hovered: Bool, lift: Double = 1, breathing: (zone: NeuralZone, level: Double)? = nil,
+        only: NeuralZone? = nil
     ) {
         guard lift > 0.002 else { return }
         cairo_save(cr)
         cairo_set_operator(cr, CAIRO_OPERATOR_SCREEN)
         for light in card.lights {
+            if let only, light.zone != only { continue }
             let center = mapping.point(light.center)
             let radius = light.radius * mapping.scale
-            let strength = light.strength(hovered: hovered) * lift
+            var strength = light.strength(hovered: hovered) * lift
+            if let breathing, breathing.zone == light.zone { strength *= breathing.level }
             let tone = inks.zone(light.zone)
             let gradient = cairo_pattern_create_radial(center.x, center.y, 0, center.x, center.y, radius)
             cairo_pattern_add_color_stop_rgba(gradient, 0, tone.red, tone.green, tone.blue, strength)
@@ -246,12 +249,13 @@ enum BrainCardPainter {
             let width = max(1.2, ring.strokeWidth * mapping.scale)
             cairo_new_path(cr)
             cairo_arc(cr, center.x, center.y, ring.radius * mapping.scale, 0, 2 * .pi)
-            cairo_set_source_rgba(cr, inks.danger.red, inks.danger.green, inks.danger.blue, alpha)
+            let tone = inks.tone(light.ringTone)
+            cairo_set_source_rgba(cr, tone.red, tone.green, tone.blue, alpha)
             cairo_set_line_width(cr, width)
             if light.ringStyle == .repairedDashed {
                 let pattern = [26 * mapping.scale, 18 * mapping.scale]
                 pattern.withUnsafeBufferPointer { cairo_set_dash(cr, $0.baseAddress, 2, 0) }
-                cairo_set_source_rgba(cr, inks.danger.red, inks.danger.green, inks.danger.blue, alpha * 0.9)
+                cairo_set_source_rgba(cr, tone.red, tone.green, tone.blue, alpha * 0.9)
             } else {
                 cairo_set_dash(cr, nil, 0, 0)
             }

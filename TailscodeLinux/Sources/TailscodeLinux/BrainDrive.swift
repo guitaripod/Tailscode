@@ -62,6 +62,20 @@ extension MainWindow {
             host.toggleOpen(turnID: turn)
         case "width":
             driveWidth(Double(value) ?? 700, pane: pane)
+        case "height":
+            driveHeight(Double(value) ?? 900)
+        case "settletest":
+            pane.driverBrainSettle(value)
+        case "settlearm":
+            BrainCard.armedSettleFreeze = Double(value).map { $0 / 1000 }
+        case "settlefreeze":
+            let held = Double(value)
+            for view in host.liveViews { view.card.freezeSettle(held.map { $0 / 1000 }) }
+        case "quote":
+            let held = Double(value) ?? 60
+            for view in host.liveViews {
+                view.card.live.quoteArrivedAt = Date().addingTimeInterval(held - NeuralLiveCard.quoteHold)
+            }
         case "debug":
             if value.hasPrefix("-") { BrainStage.debugSkip.remove(String(value.dropFirst())) } else { BrainStage.debugSkip.insert(value) }
             for view in host.liveViews {
@@ -93,7 +107,11 @@ extension MainWindow {
         if verb == "dump" {
             for view in views { write("dump \(view.turnID): \(view.readout?.overflowReading ?? "-")") }
         }
+        if verb == "dump" {
+            for view in views { write("adump \(view.turnID): \(view.account?.overflowReading() ?? "-")") }
+        }
         if verb == "text" {
+            for view in views { write("atext \(view.turnID): \(view.account?.visibleText.replacingOccurrences(of: "\n", with: " | ") ?? "-")") }
             for view in views { write("text \(view.turnID): \(view.readout?.visibleText.replacingOccurrences(of: "\n", with: " | ") ?? "-")") }
         }
         if verb == "perf" {
@@ -237,9 +255,19 @@ extension MainWindow {
             ptr(window), Int32(max(260, current + target - row)), Int32(height))
     }
 
+    /// Resizes the window to `target` points tall, keeping its width, for looking at a brain with
+    /// room to be seen whole.
+    private func driveHeight(_ target: Double) {
+        guard let window = windowWidget else { return }
+        let width = Double(gtk_widget_get_width(window))
+        guard width > 0 else { return }
+        gtk_window_set_default_size(ptr(window), Int32(width), Int32(max(300, target)))
+    }
+
     static let browseVerbs: Set<String> = [
         "hover", "pin", "transition", "readout", "key", "click", "filter", "search", "menu", "menuitem",
-        "legend", "scroll", "expand", "rowhover",
+        "legend", "scroll", "expand", "rowhover", "account", "reply", "copy", "said", "ask", "follow", "unfold",
+        "acctscroll", "acctfocus", "acctkey", "acctbench",
     ]
 
     private func driveBrainView(_ view: BrainView, verb: String, value: String) {
@@ -301,6 +329,8 @@ extension MainWindow {
             if let id = step(value) { view.openSubagent(of: id) }
         case "key", "click", "filter", "search", "menu", "menuitem", "legend", "scroll", "expand", "rowhover":
             view.driveBrowse(verb: verb, value: value)
+        case "account", "reply", "copy", "said", "ask", "follow", "unfold", "acctscroll", "acctfocus", "acctkey", "acctbench":
+            view.driveAccount(verb: verb, value: value)
         case "share":
             driveShare(view, words: value.split(separator: ",").map(String.init))
         case "shareopen":
@@ -433,10 +463,42 @@ extension ChatPane {
             state.status = .running
             state.pendingPermissions = [PermissionRequest(id: "call-wait", sessionID: "demo", toolName: "Bash")]
         default:
-            messages = NeuralDemo.conversation()
+            if let script = BrainAccountDemo.script(kind: kind, now: now) {
+                messages = script.messages
+                if script.running { state.status = .running }
+                if script.waiting {
+                    state.pendingPermissions = [PermissionRequest(id: "call-wait", sessionID: "demo", toolName: "Bash")]
+                }
+            } else {
+                messages = NeuralDemo.conversation()
+            }
         }
         state.messages = messages
         apply(state: state, rows: rowBuilder.rows(state: state))
+    }
+
+    /// A running turn that ends after a moment: the demo `kind` as it runs, then the same words with
+    /// its last step done and the turn over, so a card can be looked at settling.
+    func driverBrainSettle(_ kind: String) {
+        driverBrainDemo(kind)
+        Gtk.after(1500) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, var state = self.lastState else { return }
+                state.status = .idle
+                state.pendingPermissions = []
+                if var last = state.messages.popLast() {
+                    last.isStreaming = false
+                    last.completedAt = Date()
+                    last.parts = last.parts.map { part in
+                        guard case .tool(var call) = part.kind, call.status == .running else { return part }
+                        call.status = .completed
+                        return MessagePart(id: part.id, kind: .tool(call))
+                    }
+                    state.messages.append(last)
+                }
+                self.apply(state: state, rows: self.rowBuilder.rows(state: state))
+            }
+        }
     }
 
     /// Every kind of card in one conversation: a settled turn that failed and was repaired, one
