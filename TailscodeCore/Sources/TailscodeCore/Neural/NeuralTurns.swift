@@ -78,48 +78,93 @@ public enum NeuralTurns {
         "stop-by-user",
     ]
 
-    private static func read(
-        _ messages: [ChatMessage], running: Bool, awaiting: NeuralAwaiting
+    /// One message read on its own: what each of its parts is, before the turn it belongs to says
+    /// which of its words are the answer. A message that has not changed has the same reading, so a
+    /// turn that grows by one message reads that message and assembles the rest.
+    struct MessageReading {
+        enum Kind { case reasoning, tool, text }
+
+        struct Item {
+            /// The step as read; its index and group are set when the turn is assembled.
+            var step: NeuralStep
+            let kind: Kind
+            /// Whether the step is one of the parts the brain consumes.
+            let member: Bool
+        }
+
+        var items: [Item]
+        /// How many of its parts are work rather than words: a call, or a thought with words in it.
+        var stepParts: Int
+        /// How many parts were looked at.
+        var parts: Int
+    }
+
+    static func readMessage(_ message: ChatMessage, awaiting: NeuralAwaiting) -> MessageReading {
+        var items: [MessageReading.Item] = []
+        var stepParts = 0
+        for part in message.parts {
+            let id = "\(message.id):\(part.id)"
+            switch part.kind {
+            case .reasoning(let words):
+                guard hasWords(words) else { continue }
+                stepParts += 1
+                items.append(
+                    MessageReading.Item(
+                        step: NeuralStep(
+                            id: id, index: 0, zone: .think, group: 0, messageID: message.id,
+                            at: message.createdAt, title: thinkingTitle, text: words),
+                        kind: .reasoning, member: true))
+            case .tool(let call):
+                stepParts += 1
+                let step = toolStep(
+                    call, part: part, id: id, index: 0, group: 0, message: message,
+                    awaiting: awaiting)
+                items.append(MessageReading.Item(step: step, kind: .tool, member: !step.isCard))
+            case .text(let words):
+                guard hasWords(words) else { continue }
+                items.append(
+                    MessageReading.Item(
+                        step: NeuralStep(
+                            id: id, index: 0, zone: .say, group: 0, messageID: message.id,
+                            at: message.createdAt, title: saidTitle, text: words),
+                        kind: .text, member: true))
+            case .file, .compaction, .note, .unknown:
+                continue
+            }
+        }
+        return MessageReading(items: items, stepParts: stepParts, parts: message.parts.count)
+    }
+
+    /// Puts a turn together from its messages and their readings: which words are the answer, which
+    /// parts the brain consumes, and how the turn ended. The same turn however the readings were
+    /// come by.
+    static func assemble(
+        _ messages: [ChatMessage], readings: [MessageReading], running: Bool,
+        awaiting: NeuralAwaiting
     ) -> NeuralTurn {
-        let totalStepParts = countStepParts(in: messages)
+        var totalStepParts = 0
+        var count = 0
+        for reading in readings {
+            totalStepParts += reading.stepParts
+            count += reading.items.count
+        }
         var steps: [NeuralStep] = []
+        steps.reserveCapacity(count)
         var answers: [String] = []
         var members = Set<String>()
         var seenStepParts = 0
-        for (group, message) in messages.enumerated() {
-            for part in message.parts {
-                let id = "\(message.id):\(part.id)"
-                switch part.kind {
-                case .reasoning(let words):
-                    guard hasWords(words) else { continue }
+        for (group, reading) in readings.enumerated() {
+            for item in reading.items {
+                switch item.kind {
+                case .reasoning, .tool:
                     seenStepParts += 1
-                    members.insert(id)
-                    steps.append(
-                        NeuralStep(
-                            id: id, index: steps.count, zone: .think, group: group,
-                            messageID: message.id, at: message.createdAt, title: thinkingTitle,
-                            text: words))
-                case .tool(let call):
-                    seenStepParts += 1
-                    let step = toolStep(
-                        call, part: part, id: id, index: steps.count, group: group,
-                        message: message, awaiting: awaiting)
-                    if !step.isCard { members.insert(id) }
-                    steps.append(step)
-                case .text(let words):
-                    guard hasWords(words) else { continue }
+                    append(item, group: group, to: &steps, members: &members)
+                case .text:
                     if seenStepParts < totalStepParts {
-                        members.insert(id)
-                        steps.append(
-                            NeuralStep(
-                                id: id, index: steps.count, zone: .say, group: group,
-                                messageID: message.id, at: message.createdAt, title: saidTitle,
-                                text: words))
+                        append(item, group: group, to: &steps, members: &members)
                     } else {
-                        answers.append(id)
+                        answers.append(item.step.id)
                     }
-                case .file, .compaction, .note, .unknown:
-                    continue
                 }
             }
         }
@@ -139,19 +184,23 @@ public enum NeuralTurns {
             effort: messages.reversed().lazy.compactMap(\.reasoningEffort).first)
     }
 
-    /// How many parts of the turn are work rather than words: a call, or a thought with words in it.
-    private static func countStepParts(in messages: [ChatMessage]) -> Int {
-        var count = 0
-        for message in messages {
-            for part in message.parts {
-                switch part.kind {
-                case .tool: count += 1
-                case .reasoning(let words): if hasWords(words) { count += 1 }
-                default: continue
-                }
-            }
-        }
-        return count
+    private static func append(
+        _ item: MessageReading.Item, group: Int, to steps: inout [NeuralStep],
+        members: inout Set<String>
+    ) {
+        var step = item.step
+        step.index = steps.count
+        step.group = group
+        if item.member { members.insert(step.id) }
+        steps.append(step)
+    }
+
+    private static func read(
+        _ messages: [ChatMessage], running: Bool, awaiting: NeuralAwaiting
+    ) -> NeuralTurn {
+        assemble(
+            messages, readings: messages.map { readMessage($0, awaiting: awaiting) },
+            running: running, awaiting: awaiting)
     }
 
     private static func hasWords(_ text: String) -> Bool {

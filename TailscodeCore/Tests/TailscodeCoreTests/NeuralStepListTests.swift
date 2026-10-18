@@ -169,6 +169,45 @@ struct NeuralStepListRowTests {
     }
 }
 
+@Suite("Neural step list: words that grow")
+struct NeuralStepListStreamingTests {
+    typealias F = StepListFixtures
+
+    @Test("a streamed token changes one row and the list equals one built from scratch")
+    func tokenGrowth() {
+        var steps = F.synthetic(30, running: true)
+        steps[29] = NeuralStep(
+            id: "live:p0", index: 29, zone: .think, status: .running, group: 15, messageID: "live",
+            title: "Thinking", text: "w")
+        var list = NeuralStepList(steps: steps, live: true)
+        let others = list.rows.dropLast()
+        var words = "w"
+        for token in 0..<25 {
+            words += token % 6 == 5 ? "\nline \(token)" : " token\(token)"
+            steps[29].text = words
+            list.update(steps: steps, live: true)
+            #expect(list.rows == NeuralStepList(steps: steps, live: true).rows)
+            #expect(Array(list.rows.dropLast()) == Array(others))
+        }
+        #expect(list.rows[29].argument.hasPrefix("w token0"))
+        #expect(list.rows[29].lines.count == 1)
+    }
+
+    @Test("a search follows the words as they grow")
+    func searchFollows() {
+        var steps = F.synthetic(10, running: true)
+        steps[9] = NeuralStep(
+            id: "live:p0", index: 9, zone: .think, status: .running, group: 5, messageID: "live",
+            title: "Thinking", text: "start")
+        var list = NeuralStepList(steps: steps, live: true)
+        list.setSearch("zebra")
+        #expect(list.visibleCount == 0)
+        steps[9].text = "start with a zebra"
+        list.update(steps: steps, live: true)
+        #expect(list.visibleCount == 1)
+    }
+}
+
 @Suite("Neural step list filters")
 struct NeuralStepListFilterTests {
     typealias F = StepListFixtures

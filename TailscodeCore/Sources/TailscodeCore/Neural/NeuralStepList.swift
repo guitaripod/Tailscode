@@ -96,6 +96,14 @@ public struct NeuralStepList: Sendable, Equatable {
 
         public var isFailure: Bool { status == .failed }
 
+        func replacing(argument: String, lines: [String]) -> Row {
+            Row(
+                id: id, index: index, number: number, kind: kind, zone: zone, title: title,
+                rawTitle: rawTitle, verdict: verdict, argument: argument,
+                argumentKind: argumentKind, status: status, mark: mark, related: related,
+                bracket: bracket, group: group, isCard: isCard, lines: lines)
+        }
+
         /// The words the row's mark says on the right: "Fixed on retry", "Failed", "Hit an
         /// error", "Waiting for you"; nil for a step that is done.
         public var markWord: String? { verdict.isMarked ? verdict.word : nil }
@@ -167,6 +175,7 @@ public struct NeuralStepList: Sendable, Equatable {
     private var visible: [Int] = []
     private var positions: [String: Int] = [:]
     private var signatures: [Int] = []
+    private var textLengths: [Int] = []
     private var builtLive = false
     private var pointerOffsets: [Double] = [0]
     private var touchOffsets: [Double] = [0]
@@ -183,20 +192,35 @@ public struct NeuralStepList: Sendable, Equatable {
         if let live { isLive = live }
         var reusable = newSteps.count >= signatures.count && !liveChanged
         var fresh: [Int] = []
+        var freshText: [Int] = []
+        var grown: [Int] = []
         fresh.reserveCapacity(newSteps.count)
+        freshText.reserveCapacity(newSteps.count)
         for (index, step) in newSteps.enumerated() {
             let sign = Self.signature(of: step)
+            let words = step.text.utf8.count
             fresh.append(sign)
-            if reusable, index < signatures.count, signatures[index] != sign { reusable = false }
+            freshText.append(words)
+            guard reusable, index < signatures.count else { continue }
+            if signatures[index] != sign {
+                reusable = false
+            } else if textLengths[index] != words {
+                grown.append(index)
+            }
         }
         let same = reusable && newSteps.count == signatures.count
         steps = newSteps
         if same {
+            if !grown.isEmpty {
+                for index in grown { rows[index] = Self.refreshed(rows[index], from: steps[index]) }
+                textLengths = freshText
+            }
             if filter.query.isEmpty { return }
             refilter()
             return
         }
         signatures = fresh
+        textLengths = freshText
         rebuild()
     }
 
@@ -519,9 +543,14 @@ public struct NeuralStepList: Sendable, Equatable {
         hasher.combine(step.tieKey)
         hasher.combine(step.tieIsCommand)
         hasher.combine(step.detail.utf8.count)
-        hasher.combine(step.text.utf8.count)
         hasher.combine(step.isCard)
         return hasher.finalize()
+    }
+
+    /// A row after its step's words grew: only what the words draw changes, because no other row
+    /// reads them, so a streamed token touches one row and not the whole list.
+    private static func refreshed(_ row: Row, from step: NeuralStep) -> Row {
+        row.replacing(argument: argument(of: step, kind: row.kind), lines: lines(of: step, kind: row.kind))
     }
 
     private mutating func rebuild() {
