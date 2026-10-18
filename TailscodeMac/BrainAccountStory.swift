@@ -229,6 +229,7 @@ extension BrainAccountView {
 
     func needsRealizeNow() -> Bool {
         guard viewHeight > 0, boxWidth > 0 else { return false }
+        if offsets.count != entries.count { return !entries.isEmpty }
         let want = Set(wanted().map { entries[$0].id })
         return want != Set(cells.keys)
     }

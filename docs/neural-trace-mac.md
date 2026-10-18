@@ -1,0 +1,46 @@
+# Neural trace on the Mac
+
+The Mac draws the same product as Linux and the phone (`docs/neural-trace-readout.md` is the contract, Core owns every number and word), natively: AppKit views on the opaque canvas, the shared Metal head, the render server doing the breathing. This note is what is specific to `TailscodeMac`: how the pieces are arranged, the choices the Mac forced, what is checked and how to look at it.
+
+## Arrangement
+
+- `BrainStore` (one per pane) owns every turn's `NeuralBrainModel`. The transcript's keyed diff sees a `BrainRow` (turn, open, rows, revision) and restates the row view in place; nothing opens by itself (`NeuralOpenPolicy`), a person's choice is kept in memory, opening one closes the other.
+- `BrainRowView` is a hub. It places the card, the stage, the filter chips, the step list, the account and the footer **by frame** from `NeuralStageMetrics` for its width. Its height is its intrinsic height (the card's, the open brain's or the move's), so a change re-solves that row only and the transcript column moves what is below it (`TranscriptColumn`, 2-7 ms budget). Parts talk to it only through `BrainSurfaceHost`.
+- The head and its picture travel as one thing: `BrainCarrierView` holds the picture layer and the stage and moves both with a single `sublayerTransform` (the head's bounds go from the card's picture rectangle to the stage and back), so the nodes, wires and the head scale together from the first frame.
+- `BrainPictures` renders the head at rest once per look (palette, the eye's tone, effort bars, ribs) with `NeuralHeadRenderer.snapshot` and composes interior and glass into one image. A card is that shared picture plus one radial light per zone the turn used (a screen-blended layer group) and the rings; the lights breathe on the render server (`BrainMotion`) only for a live card's active zone. No per-card compositor work.
+- `BrainCardView` draws the whole card in one pass (words, chips, buttons) and hit-tests its own rectangles; AppKit asks for pixels only while it is on screen, so a conversation of a few hundred turns costs the cards in view. A live card keeps the settled card's size; one shared second (`BrainLiveTick`) runs only while a live card is seen and a window is on screen; the 400 ms settle is `NeuralCardSettle`.
+- The move is `BrainMover` over `NeuralTransition`: one display link for the move's length, gated by `DisplayGate`, Core's frame applied each tick (traveller rectangle, card words and surface, edge, lights, sweep as a gradient layer, node pops and wire draw through `BrainStageView.reveal`, list rows, account, footer, row height). A press or Esc mid-move reverses from the frame it is on.
+- Keys: one table in Core (`NeuralBrowse`); the stage, list and account forward key events to `BrainRowView.handleBrainKey`, and the window's key monitor stands aside only for a `BrainKeyTaker` that holds the keyboard and would use the key. Tab walks the key-view loop.
+- A streamed token costs the brain almost nothing, by four rules. (1) The turn being written is read at most once per `BrainStore.tailInterval` (250 ms, or five times what the last reading cost, whichever is longer) when only words moved in it, and a token inside that time is found out from the newest turn's own messages without comparing the conversation above it (`deferTailRead`); a new step, a tool changing status, an approval or the turn ending is read at once. (2) The rows above the newest question are final while it stands, so the transcript builder asks one number for them (`BrainStore.shapeEpoch`, moved by anything that can change what a head says about an earlier message) instead of stamping every message. (3) `restateViews` runs at most once a frame, and a row restates itself only when its entry, its model or the machine's context moved (`BrainRowView.refresh`), the second's tick forcing one; the window's fill is estimated from the words, so a context whose fill has not moved a percent is not news (`BrainStore.settled`). (4) A whole read of the conversation goes through Core's `partitionList` with the prefix the store has already verified, so no earlier turn is read again.
+- The account's items are made in the layout pass that gives the story its size, never from a block deferred to a later turn: items made after the row had been laid out are not put in the layer tree until something else redraws the window and the story stays blank (`BrainAccountChecks.paintsAfterMove` fails on it by asking each item's layer for its presentation layer after a real opening move). The story's unfolded rows and the list beside the head are painted by one painter (`BrainRowPainter`).
+- Screenshots are deterministic: the drive script's verbs are counted (`DriveHooks.pending`) and the picture waits for the last, the photograph is retaken while the display answers black, and the harness gives every run a virtual display of its own name and waits for the last one to be torn down before making the next (a display made inside that window comes up black on every second run).
+
+## Choices the Mac forced
+
+- The Mac's theme is the system's: the palette is made from the platform's colours (`MacBrainPalette`) and run through Core's contrast correction; amber is `systemOrange`, red `systemRed`. The head's background is the canvas, so it sits on the page without a frame.
+- Glass only floats: the brain is content. The share sheet and menus are the platform's.
+- The sweep is a gradient layer crossing the picture (the shader has no hook for a single crossing), the dive is the head's own dive with the node layer scaled about the zone.
+- Intel Macs without ASTC keep the Lines style (`MacBrain.isAvailable`); critical shed level opens the stage with no move.
+
+## Looking at it
+
+`TAILSCODE_DRIVE` (DEBUG) takes `brain=` verbs (`demo`, `state=working|waiting|failed|large|largeRunning…`, `open=n`, `sidebar=hide`, `hover=n`, `pin=n`, `key=…`, `search=…`, `moveat=open:0.4`, `snap=<path>`, `checks`, `stream=n`, `report`). `moveat` holds the move at one frame with no clock and `snap` photographs the display, which is how the frame sheets are made. `brain=checks` runs `BrainViewChecks` (headless, over `BrainFixture`), and `--selftest` runs them with the rest. `TailscodeMac --bench <transcript.json>` ends with what a streamed token costs as a card and as an open brain (the fixture: no pane).
+
+## What it costs
+
+`TailscodeMac --bench brain-stream[=100,600,2400[:lines|card|open[:tokens]]]` (Release) puts a real `TranscriptViewController` in a window that is never ordered front, hands it the states a stream would emit at 50 tokens a second on top of that many earlier turns (14 messages each), and divides the main thread's own CPU time by the tokens. Lines is the same pane with the brain off, card the live card of the turn being written, open the same turn open. Measured on the macbook (Apple silicon, Release), 200 tokens after 15 of warm-up, before (the first Mac commit) and after:
+
+| earlier turns | | lines | card | open |
+|---|---|---|---|---|
+| 100 | before | 4.0 ms | 14.3 ms | 14.0 ms |
+| 100 | after | 4.0 ms | 4.2 ms | 5.2 ms |
+| 600 | before | 10.2 ms | 15.2 ms | 14.4 ms |
+| 600 | after | 10.2 ms | 10.8 ms | 11.1 ms |
+| 2,400 | before | 15.1 ms | 107.7 ms | 101.9 ms |
+| 2,400 | after | 14.6 ms | 15.0 ms | 15.1 ms |
+
+A token's cost is milliseconds of main-thread CPU; at 50 tokens a second 5 ms is 250 ms of each second. What the brain adds is read from the store's own counters (the time spent reading turns, shaping rows and restating views), per token: mean 0.30 / 0.48 / 0.41 ms as a card and 0.76 / 0.98 / 0.66 ms open at 100 / 600 / 2,400 turns, median 0.02 ms (most tokens do nothing), p95 2.4-3.4 ms as a card and 4.3-6.4 ms open (the token that restates). The long run is 20 s of stream at 100 turns: lines 210 ms of each second, card 244 (+34), open 300 (+90).
+
+What is left of a token is not the brain: with the brain off the pane still spends 4 / 10 / 15 ms a token at 100 / 600 / 2,400 turns, in work that grows with the length of the conversation (`ContextFill.read`, `WorkflowRunFold.runs`, `TranscriptRowBuilder.extended` copying the row list), measured by `sample` of the same run. The one-off reads are `whole reads`: 30 ms at 100 turns, 300 ms at 600 and 3.2 s at 2,400 when the pane first shows the conversation (Core's `partition` at about 1.3 ms a turn).
+
+Nothing arriving, nothing moving: 0.2 ms of main-thread CPU over a second with the card showing and 0.0-0.1 open (the same as with Lines); the process holds about 100 MB more once a brain has been shown (the head's textures, shared by every pane) and 1-3 MB more per open conversation. The transcript column keeps its budget (`--bench <transcript.json>` on three cached chats: expanding a row 0.9-4.2 ms median, 5.6-9.3 worst; a row arriving 0.4-0.5 ms; resize 20-22 ms for 400 rows; each unchanged from the first Mac commit).

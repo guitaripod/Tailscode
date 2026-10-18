@@ -21,6 +21,7 @@ enum BrainAccountChecks {
         try live(check)
         try scale(check)
         try takeover(check)
+        try paintsAfterMove(check)
         try expect(failures.isEmpty, "account: " + failures.joined(separator: " | "))
         return count
     }
@@ -162,7 +163,7 @@ enum BrainAccountChecks {
             abs(account.frame.width - row.currentMetrics.readout.width) < 0.6,
             "at 1000 the account takes what the left column leaves")
 
-        wide.resize(to: 748)
+        wide.resize(to: 700)
         settle(row)
         let narrow = row.currentMetrics
         try check(narrow.arrangement == .accordion && account.isAccordion, "under 860 the account is the list")
@@ -181,6 +182,16 @@ enum BrainAccountChecks {
             "at 520 the header and the story still lay out (header \(account.header.frame.height), box \(account.boxWidth), row \(row.bounds.width))")
         let overflowing = find(AccountTextView.self, in: account).filter { $0.frame.maxX > account.bounds.width + 0.6 }
         try check(overflowing.isEmpty, "no words run past the account's edge at 520")
+
+        wide.resize(to: 428)
+        settle(row)
+        try check(
+            account.header.frame.height > 40 && account.boxWidth >= 120,
+            "at 380 the header and the story still lay out (header \(account.header.frame.height), box \(account.boxWidth), row \(row.bounds.width))")
+        let overflowing380 = find(AccountTextView.self, in: account).filter { $0.frame.maxX > account.bounds.width + 0.6 }
+        try check(overflowing380.isEmpty, "no words run past the account's edge at 380")
+        let clipped = account.cells.values.filter { $0.frame.maxX > account.document.bounds.width + 0.6 }
+        try check(clipped.isEmpty, "no item of the story is wider than its document at 380 (\(clipped.count))")
     }
 
 
@@ -587,8 +598,44 @@ enum BrainAccountChecks {
     }
 
 
+    /// How many of the items the account holds are not in the window server's tree yet: a layer the
+    /// render server has been given has a presentation layer, and one it was never given does not,
+    /// which is how an item that was made and never drawn looks from inside the process.
+    private static func uncommitted(_ account: BrainAccountView) -> Int {
+        account.cells.values.filter { $0.layer?.presentation() == nil }.count
+    }
+
+    /// An account made while its brain was opening is handed to the render server once the move has
+    /// landed, at the width a narrow window opens at and at the width that has two columns, with
+    /// the window on screen the way the person's is.
+    private static func paintsAfterMove(_ check: (Bool, String) throws -> Void) throws {
+        for width in [700.0, 1420.0] {
+            let fixture = BrainFixture(width: width)
+            defer { fixture.tearDown() }
+            let top = NSScreen.main?.visibleFrame.maxY ?? 800
+            fixture.window.setFrameTopLeftPoint(NSPoint(x: 20, y: top))
+            fixture.window.orderFrontRegardless()
+            guard let row = fixture.view(0) else {
+                try check(false, "a closed brain is there to open at \(Int(width))")
+                continue
+            }
+            row.holdMove(direction: .open, at: 0.05)
+            spin(0.1)
+            row.finishMove(snapOpen: true)
+            spin(0.6)
+            guard let account = fixture.view(0)?.account else {
+                try check(false, "the account exists after the move at \(Int(width))")
+                continue
+            }
+            let missing = uncommitted(account)
+            try check(
+                !account.cells.isEmpty && missing == 0,
+                "every item of the account reaches the screen after an opening move at \(Int(width)) (\(missing) of \(account.cells.count) never did)")
+        }
+    }
+
     private static func takeover(_ check: (Bool, String) throws -> Void) throws {
-        let fixture = BrainFixture(width: 748)
+        let fixture = BrainFixture(width: 700)
         defer { fixture.tearDown() }
         guard let (row, account) = opened(fixture, 0) else {
             try check(false, "the brain opens narrow")

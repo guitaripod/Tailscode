@@ -28,23 +28,22 @@ extension BrainAccountView {
 
     /// A relation chip under the pointer lights the steps it names, without taking the panel.
     func relationHover(_ ids: [String]?) {
-        host?.updateModel { $0.setHover(ids?.first) }
-        (host as? BrainRowView)?.stage?.refresh(force: true)
+        host?.relationHover(ids)
     }
 
     func dive(into zone: NeuralZone) {
-        (host as? BrainRowView)?.stage?.dive(into: zone)
+        host?.dive(into: zone)
     }
 
     func scrub(toStep id: String) {
-        guard let row = host as? BrainRowView, let index = model.steps.firstIndex(where: { $0.id == id }) else { return }
+        guard let host, let index = model.steps.firstIndex(where: { $0.id == id }) else { return }
         let fires = model.timeline.fireTimes
         guard index < fires.count else { return }
-        row.scrub(to: model.timeline.fraction(forTime: fires[index]))
+        host.scrub(to: model.timeline.fraction(forTime: fires[index]))
     }
 
     func scrubEnded() {
-        (host as? BrainRowView)?.endScrub()
+        host?.endScrub()
     }
 
     func openSubagent(_ stepID: String) { host?.openSubagent(stepID) }

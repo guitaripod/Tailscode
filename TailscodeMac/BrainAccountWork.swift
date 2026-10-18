@@ -230,9 +230,7 @@ final class AccountRowsView: NSView {
     }
 
     private func copyRect(for row: NeuralStepList.Row, width: CGFloat) -> CGRect {
-        let label = copied?.id == row.id && (copied?.until ?? 0) > CACurrentMediaTime() ? AccountWords.copied : NeuralReading.copyLabel
-        let size = AccountType.width(label, .rowMeta) + 18
-        return CGRect(x: width - 6 - size, y: (CGFloat(row.height(input: input)) - 24) / 2, width: size, height: 24)
+        owner.rowPainter.copyRect(for: row, width: width, copied: copiedNow(row.id))
     }
 
     override func updateTrackingAreas() {
@@ -293,11 +291,12 @@ final class AccountRowsView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let paint = owner.paint
+        let painter = owner.rowPainter
         let model = owner.model
         let cursor = model.pinnedStep
         let hovered = model.browseState.hovered
         let query = list.filter.query
+        let wide = bounds.width >= BrainRowPainter.wideColumn
         var y: CGFloat = 0
         for (index, id) in ids.enumerated() {
             guard let found = row(id) else { continue }
@@ -307,144 +306,21 @@ final class AccountRowsView: NSView {
             if y > dirtyRect.maxY + 1 { break }
             let previous = index > 0 ? row(ids[index - 1]) : before.flatMap { row($0) }
             let next = index + 1 < ids.count ? row(ids[index + 1]) : after.flatMap { row($0) }
-            paintRow(
-                found, previous: previous, next: next, y: y, height: h, width: bounds.width, paint: paint,
-                isCursor: cursor == id, isHovered: hovered == id && cursor != id, pointerHere: hoverID == id,
-                query: query)
-        }
-    }
-
-    private func paintRow(
-        _ row: NeuralStepList.Row, previous: NeuralStepList.Row?, next: NeuralStepList.Row?, y: CGFloat,
-        height rowH: CGFloat, width: CGFloat, paint: AccountPaint, isCursor: Bool, isHovered: Bool,
-        pointerHere: Bool, query: String
-    ) {
-        let zone = paint.zone(row.zone)
-        if row.status == .failed {
-            paint.danger.withAlphaComponent(0.08).setFill()
-            NSRect(x: 0, y: y, width: width, height: rowH).fill()
-        }
-        if isCursor {
-            paint.accent.withAlphaComponent(0.14).setFill()
-            NSRect(x: 0, y: y, width: width, height: rowH).fill()
-        } else if isHovered {
-            paint.text.withAlphaComponent(0.06).setFill()
-            NSRect(x: 0, y: y, width: width, height: rowH).fill()
-        }
-        zone.setFill()
-        NSRect(x: 0, y: y, width: 3, height: rowH).fill()
-        if isCursor {
-            paint.accent.setFill()
-            NSRect(x: 3, y: y, width: 2, height: rowH).fill()
-            paint.accent.withAlphaComponent(0.9).setStroke()
-            let ring = NSBezierPath(roundedRect: NSRect(x: 0.5, y: y + 0.5, width: width - 1, height: rowH - 1), xRadius: 2, yRadius: 2)
-            ring.lineWidth = 1
-            ring.stroke()
-        }
-        paintBracket(row, previous: previous, next: next, y: y, height: rowH, paint: paint)
-        let said = row.isSaid
-        let band: CGFloat = said ? 28 : rowH
-        let mid = y + band / 2
-        if said {
-            AccountGlyphs.quote(cx: 34, cy: y + 14, color: paint.accent)
-        } else {
-            AccountGlyphs.zone(row.zone, cx: 34, cy: mid, color: zone)
-        }
-        AccountType.draw("\(row.number)", .rowMeta, paint.dim, x: 75, midY: mid, maxWidth: 24, rightAligned: true)
-        let statusLeft = paintStatus(row, y: y, height: rowH, width: width, paint: paint, showCopy: pointerHere || copiedNow(row.id))
-        let limit = statusLeft - 12
-        if row.kind == .tool {
-            let titleWidth = min(AccountType.width(row.title, .rowTitleStrong), 168)
-            AccountType.draw(row.title, .rowTitleStrong, paint.text, x: 83, midY: mid, maxWidth: titleWidth)
-            let argumentX = 83 + titleWidth + 10
-            let room = max(0, limit - argumentX)
-            let chars = max(0, Int(room / AccountType.monoWidth(.rowDetail)))
-            let shown = row.argument(fittingChars: chars)
-            if !query.isEmpty, let range = shown.range(of: query, options: .caseInsensitive) {
-                let startChars = shown.distance(from: shown.startIndex, to: range.lowerBound)
-                let length = shown.distance(from: range.lowerBound, to: range.upperBound)
-                let monoWidth = AccountType.monoWidth(.rowDetail)
-                paint.warn.withAlphaComponent(0.34).setFill()
-                NSBezierPath(
-                    roundedRect: NSRect(
-                        x: argumentX + CGFloat(startChars) * monoWidth - 1, y: y + 5, width: CGFloat(length) * monoWidth + 2,
-                        height: rowH - 10), xRadius: 3, yRadius: 3
-                ).fill()
-            }
-            AccountType.draw(shown, .rowDetail, paint.dim, x: argumentX, midY: mid, maxWidth: room)
-        } else if said {
-            let room = max(0, limit - 83)
-            let text = AccountType.string(row.lines.joined(separator: " "), .thought, paint.text)
-            text.draw(
-                with: NSRect(x: 83, y: y + 4, width: room, height: 32),
-                options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
-        } else {
-            AccountType.draw(row.argument, .thought, paint.dim, x: 83, midY: mid, maxWidth: max(0, limit - 83))
+            var state = BrainRowPainter.State()
+            state.isCursor = cursor == id
+            state.isHovered = hovered == id && cursor != id
+            state.pointerHere = hoverID == id
+            state.copyHot = hoverCopy && hoverID == id
+            state.copied = copiedNow(id)
+            state.query = query
+            state.wide = wide
+            painter.paint(found, previous: previous, next: next, y: y, width: bounds.width, state: state)
         }
     }
 
     private func copiedNow(_ id: String) -> Bool {
         guard let copied else { return false }
         return copied.id == id && copied.until > CACurrentMediaTime()
-    }
-
-    private func paintBracket(
-        _ row: NeuralStepList.Row, previous: NeuralStepList.Row?, next: NeuralStepList.Row?, y: CGFloat,
-        height rowH: CGFloat, paint: AccountPaint
-    ) {
-        guard row.bracket != .none else { return }
-        let joinsAbove = previous.map { $0.group == row.group && $0.bracket != .none } ?? false
-        let joinsBelow = next.map { $0.group == row.group && $0.bracket != .none } ?? false
-        guard joinsAbove || joinsBelow else { return }
-        let mid = y + rowH / 2
-        paint.dim.withAlphaComponent(0.75).setStroke()
-        let path = NSBezierPath()
-        path.move(to: NSPoint(x: 9.5, y: joinsAbove ? y : mid))
-        path.line(to: NSPoint(x: 9.5, y: joinsBelow ? y + rowH : mid))
-        path.move(to: NSPoint(x: 9.5, y: mid))
-        path.line(to: NSPoint(x: 15.5, y: mid))
-        path.lineWidth = 1
-        path.stroke()
-    }
-
-    /// The mark on the right of a row and the left edge it begins at; the copy button of a hovered
-    /// row stands in its place.
-    private func paintStatus(
-        _ row: NeuralStepList.Row, y: CGFloat, height rowH: CGFloat, width: CGFloat, paint: AccountPaint,
-        showCopy: Bool
-    ) -> CGFloat {
-        let band: CGFloat = row.isSaid ? 28 : rowH
-        let mid = y + band / 2
-        if showCopy {
-            let rect = copyRect(for: row, width: width)
-            let label = copiedNow(row.id) ? AccountWords.copied : NeuralReading.copyLabel
-            let shape = NSBezierPath(
-                roundedRect: NSRect(x: rect.minX + 0.5, y: y + rect.minY + 0.5, width: rect.width - 1, height: rect.height - 1),
-                xRadius: 12, yRadius: 12)
-            paint.raised.setFill()
-            shape.fill()
-            (hoverCopy && hoverID == row.id ? paint.accent : paint.rule2).setStroke()
-            shape.lineWidth = 1
-            shape.stroke()
-            AccountType.draw(label, .rowMeta, paint.text, x: rect.midX - AccountType.width(label, .rowMeta) / 2, midY: y + rect.midY)
-            return rect.minX
-        }
-        let right = width - 10
-        let verdict = row.verdict
-        guard verdict.isMarked else { return right }
-        let color = paint.verdict(verdict)
-        switch verdict {
-        case .fixed:
-            let target = row.related.map { "\u{2192}\($0.number)" } ?? ""
-            let size = AccountType.width(target, .rowMeta)
-            if !target.isEmpty { AccountType.draw(target, .rowMeta, color, x: right - size, midY: mid) }
-            let glyphX = right - size - (target.isEmpty ? 0 : 6) - 7
-            AccountGlyphs.verdict(.fixed, cx: glyphX, cy: mid, size: 13, color: color)
-            return glyphX - 12
-        default:
-            AccountGlyphs.verdict(verdict, cx: right - 6, cy: mid, size: 13, color: color)
-            return right - 20
-        }
     }
 }
 

@@ -194,6 +194,15 @@ final class BrainRowView: NSView, BrainSurfaceHost {
 
     func collapseBrain() { store?.setOpen(false, turnID: turnID) }
 
+    var promptText: String? { store?.entry(turnID)?.prompt }
+
+    func relationHover(_ ids: [String]?) {
+        updateModel { $0.setHover(ids?.first) }
+        stage?.refresh(force: true)
+    }
+
+    func dive(into zone: NeuralZone) { stage?.dive(into: zone) }
+
     func showInRows(_ stepID: String) {
         if !row.showsRows { store?.toggleRows(turnID) }
         store?.revealStepRow?(stepID)
@@ -361,8 +370,32 @@ final class BrainRowView: NSView, BrainSurfaceHost {
 
     func restate(_ next: BrainRow) { apply(next, initial: false) }
 
-    func refresh() {
+    /// What the row last restated itself from: the entry and model it held and the machine's
+    /// context. The clock is the second's own tick, which forces a restatement.
+    private struct RestateStamp: Equatable {
+        let entry: Int
+        let model: Int
+        let context: NeuralBrainContext
+    }
+
+    private var restateStamp: RestateStamp?
+
+    /// Brings every part to the model when anything it says changed. A token that lengthens a note
+    /// the brain has not read again changes nothing the card or the open parts say, so it costs the
+    /// comparison; the second's tick restates with `force`.
+    @discardableResult
+    func refresh(force: Bool = false) -> Bool {
+        guard let store, let entry = store.entry(turnID) else {
+            restateStamp = nil
+            refreshAll()
+            return true
+        }
+        let stamp = RestateStamp(
+            entry: entry.revision, model: entry.model.revision, context: entry.context)
+        guard force || stamp != restateStamp else { return false }
+        restateStamp = stamp
         refreshAll()
+        return true
     }
 
     private func apply(_ next: BrainRow, initial: Bool) {
@@ -382,6 +415,8 @@ final class BrainRowView: NSView, BrainSurfaceHost {
     }
 
     func refreshAll() {
+        let begun = CACurrentMediaTime()
+        defer { store?.noteSpent(CACurrentMediaTime() - begun) }
         syncBrowse()
         syncCard()
         requestPicture()

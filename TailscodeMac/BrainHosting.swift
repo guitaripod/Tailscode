@@ -65,6 +65,15 @@ protocol BrainSurfaceHost: AnyObject {
     func brainKeyApplies(_ event: NSEvent) -> Bool
     /// The context menu for a step, at the pointer.
     func presentMenu(forStep id: String, event: NSEvent, in view: NSView)
+    /// The words of the question this turn answers, for the account's Asked item.
+    var promptText: String? { get }
+    /// A relation chip is under the pointer (or none): the head lights the steps it names.
+    func relationHover(_ ids: [String]?)
+    /// The head dives into one zone, as a press on a zone's chip does.
+    func dive(into zone: NeuralZone)
+    /// The replay's scrubber moves to this fraction of the turn, and lets go of it.
+    func scrub(to fraction: Double)
+    func endScrub()
 }
 
 /// A view that holds the brain's keyboard: the window's key monitor lets its keys through.

@@ -22,8 +22,8 @@
     @MainActor
     enum BrainDrive {
         enum Scenario: String, CaseIterable {
-            case settled, working, thinking, writing, waiting, question, failed, stopped, offline,
-                compacting, large, largeRunning
+            case settled, working, thinking, writing, waiting, approval, question, failed, stopped,
+                offline, compacting, large, largeRunning
         }
 
         private static func say(_ line: String) {
@@ -270,7 +270,7 @@
         static func show(_ scenario: Scenario, in transcript: TranscriptViewController) {
             let live: Bool
             switch scenario {
-            case .working, .thinking, .writing, .waiting, .question, .largeRunning: live = true
+            case .working, .thinking, .writing, .waiting, .approval, .question, .largeRunning: live = true
             default: live = false
             }
             var messages =
@@ -291,6 +291,12 @@
             switch scenario {
             case .settled, .offline, .compacting, .writing, .thinking, .large:
                 break
+            case .approval:
+                markLastTool(&messages, .running)
+                commandLastTool(&messages, "swift build -c release 2>&1 | tail -20")
+                state.pendingPermissions = [
+                    PermissionRequest(id: "perm", sessionID: "demo", title: nil, toolName: "Bash")
+                ]
             case .working, .largeRunning:
                 markLastTool(&messages, .running)
             case .waiting:
@@ -354,6 +360,19 @@
                 messages[index].createdAt = messages[index].createdAt.addingTimeInterval(shift)
                 if let done = messages[index].completedAt {
                     messages[index].completedAt = done.addingTimeInterval(shift)
+                }
+            }
+        }
+
+        /// Makes the last tool call a shell command, so an approval has a command to show.
+        private static func commandLastTool(_ messages: inout [ChatMessage], _ command: String) {
+            for index in messages.indices.reversed() where messages[index].role == .assistant {
+                for part in messages[index].parts.indices.reversed() {
+                    guard case .tool(var call) = messages[index].parts[part].kind else { continue }
+                    call.name = "Bash"
+                    call.input = .object(["command": .string(command)])
+                    messages[index].parts[part].kind = .tool(call)
+                    return
                 }
             }
         }

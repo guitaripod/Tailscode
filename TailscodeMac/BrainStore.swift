@@ -79,6 +79,28 @@ final class BrainStore {
     private(set) var liveContext = NeuralBrainContext.none
     private(set) var isRunning = false
 
+    /// One number that changes whenever what the brain says about a message above the newest
+    /// turn may have changed: a turn other than the newest was read, forgotten or evicted, the
+    /// open brain or the newest turn's identity moved, a turn's old rows were listed or put away.
+    /// The rows of everything before the newest question are final while it stands, so the
+    /// transcript asks this one number instead of every message.
+    private(set) var shapeEpoch = 0
+
+    /// Seconds of the main thread's own time the store has spent reading turns and restating
+    /// views, for the bench that says what the brain adds to a streamed token.
+    private(set) var spent = 0.0
+    /// Time a view spent restating itself, whichever road asked.
+    func noteSpent(_ seconds: Double) {
+        spent += seconds
+        spentRestating += seconds
+    }
+
+    private(set) var spentReading = 0.0
+    private(set) var spentRestating = 0.0
+    private(set) var spentShaping = 0.0
+
+    private func bumpShape() { shapeEpoch &+= 1 }
+
     /// Asked to rebuild the rows after a choice the person made: a brain opened or closed, the old
     /// rows listed or put away.
     var onChange: (() -> Void)?
@@ -119,19 +141,23 @@ final class BrainStore {
 
     /// Reads the conversation's turns, brings each model to its turn and forgets nothing the open
     /// pages still hold. Returns nothing: the builder asks the store what to do per message.
-    func read(messages: [ChatMessage], running: Bool, awaiting: NeuralAwaiting) {
+    func read(
+        messages: [ChatMessage], running: Bool, awaiting: NeuralAwaiting, mayDefer: Bool = false
+    ) {
+        let begun = CACurrentMediaTime()
+        defer {
+            spent += CACurrentMediaTime() - begun
+            spentReading += CACurrentMediaTime() - begun
+        }
         guard isActive else {
             clear()
             return
         }
         isRunning = running
+        if running, mayDefer, deferTailRead(messages: messages, awaiting: awaiting) { return }
         if let kept = settledPrefix(for: messages, awaiting: awaiting) {
             let stamp = Self.structure(of: kept.tailAssistants)
             let now = CACurrentMediaTime()
-            if running, stamp == tailStamp, now - tailReadAt < max(Self.tailInterval, tailCost * 5) {
-                scheduleTailRefresh()
-                return
-            }
             tailStamp = stamp
             tailReadAt = now
             tailReads += 1
@@ -153,8 +179,38 @@ final class BrainStore {
         readWhole(messages: messages, running: running, awaiting: awaiting)
     }
 
+    /// Whether a token that only lengthened words in the turn being written can wait for the
+    /// timer: the same turn is held, its newest question is where it was, and no part, tool status
+    /// or completion changed since it was last read, all found from the newest turn's own messages
+    /// without comparing the conversation above it, which the caller has already found unchanged
+    /// (`mayDefer`). The reading is then made when the timer fires.
+    private func deferTailRead(messages: [ChatMessage], awaiting: NeuralAwaiting) -> Bool {
+        guard let held = settled, held.awaiting == awaiting, let stamp = tailStamp,
+            let cut = messages.lastIndex(where: { $0.role == .user }), cut == held.messages.count,
+            CACurrentMediaTime() - tailReadAt < max(Self.tailInterval, tailCost * 5)
+        else { return false }
+        var assistants: [ChatMessage] = []
+        for message in messages[cut...] where message.role == .assistant { assistants.append(message) }
+        guard Self.structure(of: assistants) == stamp else { return false }
+        scheduleTailRefresh()
+        return true
+    }
+
+    /// How many times and how long the store read the whole conversation, for the bench.
+    private(set) var wholeReads = 0
+    private(set) var contextChanges = 0
+    private(set) var restateCalls = 0
+    private(set) var restateWork = 0
+    private(set) var wholeCost = 0.0
+
     private func readWhole(messages: [ChatMessage], running: Bool, awaiting: NeuralAwaiting) {
-        let turns = cache.partition(messages: messages, running: running, awaiting: awaiting)
+        let begun = CACurrentMediaTime()
+        wholeReads += 1
+        defer { wholeCost += CACurrentMediaTime() - begun }
+        let turns = cache.partitionList(
+            messages: messages, running: running, awaiting: awaiting,
+            stablePrefix: verifiedPrefix(of: messages)
+        ).array
         adopt(turns: turns, keptOrder: nil, fresh: turns, running: running, messages: messages)
         remember(prefixOf: messages, turns: turns, awaiting: awaiting)
         tailStamp = nil
@@ -164,7 +220,7 @@ final class BrainStore {
     /// it: a token that lengthens a note is not news to the brain for a few frames, and the
     /// reading is the one cost that grows with the turn. A step arriving, a tool changing status or
     /// a turn ending changes the structure and is read at once.
-    static let tailInterval = 0.06
+    static let tailInterval = 0.25
     private var tailStamp: Int?
     private var tailReadAt = 0.0
     private var tailCost = 0.0
@@ -246,6 +302,14 @@ final class BrainStore {
         return assistants.isEmpty ? nil : (held, assistants)
     }
 
+    /// How many leading messages are exactly the ones the held prefix was made from, which the
+    /// turn cache then reads no turn of: 0 when nothing is held or something above moved.
+    private func verifiedPrefix(of messages: [ChatMessage]) -> Int {
+        guard let held = settled, messages.count >= held.messages.count else { return 0 }
+        for index in held.messages.indices where held.messages[index] != messages[index] { return 0 }
+        return held.messages.count
+    }
+
     private func remember(prefixOf messages: [ChatMessage], turns: [NeuralTurn], awaiting: NeuralAwaiting) {
         guard let cut = messages.lastIndex(where: { $0.role == .user }), cut > 0,
             let last = turns.last,
@@ -270,11 +334,13 @@ final class BrainStore {
         turns: [NeuralTurn], keptOrder: [String]?, fresh: [NeuralTurn], running: Bool,
         messages: [ChatMessage]
     ) {
+        let before = (latestTurnID, openTurnID)
         latestTurnID = turns.last?.id
         turnIDs = turns.map(\.id)
         openTurnID = NeuralOpenPolicy(
             turnIDs: turnIDs, isRunning: running, choices: choices
         ).openTurnID
+        if before.0 != latestTurnID || before.1 != openTurnID { bumpShape() }
         var ordered: [String] = keptOrder ?? []
         for turn in fresh where NeuralOpenPolicy.isBrain(turn: turn) {
             ordered.append(turn.id)
@@ -283,6 +349,7 @@ final class BrainStore {
                 guard entries[turn.id]!.turn != turn || entries[turn.id]!.context != context else {
                     continue
                 }
+                if turn.id != latestTurnID { bumpShape() }
                 forget(entries[turn.id]!)
                 entries[turn.id]!.model.update(turn: turn, context: context)
                 entries[turn.id]!.turn = turn
@@ -296,6 +363,7 @@ final class BrainStore {
                     boardKeys: [], answer: "", prompt: Self.prompt(before: turn, in: messages),
                     revision: 0)
                 finish(&made, messages: messages)
+                if turn.id != latestTurnID { bumpShape() }
                 entries[turn.id] = made
                 remember(made, id: turn.id)
                 arrival.append(turn.id)
@@ -310,7 +378,9 @@ final class BrainStore {
     /// of the newest brain changed, so a caller restates only then.
     @discardableResult
     func setContext(_ context: NeuralBrainContext) -> Bool {
+        let context = Self.settled(context, against: liveContext)
         guard context != liveContext else { return false }
+        contextChanges += 1
         liveContext = context
         guard let id = latestTurnID, entries[id] != nil, entries[id]!.context != context else {
             return false
@@ -321,11 +391,30 @@ final class BrainStore {
         return true
     }
 
+    /// The context with its fill kept as it was while the fill has not moved by anything the head
+    /// can show: the window's fill is estimated from the words so far and so changes by a few
+    /// tokens at every token, but the head wears it as a share, and a share that has not moved a
+    /// percent is not news to restate every view for.
+    private static func settled(
+        _ context: NeuralBrainContext, against held: NeuralBrainContext
+    ) -> NeuralBrainContext {
+        guard let old = held.fill, let new = context.fill, old.window == new.window,
+            old.model == new.model, old.basis == new.basis, old.tone == new.tone,
+            old.percent == new.percent, old.percent != nil || old.used / 1000 == new.used / 1000
+        else { return context }
+        var kept = context
+        kept.fill = old
+        return kept
+    }
+
     func clear() {
+        bumpShape()
         settled = nil
         tailStamp = nil
         tailTimer?.invalidate()
         tailTimer = nil
+        restateTimer?.invalidate()
+        restateTimer = nil
         guard !entries.isEmpty || !order.isEmpty else { return }
         entries = [:]
         order = []
@@ -373,6 +462,7 @@ final class BrainStore {
         openTurnID = NeuralOpenPolicy(
             turnIDs: turnIDs, isRunning: isRunning, choices: choices
         ).openTurnID
+        bumpShape()
         onChange?()
     }
 
@@ -427,6 +517,7 @@ final class BrainStore {
     /// Rows puts the steps' old rows inline under that turn's brain, and puts them away again.
     func toggleRows(_ turnID: String) {
         if rowsShown.contains(turnID) { rowsShown.remove(turnID) } else { rowsShown.insert(turnID) }
+        bumpShape()
         onChange?()
     }
 
@@ -449,15 +540,40 @@ final class BrainStore {
         for view in views.allObjects { view.viewportMoved() }
     }
 
+    /// The least time between two restatements of the views: one frame. Tokens that arrive inside
+    /// it are one restatement, made when the frame is over.
+    static let restateSpacing = 1.0 / 60
+    private var restatedAt = 0.0
+    private var restateTimer: Timer?
+
+    /// Asks the views to restate themselves, at most once a frame. A row whose model did not move
+    /// since it last restated does nothing.
     func restateViews() {
-        for view in views.allObjects { view.refresh() }
+        let now = CACurrentMediaTime()
+        let wait = Self.restateSpacing - (now - restatedAt)
+        guard wait > 0 else {
+            restateNow()
+            return
+        }
+        guard restateTimer == nil else { return }
+        restateTimer = Timer.scheduledTimer(withTimeInterval: wait, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.restateNow() }
+        }
+    }
+
+    private func restateNow() {
+        restateTimer?.invalidate()
+        restateTimer = nil
+        restatedAt = CACurrentMediaTime()
+        restateCalls += 1
+        for view in views.allObjects where view.refresh() { restateWork += 1 }
     }
 
     /// The newest head while its turn is running: its duration moves once a second with no state to
     /// carry it, so the pane's own second asks for it.
     func restateLive() {
         guard isRunning, let id = latestTurnID else { return }
-        for view in views.allObjects where view.row.turnID == id { view.refresh() }
+        for view in views.allObjects where view.row.turnID == id { view.refresh(force: true) }
     }
 
     /// A pane that parks gives up every head it owns, and the process's textures with the last of
@@ -482,6 +598,8 @@ final class BrainStore {
     /// the brain's own row stands where the turn's first step was. Card rows (an agent, a workflow,
     /// a board, a question) stay, each at its own place.
     func shape(_ rows: [TranscriptRow], of message: ChatMessage) -> [TranscriptRow] {
+        let begun = CACurrentMediaTime()
+        defer { spent += CACurrentMediaTime() - begun }
         guard let turnID = messageTurn[message.id], let held = entries[turnID] else { return rows }
         let listsRows = rowsShown.contains(turnID)
         let needsBrain = held.anchorMessageID == message.id
@@ -584,6 +702,7 @@ final class BrainStore {
 
     private func evict() {
         let keep = Set(order)
+        bumpShape()
         while arrival.count > Self.capacity {
             let oldest = arrival.removeFirst()
             guard !keep.contains(oldest), let held = entries[oldest] else { continue }

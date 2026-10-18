@@ -196,7 +196,8 @@ final class AccountSaidCell: AccountCell {
         let chipSize = chip.fittingSize
         let copySize = copy.fittingSize
         let replySize = reply.fittingSize
-        actionsStacked = y >= 2 + chipSize.height + 4 + copySize.height + 4 + replySize.height
+        let stackHeight = 2 + chipSize.height + 4 + copySize.height + 4 + replySize.height + 2
+        actionsStacked = isCursor || y >= stackHeight
         let right = width - 6
         if actionsStacked {
             chip.frame = CGRect(x: right - chipSize.width, y: 2, width: chipSize.width, height: chipSize.height)
@@ -209,7 +210,7 @@ final class AccountSaidCell: AccountCell {
             reply.frame = CGRect(x: chip.frame.minX - 6 - replySize.width, y: 0, width: replySize.width, height: replySize.height)
             copy.frame = CGRect(x: reply.frame.minX - 6 - copySize.width, y: 0, width: copySize.width, height: copySize.height)
         }
-        let result = max(y, actionsStacked ? y : 26)
+        let result = max(y, actionsStacked ? (isCursor ? stackHeight : y) : 26)
         setFrameSize(NSSize(width: width, height: result))
         needsDisplay = true
         return result

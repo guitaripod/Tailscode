@@ -37,6 +37,10 @@
     enum DriveHooks {
         private static weak var main: MainWindowController?
 
+        /// How many verbs of the script have not run yet, so a photograph taken from inside the
+        /// process waits for the last of them instead of for a clock that a busy machine outruns.
+        private(set) static var pending = 0
+
         static func install(
             main: MainWindowController?,
             script: String? = ProcessInfo.processInfo.environment["TAILSCODE_DRIVE"]
@@ -47,8 +51,12 @@
                 let parts = step.split(separator: ":", maxSplits: 1)
                 guard parts.count == 2, let delay = Int(parts[0]) else { continue }
                 let action = String(parts[1])
+                pending += 1
                 DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(delay)) {
-                    MainActor.assumeIsolated { perform(action, at: delay) }
+                    MainActor.assumeIsolated {
+                        perform(action, at: delay)
+                        pending -= 1
+                    }
                 }
             }
         }

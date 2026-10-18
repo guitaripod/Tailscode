@@ -109,7 +109,7 @@ final class AccountHeaderView: AccountBlock {
         let counts = AccountType.width(content.vitals.counts, .rowStamp)
         let chip = filtered.isHidden ? 0 : filtered.fittingSize.width + 10
         let sentence = sentenceWidth(content)
-        let single = !content.multiline && identity + 12 + pillSize.width + 12 + min(sentence, 160) + 12 + chip + counts <= avail
+        let single = !content.multiline && identity + 12 + pillSize.width + 12 + sentence + 12 + chip + counts <= avail
         var height: CGFloat
         if single {
             height = 40

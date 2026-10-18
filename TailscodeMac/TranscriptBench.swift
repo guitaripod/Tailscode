@@ -24,6 +24,15 @@ enum TranscriptBench {
             print("usage: TailscodeMac --bench <transcript.json …> | tiles=N[:R:K:S] | tiles [<transcript.json …>]")
             exit(2)
         }
+        if let spec = paths.first, spec.hasPrefix("brain-stream") {
+            let pieces = spec.split(separator: "=").dropFirst().first.map { $0.split(separator: ":") } ?? []
+            let sizes = pieces.first.map { $0.split(separator: ",").compactMap { Int($0) } }
+                ?? [100, 600, 2400]
+            let only = pieces.dropFirst().first.flatMap { BrainStreamBench.Mode(rawValue: String($0)) }
+            let count = pieces.dropFirst(2).first.flatMap { Int($0) }
+            BrainStreamBench.run(sizes: sizes, only: only, tokens: count ?? (only == nil ? nil : 600))
+            exit(0)
+        }
         if paths.first == "tiles" {
             TileCanvasBench.run()
         }

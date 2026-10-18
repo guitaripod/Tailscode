@@ -232,12 +232,16 @@ final class TranscriptRowBuilder {
             prefix = nil
         }
         let brains = brains.flatMap { $0.isActive ? $0 : nil }
+        let verified = prefixHolds(messages, turnOpen: turnOpen)
         if let brains {
-            brains.read(messages: messages, running: turnOpen, awaiting: awaiting)
+            brains.read(
+                messages: messages, running: turnOpen, awaiting: awaiting, mayDefer: verified)
         } else {
             self.brains?.clear()
         }
-        if let rows = extended(messages, turnOpen: turnOpen, brains: brains) { return rows }
+        if let rows = extended(messages, turnOpen: turnOpen, brains: brains, prefixHolds: verified) {
+            return rows
+        }
         return rebuilt(messages, turnOpen: turnOpen, brains: brains)
     }
 
@@ -285,12 +289,14 @@ final class TranscriptRowBuilder {
         return (rows, (message, prompt?.id, sealed, folded, trailing, shaped))
     }
 
-    /// What the brain says about a run of messages, as one number: whether each is in a head, which
-    /// revision of it, whether the head is open and whether its old rows are listed.
+    /// What the brain says about the messages above the newest turn, as one number: the store's
+    /// shape epoch moves when any turn's membership, revision, openness or listed rows may have, and
+    /// the count says how long a run it is for.
     private func stamp(of messages: ArraySlice<ChatMessage>, brains: BrainStore?) -> Int {
         var hasher = Hasher()
         guard let brains else { return hasher.finalize() }
-        for message in messages { hasher.combine(brains.stamp(forMessage: message.id)) }
+        hasher.combine(brains.shapeEpoch)
+        hasher.combine(messages.count)
         return hasher.finalize()
     }
 
@@ -351,19 +357,29 @@ final class TranscriptRowBuilder {
         return result
     }
 
+    /// Whether the held prefix is still what the conversation begins with: the same openness, a
+    /// newest question where the prefix ends, and every message above it the message it was. One
+    /// comparison per rebuild, made before the brain reads, so that a change far up the page is
+    /// never waited on.
+    private func prefixHolds(_ messages: [ChatMessage], turnOpen: Bool) -> Bool {
+        guard let held = prefix, held.turnOpen == turnOpen, messages.count > held.messages.count,
+            messages[held.messages.count].role == .user
+        else { return false }
+        for index in held.messages.indices where held.messages[index] != messages[index] {
+            return false
+        }
+        return true
+    }
+
     /// The newest turn laid out on top of a prefix that has not moved, or nil when something in the
     /// prefix did, the newest turn holds a plan (whose board may be promoted from an earlier
     /// call), or there is no prefix yet: the whole conversation is then laid out again.
     private func extended(
-        _ messages: [ChatMessage], turnOpen: Bool, brains: BrainStore?
+        _ messages: [ChatMessage], turnOpen: Bool, brains: BrainStore?, prefixHolds: Bool
     ) -> [TranscriptRow]? {
-        guard let held = prefix, held.turnOpen == turnOpen, messages.count > held.messages.count,
-            messages[held.messages.count].role == .user,
+        guard prefixHolds, let held = prefix,
             stamp(of: messages[..<held.messages.count], brains: brains) == held.stamp
         else { return nil }
-        for index in held.messages.indices where held.messages[index] != messages[index] {
-            return nil
-        }
         let from = held.messages.count
         let writing = messages.last?.id
         var prompt = held.prompt

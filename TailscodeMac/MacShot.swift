@@ -320,10 +320,23 @@ enum MacShot {
                     arrange()
                     try? await Task.sleep(for: .milliseconds(300))
                 }
+                #if DEBUG
+                    let patience = ContinuousClock.now.advanced(by: .seconds(90))
+                    while DriveHooks.pending > 0, ContinuousClock.now < patience {
+                        arrange()
+                        try? await Task.sleep(for: .milliseconds(300))
+                    }
+                #endif
                 arrange()
                 if environment["TAILSCODE_LIVE_HIDE_MAIN"] == "1" { main?.alphaValue = 0 }
                 try? await Task.sleep(for: .milliseconds(900))
-                capture(to: path)
+                for attempt in 0..<10 {
+                    capture(to: path)
+                    guard lastWasBlank else { break }
+                    print("LIVESHOT the display came back black, asking again (\(attempt + 1))")
+                    arrange()
+                    try? await Task.sleep(for: .milliseconds(600))
+                }
                 exit(0)
             }
         }
@@ -446,6 +459,21 @@ enum MacShot {
 
         static func snap(to path: String) { capture(to: path) }
 
+        /// Whether the last picture the display gave was one flat black: the window server answers so
+        /// when the virtual display has not been composed yet, and a picture of nothing is retaken.
+        private static var lastWasBlank = false
+
+        private static func isBlank(_ image: CGImage) -> Bool {
+            guard let data = image.dataProvider?.data, let bytes = CFDataGetBytePtr(data) else { return false }
+            let count = CFDataGetLength(data)
+            var offset = 0
+            while offset + 2 < count {
+                if bytes[offset] != 0 || bytes[offset + 1] != 0 || bytes[offset + 2] != 0 { return false }
+                offset += 4 * 97
+            }
+            return true
+        }
+
         private static func capture(to path: String) {
             guard let screen,
                 let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")]
@@ -455,6 +483,7 @@ enum MacShot {
                 return
             }
             let bounds = CGDisplayBounds(CGDirectDisplayID(number.uint32Value))
+            lastWasBlank = false
             guard let image = windowListImage(of: bounds),
                 let destination = CGImageDestinationCreateWithURL(
                     URL(fileURLWithPath: path) as CFURL, UTType.png.identifier as CFString, 1, nil)
@@ -462,6 +491,7 @@ enum MacShot {
                 FileHandle.standardError.write(Data("LIVESHOT could not read the display\n".utf8))
                 return
             }
+            lastWasBlank = isBlank(image)
             CGImageDestinationAddImage(destination, image, nil)
             guard CGImageDestinationFinalize(destination) else {
                 FileHandle.standardError.write(Data("LIVESHOT could not encode\n".utf8))

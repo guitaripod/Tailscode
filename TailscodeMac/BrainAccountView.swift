@@ -55,6 +55,9 @@ final class BrainAccountView: NSView, BrainKeyTaker {
     let narrowBar: AccountNarrowBar
     let scroll = AccountScrollView()
     let document = AccountDocumentView()
+    /// The one painter of a step's row, the list's own, so the story's unfolded rows and the list
+    /// beside the head draw the same pixels.
+    let rowPainter: BrainRowPainter
     let followPill: AccountButton
     let footerStrip: AccountFooterStrip
     var askView: AccountAskView?
@@ -136,7 +139,8 @@ final class BrainAccountView: NSView, BrainKeyTaker {
         narrowBar = AccountNarrowBar(paint: paint)
         footerStrip = AccountFooterStrip(paint: paint)
         followPill = AccountButton(title: AccountWords.followingPaused, style: .pill, paint: paint)
-        let prompt = (host as? BrainRowView)?.store?.entry(host.turnID)?.prompt
+        rowPainter = BrainRowPainter(inks: host.inks)
+        let prompt = host.promptText
         let answer = host.answerText
         account = host.model.account(answer: answer.isEmpty ? nil : answer, prompt: prompt)
         super.init(frame: .zero)
@@ -189,9 +193,13 @@ final class BrainAccountView: NSView, BrainKeyTaker {
     nonisolated override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
+    /// The items are made here, in the layout pass that gives the story its size, and never from
+    /// a block deferred to a later turn: items made after the row had been laid out are not put
+    /// in the layer tree until something else makes the window redraw, and the story stays blank.
     override func layout() {
         super.layout()
         layoutAccount()
+        if needsRealizeNow() { realize() }
     }
 
     override func viewDidMoveToWindow() {
@@ -207,8 +215,7 @@ final class BrainAccountView: NSView, BrainKeyTaker {
     var reduceMotion: Bool { host?.reduceMotion ?? false }
 
     var promptText: String? {
-        guard let host else { return nil }
-        return (host as? BrainRowView)?.store?.entry(host.turnID)?.prompt
+        host?.promptText
     }
 
     var answerOrNil: String? {
@@ -320,6 +327,7 @@ final class BrainAccountView: NSView, BrainKeyTaker {
     }
 
     func retheme() {
+        if let host { rowPainter.reset(inks: host.inks) }
         header.show(headerContent())
         footerStrip.paint = paint
         followPill.paint = paint
@@ -342,18 +350,10 @@ final class BrainAccountView: NSView, BrainKeyTaker {
         scheduleRealize()
     }
 
-    /// The items are made again. Items first made while the account was still transparent through
-    /// a move are never painted when it becomes opaque, so the end of the move builds them anew.
-    private func rebuildItems() {
-        for cell in cells.values { cell.stale = true }
-        realize()
-    }
-
     func setBodyAlpha(_ alpha: Double) {
         bodyAlpha = CGFloat(alpha)
         if alpha >= 1 {
             alphaValue = 1
-            rebuildItems()
         }
         for view in [scroll, footerStrip, followPill] as [NSView] { view.alphaValue = bodyAlpha }
         for view in [askView, nowView, planView] as [NSView?] { view?.alphaValue = bodyAlpha }
