@@ -363,7 +363,7 @@ extension BrainAccount {
         gtk_widget_set_valign(text, expanded ? GTK_ALIGN_START : GTK_ALIGN_CENTER)
         gtk_box_append(ptr(root), text)
         let room = boxWidth - 19 - 8 - 18 - 10 - 44 - 10
-        let truncated = BrainDraw.measure(thought.firstLine, fonts.note) > room
+        let truncated = BrainDraw.measure(thought.firstLine, fonts.noteNatural) > room
         if thought.canUnfold || truncated {
             let id = entry.id
             let ref = self.ref

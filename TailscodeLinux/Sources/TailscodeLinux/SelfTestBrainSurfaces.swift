@@ -149,10 +149,15 @@ extension SelfTest {
             card.hasPicture && card.visibleChipCount > 0 && card.digestVisible || wide.view.density == .compact,
             "the card has its picture, its chips and its digest")
         let rowHeight = Int(gtk_widget_get_height(wide.widget))
-        let metrics = NeuralStageMetrics.make(width: 760, density: wide.view.density)
+        let metrics = NeuralStageMetrics.make(
+            width: 760, density: wide.view.density,
+            cardMinHeight: BrainCard.neededHeight(for: wide.view, width: 760))
         try expect(
             abs(Double(rowHeight) - metrics.card.height) <= 1,
             "the card is \(Int(metrics.card.height)) points tall at this density (\(rowHeight))")
+        try expect(
+            metrics.card.height == NeuralStageMetrics.make(width: 760, density: wide.view.density).card.height,
+            "which is the design's height at the design's type size")
         let digest = card.digestText
         try expect(
             digest.isEmpty || card.card.digest(fitting: Int.max).hasPrefix(String(digest.prefix(12)))
@@ -161,6 +166,8 @@ extension SelfTest {
         try expect(
             gtk_widget_get_focusable(wide.widget) != 0 && gtk_widget_get_cursor(wide.widget) != nil,
             "the whole card takes the keyboard and shows a hand")
+
+        try checkBrainEnlargedType(expect, closed: closed, policy: policy)
 
         let before = BrainPictures.renders
         var beds: [BrainBed] = []
@@ -222,6 +229,43 @@ extension SelfTest {
         }
         wide.close()
         BrainCompositors.dropIdle(olderThan: 0)
+    }
+
+    /// Under a zoom the design's fixed card height and list rows do not grow, so the words must:
+    /// the card is as tall as its column of words, and a list row's type is drawn at the largest
+    /// size its row holds.
+    private static func checkBrainEnlargedType(
+        _ expect: (Bool, String) throws -> Void, closed: BrainRow, policy: @escaping () -> NeuralOpenPolicy?
+    ) throws {
+        tailscode_set_text_scale(1.6)
+        BrainCard.forgetNeeds()
+        defer {
+            tailscode_set_text_scale(1.0)
+            BrainCard.forgetNeeds()
+        }
+        let big = try BrainBed(row: closed, width: 760, key: "st-card-big", policy: policy)
+        _ = brainPump(8) { big.view.card.hasContent }
+        _ = brainPump(0.4)
+        let card = big.view.card!
+        var natural: Int32 = 0
+        let column = Int32(big.view.currentMetrics.card.text.width)
+        gtk_widget_measure(card.text, GTK_ORIENTATION_VERTICAL, column, nil, &natural, nil, nil)
+        let height = Double(gtk_widget_get_height(big.widget))
+        try expect(
+            height >= Double(natural),
+            "a card under 1.6 times the type is as tall as its words (\(Int(height)) for \(natural))")
+        try expect(
+            height >= NeuralStageMetrics.make(width: 760, density: big.view.density).card.height,
+            "and never shorter than the design's height")
+        big.close()
+        let fonts = BrainListFonts()
+        try expect(
+            BrainDraw.lineHeight(of: fonts.title) <= BrainListFonts.singleLine
+                && BrainDraw.lineHeight(of: fonts.note) <= BrainListFonts.saidLineMax,
+            "a list row's type fits its 28 point row under the same zoom")
+        try expect(
+            fonts.saidLineHeight * 2 + 4 <= NeuralStepList.saidRowHeight,
+            "and a said message's two lines fit its 40 point row (\(fonts.saidLineHeight) a line)")
     }
 
     // MARK: geometry

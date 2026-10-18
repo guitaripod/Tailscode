@@ -100,9 +100,10 @@ struct BrainRowPainter {
                 height: rowH, width: room, color: inks.dim, alpha: alpha)
         } else if said {
             let room = max(0, textLimit - 83)
+            let top = y + max(2, (rowH - 2 * fonts.saidLineHeight) / 2)
             _ = tailscode_text_draw(
-                cr, row.lines.joined(separator: " "), fonts.note, 83, y + 4, room, 0, 2, inks.ink.red, inks.ink.green,
-                inks.ink.blue, alpha)
+                cr, row.lines.joined(separator: " "), fonts.saidLine, 83, top, room, 0, 2, inks.ink.red,
+                inks.ink.green, inks.ink.blue, alpha)
         } else {
             let room = max(0, textLimit - 83)
             BrainDraw.line(
@@ -216,7 +217,18 @@ extension BrainDraw {
         cairo_restore(cr)
     }
 
-    /// A Pango font description with its size multiplied.
+    /// A Pango font description with its size multiplied and nothing else changed; the size may
+    /// carry a unit, as GTK writes it (`22.18px`).
+    static func resized(_ font: String, by factor: Double) -> String {
+        var parts = font.split(separator: " ").map(String.init)
+        guard let last = parts.last else { return font }
+        let unit = last.hasSuffix("px") ? "px" : last.hasSuffix("pt") ? "pt" : ""
+        guard let size = Double(last.dropLast(unit.count)) else { return font }
+        parts[parts.count - 1] = String(format: "%.2f", size * factor) + unit
+        return parts.joined(separator: " ")
+    }
+
+    /// A Pango font description with its size multiplied, set bold.
     static func scaled(_ font: String, by factor: Double) -> String {
         var parts = font.split(separator: " ").map(String.init)
         guard let last = parts.last, let size = Double(last) else { return font }

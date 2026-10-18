@@ -450,13 +450,15 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     ///     chips rather than a panel.
     ///   - rows: the number of list rows to show; by default 8, or 9 from a 1200 row, or the
     ///     viewport rule when `viewportHeight` is given.
+    ///   - cardMinHeight: the height the card's own words need where the type is larger than the
+    ///     design's; the card is never shorter than its density says and grows to this.
     public static func make(
         width rawWidth: Double, density: ChatDensity, input: ChatInput = .pointer,
         zonesWithSteps: Int = NeuralZone.allCases.count, rows: Int? = nil,
-        viewportHeight: Double? = nil
+        viewportHeight: Double? = nil, cardMinHeight: Double = 0
     ) -> NeuralStageMetrics {
         let width = max(rawWidth, 0)
-        let card = makeCard(width: width, density: density)
+        let card = makeCard(width: width, density: density, minHeight: cardMinHeight)
         let rowHeight = listRowHeight(input: input)
         let footerHeight: Double = density == .compact ? 30 : 36
         let footerGap: Double = density == .compact ? 6 : 8
@@ -536,10 +538,10 @@ public struct NeuralStageMetrics: Sendable, Equatable {
         arrangement == .split ? rowHeight : rowHeight + accordionContentMaxHeight
     }
 
-    private static func makeCard(width: Double, density: ChatDensity) -> Card {
+    private static func makeCard(width: Double, density: ChatDensity, minHeight: Double) -> Card {
         let layout = cardLayout(width: width)
         let comfortable = density == .comfortable
-        let height: Double = comfortable ? 112 : 84
+        let height = max(comfortable ? 112.0 : 84.0, minHeight.rounded(.up))
         let spacious = comfortable && layout == .wide
         let pictureWidth: Double = spacious ? 132 : 100
         let pictureHeight: Double = spacious ? 96 : 72

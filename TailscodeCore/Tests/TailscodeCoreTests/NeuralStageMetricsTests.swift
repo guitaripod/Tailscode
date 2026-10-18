@@ -39,6 +39,23 @@ struct NeuralStageMetricsTests {
         }
     }
 
+    @Test("a card grows to the height its words need under larger type and never shrinks under the design's")
+    func cardGrowsToItsWords() {
+        let design = M.make(width: 700, density: .compact)
+        #expect(M.make(width: 700, density: .compact, cardMinHeight: 60).cardHeight == 84)
+        #expect(M.make(width: 700, density: .compact, cardMinHeight: 0).cardHeight == design.cardHeight)
+        let grown = M.make(width: 700, density: .compact, cardMinHeight: 100.2)
+        #expect(grown.cardHeight == 101)
+        #expect(grown.card.picture.height == 72)
+        #expect(grown.card.picture.y == 14)
+        #expect(grown.card.text.height == 101)
+        #expect(grown.card.picture.x == design.card.picture.x)
+        #expect(grown.rowHeight == design.rowHeight)
+        let narrow = M.make(width: 380, density: .compact, cardMinHeight: 140)
+        #expect(narrow.cardHeight == 140)
+        #expect(narrow.card.picture.maxY <= 140)
+    }
+
     @Test("a narrow row uses the Compact picture and the narrow layout, whatever the density")
     func narrowCard() {
         for width in [380.0, 459] {

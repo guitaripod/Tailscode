@@ -11,6 +11,7 @@ struct BrainListFonts {
     let argument: String
     let number: String
     let note: String
+    let noteNatural: String
     let status: String
     let count: String
     let cap: String
@@ -18,23 +19,38 @@ struct BrainListFonts {
     let panelCount: String
     let pill: String
     let said: String
+    let saidLine: String
+    let saidLineHeight: Double
     let lineHeight: Double
     let monoWidth: Double
     let capHeight: Double
 
+    /// The tallest line a one-line row of 28 points can carry and the tallest of the two lines a
+    /// said row of 40 points holds, which also sets the size of a thought's one line so the two
+    /// read as one voice. The rows are the design's fixed geometry, so type enlarged by the zoom or
+    /// by the prose scale is drawn at the largest size a row holds and never over its neighbour.
+    static let singleLine = 20.0
+    static let saidLineMax = 18.0
+
     init() {
-        func probe(_ css: String) -> String { BrainUI.font(of: BrainUI.label("A", css)) }
+        func probe(_ css: String, line: Double = BrainListFonts.singleLine) -> String {
+            BrainDraw.fitted(BrainUI.font(of: BrainUI.label("A", css)), toLine: line)
+        }
         title = probe("bn-lr-title")
         argument = probe("bn-lr-arg")
         number = probe("bn-lr-no")
-        note = probe("bn-lr-note")
+        let rawNote = BrainUI.font(of: BrainUI.label("A", "bn-lr-note"))
+        note = BrainDraw.fitted(rawNote, toLine: BrainListFonts.saidLineMax)
+        noteNatural = rawNote
+        saidLine = note
         status = probe("bn-lr-status")
         count = probe("bn-lr-count")
         cap = probe("bn-lr-cap")
         panelName = probe("bn-lr-panel")
         panelCount = probe("bn-lr-panelcount")
         pill = probe("bn-lr-pill")
-        said = BrainDraw.scaled(probe("bn-lr-panel"), by: 1)
+        said = BrainDraw.scaled(BrainUI.font(of: BrainUI.label("A", "bn-lr-panel")), by: 1)
+        saidLineHeight = BrainDraw.lineHeight(of: saidLine)
         var width = 0.0
         var height = 0.0
         tailscode_text_measure("MMMMMMMMMMMMMMMMMMMM", argument, 0, 1, &width, &height)
@@ -64,6 +80,26 @@ enum BrainDraw {
         var height = 0.0
         tailscode_text_measure(text, font, 0, 1, &width, &height)
         return width
+    }
+
+    /// The height of one line of `font`.
+    static func lineHeight(of font: String) -> Double {
+        var width = 0.0
+        var height = 0.0
+        tailscode_text_measure("Mg", font, 0, 1, &width, &height)
+        return height
+    }
+
+    /// `font` with its size reduced until one of its lines is no taller than `line`; a font that
+    /// already fits is returned as it is.
+    static func fitted(_ font: String, toLine line: Double) -> String {
+        var fitted = font
+        for _ in 0..<4 {
+            let height = lineHeight(of: fitted)
+            guard height > line, height > 0 else { break }
+            fitted = resized(fitted, by: min(line / height, 0.97))
+        }
+        return fitted
     }
 
     @discardableResult

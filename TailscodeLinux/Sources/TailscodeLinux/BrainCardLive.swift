@@ -30,15 +30,22 @@ final class BrainCardLive {
         let wordHeight: Double
         let lineHeight: Double
 
+        /// The tallest line the 28 point headline band and the 22 point NOW band carry; the live
+        /// card is drawn on those bands, so larger type is drawn at the largest size they hold.
+        static let headLine = 26.0
+        static let nowLine = 20.0
+
         init() {
-            func probe(_ css: String) -> String { BrainUI.font(of: BrainUI.label("A", css)) }
-            word = probe("bn-live-word")
-            counts = probe("bn-live-counts")
-            title = probe("bn-lc-title")
-            argument = probe("bn-lc-arg")
-            output = probe("bn-lc-out")
-            quote = probe("bn-lc-quote")
-            speaker = probe("bn-lc-speaker")
+            func probe(_ css: String, line: Double) -> String {
+                BrainDraw.fitted(BrainUI.font(of: BrainUI.label("A", css)), toLine: line)
+            }
+            word = probe("bn-live-word", line: Self.headLine)
+            counts = probe("bn-live-counts", line: Self.nowLine)
+            title = probe("bn-lc-title", line: Self.nowLine)
+            argument = probe("bn-lc-arg", line: Self.nowLine)
+            output = probe("bn-lc-out", line: Self.nowLine)
+            quote = probe("bn-lc-quote", line: Self.nowLine)
+            speaker = probe("bn-lc-speaker", line: Self.nowLine)
             func height(_ font: String) -> Double {
                 var width = 0.0
                 var height = 0.0

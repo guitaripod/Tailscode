@@ -55,7 +55,8 @@ final class BrainView: @unchecked Sendable {
     private var replayWhenOpen = false
     var announcement: String?
 
-    private var metricsMemo: (width: Double, density: ChatDensity, zones: Int, viewport: Int, value: NeuralStageMetrics)?
+    private var metricsMemo:
+        (width: Double, density: ChatDensity, zones: Int, viewport: Int, need: Double, value: NeuralStageMetrics)?
     private var lastWidth = 0.0
     private var lastDensity = ChatDensity.comfortable
     private var scaleFactor = 1
@@ -255,14 +256,16 @@ final class BrainView: @unchecked Sendable {
         let zones = model.browseState.list.zoneChips.count
         let viewport = host?.viewportHeight
         let bucket = Int((viewport ?? 0) / 8)
+        let need = BrainCard.neededHeight(for: self, width: width)
         if let memo = metricsMemo, memo.width == width, memo.density == density, memo.zones == zones,
-            memo.viewport == bucket
+            memo.viewport == bucket, memo.need == need
         {
             return memo.value
         }
         let made = NeuralStageMetrics.make(
-            width: width, density: density, zonesWithSteps: max(zones, 1), viewportHeight: viewport)
-        metricsMemo = (width, density, zones, bucket, made)
+            width: width, density: density, zonesWithSteps: max(zones, 1), viewportHeight: viewport,
+            cardMinHeight: need)
+        metricsMemo = (width, density, zones, bucket, need, made)
         return made
     }
 
@@ -557,6 +560,7 @@ final class BrainView: @unchecked Sendable {
 
     /// The palette or the face changed: the colours are made again and the head is drawn afresh.
     func rethemed() {
+        metricsMemo = nil
         inks = BrainInks(palette: MatrixTheme.palette, face: model.face)
         stage?.retheme()
         card.retheme()

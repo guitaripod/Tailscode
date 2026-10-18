@@ -164,6 +164,7 @@ final class BrainCard: @unchecked Sendable {
     }
 
     func retheme() {
+        Self.forgetNeeds()
         resetLiveFonts()
         dropLivePictures()
         liveLowKey = nil
@@ -195,6 +196,55 @@ final class BrainCard: @unchecked Sendable {
     }
 
     var layoutClass: NeuralStageMetrics.CardLayout { layout }
+
+    private struct NeedKey: Hashable {
+        let density: ChatDensity
+        let narrow: Bool
+    }
+
+    private nonisolated(unsafe) static var needs: [NeedKey: Double] = [:]
+
+    /// The air a card keeps above and below its words.
+    private static let needAir = 2.0
+
+    /// What a changed type scale or palette makes stale: the heights measured under the old one.
+    static func forgetNeeds() { needs = [:] }
+
+    /// The height the card's words need in a row `width` points wide, which the design's fixed
+    /// card height holds at the design's type size and a zoomed or enlarged type does not. It is
+    /// measured with the third line standing, the agent's words or what the turn is doing now,
+    /// so a card does not change height when that line arrives, and on a card made for the
+    /// purpose and kept for every card of the same shape: a conversation of three hundred turns
+    /// measures a handful of cards, never one per turn.
+    static func neededHeight(for owner: BrainView, width: Double) -> Double {
+        let narrow = NeuralStageMetrics.cardLayout(width: width) == .narrow
+        let key = NeedKey(density: owner.density, narrow: narrow)
+        if let known = needs[key] { return known }
+        let measured = BrainCard(owner: owner).measuredNeed(narrow: narrow)
+        needs[key] = measured
+        return measured
+    }
+
+    /// Builds this card's words in a row of a representative width, measures the column they stand
+    /// in, and lets the card go.
+    private func measuredNeed(narrow: Bool) -> Double {
+        let sampleWidth = narrow ? 420.0 : 900.0
+        let metrics = NeuralStageMetrics.make(width: sampleWidth, density: owner.density)
+        layout = metrics.card.layout
+        width = sampleWidth
+        ensureContent()
+        if !narrow, let digest = digestLabel { gtk_widget_set_visible(digest, 1) }
+        let column = Int32(metrics.card.text.width)
+        var textHeight: Int32 = 0
+        gtk_widget_measure(text, GTK_ORIENTATION_VERTICAL, column, nil, &textHeight, nil, nil)
+        var buttonsHeight: Int32 = 0
+        if narrow { gtk_widget_measure(buttons, GTK_ORIENTATION_VERTICAL, -1, nil, &buttonsHeight, nil, nil) }
+        for widget in widgets {
+            g_object_ref_sink(UnsafeMutableRawPointer(widget))
+            g_object_unref(UnsafeMutableRawPointer(widget))
+        }
+        return Double(textHeight + buttonsHeight) + (narrow ? 6 : 0) + Self.needAir
+    }
 
     /// What a card of this width shows: Core's reading of the width, limited to what the narrow
     /// composition has room for.
@@ -334,6 +384,7 @@ final class BrainCard: @unchecked Sendable {
     private func buildContent() {
         hasContent = true
         builtDensity = owner.density
+        gtk_box_set_spacing(ptr(text), owner.density == .compact ? 3 : 6)
         contentSignature = Self.signature(of: card)
         Gtk.removeChildren(of: text)
         chipWidgets = []
