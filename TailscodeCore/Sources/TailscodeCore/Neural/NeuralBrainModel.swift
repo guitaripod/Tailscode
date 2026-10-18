@@ -14,10 +14,16 @@ public struct NeuralBrainContext: Sendable, Equatable {
     public var providerID: String?
     /// The levels the answering model lists, which place an effort word the table has not met.
     public var effortOptions: [String]
+    /// The level the conversation is on, for a turn whose own messages recorded none: a Claude
+    /// transcript does not say what a turn ran at, and a turn drawn as the server's choice when
+    /// the chat's pill says otherwise is a head that contradicts the composer. A level the turn
+    /// carried itself always wins.
+    public var effort: String?
 
     public init(
         activity: ActivityKind? = nil, fill: ContextFill? = nil, call: VoiceCallFace? = nil,
-        face: NeuralFace? = nil, providerID: String? = nil, effortOptions: [String] = []
+        face: NeuralFace? = nil, providerID: String? = nil, effortOptions: [String] = [],
+        effort: String? = nil
     ) {
         self.activity = activity
         self.fill = fill
@@ -25,16 +31,17 @@ public struct NeuralBrainContext: Sendable, Equatable {
         self.face = face
         self.providerID = providerID
         self.effortOptions = effortOptions
+        self.effort = effort
     }
 
     /// From the facts the chat's status line already holds.
     public init(
         facts: StatusFacts, call: VoiceCallFace? = nil, face: NeuralFace? = nil,
-        providerID: String? = nil, effortOptions: [String] = []
+        providerID: String? = nil, effortOptions: [String] = [], effort: String? = nil
     ) {
         self.init(
             activity: facts.activity, fill: facts.context, call: call, face: face,
-            providerID: providerID, effortOptions: effortOptions)
+            providerID: providerID, effortOptions: effortOptions, effort: effort)
     }
 
     public static let none = NeuralBrainContext()
@@ -192,7 +199,7 @@ public struct NeuralBrainModel: Sendable {
         let identityChanged =
             old.modelID != newTurn.modelID || old.effort != newTurn.effort
             || oldContext.face != newContext.face || oldContext.providerID != newContext.providerID
-            || oldContext.effortOptions != newContext.effortOptions
+            || oldContext.effortOptions != newContext.effortOptions || oldContext.effort != newContext.effort
         if identityChanged { face = Self.makeFace(for: newTurn, context: newContext) }
         if oldContext.fill != newContext.fill || oldContext.call != newContext.call {
             meters = NeuralMeters(fill: newContext.fill, call: newContext.call)
@@ -551,8 +558,8 @@ public struct NeuralBrainModel: Sendable {
     private static func makeFace(for turn: NeuralTurn, context: NeuralBrainContext) -> NeuralFace {
         context.face
             ?? NeuralFace(
-                model: turn.modelID, providerID: context.providerID, effort: turn.effort,
-                options: context.effortOptions)
+                model: turn.modelID, providerID: context.providerID,
+                effort: turn.effort ?? context.effort, options: context.effortOptions)
     }
 
     private static func fingerprint(of step: NeuralStep) -> Int {

@@ -20,6 +20,7 @@ enum BrainAccountDemo {
         case "account": return Script(messages: settled(origin: now.timeIntervalSince1970 - 3_600), running: false, waiting: false)
         case "accountwait": return Script(messages: waiting(origin: now.timeIntervalSince1970 - 400), running: true, waiting: true)
         case "accountlive": return Script(messages: live(origin: now.timeIntervalSince1970 - 600), running: true, waiting: false)
+        case "write": return Script(messages: writing(origin: now.timeIntervalSince1970 - 900), running: false, waiting: false)
         case "livetest", "liveread", "liveedit", "liveerror":
             return Script(messages: liveStep(kind, origin: now.timeIntervalSince1970 - 7 * 22 - 3), running: true, waiting: false)
         default:
@@ -329,6 +330,53 @@ enum BrainAccountDemo {
             ], streaming: true)
         tail.completedAt = nil
         out.append(tail)
+        return out
+    }
+
+    /// A turn that writes a file of a hundred and forty lines and then edits another: the long
+    /// diff a reader opens, and the turn's model recorded no effort, as a Claude transcript's does.
+    static func writing(origin: TimeInterval) -> [ChatMessage] {
+        let b = Builder(prefix: "acr-", origin: origin)
+        var out: [ChatMessage] = [b.user("Start with the lyrics failure model, shared Rust first.")]
+        let body = (0..<140).map { index -> String in
+            switch index % 14 {
+            case 0: return "/// Why lrclib could not be asked, or did not answer usefully. Case \(index / 14)."
+            case 1: return "#[derive(Clone, Copy, Debug, PartialEq, Eq)]"
+            case 2: return "pub enum LyricsFailure\(index / 14) {"
+            case 3: return "    Unreachable,"
+            case 4: return "    TimedOut,"
+            case 5: return "    Busy,"
+            case 6: return "    Server(u16),"
+            case 7: return "    Rejected(u16),"
+            case 8: return "}"
+            case 9: return ""
+            case 10: return "impl LyricsFailure\(index / 14) {"
+            case 11: return "    /// What an HTTP status other than success and 404 means for the lookup."
+            case 12: return "    pub fn from_status(code: u16) -> LyricsFailure\(index / 14) { if code >= 500 { Self::Server(code) } else { Self::Rejected(code) } }"
+            default: return "}"
+            }
+        }.joined(separator: "\n")
+        var first = b.message(
+            1,
+            [
+                .reasoning("Starting with the lyrics failure model (shared Rust first, then Swift, then the three panels)."),
+                b.tool(
+                    "Write",
+                    [
+                        "file_path": .string("/home/marcus/Dev/rust/flaccy/linux/shared/src/lyrics/status.rs"),
+                        "content": .string(body),
+                    ], out: ["File created successfully."]),
+            ])
+        first.reasoningEffort = nil
+        out.append(first)
+        var second = b.message(
+            2,
+            [
+                b.edit("/home/marcus/Dev/rust/flaccy/linux/shared/src/lyrics/mod.rs", added: 3, removed: 1),
+                .text("The failure model is in; the Swift side and the panels come next."),
+            ])
+        second.reasoningEffort = nil
+        out.append(second)
         return out
     }
 }

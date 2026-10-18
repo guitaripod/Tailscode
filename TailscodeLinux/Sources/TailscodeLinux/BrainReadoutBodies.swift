@@ -279,7 +279,7 @@ extension BrainReadout {
             gtk_box_append(
                 ptr(box),
                 labelRow(BrainWords.diff, right: tallyLabel(added: edit.added, removed: edit.removed)))
-            gtk_box_append(ptr(box), diffBlock(edit, stepID: step.stepID))
+            gtk_box_append(ptr(box), diffBlock(edit, stepID: step.stepID, page: page))
         case .read(let read):
             let right = read.lines.map { rightLabel(BrainWords.lines($0)) }
             gtk_box_append(ptr(box), labelRow(BrainWords.readLabel, right: right))
@@ -369,10 +369,125 @@ extension BrainReadout {
         init(current: Gtk.WeakWidget) { self.current = current }
     }
 
-    private func diffBlock(_ edit: R.Edit, stepID: String) -> UnsafeMutablePointer<GtkWidget> {
-        let holder = BrainUI.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    /// The first lines of an edit or a written file, and under them a button that opens the whole
+    /// of it in a reader that scrolls, with a button that copies the whole of it. Space and `o`
+    /// open and close it from the keyboard, as they do a call's output.
+    private func diffBlock(_ edit: R.Edit, stepID: String, page: Page) -> UnsafeMutablePointer<GtkWidget> {
+        let holder = BrainUI.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        gtk_box_append(ptr(holder), diffFrame(edit.lines))
+        guard edit.hiddenCount > 0 else { return holder }
+        let model = owner.model
+        let bar = BrainUI.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        let link = BrainUI.link(NeuralReading.showAllLines(edit.total)) {}
+        gtk_box_append(ptr(bar), link)
+        let spacer = BrainUI.spacer()
+        gtk_widget_set_hexpand(spacer, 1)
+        gtk_box_append(ptr(bar), spacer)
+        gtk_box_append(
+            ptr(bar),
+            BrainUI.copyButton(NeuralReading.copyAllLabel) {
+                model.step(id: stepID).map { NeuralReading.pasteText(of: R.fullDiff(of: $0)) }
+            })
+        gtk_box_append(ptr(holder), bar)
+        let state = DiffToggle(current: Gtk.WeakWidget(gtk_widget_get_first_child(holder)!))
+        let holderHold = Gtk.WeakWidget(holder)
+        let linkHold = Gtk.WeakWidget(link)
+        let scrollerHold = Gtk.WeakWidget(page.scroller)
+        let bodyHold = Gtk.WeakWidget(page.body)
+        let shown = edit.lines
+        let total = edit.total
+        let toggle: @Sendable () -> Void = { [reader = WeakReadout(self)] in
+            Gtk.onMain {
+                guard let self = reader.value, let holderRaw = holderHold.widget, let linkRaw = linkHold.widget,
+                    let currentRaw = state.current.widget, let step = model.step(id: stepID)
+                else { return }
+                let box: UnsafeMutablePointer<GtkWidget> = ptr(holderRaw)
+                let next: UnsafeMutablePointer<GtkWidget>
+                if state.expanded {
+                    next = self.diffFrame(shown)
+                    gtk_button_set_label(ptr(linkRaw), NeuralReading.showAllLines(total))
+                } else {
+                    let reader = BrainDiffReader(
+                        lines: R.fullDiff(of: step), inks: self.inks,
+                        maxHeight: self.readerHeight(in: scrollerHold.widget))
+                    state.reader = reader
+                    next = reader.widget
+                    gtk_button_set_label(ptr(linkRaw), NeuralReading.showFewerLines)
+                }
+                gtk_box_remove(ptr(box), currentRaw)
+                gtk_box_prepend(ptr(box), next)
+                state.current = Gtk.WeakWidget(next)
+                state.expanded.toggle()
+                if !state.expanded { state.reader = nil }
+                self.owner.model.setBrowseOutputExpanded(state.expanded)
+                self.bringReaderIntoView(
+                    holder: holderRaw, scroller: scrollerHold.widget, body: bodyHold.widget, state: state)
+            }
+        }
+        Gtk.connect(UnsafeMutableRawPointer(link), "clicked", toggle)
+        page.subject?.toggleOutput = toggle
+        if diffToggles.count > 12 { diffToggles.removeAll() }
+        diffToggles[stepID] = state
+        return holder
+    }
+
+    final class DiffToggle: @unchecked Sendable {
+        var current: Gtk.WeakWidget
+        var reader: BrainDiffReader?
+        var expanded = false
+        var scrolledFrom: Double?
+        init(current: Gtk.WeakWidget) { self.current = current }
+    }
+
+    /// How tall the reader may be: what the card's own scroller shows less the lines above the
+    /// diff that are scrolled out of view to make room and the bar under it, so the whole file and
+    /// both of its buttons are in view at once; the window's own height where the card is not in a
+    /// scroller of its own.
+    private func readerHeight(in scroller: UnsafeMutablePointer<GtkWidget>?) -> Double {
+        let shown = scroller.map { Double(gtk_widget_get_height($0)) } ?? 0
+        let ownScroller = scroller.map { gtk_scrolled_window_get_propagate_natural_height(op($0)) == 0 } ?? false
+        if ownScroller, shown > 160 { return max(200, min(640, shown - 82)) }
+        let viewport = owner.host?.viewportHeight ?? 800
+        return max(300, min(640, (viewport * 0.8).rounded()))
+    }
+
+    /// Opening the file scrolls the card until its diff leads, so the reader is what is in view;
+    /// closing it puts the card back where it was.
+    private func bringReaderIntoView(
+        holder: UnsafeMutablePointer<GtkWidget>, scroller: UnsafeMutablePointer<GtkWidget>?,
+        body: UnsafeMutablePointer<GtkWidget>?, state: DiffToggle
+    ) {
+        guard let scroller, let body else { return }
+        let hold = Gtk.WeakWidget(scroller)
+        let holderHold = Gtk.WeakWidget(holder)
+        let bodyHold = Gtk.WeakWidget(body)
+        Gtk.after(60) {
+            Gtk.onMain {
+                guard let scroller = hold.widget, let holder = holderHold.widget, let body = bodyHold.widget,
+                    let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+                else { return }
+                if state.expanded {
+                    var x = 0.0
+                    var y = 0.0
+                    guard gtk_widget_translate_coordinates(holder, body, 0, 0, &x, &y) != 0 else { return }
+                    state.scrolledFrom = gtk_adjustment_get_value(adjustment)
+                    gtk_adjustment_set_value(adjustment, max(0, y - 28))
+                } else if let back = state.scrolledFrom {
+                    gtk_adjustment_set_value(adjustment, back)
+                    state.scrolledFrom = nil
+                }
+            }
+        }
+    }
+
+    /// The reader a step's diff has open now, for the harness.
+    func diffReader(of stepID: String) -> BrainDiffReader? { diffToggles[stepID]?.reader }
+
+    /// The lines of a diff as rows: a mark, and the text, wrapped, washed for what was added or taken
+    /// away.
+    private func diffFrame(_ lines: [R.DiffLine]) -> UnsafeMutablePointer<GtkWidget> {
         let frame = BrainUI.box(GTK_ORIENTATION_VERTICAL, spacing: 0, "bn-diff")
-        for line in edit.lines {
+        for line in lines {
             let row = BrainUI.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0, "bn-diff-line")
             switch line.kind {
             case .add: Gtk.addClass(row, "bn-diff-add")
@@ -394,11 +509,7 @@ extension BrainReadout {
                 BrainUI.label(line.text.isEmpty ? " " : line.text, "bn-diff-text", wrap: true, selectable: true))
             gtk_box_append(ptr(frame), row)
         }
-        gtk_box_append(ptr(holder), frame)
-        if edit.hiddenCount > 0, let more = edit.moreLabel {
-            gtk_box_append(ptr(holder), BrainUI.label(more, "bn-fact"))
-        }
-        return holder
+        return frame
     }
 
     // MARK: the digest

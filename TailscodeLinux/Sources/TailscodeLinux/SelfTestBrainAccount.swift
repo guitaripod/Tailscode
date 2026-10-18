@@ -16,6 +16,7 @@ extension SelfTest {
         try timedBrain("account moves") { try checkAccountMoves(expect) }
         try timedBrain("account live") { try checkAccountLive(expect) }
         try timedBrain("account huge") { try checkAccountHuge(expect) }
+        try timedBrain("account reader") { try checkAccountReader(expect) }
     }
 
     static func accountRow(
@@ -532,5 +533,57 @@ extension SelfTest {
                 account.cells[mid.id] != nil && view.model.pinnedStep == step,
                 "and a step in the middle is found by the cursor and its item made")
         }
+    }
+
+    /// The detail card of a step that wrote a long file opens the whole of it, with line numbers
+    /// and a copy button, in a reader that draws only what is in view.
+    private static func checkAccountReader(_ expect: (Bool, String) throws -> Void) throws {
+        let (row, builder) = try accountRow("write")
+        let bed = try BrainBed(row: row, width: 1440, key: "st-reader", policy: { builder.brainPolicy })
+        defer { bed.close() }
+        _ = brainPump(10) { bed.view.stage?.hasPicture == true }
+        settleAccount(bed.view)
+        let view = bed.view
+        guard let write = view.model.steps.first(where: { $0.call?.call.name == "Write" }) else {
+            throw SelfTestFailure("brain: the write demo has no Write step")
+        }
+        view.pin(write.id)
+        _ = brainPump(4) { view.readout?.page?.subject?.toggleOutput != nil }
+        _ = brainPump(0.4)
+        guard let readout = view.readout else { throw SelfTestFailure("brain: no readout beside the account") }
+        try expect(
+            readout.diffReader(of: write.id) == nil && readout.page?.subject?.toggleOutput != nil,
+            "a written file's card shows its first lines and offers the whole of it")
+        let before = readout.visibleText
+        try expect(
+            before.contains(NeuralReading.showAllLines(140)) && before.contains(NeuralReading.copyAllLabel),
+            "with a button that says how many lines there are and one that copies them all")
+        readout.toggleOutput()
+        _ = brainPump(3) { readout.diffReader(of: write.id) != nil }
+        _ = brainPump(0.4)
+        guard let reader = readout.diffReader(of: write.id) else {
+            throw SelfTestFailure("brain: pressing the button opened no reader")
+        }
+        try expect(
+            reader.lineCount == 140 && reader.reading.contains("numbered=true"),
+            "pressing it opens a reader of all 140 lines, numbered from one (\(reader.reading))")
+        try expect(
+            reader.visibleRange().count < 60 && readout.visibleText.contains(NeuralReading.showFewerLines),
+            "that draws only the lines in view (\(reader.visibleRange().count) of 140) and says how to close it")
+        let shown = Double(gtk_widget_get_height(reader.widget))
+        let card = Double(gtk_widget_get_height(readout.page?.scroller ?? reader.widget))
+        try expect(
+            shown >= 200 && shown <= 640 && shown <= card,
+            "and the reader fits the card it is in (\(Int(shown)) of \(Int(card)))")
+        readout.toggleOutput()
+        _ = brainPump(3) { readout.diffReader(of: write.id) == nil }
+        try expect(
+            readout.diffReader(of: write.id) == nil && readout.visibleText.contains(NeuralReading.showAllLines(140)),
+            "pressing again puts the first lines back")
+        let wholeFile = NeuralReading.pasteText(of: NeuralReadout.fullDiff(of: write))
+        try expect(
+            wholeFile.split(separator: "\n", omittingEmptySubsequences: false).count == 140
+                && !wholeFile.hasPrefix("+"),
+            "and Copy all puts the file itself on the pasteboard, a diff's marks only where it is an edit")
     }
 }

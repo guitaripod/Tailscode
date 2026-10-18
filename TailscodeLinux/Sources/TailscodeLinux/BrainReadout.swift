@@ -32,6 +32,7 @@ final class BrainReadout: @unchecked Sendable {
     let widget: UnsafeMutablePointer<GtkWidget>
     private let stack: UnsafeMutablePointer<GtkWidget>
     private var pages: [Page] = []
+    var diffToggles: [String: DiffToggle] = [:]
     private var current = 0
     private(set) var shown: NeuralReadout?
     private var stamp = Stamp()

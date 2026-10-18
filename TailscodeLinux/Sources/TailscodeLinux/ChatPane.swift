@@ -6370,7 +6370,7 @@ final class ChatPane: @unchecked Sendable {
     private func brainContext(activity: ActivityKind?, fill: ContextFill?) -> NeuralBrainContext {
         NeuralBrainContext(
             activity: activity, fill: fill, providerID: activeSelection?.providerID,
-            effortOptions: effortOptions())
+            effortOptions: effortOptions(), effort: resolvedEffort())
     }
 
     /// A Task node, opened: the card of that call is expanded in the transcript and brought into

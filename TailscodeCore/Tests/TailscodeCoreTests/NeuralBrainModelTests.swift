@@ -525,6 +525,29 @@ struct NeuralBrainModelTests {
         #expect(tracked.meters.call == nil)
     }
 
+    @Test("a turn that recorded no effort wears the level the conversation is on, never the server's choice")
+    func conversationEffortFillsAnUnrecordedTurn() {
+        var turn = BrainFixtures.turn()
+        turn.modelID = "claude-sonnet-4-6"
+        turn.effort = nil
+        #expect(BrainFixtures.model(turn).face.hollow)
+
+        let named = BrainFixtures.model(turn, context: NeuralBrainContext(effort: "xhigh")).face
+        #expect(!named.hollow)
+        #expect(named == NeuralFace(model: "claude-sonnet-4-6", providerID: nil, effort: "xhigh"))
+
+        turn.effort = "low"
+        let kept = BrainFixtures.model(turn, context: NeuralBrainContext(effort: "xhigh")).face
+        #expect(kept == NeuralFace(model: "claude-sonnet-4-6", providerID: nil, effort: "low"))
+
+        var tracked = BrainFixtures.model(turn)
+        turn.effort = nil
+        tracked.update(turn: turn, context: NeuralBrainContext(effort: "high"))
+        let before = tracked.face
+        tracked.update(turn: turn, context: NeuralBrainContext(effort: "xhigh"))
+        #expect(tracked.face != before && !tracked.face.hollow)
+    }
+
     @Test("the glyph wears the state's tone and rings the lit zone")
     func glyph() throws {
         let settled = BrainFixtures.model()

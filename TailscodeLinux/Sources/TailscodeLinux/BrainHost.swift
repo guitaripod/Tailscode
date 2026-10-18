@@ -88,7 +88,8 @@ final class BrainHost: @unchecked Sendable {
 
     func context(for turnID: String) -> NeuralBrainContext {
         guard turnID == policy?()?.latest else {
-            return NeuralBrainContext(fill: nil, providerID: live.providerID, effortOptions: live.effortOptions)
+            return NeuralBrainContext(
+                fill: nil, providerID: live.providerID, effortOptions: live.effortOptions, effort: live.effort)
         }
         var context = live
         if let forced { context.activity = forced }
