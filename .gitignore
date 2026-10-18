@@ -17,3 +17,7 @@ TailscodeMac/Info.plist
 marketing/appstore/l10n/
 marketing/appstore/mac-masters/*/
 !marketing/appstore/mac-masters/en-US/
+
+.tailscode/
+docs/world-clock-presentation/
+docs/world-clock-presentation.png
