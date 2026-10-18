@@ -303,7 +303,7 @@ enum NeuralPosterNodes {
                 .foregroundColor: color, .paragraphStyle: paragraph,
             ]
         ).draw(in: CGRect(x: -radius * 1.2, y: -size * 0.62, width: radius * 2.4, height: size * 1.4))
-        if node.status == .failed {
+        if node.status == .failed, !node.isRecovered {
             let cross = UIBezierPath()
             cross.move(to: CGPoint(x: radius * 0.55, y: -radius * 1.15))
             cross.addLine(to: CGPoint(x: radius * 1.25, y: -radius * 1.85))

@@ -589,6 +589,7 @@ final class ChatViewController: UIViewController {
     }
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if keyContext == .normal, enterBrainWithTab(presses) { return }
         if keyContext == .normal, handleKeyPresses(presses) { return }
         super.pressesBegan(presses, with: event)
     }
@@ -609,6 +610,20 @@ final class ChatViewController: UIViewController {
         {
             releaseConversation()
         }
+    }
+
+    /// Tab takes the keyboard into the open brain, which is a focus group of its own: the list, the
+    /// stage and the account answer the same keys, and nothing here takes a key while the composer
+    /// has the keyboard, because then this screen is not the one asked.
+    private func enterBrainWithTab(_ presses: Set<UIPress>) -> Bool {
+        guard !composer.isEditing,
+            let press = presses.first(where: { $0.key?.keyCode == .keyboardTab && $0.key?.modifierFlags.isDisjoint(with: [.shift, .command, .control, .alternate]) == true }),
+            press.key != nil
+        else { return false }
+        for case let cell as NeuralBrainCell in collectionView.visibleCells {
+            if let open = cell.brainRow.openView, open.becomeFirstResponder() { return true }
+        }
+        return false
     }
 
     /// Whether the screen now in front of this one in its stack is another conversation, which is
@@ -1091,6 +1106,7 @@ final class ChatViewController: UIViewController {
         collectionView.alwaysBounceVertical = true
         collectionView.allowsSelection = false
         collectionView.contentInsetAdjustmentBehavior = .automatic
+        collectionView.selfSizingInvalidation = .enabled
         collectionView.delegate = self
         collectionView.scrollsToTop = true
         if #available(iOS 26.0, *) { collectionView.topEdgeEffect.style = .hard }
@@ -1555,6 +1571,23 @@ final class ChatViewController: UIViewController {
         guard scroll else { return }
         userScrolledUp = true
         scrollTo(id: id)
+        landFind(on: id)
+    }
+
+    /// A match inside a brain opens that turn's brain and puts the cursor on the step that holds
+    /// the words.
+    private func landFind(on rowID: String) {
+        guard case .brain(let brainRow)? = rowsByID[rowID]?.content,
+            let step = brain.store.stepMatching(findField.text ?? "", in: brainRow.turnID)
+        else { return }
+        if !brain.store.isOpen(brainRow.turnID) { toggleBrain(brainRow.turnID) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self else { return }
+            for case let cell as NeuralBrainCell in self.collectionView.visibleCells
+            where cell.brainRow.turnID == brainRow.turnID {
+                cell.brainRow.openView?.browse(.click(step, double: false))
+            }
+        }
     }
 
     /// The current hit carries an accent ring; rows scroll in and out of reuse, so the ring is
@@ -2625,6 +2658,7 @@ final class ChatViewController: UIViewController {
         openTimed = true
         #if DEBUG
             startBrainWalk()
+            startBrainChecks()
         #endif
         AppLogger.performance.info(
             "journey open session=\(viewModel.session.id) ms=\(FirstAnswerClock.milliseconds(since: openedAt)) messages=\(state.messages.count) rows=\(orderedIDs.count)")
@@ -2657,7 +2691,23 @@ final class ChatViewController: UIViewController {
     /// completed is told from one that was already done without keeping a second copy of every row.
     private var lastToolStatuses: [String: ToolStatus] = [:]
 
-    private func rebuildTranscript(_ state: ConversationState) -> TranscriptRebuild {
+    /// A debug launch with `TAILSCODE_NEURAL_LARGE` swaps the conversation for the 174-step demo
+    /// turn so the long brain can be looked at without a server holding one.
+    private static func stagedState(_ state: ConversationState) -> ConversationState {
+        #if DEBUG
+            guard let value = ProcessInfo.processInfo.environment["TAILSCODE_NEURAL_LARGE"],
+                let steps = Int(value), steps > 0
+            else { return state }
+            var staged = state
+            staged.messages = NeuralDemo.largeTurn(steps: steps, prefix: "big-")
+            return staged
+        #else
+            return state
+        #endif
+    }
+
+    private func rebuildTranscript(_ incoming: ConversationState) -> TranscriptRebuild {
+        let state = Self.stagedState(incoming)
         let runs = WorkflowRunAssembly.runs(
             messages: state.messages, agents: viewModel.trackedSubagents)
         workflowRuns = runs
@@ -3425,7 +3475,77 @@ final class ChatViewController: UIViewController {
             rows: { [weak self] id in self?.toggleBrainRows(id) },
             replay: { [weak self] id in self?.replayBrain(id) },
             share: { [weak self] id in self?.shareBrain(id) },
-            revealAgent: { [weak self] turn, step in self?.revealAgent(turn: turn, step: step) })
+            revealAgent: { [weak self] turn, step in self?.revealAgent(turn: turn, step: step) },
+            reply: { [weak self] quote in self?.replyFromBrain(quote) },
+            goToAsk: { [weak self] _ in self?.revealPendingCard() },
+            goToAnswer: { [weak self] id in self?.goToAnswer(ofTurn: id) },
+            showInRows: { [weak self] turn, step in self?.showInRows(turn: turn, step: step) },
+            openDiving: { [weak self] turn, zone in self?.openBrainDiving(turn, zone: zone) },
+            landed: { [weak self] id in self?.brainLanded(id) })
+    }
+
+    /// A zone chip on a card opens the brain already diving into that zone.
+    private func openBrainDiving(_ turnID: String, zone: NeuralZone) {
+        brain.store.interaction(for: turnID).pendingDive = zone
+        if brain.store.isOpen(turnID) {
+            for case let cell as NeuralBrainCell in collectionView.visibleCells where cell.brainRow.turnID == turnID {
+                cell.brainRow.openView?.stage.dive(to: zone)
+            }
+            brain.store.interaction(for: turnID).pendingDive = nil
+        } else {
+            toggleBrain(turnID)
+        }
+    }
+
+    /// Reply puts the quoted words in the composer and puts the cursor under them; nothing is sent,
+    /// because the agent is talked back to through the ordinary send.
+    private func replyFromBrain(_ quote: String) {
+        let existing = composer.currentText
+        let draft = existing.isEmpty ? quote : existing + "\n\n" + quote
+        composer.setDraft(draft, focus: true, cursorAtEnd: true)
+        Theme.Haptics.tap()
+    }
+
+    /// The answer a turn ended on is the next row after its brain that carries words.
+    private func goToAnswer(ofTurn turnID: String) {
+        let brainID = NeuralOpenPolicy.rowID(turnID: turnID)
+        guard let at = orderedIDs.firstIndex(of: brainID) else { return }
+        for id in orderedIDs[(at + 1)...] {
+            guard let row = rowsByID[id] else { continue }
+            if row.role == .user { break }
+            if case .text = row.content {
+                userScrolledUp = true
+                scrollTo(id: id)
+                return
+            }
+        }
+    }
+
+    /// Lists a step's old row among the turn's rows, and brings the row into view.
+    private func showInRows(turn turnID: String, step stepID: String) {
+        userScrolledUp = true
+        if !brain.store.showsRows(turnID) { brain.store.toggleRows(turnID) }
+        render(lastRenderedState ?? viewModel.state)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let target = self.orderedIDs.first { id in
+                guard let row = self.rowsByID[id] else { return false }
+                if case .activity(let steps) = row.content {
+                    return steps.contains {
+                        if case .tool(let call) = $0 { return stepID.hasSuffix(":" + call.id) || stepID.contains(call.id) }
+                        return false
+                    }
+                }
+                return false
+            }
+            if let target { self.scrollTo(id: target) }
+        }
+    }
+
+    /// An open brain landed: the row is as tall as it will be, so the reading gesture's reveal
+    /// can ask how far to move.
+    private func brainLanded(_ turnID: String) {
+        revealToggledRow(NeuralOpenPolicy.rowID(turnID: turnID))
     }
 
     /// Opening a brain is a reading gesture like opening any row: the transcript stops chasing the
@@ -3433,10 +3553,8 @@ final class ChatViewController: UIViewController {
     /// opened body needs.
     private func toggleBrain(_ turnID: String) {
         userScrolledUp = true
-        let opening = !brain.store.isOpen(turnID)
         brain.store.toggle(turnID)
         render(lastRenderedState ?? viewModel.state)
-        if opening { revealToggledRow(NeuralOpenPolicy.rowID(turnID: turnID)) }
     }
 
     private func toggleBrainRows(_ turnID: String) {
@@ -3450,10 +3568,13 @@ final class ChatViewController: UIViewController {
     private func replayBrain(_ turnID: String) {
         userScrolledUp = true
         let opening = !brain.store.isOpen(turnID)
-        if opening { brain.store.toggle(turnID) }
-        brain.store.mutate(turnID) { $0.startReplay(now: CACurrentMediaTime()) }
+        if opening {
+            brain.store.interaction(for: turnID).replayOnOpen = true
+            brain.store.toggle(turnID)
+        } else {
+            brain.store.mutate(turnID) { $0.startReplay(now: CACurrentMediaTime()) }
+        }
         render(lastRenderedState ?? viewModel.state)
-        if opening { revealToggledRow(NeuralOpenPolicy.rowID(turnID: turnID)) }
     }
 
     /// Sends a settled turn out as its poster: the sheet draws it at the look the person last chose
@@ -3503,30 +3624,26 @@ final class ChatViewController: UIViewController {
             }
         }
 
-        private func brainWalkStep(_ verb: String, _ value: String) {
-            guard let turnID = brain.store.openTurnID ?? brain.store.latestTurnID else { return }
-            let stage = collectionView.visibleCells.compactMap { ($0 as? NeuralBrainCell)?.brainStage }
-                .first
-            switch verb {
-            case "pin": stage?.walk(pin: Int(value), hover: nil, dive: nil)
-            case "hover": stage?.walk(pin: nil, hover: Int(value), dive: nil)
-            case "dive": stage?.walk(pin: nil, hover: nil, dive: value)
-            case "replay":
-                brain.store.mutate(turnID) { $0.scrub(to: Double(value) ?? 0.5) }
-                stage?.refresh()
-            case "prov":
-                guard let model = brain.store.model(for: turnID) else { return }
-                let tokens = model.answerTokens(in: brain.store.answerText(for: turnID)).map(\.text)
-                if let index = Int(value), tokens.indices.contains(index) {
-                    brain.store.mutate(turnID) { $0.setProvenance(token: tokens[index]) }
-                    stage?.refresh()
-                    refreshBrainCells()
-                }
-            case "rows": toggleBrainRows(turnID)
-            case "share": shareBrain(turnID)
-            case "close": toggleBrain(turnID)
-            default: break
+        /// Runs `TAILSCODE_NEURAL_CHECK`'s claims against this conversation's brains.
+        private func startBrainChecks() {
+            guard BrainChecks.isEnabled else { return }
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(2))
+                BrainChecks.runModel()
+                guard let self else { return }
+                await BrainChecks.runScreen(
+                    collection: self.collectionView, store: self.brain.store,
+                    toggle: { [weak self] id in self?.toggleBrain(id) })
             }
+        }
+
+        private func brainWalkStep(_ verb: String, _ value: String) {
+            BrainWalk.run(
+                verb: verb, value: value, store: brain.store, collection: collectionView,
+                toggle: { [weak self] id in self?.toggleBrain(id) },
+                rows: { [weak self] id in self?.toggleBrainRows(id) },
+                share: { [weak self] id in self?.shareBrain(id) },
+                refresh: { [weak self] in self?.render(self?.lastRenderedState ?? self?.viewModel.state ?? ConversationState()) })
         }
     #endif
 

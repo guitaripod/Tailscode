@@ -1,15 +1,35 @@
 import TailscodeCore
 import UIKit
 
-/// The open brain: the head drawn by the shared Metal renderer, the node field laid between its
-/// interior and its glass, the card of the node being pointed at, the dive into a zone, and the
-/// touches that drive them.
+/// Where the head rings: the step, the node that draws it (a "+7" node for a member of a ganglion),
+/// and the number its callout shows beside the ring.
+struct BrainRing: Equatable {
+    let stepID: String
+    let nodeID: String
+    let calloutNumber: Int
+
+    init(_ ring: NeuralBrowse.Ring) {
+        stepID = ring.stepID
+        nodeID = ring.nodeID
+        calloutNumber = ring.calloutNumber
+    }
+
+    init(stepID: String, nodeID: String, calloutNumber: Int) {
+        self.stepID = stepID
+        self.nodeID = nodeID
+        self.calloutNumber = calloutNumber
+    }
+}
+
+/// The head of an open brain, as a map: the picture drawn by the shared Metal renderer and cropped
+/// to the head's own bounds, the node field laid between its interior and its glass, the ring on the
+/// step under the cursor, the dive into a zone, and the touches and pointer that drive them.
 ///
-/// The model lives in the `BrainStore`; this view only reads it, mutates it through the store and
-/// hands what it reads to the head and the field. The head's display link runs only while the
-/// model has something that moves, so a settled brain, the common case, draws once and costs
-/// nothing; this view's `onTick` is called from that link, which is the only clock replay and the
-/// dive have.
+/// The model lives in the `BrainStore`; this view only reads it. It says what the person did as
+/// `NeuralBrowse` actions through `perform`, and is handed the ring, the dimming and the model back.
+/// The head's display link runs only while the model has something that moves, so a settled brain,
+/// the common case, draws once and costs nothing; `onTick` is called from that link, which is the
+/// only clock replay and the dive have.
 @MainActor
 final class BrainStageView: UIView {
     private struct Dive {
@@ -20,28 +40,33 @@ final class BrainStageView: UIView {
     }
 
     let head = NeuralHeadView()
-    private let field: BrainNodeField
+    let field: BrainNodeField
     private let pad = UIView()
-    private let card = BrainCardView()
-    private let zoneList = BrainZoneList()
     private weak var store: BrainStore?
     private(set) var turnID = ""
     private var ink: BrainInk
     private var dive: Dive?
     private var diveScale: CGFloat = 1
-    private var divedZone: NeuralZone?
+    private(set) var divedZone: NeuralZone?
     private var lastTap: (id: String, at: CFTimeInterval)?
     private var elements: [UIAccessibilityElement] = []
     private var elementsKey = ""
     nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
     private var parked = false
+    private var lastDesignScale: CGFloat = 0
 
-    /// Called after the model changed or a tick moved a replay: the footer reads the model again.
+    /// What the stage asks of the brain it belongs to.
+    var perform: ((NeuralBrowse.Action) -> Void)?
+    /// Called after a tick moved a replay or a dive: the footer reads the model again.
     var onChange: ((NeuralBrainModel, Double) -> Void)?
-
-    /// Called for a double tap on a delegate node, with the step's id: the transcript scrolls to
-    /// the subagent's own card.
+    /// Called for a double tap on a delegate node, with the step's id.
     var onRevealAgent: ((String) -> Void)?
+    /// The dive into a zone began or ended.
+    var onDive: ((NeuralZone?) -> Void)?
+    /// A menu for a node's step was asked for with a long press.
+    var menuItems: ((String) -> [UIMenuElement])?
+    /// The first picture has been presented.
+    var onReady: (() -> Void)?
 
     override init(frame: CGRect) {
         ink = BrainInk(
@@ -49,18 +74,13 @@ final class BrainStageView: UIView {
         field = BrainNodeField(ink: ink)
         super.init(frame: frame)
         clipsToBounds = true
-        layer.cornerRadius = Theme.Radius.card
-        layer.cornerCurve = .continuous
         addSubview(head)
         head.nodeLayer.addSublayer(field.root)
         head.onTick = { [weak self] time in self?.tick(time) }
+        head.onReady = { [weak self] in self?.onReady?() }
         pad.backgroundColor = .clear
         pad.isAccessibilityElement = false
         addSubview(pad)
-        addSubview(card)
-        addSubview(zoneList)
-        zoneList.onBack = { [weak self] in self?.leaveDive() }
-        zoneList.onPick = { [weak self] id in self?.pick(id) }
         installGestures()
         observe()
     }
@@ -87,47 +107,42 @@ final class BrainStageView: UIView {
             ink = BrainInk(palette: palette, face: model.face)
             field.recolor(ink)
         }
-        head.apply(
-            model: model, palette: palette, reduceMotion: reduceMotion, dive: currentDive)
+        backgroundColor = Self.canvasColor(palette)
+        head.apply(model: model, palette: palette, reduceMotion: reduceMotion, dive: currentDive)
         field.refresh(model: model, time: time, reduceMotion: reduceMotion)
-        updateCard(model)
-        onChange?(model, time)
+    }
+
+    /// The palette's own canvas, which the head is baked on, so the stage reads as one plate even
+    /// where the screen's ground is the platform's.
+    private static func canvasColor(_ palette: Palette) -> UIColor {
+        guard let channels = Contrast.channels(palette.canvas) else { return .clear }
+        return UIColor(red: channels.red, green: channels.green, blue: channels.blue, alpha: 1)
     }
 
     private var reduceMotion: Bool { UIAccessibility.isReduceMotionEnabled }
 
-    #if DEBUG
-        /// What `TAILSCODE_NEURAL_WALK` does to the stage in place of a finger: pin the step with
-        /// this one-based number, hover it, or dive into the zone with this name.
-        func walk(pin number: Int?, hover: Int?, dive zoneName: String?) {
-            guard let model = store?.model(for: turnID) else { return }
-            if let number, model.steps.indices.contains(number - 1) {
-                store?.mutate(turnID) { $0.togglePin(model.steps[number - 1].id) }
-                refresh()
-            }
-            if let hover, model.steps.indices.contains(hover - 1) {
-                store?.mutate(turnID) { $0.setHover(model.steps[hover - 1].id) }
-                refresh()
-            }
-            if let zoneName, let zone = NeuralZone.allCases.first(where: { String(describing: $0) == zoneName }) {
-                self.dive(to: zone)
-            }
-        }
-    #endif
-
+    /// The rectangle of the stage in which the head's trimmed picture sits, and where the whole
+    /// design space then lands: the head is laid out whole and the stage crops it.
     override func layoutSubviews() {
         super.layoutSubviews()
-        head.bounds = CGRect(origin: .zero, size: bounds.size)
-        head.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        let crop = NeuralStageMetrics.designCrop
+        let scale = bounds.width / CGFloat(crop.width)
+        head.transform = .identity
+        head.frame = CGRect(
+            x: -CGFloat(crop.x) * scale, y: 0, width: CGFloat(NeuralDesign.width) * scale,
+            height: CGFloat(NeuralDesign.height) * scale)
         head.layoutIfNeeded()
+        applyDiveTransform()
         pad.frame = bounds
         let screen = window?.windowScene?.screen.scale ?? traitCollection.displayScale
-        field.layout(
-            scale: head.designScale, contentsScale: max(1, screen) * max(1, diveScale))
-        let height = min(bounds.height * 0.56, 190)
-        zoneList.frame = CGRect(
-            x: 0, y: bounds.height - height, width: bounds.width, height: height)
-        if let model = store?.model(for: turnID) { updateCard(model) }
+        field.layout(scale: head.designScale, contentsScale: max(1, screen) * max(1, diveScale))
+        if abs(lastDesignScale - head.designScale) > 0.001 {
+            lastDesignScale = head.designScale
+            if let model = store?.model(for: turnID) {
+                field.refresh(model: model, time: CACurrentMediaTime(), reduceMotion: reduceMotion)
+                field.setRing(ring, model: model)
+            }
+        }
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -178,20 +193,38 @@ final class BrainStageView: UIView {
         refresh()
     }
 
-    /// Drops everything the person did to the last brain: a pin, a dive, a card.
+    /// Lets the head draw and run its clock, or holds it still: a row scrolled out of sight, or a
+    /// stage waiting under a move.
+    func setSuspended(_ value: Bool) {
+        head.isSuspended = value
+    }
+
+    /// Drops everything the person did to the last brain: a dive, a ring.
     private func resetInteraction() {
         dive = nil
         diveScale = 1
         divedZone = nil
         head.transform = .identity
-        zoneList.dismiss()
-        card.isHidden = true
         lastTap = nil
         elements = []
         elementsKey = ""
+        ring = nil
         field.resetFired()
     }
 
+    private(set) var ring: BrainRing?
+
+    func setRing(_ value: BrainRing?) {
+        ring = value
+        guard let model = store?.model(for: turnID) else { return }
+        field.setRing(value, model: model)
+    }
+
+    func setDimmed(_ ids: Set<String>) {
+        field.dimmed = ids
+        guard let model = store?.model(for: turnID) else { return }
+        field.refresh(model: model, time: CACurrentMediaTime(), reduceMotion: reduceMotion)
+    }
 
     private func tick(_ time: Double) {
         advanceDive(time)
@@ -199,13 +232,13 @@ final class BrainStageView: UIView {
         if model.replayDone(now: time) {
             store.mutate(turnID) { $0.stopReplay() }
             refresh(time: time)
+            onChange?(store.model(for: turnID) ?? model, time)
             return
         }
         if field.newlyLit(in: model, time: time) > 0 { Theme.Haptics.step() }
         field.refresh(model: model, time: time, reduceMotion: reduceMotion)
         onChange?(model, time)
     }
-
 
     private var currentDive: NeuralDive {
         guard diveScale != 1 || dive != nil else { return .none }
@@ -222,14 +255,14 @@ final class BrainStageView: UIView {
     func dive(to zone: NeuralZone) {
         guard store?.model(for: turnID) != nil else { return }
         divedZone = zone
-        zoneList.dismiss()
+        onDive?(zone)
         animateDive(to: zone == .say ? 3.4 : 2.6)
     }
 
     func leaveDive() {
         guard divedZone != nil else { return }
-        zoneList.dismiss()
         animateDive(to: 1)
+        onDive?(nil)
     }
 
     private func animateDive(to target: CGFloat) {
@@ -238,7 +271,6 @@ final class BrainStageView: UIView {
             from: diveScale, to: target, start: CACurrentMediaTime(),
             duration: quick ? 0.001 : (target == 1 ? 0.42 : 0.52))
         store?.mutate(turnID) { $0.setDiving(true) }
-        card.isHidden = true
         refresh()
     }
 
@@ -249,9 +281,7 @@ final class BrainStageView: UIView {
         diveScale = running.from + (running.to - running.from) * CGFloat(eased)
         applyDiveTransform()
         if let model = store?.model(for: turnID) {
-            head.apply(
-                model: model, palette: ink.palette, reduceMotion: reduceMotion,
-                dive: currentDive)
+            head.apply(model: model, palette: ink.palette, reduceMotion: reduceMotion, dive: currentDive)
         }
         guard t >= 1 else { return }
         dive = nil
@@ -266,10 +296,6 @@ final class BrainStageView: UIView {
             diveScale = 1
             divedZone = nil
             head.transform = .identity
-        } else if let zone = divedZone, let model = store?.model(for: turnID) {
-            zoneList.show(
-                zone: zone, steps: model.steps.filter { $0.zone == zone }, ink: ink)
-            UIAccessibility.post(notification: .layoutChanged, argument: zoneList)
         }
         refresh()
     }
@@ -281,28 +307,25 @@ final class BrainStageView: UIView {
         }
         let anchor = head.layerPoint(forDesign: zone.center)
         let origin = head.contentRect.origin
-        let target = CGPoint(x: anchor.x + origin.x, y: anchor.y + origin.y)
-        let centre = CGPoint(x: head.bounds.midX, y: head.bounds.midY)
+        let target = CGPoint(x: anchor.x + origin.x + head.frame.minX, y: anchor.y + origin.y + head.frame.minY)
+        let centre = head.center
         let s = diveScale
         let end: CGFloat = zone == .say ? 3.4 : 2.6
         let progress = min(max((s - 1) / (end - 1), 0), 1)
-        let focus = CGPoint(x: bounds.midX, y: bounds.height * 0.32)
+        let focus = CGPoint(x: bounds.midX, y: bounds.height * 0.42)
         head.transform = CGAffineTransform(
             translationX: (1 - s) * (target.x - centre.x) + progress * (focus.x - target.x),
             y: (1 - s) * (target.y - centre.y) + progress * (focus.y - target.y)
         ).scaledBy(x: s, y: s)
     }
 
-
     private func installGestures() {
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
-        let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
-        hold.minimumPressDuration = 0.28
-        hold.allowableMovement = 12
         let hover = UIHoverGestureRecognizer(target: self, action: #selector(hovered(_:)))
         let back = UISwipeGestureRecognizer(target: self, action: #selector(swipedBack))
         back.direction = .right
-        for recognizer in [tap, hold, hover, back] { pad.addGestureRecognizer(recognizer) }
+        for recognizer in [tap, hover, back] { pad.addGestureRecognizer(recognizer) }
+        pad.addInteraction(UIContextMenuInteraction(delegate: self))
     }
 
     private func designPoint(_ location: CGPoint) -> NeuralPoint {
@@ -329,10 +352,7 @@ final class BrainStageView: UIView {
             return
         }
         guard let id = model.hit(at: point, slop: slop) else {
-            if model.hasSelection {
-                store?.mutate(turnID) { $0.clearSelection() }
-                refresh()
-            }
+            if model.pinnedStep != nil { perform?(.key(.escape)) }
             return
         }
         let now = CACurrentMediaTime()
@@ -343,60 +363,23 @@ final class BrainStageView: UIView {
             onRevealAgent?(id)
             return
         }
+        let double = lastTap.map { $0.id == id && now - $0.at < 0.4 } ?? false
         lastTap = (id, now)
-        pick(id)
-    }
-
-    private func pick(_ id: String) {
         Theme.Haptics.selection()
-        store?.mutate(turnID) { $0.togglePin(id) }
-        refresh()
-    }
-
-    @objc private func held(_ gesture: UILongPressGestureRecognizer) {
-        switch gesture.state {
-        case .began, .changed:
-            hover(node(at: gesture.location(in: pad)))
-        default:
-            hover(nil)
-        }
+        perform?(.clickNode(id, double: double))
     }
 
     @objc private func hovered(_ gesture: UIHoverGestureRecognizer) {
         switch gesture.state {
         case .began, .changed:
-            hover(node(at: gesture.location(in: pad)))
+            let id = node(at: gesture.location(in: pad))
+            perform?(id.map { .hover($0) } ?? .hoverLeft)
         default:
-            hover(nil)
+            perform?(.hoverLeft)
         }
-    }
-
-    private func hover(_ id: String?) {
-        guard let store, let model = store.model(for: turnID), model.hovered != id else { return }
-        store.mutate(turnID) { $0.setHover(id) }
-        refresh()
     }
 
     @objc private func swipedBack() { leaveDive() }
-
-
-    private func updateCard(_ model: NeuralBrainModel) {
-        guard dive == nil, let id = model.selected, let words = model.card,
-            let point = model.point(of: id)
-        else {
-            card.isHidden = true
-            return
-        }
-        card.show(words, ink: ink)
-        let local = head.layerPoint(forDesign: point)
-        let origin = head.contentRect.origin
-        let anchor = head.convert(CGPoint(x: local.x + origin.x, y: local.y + origin.y), to: self)
-        card.isHidden = false
-        card.place(
-            pointingAt: anchor, in: bounds,
-            nodeRadius: CGFloat(NeuralDesign.nodeRadius) * head.designScale * max(diveScale, 1))
-    }
-
 
     override var isAccessibilityElement: Bool {
         get { false }
@@ -414,8 +397,8 @@ final class BrainStageView: UIView {
         return true
     }
 
-    /// The summary of the turn, one element a step to pin, and one a zone to dive into. They are
-    /// made again whenever the layout, the size or the zoom they were measured against changes.
+    /// The summary of the turn, one element a step to select, and one a zone to dive into. They
+    /// are made again whenever the layout, the size or the zoom they were measured against changes.
     private func accessibilityList() -> [Any] {
         guard let model = store?.model(for: turnID) else { return [] }
         let key = "\(model.revision)|\(Int(bounds.width))|\(Int(bounds.height))|\(diveScale)"
@@ -423,7 +406,7 @@ final class BrainStageView: UIView {
             elementsKey = key
             elements = makeElements(model)
         }
-        return elements + (zoneList.isHidden ? [] : [zoneList, card])
+        return elements
     }
 
     private func makeElements(_ model: NeuralBrainModel) -> [UIAccessibilityElement] {
@@ -438,12 +421,9 @@ final class BrainStageView: UIView {
         let radius = max(22, CGFloat(NeuralDesign.nodeRadius) * head.designScale * max(diveScale, 1))
         for step in model.steps {
             guard let point = model.point(of: model.layout.representative(of: step.id)) else { continue }
-            let local = head.layerPoint(forDesign: point)
-            let origin = head.contentRect.origin
-            let centre = head.convert(
-                CGPoint(x: local.x + origin.x, y: local.y + origin.y), to: self)
+            let centre = convert(layerCentre(point), from: head)
             let element = BrainStepElement(container: self, stepID: step.id) { [weak self] id in
-                self?.pick(id)
+                self?.perform?(.clickNode(id, double: false))
             }
             element.accessibilityLabel = NeuralReading.announcement(for: step, of: total)
             element.accessibilityTraits = .button
@@ -455,19 +435,65 @@ final class BrainStageView: UIView {
             let element = BrainZoneElement(container: self, zone: zone) { [weak self] zone in
                 self?.dive(to: zone)
             }
-            element.accessibilityLabel = Localized.text("Dive into %@", zone.label)
+            element.accessibilityLabel = Localized.text("Dive into %@", zone.displayLabel)
             element.accessibilityTraits = .button
             let rect = field.zoneLabelRects[zone] ?? .zero
             let corner = head.layerPoint(forDesign: NeuralPoint(rect.minX, rect.minY))
             let origin = head.contentRect.origin
-            let topLeft = head.convert(
-                CGPoint(x: corner.x + origin.x, y: corner.y + origin.y), to: self)
+            let topLeft = convert(CGPoint(x: corner.x + origin.x, y: corner.y + origin.y), from: head)
             element.accessibilityFrameInContainerSpace = CGRect(
                 x: topLeft.x, y: topLeft.y, width: max(44, rect.width * head.designScale),
                 height: max(44, rect.height * head.designScale))
             out.append(element)
         }
         return out
+    }
+
+    /// The accessibility element of a step's node, for the rotor that walks steps.
+    func element(forStep id: String) -> UIAccessibilityElement? {
+        (accessibilityList() as? [UIAccessibilityElement])?.first {
+            ($0 as? BrainStepElement)?.stepID == id
+        }
+    }
+
+    /// The step an accessibility element stands for, when it is a node's.
+    func stepID(of element: Any?) -> String? { (element as? BrainStepElement)?.stepID }
+
+    private func layerCentre(_ point: NeuralPoint) -> CGPoint {
+        let local = head.layerPoint(forDesign: point)
+        let origin = head.contentRect.origin
+        return CGPoint(x: local.x + origin.x, y: local.y + origin.y)
+    }
+
+    /// The point of the stage a step's node is at, for the leader that leaves it.
+    func point(of step: String) -> CGPoint? {
+        guard let model = store?.model(for: turnID),
+            let design = model.point(of: model.layout.representative(of: step))
+        else { return nil }
+        return convert(layerCentre(design), from: head)
+    }
+
+    #if DEBUG
+        /// What `TAILSCODE_NEURAL_WALK` does to the stage in place of a finger: dive into the zone
+        /// with this name.
+        func walk(dive zoneName: String?) {
+            if let zoneName, let zone = NeuralZone.allCases.first(where: { String(describing: $0) == zoneName }) {
+                dive(to: zone)
+            }
+        }
+    #endif
+}
+
+extension BrainStageView: UIContextMenuInteractionDelegate {
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard let id = node(at: location), let menuItems else { return nil }
+        let items = menuItems(id)
+        guard !items.isEmpty else { return nil }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+            UIMenu(children: items)
+        }
     }
 }
 

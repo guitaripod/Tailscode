@@ -1,5 +1,6 @@
 import CodingAgentKit
 import Foundation
+import QuartzCore
 import TailscodeCore
 
 /// What a transcript row needs to know about a turn's brain to be drawn and to be told apart from
@@ -77,6 +78,9 @@ final class BrainStore {
     private var running = false
     private var messages: [ChatMessage] = []
     private var answerCache: [String: (key: Int, text: String)] = [:]
+    private var memories: [String: BrainLiveMemory] = [:]
+    private var promptCache: [String: String] = [:]
+    private var interactions: [String: BrainInteraction] = [:]
 
     /// Whether the brain is drawn at all: the person's style, and a machine that can draw it.
     static var isActive: Bool {
@@ -89,11 +93,49 @@ final class BrainStore {
 
     func isOpen(_ turnID: String) -> Bool { held[turnID]?.open ?? false }
 
+    /// What a card remembers of a running turn between two renders: when anything last arrived,
+    /// when each note was first seen, and when the turn settled.
+    func memory(for turnID: String) -> BrainLiveMemory {
+        if let kept = memories[turnID] { return kept }
+        let made = BrainLiveMemory()
+        memories[turnID] = made
+        return made
+    }
+
+    /// What the person has done to an open brain that the model does not hold: the work lines
+    /// they unfolded, the notes they expanded, where the account is scrolled.
+    func interaction(for turnID: String) -> BrainInteraction {
+        if let kept = interactions[turnID] { return kept }
+        let made = BrainInteraction()
+        interactions[turnID] = made
+        return made
+    }
+
     func showsRows(_ turnID: String) -> Bool { listing.contains(turnID) }
 
     var openTurnID: String? { held.first { $0.value.open }?.key }
 
     var latestTurnID: String? { turnIDs.last }
+
+    /// The first step of a turn whose name, argument, words or output holds `needle`: where Find
+    /// lands inside a brain.
+    func stepMatching(_ needle: String, in turnID: String) -> String? {
+        let key = needle.trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty, let turn = held[turnID]?.turn else { return nil }
+        func has(_ text: String) -> Bool {
+            !text.isEmpty && text.range(of: key, options: .caseInsensitive) != nil
+        }
+        return turn.steps.first { step in
+            has(step.title) || has(step.detail) || has(step.text)
+                || step.outputLines.contains(where: has)
+        }?.id
+    }
+
+    /// The id of the nth brain, counting from one, for a debug launch.
+    func turnID(atBrain number: Int) -> String? {
+        let ids = turnIDs.filter { held[$0] != nil }
+        return ids.indices.contains(number - 1) ? ids[number - 1] : nil
+    }
 
     /// Lets a cell change a model in place: a pin, a hover, a replay. The row's value is not
     /// touched, because nothing a row diffs by moved.
@@ -101,6 +143,29 @@ final class BrainStore {
         guard var model = models[turnID] else { return }
         change(&model)
         models[turnID] = model
+    }
+
+    /// Reads a value out of a model that a change is also made to, in one go.
+    func mutateReturning<T>(_ turnID: String, _ change: (inout NeuralBrainModel) -> T) -> T {
+        var model = models[turnID] ?? NeuralBrainModel(turn: NeuralTurn(id: "-", steps: [], outcome: .settled))
+        let value = change(&model)
+        if models[turnID] != nil { models[turnID] = model }
+        return value
+    }
+
+    /// What the person asked that started a turn: the user message before its first assistant
+    /// message, in its own words.
+    func promptText(for turnID: String) -> String? {
+        if let hit = promptCache[turnID] { return hit.isEmpty ? nil : hit }
+        guard let start = messages.firstIndex(where: { $0.id == turnID }) else { return nil }
+        let words = messages[..<start].last { $0.role == .user }.map { message -> String in
+            message.parts.compactMap { part -> String? in
+                if case .text(let words) = part.kind { return words }
+                return nil
+            }.joined(separator: "\n")
+        } ?? ""
+        promptCache[turnID] = words
+        return words.isEmpty ? nil : words
     }
 
     /// Opens a turn's brain, or closes it, the way the policy says: opening one closes the other.
@@ -122,6 +187,9 @@ final class BrainStore {
         turnIDs = []
         messages = []
         answerCache = [:]
+        memories = [:]
+        interactions = [:]
+        promptCache = [:]
     }
 
     /// Reads the conversation into brains and returns what the builder needs. `context` answers
@@ -145,6 +213,9 @@ final class BrainStore {
             let isLatest = turn.id == latest
             let ctx = context(turn, isLatest)
             let entry = refresh(turn, context: ctx, open: turn.id == open, latest: isLatest)
+            if isLatest || turn.outcome == .running || memories[turn.id] == nil, let model = models[turn.id] {
+                memory(for: turn.id).note(model: model)
+            }
             layout[turn.id] = BrainLayout.Turn(
                 id: turn.id, anchor: entry.anchor, members: turn.memberPartIDs, row: entry.row)
         }
@@ -152,6 +223,9 @@ final class BrainStore {
             held[id] = nil
             models[id] = nil
             answerCache[id] = nil
+            memories[id] = nil
+            interactions[id] = nil
+            promptCache[id] = nil
         }
         listing.formIntersection(alive)
         return BrainLayout(turns: layout)
@@ -226,6 +300,8 @@ final class BrainStore {
         hasher.combine(model.face)
         hasher.combine(model.meters)
         hasher.combine(model.context.activity?.spoken)
+        hasher.combine(open)
+        hasher.combine(latest)
         return BrainRow(
             turnID: turn.id, stamp: hasher.finalize(), isOpen: open, isLatest: latest,
             showsRows: rows, search: searchText(of: turn))
@@ -244,4 +320,64 @@ final class BrainStore {
         }
         return parts.joined(separator: " ")
     }
+}
+
+/// What a card remembers of a running turn between two renders, which a value-typed model cannot:
+/// the moment anything last arrived (silence is counted from it), the moment each note was first
+/// seen (a note holds the card's third line for four seconds from there), and when the turn
+/// settled, which is what the settle move reads.
+@MainActor
+final class BrainLiveMemory {
+    private(set) var lastActivity = Date()
+    var quoteArrivals: [String: Date] = [:]
+    var settleClock = NeuralCardSettleClock()
+    private var signature: Int?
+    private var seeded = false
+
+    func note(model: NeuralBrainModel, now: Date = Date(), clock: TimeInterval = CACurrentMediaTime()) {
+        let running = model.turn.outcome == .running
+        settleClock.observe(running: running, now: clock)
+        guard running else { return }
+        var hasher = Hasher()
+        hasher.combine(model.steps.count)
+        if let last = model.steps.last {
+            hasher.combine(last.text.utf8.count)
+            hasher.combine(last.status)
+            hasher.combine(last.outputLines.count)
+            hasher.combine(last.call?.call.output?.utf8.count)
+        }
+        let next = hasher.finalize()
+        if signature != next {
+            signature = next
+            lastActivity = now
+        }
+        if let quote = model.liveCard?.quote {
+            if quoteArrivals[quote.stepID] == nil {
+                quoteArrivals[quote.stepID] = seeded ? now : Date(timeIntervalSince1970: 0)
+            }
+        }
+        seeded = true
+    }
+
+    func line(for live: NeuralLiveCard, now: Date, compact: Bool) -> NeuralLiveCard.Line {
+        live.line(
+            now: now, lastActivity: lastActivity,
+            quoteArrivedAt: live.quote.flatMap { quoteArrivals[$0.stepID] }, compact: compact)
+    }
+}
+
+/// What a person did to an open brain that the model does not hold. It lives with the store, so a
+/// brain scrolled away and back is where it was left.
+@MainActor
+final class BrainInteraction {
+    var unfolded = Set<String>()
+    var expandedText = Set<String>()
+    var rowCaps: [String: Int] = [:]
+    var accountOffset: CGFloat = 0
+    var askedExpanded = false
+    var planExpanded: Bool?
+    var openedAt: CFTimeInterval = 0
+    var replayOnOpen = false
+    /// A zone the card's chip asked to open the brain diving into.
+    var pendingDive: NeuralZone?
 }

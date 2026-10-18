@@ -1,6 +1,7 @@
 import CodingAgentKit
 import Foundation
 import TailscodeCore
+import UIKit
 
 /// What a debug launch can force on a brain so every state can be photographed without a turn to
 /// wait for and without a tap, which `simctl` cannot send: `TAILSCODE_NEURAL_STATE` names an
@@ -12,6 +13,16 @@ enum BrainDebug {
     #if DEBUG
         private static let environment = ProcessInfo.processInfo.environment
     #endif
+
+    /// `TAILSCODE_NEURAL_SLOWMO=<n>` stretches the move n times so a still screenshot can read it
+    /// frame by frame; 1 everywhere else.
+    static var slowMotion: Double {
+        #if DEBUG
+            return environment["TAILSCODE_NEURAL_SLOWMO"].flatMap(Double.init).map { max($0, 1) } ?? 1
+        #else
+            return 1
+        #endif
+    }
 
     static var forcedActivity: ActivityKind? {
         #if DEBUG
@@ -56,9 +67,13 @@ enum BrainDebug {
     }
 
     /// `TAILSCODE_NEURAL_WALK`: steps on a clock, `seconds:verb=value` separated by `;`, in place of
-    /// the touches `simctl` cannot make. Verbs are `pin` and `hover` (a step number), `dive` (a
-    /// zone name: think, sense, act, shell, delegate, say), `replay` (a fraction to hold the
-    /// playhead at), `prov` (the nth chip), `rows` and `close`.
+    /// the touches `simctl` cannot make. Verbs: `open` and `close` (the brain of the open or the
+    /// latest turn), `openturn` (the nth brain, from one), `click` and `hover` (a step number),
+    /// `key` (characters sent through the browse reducer, `esc`, `enter`, `up`, `down` and `space`
+    /// by name), `chip` (a zone's filter by its key digit), `dive` (a zone name: think, sense,
+    /// act, shell, delegate, say), `replay` (a fraction to hold the playhead at), `prov` (the nth
+    /// chip), `rows`, `share`, `scroll` (points to scroll the account) and `unfold` (the nth work
+    /// line).
     static var walk: [(delay: Double, verb: String, value: String)] {
         #if DEBUG
             guard let script = environment["TAILSCODE_NEURAL_WALK"] else { return [] }
@@ -71,6 +86,26 @@ enum BrainDebug {
         #else
             return []
         #endif
+    }
+
+    #if DEBUG
+        @MainActor
+        static func dumpTree(_ view: UIView, depth: Int, max: Int) {
+            let pad = String(repeating: " ", count: max - depth)
+            var extra = ""
+            if let label = view as? UILabel { extra = " text=\(label.attributedText?.string ?? "")" }
+            AppLogger.ui.info("dump \(pad)\(type(of: view)) f=\(NSCoder.string(for: view.frame)) a=\(view.alpha) h=\(view.isHidden)\(extra)")
+            guard depth > 0 else { return }
+            for child in view.subviews { dumpTree(child, depth: depth - 1, max: max) }
+        }
+    #endif
+
+    /// One line of the log per move: how many frames it drew and the longest gap between two of
+    /// them, which is what a dropped frame is.
+    static func logMove(turn: String, direction: String, frames: Int, maxGap: Double, duration: Double) {
+        AppLogger.performance.info(
+            "brain move turn=\(turn) direction=\(direction) frames=\(frames) maxGapMs=\(String(format: "%.1f", maxGap * 1000)) durationMs=\(String(format: "%.0f", duration * 1000))"
+        )
     }
 
     /// The conversation with its last turn put into the forced state: the answer taken away, and
@@ -131,3 +166,54 @@ enum BrainDebug {
         }
     #endif
 }
+
+#if DEBUG
+    /// What a walk step does to the brains on screen.
+    @MainActor
+    enum BrainWalk {
+        static func run(
+            verb: String, value: String, store: BrainStore, collection: UICollectionView,
+            toggle: (String) -> Void, rows: (String) -> Void, share: (String) -> Void,
+            refresh: () -> Void
+        ) {
+            AppLogger.ui.info("brain walk verb=\(verb) value=\(value) open=\(store.openTurnID ?? "-")")
+            let cells = collection.visibleCells.compactMap { $0 as? NeuralBrainCell }
+            let openCell = cells.first { $0.brainRow.openView != nil }
+            let turnID = store.openTurnID ?? store.latestTurnID
+            switch verb {
+            case "open":
+                if let id = Int(value).flatMap({ store.turnID(atBrain: $0) }) ?? turnID, !store.isOpen(id) { toggle(id) }
+            case "close":
+                if let id = store.openTurnID { toggle(id) }
+            case "openturn":
+                if let number = Int(value), let id = store.turnID(atBrain: number) { toggle(id) }
+            case "top":
+                guard let cell = openCell ?? cells.first else { return }
+                let extra = Double(value) ?? 8
+                let target = cell.frame.minY - collection.adjustedContentInset.top - CGFloat(extra)
+                collection.setContentOffset(CGPoint(x: 0, y: max(-collection.adjustedContentInset.top, target)), animated: false)
+            case "bottom":
+                let target = collection.contentSize.height - collection.bounds.height + collection.adjustedContentInset.bottom
+                collection.setContentOffset(CGPoint(x: 0, y: max(0, target)), animated: false)
+            case "carddump":
+                let depth = Int(value) ?? 4
+                for cell in cells { BrainDebug.dumpTree(cell.brainRow.card, depth: depth, max: depth) }
+            case "rows": if let turnID { rows(turnID) }
+            case "share": if let turnID { share(turnID) }
+            case "replay":
+                guard let turnID else { return }
+                store.mutate(turnID) { $0.scrub(to: Double(value) ?? 0.5) }
+                openCell?.brainRow.openView?.refreshAll(fromBrowse: true)
+            case "prov":
+                guard let turnID, let model = store.model(for: turnID) else { return }
+                let tokens = model.answerTokens(in: store.answerText(for: turnID)).map(\.text)
+                if let index = Int(value), tokens.indices.contains(index) {
+                    store.mutate(turnID) { $0.setProvenance(token: tokens[index]) }
+                    openCell?.brainRow.openView?.refreshAll(fromBrowse: true)
+                }
+            default:
+                openCell?.brainRow.openView?.walk(verb: verb, value: value)
+            }
+        }
+    }
+#endif

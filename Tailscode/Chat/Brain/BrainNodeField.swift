@@ -24,6 +24,14 @@ final class BrainNodeField {
     let root = CALayer()
     private(set) var zoneLabelRects: [NeuralZone: CGRect] = [:]
 
+    /// The steps the list's filters hide: the head draws their nodes at 28 percent.
+    var dimmed: Set<String> = []
+
+    private let ringLayer = CAShapeLayer()
+    private let calloutLayer = CALayer()
+    private let calloutText = CATextLayer()
+    private var ringNode: String?
+
     private let wellLayer = CALayer()
     private let tieLayer = CALayer()
     private let wireLayer = CALayer()
@@ -56,6 +64,124 @@ final class BrainNodeField {
             root.addSublayer(layer)
         }
         buildWells()
+        buildRing()
+    }
+
+    /// Applies a move's reveal to the field: each node pops in on its own beat, the wires and the ties
+    /// draw along their length, and nothing is built or rebuilt while it runs.
+    func setReveal(model: NeuralBrainModel?, frame: NeuralTransitionFrame) {
+        guard let model else { return }
+        revealing = true
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        let reveal = frame.nodes
+        for (index, step) in model.steps.enumerated() {
+            guard let node = nodes[step.id] else { continue }
+            let scale = CGFloat(reveal.scale(index))
+            node.container.transform = CATransform3DMakeScale(scale, scale, 1)
+            node.container.opacity = Float(reveal.alpha(index)) * node.restOpacity
+        }
+        var batchAlpha = 1.0
+        if model.nodeCount > 0 {
+            batchAlpha = Double(reveal.revealed) / Double(model.nodeCount)
+        }
+        batchLayer.opacity = Float(min(1, batchAlpha * 1.4))
+        for layer in wires { layer.strokeEnd = CGFloat(frame.wireDraw) }
+        for layer in ties { layer.strokeEnd = CGFloat(frame.tieDraw) }
+        for layer in vias { layer.opacity = Float(frame.wireDraw) }
+        pulseLayer.opacity = Float(frame.wireDraw)
+        ringLayer.opacity = Float(frame.wireDraw)
+        calloutLayer.opacity = Float(frame.wireDraw)
+        labelLayer.opacity = Float(frame.progress)
+        wellLayer.opacity = Float(frame.progress)
+    }
+
+    func clearReveal() {
+        guard revealing else { return }
+        revealing = false
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for node in nodes.values {
+            node.container.transform = CATransform3DIdentity
+            node.container.opacity = node.restOpacity
+        }
+        batchLayer.opacity = 1
+        for layer in wires { layer.strokeEnd = 1 }
+        for layer in ties { layer.strokeEnd = 1 }
+        pulseLayer.opacity = 1
+        ringLayer.opacity = 1
+        calloutLayer.opacity = 1
+        labelLayer.opacity = 1
+        wellLayer.opacity = 1
+        CATransaction.commit()
+    }
+
+    private var revealing = false
+
+    private func buildRing() {
+        ringLayer.fillColor = nil
+        ringLayer.isHidden = true
+        ringLayer.shadowOpacity = 0.9
+        ringLayer.shadowOffset = .zero
+        calloutLayer.isHidden = true
+        calloutLayer.cornerCurve = .continuous
+        calloutText.alignmentMode = .center
+        calloutText.truncationMode = .none
+        calloutText.isWrapped = false
+        calloutLayer.addSublayer(calloutText)
+        root.addSublayer(ringLayer)
+        root.addSublayer(calloutLayer)
+    }
+
+    /// Rings the step under the cursor: a ring a little off the node, with its number beside it,
+    /// because at the head's size the numbers inside the nodes do not read.
+    func setRing(_ ring: BrainRing?, model: NeuralBrainModel) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        guard let ring, let point = model.point(of: ring.nodeID) else {
+            ringLayer.isHidden = true
+            calloutLayer.isHidden = true
+            ringNode = nil
+            return
+        }
+        ringNode = ring.nodeID
+        let scale = max(scale, 0.01)
+        let node = CGFloat(NeuralDesign.nodeRadius)
+        let radius = node + 7
+        ringLayer.path = CGPath(
+            ellipseIn: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2), transform: nil)
+        ringLayer.position = CGPoint(x: point.x, y: point.y)
+        ringLayer.lineWidth = 2.2 / scale
+        ringLayer.strokeColor = ink.live.cgColor
+        ringLayer.shadowColor = ink.live.cgColor
+        ringLayer.shadowRadius = 5 / scale
+        ringLayer.isHidden = false
+        let font = UIFont.monospacedSystemFont(ofSize: 10 / scale * scale, weight: .bold)
+        let text = NSAttributedString(
+            string: String(ring.calloutNumber),
+            attributes: [.font: font, .foregroundColor: UIColor(red: 0.04, green: 0.05, blue: 0.06, alpha: 1)])
+        let size = text.size()
+        let padX = 6 / scale
+        let height = 15 / scale
+        let width = max(height, size.width / scale + padX * 2)
+        calloutLayer.bounds = CGRect(x: 0, y: 0, width: width, height: height)
+        calloutLayer.cornerRadius = height / 2
+        calloutLayer.backgroundColor = ink.live.cgColor
+        let ux = CGFloat(point.x) + radius * 0.72 + width / 2
+        let uy = CGFloat(point.y) - radius * 0.72 - height / 2
+        calloutLayer.position = CGPoint(x: min(ux, CGFloat(NeuralDesign.width) - width / 2 - 2), y: max(uy, height / 2 + 2))
+        calloutText.contentsScale = contentsScale
+        calloutText.string = NSAttributedString(
+            string: String(ring.calloutNumber),
+            attributes: [
+                .font: UIFont.monospacedSystemFont(ofSize: 10 / scale, weight: .bold),
+                .foregroundColor: UIColor(red: 0.04, green: 0.05, blue: 0.06, alpha: 1),
+            ])
+        let line = 10 / scale * 1.2
+        calloutText.frame = CGRect(x: 0, y: (height - line) / 2, width: width, height: line)
+        calloutLayer.isHidden = false
     }
 
     /// How many design units a point of the screen is, which sets the sizes of text and hit
@@ -86,8 +212,11 @@ final class BrainNodeField {
     /// Recolours for a new palette. The layers are kept; `refresh` repaints them.
     func recolor(_ newInk: BrainInk) {
         ink = newInk
-        for (zone, well) in wells { well.strokeColor = ink.rule.cgColor; _ = zone }
+        for well in wells.values { well.strokeColor = ink.rule.cgColor }
         layoutLabels()
+        ringLayer.strokeColor = ink.live.cgColor
+        ringLayer.shadowColor = ink.live.cgColor
+        calloutLayer.backgroundColor = ink.live.cgColor
     }
 
     /// Builds the layers for a model's layout. Nodes are made on demand by `refresh`.
@@ -158,7 +287,7 @@ final class BrainNodeField {
         applyWires(drawn, selecting: selecting, pointing: pointing, many: many)
         applyVias(drawn.vias, selecting: selecting, pointing: pointing)
         applyTies(drawn.ties, selecting: selecting, pointing: pointing)
-        applyNodes(draws, many: many, selecting: selecting, reduceMotion: reduceMotion)
+        applyNodes(draws, many: many, selecting: false, reduceMotion: reduceMotion)
         applyWells(model)
     }
 
@@ -213,13 +342,13 @@ final class BrainNodeField {
             let font = UIFont.monospacedSystemFont(ofSize: size, weight: .semibold)
             let used = zonesInUse.contains(zone)
             text.string = NSAttributedString(
-                string: zone.label,
+                string: zone.displayLabel,
                 attributes: [
                     .font: font, .kern: size * 0.18,
                     .foregroundColor: used ? ink.zone(zone) : ink.rule.withAlphaComponent(0.9),
                 ])
             text.contentsScale = contentsScale
-            let width = size * 0.62 * CGFloat(zone.label.count) * 1.35 + 8
+            let width = size * 0.62 * CGFloat(zone.displayLabel.count) * 1.35 + 8
             let height = size * 1.3
             let well = zone.well
             let origin = CGPoint(
@@ -326,11 +455,12 @@ final class BrainNodeField {
                 let node = nodes[draw.id] ?? makeNode(draw.id)
                 node.apply(
                     draw, ink: ink, selecting: selecting, reduceMotion: reduceMotion,
-                    designScale: scale)
+                    designScale: scale, filtered: dimmed.contains(draw.id))
             } else {
                 let key = BatchKey(
                     zone: draw.zone, lit: draw.lit >= 0.5,
-                    faded: (selecting && !draw.hot) || draw.dimmed, hot: draw.hot)
+                    faded: (selecting && !draw.hot) || draw.dimmed || dimmed.contains(draw.id),
+                    hot: draw.hot)
                 let path = groups[key] ?? CGMutablePath()
                 path.addPath(
                     BrainShapes.path(draw.shape, radius: CGFloat(draw.radius)),
@@ -374,7 +504,7 @@ final class BrainNodeField {
             layer.strokeColor = (key.lit ? tone : ink.rule).cgColor
             layer.fillColor =
                 (key.lit ? ink.dome.mixed(with: tone, 0.17) : ink.dome).cgColor
-            layer.opacity = key.faded ? 0.42 : 1
+            layer.opacity = key.faded ? 0.28 : 1
         }
     }
 }
@@ -392,6 +522,8 @@ final class BrainNodeLayers {
     let text = CATextLayer()
     private var shapeKey: String?
     private var laidMotion: NeuralMotion = .still
+    /// The opacity the node rests at, which a move's reveal multiplies and gives back.
+    private(set) var restOpacity: Float = 1
 
     init() {
         for layer in [pin, halo, inner, mark] {
@@ -423,7 +555,7 @@ final class BrainNodeLayers {
 
     func apply(
         _ draw: NeuralNodeDraw, ink: BrainInk, selecting: Bool, reduceMotion: Bool,
-        designScale: CGFloat
+        designScale: CGFloat, filtered: Bool = false
     ) {
         container.position = CGPoint(x: draw.point.x, y: draw.point.y)
         let radius = CGFloat(draw.radius)
@@ -471,10 +603,11 @@ final class BrainNodeLayers {
         inner.opacity = lit < 0.5 ? 0.25 : 0.8
         mark.isHidden = draw.status != .failed
         mark.strokeColor = ink.danger.cgColor
-        pin.isHidden = !draw.pinned
+        pin.isHidden = true
         pin.strokeColor = ink.live.cgColor
         let faded = (selecting && !draw.hot) || draw.dimmed
-        container.opacity = faded ? 0.42 : (draw.isRecovered ? 0.7 : 1)
+        restOpacity = filtered ? 0.28 : (faded ? 0.42 : (draw.isRecovered ? 0.7 : 1))
+        container.opacity = restOpacity
         setLabel(draw.label, tone: ink.rule.mixed(with: tone, lit), ganglion: draw.isGanglion)
         lay(draw.motion, reduceMotion: reduceMotion)
     }
