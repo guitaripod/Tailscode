@@ -20,6 +20,9 @@ final class BrainStepCard: UIView {
     var onToggleOutput: ((Bool) -> Void)?
     var onGoToStep: ((String) -> Void)?
     var onLayoutChange: (() -> Void)?
+    var readerViewport: () -> CGFloat = { 0 }
+    var readerOffset: (String) -> CGPoint = { _ in .zero }
+    var onReaderScroll: ((String, CGPoint) -> Void)?
 
     private let stack = UIStackView()
     private let edge = UIView()
@@ -448,7 +451,7 @@ final class BrainStepCard: UIView {
             box.addArrangedSubview(
                 sectionLabel(
                     Localized.text("Diff"), right: tally(added: edit.added, removed: edit.removed)))
-            box.addArrangedSubview(diffBlock(edit))
+            box.addArrangedSubview(diffBlock(edit, stepID: step.stepID))
         case .read(let read):
             box.addArrangedSubview(
                 sectionLabel(
@@ -572,7 +575,86 @@ final class BrainStepCard: UIView {
         return box
     }
 
-    private func diffBlock(_ edit: NeuralReadout.Edit) -> UIView {
+    /// The first lines of an edit or a written file, and under them a link that opens the whole of
+    /// it in a reader and a button that copies the whole of it. The reader is made only for the
+    /// step whose output is open, so a step nobody opened builds none.
+    private func diffBlock(_ edit: NeuralReadout.Edit, stepID: String) -> UIView {
+        let holder = UIStackView()
+        holder.axis = .vertical
+        holder.spacing = 6
+        let opened = outputExpanded && edit.hiddenCount > 0
+        if opened, let model, let source = model.step(id: stepID) {
+            holder.addArrangedSubview(reader(of: NeuralReadout.fullDiff(of: source), stepID: stepID))
+        } else {
+            holder.addArrangedSubview(diffFrame(edit.lines))
+        }
+        guard edit.hiddenCount > 0 else { return holder }
+        holder.addArrangedSubview(diffBar(total: edit.total, stepID: stepID, opened: opened))
+        return holder
+    }
+
+    /// How tall the reader may be: what the card's own scroller shows less the lines above the
+    /// diff that are scrolled out of view to make room and the bar under it, so the whole file and
+    /// both of its buttons are in view at once.
+    private func readerHeight() -> CGFloat {
+        let viewport = readerViewport()
+        guard viewport > 0 else { return 320 }
+        return max(160, min(640, viewport - Self.readerChrome))
+    }
+
+    private static let readerChrome: CGFloat = 82
+
+    private func reader(of lines: [NeuralReadout.DiffLine], stepID: String) -> UIView {
+        let view = BrainDiffReaderView(
+            lines: lines, maxHeight: readerHeight(), offset: readerOffset(stepID))
+        view.onScroll = { [weak self] offset in self?.onReaderScroll?(stepID, offset) }
+        return view
+    }
+
+    private func diffBar(total: Int, stepID: String, opened: Bool) -> UIView {
+        let link = BrainTextButton(
+            title: opened ? NeuralReading.showFewerLines : NeuralReading.showAllLines(total),
+            bordered: false
+        ) { [weak self] in
+            guard let self else { return }
+            self.outputExpanded.toggle()
+            self.onToggleOutput?(self.outputExpanded)
+        }
+        let copy = copyAllButton(stepID: stepID)
+        let bar = UIStackView(arrangedSubviews: [link, UIView(), copy])
+        bar.axis = .horizontal
+        bar.alignment = .center
+        bar.spacing = 10
+        return bar
+    }
+
+    private func copyAllButton(stepID: String) -> BrainTextButton {
+        let button = BrainTextButton(title: NeuralReading.copyAllLabel, bordered: true) {}
+        arm(button, stepID: stepID)
+        return button
+    }
+
+    private func arm(_ button: BrainTextButton, stepID: String) {
+        button.replace(title: NeuralReading.copyAllLabel, bordered: true) { [weak self, weak button] in
+            guard let self, let button else { return }
+            self.copyWhole(stepID: stepID, button: button)
+        }
+    }
+
+    /// Puts the whole file, or the whole diff, on the pasteboard and says Copied on the button for
+    /// a moment before it gets its words back.
+    private func copyWhole(stepID: String, button: BrainTextButton) {
+        guard let source = model?.step(id: stepID) else { return }
+        onCopy?(NeuralReading.pasteText(of: NeuralReadout.fullDiff(of: source)))
+        button.replace(title: Localized.text("Copied"), bordered: true) {}
+        Task { @MainActor [weak self, weak button] in
+            try? await Task.sleep(for: .seconds(1.4))
+            guard let self, let button else { return }
+            self.arm(button, stepID: stepID)
+        }
+    }
+
+    private func diffFrame(_ lines: [NeuralReadout.DiffLine]) -> UIView {
         let frame = UIStackView()
         frame.axis = .vertical
         frame.spacing = 0
@@ -580,7 +662,7 @@ final class BrainStepCard: UIView {
         frame.layer.borderColor = Theme.Color.separator.resolvedColor(with: traitCollection).cgColor
         frame.layer.cornerRadius = 6
         frame.layer.masksToBounds = true
-        for line in edit.lines {
+        for line in lines {
             let mark: String
             let wash: UIColor
             let ink: UIColor
@@ -605,13 +687,7 @@ final class BrainStepCard: UIView {
             row.layoutMargins = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 4)
             frame.addArrangedSubview(row)
         }
-        let holder = UIStackView(arrangedSubviews: [frame])
-        holder.axis = .vertical
-        holder.spacing = 4
-        if edit.hiddenCount > 0, let more = edit.moreLabel {
-            holder.addArrangedSubview(rightLabel(more))
-        }
-        return holder
+        return frame
     }
 }
 

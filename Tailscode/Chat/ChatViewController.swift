@@ -2516,6 +2516,7 @@ final class ChatViewController: UIViewController {
         viewModel.onModelChange = { [weak self] in
             guard let self else { return }
             self.updateNavControls()
+            self.redrawBrainsForEffort()
             self.updateBanner(for: self.viewModel.state)
             self.updateNavStatus(for: self.viewModel.state, messagesMoved: false)
         }
@@ -2586,6 +2587,26 @@ final class ChatViewController: UIViewController {
     /// Which failed rows have already been felt. A failure is worth one knock, and the row is
     /// redrawn on every clock tick that ages its caption.
     private var announcedFailedSends: Set<UUID> = []
+
+    /// The level and the levels the brains were last drawn against.
+    private struct BrainEffortReading: Equatable {
+        var effort: String?
+        var options: [String]
+    }
+
+    private var brainEffort: BrainEffortReading?
+
+    /// A pick on the pill changes what every brain's header says, and a transcript is built again
+    /// only for a state the server sent, so a pick that moved the level has the brains drawn again
+    /// from the state already held.
+    private func redrawBrainsForEffort() {
+        guard brain.isActive, let state = lastRenderedState,
+            BrainEffortReading(
+                effort: viewModel.displayedEffort, options: viewModel.reasoningEffortOptions)
+                != brainEffort
+        else { return }
+        render(state)
+    }
 
     /// The server's account of the conversation moved, so every row is built from it again.
     private func render(_ state: ConversationState) {
@@ -2692,10 +2713,17 @@ final class ChatViewController: UIViewController {
     private var lastToolStatuses: [String: ToolStatus] = [:]
 
     /// A debug launch with `TAILSCODE_NEURAL_LARGE` swaps the conversation for the 174-step demo
-    /// turn so the long brain can be looked at without a server holding one.
+    /// turn so the long brain can be looked at without a server holding one, and with
+    /// `TAILSCODE_NEURAL_DEMO=write` for the turn that writes a file of a hundred and forty lines.
     private static func stagedState(_ state: ConversationState) -> ConversationState {
         #if DEBUG
-            guard let value = ProcessInfo.processInfo.environment["TAILSCODE_NEURAL_LARGE"],
+            let environment = ProcessInfo.processInfo.environment
+            if environment["TAILSCODE_NEURAL_DEMO"] == "write" {
+                var staged = state
+                staged.messages = NeuralDemo.writing(prefix: "w-")
+                return staged
+            }
+            guard let value = environment["TAILSCODE_NEURAL_LARGE"],
                 let steps = Int(value), steps > 0
             else { return state }
             var staged = state
@@ -2717,10 +2745,13 @@ final class ChatViewController: UIViewController {
         let stalled: Bool
         if case .stalled = facts.phase { stalled = true } else { stalled = false }
         let reading = brain.reading(of: state, stalled: stalled)
+        let effort = viewModel.displayedEffort
+        let effortOptions = viewModel.reasoningEffortOptions
+        brainEffort = BrainEffortReading(effort: effort, options: effortOptions)
         let layout = brain.layout(
             reading: reading, facts: facts, call: callController.currentFace,
             providerID: viewModel.displayedModel?.providerID,
-            effortOptions: viewModel.reasoningEffortOptions)
+            effortOptions: effortOptions, effort: effort)
         var rows = ChatRowBuilder.makeRows(
             from: reading.messages, agents: subagentPlacement(for: reading.messages),
             runs: Dictionary(runs.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest }),
@@ -3631,6 +3662,12 @@ final class ChatViewController: UIViewController {
                 try? await Task.sleep(for: .seconds(2))
                 BrainChecks.runModel()
                 guard let self else { return }
+                if ProcessInfo.processInfo.environment["TAILSCODE_NEURAL_DEMO"] == "write" {
+                    await BrainChecks.runReaderScreen(
+                        collection: self.collectionView, store: self.brain.store,
+                        toggle: { [weak self] id in self?.toggleBrain(id) })
+                    return
+                }
                 await BrainChecks.runScreen(
                     collection: self.collectionView, store: self.brain.store,
                     toggle: { [weak self] id in self?.toggleBrain(id) })

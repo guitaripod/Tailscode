@@ -116,8 +116,8 @@ enum BrainDebug {
     /// `key` (characters sent through the browse reducer, `esc`, `enter`, `up`, `down` and `space`
     /// by name), `chip` (a zone's filter by its key digit), `dive` (a zone name: think, sense,
     /// act, shell, delegate, say), `replay` (a fraction to hold the playhead at), `prov` (the nth
-    /// chip), `rows`, `share`, `scroll` (points to scroll the account) and `unfold` (the nth work
-    /// line).
+    /// chip), `rows`, `share`, `scroll` (points to scroll the account), `reader` (points to scroll the open reader of a
+    /// whole file to, `y` or `y,x`) and `unfold` (the nth work line).
     static var walk: [(delay: Double, verb: String, value: String)] {
         #if DEBUG
             guard let script = environment["TAILSCODE_NEURAL_WALK"] else { return [] }

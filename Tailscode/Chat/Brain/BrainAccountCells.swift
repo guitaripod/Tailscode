@@ -36,6 +36,7 @@ final class BrainAccountEnv {
     var askHandler: () -> Void = {}
     var scrolledHandler: () -> Void = {}
     var outputExpanded = false
+    var viewportHeight: CGFloat = 0
     var answerText = ""
 
     init(model: NeuralBrainModel, interaction: BrainInteraction, metrics: NeuralStageMetrics) {
@@ -1087,6 +1088,9 @@ extension BrainAccountEnv {
         card.onRelationHover = { [weak self] ids in self?.relationHover(ids) }
         card.onOpenAgent = { [weak self] id in self?.openAgent(id) }
         card.onToggleOutput = { [weak self] expanded in self?.toggleOutput(expanded) }
+        card.readerViewport = { [weak self] in self?.viewportHeight ?? 0 }
+        card.readerOffset = { [weak self] id in self?.interaction.readerOffsets[id] ?? .zero }
+        card.onReaderScroll = { [weak self] id, offset in self?.interaction.readerOffsets[id] = offset }
     }
 }
 

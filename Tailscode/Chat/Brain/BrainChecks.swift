@@ -71,6 +71,8 @@
             runMetrics(long)
             runMove(long)
             runWords(all)
+            runEffort()
+            runReader()
             let failed = results.filter { !$0.passed }.count
             AppLogger.ui.info("brain-check model done pass=\(results.count - failed) fail=\(failed)")
         }
@@ -282,6 +284,276 @@
             check("plain titles read as a sentence", rows.contains { $0.title.hasPrefix("Built") || $0.title.hasPrefix("Ran") })
             let result = build.account(answer: "ok", prompt: "p").result
             check("the result lists a check after a retry", result?.checks.contains { $0.verdict == .fixed } == true)
+        }
+
+        private static func writingTurn(prefix: String) -> NeuralTurn? {
+            turns(NeuralDemo.writing(prefix: prefix)).first
+        }
+
+        /// A turn with an edit of forty lines inside one file, which is a diff with marks and no
+        /// numbers.
+        private static func editingMessages() -> [ChatMessage] {
+            let before = (1...20).map { "let old\($0) = \($0)" }.joined(separator: "\n")
+            let after = (1...22).map { "let new\($0) = \($0 * 2)" }.joined(separator: "\n")
+            let call = ToolCall(
+                id: "edit-call", name: "Edit", status: .completed,
+                input: .object([
+                    "file_path": .string("/tmp/edit.swift"), "old_string": .string(before),
+                    "new_string": .string(after),
+                ]), output: "The file has been updated.")
+            let origin = Date(timeIntervalSince1970: 1_792_100_000)
+            return [
+                ChatMessage(
+                    id: "e-u", role: .user, agentType: .claudeCode,
+                    parts: [MessagePart(id: "t", kind: .text("Rename the constants."))],
+                    createdAt: origin, completedAt: origin),
+                ChatMessage(
+                    id: "e-m1", role: .assistant, agentType: .claudeCode,
+                    parts: [
+                        MessagePart(id: "p0", kind: .reasoning("Renaming them in one edit.")),
+                        MessagePart(id: "p1", kind: .tool(call)),
+                        MessagePart(id: "p2", kind: .text("Done.")),
+                    ],
+                    createdAt: origin.addingTimeInterval(5), completedAt: origin.addingTimeInterval(6)),
+            ]
+        }
+
+        private static func firstStep(of model: NeuralBrainModel, named name: String) -> NeuralStep? {
+            model.steps.first { $0.call?.call.name == name }
+        }
+
+        private static func descendants(of view: UIView) -> [UIView] {
+            view.subviews.flatMap { [$0] + descendants(of: $0) }
+        }
+
+        private static func card(
+            for stepID: String, in model: NeuralBrainModel, expanded: Bool, viewport: CGFloat = 600,
+            copied: ((String) -> Void)? = nil
+        ) -> BrainStepCard? {
+            let value = NeuralReadout.make(model: model, subject: .step(stepID), now: Date())
+            guard case .step(let step) = value.body else { return nil }
+            let card = BrainStepCard()
+            card.readerViewport = { viewport }
+            card.onCopy = copied
+            card.frame = CGRect(x: 0, y: 0, width: 360, height: 10)
+            card.configure(
+                step: step, model: model, style: .init(isPreview: false, isLive: false, bordered: true),
+                outputExpanded: expanded)
+            let height = card.fittedHeight(width: 360)
+            card.frame = CGRect(x: 0, y: 0, width: 360, height: height)
+            card.layoutIfNeeded()
+            return card
+        }
+
+        private static func button(titled title: String, in view: UIView) -> BrainTextButton? {
+            descendants(of: view).compactMap { $0 as? BrainTextButton }
+                .first { $0.accessibilityLabel == title }
+        }
+
+        private static func reader(in view: UIView) -> BrainDiffReaderView? {
+            descendants(of: view).compactMap { $0 as? BrainDiffReaderView }.first
+        }
+
+        /// The brain's header wears the level the chat is on for a turn whose own messages
+        /// recorded none, for the latest turn and for the older ones, and a level a turn carried
+        /// wins.
+        private static func runEffort() {
+            let options = ["low", "medium", "high", "xhigh"]
+            let older = NeuralDemo.writing(prefix: "a-", origin: 1_792_000_000)
+            let newer = NeuralDemo.writing(prefix: "b-", origin: 1_792_200_000)
+            let messages = older + newer
+            func faces(effort: String?) -> [NeuralFace] {
+                let controller = ChatBrainController()
+                _ = controller.layout(
+                    reading: .init(messages: messages, running: false, awaiting: .none),
+                    facts: StatusFacts(), call: nil, providerID: nil, effortOptions: options,
+                    effort: effort)
+                return (1...2).compactMap { number in
+                    controller.store.turnID(atBrain: number)
+                        .flatMap { controller.store.model(for: $0)?.face }
+                }
+            }
+            guard ChatBrainController().isActive else {
+                check("the brain is drawn here, so its header can be read", false)
+                return
+            }
+            let named = faces(effort: "xhigh")
+            let expected = NeuralFace(model: nil, providerID: nil, effort: "xhigh", options: options)
+            check(
+                "every turn wears the chat's level when it recorded none",
+                named.count == 2 && named.allSatisfy { !$0.hollow && $0.effort == expected.effort },
+                "\(named.map { "\($0.effort)/\($0.hollow)" })")
+            let none = faces(effort: nil)
+            check(
+                "a chat with no level leaves the server deciding",
+                none.count == 2 && none.allSatisfy { $0.hollow }, "\(none.map(\.hollow))")
+            let high = faces(effort: "low")
+            check(
+                "another level draws another number of bars",
+                high.count == 2 && high.allSatisfy { $0.effort < expected.effort && !$0.hollow },
+                "\(high.map(\.effort))")
+            let store = BrainStore()
+            func latestFace(_ effort: String?) -> NeuralFace? {
+                _ = store.prepare(messages: messages, running: false, awaiting: .none) { _, _ in
+                    NeuralBrainContext(effortOptions: options, effort: effort)
+                }
+                return store.turnID(atBrain: 2).flatMap { store.model(for: $0)?.face }
+            }
+            let before = latestFace("low")
+            let after = latestFace("xhigh")
+            check(
+                "a pick on the pill redraws the brains already held",
+                before != nil && after != nil && before != after && after?.hollow == false)
+            var own = turns(messages)[0]
+            own.effort = "low"
+            let kept = NeuralBrainModel(turn: own, context: NeuralBrainContext(effortOptions: options, effort: "xhigh")).face
+            check("a level the turn carried wins", kept.effort == high.first?.effort && !kept.hollow)
+        }
+
+        /// The card of a step that wrote a long file says how long it is, opens the whole of it in
+        /// a reader that draws only the lines in view, fits the window it is in, copies the whole
+        /// of it, and builds nothing of this for a step nobody opened.
+        private static func runReader() {
+            guard let turn = writingTurn(prefix: "r-") else {
+                check("the writing turn exists", false)
+                return
+            }
+            var model = NeuralBrainModel(turn: turn)
+            guard let write = firstStep(of: model, named: "Write") else {
+                check("the writing turn has a Write", false)
+                return
+            }
+            let whole = NeuralReadout.fullDiff(of: write)
+            check("a Write reads as 140 lines, every one added", whole.count == 140 && NeuralReading.isWholeFile(whole))
+
+            let builtBefore = BrainDiffReaderView.built
+            var pasted: String?
+            guard let closed = card(for: write.id, in: model, expanded: false, copied: { pasted = $0 })
+            else {
+                check("the closed card is made", false)
+                return
+            }
+            check("a step nobody opened builds no reader", BrainDiffReaderView.built == builtBefore && reader(in: closed) == nil)
+            let more = NeuralReading.showAllLines(140)
+            check("the link says how many lines there are", button(titled: more, in: closed) != nil, more)
+            check("the plain text of the count is gone", !descendants(of: closed).contains { ($0 as? UILabel)?.attributedText?.string.contains("125 more") == true })
+            let copy = button(titled: NeuralReading.copyAllLabel, in: closed)
+            check("the card offers Copy all", copy != nil)
+            copy?.sendActions(for: .touchUpInside)
+            check(
+                "Copy all puts the whole file on the pasteboard",
+                pasted == NeuralReading.pasteText(of: whole) && pasted?.split(separator: "\n", omittingEmptySubsequences: false).count == 140,
+                "\(pasted?.count ?? -1)")
+            check("the button says Copied for a moment", copy?.accessibilityLabel == Localized.text("Copied"))
+
+            guard let open = card(for: write.id, in: model, expanded: true, viewport: 600),
+                let readerView = reader(in: open)
+            else {
+                check("the open card has a reader", false)
+                return
+            }
+            check("expanding opens a reader of exactly 140 lines", readerView.lines.count == 140)
+            check("a file written whole is numbered", readerView.isNumbered)
+            check("the reader says how many lines it holds", readerView.accessibilityLabel == Localized.text("%lld lines", 140))
+            check("the link becomes Show fewer lines", button(titled: NeuralReading.showFewerLines, in: open) != nil)
+            check("the reader fits the window with both buttons", readerView.frame.height + 82 <= 600 && readerView.frame.height >= 160, "\(readerView.frame.height)")
+            let tall = card(for: write.id, in: model, expanded: true, viewport: 2000).flatMap { reader(in: $0) }
+            check("the reader is never taller than 640", (tall?.frame.height ?? 0) <= 640, "\(tall?.frame.height ?? -1)")
+            readerView.layoutIfNeeded()
+            let canvas = UIGraphicsImageRenderer(size: readerView.bounds.size)
+            _ = canvas.image { readerView.layer.render(in: $0.cgContext) }
+            let window = Int(readerView.bounds.height / readerView.lineHeight) + 4
+            check("the reader draws only the lines in view", readerView.visibleRange().count <= window && readerView.visibleRange().first == 0, "\(readerView.visibleRange())")
+            check("a hundred and forty lines draw as many as thirty", readerView.drawnLines <= window && readerView.drawnLines > 0, "\(readerView.drawnLines)")
+            readerView.contentOffset = CGPoint(x: 0, y: readerView.contentHeight)
+            readerView.layoutIfNeeded()
+            _ = canvas.image { readerView.layer.render(in: $0.cgContext) }
+            check("scrolled to the end it draws the last line and still few", readerView.visibleRange().upperBound == 140 && readerView.drawnLines <= window, "\(readerView.visibleRange())")
+
+            let shut = card(for: write.id, in: model, expanded: false)
+            check("closing restores the first lines", shut.map { reader(in: $0) == nil && button(titled: more, in: $0) != nil } == true)
+
+            let edit = NeuralBrainModel(turn: turns(editingMessages())[0])
+            if let step = firstStep(of: edit, named: "Edit"), let editCard = card(for: step.id, in: edit, expanded: true),
+                let editReader = reader(in: editCard)
+            {
+                let lines = NeuralReadout.fullDiff(of: step)
+                check(
+                    "an edit opens a reader with its marks and no numbers",
+                    editReader.lines.count == lines.count && lines.count == 42 && !editReader.isNumbered && !NeuralReading.isWholeFile(lines),
+                    "\(lines.count)")
+                let text = NeuralReading.pasteText(of: lines)
+                check("an edit is pasted with its marks", text.hasPrefix("- let old1") && text.contains("\n+ let new22"), String(text.prefix(40)))
+            } else {
+                check("an edit has a reader", false)
+            }
+
+            let id = write.id
+            model.browse(.click(id, double: false))
+            let opened = model.browse(.key(.space))
+            check("Space opens the output of the step under the cursor", opened.contains(.expandOutputToggle) && model.browseState.outputExpanded)
+            let shutAgain = model.browse(.key(.character("o")))
+            check("o closes it again", shutAgain.contains(.expandOutputToggle) && !model.browseState.outputExpanded)
+            model.browse(.key(.down))
+            check("moving the cursor leaves the output closed", !model.browseState.outputExpanded)
+        }
+
+        /// With the writing turn on screen: a click on the Write and Space open the whole file in a
+        /// reader the account has scrolled to, and `o` closes it and puts the account back.
+        static func runReaderScreen(
+            collection: UICollectionView, store: BrainStore, toggle: @escaping (String) -> Void
+        ) async {
+            func wait(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
+            func walk(_ verb: String, _ value: String) {
+                BrainWalk.run(
+                    verb: verb, value: value, store: store, collection: collection, toggle: toggle,
+                    rows: { _ in }, share: { _ in }, refresh: {})
+            }
+            func visibleReader() -> BrainDiffReaderView? {
+                collection.visibleCells.lazy.compactMap { reader(in: $0) }.first
+            }
+            guard let id = store.latestTurnID, let model = store.model(for: id),
+                let index = model.steps.firstIndex(where: { $0.call?.call.name == "Write" })
+            else {
+                check("the writing turn is on screen", false)
+                return
+            }
+            if !store.isOpen(id) { toggle(id) }
+            await wait(1.8)
+            walk("click", String(index + 1))
+            await wait(0.8)
+            check("a card that is open and unread has no reader", visibleReader() == nil)
+            walk("key", "space")
+            await wait(1.5)
+            guard let opened = visibleReader() else {
+                check("Space opens the reader on screen", false)
+                return
+            }
+            check("Space opens the reader on screen", opened.lines.count == 140 && opened.isNumbered)
+            var scroller: UIView? = opened.superview
+            while let view = scroller, !(view is UICollectionView) { scroller = view.superview }
+            if let account = scroller as? UICollectionView {
+                let top = opened.convert(opened.bounds, to: account).minY - account.contentOffset.y
+                check("the account scrolled until the reader leads", top >= 0 && top <= 70, "\(top)")
+                check(
+                    "the reader and its buttons are in view together",
+                    opened.convert(opened.bounds, to: account).maxY - account.contentOffset.y + 40 <= account.bounds.height,
+                    "\(account.bounds.height)")
+            } else {
+                check("the reader sits in the account's list", false)
+            }
+            check("the reader draws a window of lines", opened.drawnLines > 0 && opened.drawnLines < 40, "\(opened.drawnLines)")
+            walk("key", "o")
+            await wait(1.5)
+            check("o closes the reader", visibleReader() == nil)
+            walk("key", "space")
+            await wait(1.2)
+            check("Space opens it again", visibleReader() != nil)
+            walk("key", "down")
+            await wait(1.2)
+            check("moving the cursor closes it", visibleReader() == nil)
+            let failed = results.filter { !$0.passed }.count
+            AppLogger.ui.info("brain-check reader screen done pass=\(results.count - failed) fail=\(failed)")
         }
 
         /// Opens and closes the latest brain in the list on screen and reads what the move cost,

@@ -39,6 +39,8 @@ final class BrainAccountView: UIView, UICollectionViewDelegate {
     private var detailStep: String?
     private var detailKey = ""
     private var storyWidth: CGFloat = 0
+    private var readerWasOpen = false
+    private var readerLeftFrom: (offset: CGPoint, cursor: String?)?
     private(set) var refreshes = 0
     private(set) var snapshots = 0
 
@@ -291,16 +293,55 @@ final class BrainAccountView: UIView, UICollectionViewDelegate {
                 changed.append(item.id)
             }
         }
+        let outputChanged = env.outputExpanded != readerWasOpen
+        if outputChanged {
+            readerWasOpen = env.outputExpanded
+            env.interaction.readerOffsets = [:]
+        }
         if !changed.isEmpty {
             var snapshot = dataSource.snapshot()
             snapshot.reconfigureItems(changed.filter { snapshot.itemIdentifiers.contains($0) })
             dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
                 self?.collection.collectionViewLayout.invalidateLayout()
+                if outputChanged { self?.settleReader() }
             }
         }
         followCursor()
         refreshDetail()
+        if outputChanged, changed.isEmpty { settleReader() }
         pill.isHidden = !env.list.showsFollowPill
+    }
+
+    /// Opening the whole of a file scrolls the account, or the card beside it, until the reader
+    /// leads; closing it puts the account back where it was.
+    private func settleReader() {
+        layoutIfNeeded()
+        collection.layoutIfNeeded()
+        let scroller: UIScrollView = twoColumns ? detailScroll : collection
+        if env.outputExpanded {
+            guard let reader = openReader(in: scroller) else { return }
+            readerLeftFrom = (scroller.contentOffset, env.cursor)
+            let frame = reader.convert(reader.bounds, to: scroller)
+            let lowest = max(0, scroller.contentSize.height - scroller.bounds.height)
+            let target = min(max(0, frame.minY - Self.readerLead), lowest)
+            scroller.setContentOffset(
+                CGPoint(x: 0, y: target), animated: !UIAccessibility.isReduceMotionEnabled)
+        } else if let left = readerLeftFrom {
+            readerLeftFrom = nil
+            guard left.cursor == env.cursor else { return }
+            scroller.setContentOffset(left.offset, animated: !UIAccessibility.isReduceMotionEnabled)
+        }
+    }
+
+    private static let readerLead: CGFloat = 30
+
+    private func openReader(in scroller: UIScrollView) -> BrainDiffReaderView? {
+        func find(_ view: UIView) -> BrainDiffReaderView? {
+            if let reader = view as? BrainDiffReaderView { return reader }
+            for child in view.subviews { if let found = find(child) { return found } }
+            return nil
+        }
+        return find(scroller)
     }
 
     private func relayout() {
@@ -454,6 +495,7 @@ final class BrainAccountView: UIView, UICollectionViewDelegate {
             nowView.frame = CGRect(x: 0, y: y, width: story, height: height)
             y += height
         }
+        env.viewportHeight = twoColumns ? bounds.height : max(0, bounds.height - y)
         let collectionWidth = twoColumns ? story : min(width, split ? CGFloat(NeuralStageMetrics.storyMax) : width)
         collection.frame = CGRect(x: 0, y: y, width: collectionWidth, height: max(0, bounds.height - y))
         collection.contentInset = UIEdgeInsets(top: 4, left: 0, bottom: 12, right: 0)
@@ -503,6 +545,14 @@ final class BrainAccountView: UIView, UICollectionViewDelegate {
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { userDragging = false }
 
     #if DEBUG
+        /// Scrolls the open reader of a whole file to `y` points, or `y,x`, for a debug walk.
+        func walkReader(offset: String) {
+            let parts = offset.split(separator: ",").compactMap { Double($0) }
+            guard let y = parts.first, let reader = openReader(in: twoColumns ? detailScroll : collection)
+            else { return }
+            reader.contentOffset = CGPoint(x: parts.count > 1 ? parts[1] : 0, y: y)
+        }
+
         /// Unfolds the nth work line, for a debug walk.
         func walkUnfold(_ number: Int) {
             let works = items.filter { $0.isWork }

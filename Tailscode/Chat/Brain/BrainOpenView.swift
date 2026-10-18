@@ -901,6 +901,7 @@ final class BrainLegendViewController: UIViewController, UIPopoverPresentationCo
             case "scroll": account.scroll(by: CGFloat(Double(value) ?? 0))
             case "end": account.scrollToEnd(animated: false)
             case "unfold": account.walkUnfold(Int(value) ?? 1)
+            case "reader": account.walkReader(offset: value)
             case "legend": browse(.key(.character("?")))
             case "dump":
                 func walk(_ view: UIView, _ depth: Int) {

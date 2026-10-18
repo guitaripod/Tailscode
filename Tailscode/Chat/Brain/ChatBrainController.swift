@@ -39,10 +39,11 @@ final class ChatBrainController {
     }
 
     /// Reads the conversation into brains. `facts` says what the conversation is doing now, which
-    /// only the latest turn wears; every turn knows who answered it.
+    /// only the latest turn wears; every turn knows who answered it, and wears the level the chat
+    /// is on (`effort`, what the composer's pill shows) when its own messages recorded none.
     func layout(
         reading: Reading, facts: StatusFacts, call: VoiceCallFace?, providerID: String?,
-        effortOptions: [String]
+        effortOptions: [String], effort: String?
     ) -> BrainLayout {
         guard isActive else {
             if store.count > 0 { store.forgetEverything() }
@@ -53,11 +54,12 @@ final class ChatBrainController {
             messages: reading.messages, running: reading.running, awaiting: reading.awaiting
         ) { _, isLatest in
             guard isLatest else {
-                return NeuralBrainContext(providerID: providerID, effortOptions: effortOptions)
+                return NeuralBrainContext(
+                    providerID: providerID, effortOptions: effortOptions, effort: effort)
             }
             return NeuralBrainContext(
                 activity: activity, fill: facts.context, call: call, providerID: providerID,
-                effortOptions: effortOptions)
+                effortOptions: effortOptions, effort: effort)
         }
         feel()
         return layout

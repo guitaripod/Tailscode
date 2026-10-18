@@ -511,6 +511,9 @@ final class BrainInteraction {
     var expandedText = Set<String>()
     var rowCaps: [String: Int] = [:]
     var accountOffset: CGFloat = 0
+    /// Where each step's reader of a whole file was scrolled to, so a card that is built again
+    /// while the file is open does not send the reader back to its first line.
+    var readerOffsets: [String: CGPoint] = [:]
     var askedExpanded = false
     var planExpanded: Bool?
     var openedAt: CFTimeInterval = 0
