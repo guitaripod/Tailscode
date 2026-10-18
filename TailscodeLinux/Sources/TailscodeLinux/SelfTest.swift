@@ -547,6 +547,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkChatSwitch()
+            report("chat switch: \(checks) claims hold — messages are drawn once for every pane, a long chat shows as soon as it covers the page, and a blank state never wipes it")
+        } catch {
+            report("chat switch: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkBrainSwap()
             report("readout swap: \(checks) claims hold — a subject that arrives during the cross-fade waits for it, leaves the fading page whole and is never stale")
         } catch {

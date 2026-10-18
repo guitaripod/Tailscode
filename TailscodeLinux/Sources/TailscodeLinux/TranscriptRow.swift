@@ -154,8 +154,6 @@ final class TranscriptContext: @unchecked Sendable {
 /// palette's colors baked in, and so does the link-card switch, because the cards are rows.
 final class TranscriptRowBuilder: @unchecked Sendable {
     private let lock = NSLock()
-    private var cache: [String: (message: ChatMessage, sealed: Bool, rows: [TranscriptRow])] = [:]
-    private var look = ""
     private let brains = BrainLedger()
     private let published = NSLock()
     private var brainSettings = BrainBuildSettings()
@@ -197,6 +195,48 @@ final class TranscriptRowBuilder: @unchecked Sendable {
         return (brains.turnPartitions, brains.turnReuses)
     }
 
+    /// How the rows are drawn at this moment, which is part of what a remembered row is: a theme,
+    /// the link treatment and the density each change the rows themselves.
+    private static var look: String {
+        MatrixTheme.palette.name + (Preferences.linkEmbeds ? "" : ":plain-links") + ":"
+            + Preferences.chatDensity.rawValue
+    }
+
+    /// One message's rows, from the process's memo when it holds them.
+    ///
+    /// The seal is part of what the rows are, so it is part of what the memo remembers: the message
+    /// that stops being written is byte-identical to the one that was.
+    private static func messageRows(
+        _ message: ChatMessage, after prompt: ChatMessage?, writing: String?, turnOpen: Bool,
+        look: String, modelName: (ModelSelection) -> String?
+    ) -> [TranscriptRow] {
+        let sealed = MessageSegment.isSealed(
+            streaming: message.isStreaming, isNewest: message.id == writing, turnOpen: turnOpen)
+        if let hit = RowMemo.shared.rows(for: message, sealed: sealed, look: look) { return hit }
+        let rows = TranscriptRow.rows(
+            for: message, prompt: prompt, cacheMarkup: message.id != writing, sealed: sealed,
+            modelName: modelName)
+        RowMemo.shared.store(rows, for: message, sealed: sealed, look: look)
+        return rows
+    }
+
+    /// Makes the rows of a transcript's messages without assembling them into a page, so a chat
+    /// that is about to be opened finds each message already drawn. Holds no builder's lock: it
+    /// writes only the memo, which every build reads.
+    static func warm(
+        _ messages: [ChatMessage], turnOpen: Bool, modelName: (ModelSelection) -> String?
+    ) {
+        let look = Self.look
+        let writing = messages.last?.id
+        var prompt: ChatMessage?
+        for message in messages {
+            _ = messageRows(
+                message, after: prompt, writing: writing, turnOpen: turnOpen, look: look,
+                modelName: modelName)
+            if message.role == .user { prompt = message }
+        }
+    }
+
     /// Rows for a state, with the conversation's own account of what it is waiting on.
     func rows(
         state: ConversationState, messages: [ChatMessage]? = nil,
@@ -218,38 +258,19 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     ) -> [TranscriptRow] {
         lock.lock()
         defer { lock.unlock() }
-        let current =
-            MatrixTheme.palette.name + (Preferences.linkEmbeds ? "" : ":plain-links")
-            + ":" + Preferences.chatDensity.rawValue
-        if current != look {
-            cache.removeAll(keepingCapacity: true)
-            look = current
-        }
+        let look = Self.look
         var brain = brains.pass(
             messages: messages, running: turnOpen, awaiting: awaiting,
             settings: currentBrainSettings)
         publish(policy: brains.policy)
         var all: [TranscriptRow] = []
-        var next: [String: (message: ChatMessage, sealed: Bool, rows: [TranscriptRow])] = [:]
-        next.reserveCapacity(messages.count)
         let writing = messages.last?.id
         var prompt: ChatMessage?
         for message in messages {
-            var rows: [TranscriptRow]
-            // The seal is part of what the rows are, so it is part of what the cache remembers:
-            // the message that stops being written is byte-identical to the one that was.
-            let sealed = MessageSegment.isSealed(
-                streaming: message.isStreaming, isNewest: message.id == writing,
-                turnOpen: turnOpen)
-            if let hit = cache[message.id], hit.message == message, hit.sealed == sealed {
-                rows = hit.rows
-            } else {
-                rows = TranscriptRow.rows(
-                    for: message, prompt: prompt, cacheMarkup: message.id != writing,
-                    sealed: sealed, modelName: modelName)
-            }
+            var rows = Self.messageRows(
+                message, after: prompt, writing: writing, turnOpen: turnOpen, look: look,
+                modelName: modelName)
             if message.role == .user { prompt = message }
-            next[message.id] = (message, sealed, rows)
             if brain != nil { rows = brain!.apply(to: rows, of: message) }
             guard !rows.isEmpty else { continue }
             if message.role == .user, !all.isEmpty {
@@ -257,7 +278,6 @@ final class TranscriptRowBuilder: @unchecked Sendable {
             }
             all += rows
         }
-        cache = next
         all = TranscriptRow.placeBoard(in: all)
         return TranscriptRow.strip(Preferences.compactTools ? TranscriptRow.fuse(all) : all)
     }

@@ -139,6 +139,8 @@ final class ChatPane: @unchecked Sendable {
     private var pinCorrectorScheduled = false
     private var pendingReveal = false
     private var fillComplete = false
+    private var openTimer = OpenTimer()
+    private var rushing = false
     /// How much of a transcript is folded into rows at all — read from the streaming task, so it
     /// is a plain value rather than anything that needs the main context.
     private var rowTailMessages = 300 {
@@ -482,6 +484,7 @@ final class ChatPane: @unchecked Sendable {
                 }
                 let atBottom = self.isNearBottom()
                 self.followsBottom = atBottom
+                self.askForRowsAtTheEdge()
             }
         }
 
@@ -1730,6 +1733,7 @@ final class ChatPane: @unchecked Sendable {
         guard sessionID != entry.session.id || self.entry?.profileID != entry.profileID
         else { return }
         Trace.mark("open begin \(entry.session.id.prefix(8))")
+        openTimer.begin()
         host?.stopWatching(SessionPinStore.key(entry.profileID, entry.session.id))
         let previousEntry = self.entry
         let previousPresence = presence
@@ -1777,6 +1781,7 @@ final class ChatPane: @unchecked Sendable {
         resumeTask = nil
         renderAttachments()
         ActivityInbox.clear(sessionID: entry.session.id)
+        rushing = false
         windowLimit = 400
         windowWidened = false
         rowTailMessages = 300
@@ -1845,6 +1850,7 @@ final class ChatPane: @unchecked Sendable {
         let sessionID = entry.session.id
         host?.live.edges.note(entry)
         if !isParked { attachStream() }
+        host?.live.warmer.handOver(LiveKey(entry))
         let key = LiveKey(entry)
         let hub = host?.live.hub
         let task = Task { [weak self] in
@@ -2228,6 +2234,17 @@ final class ChatPane: @unchecked Sendable {
         SessionSeenStore.markSeen(sessionID)
     }
 
+    /// Whether a state that has no transcript yet should leave the page as it is. A chat opened
+    /// again is drawn at once from the rows the window kept of it, and the conversation behind it
+    /// opens with an empty state before it has read anything; taking that for the truth wiped the
+    /// page to "Loading…" and built every row a second time a moment later. An empty chat is not
+    /// this: it says so with a transcript that has loaded.
+    private func holdsPaintedRows(whenTold rows: [TranscriptRow], by state: ConversationState)
+        -> Bool
+    {
+        rows.isEmpty && !state.hasLoadedTranscript && !placeholderShown && !renderedRows.isEmpty
+    }
+
     func apply(state: ConversationState, rows: [TranscriptRow]) {
         Trace.mark(
             "apply state loaded=\(state.hasLoadedTranscript) rows=\(rows.count) status=\(state.status)")
@@ -2250,7 +2267,8 @@ final class ChatPane: @unchecked Sendable {
         // hand that memo straight back in. Taking them off first is what makes this idempotent:
         // without it a re-entrant apply appends a second copy and every consumer downstream, which
         // assumes one row per key, tears.
-        var rows = Self.withoutDocked(rows)
+        let held = holdsPaintedRows(whenTold: rows, by: state)
+        var rows = Self.withoutDocked(held ? lastFullRows : rows)
         dockRevert(&rows, state: state)
         pending.reconcile(userMessages: userTally.users(in: state.messages))
         armResumeForWalledTurn(state)
@@ -2293,7 +2311,7 @@ final class ChatPane: @unchecked Sendable {
         turnSession = sessionID
         context.turnOpen = turnOpen
         refreshWorkflowRuns()
-        if let sessionID { host?.rememberRows(rows, for: sessionID) }
+        if let sessionID, !rows.isEmpty { host?.rememberRows(rows, for: sessionID) }
         let appended = max(0, rows.count - lastFullCount)
         lastFullCount = rows.count
         let limit = rowLimit
@@ -3017,6 +3035,7 @@ final class ChatPane: @unchecked Sendable {
         chooser = nil
         if placeholderShown, currentPlaceholder == text { return }
         currentPlaceholder = text
+        openTimer.note("placeholder \(text)")
         Gtk.removeChildren(of: transcriptBox)
         forgetRowWidgets()
         placeholderShown = true
@@ -3072,8 +3091,7 @@ final class ChatPane: @unchecked Sendable {
         // that has only been asked for is: until the prompt can be measured and the rise happens,
         // the newest thing on the page is the message just sent, and it belongs on screen.
         let stick = (initialFill || followsBottom) && !canvasPinned
-        let growth = initialFill ? 0 : appended
-        let chunk = 40
+        let chunk = firstFillRows()
 
         var start = 0
         if !renderedRows.isEmpty {
@@ -3108,31 +3126,39 @@ final class ChatPane: @unchecked Sendable {
         }
 
         let tailDone = start + renderedRows.count >= rows.count
-        if tailDone, start > 0 {
+        if tailDone, start > 0, !initialFill {
             let from = max(0, start - FillTurns.chunk(level: CascadeBudget.level))
-            var previous: UnsafeMutablePointer<GtkWidget>?
-            var bits: [UInt] = []
-            for row in rows[from..<start] {
-                let widget = row.makeWidget(context: context)
-                gtk_box_insert_child_after(ptr(transcriptBox), widget, previous)
-                previous = widget
-                bits.append(UInt(bitPattern: widget))
+            holdingThePlace {
+                var previous: UnsafeMutablePointer<GtkWidget>?
+                var bits: [UInt] = []
+                for row in rows[from..<start] {
+                    let widget = row.makeWidget(context: context)
+                    gtk_box_insert_child_after(ptr(transcriptBox), widget, previous)
+                    previous = widget
+                    bits.append(UInt(bitPattern: widget))
+                }
+                renderedRows.insert(contentsOf: rows[from..<start], at: 0)
+                rowWidgets.insert(contentsOf: bits, at: 0)
+                markGaps(from: 0)
+                applyGaps()
+                enteredRows.formUnion(rows[from..<start].lazy.map(\.key))
             }
-            renderedRows.insert(contentsOf: rows[from..<start], at: 0)
-            rowWidgets.insert(contentsOf: bits, at: 0)
-            markGaps(from: 0)
-            enteredRows.formUnion(rows[from..<start].lazy.map(\.key))
             start = from
         }
 
         applyGaps()
         let complete = tailDone && start == 0
         fillComplete = complete
+        openTimer.rows(renderedRows.count, drawnIn: ptr(transcriptBox))
+        if complete { openTimer.filled(renderedRows.count) }
         if !complete {
             if stick { followsBottom = true }
             if !isFillingInChunks {
                 isFillingInChunks = true
-                FillTurns.take(on: root, owner: self) { [weak self] in
+                FillTurns.take(
+                    on: root, owner: self,
+                    urgent: { [weak self] in self?.pageNeedsRows ?? false }
+                ) { [weak self] in
                     guard let self else { return }
                     self.isFillingInChunks = false
                     guard !self.isParked else { return }
@@ -5015,6 +5041,96 @@ final class ChatPane: @unchecked Sendable {
         schedulePinCorrector()
     }
 
+    private static let firstFillFloor = 12
+    private static let firstFillCeiling = 32
+    private static let firstFillFallback = 24
+    private static let typicalRowHeight = 80.0
+    private static let coveredShare = 1.05
+    private static let runway = 1.5
+
+    /// Rows the first apply of a chat puts on the page: about what a screen of the usual row
+    /// holds. The frame that draws them lays every one out, and a frame that takes a quarter of a
+    /// second is what the governor reads as load and answers by slowing everything for the better
+    /// part of a minute; the hops that follow are not held back while the page is still short.
+    private func firstFillRows() -> Int {
+        guard let page = pageHeight, page > 0 else { return Self.firstFillFallback }
+        let usual = Int(page / Self.typicalRowHeight)
+        let rows = min(Self.firstFillCeiling, max(Self.firstFillFloor, usual))
+        return CascadeBudget.level >= .loaded ? max(8, rows / 2) : rows
+    }
+
+    private var pageHeight: Double? {
+        guard let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return nil }
+        return gtk_adjustment_get_page_size(adjustment)
+    }
+
+    /// Whether what has been drawn reaches past one screen, which is when a chat that was kept
+    /// hidden while it was put together can be shown: the end of the conversation is on screen and
+    /// there is more above it.
+    private var pageIsCovered: Bool {
+        guard let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return false }
+        let page = gtk_adjustment_get_page_size(adjustment)
+        return page > 0 && gtk_adjustment_get_upper(adjustment) >= page * Self.coveredShare
+    }
+
+    /// Whether the backfill has someone waiting on it: a page not yet covered, which is hidden
+    /// until it is, or a reader within a screen and a half of the first row that exists.
+    private var pageNeedsRows: Bool {
+        guard !fillComplete, let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else { return false }
+        let page = gtk_adjustment_get_page_size(adjustment)
+        guard page > 0 else { return true }
+        if pendingReveal { return !pageIsCovered }
+        return gtk_adjustment_get_value(adjustment) < page * Self.runway
+    }
+
+    /// A chat that was hidden while its first screens were put together is shown the moment they
+    /// cover the page, or when the whole of it is there; the rest of the history goes on arriving
+    /// above the reader without moving a row.
+    private var readyToReveal: Bool {
+        fillComplete || (followsBottom && canvasPromptKey == nil && pageIsCovered)
+    }
+
+    /// Runs `add`, which puts rows above everything the page shows, and writes the height they
+    /// brought into the scroll position in the same breath. A scrolled window holds an offset, so
+    /// rows added above it push what the reader is looking at down by their height until something
+    /// puts the offset back — and the something used to be an idle after the frame, which is a frame
+    /// of the wrong place per hop. The height is the transcript's own, asked before and after at
+    /// the width it has: rows already measured answer from the toolkit's cache, and the new ones
+    /// are measured here instead of in the frame that would have measured them anyway.
+    private func holdingThePlace(_ add: () -> Void) {
+        let width = gtk_widget_get_width(transcriptBox)
+        guard !pendingReveal, width > 0, let scroller = transcriptScroller,
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))
+        else {
+            add()
+            return
+        }
+        let before = naturalHeight(of: transcriptBox, at: width)
+        add()
+        let delta = naturalHeight(of: transcriptBox, at: width) - before
+        guard delta > 0.5 else { return }
+        isAutoScrolling = true
+        gtk_adjustment_configure(
+            adjustment, gtk_adjustment_get_value(adjustment) + delta,
+            gtk_adjustment_get_lower(adjustment), gtk_adjustment_get_upper(adjustment) + delta,
+            gtk_adjustment_get_step_increment(adjustment),
+            gtk_adjustment_get_page_increment(adjustment), gtk_adjustment_get_page_size(adjustment))
+        isAutoScrolling = false
+    }
+
+    private func naturalHeight(of widget: UnsafeMutablePointer<GtkWidget>, at width: Int32) -> Double {
+        var minimum: Int32 = 0
+        var natural: Int32 = 0
+        gtk_widget_measure(widget, GTK_ORIENTATION_VERTICAL, width, &minimum, &natural, nil, nil)
+        return Double(natural)
+    }
+
     /// Runs outside layout, after the current pass has settled: pins, then queues an allocation
     /// on the viewport, so the pixels always match the adjustment. Also the moment a
     /// freshly-filled transcript is revealed.
@@ -5031,9 +5147,10 @@ final class ChatPane: @unchecked Sendable {
                     gtk_widget_queue_allocate(viewport)
                 }
             }
-            if self.pendingReveal, self.fillComplete {
+            if self.pendingReveal, self.readyToReveal {
                 self.pendingReveal = false
                 gtk_widget_set_opacity(self.transcriptBox, 1)
+                self.openTimer.note("revealed")
             }
         }
     }
@@ -5042,6 +5159,15 @@ final class ChatPane: @unchecked Sendable {
     private func anchorRows() -> [ScrollAnchor.Row] {
         guard renderedRows.count == rowWidgets.count else { return [] }
         return zip(renderedRows, rowWidgets).map { ($0.key, $1) }
+    }
+
+    /// A reader who scrolls up toward the first row that exists is waiting on the backfill, so the
+    /// moment the runway under them is short the queue stops resting. Asked once per approach.
+    private func askForRowsAtTheEdge() {
+        let short = pageNeedsRows
+        guard short != rushing else { return }
+        rushing = short
+        if short { FillTurns.rush() }
     }
 
     private func placeAnchored(_ value: Double) {
@@ -6939,8 +7065,11 @@ enum FillTurns {
     private struct Entry {
         let owner: ObjectIdentifier?
         let essential: Bool
+        let urgent: (@Sendable () -> Bool)?
         let widget: Gtk.WeakWidget
         let hop: @Sendable () -> Void
+
+        var isUrgent: Bool { urgent?() ?? false }
     }
 
     nonisolated(unsafe) private static var waiting: [Entry] = []
@@ -6970,14 +7099,28 @@ enum FillTurns {
     ///
     /// `owner` lets a closing pane take its own entries back; the widget is held weakly, because
     /// the pane that supplied it can be gone before the hop's turn.
+    ///
+    /// `urgent` is asked each time the hop's turn comes round, after the frame that drew the last
+    /// one: a page that is not yet full, or a reader who has scrolled to the edge of what exists,
+    /// is waiting for this hop, and it takes its turn on the next frame without resting and at any
+    /// level. Everything else about the backfill stays the background work it was.
     static func take(
         on widget: UnsafeMutablePointer<GtkWidget>, owner: AnyObject? = nil, essential: Bool = false,
-        _ hop: @escaping @Sendable () -> Void
+        urgent: (@Sendable () -> Bool)? = nil, _ hop: @escaping @Sendable () -> Void
     ) {
         waiting.append(
             Entry(
-                owner: owner.map(ObjectIdentifier.init), essential: essential,
+                owner: owner.map(ObjectIdentifier.init), essential: essential, urgent: urgent,
                 widget: Gtk.WeakWidget(widget), hop: hop))
+        schedule()
+    }
+
+    /// Looks at the queue again at once instead of at the end of the rest it was waiting out, for
+    /// a reader who has just scrolled to where the rows run out.
+    static func rush() {
+        guard scheduled, !waiting.isEmpty else { return }
+        generation += 1
+        scheduled = false
         schedule()
     }
 
@@ -7021,6 +7164,7 @@ enum FillTurns {
 
     private static func nextIndex(level: ShedLevel) -> Int? {
         guard !waiting.isEmpty else { return nil }
+        if let index = waiting.firstIndex(where: { $0.isUrgent }) { return index }
         guard pausesIdleWork(at: level) else { return 0 }
         return waiting.firstIndex { $0.essential }
     }
@@ -7038,11 +7182,13 @@ enum FillTurns {
                 lastHop = nil
                 return
             }
-            guard nextIndex(level: level) != nil else {
+            guard let next = nextIndex(level: level) else {
                 pause(epoch: epoch)
                 return
             }
-            let wait = rest(wall: wallClock(), cpu: mainThreadCPU(), since: lastHop, level: level)
+            let wait =
+                waiting[next].isUrgent
+                ? 0 : rest(wall: wallClock(), cpu: mainThreadCPU(), since: lastHop, level: level)
             if wait > 0 {
                 Gtk.after(UInt32((wait * 1000).rounded(.up))) {
                     guard epoch == generation else { return }

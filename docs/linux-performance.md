@@ -82,3 +82,35 @@ Before, half of the non-idle main-thread samples were one path run once per pict
 ### The harness that measures it
 
 `scripts/dev-linuxapp.sh run bash <script>` with `TAILSCODE_DEV_GEOM=1920x2160x24` and a second binary to compare. The script starts the binary with `TAILSCODE_TRACE=1`, resets the harness's `launch.json` to a clean exit so the shed floor does not skew the first seconds, polls `/proc/<pid>` for resident size and threads every 100 ms, and reads the flight ring at the end with the same binary's `--flight`. To see where the main thread spends a window of time, sample it with `eu-stack -1 -p <pid>` from a sampler that is an ancestor of the app (`unshare --map-user=$(id -u) --map-group=$(id -g) --keep-caps`, because `ptrace_scope` is 1).
+
+## Switching chats
+
+A chat opened from the list stayed invisible until the whole of its backfill had been drawn: the page was kept at opacity 0 (`pendingReveal`) until `fillComplete`, and the backfill was background work (twenty rows a hop at the calm level, eight at loaded, one hop a frame, resting 60% of the time, paused at critical). So a chat of four hundred rows showed nothing for 1.3-2.2 s at calm and 5-8 s once the governor had risen, and the same trace showed three more costs on top.
+
+### What was measured
+
+The harness at 1920x2160, the real settings copied, `TAILSCODE_TRACE=1`; `open+Nms` marks come from `OpenTimer` and the app's log (`first rows`, `first frame`, `revealed`, `filled`, `placeholder`). Six real chats from 26 to 737 rows, opened by `TAILSCODE_DRIVE_FILE` `openid=` lines, cold and again after other chats:
+
+| | before | after |
+|---|---|---|
+| a chat opened again: visible | 1.3-2.2 s (rows, then "Loading…", then rows again) | 11-31 ms, no placeholder |
+| a chat opened for the first time: visible | 1.0-2.2 s | 0.1-0.5 s |
+| the same, after a pointer rested on its row | | 0.1 s |
+| worst stall in a run of opens three seconds apart | 357 ms | 64 ms |
+| shed level after that run | loaded for 47 s | calm throughout |
+
+A stall of 250 ms or more raises the governor two levels at once (`TileGovernor.Tuning.stallJump`), and `loaded` shrinks every hop to eight rows and a rest of up to a second, so the first cold open of a long chat slowed every open after it. It came from laying out sixty rows in one frame.
+
+### What changed
+
+- The page is shown the moment what is drawn covers it (`readyToReveal`: the end of the chat is on screen and there is more above), not when the history is complete. Hops are urgent while the page is hidden or the reader is within a screen and a half of the first row that exists (`FillTurns.take(urgent:)`, `FillTurns.rush()` from the scroll handler); everything else about the backfill is still background work.
+- Rows arriving above the reader move the scroll position in the same call (`holdingThePlace`: the transcript's natural height before and after at its width, written into the adjustment with `gtk_adjustment_configure`), so showing the page early moves no row. Without it the paint drift in `chatswitch` is 1762 px.
+- The first apply draws a screen's worth (`firstFillRows`: 12-32 rows by page height, half of that at loaded), not forty plus a top-up.
+- A conversation that has read nothing yet no longer wipes a page drawn from the rows the window kept (`holdsPaintedRows`); the empty state it opens with was taken for the truth and replaced the rows with "Loading…". That wipe also destroyed brain readout widgets with posted callbacks pending, which crashed the app (`BrainReadout.Page.watchFade`, fixed with `Gtk.WeakWidget`).
+- `ConversationHub` keeps the last transcript of the six conversations it let go of for fifteen minutes (`shelved`), seeds the next lease on the key with it, and does not post the blank state a rebuilt conversation opens with over it. Registered with `MemoryRelief`.
+- `RowMemo` is one process-wide table of what each message was drawn as (2,400 messages, least recently used out, registered with `MemoryRelief`), so a second visit builds nothing and a build that was 150-700 ms for three hundred messages is a few milliseconds.
+- `ConversationWarmer` starts a chat a pointer has rested on for 90 ms or pressed on: a glance lease on its conversation and its tail drawn into the memo (`TranscriptRowBuilder.warm`), handed over when a pane opens it, let go after twenty seconds, at most three at once. The Mac has had this since the sidebar's own `ConversationWarmer`.
+
+### Measuring it again
+
+`TAILSCODE_TRACE=1` prints, for every open, `open+Nms first rows`, `first frame`, `revealed`, `filled` and any `placeholder`; a script that appends `openid=<uuid>` lines to the harness drive file at fixed times and a parser over the log is all it takes. Reset `launch.json` to a clean exit first and stop the app with SIGTERM, or the next harness starts with the shed floor at loaded and every number is the slow one. The `chatswitch` selftest holds the claims that do not need a person: a message drawn once for every builder, the first apply bounded, the page shown before the history is complete, no drift of the page's end during the backfill, a blank state leaving the page alone.

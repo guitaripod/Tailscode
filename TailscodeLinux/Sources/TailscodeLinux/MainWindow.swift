@@ -107,6 +107,8 @@ final class MainWindow: @unchecked Sendable {
     private var sidebarVerbRefreshQueued = false
     private var sidebarScrollToken: UInt = 0
     private var sidebarScrolling = false
+    private var warmIntentKey: LiveKey?
+    private var warmIntentToken: UInt = 0
     private var sidebarColumn: UnsafeMutablePointer<GtkWidget>?
     private var sidebarScrollTarget: Double?
     private var sidebarScrollRestore: Double?
@@ -2819,6 +2821,7 @@ final class MainWindow: @unchecked Sendable {
     }
 
     private func holdSidebar() {
+        warmChatPressed()
         sidebarPointerHeld = true
         Gtk.after(Self.sidebarHoldCeiling) { [weak self] in
             Gtk.onMain { [weak self] in self?.releaseSidebar() }
@@ -5045,11 +5048,73 @@ extension MainWindow {
                 guard let self else { return }
                 self.sidebarPointer = (x, y)
                 self.evaluateRowVerbs()
+                self.noteWarmIntent()
             },
             leave: { [weak self] in
                 self?.sidebarPointer = nil
                 self?.rowVerbs.dismiss()
+                self?.cancelWarmIntent()
             })
+    }
+
+    /// How long a pointer rests on a chat before the chat is started: long enough that a pointer
+    /// crossing the list starts nothing, short enough to be well ahead of the click.
+    fileprivate static let warmIntent: UInt32 = 90
+
+    /// The chat the pointer is on, if it is on one the list draws as a single chat.
+    fileprivate func chatEntryUnderPointer() -> SessionEntry? {
+        guard let point = sidebarPointer, let overlay = sidebarOverlay, !sidebarScrolling,
+            sidebarRows.count <= visible.count
+        else { return nil }
+        let index = PointerRows.row(
+            atY: point.y, count: sidebarRows.count,
+            span: { [sidebarRows] index in
+                guard let widget = sidebarRows[index].widget,
+                    let box = Gtk.bounds(of: widget, in: overlay)
+                else { return nil }
+                return box.y...(box.y + box.height)
+            })
+        guard let index, case .chat(let row) = visible[index],
+            sidebarRows[index].key == visible[index].key
+        else { return nil }
+        return row.entry
+    }
+
+    /// A pointer that has stayed on a chat starts it, once, unless a pane already shows it.
+    fileprivate func noteWarmIntent() {
+        guard let entry = chatEntryUnderPointer() else {
+            cancelWarmIntent()
+            return
+        }
+        let key = LiveKey(entry)
+        guard key != warmIntentKey else { return }
+        warmIntentKey = key
+        warmIntentToken &+= 1
+        let token = warmIntentToken
+        Gtk.after(Self.warmIntent) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, self.warmIntentToken == token else { return }
+                self.warmUnlessShown(entry)
+            }
+        }
+    }
+
+    fileprivate func cancelWarmIntent() {
+        guard warmIntentKey != nil else { return }
+        warmIntentKey = nil
+        warmIntentToken &+= 1
+    }
+
+    /// A button going down on a chat is a click that has not finished: it starts then, not when
+    /// the button comes up.
+    fileprivate func warmChatPressed() {
+        guard let entry = chatEntryUnderPointer() else { return }
+        warmUnlessShown(entry)
+    }
+
+    private func warmUnlessShown(_ entry: SessionEntry) {
+        guard splitHost.pane(showing: entry.session.id) == nil else { return }
+        live.warmer.warm(entry)
     }
 
     /// The list is moving under the pointer: the verbs come down for as long as it does, and go to

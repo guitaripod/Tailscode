@@ -333,4 +333,63 @@ struct HubTests {
         #expect(world.hub.keys.isEmpty)
         #expect(world.scheduled.pending == 0)
     }
+
+    @Test("A chat visited again starts from the transcript it last held, and never goes blank")
+    func shelvedTranscriptSeedsTheNextLease() async {
+        let world = World()
+        let first = world.hub.lease(key, interest: .full) {}
+        #expect(await eventually { world.hub.latest(key)?.state.messages.count == 6 })
+        first.cancel()
+        world.clock.advance(6)
+        world.scheduled.runAll()
+        #expect(world.hub.keys.isEmpty)
+        #expect(world.hub.shelved == 1)
+
+        let dirty = Tally<Int>()
+        let second = world.hub.lease(key, interest: .full) { dirty.add(1) }
+        #expect(dirty.count == 1)
+        let seed = second.take()
+        #expect(seed?.state.messages.count == 6)
+        #expect(seed?.state.hasLoadedTranscript == true)
+        #expect(seed?.state.status == .unknown)
+        #expect(seed?.state.connection == .connecting)
+        #expect(world.hub.shelved == 0)
+
+        var sawBlank = false
+        for _ in 0..<150 {
+            if let frame = second.take(), frame.state.messages.isEmpty { sawBlank = true }
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(!sawBlank)
+        #expect(world.opener.opens.count == 2)
+        second.cancel()
+    }
+
+    @Test("The shelf keeps a handful of chats for a while, and lets go of the rest")
+    func shelfIsBounded() async {
+        let world = World()
+        for index in 0..<(ConversationHub.shelfLimit + 2) {
+            let other = LiveKey(profileID: "p", sessionID: "s\(index)")
+            let lease = world.hub.lease(other, interest: .full) {}
+            #expect(await eventually { world.hub.latest(other)?.state.messages.count == 6 })
+            lease.cancel()
+            world.clock.advance(6)
+            world.scheduled.runAll()
+        }
+        #expect(world.hub.shelved == ConversationHub.shelfLimit)
+
+        let oldest = LiveKey(profileID: "p", sessionID: "s0")
+        let fresh = world.hub.lease(oldest, interest: .full) {}
+        #expect(world.hub.shelved == ConversationHub.shelfLimit)
+        fresh.cancel()
+
+        let newest = LiveKey(profileID: "p", sessionID: "s\(ConversationHub.shelfLimit + 1)")
+        world.clock.advance(ConversationHub.shelfLife + 1)
+        let stale = world.hub.lease(newest, interest: .full) {}
+        #expect(world.hub.shelved <= ConversationHub.shelfLimit - 1)
+        stale.cancel()
+
+        world.hub.clearShelf()
+        #expect(world.hub.shelved == 0)
+    }
 }
