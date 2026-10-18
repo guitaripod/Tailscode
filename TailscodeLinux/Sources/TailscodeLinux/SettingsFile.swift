@@ -190,8 +190,8 @@ enum SettingsFile {
                 if JSONSerialization.isValidJSONObject([value]) { payload[key] = value }
             }
         }
-        guard let data = try? JSONSerialization.data(
-            withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+        guard let data = SortedJSON.encode(payload) ?? (try? JSONSerialization.data(
+            withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]))
         else { return }
         guard lock.withLock({ lastWritten != data }) else { return }
         try? FileManager.default.createDirectory(
