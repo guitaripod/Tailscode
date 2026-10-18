@@ -34,4 +34,15 @@ struct NeuralReadingReaderTests {
         #expect(NeuralReading.isWholeFile(lines))
         #expect(lines.last?.text == "line 140")
     }
+
+    @Test("the demo's writing turn holds a hundred and forty lines Write and records no effort")
+    func demoWriting() {
+        let messages = NeuralDemo.writing(prefix: "w-")
+        #expect(messages.allSatisfy { $0.reasoningEffort == nil && $0.modelID == nil })
+        let turn = NeuralTurns.partition(messages: messages, running: false)[0]
+        let write = turn.steps.first { $0.call?.call.name == "Write" }
+        #expect(write.map { NeuralReadout.fullDiff(of: $0).count } == 140)
+        #expect(NeuralDemo.writtenFile.split(separator: "\n", omittingEmptySubsequences: false).count == 140)
+        #expect(turn.effort == nil)
+    }
 }
