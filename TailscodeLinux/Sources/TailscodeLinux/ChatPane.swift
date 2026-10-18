@@ -922,8 +922,9 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// One notch of the wheel or one chord from the editor: the level moves one stop along the
-    /// model's own ladder, pinned at the ends, and the pill shows where it landed — and says so,
-    /// because a notch at the end of the ladder otherwise reads as a wheel that did nothing.
+    /// model's own ladder, pinned at the ends, and the pill's own word and bars are the answer, so
+    /// nothing is said over a level that moved — but a notch at either end moves nothing, and a
+    /// silent wheel there reads as a wheel nobody heard, so that one case says where it stopped.
     func stepEffort(by delta: Int) {
         let options = effortOptions()
         guard ModelEffort.isOffered(options: options) else {
@@ -931,9 +932,11 @@ final class ChatPane: @unchecked Sendable {
             return
         }
         let next = ModelDial.step(resolvedEffort(), by: delta, options: options)
+        guard next == resolvedEffort() else {
+            setChosenEffort(next)
+            return
+        }
         host?.flash(ModelDial.stepped(to: next))
-        guard next != resolvedEffort() else { return }
-        setChosenEffort(next)
     }
 
     /// The pinned pairs this chat's machine can run, in the order they were pinned.
