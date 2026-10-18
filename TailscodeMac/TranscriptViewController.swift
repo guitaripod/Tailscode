@@ -1833,6 +1833,19 @@ final class TranscriptViewController: NSViewController {
         }
         context.returnFocus = { [weak self] in self?.focusComposer() }
         context.revealSubagent = { [weak self] stepID in self?.revealAgent(ofStep: stepID) }
+        brains.viewportHeight = { [weak self] in
+            self.map { $0.scrollView.contentView.bounds.height }
+        }
+        brains.userToggled = { [weak self] in self?.followsBottom = false }
+        brains.revealApproval = { [weak self] in self?.scrollToBottom() }
+        brains.replyQuote = { [weak self] quote in self?.composer.insertText(quote) }
+        brains.revealAnswerPart = { [weak self] messageID, part in
+            self?.scrollToMessage(messageID, part: part)
+        }
+        brains.revealStepRow = { [weak self] stepID in
+            guard let colon = stepID.firstIndex(of: ":") else { return }
+            self?.scrollToMessage(String(stepID[..<colon]), part: stepID)
+        }
         NotificationCenter.default.addObserver(
             self, selector: #selector(activityStyleChanged), name: ActivityStyleSetting.didChange,
             object: nil)
@@ -4689,6 +4702,7 @@ final class TranscriptViewController: NSViewController {
 
     @objc private func scrollBoundsChanged() {
         scheduleImageSweep()
+        brains.viewportMoved()
         hoverBar.refresh()
         railController.rowsChanged()
         railController.reposition()
@@ -4942,6 +4956,9 @@ final class TranscriptViewController: NSViewController {
         rowView.layer?.backgroundColor = MacTheme.Color.findHit.cgColor
         highlightedView = rowView
         guard scroll else { return }
+        if case .brain(let brain) = renderedRows[index].kind {
+            brains.landFind(turnID: brain.turnID, needle: findBar.query)
+        }
         followsBottom = false
         view.layoutSubtreeIfNeeded()
         let frame = rowView.convert(rowView.bounds, to: canvas)

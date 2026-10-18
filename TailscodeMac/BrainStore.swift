@@ -1,5 +1,6 @@
 import AppKit
 import CodingAgentKit
+import QuartzCore
 import TailscodeCore
 
 /// What a brain row is as a value, so the transcript's keyed diff can tell a brain that changed
@@ -82,6 +83,25 @@ final class BrainStore {
     /// rows listed or put away.
     var onChange: (() -> Void)?
 
+    /// A zone a card's chip asked to open the brain diving into, by turn.
+    var pendingDive: [String: NeuralZone] = [:]
+    var pendingFind: [String: String] = [:]
+    private var swapping: Set<String> = []
+
+    /// Whether this turn's move is half of a swap (one brain closing as another opens), asked once
+    /// as the move begins.
+    func consumeSwap(_ turnID: String) -> Bool { swapping.remove(turnID) != nil }
+
+    /// The pane hands these over: how tall the part of the transcript the reader sees is, whether
+    /// the row is on screen, and the verbs a brain asks of the transcript.
+    var viewportHeight: (() -> CGFloat?)?
+    var isOnScreen: ((NSView) -> Bool)?
+    var userToggled: (() -> Void)?
+    var revealApproval: (() -> Void)?
+    var replyQuote: ((String) -> Void)?
+    var revealAnswerPart: ((String, String) -> Void)?
+    var revealStepRow: ((String) -> Void)?
+
     /// The views that stand for a turn, weakly, so the store can restate them, park their heads
     /// when the pane parks and release the textures when the last one closes.
     let views = NSHashTable<BrainRowView>.weakObjects()
@@ -105,19 +125,94 @@ final class BrainStore {
             return
         }
         isRunning = running
-        if let kept = settledPrefix(for: messages, awaiting: awaiting),
-            let tail = NeuralTurns.partition(
-                messages: kept.tailAssistants, running: running, awaiting: awaiting
-            ).first
-        {
+        if let kept = settledPrefix(for: messages, awaiting: awaiting) {
+            let stamp = Self.structure(of: kept.tailAssistants)
+            let now = CACurrentMediaTime()
+            if running, stamp == tailStamp, now - tailReadAt < max(Self.tailInterval, tailCost * 5) {
+                scheduleTailRefresh()
+                return
+            }
+            tailStamp = stamp
+            tailReadAt = now
+            tailReads += 1
+            defer { tailCost = CACurrentMediaTime() - now }
+            tailTimer?.invalidate()
+            tailTimer = nil
+            guard
+                let tail = NeuralTurns.partition(
+                    messages: kept.tailAssistants, running: running, awaiting: awaiting
+                ).first
+            else {
+                return readWhole(messages: messages, running: running, awaiting: awaiting)
+            }
             adopt(
                 turns: kept.held.prefixTurns + [tail], keptOrder: kept.held.prefixBrainOrder,
                 fresh: [tail], running: running, messages: messages)
             return
         }
+        readWhole(messages: messages, running: running, awaiting: awaiting)
+    }
+
+    private func readWhole(messages: [ChatMessage], running: Bool, awaiting: NeuralAwaiting) {
         let turns = cache.partition(messages: messages, running: running, awaiting: awaiting)
         adopt(turns: turns, keptOrder: nil, fresh: turns, running: running, messages: messages)
         remember(prefixOf: messages, turns: turns, awaiting: awaiting)
+        tailStamp = nil
+    }
+
+    /// The least time between two readings of the turn being written when only words changed in
+    /// it: a token that lengthens a note is not news to the brain for a few frames, and the
+    /// reading is the one cost that grows with the turn. A step arriving, a tool changing status or
+    /// a turn ending changes the structure and is read at once.
+    static let tailInterval = 0.06
+    private var tailStamp: Int?
+    private var tailReadAt = 0.0
+    private var tailCost = 0.0
+
+    /// How many times the turn being written was read, which a streamed token of words must not
+    /// make once for each token.
+    private(set) var tailReads = 0
+    private var tailTimer: Timer?
+
+    /// What a run of messages is apart from the length of its words: how many parts, what each
+    /// tool's status is, whether a message is complete. Equal stamps mean only words moved.
+    private static func structure(of messages: [ChatMessage]) -> Int {
+        var hasher = Hasher()
+        hasher.combine(messages.count)
+        for message in messages {
+            hasher.combine(message.id)
+            hasher.combine(message.parts.count)
+            hasher.combine(message.isStreaming)
+            hasher.combine(message.completedAt != nil)
+            hasher.combine(message.error?.isEmpty)
+            hasher.combine(message.finishReason?.isEmpty)
+            for part in message.parts {
+                hasher.combine(part.id)
+                switch part.kind {
+                case .tool(let call):
+                    hasher.combine(call.id)
+                    hasher.combine(call.status)
+                    hasher.combine(call.output == nil)
+                case .text: hasher.combine(0)
+                case .reasoning: hasher.combine(1)
+                default: hasher.combine(2)
+                }
+            }
+        }
+        return hasher.finalize()
+    }
+
+    private func scheduleTailRefresh() {
+        guard tailTimer == nil else { return }
+        tailTimer = Timer.scheduledTimer(
+            withTimeInterval: max(Self.tailInterval, tailCost * 5), repeats: false
+        ) {
+            [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.tailTimer = nil
+                self?.onChange?()
+            }
+        }
     }
 
     /// The conversation as it stood before its newest question, held so that a token arriving in the
@@ -228,6 +323,9 @@ final class BrainStore {
 
     func clear() {
         settled = nil
+        tailStamp = nil
+        tailTimer?.invalidate()
+        tailTimer = nil
         guard !entries.isEmpty || !order.isEmpty else { return }
         entries = [:]
         order = []
@@ -267,13 +365,63 @@ final class BrainStore {
     /// opening one closes the other. The choice is remembered for as long as the pane lives.
     func toggleOpen(_ turnID: String) {
         guard latestTurnID != nil else { return }
-        choices = NeuralOpenPolicy(
-            turnIDs: turnIDs, isRunning: isRunning, choices: choices
-        ).toggle(turnID: turnID)
+        let before = NeuralOpenPolicy(turnIDs: turnIDs, isRunning: isRunning, choices: choices)
+        swapping = []
+        if let open = before.openTurnID, open != turnID { swapping = [open, turnID] }
+        userToggled?()
+        choices = before.toggle(turnID: turnID)
         openTurnID = NeuralOpenPolicy(
             turnIDs: turnIDs, isRunning: isRunning, choices: choices
         ).openTurnID
         onChange?()
+    }
+
+    /// Opens or closes one turn's brain when it is not already so; the person's choice either way.
+    func setOpen(_ open: Bool, turnID: String) {
+        guard isOpen(turnID) != open else { return }
+        toggleOpen(turnID)
+    }
+
+    /// Find landed on this turn's brain: it opens, and the cursor goes to the first step that holds
+    /// the words, which the account then shows with the match.
+    func landFind(turnID: String, needle: String) {
+        guard entries[turnID] != nil, !needle.isEmpty else { return }
+        pendingFind[turnID] = needle
+        if isOpen(turnID) {
+            view(forTurn: turnID)?.applyPendingFind()
+        } else {
+            toggleOpen(turnID)
+        }
+    }
+
+    /// The first step of a turn whose words hold `needle`, in the order the steps ran.
+    func stepHolding(_ needle: String, turnID: String) -> String? {
+        let lowered = needle.lowercased()
+        return entries[turnID]?.turn.steps.first { step in
+            [step.title, step.detail, step.text, step.outputLines.joined(separator: " ")]
+                .contains { $0.lowercased().contains(lowered) }
+        }?.id
+    }
+
+    /// The menu's one verb: the open brain closes, and with none open the newest turn's opens.
+    func toggleNewest() {
+        if let open = openTurnID {
+            toggleOpen(open)
+        } else if let newest = order.last {
+            toggleOpen(newest)
+        }
+    }
+
+    func view(forTurn turnID: String) -> BrainRowView? {
+        views.allObjects.first { $0.row.turnID == turnID }
+    }
+
+    /// The message and part the turn's answer starts in, for the account's answer item.
+    func answerTarget(turnID: String) -> (messageID: String, part: String)? {
+        guard let first = entries[turnID]?.turn.answerPartIDs.first,
+            let colon = first.firstIndex(of: ":")
+        else { return nil }
+        return (String(first[..<colon]), first)
     }
 
     /// Rows puts the steps' old rows inline under that turn's brain, and puts them away again.
@@ -297,6 +445,10 @@ final class BrainStore {
 
     /// Brings every view up to the models, for a change the rows cannot carry: the machine's
     /// state, the window's fill, a call.
+    func viewportMoved() {
+        for view in views.allObjects { view.viewportMoved() }
+    }
+
     func restateViews() {
         for view in views.allObjects { view.refresh() }
     }

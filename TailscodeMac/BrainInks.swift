@@ -39,10 +39,20 @@ enum MacBrainPalette {
         return found
     }
 
+    /// The opacity a system colour carries in this appearance, which `hex` drops: the secondary
+    /// label is the label ink at about half strength, and read at full strength it is white.
+    private static func alpha(_ color: NSColor, in appearance: NSAppearance) -> Double {
+        var found = 1.0
+        appearance.performAsCurrentDrawingAppearance {
+            found = Double(color.usingColorSpace(.sRGB)?.alphaComponent ?? 1)
+        }
+        return found
+    }
+
     private static func system(dark: Bool, appearance: NSAppearance) -> Palette {
         let canvas = hex(.textBackgroundColor, in: appearance)
         let text = hex(.labelColor, in: appearance)
-        let dim = hex(.secondaryLabelColor, in: appearance)
+        let dim = Contrast.blend(canvas, hex(.secondaryLabelColor, in: appearance), alpha(.secondaryLabelColor, in: appearance)) ?? text
         let green = hex(.systemGreen, in: appearance)
         let raised = Contrast.blend(canvas, text, 0.06) ?? canvas
         let rule = Contrast.blend(canvas, text, 0.13) ?? dim
@@ -105,6 +115,12 @@ struct BrainInks {
         case .identity: return color(face.hueHex(isDark: isDark))
         }
     }
+
+    /// The accent inside the dome, lifted on a light page.
+    var domeAccent: NSColor { color(lifted(palette.accent)) }
+
+    /// The dome's own dark: what a tag or a plate drawn inside the head sits on.
+    var panel: NSColor { color(Self.domeGround) }
 
     var text: NSColor { color(palette.text) }
     var textDim: NSColor { color(palette.textDim) }

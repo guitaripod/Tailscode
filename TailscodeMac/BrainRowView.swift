@@ -1,678 +1,738 @@
 import AppKit
+import CodingAgentKit
 import TailscodeCore
 
-/// The one line under an open brain: what the head is doing now, a light in the state's tone, and
-/// where the step stands in the turn. It is a label that is restated, never a row that is rebuilt.
-@MainActor
-final class BrainTickerView: NSView {
-    private let dot = NSView()
-    private let text = NSTextField(labelWithString: "")
-    private let counter = NSTextField(labelWithString: "")
-    private let stack = NSStackView()
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        translatesAutoresizingMaskIntoConstraints = false
-        dot.wantsLayer = true
-        dot.translatesAutoresizingMaskIntoConstraints = false
-        dot.widthAnchor.constraint(equalToConstant: 7).isActive = true
-        dot.heightAnchor.constraint(equalToConstant: 7).isActive = true
-        dot.layer?.cornerRadius = 3.5
-        text.font = MacTheme.Ramp.font(.toolDetail)
-        text.lineBreakMode = .byTruncatingTail
-        text.setContentHuggingPriority(.init(1), for: .horizontal)
-        text.setContentCompressionResistancePriority(.init(249), for: .horizontal)
-        counter.font = MacTheme.Ramp.font(.responseStat)
-        counter.setContentHuggingPriority(.required, for: .horizontal)
-        counter.setContentCompressionResistancePriority(.required, for: .horizontal)
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = MacTheme.Spacing.s
-        stack.setViews([dot, text, counter], in: .leading)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            heightAnchor.constraint(greaterThanOrEqualToConstant: 18),
-        ])
-        setAccessibilityElement(false)
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    func show(_ ticker: NeuralTicker, inks: BrainInks) {
-        let tone = tone(ticker.status, inks)
-        if text.stringValue != ticker.text { text.stringValue = ticker.text }
-        if counter.stringValue != ticker.counter { counter.stringValue = ticker.counter }
-        text.textColor = inks.text
-        counter.textColor = inks.textDim
-        dot.layer?.backgroundColor = tone.cgColor
-    }
-
-    private func tone(_ status: NeuralStatus, _ inks: BrainInks) -> NSColor {
-        switch status {
-        case .failed: return NSColor(hex: inks.palette.danger) ?? inks.text
-        case .waitingApproval, .waitingAnswer, .stalled:
-            return NSColor(hex: inks.palette.warn) ?? inks.text
-        case .running, .ok: return NSColor(hex: inks.palette.accent) ?? inks.text
-        case .stopped: return inks.textDim
-        }
-    }
-
-    var line: String { text.stringValue }
-}
-
-/// A drawn slider for a replay: a track, what has played, and a knob. Dragging it scrubs the
-/// brain through the turn and letting go leaves the playhead where it was; the end of the track is
-/// the turn as it stands.
-@MainActor
-final class BrainScrubber: NSView {
-    var fraction: Double = 1 {
-        didSet {
-            guard fraction != oldValue else { return }
-            needsDisplay = true
-            setAccessibilityValue(Int((fraction * 100).rounded()))
-        }
-    }
-    var onScrub: ((Double) -> Void)?
-    var onEnd: (() -> Void)?
-    var inks: BrainInks? {
-        didSet { needsDisplay = true }
-    }
-    private var dragging = false
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        translatesAutoresizingMaskIntoConstraints = false
-        heightAnchor.constraint(equalToConstant: 22).isActive = true
-        setContentHuggingPriority(.init(1), for: .horizontal)
-        setContentCompressionResistancePriority(.init(1), for: .horizontal)
-        setAccessibilityElement(true)
-        setAccessibilityRole(.slider)
-        setAccessibilityLabel(NeuralReading.scrubLabel)
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    override var acceptsFirstResponder: Bool { NSApp.isFullKeyboardAccessEnabled }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    private var track: NSRect {
-        NSRect(x: 7, y: bounds.midY - 2, width: max(0, bounds.width - 14), height: 4)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let inks else { return }
-        let rail = track
-        let base = NSBezierPath(roundedRect: rail, xRadius: 2, yRadius: 2)
-        inks.rule.setFill()
-        base.fill()
-        let played = NSRect(
-            x: rail.minX, y: rail.minY, width: rail.width * CGFloat(fraction), height: rail.height)
-        let accent = NSColor(hex: inks.palette.accent) ?? inks.text
-        accent.setFill()
-        NSBezierPath(roundedRect: played, xRadius: 2, yRadius: 2).fill()
-        let knob = NSRect(x: played.maxX - 6, y: bounds.midY - 6, width: 12, height: 12)
-        accent.setFill()
-        NSBezierPath(ovalIn: knob).fill()
-        inks.canvas.setStroke()
-        let ring = NSBezierPath(ovalIn: knob.insetBy(dx: 0.5, dy: 0.5))
-        ring.lineWidth = 1
-        ring.stroke()
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        dragging = true
-        scrub(event)
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard dragging else { return }
-        scrub(event)
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        guard dragging else { return }
-        dragging = false
-        scrub(event)
-        onEnd?()
-    }
-
-    private func scrub(_ event: NSEvent) {
-        let rail = track
-        guard rail.width > 0 else { return }
-        let point = convert(event.locationInWindow, from: nil)
-        let next = min(1, max(0, Double((point.x - rail.minX) / rail.width)))
-        fraction = next
-        onScrub?(next)
-    }
-
-    override func accessibilityPerformIncrement() -> Bool {
-        step(by: 0.05)
-    }
-
-    override func accessibilityPerformDecrement() -> Bool {
-        step(by: -0.05)
-    }
-
-    private func step(by delta: Double) -> Bool {
-        let next = min(1, max(0, fraction + delta))
-        fraction = next
-        onScrub?(next)
-        onEnd?()
-        return true
-    }
-
-    override func keyDown(with event: NSEvent) {
-        switch event.keyCode {
-        case 123: _ = step(by: -0.05)
-        case 124: _ = step(by: 0.05)
-        default: super.keyDown(with: event)
-        }
-    }
-}
-
-/// The scrubber's row: a play or stop button, the track, and how long the turn took or where the
-/// playhead is. It is there once the turn is over; a turn still being written has nothing to play.
-@MainActor
-final class BrainScrubRow: NSView {
-    let play = SymbolChip(kind: .control)
-    let share = SymbolChip(kind: .fact)
-    let scrubber = BrainScrubber()
-    private let clock = NSTextField(labelWithString: "")
-    private let stack = NSStackView()
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        translatesAutoresizingMaskIntoConstraints = false
-        play.symbol = "play.fill"
-        play.setAccessibilityLabel(NeuralReading.replayLabel)
-        clock.font = MacTheme.Ramp.font(.responseStat)
-        clock.textColor = MacTheme.Color.secondaryLabel
-        clock.setContentHuggingPriority(.required, for: .horizontal)
-        clock.setContentCompressionResistancePriority(.required, for: .horizontal)
-        clock.alignment = .right
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = MacTheme.Spacing.s
-        share.text = Localized.text("Share")
-        share.symbol = "square.and.arrow.up"
-        stack.setViews([play, scrubber, clock, share], in: .leading)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
-        setAccessibilityElement(false)
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    func show(playing: Bool, fraction: Double, clock text: String, inks: BrainInks) {
-        let symbol = playing ? "stop.fill" : "play.fill"
-        if play.symbol != symbol { play.symbol = symbol }
-        play.setAccessibilityLabel(playing ? Localized.text("Stop the replay") : NeuralReading.replayLabel)
-        scrubber.fraction = fraction
-        scrubber.inks = inks
-        if clock.stringValue != text { clock.stringValue = text }
-        clock.textColor = inks.textDim
-    }
-
-    var clockText: String { clock.stringValue }
-}
-
-/// An answer word that a step carries literally: the path or command the answer quotes. Hovering it
-/// lights the steps that touched it and dims the rest; pressing it holds the light.
-@MainActor
-final class BrainTokenChip: SymbolChip {
-    var onHover: ((Bool) -> Void)?
-    private(set) var token = ""
-
-    convenience init(token: String) {
-        self.init(kind: .fact)
-        self.token = token
-        text = token
-        symbol = "link"
-        lineLimit()
-        addTrackingArea(
-            NSTrackingArea(
-                rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
-                owner: self, userInfo: nil))
-    }
-
-    private func lineLimit() {
-        widthAnchor.constraint(lessThanOrEqualToConstant: 280).isActive = true
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        super.mouseEntered(with: event)
-        onHover?(true)
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        super.mouseExited(with: event)
-        onHover?(false)
-    }
-}
-
-/// The paths and commands the answer quotes, as chips under the scrubber. Only a word some step
-/// carries literally is offered, so the row never claims a link the transcript cannot show.
-@MainActor
-final class BrainChipsRow: NSView {
-    private let stack = NSStackView()
-    private let caption = NSTextField(labelWithString: "")
-    private(set) var tokens: [String] = []
-    var onHover: ((String?) -> Void)?
-    var onPress: ((String) -> Void)?
-    static let limit = 6
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        translatesAutoresizingMaskIntoConstraints = false
-        caption.font = MacTheme.Ramp.font(.hint)
-        caption.textColor = MacTheme.Color.secondaryLabel
-        caption.setContentHuggingPriority(.required, for: .horizontal)
-        caption.setContentCompressionResistancePriority(.required, for: .horizontal)
-        stack.orientation = .horizontal
-        stack.alignment = .centerY
-        stack.spacing = MacTheme.Spacing.xs
-        stack.detachesHiddenViews = true
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
-        setAccessibilityRole(.group)
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    func show(_ next: [String]) {
-        guard next != tokens else { return }
-        tokens = next
-        for view in stack.arrangedSubviews {
-            stack.removeArrangedSubview(view)
-            view.removeFromSuperview()
-        }
-        guard !next.isEmpty else { return }
-        caption.stringValue = Localized.text("In the answer")
-        stack.addArrangedSubview(caption)
-        for (index, token) in next.prefix(Self.limit).enumerated() {
-            let chip = BrainTokenChip(token: token)
-            chip.onHover = { [weak self] entered in self?.onHover?(entered ? token : nil) }
-            chip.onTap = { [weak self] in self?.onPress?(token) }
-            chip.setAccessibilityLabel(Localized.text("Answer word %@", token))
-            stack.addArrangedSubview(chip)
-            stack.setVisibilityPriority(
-                .init(Float(NSStackView.VisibilityPriority.mustHold.rawValue) - Float(index + 1)),
-                for: chip)
-        }
-        stack.setVisibilityPriority(.mustHold, for: caption)
-    }
-
-    var chips: [BrainTokenChip] { stack.arrangedSubviews.compactMap { $0 as? BrainTokenChip } }
-}
-
-/// One turn of the transcript drawn as a head. Collapsed it is a line: a chevron, the glyph, how
-/// many tools, how long, what changed, a Rows button and a Replay button. Open, the line becomes
-/// the top of a card holding the stage (the head with its nodes), the one line of what is
-/// happening, and once the turn is over the scrubber and the words of the answer that a step
-/// carries.
+/// One turn of the transcript drawn as a head. Collapsed it is a card: the head itself lit where the
+/// turn worked, the turn's numbers, the agent's first words. Open, the card becomes the stage: the
+/// head as a map on the left, the filter chips and the step list under it, the account (the agent
+/// talking to you) beside it, and the footer across the bottom. Opening and closing are one move of
+/// the same parts, never a rebuild.
 ///
-/// The row is restated in place whenever the store's model for its turn changes. Opening builds the
-/// stage and closing takes it away, which is also what lets go of the process's textures; a pane
-/// that parks, a window that closes and an app that has been away for a while do the same. The
-/// row's height is the line, or the line and the stage, which is a fixed shape, so opening and
-/// closing change one row's height and never re-solve the page.
+/// The row is restated in place whenever the store's model for its turn changes, and keeps its
+/// views for the life of the turn. Its height is the card's, the open brain's or the move's, and a
+/// change of height is the one thing the transcript hears about: every part is placed by frame
+/// from Core's `NeuralStageMetrics` for the row's width, at the moment the row is laid out, so a
+/// resize between breakpoints rebuilds nothing and no constraint joins one part to another.
+/// Opening builds the stage, the list, the account and the footer and closing takes them away,
+/// which is also what lets go of the process's textures; a pane that parks, a window that closes
+/// and an app that has been away for a while do the same.
 @MainActor
-final class BrainRowView: NSView, KeyboardPressable {
+final class BrainRowView: NSView, BrainSurfaceHost {
+    enum Phase: Equatable {
+        case closed
+        case open
+        case moving
+    }
+
     private(set) var row: BrainRow
     let key: String
-    private weak var context: TranscriptContext?
-    private let ground = RowKit.Ground(frame: .zero)
-    private let stack = FillingStack(topDown: true)
-    private let header: NSStackView
-    private let press: PressSurface
-    private let mark = ToolRowView.disclosureMark(false)
-    private let glyph = BrainGlyphView()
-    private let count = RowKit.label("", font: MacTheme.Ramp.font(.toolName), color: MacTheme.Color.label)
-    private let detail = ToolRowView.detailLabel("")
-    private let added = RowKit.label("", font: MacTheme.Ramp.font(.diff), color: MacTheme.Color.success)
-    private let removed = RowKit.label("", font: MacTheme.Ramp.font(.diff), color: MacTheme.Color.danger)
-    private let rowsChip = SymbolChip(kind: .fact)
-    private let replayChip = SymbolChip(kind: .fact)
-    private let ticker = BrainTickerView()
-    private let scrubRow = BrainScrubRow()
-    private let chips = BrainChipsRow()
-    private var holder: NSView?
-    private(set) var stage: BrainStageView?
-    private var parkReasons = Set<String>()
-    private var startReplayOnOpen = false
+    weak var context: TranscriptContext?
+    var turnID: String { row.turnID }
 
-    private var store: BrainStore? { context?.brains }
+    let card = BrainCardView()
+    let picture = BrainPictureLayer()
+    let carrier = BrainCarrierView()
+    let leader = BrainLeaderLayer()
+    private(set) var stage: BrainStageView?
+    private(set) var chips: BrainFilterChips?
+    private(set) var list: BrainListView?
+    private(set) var account: BrainAccountView?
+    private(set) var footer: BrainFooterView?
+    private(set) var phase = Phase.closed
+    var mover: BrainMover?
+    var parkReasons = Set<String>()
+    var startReplayOnOpen = false
+    var legend: NSPopover?
+    private var metricsMemo: (key: String, value: NeuralStageMetrics)?
+    private var lastWidth: CGFloat = 0
+    private var pictureRequested = ""
+    var hoverApplied: String??
+    var pendingHover: (id: String?, delay: Double)?
+    var lastHoverApplyTime = 0.0
+    var hoverFlush: Timer?
+    var graceTimerStore: Timer?
+    private var announcement: String?
+    private var memoStamp = -1
+    private var contextObservers: [NSObjectProtocol] = []
+    private(set) var tokenComputations = 0
+    private var tokenMemo: (answer: String, revision: Int, tokens: [String])?
+    var lastIntrinsicHeight: CGFloat = -1
+    var focusOnLanding = false
+    var maxFrameGap = 0.0
+    var movesRun = 0
+
+    var store: BrainStore? { context?.brains }
     private static let rows = NSHashTable<BrainRowView>.weakObjects()
+    static var live: [BrainRowView] { rows.allObjects }
 
     init(row: BrainRow, key: String, context: TranscriptContext) {
         self.row = row
         self.key = key
         self.context = context
-        let header = NSStackView()
-        self.header = header
-        press = PressSurface(content: header, minHeight: ToolRowView.lineHeight)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        layer?.masksToBounds = true
         build()
         context.brains?.views.add(self)
         Self.rows.add(self)
         MacBrainIdle.shared.install()
-        apply(row)
+        apply(row, initial: true)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    nonisolated override var isFlipped: Bool { true }
+
+    isolated deinit {
+        hoverFlush?.invalidate()
+        graceTimerStore?.invalidate()
+        for token in contextObservers { NotificationCenter.default.removeObserver(token) }
+    }
+
     private func build() {
-        ground.stroke = MacTheme.Color.separator
-        ground.radius = MacTheme.Radius.card
-        ground.isHidden = true
-        addSubview(ground)
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            ground.leadingAnchor.constraint(equalTo: leadingAnchor),
-            ground.trailingAnchor.constraint(equalTo: trailingAnchor),
-            ground.topAnchor.constraint(equalTo: topAnchor),
-            ground.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
-        stack.spacing = MacTheme.Spacing.xs
-
-        header.orientation = .horizontal
-        header.alignment = .centerY
-        header.spacing = MacTheme.Spacing.s
-        added.isHidden = true
-        removed.isHidden = true
-        rowsChip.text = NeuralReading.rowsLabel
-        rowsChip.onTap = { [weak self] in self.map { $0.store?.toggleRows($0.row.turnID) } }
-        replayChip.text = NeuralReading.replayLabel
-        replayChip.symbol = "arrow.counterclockwise"
-        replayChip.onTap = { [weak self] in self?.replayPressed() }
-        let spacer = RowKit.spacer()
-        for view in [mark, glyph, count, detail, added, removed, spacer, rowsChip, replayChip] {
-            header.addArrangedSubview(view)
-        }
-        header.setCustomSpacing(MacTheme.Spacing.xs, after: removed)
-        header.detachesHiddenViews = true
-        header.setClippingResistancePriority(MacTheme.Layout.belowWindowSize, for: .horizontal)
-        header.setVisibilityPriority(.init(300), for: rowsChip)
-        header.setVisibilityPriority(.init(500), for: replayChip)
-        press.onPress = { [weak self] in self.map { $0.store?.toggleOpen($0.row.turnID) } }
-        stack.addArrangedSubview(press)
-        ticker.isHidden = true
-        scrubRow.isHidden = true
-        chips.isHidden = true
-        stack.addArrangedSubview(ticker)
-        stack.addArrangedSubview(scrubRow)
-        stack.addArrangedSubview(chips)
-
-        scrubRow.play.onTap = { [weak self] in self?.playPressed() }
-        scrubRow.share.onTap = { [weak self] in self?.sharePressed() }
-        scrubRow.scrubber.onScrub = { [weak self] fraction in self?.scrubbed(fraction) }
-        scrubRow.scrubber.onEnd = { [weak self] in self?.scrubEnded() }
-        chips.onHover = { [weak self] token in self?.stage?.setProvenance(token) }
-        chips.onPress = { [weak self] token in self?.pinProvenance(token) }
-
-        setAccessibilityElement(true)
-        setAccessibilityRole(.group)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(themeChanged), name: MacTheme.Chrome.didRepaint, object: nil)
+        carrier.frame = bounds
+        carrier.autoresizingMask = [.width, .height]
+        addSubview(card)
+        addSubview(carrier)
+        carrier.layer?.addSublayer(picture.container)
+        layer?.addSublayer(leader.layer)
+        card.onOpen = { [weak self] in self?.store?.toggleOpen(self?.turnID ?? "") }
+        card.onReplay = { [weak self] in self?.toggleReplay() }
+        card.onRows = { [weak self] in self?.toggleRows() }
+        card.onZone = { [weak self] zone in self?.openDiving(into: zone) }
+        card.onHover = { [weak self] _ in self?.cardHoverChanged() }
+        setAccessibilityElement(false)
+        let center = NotificationCenter.default
+        contextObservers.append(
+            center.addObserver(forName: MacTheme.Chrome.didRepaint, object: nil, queue: .main) {
+                [weak self] _ in MainActor.assumeIsolated { self?.rethemed() }
+            })
+        contextObservers.append(
+            center.addObserver(forName: ChatDensitySetting.didChange, object: nil, queue: .main) {
+                [weak self] _ in MainActor.assumeIsolated { self?.densityChanged() }
+            })
         NSWorkspace.shared.notificationCenter.addObserver(
-            self, selector: #selector(budgetChanged),
+            self, selector: #selector(motionChanged),
             name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
     }
 
-    override var acceptsFirstResponder: Bool { NSApp.isFullKeyboardAccessEnabled }
-    override var canBecomeKeyView: Bool { NSApp.isFullKeyboardAccessEnabled }
-    override var focusRingMaskBounds: NSRect { bounds }
 
-    override func keyDown(with event: NSEvent) {
-        guard [49, 36, 76].contains(event.keyCode) else { return super.keyDown(with: event) }
-        store?.toggleOpen(row.turnID)
+    var model: NeuralBrainModel {
+        store?.model(turnID) ?? NeuralBrainModel(turn: placeholderTurn)
     }
 
-    override func accessibilityPerformPress() -> Bool {
-        store?.toggleOpen(row.turnID)
-        return true
+    private var placeholderTurn: NeuralTurn {
+        store?.entry(turnID)?.turn ?? NeuralTurn(id: turnID)
     }
 
-    @objc private func themeChanged() {
-        ground.stroke = MacTheme.Color.separator
-        ground.needsDisplay = true
-        syncLine()
-        refreshAux()
+    @discardableResult
+    func updateModel<Value>(_ body: (inout NeuralBrainModel) -> Value) -> Value {
+        if let result = store?.withModel(turnID, body) { return result }
+        var scratch = NeuralBrainModel(turn: placeholderTurn)
+        return body(&scratch)
+    }
+
+    var inks: BrainInks { BrainInks.current(for: effectiveAppearance) }
+    var density: ChatDensity { ChatDensitySetting.current }
+    var reduceMotion: Bool { !ActivityPulse.motionAllowed }
+    var answerText: String { store?.entry(turnID)?.answer ?? "" }
+    var isShowingRows: Bool { row.showsRows }
+
+    var isVisible: Bool {
+        guard window != nil, DisplayGate.allows(self) else { return false }
+        return !visibleRect.isEmpty
+    }
+
+    var accessibleLabel: String { announcement ?? model.spoken }
+
+    func relayout() {
+        needsLayout = true
+        let height = restingHeight
+        if height != lastIntrinsicHeight {
+            lastIntrinsicHeight = height
+            invalidateIntrinsicContentSize()
+        }
+    }
+
+    func animationChanged() {}
+
+    func copyToPasteboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        announce(Localized.text("Copied"))
+    }
+
+    func announce(_ words: String) {
+        announcement = words
+        NSAccessibility.post(
+            element: self, notification: .announcementRequested,
+            userInfo: [.announcement: words, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+    }
+
+    func goToApproval() { store?.revealApproval?() }
+
+    func replyWithQuote(_ quote: String) { store?.replyQuote?(quote) }
+
+    func revealAnswer() {
+        guard let target = store?.answerTarget(turnID: turnID) else { return }
+        store?.revealAnswerPart?(target.messageID, target.part)
+    }
+
+    func focusList() {
+        guard let window else { return }
+        if let list, !list.isHidden {
+            window.makeFirstResponder(list)
+        } else {
+            account?.focus()
+        }
+    }
+
+    func focusSearchField() {
+        if let list, !list.isHidden { list.focusSearch() } else { account?.focusSearch() }
+    }
+
+    func collapseBrain() { store?.setOpen(false, turnID: turnID) }
+
+    func showInRows(_ stepID: String) {
+        if !row.showsRows { store?.toggleRows(turnID) }
+        store?.revealStepRow?(stepID)
+    }
+
+    func openSubagent(_ stepID: String) { context?.revealSubagent?(stepID) }
+
+    func stageFocusChanged(_ focused: Bool) {
+        if focused, model.browseFocus != .list { updateModel { $0.setBrowseFocus(.list) } }
+        stage?.refresh(force: true)
+    }
+
+    func stagePressed() { dismissLegend() }
+
+
+    func metrics(forWidth width: Double) -> NeuralStageMetrics {
+        let zones = model.browseState.list.zoneChips.count
+        let viewport = store?.viewportHeight?().map { Double($0) }
+        let bucket = Int((viewport ?? 0) / 8)
+        let memoKey = "\(width)|\(density)|\(zones)|\(bucket)"
+        if let memo = metricsMemo, memo.key == memoKey { return memo.value }
+        let made = NeuralStageMetrics.make(
+            width: width, density: density, zonesWithSteps: max(zones, 1), viewportHeight: viewport)
+        metricsMemo = (memoKey, made)
+        return made
+    }
+
+    var currentMetrics: NeuralStageMetrics {
+        let width = Double(bounds.width > 0 ? bounds.width : (lastWidth > 0 ? lastWidth : 600))
+        return metrics(forWidth: width)
+    }
+
+    /// The account of a narrow brain is as tall as the window allows, not as tall as eight rows:
+    /// 62 percent of what the reader sees, between 340 and 640.
+    func narrowAccountHeight(_ m: NeuralStageMetrics) -> Double {
+        let viewport = Double(store?.viewportHeight?() ?? 700)
+        return min(max((viewport * 0.62).rounded(), 340), 640)
+    }
+
+    func narrowExtra(_ m: NeuralStageMetrics) -> Double {
+        guard m.arrangement == .accordion else { return 0 }
+        return max(0, narrowAccountHeight(m) - m.list.height)
+    }
+
+    var restingHeight: CGFloat {
+        let m = currentMetrics
+        switch phase {
+        case .closed: return CGFloat(m.card.height)
+        case .open: return CGFloat((m.rowHeight + narrowExtra(m)).rounded())
+        case .moving: return CGFloat(mover?.rowHeight ?? m.rowHeight)
+        }
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: restingHeight)
+    }
+
+
+    override func layout() {
+        super.layout()
+        let width = bounds.width
+        if width != lastWidth {
+            lastWidth = width
+            widthChanged()
+        }
+        place()
+    }
+
+    private func widthChanged() {
+        metricsMemo = nil
+        invalidateIntrinsicContentSize()
+        if let mover, abs(mover.metricsWidth - Double(lastWidth)) > 0.5 { finishMove(snapOpen: mover.isOpening) }
+        syncCard()
+        stage?.needsLayout = true
+        list?.configure(metrics: currentMetrics)
+        chips?.configure(metrics: currentMetrics)
+        account?.geometryChanged()
+        footer?.needsLayout = true
+    }
+
+    /// Every part at the rectangle Core gives it for this width and phase.
+    func place() {
+        let m = currentMetrics
+        let width = bounds.width
+        card.frame = CGRect(x: 0, y: 0, width: width, height: bounds.height)
+        carrier.frame = bounds
+        let stageRect = rect(m.stage)
+        switch phase {
+        case .closed:
+            placeClosed(m)
+        case .open:
+            placeOpen(m, stageRect: stageRect)
+        case .moving:
+            applyMoveFrame(m)
+        }
+        picture.place(m.stage)
+        if phase != .moving {
+            applyCarrier(rect: phase == .closed ? rect(m.card.picture) : stageRect, stage: stageRect)
+        }
+    }
+
+    func rect(_ r: NeuralRect) -> CGRect { CGRect(x: r.x, y: r.y, width: r.width, height: r.height) }
+
+    private func placeClosed(_ m: NeuralStageMetrics) {
+        card.isHidden = false
+        card.presentation = .rest
+        picture.container.isHidden = false
+        picture.container.opacity = 1
+        carrier.isHidden = false
+        picture.show(
+            card: cardInput?.card ?? model.brainCard(now: Date()), inks: inks, hovered: card.hovered,
+            lift: 1, liveZone: liveZone, liveMotion: liveMotion)
+        stage?.isHidden = true
+    }
+
+    private var cardInput: BrainCardView.Content?
+
+    private func placeOpen(_ m: NeuralStageMetrics, stageRect: CGRect) {
+        card.isHidden = true
+        picture.container.opacity = stage?.head.isReady == true ? 0 : 1
+        picture.container.isHidden = stage == nil
+        let extra = narrowExtra(m)
+        stage?.isHidden = false
+        stage?.frame = stageRect
+        footer?.frame = rect(m.footer).offsetBy(dx: 0, dy: extra)
+        placeBrowse(m, readout: nil)
+        placeLeader(m)
+    }
+
+    func placeBrowse(_ m: NeuralStageMetrics, readout moved: NeuralRect?) {
+        let narrow = m.arrangement == .accordion
+        if let rect = m.filterChips { chips?.frame = self.rect(rect) }
+        if narrow {
+            list?.isHidden = true
+        } else {
+            list?.isHidden = false
+            list?.frame = rect(m.list)
+        }
+        var base =
+            narrow
+            ? NeuralRect(x: 0, y: m.list.y, width: m.width, height: narrowAccountHeight(m)) : m.readout
+        if let moved { base = narrow ? base.offsetBy(dx: moved.x, dy: moved.y) : moved }
+        account?.frame = rect(base)
+    }
+
+    private func placeLeader(_ m: NeuralStageMetrics) {
+        leader.layer.frame = bounds
+        updateLeader()
+    }
+
+    /// The carrier moves the picture and the stage together: a transform about the carrier's own
+    /// anchor that puts the head's bounds (`stage`) where `rect` is, which is the card's picture on
+    /// a card, the stage on an open brain, and anywhere between during the move.
+    func applyCarrier(rect target: CGRect, stage stageRect: CGRect) {
+        let k = stageRect.width > 0 ? target.width / stageRect.width : 1
+        let held = carrier.layer?.anchorPoint ?? .zero
+        let anchor = CGPoint(x: held.x * carrier.bounds.width, y: held.y * carrier.bounds.height)
+        let tx = target.minX - k * stageRect.minX - (1 - k) * anchor.x
+        let ty = target.minY - k * stageRect.minY - (1 - k) * anchor.y
+        carrier.setTravel(CGAffineTransform(a: k, b: 0, c: 0, d: k, tx: tx, ty: ty))
+        let radius = phase == .closed ? 8 : 0
+        picture.setCornerRadius(CGFloat(radius), designScale: target.width / CGFloat(NeuralStageMetrics.designWidth))
+    }
+
+
+    func restate(_ next: BrainRow) { apply(next, initial: false) }
+
+    func refresh() {
+        refreshAll()
+    }
+
+    private func apply(_ next: BrainRow, initial: Bool) {
+        let old = row
+        row = next
+        if initial {
+            syncCard()
+            requestPicture()
+            return
+        }
+        if old.isOpen != next.isOpen {
+            if next.isOpen { open(animated: true) } else { close(animated: true) }
+        } else if old.showsRows != next.showsRows {
+            footer?.sync(now: BrainClock.now)
+        }
+        refreshAll()
+    }
+
+    func refreshAll() {
+        syncBrowse()
+        syncCard()
+        requestPicture()
+        stage?.refresh()
+        footer?.sync(now: BrainClock.now)
+        updateLeader()
+        relayout()
+    }
+
+    /// The steps moved under the list: it redraws, follows a running turn, and the head dims what
+    /// the filters hide.
+    func syncBrowse() {
+        guard phase != .closed || mover != nil else { return }
+        let effects = updateModel { $0.drainBrowseEffects() }
+        list?.modelChanged()
+        chips?.invalidate()
+        account?.refresh()
+        if !effects.isEmpty { applyBrowse(effects, grabFocus: false) }
+        drainAccountEffects()
+    }
+
+    @objc private func motionChanged() {
+        stage?.refresh(force: true)
+        syncCard()
+    }
+
+    private func rethemed() {
+        BrainPictures.forgetAll()
+        pictureRequested = ""
+        syncCard()
+        requestPicture()
+        chips?.retheme()
+        list?.retheme()
+        account?.retheme()
+        stage?.refresh(force: true)
+        footer?.sync(now: BrainClock.now)
+    }
+
+    private func densityChanged() {
+        metricsMemo = nil
+        syncCard()
+        invalidateIntrinsicContentSize()
+        needsLayout = true
     }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        syncLine()
-        refreshAux()
+        syncCard()
+        requestPicture()
     }
 
-    func restate(_ next: BrainRow) {
-        apply(next)
+
+    private var liveZone: NeuralZone? { cardInput?.card.live?.activeZone }
+    private var liveMotion: NeuralMotion { cardInput?.card.live?.motion ?? .still }
+
+    /// Brings the card to the model.
+    func syncCard() {
+        guard let store, let entry = store.entry(turnID) else { return }
+        let model = entry.model
+        let m = currentMetrics
+        let brainCard = model.brainCard(now: Date())
+        let content = BrainCardView.Content(
+            card: brainCard, showsRows: row.showsRows, isReplaying: model.isReplaying,
+            canReplay: model.turn.outcome != .running && model.steps.count > 1, inks: inks,
+            density: density, width: m.width, geometry: m.card, face: model.face,
+            reduceMotion: reduceMotion)
+        cardInput = content
+        card.show(content, revision: entry.revision)
+        if phase == .closed {
+            picture.show(
+                card: brainCard, inks: inks, hovered: card.hovered, lift: 1, liveZone: liveZone,
+                liveMotion: liveMotion)
+        }
+        setAccessibilityLabel(brainCard.spoken)
+        if phase == .closed { toolTip = nil }
     }
 
-    func refresh() {
-        syncLine()
-        stage?.refresh()
-        refreshAux()
+    private func cardHoverChanged() {
+        guard phase == .closed, let content = cardInput else { return }
+        picture.show(
+            card: content.card, inks: inks, hovered: card.hovered, lift: 1, liveZone: liveZone,
+            liveMotion: liveMotion)
+        if card.hovered { prefetchStage() }
     }
 
-    /// A window shed to its last level keeps the glyph and nothing more: the head is not drawn there
-    /// whatever the person chose, and comes back when the window has room again.
-    private static var isShed: Bool { MotionBudget.level >= .critical }
-
-    private func apply(_ next: BrainRow) {
-        row = next
-        let wanted = next.isOpen && !Self.isShed
-        let opening = wanted != (stage != nil)
-        if opening { setOpen(wanted) }
-        syncLine()
-        stage?.refresh()
-        refreshAux()
-    }
-
-    @objc private func budgetChanged() {
-        apply(row)
-    }
-
-    private func setOpen(_ open: Bool) {
-        mark.stringValue = ToolRowView.disclosureGlyph(open)
-        ground.isHidden = !open
-        stack.edgeInsets =
-            open
-            ? NSEdgeInsets(top: 4, left: 10, bottom: 10, right: 10)
-            : NSEdgeInsets()
-        setAccessibilityExpanded(open)
-        guard open else {
-            closeStage()
+    /// The head's picture for this look and this turn's eye, asked for as soon as the row is
+    /// built: it is shared, so the second card of a look costs nothing.
+    private func requestPicture() {
+        guard NeuralHeadView.isSupported else { return }
+        let model = model
+        let palette = inks.palette
+        let frame = BrainPictures.restFrame(of: model)
+        let wanted = BrainPictures.key(palette: palette, frame: frame, face: model.face)
+        if wanted == pictureRequested, picture.hasImage { return }
+        pictureRequested = wanted
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        if let held = BrainPictures.cached(palette: palette, frame: frame, face: model.face) {
+            picture.setImage(held, scale: scale, fading: card.isSettling)
             return
         }
-        guard stage == nil, let context, let store else { return }
-        let made = BrainStageView(turnID: row.turnID, store: store, context: context)
-        made.onActivity = { [weak self] in self?.refreshAux() }
-        let holder = NSView()
-        holder.translatesAutoresizingMaskIntoConstraints = false
-        holder.addSubview(made)
-        let wide = made.widthAnchor.constraint(equalTo: holder.widthAnchor)
-        wide.priority = .init(750)
-        NSLayoutConstraint.activate([
-            made.leadingAnchor.constraint(equalTo: holder.leadingAnchor),
-            made.topAnchor.constraint(equalTo: holder.topAnchor),
-            made.bottomAnchor.constraint(equalTo: holder.bottomAnchor),
-            made.widthAnchor.constraint(lessThanOrEqualToConstant: BrainStageView.maximumWidth),
-            wide,
-            made.heightAnchor.constraint(
-                equalTo: made.widthAnchor, multiplier: NeuralDesign.height / NeuralDesign.width),
-        ])
-        stack.insertArrangedSubview(holder, at: 1)
-        self.holder = holder
+        BrainPictures.picture(palette: palette, frame: frame, face: model.face) { [weak self] image in
+            guard let self, self.pictureRequested == wanted else { return }
+            self.picture.setImage(image, scale: scale, fading: true)
+            self.needsLayout = true
+        }
+    }
+
+    private func prefetchStage() {}
+
+
+    var isOpenShown: Bool { phase != .closed && stage != nil }
+    var hasStage: Bool { stage != nil }
+
+    /// Whether this brain may build its stage: the person asked, and a Metal head can be drawn.
+    private var stageMayOpen: Bool { MacBrain.isAvailable }
+
+    func open(animated: Bool) {
+        focusOnLanding = NSApp.currentEvent?.type == .keyDown
+        if let mover {
+            if !mover.isOpening { reverseMove() }
+            return
+        }
+        guard phase == .closed, stageMayOpen else { return }
+        makeParts()
+        let swapped = store?.consumeSwap(turnID) ?? false
+        let canAnimate = animated && canMove
+        if canAnimate { startMove(opening: true, swapped: swapped) } else { showStage() }
+    }
+
+    func close(animated: Bool) {
+        if let mover {
+            if mover.isOpening { reverseMove() }
+            return
+        }
+        guard phase == .open else { return }
+        let swapped = store?.consumeSwap(turnID) ?? false
+        if animated && canMove { startMove(opening: false, swapped: swapped) } else { hideStage() }
+    }
+
+    private var canMove: Bool {
+        parkReasons.isEmpty && MotionBudget.level < .critical && window != nil && bounds.width > 8
+            && isVisible
+    }
+
+    /// Builds the parts of the open brain, without showing them.
+    func makeParts() {
+        guard stage == nil else { return }
+        let made = BrainStageView(turnID: turnID, host: self)
+        made.onActivity = { [weak self] in self?.stageActivity() }
+        made.onDive = { [weak self] zone in self?.diveChanged(zone) }
+        made.head.onReady = { [weak self] in self?.needsLayout = true }
+        carrier.addSubview(made)
         stage = made
+        let chipView = BrainFilterChips(host: self)
+        let listView = BrainListView(host: self)
+        let accountView = BrainAccountView(host: self)
+        let footerView = BrainFooterView(host: self)
+        for view in [chipView, listView, accountView, footerView] as [NSView] { addSubview(view) }
+        chips = chipView
+        list = listView
+        account = accountView
+        footer = footerView
+        footerView.onReplay = { [weak self] in self?.toggleReplay() }
+        footerView.onScrub = { [weak self] fraction in self?.scrub(to: fraction) }
+        footerView.onScrubEnd = { [weak self] in self?.endScrub() }
+        footerView.onShare = { [weak self] in self?.presentShare() }
+        footerView.onRows = { [weak self] in self?.toggleRows() }
+        footerView.onClose = { [weak self] in self?.collapseBrain() }
+        footerView.onChipHover = { [weak self] token in self?.pointAt(token: token, hold: false) }
+        footerView.onChipPress = { [weak self] token in self?.pointAt(token: token, hold: true) }
         if !parkReasons.isEmpty { made.park() }
+        let m = currentMetrics
+        chipView.configure(metrics: m)
+        listView.configure(metrics: m)
+        syncBrowse()
+        stage?.refresh(force: true)
+        footerView.sync(now: BrainClock.now)
+        accountView.refresh(immediate: true)
+    }
+
+    func dropParts() {
+        guard stage != nil else { return }
+        returnFocusFromBrain()
+        dismissLegend()
+        stage?.removeFromSuperview()
+        for view in [chips, list, account, footer] as [NSView?] { view?.removeFromSuperview() }
+        stage = nil
+        chips = nil
+        list = nil
+        account = nil
+        footer = nil
+        hoverApplied = nil
+        pendingHover = nil
+        hoverFlush?.invalidate()
+        graceTimerStore?.invalidate()
+        leader.clear()
+        updateModel {
+            $0.clearSelection()
+            $0.browse(.hoverLeft)
+            $0.setBrowseFocus(.list)
+            $0.setProvenance(token: nil)
+            $0.setDiving(false)
+            $0.setDive(zone: nil)
+            if $0.isReplaying { $0.stopReplay() }
+        }
+        announcement = nil
+    }
+
+    /// The stage, list, account and footer in place with no move.
+    func showStage() {
+        guard stageMayOpen else {
+            setPhase(.closed)
+            return
+        }
+        makeParts()
+        setPhase(.open)
         if startReplayOnOpen {
             startReplayOnOpen = false
-            begin(replayAt: CACurrentMediaTime())
+            updateModel { $0.startReplay(now: BrainClock.now) }
         }
+        applyPendingDive()
+        refreshAll()
+        let fromFind = store?.pendingFind[turnID] != nil
+        applyPendingFind()
+        if !fromFind, focusOnLanding { window?.makeFirstResponder(list ?? stage) }
+        focusOnLanding = false
+        relayout()
     }
 
-    private func closeStage() {
-        stage?.removeFromSuperview()
-        holder?.removeFromSuperview()
-        stage = nil
-        holder = nil
-        ticker.isHidden = true
-        scrubRow.isHidden = true
-        chips.isHidden = true
-        store?.withModel(row.turnID) {
-            $0.stopReplay()
-            $0.clearSelection()
-            $0.setProvenance(token: nil)
-        }
+    func hideStage() {
+        guard phase != .closed || stage != nil else { return }
+        mover = nil
+        carrier.setTravel(.identity)
+        dropParts()
+        setPhase(.closed)
+        syncCard()
+        requestPicture()
+        relayout()
     }
 
-    private func syncLine() {
-        guard let store, let model = store.model(row.turnID) else { return }
-        let inks = BrainInks.current(for: effectiveAppearance)
-        let line = model.line
-        glyph.show(model.glyph, face: model.face, motion: model.state.motion)
-        if count.stringValue != line.count { count.stringValue = line.count }
-        let words = line.detail
-        if detail.stringValue != words { detail.stringValue = words }
-        detail.isHidden = words.isEmpty
-        added.stringValue = line.added > 0 ? "+\(line.added)" : ""
-        added.isHidden = line.added == 0
-        removed.stringValue = line.removed > 0 ? "−\(line.removed)" : ""
-        removed.isHidden = line.removed == 0
-        mark.stringValue = ToolRowView.disclosureGlyph(stage != nil)
-        let settled = model.turn.outcome != .running
-        replayChip.isHidden = !settled || model.steps.isEmpty
-        replayChip.text = model.isReplaying ? Localized.text("Stop") : NeuralReading.replayLabel
-        replayChip.symbol = model.isReplaying ? "stop.fill" : "arrow.counterclockwise"
-        rowsChip.glyphTone = row.showsRows ? .live : nil
-        rowsChip.symbol = row.showsRows ? "checkmark" : nil
-        press.toolTip = line.toolMix.isEmpty ? nil : line.toolMix
-        setAccessibilityLabel(model.spoken)
-        _ = inks
+    func setPhase(_ next: Phase) {
+        phase = next
+        setAccessibilityExpanded(next != .closed)
+        card.isHidden = next != .closed && next != .moving
+        relayout()
     }
 
-    /// The ticker, the scrubber and the chips under the stage: restated from the model, shown only
-    /// when there is something to say.
-    private func refreshAux() {
-        guard let store, let model = store.model(row.turnID), let entry = store.entry(row.turnID)
+    private func returnFocusFromBrain() {
+        guard let window, let responder = window.firstResponder as? NSView,
+            responder !== self, responder.isDescendant(of: self)
         else { return }
-        guard stage != nil else {
-            ticker.isHidden = true
-            scrubRow.isHidden = true
-            chips.isHidden = true
-            return
-        }
-        let inks = BrainInks.current(for: effectiveAppearance)
-        let now = CACurrentMediaTime()
-        if let live = model.ticker(now: now) {
-            ticker.show(live, inks: inks)
-            ticker.isHidden = false
-        } else {
-            ticker.isHidden = true
-        }
-        let settled = model.turn.outcome != .running
-        scrubRow.isHidden = !settled
-        if settled {
-            let playing = model.isReplaying
-            let fraction = model.replayFraction(now: now) ?? 1
-            let clock =
-                playing
-                ? (model.replayTime(now: now).map { NeuralReading.duration($0) } ?? "")
-                : (model.line.duration ?? NeuralReading.duration(model.timeline.duration))
-            scrubRow.show(playing: playing, fraction: fraction, clock: clock, inks: inks)
-        }
-        let words =
-            settled
-            ? model.answerTokens(in: entry.answer).map(\.text).uniqued()
-            : []
-        chips.show(words)
-        chips.isHidden = words.isEmpty
+        window.makeFirstResponder(card.isHidden ? self : card)
     }
 
-    private func replayPressed() {
-        guard let store else { return }
-        if store.model(row.turnID)?.isReplaying == true {
-            stopReplay()
+
+    func toggleRows() { store?.toggleRows(turnID) }
+
+    func openDiving(into zone: NeuralZone) {
+        store?.pendingDive[turnID] = zone
+        store?.toggleOpen(turnID)
+    }
+
+    func applyPendingFind() {
+        guard let needle = store?.pendingFind.removeValue(forKey: turnID), phase == .open,
+            let id = store?.stepHolding(needle, turnID: turnID)
+        else { return }
+        browse(.click(id, double: false), grabFocus: false)
+    }
+
+    func applyPendingDive() {
+        guard let zone = store?.pendingDive.removeValue(forKey: turnID) else { return }
+        stage?.dive(into: zone)
+    }
+
+    func diveChanged(_ zone: NeuralZone?) {
+        if let zone {
+            browse(.zoneChip(zone, solo: true), grabFocus: false)
+        } else {
+            browse(.key(.character("0")), grabFocus: false)
+        }
+        relayout()
+    }
+
+    func stageActivity() {
+        footer?.sync(now: BrainClock.now)
+        updateLeader()
+    }
+
+    func toggleReplay() {
+        if model.isReplaying {
+            updateModel { $0.stopReplay() }
+            afterReplayChange()
             return
         }
-        if stage != nil {
-            begin(replayAt: CACurrentMediaTime())
-        } else {
+        guard model.turn.outcome != .running else { return }
+        if phase == .closed {
             startReplayOnOpen = true
-            store.toggleOpen(row.turnID)
+            store?.toggleOpen(turnID)
+            return
         }
+        updateModel { $0.startReplay(now: BrainClock.now) }
+        afterReplayChange()
     }
 
-    private func playPressed() {
-        if store?.model(row.turnID)?.isReplaying == true {
-            stopReplay()
-        } else {
-            begin(replayAt: CACurrentMediaTime())
-        }
+    func scrub(to fraction: Double) {
+        updateModel { $0.scrub(to: fraction) }
+        afterReplayChange()
     }
 
-    private func begin(replayAt time: Double) {
-        store?.withModel(row.turnID) { $0.startReplay(now: time) }
+    func endScrub() {
+        updateModel { $0.endScrub() }
+        afterReplayChange()
+    }
+
+    private func afterReplayChange() {
         stage?.refresh(force: true)
-        syncLine()
-        refreshAux()
+        stage?.head.setNeedsRender()
+        syncCard()
+        footer?.sync(now: BrainClock.now)
+        account?.refresh()
+        invalidateIntrinsicContentSize()
+        needsLayout = true
     }
 
-    private func stopReplay() {
-        store?.withModel(row.turnID) { $0.stopReplay() }
-        stage?.refresh(force: true)
-        syncLine()
-        refreshAux()
+    func presentShare() {
+        guard let store, let context, let window, model.turn.outcome != .running else { return }
+        BrainSharePanel.present(turnID: turnID, store: store, context: context, on: window)
     }
 
-    private func scrubbed(_ fraction: Double) {
-        scrubRow.scrubber.fraction = fraction
-        store?.withModel(row.turnID) { $0.scrub(to: fraction) }
-        stage?.refresh()
-        syncLine()
-        refreshAux()
+    /// The answer's literal path-like words that a step carries: worked out once for an answer and
+    /// a revision of the turn, not once a hover.
+    var answerChips: [String] {
+        let answer = answerText
+        let revision = model.revision
+        if let memo = tokenMemo, memo.answer == answer, memo.revision == revision { return memo.tokens }
+        tokenComputations += 1
+        let words = answer.isEmpty ? [] : model.answerTokens(in: answer).map(\.text)
+        var seen = Set<String>()
+        let unique = words.filter { seen.insert($0).inserted }
+        tokenMemo = (answer, revision, unique)
+        return unique
     }
 
-    private func scrubEnded() {
-        store?.withModel(row.turnID) { $0.endScrub() }
-        stage?.refresh(force: true)
-        syncLine()
-        refreshAux()
+    func pointAt(token: String?, hold: Bool) {
+        let active = model.provenanceToken == token
+        let next = hold ? (active ? nil : token) : token
+        if !hold, model.provenanceToken != nil, !active, next == nil { /* released */ }
+        stage?.setProvenance(next)
+        footer?.sync(now: BrainClock.now)
     }
 
-    private func sharePressed() {
-        guard let store, let context, let window else { return }
-        BrainSharePanel.present(turnID: row.turnID, store: store, context: context, on: window)
-    }
-
-    private func pinProvenance(_ token: String) {
-        let active = store?.model(row.turnID)?.provenanceToken == token
-        stage?.setProvenance(active ? nil : token)
-    }
 
     /// A pane that parks, a window that closes or an app that has been away takes the head out of
     /// the row, which lets go of the textures; each gives its reason and takes it back, and the
@@ -680,41 +740,52 @@ final class BrainRowView: NSView, KeyboardPressable {
     func setParked(_ parked: Bool, reason: String = "pane") {
         if parked { parkReasons.insert(reason) } else { parkReasons.remove(reason) }
         if parkReasons.isEmpty { stage?.unpark() } else { stage?.park() }
+        if parked, let mover { finishMove(snapOpen: mover.isOpening) }
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil else { return }
-        syncLine()
+        syncCard()
+        requestPicture()
     }
 
-    static var live: [BrainRowView] { rows.allObjects }
 
-    var isOpenShown: Bool { stage != nil }
-    var hasReplayChip: Bool { !replayChip.isHidden }
-    var linePieces: (count: String, detail: String, added: String, removed: String) {
-        (count.stringValue, detail.stringValue, added.stringValue, removed.stringValue)
+    override var acceptsFirstResponder: Bool { false }
+
+    override func accessibilityPerformPress() -> Bool {
+        store?.toggleOpen(turnID)
+        return true
     }
-    var tickerText: String? { ticker.isHidden ? nil : ticker.line }
-    var scrubberShown: Bool { !scrubRow.isHidden }
-    var scrubFraction: Double { scrubRow.scrubber.fraction }
-    var tokenChips: [String] { chips.isHidden ? [] : chips.tokens }
-    var glyphView: BrainGlyphView { glyph }
-    var rowsButton: SymbolChip { rowsChip }
-    var replayButton: SymbolChip { replayChip }
-    var playButton: SymbolChip { scrubRow.play }
-    var shareButton: SymbolChip { scrubRow.share }
-    var chipViews: [BrainTokenChip] { chips.chips }
-    var scrubberView: BrainScrubber { scrubRow.scrubber }
-    var tokenCount: Int { chips.tokens.count }
 
-    func pressLine() { store?.toggleOpen(row.turnID) }
+    func pressLine() { store?.toggleOpen(turnID) }
+
+    /// The reader scrolled: the head may have come into view or left it.
+    func viewportMoved() { stage?.visibilityChanged() }
 }
 
-extension Array where Element: Hashable {
-    fileprivate func uniqued() -> [Element] {
-        var seen = Set<Element>()
-        return filter { seen.insert($0).inserted }
+/// The view the stage and the head's picture live in: a plain flipped view the row moves with one
+/// transform, so the head, its nodes and its picture travel as a single thing.
+@MainActor
+final class BrainCarrierView: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.masksToBounds = false
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    nonisolated override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let found = super.hitTest(point)
+        return found === self ? nil : found
+    }
+
+    func setTravel(_ transform: CGAffineTransform) {
+        guard let layer else { return }
+        layer.sublayerTransform = CATransform3DMakeAffineTransform(transform)
     }
 }
 

@@ -2,7 +2,7 @@ import AppKit
 import TailscodeCore
 
 /// One node of a step list read by VoiceOver: a button that says what the step is and presses to
-/// pin it.
+/// put the cursor on it.
 private final class BrainStepElement: NSAccessibilityElement {
     nonisolated(unsafe) var onPress: (@MainActor () -> Void)?
 
@@ -13,25 +13,92 @@ private final class BrainStepElement: NSAccessibilityElement {
     }
 }
 
-/// The open brain: the head drawn by Metal with the nodes, the wires and the zone names laid
-/// between its interior and its glass, and everything a person can do with it.
+/// A ring round a node, with the step's number in a small tag: the cursor's is solid with a glow,
+/// the previewed step's is dashed. At the head's size the numbers inside the nodes cannot be
+/// read, so the tag carries it.
+@MainActor
+private final class BrainRingMark {
+    let layer = CALayer()
+    private let glow = CAShapeLayer()
+    private let ring = CAShapeLayer()
+    private let tag = CALayer()
+    private let text = CATextLayer()
+
+    init() {
+        layer.isHidden = true
+        for sub in [glow, ring] {
+            sub.fillColor = nil
+            layer.addSublayer(sub)
+        }
+        tag.cornerRadius = 4
+        tag.borderWidth = 1
+        text.alignmentMode = .center
+        text.isWrapped = false
+        tag.addSublayer(text)
+        layer.addSublayer(tag)
+    }
+
+    func hide() { layer.isHidden = true }
+
+    func show(
+        at center: CGPoint, nodeRadius: CGFloat, number: Int, solid: Bool, inks: BrainInks,
+        scale: CGFloat, alpha: Float, backing: CGFloat
+    ) {
+        let accent = inks.domeAccent
+        let radius = nodeRadius + 7 * scale
+        layer.isHidden = false
+        layer.opacity = alpha
+        layer.position = center
+        layer.bounds = .zero
+        ring.path = CGPath(
+            ellipseIn: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2), transform: nil)
+        ring.strokeColor = accent.withAlphaComponent(0.95).cgColor
+        ring.lineWidth = 2.2
+        ring.lineDashPattern = solid ? nil : [3, 2.4]
+        glow.isHidden = !solid
+        glow.path = CGPath(
+            ellipseIn: CGRect(x: -radius * 1.5, y: -radius * 1.5, width: radius * 3, height: radius * 3), transform: nil)
+        glow.fillColor = accent.withAlphaComponent(0.16).cgColor
+        let font = NSFont.monospacedSystemFont(ofSize: 9.5, weight: .bold)
+        text.contentsScale = backing
+        text.font = font
+        text.fontSize = 9.5
+        text.foregroundColor = accent.cgColor
+        text.string = "\(number)"
+        let width = max(15, CGFloat("\(number)".count) * 6 + 8)
+        let offset = radius * 0.72 + 2
+        tag.frame = CGRect(x: offset, y: -offset - 14, width: width, height: 14)
+        tag.backgroundColor = inks.panel.withAlphaComponent(0.92).cgColor
+        tag.borderColor = accent.withAlphaComponent(0.95).cgColor
+        text.frame = CGRect(x: 0, y: 0.5, width: width, height: 13)
+    }
+}
+
+/// The nodes, wires and ties a move is part way through drawing: how many nodes have come in, how
+/// big and how visible, and how much of every wire is drawn.
+struct BrainReveal {
+    var nodes: NeuralNodeReveal
+    var wireDraw: Double
+    var tieDraw: Double
+}
+
+/// The open brain's head, a map of the turn: the head drawn by Metal with the nodes, the wires and
+/// the zone names laid between its interior and its glass, the ring of the cursor and of the
+/// step being previewed, and what a person can do with it.
 ///
-/// The stage is content, an opaque canvas with a hairline, never glass. It holds no model: the
-/// pane's `BrainStore` does, and every change the person makes (a hover, a pin, a replay, an
-/// answer word pointed at) is made there and read back, so the head, the nodes, the ticker and the
-/// scrubber all draw from one value. A hover lights the node's wires and raises its card; a click
-/// pins it; a zone's name dives into the zone; double-clicking a Task node goes to its agent's card;
-/// the arrows walk the steps and Escape comes back out.
+/// The stage is content, drawn straight on the transcript's canvas (the head's own background is
+/// the canvas), never glass. It holds no model: the pane's `BrainStore` does, and every change
+/// is made through the row (`BrainSurfaceHost`) and read back, so the head, the nodes, the list,
+/// the account and the footer all draw from one value. A hover previews the step and rings its
+/// node, a click puts the cursor on it, a zone's name dives into the zone, double-clicking a Task
+/// node opens its agent, a right-click opens the step's menu.
 ///
 /// Nothing here runs a clock of its own. The head's display link ticks the stage only while the
 /// brain has something that moves, and a settled brain is drawn once and costs nothing after.
 @MainActor
-final class BrainStageView: NSView {
-    static let maximumWidth: CGFloat = 760
-
+final class BrainStageView: NSView, BrainKeyTaker {
     let turnID: String
-    private weak var store: BrainStore?
-    private weak var context: TranscriptContext?
+    private weak var host: BrainSurfaceHost?
     let head = NeuralHeadView()
 
     private let overlay = CALayer()
@@ -41,8 +108,9 @@ final class BrainStageView: NSView {
     private let labelGroup = CALayer()
     private let nodeGroup = CALayer()
     private let batchGroup = CALayer()
-    private let card = BrainCardView()
-    private let diveList = BrainDiveList()
+    private let ringGroup = CALayer()
+    private let cursorRing = BrainRingMark()
+    private let previewRing = BrainRingMark()
 
     private var nodes: [String: BrainNode] = [:]
     private var batches: [String: CAShapeLayer] = [:]
@@ -60,9 +128,14 @@ final class BrainStageView: NSView {
     private var lastInks = 0
     private var lastDynamic = 0
     private var parked = false
-    private var visibleObserver: NSObjectProtocol?
     private var motionObserver: NSObjectProtocol?
     private var themeObserver: NSObjectProtocol?
+    private var gate: DisplayGate?
+    private(set) var isFocused = false
+
+    var reveal: BrainReveal? {
+        didSet { if reveal != nil || oldValue != nil { refresh(force: true) } }
+    }
 
     private struct Dive {
         var zone: NeuralZone
@@ -75,41 +148,33 @@ final class BrainStageView: NSView {
     private var currentDive = NeuralDive.none
     private var diveProgress: Double = 0
 
-    /// A model to draw instead of the store's, for a picture that must not show a hover, a pin or a
-    /// replay: the poster of a turn.
+    /// A model to draw instead of the host's, for a picture that must not show a hover, a cursor
+    /// or a replay: the poster of a turn.
     var fixedModel: NeuralBrainModel?
 
-    private func currentModel() -> NeuralBrainModel? { fixedModel ?? store?.model(turnID) }
+    private func currentModel() -> NeuralBrainModel? { fixedModel ?? host?.model }
 
     /// Told after a tick that moved the head, a change the person made, or a dive's end, so the
-    /// row's ticker and scrubber follow without a clock of their own.
+    /// row's other parts follow without a clock of their own.
     var onActivity: (() -> Void)?
+    var onDive: ((NeuralZone?) -> Void)?
 
-    static let diveDuration: CFTimeInterval = 0.7
+    static let diveDuration: CFTimeInterval = 0.52
 
-    init(turnID: String, store: BrainStore, context: TranscriptContext) {
+    init(turnID: String, host: BrainSurfaceHost?) {
         self.turnID = turnID
-        self.store = store
-        self.context = context
+        self.host = host
         super.init(frame: .zero)
-        translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
-        layer?.cornerRadius = MacTheme.Radius.card
-        layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
-        layer?.borderWidth = 1
         head.frame = bounds
-        head.autoresizingMask = [.width, .height]
         addSubview(head)
         head.nodeLayer.addSublayer(overlay)
-        for group in [tieGroup, wireGroup, viaGroup, labelGroup, batchGroup, nodeGroup] {
+        for group in [tieGroup, wireGroup, viaGroup, labelGroup, batchGroup, nodeGroup, ringGroup] {
             overlay.addSublayer(group)
         }
-        card.frame = NSRect(x: 0, y: 0, width: BrainCardView.width, height: 10)
-        addSubview(card)
-        diveList.onPick = { [weak self] id in self?.pinFromList(id) }
-        diveList.onBack = { [weak self] in self?.surface() }
-        addSubview(diveList)
+        ringGroup.addSublayer(previewRing.layer)
+        ringGroup.addSublayer(cursorRing.layer)
         head.onTick = { [weak self] time in self?.tick(time) }
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
@@ -124,35 +189,52 @@ final class BrainStageView: NSView {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh(force: true) }
         }
+        gate = DisplayGate(self) { [weak self] in self?.noteVisibility() }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     isolated deinit {
-        if let visibleObserver { NotificationCenter.default.removeObserver(visibleObserver) }
         if let motionObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(motionObserver)
         }
         if let themeObserver { NotificationCenter.default.removeObserver(themeObserver) }
     }
 
-    /// The head's design space is 640 by 420 and the stage is exactly that shape, so the head fills
-    /// it and the node layers are measured by the head's own scale.
     override var acceptsFirstResponder: Bool { true }
-    override var canBecomeKeyView: Bool { NSApp.isFullKeyboardAccessEnabled }
+    override var canBecomeKeyView: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var focusRingMaskBounds: NSRect { bounds }
 
     override func drawFocusRingMask() {
-        NSBezierPath(
-            roundedRect: bounds, xRadius: MacTheme.Radius.card, yRadius: MacTheme.Radius.card
-        ).fill()
+        NSBezierPath(roundedRect: bounds, xRadius: 10, yRadius: 10).fill()
     }
 
+    override func becomeFirstResponder() -> Bool {
+        isFocused = true
+        noteFocus()
+        return true
+    }
+
+    override func resignFirstResponder() -> Bool {
+        isFocused = false
+        noteFocus()
+        return true
+    }
+
+    private func noteFocus() {
+        host?.stageFocusChanged(isFocused)
+    }
+
+    /// The head is drawn at the design's own aspect, 576 by 420 of it: its 640-unit frame is wider
+    /// by the 64 units the chassis does not use, which hang off the stage's left edge.
     override func layout() {
         super.layout()
-        head.frame = bounds
-        diveList.frame = bounds.insetBy(dx: 10, dy: 10)
+        let scale = bounds.width / CGFloat(NeuralStageMetrics.designWidth)
+        let crop = NeuralStageMetrics.designCrop
+        head.frame = CGRect(
+            x: -CGFloat(crop.x) * scale, y: 0, width: CGFloat(NeuralDesign.width) * scale,
+            height: bounds.height)
         noteVisibility()
         guard bounds.size != laidOut else { return }
         laidOut = bounds.size
@@ -161,14 +243,7 @@ final class BrainStageView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if let visibleObserver { NotificationCenter.default.removeObserver(visibleObserver) }
-        visibleObserver = nil
-        guard window != nil, let clip = enclosingScrollView?.contentView else { return }
-        visibleObserver = NotificationCenter.default.addObserver(
-            forName: NSView.boundsDidChangeNotification, object: clip, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.noteVisibility() }
-        }
+        gate?.attach()
         noteVisibility()
     }
 
@@ -187,14 +262,15 @@ final class BrainStageView: NSView {
                 owner: self, userInfo: nil))
     }
 
-    /// A stage scrolled out of the pane's view draws nothing and ticks nothing.
+    /// A stage scrolled out of the pane's view, in a window nobody can see or under an app in the
+    /// background draws nothing and ticks nothing.
+    func visibilityChanged() { noteVisibility() }
+
     private func noteVisibility() {
-        let visible = !visibleRect.isEmpty
+        let visible = !visibleRect.isEmpty && (gate?.isOpen ?? true)
         head.isSuspended = parked || !visible
     }
 
-    /// Gives up the head, which is what holds the process's textures, while the pane is parked, the
-    /// window is closed or the app has been away; taking it back puts the head in again and draws.
     func park() {
         guard !parked else { return }
         parked = true
@@ -205,8 +281,8 @@ final class BrainStageView: NSView {
     func unpark() {
         guard parked else { return }
         parked = false
-        head.frame = bounds
-        addSubview(head, positioned: .below, relativeTo: card)
+        addSubview(head, positioned: .below, relativeTo: nil)
+        needsLayout = true
         head.isSuspended = false
         refresh(force: true)
         noteVisibility()
@@ -217,7 +293,7 @@ final class BrainStageView: NSView {
     /// Whether the head holds a display link or a texture right now, for the harness.
     var holdsHead: Bool { head.superview != nil && head.window != nil }
 
-    private var reduceMotion: Bool { !ActivityPulse.motionAllowed }
+    private var reduceMotion: Bool { host?.reduceMotion ?? !ActivityPulse.motionAllowed }
 
     private func budget() -> AnimationBudget {
         TileGovernor.animation(
@@ -226,7 +302,8 @@ final class BrainStageView: NSView {
     }
 
     private func inks() -> BrainInks {
-        paletteOverride.map { BrainInks(palette: $0) } ?? BrainInks.current(for: effectiveAppearance)
+        paletteOverride.map { BrainInks(palette: $0) }
+            ?? host?.inks ?? BrainInks.current(for: effectiveAppearance)
     }
 
     /// A palette to draw in instead of the window's, for the poster's own look.
@@ -241,14 +318,11 @@ final class BrainStageView: NSView {
         return hasher.finalize()
     }
 
-    /// Brings the whole stage to the store's model: the head, the nodes and wires, the card, the
-    /// list a dive ended in and the accessibility tree. Cheap when nothing changed.
+    /// Brings the whole stage to the model: the head, the nodes and wires, the rings and the
+    /// accessibility tree. Cheap when nothing changed.
     func refresh(force: Bool = false) {
         guard let model = currentModel() else { return }
         let inks = inks()
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.borderColor = inks.rule.cgColor
-        }
         head.apply(
             model: model, palette: inks.palette, reduceMotion: reduceMotion, dive: currentDive,
             animationBudget: budget())
@@ -265,8 +339,6 @@ final class BrainStageView: NSView {
         updateDynamic(
             model: model, inks: inks, scale: scale, time: CACurrentMediaTime(),
             force: structural || force)
-        updateCard(model: model, inks: inks)
-        updateList(model: model, inks: inks)
         updateAccessibility(model: model)
     }
 
@@ -280,7 +352,7 @@ final class BrainStageView: NSView {
         }
         guard model.mode != .live else { return }
         if model.replayDone(now: time) {
-            store?.withModel(turnID) { $0.stopReplay() }
+            host?.updateModel { $0.stopReplay() }
             refresh(force: true)
             onActivity?()
             return
@@ -299,7 +371,7 @@ final class BrainStageView: NSView {
             overlay.frame = CGRect(origin: .zero, size: head.contentRect.size)
         }
         overlay.contentsScale = backing
-        for group in [tieGroup, wireGroup, viaGroup, labelGroup, batchGroup, nodeGroup] {
+        for group in [tieGroup, wireGroup, viaGroup, labelGroup, batchGroup, nodeGroup, ringGroup] {
             group.frame = overlay.bounds
         }
         for layer in routeLayers + tieLayers + viaLayers { layer.removeFromSuperlayer() }
@@ -347,7 +419,7 @@ final class BrainStageView: NSView {
         }
         var counts = [Int](repeating: 0, count: NeuralZone.allCases.count)
         for step in model.turn.steps { counts[step.zone.rawValue] += 1 }
-        for zone in NeuralZone.allCases where zone != .say && counts[zone.rawValue] > 0 {
+        for zone in NeuralZone.allCases where counts[zone.rawValue] > 0 {
             let label = CATextLayer()
             label.alignmentMode = .center
             label.contentsScale = backing
@@ -356,20 +428,36 @@ final class BrainStageView: NSView {
             label.fontSize = size
             label.font = NSFont.monospacedSystemFont(ofSize: size, weight: .semibold)
             label.string = NSAttributedString(
-                string: zone.label,
+                string: zone.displayLabel,
                 attributes: [
                     .font: NSFont.monospacedSystemFont(ofSize: size, weight: .semibold),
                     .kern: 1.8 * scale,
                     .foregroundColor: inks.dome(zone),
                 ])
             label.bounds = CGRect(x: 0, y: 0, width: 96 * scale, height: size * 1.4)
-            let at = head.layerPoint(
-                forDesign: NeuralPoint(zone.center.x, zone.center.y - zone.well.ry - 11))
-            label.position = at
+            let rect = zone.labelRect
+            label.position = head.layerPoint(
+                forDesign: NeuralPoint(rect.x + rect.width / 2, rect.y + rect.height / 2))
             labelGroup.addSublayer(label)
             zoneLabels[zone] = label
         }
         lastDynamic = 0
+    }
+
+    /// The nodes the filters hide, which draw at 28 percent: a node dims when its step and every
+    /// step it stands for are hidden.
+    private func dimmedNodes(_ model: NeuralBrainModel) -> Set<String> {
+        let list = model.browseState.list
+        guard list.isFiltered else { return [] }
+        let hidden = list.hiddenIDs
+        var out = Set<String>()
+        for id in hidden {
+            let node = list.nodeID(of: id)
+            guard hidden.contains(node) else { continue }
+            let members = list.ganglionMembers(of: node)
+            if members.allSatisfy({ hidden.contains($0) }) { out.insert(node) }
+        }
+        return out
     }
 
     private func updateDynamic(
@@ -380,11 +468,18 @@ final class BrainStageView: NSView {
         hasher.combine(model.selected)
         hasher.combine(model.provenanceToken)
         hasher.combine(model.pinned)
+        hasher.combine(model.browseState.hovered)
+        hasher.combine(model.pinnedStep)
+        let filter = model.browseState.list.filter
+        hasher.combine(filter.zones.map(\.rawValue).sorted())
+        hasher.combine(filter.failedOnly)
+        hasher.combine(filter.search)
         hasher.combine(reduceMotion)
         hasher.combine(diveProgress)
         hasher.combine(divedZone)
+        hasher.combine(isFocused)
         let key = hasher.finalize()
-        if !force, model.mode == .live, key == lastDynamic { return }
+        if !force, model.mode == .live, reveal == nil, key == lastDynamic { return }
         lastDynamic = key
         let reduce = reduceMotion
         let backing = window?.backingScaleFactor ?? 2
@@ -393,12 +488,14 @@ final class BrainStageView: NSView {
         defer { CATransaction.commit() }
 
         let wires = NeuralNodes.wires(model: model, time: time, reduceMotion: reduce)
+        let wireScale = Float(reveal?.wireDraw ?? 1)
+        let tieScale = Float(reveal?.tieDraw ?? 1)
         for (index, route) in wires.routes.enumerated() where index < routeLayers.count {
             let layer = routeLayers[index]
             let tone = inks.dome(route.zone)
             layer.strokeColor = tone.cgColor
             layer.lineWidth = route.hot ? 2.1 : 1.15
-            layer.strokeEnd = CGFloat(route.lit)
+            layer.strokeEnd = CGFloat(route.lit * wireScale)
             var alpha: Float = route.hot ? 1 : 0.5
             if route.dimmed && !route.hot { alpha = 0.1 }
             if dimsOutside { alpha *= 0.15 }
@@ -415,14 +512,14 @@ final class BrainStageView: NSView {
             layer.fillColor = inks.dome(via.zone).cgColor
             var alpha: Float = via.hot ? 1 : 0.6
             if via.dimmed && !via.hot { alpha = 0.1 }
-            layer.opacity = alpha * Float(via.lit)
+            layer.opacity = alpha * Float(via.lit) * wireScale
         }
         for (index, tie) in wires.ties.enumerated() where index < tieLayers.count {
             let layer = tieLayers[index]
             let tone = inks.dome(tie.isCommand ? .shell : .sense)
             layer.strokeColor = tone.cgColor
             layer.lineWidth = tie.hot ? 1.8 : 1.1
-            layer.strokeEnd = CGFloat(tie.lit)
+            layer.strokeEnd = CGFloat(tie.lit * tieScale)
             var alpha: Float = tie.hot ? 1 : 0.55
             if tie.dimmed && !tie.hot { alpha = 0.12 }
             if dimsOutside { alpha *= 0.15 }
@@ -431,26 +528,62 @@ final class BrainStageView: NSView {
 
         let draws = NeuralNodes.draws(model: model, time: time, reduceMotion: reduce)
         nodeIDs = draws.map(\.id)
-        if model.useInstancedNodes {
-            applyBatched(draws, inks: inks, scale: scale, backing: backing, reduce: reduce)
+        let dim = dimmedNodes(model)
+        if model.useInstancedNodes, reveal == nil {
+            applyBatched(draws, inks: inks, scale: scale, backing: backing, reduce: reduce, dim: dim)
         } else {
-            applyNodes(draws, inks: inks, scale: scale, backing: backing, reduce: reduce)
+            applyNodes(draws, inks: inks, scale: scale, backing: backing, reduce: reduce, dim: dim)
         }
+        let list = model.browseState.list
         for (zone, label) in zoneLabels {
             let lit = model.selectedZone == nil || model.selectedZone == zone
-            label.opacity = (lit ? 0.85 : 0.3) * (divedZone == nil || divedZone == zone ? 1 : 0.2)
+            let hidden = list.isFiltered && list.filter.zones.isEmpty == false && !list.filter.zones.contains(zone)
+            let base: Float = (lit ? 0.85 : 0.3) * (hidden ? 0.4 : 1)
+            label.opacity = base * (divedZone == nil || divedZone == zone ? 1 : 0.2) * Float(reveal?.nodes.alpha(0) ?? 1)
         }
+        updateRings(model: model, inks: inks, scale: scale, draws: draws, dim: dim, backing: backing)
+    }
+
+    private func updateRings(
+        model: NeuralBrainModel, inks: BrainInks, scale: CGFloat, draws: [NeuralNodeDraw],
+        dim: Set<String>, backing: CGFloat
+    ) {
+        guard fixedModel == nil, divedZone == nil || diveProgress >= 0.5, reveal == nil else {
+            cursorRing.hide()
+            previewRing.hide()
+            return
+        }
+        let list = model.browseState.list
+        func place(_ id: String?, mark: BrainRingMark, solid: Bool) {
+            guard let id, let row = list.row(id: id) else {
+                mark.hide()
+                return
+            }
+            let node = list.nodeID(of: id)
+            guard let draw = draws.first(where: { $0.id == node }) else {
+                mark.hide()
+                return
+            }
+            mark.show(
+                at: head.layerPoint(forDesign: draw.point), nodeRadius: CGFloat(draw.radius) * scale,
+                number: row.number, solid: solid, inks: inks, scale: scale,
+                alpha: dim.contains(node) ? 0.5 : 1, backing: backing)
+        }
+        place(model.pinnedStep, mark: cursorRing, solid: true)
+        let preview = model.browseState.hovered
+        place(preview == model.pinnedStep ? nil : preview, mark: previewRing, solid: false)
     }
 
     /// Whether the dive has taken everything but its own zone out of the picture.
     private var dimsOutside: Bool { diveProgress > 0.5 }
 
     private func applyNodes(
-        _ draws: [NeuralNodeDraw], inks: BrainInks, scale: CGFloat, backing: CGFloat, reduce: Bool
+        _ draws: [NeuralNodeDraw], inks: BrainInks, scale: CGFloat, backing: CGFloat, reduce: Bool,
+        dim: Set<String>
     ) {
         for layer in batches.values { layer.isHidden = true }
         var seen = Set<String>()
-        for draw in draws {
+        for (index, draw) in draws.enumerated() {
             seen.insert(draw.id)
             let node: BrainNode
             if let held = nodes[draw.id] {
@@ -460,9 +593,16 @@ final class BrainStageView: NSView {
                 nodes[draw.id] = node
                 nodeGroup.addSublayer(node.layer)
             }
+            var fade = fade(for: draw)
+            if dim.contains(draw.id) { fade *= 0.28 }
+            var pop: CGFloat = 1
+            if let reveal {
+                fade *= Float(reveal.nodes.alpha(index))
+                pop = CGFloat(reveal.nodes.scale(index))
+            }
             node.apply(
                 draw, center: head.layerPoint(forDesign: draw.point), scale: scale, inks: inks,
-                backing: backing, reduceMotion: reduce, fade: fade(for: draw))
+                backing: backing, reduceMotion: reduce, fade: fade, pop: pop)
         }
         for id in nodes.keys where !seen.contains(id) {
             nodes[id]?.layer.removeFromSuperlayer()
@@ -479,9 +619,11 @@ final class BrainStageView: NSView {
 
     /// Past `NeuralNodes.instancingThreshold` nodes a layer each would be a layer tree the size of
     /// the turn, so the nodes at rest are drawn as one path per zone and tone, and only the node
-    /// the pointer is on, the one pinned and the ones an answer word points at keep a layer.
+    /// the pointer is on, the one the cursor is on and the ones an answer word points at keep a
+    /// layer.
     private func applyBatched(
-        _ draws: [NeuralNodeDraw], inks: BrainInks, scale: CGFloat, backing: CGFloat, reduce: Bool
+        _ draws: [NeuralNodeDraw], inks: BrainInks, scale: CGFloat, backing: CGFloat, reduce: Bool,
+        dim: Set<String>
     ) {
         var groups: [String: (color: NSColor, dashed: Bool, alpha: Float, path: CGMutablePath)] = [:]
         var singles: [NeuralNodeDraw] = []
@@ -490,12 +632,13 @@ final class BrainStageView: NSView {
                 singles.append(draw)
                 continue
             }
-            let name = "\(draw.zone.rawValue)-\(draw.tone)-\(draw.dimmed)-\(draw.shape)"
+            let dimmed = dim.contains(draw.id)
+            let name = "\(draw.zone.rawValue)-\(draw.tone)-\(draw.dimmed || dimmed)-\(draw.shape)"
             if groups[name] == nil {
                 groups[name] = (
                     inks.dome(draw.tone, zone: draw.zone),
                     draw.status == .stopped || draw.status == .stalled,
-                    draw.dimmed ? 0.22 : Float(draw.lit), CGMutablePath()
+                    draw.dimmed || dimmed ? 0.22 : Float(draw.lit), CGMutablePath()
                 )
             }
             let radius = max(3, CGFloat(draw.radius) * scale)
@@ -537,7 +680,7 @@ final class BrainStageView: NSView {
             }
             node.apply(
                 draw, center: head.layerPoint(forDesign: draw.point), scale: scale, inks: inks,
-                backing: backing, reduceMotion: reduce)
+                backing: backing, reduceMotion: reduce, fade: dim.contains(draw.id) ? 0.28 : 1)
         }
         for id in nodes.keys where !seen.contains(id) {
             nodes[id]?.layer.removeFromSuperlayer()
@@ -545,63 +688,40 @@ final class BrainStageView: NSView {
         }
     }
 
-    private func updateCard(model: NeuralBrainModel, inks: BrainInks) {
-        guard divedZone == nil, diving == nil, let reading = model.card, let id = model.selected,
-            let point = model.point(of: id)
-        else {
-            card.hide()
-            return
-        }
-        let height = card.show(reading, inks: inks)
-        let anchor = stagePoint(point)
-        let gap: CGFloat = 16
-        var x = anchor.x + gap
-        if x + BrainCardView.width > bounds.width - 6 { x = anchor.x - gap - BrainCardView.width }
-        x = min(max(6, x), max(6, bounds.width - BrainCardView.width - 6))
-        var y = anchor.y - height - 4
-        if y < 6 { y = anchor.y + gap }
-        y = min(max(6, y), max(6, bounds.height - height - 6))
-        card.setFrameOrigin(NSPoint(x: x, y: y))
-        card.isHidden = false
-    }
-
-    private func updateList(model: NeuralBrainModel, inks: BrainInks) {
-        guard let zone = divedZone else {
-            diveList.hide()
-            return
-        }
-        let inZone = model.turn.steps.filter { $0.zone == zone }
-        diveList.show(zone: zone, steps: inZone, inks: inks, pinned: model.pinned)
-    }
-
-    private func pinFromList(_ id: String) {
-        mutate { $0.togglePin(id) }
-    }
-
     /// A design point in this view's own coordinates; the head fills the stage and both run up.
     private func stagePoint(_ design: NeuralPoint) -> CGPoint {
         let rect = head.contentRect
         let scale = head.designScale
+        let origin = head.frame.origin
         return CGPoint(
-            x: rect.minX + CGFloat(design.x) * scale, y: rect.maxY - CGFloat(design.y) * scale)
+            x: origin.x + rect.minX + CGFloat(design.x) * scale,
+            y: origin.y + rect.maxY - CGFloat(design.y) * scale)
     }
 
-    /// Where a node is, in the stage's coordinates, for the selftest and the accessibility frames.
+    /// Where a node is, in the stage's coordinates (y up), for the harness and the accessibility
+    /// frames.
     func center(ofStep id: String) -> CGPoint? {
         guard let point = currentModel()?.point(of: id) else { return nil }
         return stagePoint(point)
     }
 
-    /// The zone name under a point, for the dive.
+    /// The nodes' centres in the head's design space: the obstacles a leader line goes around.
+    var nodeCentres: [NeuralPoint] {
+        guard let model = currentModel() else { return [] }
+        return model.steps.compactMap { model.point(of: $0.id) }
+    }
+
     private func zone(atLabel point: CGPoint) -> NeuralZone? {
-        let scale = head.designScale
-        for (zone, _) in zoneLabels {
-            let center = stagePoint(
-                NeuralPoint(zone.center.x, zone.center.y - zone.well.ry - 11))
-            let rect = CGRect(
-                x: center.x - 36 * scale, y: center.y - 9 * scale, width: 72 * scale,
-                height: 18 * scale)
-            if rect.contains(point) { return zone }
+        guard let model = currentModel() else { return nil }
+        let used = Set(model.steps.map(\.zone))
+        let design = head.designPoint(forViewPoint: convert(point, to: head))
+        for zone in NeuralZone.allCases where used.contains(zone) {
+            let rect = zone.labelRect
+            if design.x >= rect.x - 4, design.x <= rect.maxX + 4, design.y >= rect.y - 4,
+                design.y <= rect.maxY + 4
+            {
+                return zone
+            }
         }
         return nil
     }
@@ -609,127 +729,71 @@ final class BrainStageView: NSView {
     private func hit(at point: CGPoint) -> String? {
         guard let model = currentModel(), divedZone == nil, diving == nil else { return nil }
         let scale = max(head.designScale, 0.05)
-        return model.hit(at: head.designPoint(forViewPoint: point), slop: 5 / Double(scale))
+        let local = convert(point, to: head)
+        return model.hit(at: head.designPoint(forViewPoint: local), slop: 4 / Double(scale))
     }
 
-    /// Makes one change to the model in the store and brings everything to it.
-    private func mutate(_ change: (inout NeuralBrainModel) -> Void) {
-        store?.withModel(turnID, change)
-        head.setNeedsRender()
-        refresh()
-        onActivity?()
-    }
-
-    func setHover(_ id: String?) {
-        guard currentModel()?.hovered != id else { return }
-        mutate { $0.setHover(id) }
-    }
-
-    func togglePin(_ id: String) { mutate { $0.togglePin(id) } }
-
-    func clearSelection() {
-        guard currentModel()?.hasSelection == true else { return }
-        mutate { $0.clearSelection() }
-    }
-
-    /// The answer word being pointed at, or nil to let go of it.
     func setProvenance(_ token: String?) {
         guard currentModel()?.provenanceToken != token else { return }
-        mutate { $0.setProvenance(token: token) }
+        host?.updateModel { $0.setProvenance(token: token) }
+        head.setNeedsRender()
+        refresh(force: true)
+        onActivity?()
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = convert(point, from: superview)
-        guard bounds.contains(local) else { return nil }
-        if !diveList.isHidden, diveList.frame.contains(local) {
-            return super.hitTest(point)
-        }
-        return self
+        return bounds.contains(local) ? self : nil
     }
 
     override func mouseMoved(with event: NSEvent) {
         guard divedZone == nil else { return }
-        let point = convert(event.locationInWindow, from: nil)
-        setHover(hit(at: point))
+        host?.hoverStep(hit(at: convert(event.locationInWindow, from: nil)))
     }
 
     override func mouseExited(with event: NSEvent) {
-        guard currentModel()?.hovered != nil else { return }
-        mutate { $0.setHover(nil) }
+        host?.hoverStep(nil)
     }
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         window?.makeFirstResponder(self)
+        host?.stagePressed()
         if divedZone != nil || diving != nil {
-            if !diveList.frame.contains(point) { surface() }
+            surface()
+            return
+        }
+        if let id = hit(at: point) {
+            if event.clickCount >= 2, let step = currentModel()?.step(id: id), step.isCard,
+                step.zone == .delegate
+            {
+                host?.openSubagent(id)
+                return
+            }
+            host?.browse(.clickNode(id, double: event.clickCount >= 2), grabFocus: false)
             return
         }
         if let zone = zone(atLabel: point) {
             dive(into: zone)
             return
         }
-        guard let id = hit(at: point) else {
-            clearSelection()
-            return
-        }
-        if event.clickCount >= 2, currentModel()?.step(id: id)?.zone == .delegate {
-            context?.revealSubagent?(id)
-            return
-        }
-        togglePin(id)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        window?.makeFirstResponder(self)
+        guard let id = hit(at: point) else { return }
+        host?.presentMenu(forStep: id, event: event, in: self)
     }
 
     override func keyDown(with event: NSEvent) {
-        switch event.keyCode {
-        case 123: walk(by: -1)
-        case 124: walk(by: 1)
-        case 36, 76: pinHovered()
-        case 53: escape()
-        default: nextResponder?.keyDown(with: event)
-        }
+        if host?.handleBrainKey(event, from: self) == true { return }
+        nextResponder?.keyDown(with: event)
     }
 
-    /// Walks the steps in order, lighting each as the pointer would: the node's wires, its card, and
-    /// what a screen reader says on arriving.
-    func walk(by delta: Int) {
-        guard let model = currentModel(), !nodeIDs.isEmpty, divedZone == nil else { return }
-        let current = model.selected.flatMap { nodeIDs.firstIndex(of: $0) }
-        let next: Int
-        if let current {
-            next = min(max(current + delta, 0), nodeIDs.count - 1)
-        } else {
-            next = delta < 0 ? nodeIDs.count - 1 : 0
-        }
-        let id = nodeIDs[next]
-        mutate { $0.setHover(id) }
-        guard let model = currentModel(), let step = model.step(id: id) else { return }
-        announce(NeuralReading.announcement(for: step, of: model.turn.steps.count))
-    }
+    func takesBrainKey(_ event: NSEvent) -> Bool { host?.brainKeyApplies(event) ?? false }
 
-    private func pinHovered() {
-        guard let model = currentModel(), let id = model.hovered ?? model.pinned else { return }
-        togglePin(id)
-    }
-
-    /// Escape lets go of what was lit, comes out of a dive, and with nothing left to let go of gives
-    /// the keyboard back to the composer.
-    func escape() {
-        if divedZone != nil || diving != nil {
-            surface()
-            return
-        }
-        if currentModel()?.hasSelection == true || currentModel()?.isProvenanceActive == true {
-            mutate {
-                $0.clearSelection()
-                $0.setProvenance(token: nil)
-            }
-            return
-        }
-        context?.returnFocus?()
-    }
-
-    private func announce(_ text: String) {
+    func announce(_ text: String) {
         NSAccessibility.post(
             element: self, notification: .announcementRequested,
             userInfo: [
@@ -739,18 +803,18 @@ final class BrainStageView: NSView {
     }
 
     /// Dives into a zone: the chassis and the glass fly past about the zone's centre while the other
-    /// zones go dim, and the zone's steps are listed when it ends. Escape, a press outside the list
-    /// or its back line comes out the same way. Under reduced motion the dive lands at once.
+    /// zones go dim. Escape, a press on the stage or the Surface verb comes out the same way. Under
+    /// reduced motion the dive lands at once.
     func dive(into zone: NeuralZone) {
         guard let model = currentModel(), divedZone == nil, diving == nil,
             model.turn.steps.contains(where: { $0.zone == zone })
         else { return }
-        store?.withModel(turnID) {
-            $0.clearSelection()
+        host?.updateModel {
             $0.setDiving(true)
+            $0.setDive(zone: zone)
         }
-        card.hide()
         diving = Dive(zone: zone, start: CACurrentMediaTime(), surfacing: false)
+        onDive?(zone)
         if reduceMotion {
             finishDive(zone: zone, surfacing: false)
             return
@@ -767,10 +831,10 @@ final class BrainStageView: NSView {
 
     func surface() {
         guard let zone = divedZone ?? diving?.zone else { return }
-        store?.withModel(turnID) { $0.setDiving(true) }
+        host?.updateModel { $0.setDiving(true) }
         divedZone = nil
-        diveList.hide()
         diving = Dive(zone: zone, start: CACurrentMediaTime(), surfacing: true)
+        onDive?(nil)
         if reduceMotion {
             finishDive(zone: zone, surfacing: true)
             return
@@ -781,7 +845,7 @@ final class BrainStageView: NSView {
     private func stepDive(time: CFTimeInterval) {
         guard let current = diving else { return }
         let raw = min(1, max(0, (time - current.start) / Self.diveDuration))
-        let eased = StreamCascade.ease(raw)
+        let eased = NeuralTransition.easeInOutCubic(raw)
         let progress = current.surfacing ? 1 - eased : eased
         apply(dive: progress, zone: current.zone)
         if raw >= 1 { finishDive(zone: current.zone, surfacing: current.surfacing) }
@@ -819,10 +883,11 @@ final class BrainStageView: NSView {
 
     private func finishDive(zone: NeuralZone, surfacing: Bool) {
         diving = nil
-        store?.withModel(turnID) { $0.setDiving(false) }
+        host?.updateModel { $0.setDiving(false) }
         if surfacing {
             divedZone = nil
             diveProgress = 0
+            host?.updateModel { $0.setDive(zone: nil) }
             apply(dive: 0, zone: zone)
             CATransaction.begin()
             CATransaction.setDisableActions(true)
@@ -840,7 +905,7 @@ final class BrainStageView: NSView {
     }
 
     private func updateAccessibility(model: NeuralBrainModel) {
-        setAccessibilityLabel(model.spoken)
+        setAccessibilityLabel(host?.accessibleLabel ?? model.spoken)
         guard a11yRevision != model.revision || steps.count != nodeIDs.count else {
             refreshElementFrames(model: model)
             return
@@ -854,7 +919,7 @@ final class BrainStageView: NSView {
             element.setAccessibilityParent(self)
             element.setAccessibilityLabel(
                 NeuralReading.announcement(for: step, of: model.turn.steps.count))
-            element.onPress = { [weak self] in self?.togglePin(id) }
+            element.onPress = { [weak self] in self?.host?.browse(.clickNode(id, double: false), grabFocus: false) }
             element.setAccessibilityIdentifier("brain.step.\(position)")
             steps.append(element)
         }
@@ -875,8 +940,8 @@ final class BrainStageView: NSView {
 
     override func accessibilityChildren() -> [Any]? { steps }
 
-    /// The nodes, wires and zone names as they stand, drawn into a context at the stage's own size:
-    /// the poster lays them between the head's interior and its glass.
+    /// The nodes, wires and zone names as they stand, drawn into a context at the stage's own
+    /// size: the poster lays them between the head's interior and its glass.
     func drawOverlay(in context: CGContext) {
         overlay.render(in: context)
     }
@@ -885,9 +950,9 @@ final class BrainStageView: NSView {
     var drawnNodeCount: Int { nodes.count + batches.values.filter { !$0.isHidden }.count }
     var nodeLayers: [BrainNode] { Array(nodes.values) }
     var wireLayerCount: Int { routeLayers.count }
-    var cardIsShown: Bool { !card.isHidden }
-    var cardReading: NeuralReading.Card? { card.reading }
-    var diveListRows: Int { diveList.isHidden ? 0 : diveList.rowCount }
     var isDiving: Bool { diving != nil }
     var accessibilitySteps: Int { steps.count }
+    var hasCursorRing: Bool { !cursorRing.layer.isHidden }
+    var hasPreviewRing: Bool { !previewRing.layer.isHidden }
+    var revealActive: Bool { reveal != nil }
 }

@@ -71,7 +71,8 @@ final class BrainNode {
     private let body = CAShapeLayer()
     private let label = CATextLayer()
     private(set) var draw: NeuralNodeDraw?
-    private var drawn: (draw: NeuralNodeDraw, scale: CGFloat, inks: Int, reduce: Bool, fade: Float)?
+    private var drawn:
+        (draw: NeuralNodeDraw, scale: CGFloat, inks: Int, reduce: Bool, fade: Float, pop: CGFloat)?
     private var radius: CGFloat = 10
 
     init() {
@@ -92,17 +93,18 @@ final class BrainNode {
     /// when it is already so.
     func apply(
         _ next: NeuralNodeDraw, center: CGPoint, scale: CGFloat, inks: BrainInks, backing: CGFloat,
-        reduceMotion: Bool, fade: Float = 1
+        reduceMotion: Bool, fade: Float = 1, pop: CGFloat = 1
     ) {
         let key = inkKey(inks)
         if let drawn, drawn.draw == next, drawn.scale == scale, drawn.inks == key,
-            drawn.reduce == reduceMotion, drawn.fade == fade, layer.position == center
+            drawn.reduce == reduceMotion, drawn.fade == fade, drawn.pop == pop,
+            layer.position == center
         {
             return
         }
         let motionChanged = draw?.motion != next.motion || drawn?.reduce != reduceMotion
         let sizeChanged = drawn?.scale != scale || draw?.radius != next.radius
-        drawn = (next, scale, key, reduceMotion, fade)
+        drawn = (next, scale, key, reduceMotion, fade, pop)
         draw = next
         radius = max(3, CGFloat(next.radius) * scale)
         let outer = radius * 1.9
@@ -150,6 +152,7 @@ final class BrainNode {
         var alpha = Float(max(0.0, min(1.0, Double(next.lit))))
         if next.dimmed { alpha = min(alpha, 0.22) }
         layer.opacity = alpha * fade
+        layer.setAffineTransform(pop == 1 ? .identity : CGAffineTransform(scaleX: pop, y: pop))
         layer.shadowColor = tone.cgColor
         layer.shadowOpacity = next.flash > 0 ? Float(next.flash) * 0.9 : 0
         layer.shadowRadius = radius * 1.1

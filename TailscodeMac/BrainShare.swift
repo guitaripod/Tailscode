@@ -92,7 +92,7 @@ enum BrainPoster {
             let interior = cgImage(pair.interior), let front = cgImage(pair.front)
         else { return nil }
 
-        let stage = BrainStageView(turnID: turnID, store: store, context: context)
+        let stage = BrainStageView(turnID: turnID, host: nil)
         stage.frame = NSRect(x: 0, y: 0, width: widthPoints, height: heightPoints)
         stage.fixedModel = model
         stage.paletteOverride = palette
@@ -224,9 +224,19 @@ enum BrainPoster {
             .paragraphStyle: paragraph,
         ]
         if label.font.tracking != 0 { attributes[.kern] = label.font.tracking * label.font.size }
+        var box = rect(label.rect)
+        let face = font(label.font)
+        if label.maxLines <= 1 {
+            let line = ceil(face.ascender - face.descender + face.leading)
+            box.size.height = max(box.height, line)
+            let natural = ceil(
+                NSAttributedString(string: label.text, attributes: attributes).size().width)
+            if natural > box.width, natural <= box.width * 1.15, label.alignment != .trailing {
+                box.size.width = natural + 2
+            }
+        }
         NSAttributedString(string: label.text, attributes: attributes).draw(
-            with: rect(label.rect),
-            options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine])
+            with: box, options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine])
     }
 
     private static func drawRuns(

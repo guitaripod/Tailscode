@@ -2027,7 +2027,7 @@ final class MainWindowController: NSWindowController {
         if window?.firstResponder is LinkRailPlateView, [36, 49, 76, 125, 126, 53].contains(event.keyCode) {
             return event
         }
-        if window?.firstResponder is BrainStageView, [36, 76, 123, 124, 53].contains(event.keyCode) {
+        if let taker = window?.firstResponder as? BrainKeyTaker, taker.takesBrainKey(event) {
             return event
         }
         if pendingChords.isEmpty, window?.firstResponder is DividerSplitView,
@@ -2306,6 +2306,8 @@ final class MainWindowController: NSWindowController {
     /// would answer the next press by doing nothing. Hiding the pane that holds the keyboard hands
     /// the keyboard to the transcript, because a region that is gone cannot receive a chord.
     /// A pane put where Settings says it should be, which is a toggle only when it is not there.
+    func driveSetSidebar(shown: Bool) { setPane(.sidebar, shown: shown) }
+
     private func setPane(_ pane: ClosablePane, shown: Bool) {
         let isShown: Bool
         switch pane {

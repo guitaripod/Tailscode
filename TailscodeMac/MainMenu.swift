@@ -376,6 +376,10 @@ final class MainMenu: NSObject {
         menu.addItem(item(Localized.text("Actual Size"), #selector(zoomReset), "0"))
         menu.addItem(item(Localized.text("Type Size…"), #selector(typeSize), ""))
         menu.addItem(item(Localized.text("Show Turns as Brains"), #selector(toggleBrain), ""))
+        menu.addItem(
+            item(
+                Localized.text("Open or Close the Newest Brain"), #selector(toggleNewestBrain), "b",
+                [.command, .option]))
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("The month in numbers"), #selector(monthInNumbers), ""))
         menu.addItem(.separator())
@@ -595,6 +599,7 @@ final class MainMenu: NSObject {
     @objc private func toggleBrain() {
         ActivityStyleSetting.set(MacBrain.style == .brain ? .lines : .brain)
     }
+    @objc private func toggleNewestBrain() { hub.transcript.brains.toggleNewest() }
     @objc private func videoForge() { hub.presentForge() }
     @objc private func openStudio() { hub.presentStudio() }
 
@@ -743,6 +748,13 @@ extension MainMenu: NSMenuItemValidation {
         #endif
         if menuItem.action == #selector(toggleArchiveView) {
             menuItem.state = hub.sidebar.showingArchive ? .on : .off
+        }
+        if menuItem.action == #selector(toggleNewestBrain) {
+            let brains = hub.transcript.brains
+            menuItem.title =
+                brains.openTurnID == nil
+                ? Localized.text("Open the Newest Brain") : Localized.text("Close the Open Brain")
+            return brains.isActive && brains.order.last != nil
         }
         if menuItem.action == #selector(toggleBrain) {
             menuItem.state = MacBrain.style == .brain && MacBrain.isAvailable ? .on : .off

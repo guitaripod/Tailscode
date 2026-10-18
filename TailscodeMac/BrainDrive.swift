@@ -23,7 +23,7 @@
     enum BrainDrive {
         enum Scenario: String, CaseIterable {
             case settled, working, thinking, writing, waiting, question, failed, stopped, offline,
-                compacting
+                compacting, large, largeRunning
         }
 
         private static func say(_ line: String) {
@@ -55,16 +55,17 @@
                 guard let id = turn(value, in: store) else { break }
                 store.toggleRows(id)
             case "hover":
-                stage()?.setHover(step(Int(value) ?? 1, in: store))
+                view()?.hoverStep(value.isEmpty ? nil : step(Int(value) ?? 1, in: store))
             case "pin":
-                if let id = step(Int(value) ?? 1, in: store) { stage()?.togglePin(id) }
+                if let id = step(Int(value) ?? 1, in: store) { view()?.browse(.click(id, double: false), grabFocus: true) }
             case "clear":
-                stage()?.clearSelection()
-                stage()?.setProvenance(nil)
+                view()?.hoverStep(nil)
+                view()?.stage?.setProvenance(nil)
+                view()?.browse(.key(.escape), grabFocus: false)
             case "chip":
-                let chips = view()?.chipViews ?? []
+                let chips = view()?.footer?.chips.chips ?? []
                 let index = (Int(value) ?? 1) - 1
-                stage()?.setProvenance(chips.indices.contains(index) ? chips[index].token : nil)
+                view()?.stage?.setProvenance(chips.indices.contains(index) ? chips[index].token : nil)
             case "dive":
                 guard let zone = zone(named: value), let stage = stage() else { break }
                 stage.dive(into: zone)
@@ -73,11 +74,11 @@
                 stage()?.surface()
                 stage()?.completeDive()
             case "replay":
-                view()?.replayButton.onTap?()
+                view()?.toggleReplay()
             case "stopreplay":
-                view()?.playButton.onTap?()
+                if store.model(store.openTurnID ?? "")?.isReplaying == true { view()?.toggleReplay() }
             case "scrub":
-                if let row = view() { row.scrubberView.onScrub?(Double(value) ?? 0.5) }
+                view()?.scrub(to: Double(value) ?? 0.5)
             case "theme":
                 ThemeSelection.setThemeID(value)
                 MacTheme.Chrome.apply()
@@ -86,6 +87,10 @@
                 MacTheme.Chrome.apply()
             case "style":
                 ActivityStyleSetting.set(value == "lines" ? .lines : .brain)
+            case "sidebar":
+                main.driveSetSidebar(shown: value != "hide")
+            case "density":
+                ChatDensitySetting.set(value == "compact" ? .compact : .comfortable)
             case "dismiss":
                 for window in NSApp.windows
                 where window.isVisible && !(window.windowController is MainWindowController)
@@ -98,18 +103,134 @@
             case "unpark":
                 transcript.setParked(false)
             case "focus":
-                if let stage = stage() { main.window?.makeFirstResponder(stage) }
+                focus(value, main: main)
             case "key":
                 return press(value, main: main)
+            case "search":
+                view()?.browse(.searchText(value), grabFocus: false)
+            case "zonechip":
+                if let zone = zone(named: value) { view()?.browse(.zoneChip(zone, solo: false), grabFocus: false) }
+            case "failed":
+                view()?.browse(.failedToggle, grabFocus: false)
+            case "legend":
+                view()?.browse(.key(.character("?")), grabFocus: false)
+            case "menu":
+                if let id = step(Int(value) ?? 1, in: store) { view()?.browse(.contextMenu(id), grabFocus: false) }
+            case "ask":
+                view()?.browse(.key(.character("a")), grabFocus: false)
+            case "said":
+                view()?.browse(.key(.character("s")), grabFocus: false)
+            case "acct":
+                return BrainAccountDrive.perform(value)
+            case "listhover":
+                let digits = value.filter(\.isNumber)
+                view()?.list?.driveHover(
+                    digits.isEmpty ? nil : step(Int(digits) ?? 1, in: store), copy: value.hasSuffix("copy"))
+            case "listscroll":
+                view()?.list?.driveScroll(to: CGFloat(Double(value) ?? 0))
+            case "copied":
+                if let id = step(Int(value) ?? 1, in: store) { view()?.list?.flashCopied(id, seconds: 120) }
+            case "moveat":
+                moveAt(value, store: store)
+            case "moveend":
+                for id in store.order {
+                    guard let row = store.view(forTurn: id), let held = row.mover else { continue }
+                    row.finishMove(snapOpen: held.isOpening)
+                }
+            case "settle":
+                for card in BrainRowView.live { card.card.forceSettleStart() }
+            case "snap":
+                LiveShot.snap(to: value)
+            case "sharepanel":
+                view()?.presentShare()
             case "share":
                 share(to: value, store: store, transcript: transcript)
                 return "BRAIN share \(value) started"
+            case "stream":
+                return stream(Int(value) ?? 60, transcript: transcript)
+            case "checks":
+                do {
+                    return "BRAIN checks passed \(try BrainViewChecks.run())"
+                } catch {
+                    return "BRAIN checks FAILED \(error)"
+                }
             case "report":
                 return report(store)
             default:
                 return "BRAIN unknown verb \(verb)"
             }
             return report(store)
+        }
+
+        /// Streams `count` tokens into the running turn's trailing note, each through the whole
+        /// transcript pipeline the way a state arrives, and says what one token cost on the main
+        /// thread: the median and the worst, in milliseconds.
+        private static func stream(_ count: Int, transcript: TranscriptViewController) -> String {
+            guard var state = transcript.currentState,
+                var index = state.messages.indices.last(where: { state.messages[$0].role == .assistant })
+            else { return "BRAIN stream no turn" }
+            var message = state.messages[index]
+            let noteID = "stream-note"
+            if !message.parts.contains(where: { $0.id == noteID }) {
+                message.parts.append(MessagePart(id: noteID, kind: .text("Streaming")))
+            }
+            var costs: [Double] = []
+            for step in 0..<count {
+                if let at = message.parts.firstIndex(where: { $0.id == noteID }),
+                    case .text(let words) = message.parts[at].kind
+                {
+                    message.parts[at].kind = .text(words + " token\(step)")
+                }
+                index = state.messages.indices.last(where: { state.messages[$0].role == .assistant }) ?? index
+                state.messages[index] = message
+                let begun = CACurrentMediaTime()
+                transcript.show(state: state)
+                RunLoop.current.run(until: Date())
+                costs.append((CACurrentMediaTime() - begun) * 1000)
+            }
+            let sorted = costs.sorted()
+            return String(
+                format: "BRAIN stream tokens=%d median=%.2fms worst=%.2fms", count,
+                sorted[sorted.count / 2], sorted.last ?? 0)
+        }
+
+        /// Holds a move at one frame, with no clock: `moveat=open:0.4` stands the newest card 40
+        /// percent of the way to open, `close:0.4` the open brain 40 percent of the way back,
+        /// `openrev:0.5:0.3` an opening turned round at its half and now 30 percent into the way
+        /// back, `swap:0.4` the open older brain closing as the newest opens.
+        private static func moveAt(_ value: String, store: BrainStore) {
+            let pieces = value.split(separator: ":").map(String.init)
+            guard pieces.count >= 2 else { return }
+            let kind = pieces[0]
+            let numbers = pieces.dropFirst().compactMap { Double($0) }
+            guard let u = numbers.last else { return }
+            let newest = store.order.last
+            switch kind {
+            case "open":
+                newest.flatMap { store.view(forTurn: $0) }?.holdMove(direction: .open, at: u)
+            case "close":
+                (store.openTurnID ?? newest).flatMap { store.view(forTurn: $0) }?.holdMove(
+                    direction: .close, at: u)
+            case "openrev":
+                guard numbers.count == 2 else { return }
+                newest.flatMap { store.view(forTurn: $0) }?.holdMove(
+                    direction: .open, at: u, reversedFrom: numbers[0])
+            case "swap":
+                guard let open = store.openTurnID, let new = newest, open != new else { return }
+                store.view(forTurn: open)?.holdMove(direction: .swapClose, at: u)
+                store.view(forTurn: new)?.holdMove(direction: .swap, at: u)
+            default:
+                break
+            }
+        }
+
+        private static func focus(_ value: String, main: MainWindowController) {
+            guard let row = view(), let window = main.window else { return }
+            switch value {
+            case "list": window.makeFirstResponder(row.list)
+            case "account": window.makeFirstResponder(row.account)
+            default: window.makeFirstResponder(row.stage)
+            }
         }
 
         private static func view() -> BrainRowView? {
@@ -149,7 +270,7 @@
         static func show(_ scenario: Scenario, in transcript: TranscriptViewController) {
             let live: Bool
             switch scenario {
-            case .working, .thinking, .writing, .waiting, .question: live = true
+            case .working, .thinking, .writing, .waiting, .question, .largeRunning: live = true
             default: live = false
             }
             var messages =
@@ -157,13 +278,20 @@
                 + NeuralDemo.turn(
                     prefix: "b-", origin: 1_792_003_600,
                     answer: scenario == .settled || scenario == .writing)
+            if scenario == .large || scenario == .largeRunning {
+                messages =
+                    NeuralDemo.buildFix(prefix: "a-", origin: 1_792_000_000)
+                    + NeuralDemo.largeTurn(
+                        steps: 174, prefix: "b-", origin: 1_792_003_600,
+                        answer: scenario == .large)
+            }
             var state = ConversationState(
                 messages: messages, status: live ? .running : .idle, connection: .live,
                 hasLoadedTranscript: true)
             switch scenario {
-            case .settled, .offline, .compacting, .writing, .thinking:
+            case .settled, .offline, .compacting, .writing, .thinking, .large:
                 break
-            case .working:
+            case .working, .largeRunning:
                 markLastTool(&messages, .running)
             case .waiting:
                 markLastTool(&messages, .running)
@@ -244,11 +372,15 @@
 
         private static let keys: [String: (code: UInt16, characters: String)] = [
             "left": (123, "\u{F702}"), "right": (124, "\u{F703}"), "return": (36, "\r"),
-            "esc": (53, "\u{1B}"),
+            "esc": (53, "\u{1B}"), "up": (126, "\u{F700}"), "down": (125, "\u{F701}"),
+            "space": (49, " "), "tab": (48, "\t"), "pagedown": (121, "\u{F72D}"),
+            "pageup": (116, "\u{F72C}"), "home": (115, "\u{F729}"), "end": (119, "\u{F72B}"),
         ]
 
         private static func press(_ name: String, main: MainWindowController) -> String {
-            guard let key = keys[name], let window = main.window,
+            let literal: (code: UInt16, characters: String)? =
+                name.count == 1 ? (0, name) : nil
+            guard let key = keys[name] ?? literal, let window = main.window,
                 let event = NSEvent.keyEvent(
                     with: .keyDown, location: .zero, modifierFlags: [],
                     timestamp: ProcessInfo.processInfo.systemUptime,
@@ -282,19 +414,28 @@
             let open = store.openTurnID.flatMap { store.model($0) }
             let row = view()
             let stage = row?.stage
-            return
-                "BRAIN active=\(store.isActive) turns=\(store.order.count) open=\(store.openTurnID ?? "-") "
-                + "state=\(open?.state.label ?? "-") nodes=\(open?.nodeCount ?? 0) "
-                + "hover=\(open?.hovered ?? "-") pin=\(open?.pinned ?? "-") "
-                + "line=[\(row?.linePieces.count ?? "") \(row?.linePieces.detail ?? "")] "
-                + "ticker=[\(row?.tickerText ?? "-")] scrub=\(row?.scrubberShown ?? false) "
-                + "dived=\(stage?.divedZone.map { $0.label } ?? "-") card=\(stage?.cardReading?.title ?? "-") "
-                + "textures=\(NeuralMetalContext.shared?.retainCount ?? 0) "
-                + "head=[ready:\(stage?.head.isReady ?? false) suspended:\(stage?.head.isSuspended ?? false) "
-                + "window:\(stage?.head.window != nil) resident:\(NeuralMetalContext.shared?.isResident ?? false) "
-                + "active:\(NSApp.isActive) visible:\(stage?.window?.occlusionState.contains(.visible) ?? false) "
-                + "gate:\(DisplayGate.allows(stage)) frame:\(stage.map { "\(Int($0.frame.width))x\(Int($0.frame.height))" } ?? "-")] "
-                + "tempo=\(open.map { String(describing: $0.tempo) } ?? "-")"
+            let card = store.order.last.flatMap { store.view(forTurn: $0) }
+            let cardReading = card?.card.reading
+            let list = open?.browseState.list
+            var parts: [String] = []
+            parts.append("BRAIN active=\(store.isActive) turns=\(store.order.count) open=\(store.openTurnID ?? "-")")
+            parts.append("state=\(open?.state.label ?? "-") nodes=\(open?.nodeCount ?? 0)")
+            parts.append("hover=\(open?.browseState.hovered ?? "-") cursor=\(open?.pinnedStep ?? "-")")
+            parts.append("filter=[\(list.map { "\($0.visibleCount)/\($0.total)" } ?? "-")]")
+            parts.append("card=[\(cardReading?.headline ?? "-") chips=\(cardReading?.chips ?? 0) live=\(cardReading?.hasLive ?? false)]")
+            parts.append("phase=\(row.map { String(describing: $0.phase) } ?? "-") height=\(row.map { Int($0.frame.height) } ?? 0)")
+            parts.append("footer=\(row?.footer?.shown.map { String(describing: $0) }.joined(separator: ",") ?? "-")")
+            parts.append("leader=\(row?.leader.stepID ?? "-") dived=\(stage?.divedZone.map { $0.label } ?? "-")")
+            if let card {
+                let layer = card.picture.container
+                parts.append("picture=[img:\(card.picture.hasImage) rendered:\(BrainPictures.rendered) pos:\(layer.position) bounds:\(layer.bounds.size) hidden:\(layer.isHidden) opacity:\(layer.opacity) tr:\(card.carrier.layer?.sublayerTransform.m11 ?? 0),\(card.carrier.layer?.sublayerTransform.m41 ?? 0) sub:\(card.carrier.layer?.sublayers?.count ?? 0)]")
+            }
+            parts.append("list=[\(row?.list?.reading ?? "-")]")
+            parts.append("textures=\(NeuralMetalContext.shared?.retainCount ?? 0)")
+            parts.append("head=[ready:\(stage?.head.isReady ?? false) suspended:\(stage?.head.isSuspended ?? false) window:\(stage?.head.window != nil) clock:\(stage?.head.isClockRunning ?? false) gate:\(DisplayGate.allows(stage))]")
+            parts.append("move=[gap:\(row.map { String(format: "%.1f", $0.maxFrameGap * 1000) } ?? "-")ms runs:\(row?.movesRun ?? 0)]")
+            parts.append("tempo=\(open.map { String(describing: $0.tempo) } ?? "-")")
+            return parts.joined(separator: " ")
         }
     }
 #endif

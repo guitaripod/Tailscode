@@ -34,6 +34,7 @@ enum TranscriptBench {
         for path in paths {
             disagreed = !bench(path) || disagreed
         }
+        if MacBrain.isEnabled { BrainBench.run() }
         exit(disagreed ? 1 : 0)
     }
 

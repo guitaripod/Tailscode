@@ -444,6 +444,8 @@ enum MacShot {
             return call(bounds, onScreenOnly, 0, bestResolution)?.takeRetainedValue()
         }
 
+        static func snap(to path: String) { capture(to: path) }
+
         private static func capture(to path: String) {
             guard let screen,
                 let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")]

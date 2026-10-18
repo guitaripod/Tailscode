@@ -58,14 +58,14 @@ enum ChatLayout {
         case .agentProse:
             return .row(.prose)
         case .codeBlock, .table, .tableDraft, .workflow, .designBoard, .taskBoard, .answerless,
-            .failedTurn, .interruptedTurn, .providerRetry, .revertBanner:
+            .failedTurn, .interruptedTurn, .providerRetry, .revertBanner, .brain:
             return .row(.code)
         case .linkRail:
             return .row(.rail)
         case .compaction:
             return .row(.seam)
         case .interruption, .reasoning, .tool, .run, .subagent, .subagentGroup, .responseStats, .note,
-            .revertPending, .brain:
+            .revertPending:
             return .row(.furniture)
         case .turnBreak:
             return .turnBreak
