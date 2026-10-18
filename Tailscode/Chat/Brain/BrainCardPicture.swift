@@ -11,6 +11,8 @@ final class BrainCardPicture: UIView {
     private let base = CALayer()
     private let floorLayer = CALayer()
     private let peakLayer = CALayer()
+    private let liveGroup = CALayer()
+    private let plate = CALayer()
     private let lights = BrainLightsLayer()
     private var card: NeuralBrainCard?
     private var ink: BrainInk?
@@ -35,8 +37,14 @@ final class BrainCardPicture: UIView {
             layer.minificationFilter = .trilinear
             layer.magnificationFilter = .linear
             layer.opacity = 0
-            clip.addSublayer(layer)
         }
+        plate.opacity = 0
+        clip.addSublayer(plate)
+        clip.addSublayer(base)
+        liveGroup.opacity = 0
+        liveGroup.addSublayer(floorLayer)
+        liveGroup.addSublayer(peakLayer)
+        clip.addSublayer(liveGroup)
         clip.addSublayer(lights)
         isAccessibilityElement = false
     }
@@ -48,6 +56,8 @@ final class BrainCardPicture: UIView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         clip.frame = bounds
+        plate.frame = bounds
+        liveGroup.frame = bounds
         for layer in [base, floorLayer, peakLayer] { layer.frame = bounds }
         lights.layout(in: bounds)
         CATransaction.commit()
@@ -56,8 +66,27 @@ final class BrainCardPicture: UIView {
     /// The scale the layers' images are drawn at.
     var pixelScale: CGFloat { window?.windowScene?.screen.scale ?? traitCollection.displayScale }
 
+    /// The plain plate a card's lights sit on until its head is drawn: the palette's canvas, so no
+    /// slot is ever empty and the head arrives as a fade over it.
+    private func updatePlate() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        guard let ink, !hasRest, !hasLive else {
+            plate.opacity = 0
+            return
+        }
+        if let channels = Contrast.channels(ink.palette.canvas) {
+            plate.backgroundColor = UIColor(
+                red: channels.red, green: channels.green, blue: channels.blue, alpha: 1
+            ).resolvedColor(with: traitCollection).cgColor
+        }
+        plate.opacity = Float(movingAlpha)
+    }
+
     func setRest(_ picture: BrainPicture?, animated: Bool) {
         hasRest = picture != nil
+        defer { updatePlate() }
         guard let picture else {
             base.contents = nil
             base.opacity = 0
@@ -71,17 +100,18 @@ final class BrainCardPicture: UIView {
             fade.duration = 0.16
             base.add(fade, forKey: "arrive")
         }
-        base.opacity = Float(restAlpha)
+        base.opacity = Float(restAlpha * movingAlpha)
     }
 
     /// How visible the rest picture is: all of it for a settled card, and the share the live head
     /// has given up while a card settles.
     private var restAlpha: CGFloat = 1 {
-        didSet { base.opacity = hasRest ? Float(restAlpha) : 0 }
+        didSet { base.opacity = hasRest ? Float(restAlpha * movingAlpha) : 0 }
     }
 
     func setLive(floor: BrainPicture?, peak: BrainPicture?) {
         hasLive = floor != nil
+        defer { updatePlate() }
         floorLayer.contents = floor?.image
         peakLayer.contents = (peak ?? floor)?.image
         applyLive()
@@ -107,13 +137,15 @@ final class BrainCardPicture: UIView {
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
         guard hasLive, liveStrength > 0.001 else {
+            liveGroup.opacity = 0
             floorLayer.opacity = 0
             peakLayer.opacity = 0
             peakLayer.removeAnimation(forKey: "swell")
             swelling = false
             return
         }
-        floorLayer.opacity = Float(liveStrength)
+        liveGroup.opacity = Float(liveStrength * movingAlpha)
+        floorLayer.opacity = 1
         let animated = swell.isAnimated && !UIAccessibility.isReduceMotionEnabled
         if animated {
             if !swelling || peakLayer.animation(forKey: "swell") == nil {
@@ -123,7 +155,7 @@ final class BrainCardPicture: UIView {
                 }
                 swelling = true
             }
-            peakLayer.opacity = Float(liveStrength)
+            peakLayer.opacity = 1
         } else {
             peakLayer.removeAnimation(forKey: "swell")
             swelling = false
@@ -137,6 +169,7 @@ final class BrainCardPicture: UIView {
         hovered = isHovered
         lights.configure(card: new, ink: newInk, hovered: isHovered)
         lights.layout(in: bounds)
+        updatePlate()
     }
 
     func setHovered(_ value: Bool) {
@@ -157,10 +190,10 @@ final class BrainCardPicture: UIView {
         CATransaction.setDisableActions(true)
         movingAlpha = imageAlpha
         base.opacity = hasRest ? Float(restAlpha * imageAlpha) : 0
-        floorLayer.opacity = hasLive ? Float(liveStrength * imageAlpha) : 0
-        peakLayer.opacity = hasLive && swelling ? Float(liveStrength * imageAlpha) : 0
+        liveGroup.opacity = hasLive && liveStrength > 0.001 ? Float(liveStrength * imageAlpha) : 0
         lights.opacity = Float(lightsAlpha)
         CATransaction.commit()
+        updatePlate()
     }
 
     private var movingAlpha: CGFloat = 1

@@ -65,6 +65,7 @@
 
             runLiveAndSettle(all)
             runList(long)
+            runIncremental()
             runKeys(long)
             runAccount(long, build: build)
             runMetrics(long)
@@ -112,6 +113,52 @@
             }
             let ask = NeuralBrainModel(turn: waiting).liveCard
             check("a waiting turn says Waiting for you", ask?.reading(now: Date()).word == NeuralReading.verdictWaiting)
+        }
+
+        private static func contextFor(_ isLatest: Bool) -> NeuralBrainContext {
+            NeuralBrainContext(providerID: "p", effortOptions: isLatest ? ["low", "high"] : ["low"])
+        }
+
+        private static func incrementalMatches(_ grown: BrainStore, _ fresh: BrainStore, count: Int) -> Bool {
+            for number in 1...count {
+                guard let id = fresh.turnID(atBrain: number), grown.turnID(atBrain: number) == id,
+                    let left = grown.model(for: id), let right = fresh.model(for: id),
+                    left.turn == right.turn
+                else { return false }
+            }
+            return true
+        }
+
+        private static func runIncremental() {
+            var messages: [ChatMessage] = []
+            let grown = BrainStore()
+            var identical = true
+            var layoutsEqual = true
+            for index in 0..<40 {
+                let turn = NeuralDemo.largeTurn(steps: 24, prefix: "i\(index)-", origin: 1_792_000_000 + Double(index) * 4000)
+                messages.append(contentsOf: turn)
+                var tailCount = turn.count
+                for growth in 0..<3 {
+                    if growth > 0 {
+                        let more = NeuralDemo.largeTurn(steps: 24 + growth * 6, prefix: "i\(index)-", origin: 1_792_000_000 + Double(index) * 4000)
+                        messages.removeLast(tailCount)
+                        messages.append(contentsOf: more)
+                        tailCount = more.count
+                    }
+                    let layout = grown.prepare(messages: messages, running: true, awaiting: .none) { _, latest in contextFor(latest) }
+                    let fresh = BrainStore()
+                    let reference = fresh.prepare(messages: messages, running: true, awaiting: .none) { _, latest in contextFor(latest) }
+                    identical = identical && incrementalMatches(grown, fresh, count: index + 1)
+                    for number in 1...(index + 1) {
+                        guard let id = fresh.turnID(atBrain: number) else { continue }
+                        let left = layout.turn(startingAt: grown.anchorID(of: id) ?? "")?.row.stamp
+                        let right = reference.turn(startingAt: fresh.anchorID(of: id) ?? "")?.row.stamp
+                        if left != right { layoutsEqual = false }
+                    }
+                }
+            }
+            check("the incremental store reads the same turns as a fresh one", identical)
+            check("the incremental layout carries the same rows as a fresh one", layoutsEqual)
         }
 
         private static func runList(_ model: NeuralBrainModel) {

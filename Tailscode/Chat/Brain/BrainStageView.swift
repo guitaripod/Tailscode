@@ -73,6 +73,7 @@ final class BrainStageView: UIView {
             palette: BrainPalette.palette(for: UITraitCollection.current), face: .unknown)
         field = BrainNodeField(ink: ink)
         super.init(frame: frame)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: BrainStageView, _) in view.traitsChanged() }
         clipsToBounds = true
         addSubview(head)
         head.nodeLayer.addSublayer(field.root)
@@ -145,11 +146,7 @@ final class BrainStageView: UIView {
         }
     }
 
-    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
-        super.traitCollectionDidChange(previous)
-        guard previous?.userInterfaceStyle != traitCollection.userInterfaceStyle
-            || previous?.themeID != traitCollection.themeID
-        else { return }
+    private func traitsChanged() {
         refresh()
     }
 

@@ -225,7 +225,7 @@ final class BrainAccountView: UIView, UICollectionViewDelegate {
         knownIDs.formUnion(made.map(\.id))
         seeded = true
         items = made
-        env.now = Date()
+        env.now = BrainDebug.now
         var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
         snapshot.appendSections([0])
         snapshot.appendItems(made.map(\.id), toSection: 0)
@@ -384,7 +384,7 @@ final class BrainAccountView: UIView, UICollectionViewDelegate {
     /// The clock moved: the header's and the Now line's words that depend on it are written again.
     func tick() {
         guard account != nil else { return }
-        env.now = Date()
+        env.now = BrainDebug.now
         refreshPinned()
     }
 

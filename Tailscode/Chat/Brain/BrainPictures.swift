@@ -154,6 +154,20 @@ enum BrainPictures {
         context.retain()
     }
 
+    /// Loads the head's textures and compiles its pipelines on their own queues before the first
+    /// card asks for a picture, so the first brain row of a launch is not waiting for them. It
+    /// holds the context only until the usual few seconds after, like any picture.
+    static func prewarm() {
+        guard !warmed, BrainStore.isActive, NeuralMetalContext.shared?.isSupported == true else { return }
+        warmed = true
+        hold()
+        NeuralMetalContext.shared?.prepare { _ in
+            if waiting.isEmpty { scheduleRelease() }
+        }
+    }
+
+    private static var warmed = false
+
     /// Lets go of the textures a few seconds after the last picture, which is long enough for the
     /// next card to share the same load and for an open to find them resident.
     private static func scheduleRelease() {

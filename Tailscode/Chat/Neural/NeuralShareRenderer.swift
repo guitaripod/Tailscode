@@ -12,13 +12,14 @@ enum NeuralShareRenderer {
     ) -> UIImage {
         let card = NeuralShare.Card.make(
             turn: turn, prompt: prompt.isEmpty ? nil : prompt, style: look, dark: dark, now: now)
+        let failure = NeuralReading.line(for: turn, now: now).failure
         let size = CGSize(
             width: NeuralShare.Card.width * scale, height: NeuralShare.Card.height * scale)
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true
         return UIGraphicsImageRenderer(size: size, format: format).image { context in
-            paint(card, hero: hero, scale: scale, in: context.cgContext)
+            paint(card, hero: hero, failure: failure, scale: scale, in: context.cgContext)
         }
     }
 
@@ -73,7 +74,7 @@ enum NeuralShareRenderer {
     }
 
     private static func paint(
-        _ card: NeuralShare.Card, hero: UIImage, scale: CGFloat, in ctx: CGContext
+        _ card: NeuralShare.Card, hero: UIImage, failure: String?, scale: CGFloat, in ctx: CGContext
     ) {
         let bounds = CGRect(
             x: 0, y: 0, width: NeuralShare.Card.width * scale, height: NeuralShare.Card.height * scale)
@@ -83,7 +84,7 @@ enum NeuralShareRenderer {
         paintHero(hero, in: rect(card.hero, scale), corner: NeuralShare.Card.corner * scale, ctx: ctx)
         paint(card.count, card, scale, ctx)
         paint(card.caption, card, scale, ctx)
-        paintSub(card, scale: scale, ctx: ctx)
+        paintSub(card, failure: failure, scale: scale, ctx: ctx)
         for meter in card.meters {
             paint(meter.label, card, scale, ctx)
             fill(rect(meter.track, scale), radius: meter.track.height * scale / 2,
@@ -174,18 +175,41 @@ enum NeuralShareRenderer {
     }
 
     /// The qualifying line is one line in two inks: what was written in the accent, and what
-    /// else the turn did in the dim ink, the second starting where the first ends.
-    private static func paintSub(_ card: NeuralShare.Card, scale: CGFloat, ctx: CGContext) {
+    /// else the turn did in the dim ink, the second starting where the first ends. What the turn
+    /// fixed or failed at is the one phrase in the attention ink, because it is the part a reader
+    /// should not miss and a fixed error is not a failure.
+    private static func paintSub(
+        _ card: NeuralShare.Card, failure: String?, scale: CGFloat, ctx: CGContext
+    ) {
         guard let box = card.subRect else { return }
+        let font = font(NeuralShare.FontRole(NeuralShare.Card.subSize), scale: scale)
         var x = box.x * scale
         for run in card.sub {
-            let font = font(NeuralShare.FontRole(NeuralShare.Card.subSize), scale: scale)
-            let width = NSAttributedString(string: run.text, attributes: [.font: font]).size().width
-            drawText(
-                run.text, in: CGRect(x: x, y: box.y * scale, width: box.maxX * scale - x, height: box.height * scale),
-                font: font, color: color(card.color(run.slot)), tracking: 0, align: .left, lines: 1)
-            x += width
+            for (text, slot) in segments(of: run, failure: failure) where !text.isEmpty {
+                let width = NSAttributedString(string: text, attributes: [.font: font]).size().width
+                drawText(
+                    text,
+                    in: CGRect(
+                        x: x, y: box.y * scale, width: box.maxX * scale - x,
+                        height: box.height * scale),
+                    font: font, color: color(card.color(slot)), tracking: 0, align: .left, lines: 1)
+                x += width
+            }
         }
+    }
+
+    /// A run cut around the phrase that names what the turn fixed, which takes the attention slot.
+    private static func segments(
+        of run: NeuralShare.Run, failure: String?
+    ) -> [(String, NeuralShare.Slot)] {
+        guard let failure, !failure.isEmpty, let range = run.text.range(of: failure) else {
+            return [(run.text, run.slot)]
+        }
+        return [
+            (String(run.text[..<range.lowerBound]), run.slot),
+            (failure, .warn),
+            (String(run.text[range.upperBound...]), run.slot),
+        ]
     }
 
     private static func paint(

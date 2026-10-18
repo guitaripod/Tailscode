@@ -83,6 +83,10 @@ import TailscodeCore
             var rowCount = 0
             var compare = 0.0
             var previous = conversation(turns: turns, growing: "")
+            var retained: [[ChatMessage]] = []
+            _ = cache.partitionList(messages: previous, running: true)
+            _ = store.prepare(messages: previous, running: true, awaiting: .none) { _, _ in .none }
+            _ = ChatRowBuilder.makeRows(from: previous, agents: agents, turnOpen: true, memo: memo)
             for pass in 0..<iterations {
                 let messages = conversation(turns: turns, growing: String(repeating: "word ", count: pass + 1))
                 compare += milliseconds {
@@ -91,6 +95,7 @@ import TailscodeCore
                     if same < 0 { print(same) }
                 }
                 previous = messages
+                retained.append(messages)
                 cold += milliseconds {
                     rowCount = ChatRowBuilder.makeRows(from: messages, agents: agents, turnOpen: true).count
                 }
@@ -99,7 +104,8 @@ import TailscodeCore
                         from: messages, agents: agents, turnOpen: true, memo: memo)
                 }
                 partition += milliseconds {
-                    _ = cache.partition(messages: messages, running: true)
+                    _ = cache.partitionList(
+                        messages: messages, running: true, stablePrefix: messages.count - 12)
                 }
                 prepare += milliseconds {
                     _ = store.prepare(
@@ -110,6 +116,7 @@ import TailscodeCore
                     _ = NeuralTurns.partition(messages: messages, running: true)
                 }
             }
+            _ = retained.count
             let n = Double(iterations)
             let timings = ChatRowBuilder.BuilderTimings.self
             AppLogger.performance.info(

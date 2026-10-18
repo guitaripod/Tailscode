@@ -65,6 +65,7 @@ final class BrainCardView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self, UITraitPreferredContentSizeCategory.self]) { (view: BrainCardView, _) in view.traitsChanged() }
         surface.layer.cornerRadius = 12
         surface.layer.cornerCurve = .continuous
         surface.layer.borderWidth = 1
@@ -167,7 +168,7 @@ final class BrainCardView: UIView {
     /// changed.
     func configure(
         model newModel: NeuralBrainModel, row newRow: BrainRow, memory newMemory: BrainLiveMemory,
-        metrics newMetrics: NeuralStageMetrics, now: Date = Date()
+        metrics newMetrics: NeuralStageMetrics, now: Date = BrainDebug.now
     ) {
         model = newModel
         row = newRow
@@ -188,7 +189,7 @@ final class BrainCardView: UIView {
     }
 
     /// The time moved, or the model did: the words that depend on either are written again.
-    func refresh(model newModel: NeuralBrainModel, now: Date = Date()) {
+    func refresh(model newModel: NeuralBrainModel, now: Date = BrainDebug.now) {
         guard row != nil, metrics != nil else { return }
         let before = card?.edge
         model = newModel
@@ -210,7 +211,7 @@ final class BrainCardView: UIView {
 
     private func clockTick() {
         guard let model, isLive else { return }
-        refresh(model: model, now: Date())
+        refresh(model: model, now: BrainDebug.now)
     }
 
     override func didMoveToWindow() {
@@ -224,12 +225,7 @@ final class BrainCardView: UIView {
         }
     }
 
-    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
-        super.traitCollectionDidChange(previous)
-        guard previous?.userInterfaceStyle != traitCollection.userInterfaceStyle
-            || previous?.themeID != traitCollection.themeID
-            || previous?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory
-        else { return }
+    private func traitsChanged() {
         drawnSignature = ""
         restPicture = nil
         livePictures = nil
@@ -546,7 +542,7 @@ final class BrainCardView: UIView {
             }
         }
         if line.kind == .quote, let memory, let arrived = memory.quoteArrivals[line.quote?.stepID ?? ""] {
-            scheduleQuoteRelease(after: NeuralLiveCard.quoteHold - Date().timeIntervalSince(arrived))
+            scheduleQuoteRelease(after: NeuralLiveCard.quoteHold - BrainDebug.now.timeIntervalSince(arrived))
         }
     }
 
@@ -731,7 +727,7 @@ final class BrainCardView: UIView {
     /// What the move between this card and the open brain does to the card, from a frame: the text
     /// fades and slides, the surface fades, the picture is the traveller's and goes, the lights stay
     /// where they are or return, and the tone edge rides the picture's left edge for a moment.
-    func applyMove(frame: NeuralTransitionFrame, opening: Bool) {
+    func applyMove(frame: NeuralTransitionFrame, opening: Bool, originX: CGFloat = 0) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
@@ -747,8 +743,8 @@ final class BrainCardView: UIView {
         moveEdge.isHidden = false
         moveEdge.strokeColor = edge.strokeColor
         let path = CGMutablePath()
-        path.move(to: CGPoint(x: frame.edge.x + 1.5, y: 0))
-        path.addLine(to: CGPoint(x: frame.edge.x + 1.5, y: bounds.height))
+        path.move(to: CGPoint(x: frame.edge.x - originX + 1.5, y: 0))
+        path.addLine(to: CGPoint(x: frame.edge.x - originX + 1.5, y: bounds.height))
         moveEdge.path = path
         moveEdge.frame = bounds
         moveEdge.opacity = Float(frame.edge.alpha)
@@ -1103,6 +1099,7 @@ final class CardButton: UIControl {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: CardButton, _) in view.traitsChanged() }
         layer.cornerRadius = 8
         layer.cornerCurve = .continuous
         layer.borderWidth = 1
@@ -1135,8 +1132,7 @@ final class CardButton: UIControl {
         setNeedsLayout()
     }
 
-    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
-        super.traitCollectionDidChange(previous)
+    private func traitsChanged() {
         set(title: title, symbol: hasIcon ? "play.fill" : nil, on: isOn, compact: compact)
     }
 

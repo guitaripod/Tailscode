@@ -36,6 +36,7 @@ final class BrainStepRowView: UIControl {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: BrainStepRowView, _) in view.traitsChanged() }
         backgroundColor = .clear
         isOpaque = false
         contentMode = .redraw
@@ -147,8 +148,7 @@ final class BrainStepRowView: UIControl {
         if pointerInside { showCopy(true) }
     }
 
-    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
-        super.traitCollectionDidChange(previous)
+    private func traitsChanged() {
         setNeedsDisplay()
     }
 

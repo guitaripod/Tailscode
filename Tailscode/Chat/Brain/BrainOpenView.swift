@@ -38,6 +38,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
     private let leaderTab = CALayer()
     private let focusRing = CALayer()
     private let sweepLayer = CAGradientLayer()
+    private let sweepMask = CAGradientLayer()
     private let stageLights = BrainLightsLayer()
 
     private weak var store: BrainStore?
@@ -62,6 +63,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
     init(metrics initial: NeuralStageMetrics) {
         metrics = initial
         super.init(frame: .zero)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: BrainOpenView, _) in view.traitsChanged() }
         clipsToBounds = true
         addSubview(stageBand)
         addSubview(stage)
@@ -72,8 +74,13 @@ final class BrainOpenView: UIView, BrainBrowsing {
         stage.layer.addSublayer(sweepLayer)
         sweepLayer.colors = [UIColor.clear.cgColor, UIColor.white.cgColor, UIColor.clear.cgColor]
         sweepLayer.locations = [0, 0.5, 1]
-        sweepLayer.startPoint = CGPoint(x: 0, y: 0.35)
-        sweepLayer.endPoint = CGPoint(x: 1, y: 0.65)
+        sweepLayer.startPoint = CGPoint(x: 0, y: 0.5)
+        sweepLayer.endPoint = CGPoint(x: 1, y: 0.5)
+        sweepMask.colors = [UIColor.clear.cgColor, UIColor.white.cgColor, UIColor.white.cgColor, UIColor.clear.cgColor]
+        sweepMask.locations = [0, 0.22, 0.78, 1]
+        sweepMask.startPoint = CGPoint(x: 0.5, y: 0)
+        sweepMask.endPoint = CGPoint(x: 0.5, y: 1)
+        sweepLayer.mask = sweepMask
         sweepLayer.opacity = 0
         stage.isUserInteractionEnabled = true
         layer.addSublayer(hairline)
@@ -299,7 +306,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
         env.outputExpanded = model.browseState.outputExpanded
         env.input = browseInput
         env.lastActivity = store.memory(for: turnID).lastActivity
-        env.now = Date()
+        env.now = BrainDebug.now
         chips.configure(list: list, showsFailed: metrics.arrangement == .accordion)
         if metrics.arrangement == .split {
             self.list.redraw()
@@ -513,12 +520,11 @@ final class BrainOpenView: UIView, BrainBrowsing {
         hairline.backgroundColor = BrainCanvas.rule.resolvedColor(with: traitCollection).cgColor
         focusRing.frame = bounds.insetBy(dx: -2, dy: -2)
         focusRing.borderColor = Theme.Color.accent.wash(0.55).resolvedColor(with: traitCollection).cgColor
-        sweepLayer.frame = CGRect(x: 0, y: 0, width: stage.bounds.width * 0.4, height: stage.bounds.height)
+        placeSweep(CGRect(x: 0, y: 0, width: stage.bounds.width * 0.4, height: stage.bounds.height))
         updateLeader(animated: false)
     }
 
-    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
-        super.traitCollectionDidChange(previous)
+    private func traitsChanged() {
         setNeedsLayout()
         updateLeader(animated: false)
     }
@@ -712,9 +718,10 @@ final class BrainOpenView: UIView, BrainBrowsing {
         let sweep = frame.sweepAmount
         sweepLayer.opacity = Float(min(1, sweep / NeuralTransition.sweepStrength) * 0.55)
         let travel = stage.bounds.width * 1.4
-        sweepLayer.frame = CGRect(
-            x: -stage.bounds.width * 0.4 + travel * CGFloat(frame.sweepPhase), y: 0,
-            width: stage.bounds.width * 0.4, height: stage.bounds.height)
+        placeSweep(
+            CGRect(
+                x: -stage.bounds.width * 0.4 + travel * CGFloat(frame.sweepPhase), y: 0,
+                width: stage.bounds.width * 0.4, height: stage.bounds.height))
         stage.field.setReveal(model: browseModel, frame: frame)
         chips.alpha = CGFloat(frame.panelAlpha)
         list.header.alpha = CGFloat(frame.listHeaderAlpha)
@@ -746,6 +753,15 @@ final class BrainOpenView: UIView, BrainBrowsing {
         footer.alpha = 1
         setNeedsLayout()
         updateLeader(animated: true)
+    }
+
+    /// Puts the sweep band where it is now, without the layer animating there.
+    private func placeSweep(_ rect: CGRect) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        sweepLayer.frame = rect
+        sweepMask.frame = sweepLayer.bounds
+        CATransaction.commit()
     }
 
     func configureLights(card: NeuralBrainCard, ink: BrainInk) {

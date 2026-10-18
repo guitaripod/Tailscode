@@ -14,7 +14,7 @@ final class BrainAccountEnv {
     var hovered: String?
     /// The open step's card unfolds under its row: there is no second column for it.
     var inlineCards = true
-    var now = Date()
+    var now = BrainDebug.now
     var lastActivity: Date?
     var justNow: Set<String> = []
 
@@ -1061,7 +1061,7 @@ extension BrainAccountEnv {
         wire(card)
         if spec.live {
             let value = NeuralReadout.make(
-                model: model, subject: .now, now: Date(), tz: .current, clock: CACurrentMediaTime(),
+                model: model, subject: .now, now: BrainDebug.now, tz: .current, clock: CACurrentMediaTime(),
                 answer: nil, outputLines: lines)
             guard case .now(let now) = value.body, let running = now.step else { return nil }
             card.configure(
@@ -1070,7 +1070,7 @@ extension BrainAccountEnv {
             return card
         }
         let value = NeuralReadout.make(
-            model: model, subject: .step(spec.stepID), now: Date(), tz: .current,
+            model: model, subject: .step(spec.stepID), now: BrainDebug.now, tz: .current,
             clock: CACurrentMediaTime(), answer: nil, outputLines: lines)
         guard case .step(let step) = value.body else { return nil }
         card.configure(

@@ -34,6 +34,7 @@ final class BrainStepCard: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: BrainStepCard, _) in view.traitsChanged() }
         layer.cornerRadius = 8
         layer.cornerCurve = .continuous
         layer.borderWidth = 1
@@ -68,8 +69,7 @@ final class BrainStepCard: UIView {
         return ceil(size.height) + 8
     }
 
-    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
-        super.traitCollectionDidChange(previous)
+    private func traitsChanged() {
         applyChrome()
     }
 
@@ -188,8 +188,16 @@ final class BrainStepCard: UIView {
             string: style.isLive ? (facts.started ?? "") : (facts.turnBegan ?? ""),
             attributes: Theme.Ramp.attributes(.rowStamp, color: Theme.Color.secondaryLabel, alignment: .right))
         right.textAlignment = .right
-        let line = UIStackView(arrangedSubviews: [left, UIView(), right])
+        let spacer = UIView()
+        spacer.setContentHuggingPriority(UILayoutPriority(1), for: .horizontal)
+        spacer.setContentCompressionResistancePriority(UILayoutPriority(1), for: .horizontal)
+        left.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        left.setContentCompressionResistancePriority(UILayoutPriority(500), for: .horizontal)
+        right.setContentHuggingPriority(.required, for: .horizontal)
+        right.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let line = UIStackView(arrangedSubviews: [left, spacer, right])
         line.axis = .horizontal
+        line.alignment = .firstBaseline
         line.spacing = 8
         return line
     }

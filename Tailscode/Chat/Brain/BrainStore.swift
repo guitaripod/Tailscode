@@ -30,18 +30,30 @@ struct BrainLayout {
         let row: BrainRow
     }
 
-    private let turns: [String: Turn]
+    /// The table a store keeps up to date in place, so a streamed token rewrites the entries of
+    /// the turns it touched and not a dictionary of every turn.
+    final class Table: @unchecked Sendable {
+        fileprivate(set) var turns: [String: Turn] = [:]
 
-    static let none = BrainLayout(turns: [:])
+        func set(_ turn: Turn) { turns[turn.id] = turn }
 
-    init(turns: [String: Turn]) {
-        self.turns = turns
+        func remove(_ id: String) { turns[id] = nil }
+
+        func removeAll() { turns = [:] }
     }
 
-    var isEmpty: Bool { turns.isEmpty }
+    private let table: Table
+
+    static let none = BrainLayout(table: Table())
+
+    init(table: Table) {
+        self.table = table
+    }
+
+    var isEmpty: Bool { table.turns.isEmpty }
 
     /// The brain of the turn whose first assistant message is `messageID`, if it has one.
-    func turn(startingAt messageID: String) -> Turn? { turns[messageID] }
+    func turn(startingAt messageID: String) -> Turn? { table.turns[messageID] }
 
     func hides(_ partID: String, in turn: Turn) -> Bool {
         !turn.row.showsRows && turn.members.contains(partID)
@@ -75,6 +87,13 @@ final class BrainStore {
     private var choices: [String: Bool] = [:]
     private var listing: Set<String> = []
     private var turnIDs: [String] = []
+    private var turnIndex: [String: Int] = [:]
+    private var turnStarts: [Int] = []
+    private var dirty: Set<String> = []
+    private var shape: Shape?
+    private var passes = 0
+    private var currentOpen: String?
+    private let table = BrainLayout.Table()
     private var running = false
     private var messages: [ChatMessage] = []
     private var answerCache: [String: (key: Int, text: String)] = [:]
@@ -113,7 +132,7 @@ final class BrainStore {
 
     func showsRows(_ turnID: String) -> Bool { listing.contains(turnID) }
 
-    var openTurnID: String? { held.first { $0.value.open }?.key }
+    var openTurnID: String? { currentOpen }
 
     var latestTurnID: String? { turnIDs.last }
 
@@ -131,11 +150,25 @@ final class BrainStore {
         }?.id
     }
 
+    /// The part a turn's brain row goes before, for a check that compares two stores.
+    func anchorID(of turnID: String) -> String? { held[turnID]?.anchor }
+
     /// The id of the nth brain, counting from one, for a debug launch.
     func turnID(atBrain number: Int) -> String? {
         let ids = turnIDs.filter { held[$0] != nil }
         return ids.indices.contains(number - 1) ? ids[number - 1] : nil
     }
+
+    /// Everything about the conversation that, when it changes, can change every turn at once:
+    /// whether a turn is running, what is awaited, and what an older turn is read against.
+    private struct Shape: Equatable {
+        var running: Bool
+        var awaiting: NeuralAwaiting
+        var base: NeuralBrainContext
+    }
+
+    private static let margin = 12
+    private static let verifyEvery = 64
 
     /// Lets a cell change a model in place: a pin, a hover, a replay. The row's value is not
     /// touched, because nothing a row diffs by moved.
@@ -172,10 +205,13 @@ final class BrainStore {
     func toggle(_ turnID: String) {
         let policy = NeuralOpenPolicy(turnIDs: turnIDs, isRunning: running, choices: choices)
         choices = policy.toggle(turnID: turnID)
+        dirty.insert(turnID)
+        if let open = currentOpen { dirty.insert(open) }
     }
 
     func toggleRows(_ turnID: String) {
         if !listing.insert(turnID).inserted { listing.remove(turnID) }
+        dirty.insert(turnID)
     }
 
     func forgetEverything() {
@@ -185,6 +221,12 @@ final class BrainStore {
         choices = [:]
         listing = []
         turnIDs = []
+        turnIndex = [:]
+        turnStarts = []
+        dirty = []
+        shape = nil
+        currentOpen = nil
+        table.removeAll()
         messages = []
         answerCache = [:]
         memories = [:]
@@ -199,36 +241,131 @@ final class BrainStore {
         messages all: [ChatMessage], running isRunning: Bool, awaiting: NeuralAwaiting,
         context: (_ turn: NeuralTurn, _ isLatest: Bool) -> NeuralBrainContext
     ) -> BrainLayout {
+        passes += 1
+        let overriding = BrainDebug.overridesOpen
+        let verifying = passes % Self.verifyEvery == 0
+        let prefix = verifying ? 0 : stablePrefix(of: all)
+        let list = cache.partitionList(
+            messages: all, running: isRunning, awaiting: awaiting, stablePrefix: prefix)
+        let base = list.first.map { context($0, false) } ?? NeuralBrainContext()
+        let next = Shape(running: isRunning, awaiting: awaiting, base: base)
+        let sameShape = shape == next
+        shape = next
+        let previousCount = turnIDs.count
+        var from = 0
+        if sameShape, !overriding, prefix > 0 {
+            from = min(untouchedTurns(prefix: prefix), previousCount - 1, list.count - 1)
+            from = max(0, from)
+            if from > 0, from <= turnIDs.count, list[from - 1].id != turnIDs[from - 1] { from = 0 }
+        }
         messages = all
         running = isRunning
-        let turns = cache.partition(messages: all, running: isRunning, awaiting: awaiting)
-        turnIDs = turns.map(\.id)
-        let policy = NeuralOpenPolicy(turnIDs: turnIDs, isRunning: isRunning, choices: choices)
-        let open = BrainDebug.openOverride(policy: policy, turns: turns) ?? policy.openTurnID
-        var layout: [String: BrainLayout.Turn] = [:]
-        var alive = Set<String>()
-        let latest = turns.last?.id
-        for turn in turns where NeuralOpenPolicy.isBrain(turn: turn) {
-            alive.insert(turn.id)
-            let isLatest = turn.id == latest
-            let ctx = context(turn, isLatest)
-            let entry = refresh(turn, context: ctx, open: turn.id == open, latest: isLatest)
-            if isLatest || turn.outcome == .running || memories[turn.id] == nil, let model = models[turn.id] {
-                memory(for: turn.id).note(model: model)
+        let oldTail = Array(turnIDs[min(from, turnIDs.count)...])
+        turnIDs.removeSubrange(min(from, turnIDs.count)...)
+        turnStarts.removeSubrange(min(from, turnStarts.count)...)
+        var cursor = from > 0 ? (turnStarts.last ?? 0) : 0
+        for index in from..<list.count {
+            let id = list[index].id
+            turnIDs.append(id)
+            turnIndex[id] = index
+            var found = cursor
+            while found < all.count, all[found].id != id { found += 1 }
+            if found < all.count { cursor = found } else { found = cursor }
+            turnStarts.append(found)
+        }
+        var tail = Set<String>()
+        for index in from..<list.count { tail.insert(list[index].id) }
+        for id in oldTail where !tail.contains(id) {
+            purge(id)
+            turnIndex[id] = nil
+        }
+
+        let latest = list.last?.id
+        let open = resolveOpen(override: overriding ? BrainDebug.openOverride(
+            policy: NeuralOpenPolicy(turnIDs: turnIDs, latest: latest, isRunning: isRunning, choices: choices),
+            turns: list) : nil)
+        if open != currentOpen {
+            if let old = currentOpen { dirty.insert(old) }
+            if let new = open { dirty.insert(new) }
+            currentOpen = open
+        }
+        for index in from..<list.count {
+            visit(list[index], isLatest: list[index].id == latest, open: open, context: context)
+        }
+        for id in dirty {
+            guard let index = turnIndex[id], index < from, index < list.count, list[index].id == id else { continue }
+            visit(list[index], isLatest: id == latest, open: open, context: context)
+        }
+        dirty.removeAll()
+        return BrainLayout(table: table)
+    }
+
+    /// How many leading messages this conversation shares with the last one read, as far as the
+    /// cheap evidence goes: the first message, and the one at the cut, are the same, and the cut
+    /// leaves the newest few messages out, because those are the ones a stream grows. Every
+    /// `verifyEvery` passes, and whenever a turn starts or ends, the whole list is read again.
+    private func stablePrefix(of all: [ChatMessage]) -> Int {
+        let before = messages
+        let cut = before.count - Self.margin
+        guard cut > 0, all.count >= cut, before[0].id == all[0].id,
+            before[cut - 1].id == all[cut - 1].id, before[cut / 2].id == all[cut / 2].id
+        else { return 0 }
+        return cut
+    }
+
+    /// The turns that end before the first message a pass may have touched, which are read from
+    /// the starts of the turns that follow them.
+    private func untouchedTurns(prefix: Int) -> Int {
+        var low = 0
+        var high = turnStarts.count
+        while low < high {
+            let mid = (low + high) / 2
+            if mid + 1 < turnStarts.count, turnStarts[mid + 1] <= prefix - 2 { low = mid + 1 } else { high = mid }
+        }
+        return low
+    }
+
+    private func resolveOpen(override: String?) -> String? {
+        if let override { return override.isEmpty ? nil : override }
+        var open: String?
+        var newest = -1
+        for (id, chosen) in choices where chosen {
+            if let index = turnIndex[id], index > newest {
+                newest = index
+                open = id
             }
-            layout[turn.id] = BrainLayout.Turn(
-                id: turn.id, anchor: entry.anchor, members: turn.memberPartIDs, row: entry.row)
         }
-        for id in held.keys where !alive.contains(id) {
-            held[id] = nil
-            models[id] = nil
-            answerCache[id] = nil
-            memories[id] = nil
-            interactions[id] = nil
-            promptCache[id] = nil
+        return open
+    }
+
+    private func purge(_ id: String) {
+        held[id] = nil
+        models[id] = nil
+        answerCache[id] = nil
+        memories[id] = nil
+        interactions[id] = nil
+        promptCache[id] = nil
+        listing.remove(id)
+        table.remove(id)
+    }
+
+    private func visit(
+        _ turn: NeuralTurn, isLatest: Bool, open openID: String?,
+        context: (_ turn: NeuralTurn, _ isLatest: Bool) -> NeuralBrainContext
+    ) {
+        guard NeuralOpenPolicy.isBrain(turn: turn) else {
+            if held[turn.id] != nil { purge(turn.id) }
+            return
         }
-        listing.formIntersection(alive)
-        return BrainLayout(turns: layout)
+        BrainDebug.adopt(turn)
+        let entry = refresh(
+            turn, context: context(turn, isLatest), open: turn.id == openID, latest: isLatest)
+        if isLatest || turn.outcome == .running || memories[turn.id] == nil, let model = models[turn.id] {
+            memory(for: turn.id).note(model: model)
+        }
+        table.set(
+            BrainLayout.Turn(
+                id: turn.id, anchor: entry.anchor, members: turn.memberPartIDs, row: entry.row))
     }
 
     /// The words of a turn's final answer, for the chips that point at the steps behind them.
@@ -328,13 +465,13 @@ final class BrainStore {
 /// settled, which is what the settle move reads.
 @MainActor
 final class BrainLiveMemory {
-    private(set) var lastActivity = Date()
+    private(set) var lastActivity = BrainDebug.now
     var quoteArrivals: [String: Date] = [:]
     var settleClock = NeuralCardSettleClock()
     private var signature: Int?
     private var seeded = false
 
-    func note(model: NeuralBrainModel, now: Date = Date(), clock: TimeInterval = CACurrentMediaTime()) {
+    func note(model: NeuralBrainModel, now: Date = BrainDebug.now, clock: TimeInterval = CACurrentMediaTime()) {
         let running = model.turn.outcome == .running
         settleClock.observe(running: running, now: clock)
         guard running else { return }

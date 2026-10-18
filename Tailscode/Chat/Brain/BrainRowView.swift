@@ -31,6 +31,16 @@ final class BrainRowView: UIView {
     private var actions: BrainActions?
     private var viewport: CGFloat = 800
     private var metrics: NeuralStageMetrics?
+    private var cardMetrics: NeuralStageMetrics?
+
+    /// How far the card stands in from each side of the row. Zero for an ordinary row; a row
+    /// that spans a window wider than the transcript's readable column is as wide as the window,
+    /// so its open brain can use the width, and its card stays where every other card is.
+    var cardInset: CGFloat = 0 {
+        didSet { if cardInset != oldValue { setNeedsLayout() } }
+    }
+
+    private var cardWidth: CGFloat { max(bounds.width - 2 * cardInset, 0) }
     private var transition: NeuralTransition?
     private var moveStart: CFTimeInterval = 0
     private var moveProgress = 0.0
@@ -106,8 +116,9 @@ final class BrainRowView: UIView {
         guard let model = newStore.model(for: new.turnID) else { return }
         let width = bounds.width > 0 ? bounds.width : 360
         metrics = makeMetrics(width: width, model: model)
+        cardMetrics = makeCardMetrics(model: model)
         if !sameTurn { resetState() }
-        card.configure(model: model, row: new, memory: newStore.memory(for: new.turnID), metrics: metrics!)
+        card.configure(model: model, row: new, memory: newStore.memory(for: new.turnID), metrics: cardMetrics!)
         let wantsOpen = new.isOpen
         switch (phase, wantsOpen) {
         case (.closed, true):
@@ -141,6 +152,10 @@ final class BrainRowView: UIView {
             card.refresh(model: model)
         }
         updateClock()
+    }
+
+    private func makeCardMetrics(model: NeuralBrainModel) -> NeuralStageMetrics {
+        cardInset > 0 ? makeMetrics(width: cardWidth, model: model) : (metrics ?? makeMetrics(width: bounds.width, model: model))
     }
 
     private func makeMetrics(width: CGFloat, model: NeuralBrainModel) -> NeuralStageMetrics {
@@ -187,7 +202,7 @@ final class BrainRowView: UIView {
         let m = (metrics?.width == Double(width)) ? metrics! : makeMetrics(width: width, model: model)
         switch phase {
         case .closed:
-            return card.requiredHeight(width: width)
+            return card.requiredHeight(width: max(width - 2 * cardInset, 0))
         case .open:
             return CGFloat(m.rowHeight) + BrainOpenView.narrowExtra(metrics: m, viewport: viewport)
         case .moving:
@@ -198,17 +213,18 @@ final class BrainRowView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         guard bounds.width > 0, let store, let row, let model = store.model(for: row.turnID) else { return }
-        if metrics?.width != Double(bounds.width) {
+        if metrics?.width != Double(bounds.width) || cardMetrics?.width != Double(cardWidth) {
             metrics = makeMetrics(width: bounds.width, model: model)
-            card.configure(model: model, row: row, memory: store.memory(for: row.turnID), metrics: metrics!)
+            cardMetrics = makeCardMetrics(model: model)
+            card.configure(model: model, row: row, memory: store.memory(for: row.turnID), metrics: cardMetrics!)
             if phase == .open || phase == .moving {
                 openView?.apply(metrics: metrics!, viewport: viewport)
                 openView?.refreshAll()
             }
             if phase == .moving { finishNow(open: transition?.direction.isOpening ?? false) }
         }
-        let cardHeight = card.requiredHeight(width: bounds.width)
-        card.frame = CGRect(x: 0, y: 0, width: bounds.width, height: cardHeight)
+        let cardHeight = card.requiredHeight(width: cardWidth)
+        card.frame = CGRect(x: cardInset, y: 0, width: cardWidth, height: cardHeight)
         if let openView {
             openView.frame = CGRect(
                 x: 0, y: 0, width: bounds.width, height: openView.openHeight)
@@ -265,7 +281,7 @@ final class BrainRowView: UIView {
         made.refreshAll()
         let palette = BrainPalette.palette(for: traitCollection)
         let ink = BrainInk(palette: palette, face: model.face)
-        made.configureLights(card: model.brainCard(now: Date()), ink: ink)
+        made.configureLights(card: model.brainCard(now: BrainDebug.now), ink: ink)
         openView = made
         return made
     }
@@ -293,18 +309,29 @@ final class BrainRowView: UIView {
         phase = .closed
         card.isHidden = false
         card.clearMove()
-        currentHeight = card.requiredHeight(width: bounds.width)
+        currentHeight = card.requiredHeight(width: cardWidth)
         onHeightChange?()
         setNeedsLayout()
     }
 
     private func geometries(metrics m: NeuralStageMetrics, extra: CGFloat) -> (NeuralTransition.Geometry, NeuralTransition.Geometry) {
-        var cardGeometry = m.cardGeometry
-        cardGeometry.rowHeight = max(cardGeometry.rowHeight, Double(card.requiredHeight(width: bounds.width)))
+        var cardGeometry = (cardMetrics ?? m).cardGeometry
+        cardGeometry.rowHeight = max(cardGeometry.rowHeight, Double(card.requiredHeight(width: cardWidth)))
+        if cardInset > 0 { cardGeometry = Self.shifted(cardGeometry, dx: Double(cardInset)) }
         var stage = m.stageGeometry
         stage.rowHeight += Double(extra)
         stage.footer = stage.footer.offsetBy(dy: Double(extra))
         return (cardGeometry, stage)
+    }
+
+    private static func shifted(_ g: NeuralTransition.Geometry, dx: Double) -> NeuralTransition.Geometry {
+        var out = g
+        out.picture = g.picture.offsetBy(dx: dx)
+        out.readout = g.readout.offsetBy(dx: dx)
+        out.footer = g.footer.offsetBy(dx: dx)
+        out.list = g.list.offsetBy(dx: dx)
+        out.panel = g.panel.offsetBy(dx: dx)
+        return out
     }
 
     private func makeTransition(direction: NeuralTransition.Direction) -> NeuralTransition? {
@@ -459,7 +486,7 @@ final class BrainRowView: UIView {
 
     private func applyFrame(_ frame: NeuralTransitionFrame, opening: Bool) {
         currentHeight = CGFloat(frame.rowHeight)
-        card.applyMove(frame: frame, opening: opening)
+        card.applyMove(frame: frame, opening: opening, originX: cardInset)
         if let metrics { openView?.apply(frame: frame, from: metrics, opening: opening, live: transition?.live ?? false) }
         onHeightChange?()
     }

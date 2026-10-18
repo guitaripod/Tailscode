@@ -25,6 +25,7 @@ final class BrainZoneChip: UIControl {
     init(height: CGFloat = 28) {
         self.height = height
         super.init(frame: .zero)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: BrainZoneChip, _) in view.traitsChanged() }
         layer.cornerRadius = height / 2
         layer.borderWidth = 1
         layer.cornerCurve = .continuous
@@ -85,8 +86,7 @@ final class BrainZoneChip: UIControl {
         setNeedsLayout()
     }
 
-    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
-        super.traitCollectionDidChange(previous)
+    private func traitsChanged() {
         guard let current = content else { return }
         content = nil
         configure(current)

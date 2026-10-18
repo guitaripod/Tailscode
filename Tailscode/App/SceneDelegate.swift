@@ -25,6 +25,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
         self.coordinator = coordinator
         coordinator.start()
+        Task { @MainActor in BrainPictures.prewarm() }
         if let url = connectionOptions.urlContexts.first?.url {
             coordinator.handle(url)
         }

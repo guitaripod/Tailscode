@@ -14,6 +14,41 @@ enum BrainDebug {
         private static let environment = ProcessInfo.processInfo.environment
     #endif
 
+    #if DEBUG
+        @MainActor private static var rebase: TimeInterval?
+    #endif
+
+    /// The time the brain reads ages against. A debug launch that forces a live state shifts it so
+    /// the demo's running turn began about a minute ago rather than days ago, and it keeps ticking;
+    /// everywhere else it is the clock's own.
+    @MainActor static var now: Date {
+        #if DEBUG
+            return Date().addingTimeInterval(rebase ?? 0)
+        #else
+            return Date()
+        #endif
+    }
+
+    /// Reads the demo's running turn for the shift above; a debug launch only.
+    @MainActor static func adopt(_ turn: NeuralTurn) {
+        #if DEBUG
+            guard forcedActivity != nil, rebase == nil, turn.outcome == .running,
+                let began = turn.steps.first?.at
+            else { return }
+            rebase = began.addingTimeInterval(74).timeIntervalSinceNow
+        #endif
+    }
+
+    /// `TAILSCODE_NEURAL_WIDTH=<points>` lays every brain row out that wide and scales it into the
+    /// cell, which is how the two-column account is looked at on a screen too narrow to reach it.
+    static var forcedWidth: CGFloat? {
+        #if DEBUG
+            return environment["TAILSCODE_NEURAL_WIDTH"].flatMap(Double.init).map { CGFloat($0) }
+        #else
+            return nil
+        #endif
+    }
+
     /// `TAILSCODE_NEURAL_SLOWMO=<n>` stretches the move n times so a still screenshot can read it
     /// frame by frame; 1 everywhere else.
     static var slowMotion: Double {
@@ -51,9 +86,18 @@ enum BrainDebug {
         #endif
     }
 
+    /// Whether the launch asked for an open brain of its own, which every pass then re-reads.
+    static var overridesOpen: Bool {
+        #if DEBUG
+            return environment["TAILSCODE_NEURAL_OPEN"] != nil
+        #else
+            return false
+        #endif
+    }
+
     /// The open brain the launch asked for, as a turn id: `""` closes every brain, `first` opens
     /// the oldest one. Nil leaves the policy's answer.
-    static func openOverride(policy: NeuralOpenPolicy, turns: [NeuralTurn]) -> String? {
+    static func openOverride(policy: NeuralOpenPolicy, turns: NeuralTurnList) -> String? {
         #if DEBUG
             switch environment["TAILSCODE_NEURAL_OPEN"] {
             case "0": return ""
