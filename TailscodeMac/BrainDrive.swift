@@ -7,8 +7,9 @@
     /// verbs on a timer from launch, so a head can be put in any state and looked at without a
     /// server that would write the right conversation.
     ///
+    /// - `chat` opens the first chat the servers list, so the composer has a model and a level
     /// - `demo` shows the two scripted turns the design was drawn from, settled, in the pane
-    /// - `state=<settled|working|thinking|writing|waiting|question|failed|stopped|offline|compacting>`
+    /// - `state=<settled|working|thinking|writing|written|waiting|question|failed|stopped|offline|compacting>`
     ///   shows the newer turn in that state, with the state the pane would be in for it
     /// - `open[=<turn>]`, `close`, `rows` open and close the newest brain (or the n-th), list its old rows
     /// - `hover=<n>`, `pin=<n>`, `clear` act on the open head's n-th node; `chip=<n>` points at the
@@ -22,8 +23,8 @@
     @MainActor
     enum BrainDrive {
         enum Scenario: String, CaseIterable {
-            case settled, working, thinking, writing, waiting, approval, question, failed, stopped,
-                offline, compacting, large, largeRunning
+            case settled, working, thinking, writing, written, waiting, approval, question, failed,
+                stopped, offline, compacting, large, largeRunning
         }
 
         private static func say(_ line: String) {
@@ -38,6 +39,11 @@
             let transcript = main.transcript
             let store = transcript.brains
             switch verb {
+            case "chat":
+                Task { @MainActor in
+                    let listed = await ServerDirectory.shared.entries().entries
+                    if let first = listed.first { main.open(first) }
+                }
             case "demo":
                 show(.settled, in: transcript)
             case "state":
@@ -278,6 +284,9 @@
                 + NeuralDemo.turn(
                     prefix: "b-", origin: 1_792_003_600,
                     answer: scenario == .settled || scenario == .writing)
+            if scenario == .written {
+                messages = NeuralDemo.writing(prefix: "w-", origin: 1_792_003_600)
+            }
             if scenario == .large || scenario == .largeRunning {
                 messages =
                     NeuralDemo.buildFix(prefix: "a-", origin: 1_792_000_000)
@@ -289,7 +298,7 @@
                 messages: messages, status: live ? .running : .idle, connection: .live,
                 hasLoadedTranscript: true)
             switch scenario {
-            case .settled, .offline, .compacting, .writing, .thinking, .large:
+            case .settled, .offline, .compacting, .writing, .written, .thinking, .large:
                 break
             case .approval:
                 markLastTool(&messages, .running)

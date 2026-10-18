@@ -102,6 +102,11 @@ final class ComposerView: NSView {
     var onModelChanged: (() -> Void)?
     /// The effort a send from this composer would carry, surviving what the model actually offers.
     var activeEffort: String? { ModelEffort.surviving(chosenEffort, options: effortOptions()) }
+    /// The level the dial shows right now, and the levels the model it shows takes: what the
+    /// brain's heads wear for a turn whose own messages recorded no effort, so a head and the
+    /// pill never say two things.
+    var shownEffort: String? { displayedEffort() }
+    var shownEffortOptions: [String] { effortOptions() }
     /// The used-up windows on this server's account, for marking a model spent where it is picked.
     var quotasForModels: (() -> [UsageQuota])?
 

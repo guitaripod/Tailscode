@@ -7,7 +7,8 @@
     /// - `top`, `end`, `scroll:<points>` move the story at once
     /// - `unfold:<n>`, `fold:<n>` open and close the n-th work line (counting work lines only)
     /// - `show:<n>` unfolds the n-th note's words, `think:<n>` the n-th thought's
-    /// - `expand` folds or unfolds the long output of the open card
+    /// - `expand` folds or unfolds the long output (or the whole file) of the open card
+    /// - `reader:<line>` scrolls the open reader of a whole file to that line
     /// - `plan` folds or unfolds the plan, `focus` takes the keyboard into the account
     /// - `reading` prints what the account holds
     @MainActor
@@ -30,6 +31,7 @@
             case "show": toggleText(account, number, said: true)
             case "think": toggleText(account, number, said: false)
             case "expand": _ = account.toggleCardOutput()
+            case "reader": account.openReader?.showLine(number)
             case "plan": account.togglePlan(nil)
             case "focus": account.focus()
             case "reading": break
@@ -37,7 +39,10 @@
             }
             account.refresh(immediate: true)
             account.realize()
-            return "BRAIN acct " + account.reading
+            let reader = account.openReader.map {
+                " reader=[lines:\($0.lineCount) numbered:\($0.numbered) drawn:\($0.drawnRange.count) height:\(Int($0.frame.height))]"
+            }
+            return "BRAIN acct " + account.reading + (reader ?? "")
         }
 
         /// `shot:<path>:<width>:<step>:<turn>` — a fixture of the demo conversation at `width`, the

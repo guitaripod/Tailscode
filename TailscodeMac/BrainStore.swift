@@ -77,6 +77,7 @@ final class BrainStore {
     private(set) var latestTurnID: String?
     private var turnIDs: [String] = []
     private(set) var liveContext = NeuralBrainContext.none
+    private(set) var chatContext = NeuralBrainContext.none
     private(set) var isRunning = false
 
     /// One number that changes whenever what the brain says about a message above the newest
@@ -344,7 +345,7 @@ final class BrainStore {
         var ordered: [String] = keptOrder ?? []
         for turn in fresh where NeuralOpenPolicy.isBrain(turn: turn) {
             ordered.append(turn.id)
-            let context = turn.id == latestTurnID ? liveContext : NeuralBrainContext.none
+            let context = turn.id == latestTurnID ? liveContext : chatContext
             if entries[turn.id] != nil {
                 guard entries[turn.id]!.turn != turn || entries[turn.id]!.context != context else {
                     continue
@@ -374,21 +375,43 @@ final class BrainStore {
     }
 
     /// Holds the live turn's context: what the machine is doing, how full the window is, whether a
-    /// call is open. A turn that is not the newest carries none of it. Returns whether the model
-    /// of the newest brain changed, so a caller restates only then.
+    /// call is open. A turn that is not the newest carries none of it, only the level the chat is
+    /// on and the levels its model takes, which a turn whose messages recorded no effort wears so
+    /// no head contradicts the composer's pill. Returns whether the model of any brain changed, so
+    /// a caller restates only then.
     @discardableResult
     func setContext(_ context: NeuralBrainContext) -> Bool {
         let context = Self.settled(context, against: liveContext)
-        guard context != liveContext else { return false }
+        var changed = adoptChatContext(of: context)
+        guard context != liveContext else { return changed }
         contextChanges += 1
         liveContext = context
         guard let id = latestTurnID, entries[id] != nil, entries[id]!.context != context else {
-            return false
+            return changed
         }
         let turn = entries[id]!.turn
         entries[id]!.model.update(turn: turn, context: context)
         entries[id]!.context = context
-        return true
+        changed = true
+        return changed
+    }
+
+    /// The part of a context every turn of the chat shares, brought to the older brains the moment
+    /// the person's level or the model's levels move: a pick in the dial restates every head, and
+    /// a streamed token, which moves neither, costs one comparison.
+    private func adoptChatContext(of context: NeuralBrainContext) -> Bool {
+        let shared = NeuralBrainContext(effortOptions: context.effortOptions, effort: context.effort)
+        guard shared != chatContext else { return false }
+        chatContext = shared
+        var changed = false
+        for id in entries.keys where id != latestTurnID && entries[id]!.context != shared {
+            let turn = entries[id]!.turn
+            entries[id]!.model.update(turn: turn, context: shared)
+            entries[id]!.context = shared
+            changed = true
+        }
+        if changed { bumpShape() }
+        return changed
     }
 
     /// The context with its fill kept as it was while the fill has not moved by anything the head

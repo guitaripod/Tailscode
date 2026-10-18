@@ -3007,10 +3007,13 @@ final class TranscriptViewController: NSViewController {
 
     /// What the machine is doing, how full the window is and whether a call is open, handed to the
     /// newest brain so its head wears the same state the band says in words. The model changes and
-    /// the rows do not, so the views are restated here rather than through a rebuild.
+    /// the rows do not, so the views are restated here rather than through a rebuild. The level
+    /// the composer's pill shows goes with it, for the newest turn and every older one.
     private func noteBrainContext(_ facts: StatusFacts) {
         guard brains.isActive else { return }
-        let context = NeuralBrainContext(facts: facts, call: calls.face)
+        let context = NeuralBrainContext(
+            facts: facts, call: calls.face, effortOptions: composer.shownEffortOptions,
+            effort: composer.shownEffort)
         guard brains.setContext(context) else { return }
         brains.restateViews()
     }

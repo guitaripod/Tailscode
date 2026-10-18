@@ -128,6 +128,7 @@ enum BrainViewChecks {
         try BrainOwnChecks.run(expect)
         _ = try BrainListChecks.run(expect)
         checks += try BrainAccountChecks.run(expect)
+        checks += try BrainReaderChecks.run(expect)
         return checks
     }
 }

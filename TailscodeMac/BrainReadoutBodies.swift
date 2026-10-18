@@ -797,7 +797,7 @@ extension AccountReadoutPage {
             let label = AccountLabelRow(AccountWords.diff, paint: paint)
             label.right = tally(added: edit.added, removed: edit.removed)
             stack.add(label)
-            stack.add(AccountDiffBlock(edit: edit, paint: paint), before: 6)
+            stack.add(diffBlock(edit, stepID: id), before: 6)
         case .read(let read):
             let label = AccountLabelRow(AccountWords.readLabel, paint: paint)
             label.rightWords = read.lines.map { AccountWords.lines($0) }
@@ -824,6 +824,25 @@ extension AccountReadoutPage {
             }
         }
         return stack
+    }
+
+    /// The first lines of an edit with the way to read the rest: the whole of it comes from the
+    /// model's step when the link is pressed, never before, so a step nobody opened costs nothing.
+    private func diffBlock(_ edit: R.Edit, stepID id: String) -> AccountDiffBlock {
+        let block = AccountDiffBlock(
+            edit: edit,
+            full: { [weak owner] in owner?.model.step(id: id).map { R.fullDiff(of: $0) } },
+            copyText: { [weak owner] in
+                owner?.model.step(id: id).map { NeuralReading.pasteText(of: R.fullDiff(of: $0)) }
+            }, host: host, paint: paint)
+        block.readerHeight = { [weak self] in self?.readerHeight() ?? 300 }
+        block.onToggle = { [weak self, weak block] expanded in
+            guard let self, let block else { return }
+            self.diffToggled(block, expanded: expanded, stepID: id)
+        }
+        diffs.append(block)
+        if expandedDiffStep == id { block.setExpanded(true) }
+        return block
     }
 
     func copySubject(_ text: String) {

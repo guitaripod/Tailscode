@@ -290,19 +290,16 @@ final class AccountOutputBlock: AccountBlock {
     }
 }
 
-/// An edit as a diff: removed lines on a danger wash, added on an accent wash, the sign in a
-/// narrow column, long lines wrapped and never cut.
+/// The first lines of an edit as a diff: removed lines on a danger wash, added on an accent wash,
+/// the sign in a narrow column, long lines wrapped and never cut.
 @MainActor
-final class AccountDiffBlock: AccountBlock {
+final class AccountDiffLinesView: NSView {
     private let lines: [NeuralReadout.DiffLine]
     private let paint: AccountPaint
-    private let more: String?
     private var heights: [CGFloat] = []
-    private var frameHeight: CGFloat = 0
 
-    init(edit: NeuralReadout.Edit, paint: AccountPaint) {
-        lines = edit.lines
-        more = edit.hiddenCount > 0 ? edit.moreLabel : nil
+    init(lines: [NeuralReadout.DiffLine], paint: AccountPaint) {
+        self.lines = lines
         self.paint = paint
         super.init(frame: .zero)
         setAccessibilityElement(true)
@@ -313,16 +310,16 @@ final class AccountDiffBlock: AccountBlock {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    nonisolated override var isFlipped: Bool { true }
+
     private func attributed(_ line: NeuralReadout.DiffLine) -> NSAttributedString {
         AccountType.string(line.text.isEmpty ? " " : line.text, .diff, paint.text)
     }
 
-    override func fit(width: CGFloat) -> CGFloat {
+    func fit(width: CGFloat) -> CGFloat {
         let room = max(width - 22 - 8, 1)
         heights = lines.map { max(AccountType.lineHeight(.diff), AccountType.height(attributed($0), width: room)) }
-        frameHeight = heights.reduce(0, +) + 2
-        var total = frameHeight
-        if more != nil { total += 4 + AccountType.lineHeight(.rowStamp) }
+        let total = heights.reduce(0, +) + 2
         setFrameSize(NSSize(width: width, height: total))
         needsDisplay = true
         return total
@@ -331,8 +328,8 @@ final class AccountDiffBlock: AccountBlock {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        let frame = NSRect(x: 0.5, y: 0.5, width: bounds.width - 1, height: frameHeight - 1)
-        let shape = NSBezierPath(roundedRect: frame, xRadius: 6, yRadius: 6)
+        let shape = NSBezierPath(
+            roundedRect: NSRect(x: 0.5, y: 0.5, width: bounds.width - 1, height: bounds.height - 1), xRadius: 6, yRadius: 6)
         NSGraphicsContext.saveGraphicsState()
         shape.addClip()
         var y: CGFloat = 1
@@ -359,9 +356,129 @@ final class AccountDiffBlock: AccountBlock {
         paint.rule.setStroke()
         shape.lineWidth = 1
         shape.stroke()
-        if let more {
-            AccountType.draw(more, .rowStamp, paint.dim, x: 0, midY: frameHeight + 4 + AccountType.lineHeight(.rowStamp) / 2)
+    }
+}
+
+/// An edit as a diff, and when it is longer than the first lines, the way to read all of it: a
+/// link under the block opens the whole file in a reader that scrolls and draws only what is in
+/// view, and Copy all puts the whole of it on the pasteboard. The reader is made when the link is
+/// pressed and not before, and what the block asks of its surroundings goes through `readerHeight`
+/// (how tall the whole file may stand) and `onToggle` (the page scrolls it into view).
+@MainActor
+final class AccountDiffBlock: AccountBlock {
+    private let edit: NeuralReadout.Edit
+    private let paint: AccountPaint
+    private let linesView: AccountDiffLinesView
+    let link: AccountButton
+    let copyAll: AccountButton
+    private let fullLines: (() -> [NeuralReadout.DiffLine]?)?
+    private let copyText: (() -> String?)?
+    private weak var host: BrainSurfaceHost?
+    private(set) var reader: AccountDiffReader?
+    private(set) var expanded = false
+    var readerHeight: (() -> CGFloat)?
+    var onToggle: ((Bool) -> Void)?
+    private static let barGap: CGFloat = 6
+
+    init(
+        edit: NeuralReadout.Edit, full: (() -> [NeuralReadout.DiffLine]?)?, copyText: (() -> String?)?,
+        host: BrainSurfaceHost?, paint: AccountPaint
+    ) {
+        self.edit = edit
+        self.paint = paint
+        self.host = host
+        fullLines = full
+        self.copyText = copyText
+        linesView = AccountDiffLinesView(lines: edit.lines, paint: paint)
+        link = AccountButton(title: NeuralReading.showAllLines(edit.total), style: .link, paint: paint)
+        copyAll = AccountButton(title: NeuralReading.copyAllLabel, style: .pill, paint: paint)
+        super.init(frame: .zero)
+        setAccessibilityElement(false)
+        addSubview(linesView)
+        addSubview(link)
+        addSubview(copyAll)
+        link.host = host
+        copyAll.host = host
+        link.isHidden = !canExpand
+        copyAll.isHidden = !canExpand
+        link.onTap = { [weak self] in self?.toggle() }
+        copyAll.onTap = { [weak self] in self?.copyEverything() }
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    var canExpand: Bool { edit.hiddenCount > 0 && fullLines != nil }
+
+    /// What Copy all puts on the pasteboard: the whole file, or the whole diff with its marks.
+    var allText: String? { copyText.flatMap { $0() } }
+
+    func toggle() {
+        guard canExpand else { return }
+        setExpanded(!expanded, silently: false)
+    }
+
+    /// Opens or closes the reader. A page that is rebuilt around a reader the person left open
+    /// puts it back silently: nothing scrolls and nothing is told.
+    func setExpanded(_ value: Bool, silently: Bool = true) {
+        guard value != expanded, canExpand else { return }
+        expanded = value
+        if value, let lines = fullLines.flatMap({ $0() }) {
+            let made = AccountDiffReader(lines: lines, paint: paint)
+            addSubview(made, positioned: .below, relativeTo: link)
+            reader = made
+        } else {
+            reader?.removeFromSuperview()
+            reader = nil
+            expanded = false
         }
+        linesView.isHidden = expanded
+        link.title = expanded ? NeuralReading.showFewerLines : NeuralReading.showAllLines(edit.total)
+        guard !silently else { return }
+        onToggle?(expanded)
+        onHeight?()
+    }
+
+    private func copyEverything() {
+        guard let text = allText else { return }
+        host?.copyToPasteboard(text)
+        copyAll.title = AccountWords.copied
+        onHeight?()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
+            self?.copyAll.title = NeuralReading.copyAllLabel
+            self?.onHeight?()
+        }
+    }
+
+    override func fit(width: CGFloat) -> CGFloat {
+        var box: CGFloat
+        if let reader {
+            let whole = reader.contentHeight + 2
+            box = min(whole, max(readerHeight?() ?? 300, 80))
+            reader.frame = CGRect(x: 0, y: 0, width: width, height: box)
+        } else {
+            box = linesView.fit(width: width)
+            linesView.frame = CGRect(x: 0, y: 0, width: width, height: box)
+        }
+        var total = box
+        if canExpand {
+            let linkSize = link.fittingSize
+            let copySize = copyAll.fittingSize
+            let bar = max(linkSize.height, copySize.height)
+            let top = box + Self.barGap
+            link.frame = CGRect(x: 0, y: top + (bar - linkSize.height) / 2, width: linkSize.width, height: linkSize.height)
+            copyAll.frame = CGRect(
+                x: max(width - copySize.width, linkSize.width + 12), y: top + (bar - copySize.height) / 2,
+                width: copySize.width, height: copySize.height)
+            total = top + bar
+        }
+        setFrameSize(NSSize(width: width, height: total))
+        needsDisplay = true
+        return total
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let found = super.hitTest(point)
+        return found === self ? nil : found
     }
 }
 

@@ -235,6 +235,9 @@ final class AccountReadoutPage: NSView {
     var onHeight: (() -> Void)?
     var copyText: String?
     var outputs: [AccountOutputBlock] = []
+    var diffs: [AccountDiffBlock] = []
+    var expandedDiffStep: String?
+    private var scrolledFrom: CGFloat?
     var expandedSubject = false
     var copyButton: AccountButton?
     var nowTail: AccountOutputBlock?
@@ -319,8 +322,10 @@ final class AccountReadoutPage: NSView {
         shown = nil
         flow.removeAll()
         outputs = []
+        diffs = []
         copyButton = nil
         stepID = step.stepID
+        forgetDiffIfMoved()
         zone = step.header.zone
         header.show(stepHeader(step.header), paint: paint)
         buildStep(
@@ -358,11 +363,13 @@ final class AccountReadoutPage: NSView {
     private func rebuild(_ value: NeuralReadout) {
         flow.removeAll()
         outputs = []
+        diffs = []
         nowTail = nil
         copyText = nil
         expandedSubject = false
         copyButton = nil
         stepID = value.step?.stepID
+        forgetDiffIfMoved()
         header.show(headerContent(value), paint: paint)
         switch value.body {
         case .step(let step):
@@ -581,9 +588,86 @@ final class AccountReadoutPage: NSView {
     }
 
     func toggleOutput() -> Bool {
-        guard let block = outputs.first(where: { $0.canExpand }) else { return false }
-        block.toggle()
+        if let block = outputs.first(where: { $0.canExpand }) {
+            block.toggle()
+            return true
+        }
+        guard let diff = diffs.first(where: { $0.canExpand }) else { return false }
+        diff.toggle()
         return true
+    }
+
+    /// A reader left open belongs to the step it was opened on: another step starts closed.
+    private func forgetDiffIfMoved() {
+        guard expandedDiffStep != stepID else { return }
+        expandedDiffStep = nil
+        scrolledFrom = nil
+    }
+
+    /// How tall a reader of a whole file may be: where the page scrolls on its own, what its
+    /// region shows less the label above and the bar under the file, so the file and both of its
+    /// buttons are in view together; in a card inside the story, four fifths of what the story
+    /// shows.
+    func readerHeight() -> CGFloat {
+        if mode == .column, let scroll, scroll.bounds.height > 160 {
+            return max(200, min(640, scroll.bounds.height - 82))
+        }
+        let shown = owner.viewHeight > 0 ? owner.viewHeight : (owner.window?.contentView?.bounds.height ?? 800)
+        return max(300, min(640, (shown * 0.8).rounded()))
+    }
+
+    /// A reader opened or closed: the model learns the output is out, and the page scrolls until
+    /// the file leads, then puts itself back where it was when the file is put away.
+    func diffToggled(_ block: AccountDiffBlock, expanded: Bool, stepID: String) {
+        expandedDiffStep = expanded ? stepID : nil
+        owner.host?.updateModel { $0.setBrowseOutputExpanded(expanded) }
+        for (delay, first) in [(0.06, true), (0.35, false)] {
+            Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self, weak block] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let block, block.expanded == expanded else { return }
+                    self.placeDiff(block, opening: expanded, first: first)
+                }
+            }
+        }
+    }
+
+    private(set) var placements = 0
+    var documentHeight: CGFloat { document.frame.height }
+
+    /// Brings the file to the top, once when the reader opens and again after the story has
+    /// measured the card's new height, which a first look at a story that is still the old height
+    /// cannot scroll as far as the file needs.
+    private func placeDiff(_ block: AccountDiffBlock, opening: Bool, first: Bool) {
+        placements += 1
+        layoutSubtreeIfNeeded()
+        if let scroll {
+            let clip = scroll.contentView
+            if opening {
+                let top = block.convert(block.bounds, to: document).minY
+                if first { scrolledFrom = clip.bounds.minY }
+                moveScroll(to: top - 28)
+            } else if let back = scrolledFrom, first {
+                moveScroll(to: back)
+                scrolledFrom = nil
+            }
+            return
+        }
+        if opening {
+            let top = block.convert(block.bounds, to: owner.document).minY
+            if first { scrolledFrom = owner.scrollY }
+            owner.scrollTo(top - 28, animated: first)
+        } else if let back = scrolledFrom {
+            owner.scrollTo(back, animated: first)
+            if !first { scrolledFrom = nil }
+        }
+    }
+
+    private func moveScroll(to y: CGFloat) {
+        guard let scroll else { return }
+        let clip = scroll.contentView
+        let limit = max(0, document.frame.height - clip.bounds.height)
+        clip.scroll(to: NSPoint(x: clip.bounds.minX, y: min(max(y, 0), limit)))
+        scroll.reflectScrolledClipView(clip)
     }
 
     var visibleText: String {
