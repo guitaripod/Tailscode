@@ -179,13 +179,14 @@ struct NeuralNodesTests {
         #expect(hovered.hot)
     }
 
-    @Test("a recovered failure is flagged and still wears danger")
+    @Test("a recovered failure is flagged and wears attention, not danger")
     func recovered() throws {
         let model = BrainFixtures.model(BrainFixtures.buildFix())
         let draws = NeuralNodes.draws(model: model, time: 0, reduceMotion: false)
         let healed = try #require(draws.first { $0.isRecovered })
         #expect(healed.status == .failed)
-        #expect(healed.tone == .danger)
+        #expect(healed.tone == .attention)
+        #expect(healed.verdict == .fixed)
         #expect(draws.filter { $0.isRecovered }.count == 1)
     }
 

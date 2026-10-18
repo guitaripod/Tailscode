@@ -345,14 +345,18 @@ public enum NeuralTurns {
 
     /// A command that failed and was later run again, word for word, and passed: the failure was
     /// part of getting there, and a brain says so rather than wearing it as a wound.
+    /// A step that failed and was later done again, word for word, and passed: the failure was
+    /// part of getting there, and a brain says so rather than wearing it as a wound. A command
+    /// is the same command; a file step is the same tool on the same file.
     private static func markRecovered(_ steps: inout [NeuralStep]) {
         var passedLater = Set<String>()
         for index in steps.indices.reversed() {
             let step = steps[index]
-            guard step.tieIsCommand, let key = step.tieKey else { continue }
+            guard let key = step.tieKey else { continue }
+            let identity = step.tieIsCommand ? "c\u{1}" + key : "f\u{1}" + step.title + "\u{1}" + key
             if step.status == .ok {
-                passedLater.insert(key)
-            } else if step.status == .failed, passedLater.contains(key) {
+                passedLater.insert(identity)
+            } else if step.status == .failed, passedLater.contains(identity) {
                 steps[index].recovered = true
             }
         }

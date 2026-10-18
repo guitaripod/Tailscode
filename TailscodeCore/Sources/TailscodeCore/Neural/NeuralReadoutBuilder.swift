@@ -13,12 +13,15 @@ struct NeuralReadoutBuilder {
     let tz: TimeZone
     let answer: String?
     let outputShown: Int
+    /// Every step's verdict, read once for the model.
+    let verdicts: NeuralVerdict.TurnReading
 
     init(
         model: NeuralBrainModel, now: Date, tz: TimeZone, answer: String?,
         outputShown: Int = NeuralReadout.outputShown
     ) {
         self.outputShown = outputShown
+        verdicts = model.verdicts
         self.model = model
         steps = model.steps
         self.now = now
@@ -29,7 +32,8 @@ struct NeuralReadoutBuilder {
     func step(at index: Int) -> R.Step {
         let step = steps[index]
         return R.Step(
-            stepID: step.id, header: header(at: index), subject: Self.subject(of: step),
+            stepID: step.id, header: header(at: index),
+            subject: Self.subject(of: step, title: NeuralHuman.title(at: index, in: steps).text),
             relations: relations(at: index), why: why(at: index),
             result: Self.result(for: step, shown: outputShown), facts: facts(of: step),
             gathered: model.ganglionMembers[step.id] ?? [])
@@ -38,37 +42,51 @@ struct NeuralReadoutBuilder {
     func header(at index: Int) -> R.Header {
         let step = steps[index]
         return R.Header(
-            zone: step.zone, label: step.zone.label, chip: Self.chip(for: step),
+            zone: step.zone, label: step.zone.label, chip: chip(at: index),
             counter: NeuralReading.counter(index + 1, of: steps.count), number: index + 1,
             total: steps.count, isPinned: model.pinnedStep == step.id, mark: step.mark)
     }
 
-    static func chip(for step: NeuralStep) -> R.Chip {
-        let kind = chipKind(of: step)
-        return R.Chip(kind: kind, word: NeuralReading.chipWord(kind), tone: tone(of: kind))
+    /// The chip a step wears: its verdict in the reader's terms.
+    func chip(at index: Int) -> R.Chip {
+        Self.chip(for: verdicts.steps[index])
     }
 
-    static func chipKind(of step: NeuralStep) -> R.ChipKind {
-        switch step.status {
-        case .ok: return .done
-        case .failed: return step.recovered ? .retried : .failed
-        case .running: return .running
-        case .stopped: return .stopped
-        case .waitingApproval, .waitingAnswer: return .waiting
-        case .stalled: return .stalled
-        }
+    static func chip(for reading: NeuralVerdict.StepReading) -> R.Chip {
+        let kind = reading.verdict.chipKind
+        return R.Chip(
+            kind: kind, word: NeuralReading.chipWord(kind), tone: reading.verdict.tone,
+            plainWord: reading.verdict.word, detail: reading.detail, fixedBy: reading.fixedBy)
     }
+
+    /// A step's chip from the step alone, which cannot tell a turn still running from one that
+    /// ended: an error nothing fixed reads as failed.
+    static func chip(for step: NeuralStep) -> R.Chip {
+        let verdict: NeuralVerdict.Step
+        switch step.status {
+        case .ok: verdict = .done
+        case .failed: verdict = step.recovered ? .fixed : .failed
+        case .running: verdict = .running
+        case .stopped: verdict = .stopped
+        case .waitingApproval, .waitingAnswer: verdict = .waiting
+        case .stalled: verdict = .stalled
+        }
+        return chip(for: NeuralVerdict.StepReading(verdict: verdict, fixedBy: nil, fixedByNumber: nil, error: nil))
+    }
+
+    static func chipKind(of step: NeuralStep) -> R.ChipKind { chip(for: step).kind }
 
     static func tone(of kind: R.ChipKind) -> NeuralTone {
         switch kind {
-        case .done, .running: return .live
+        case .done: return .quiet
+        case .running: return .live
         case .failed: return .danger
-        case .waiting, .stalled: return .attention
+        case .waiting, .stalled, .fixed, .hitError: return .attention
         case .stopped, .retried: return .quiet
         }
     }
 
-    static func tone(of step: NeuralStep) -> NeuralTone { tone(of: chipKind(of: step)) }
+    static func tone(of step: NeuralStep) -> NeuralTone { chip(for: step).tone }
 
     func facts(of step: NeuralStep) -> R.Facts {
         let clock = step.at.map { NeuralReading.clock($0, timeZone: tz) }
@@ -121,8 +139,9 @@ struct NeuralReadoutBuilder {
         }
     }
 
-    static func subject(of step: NeuralStep) -> R.Subject {
-        let title = NeuralReading.title(of: step)
+    static func subject(of step: NeuralStep, title override: String? = nil) -> R.Subject {
+        let raw = NeuralReading.title(of: step)
+        let title = override ?? NeuralHuman.title(for: step)
         let kind = subjectKind(of: step)
         let call = step.call?.call
         var primary = ""
@@ -168,7 +187,8 @@ struct NeuralReadoutBuilder {
         case .agent, .thought, .note, .other: copyable = false
         }
         return R.Subject(
-            kind: kind, title: title, primary: primary, secondary: secondary, directory: directory,
+            kind: kind, title: title, rawTitle: raw, primary: primary, secondary: secondary,
+            directory: directory,
             fileName: fileName,
             lineCount: kind == .thought || kind == .note
                 ? 1 : max(NeuralReadoutText.rawLineCount(primary), primary.isEmpty ? 0 : 1),
@@ -429,6 +449,7 @@ struct NeuralReadoutBuilder {
             R.Tick(
                 index: index, stepID: step.id, zone: step.zone, status: step.status,
                 isFailure: step.status == .failed, isRecovered: step.recovered,
+                verdict: verdicts.steps[index].verdict,
                 answerFollows: hasAnswer && index == steps.count - 1)
         }
     }
@@ -461,20 +482,14 @@ struct NeuralReadoutBuilder {
     private func failures() -> [R.Failure] {
         steps.enumerated().compactMap { index, step in
             guard step.status == .failed else { return nil }
-            var retried: (id: String, number: Int)?
-            if step.recovered, step.tieIsCommand, let key = step.tieKey {
-                if let later = steps[(index + 1)...].first(where: {
-                    $0.tieIsCommand && $0.tieKey == key && $0.status == .ok
-                }) {
-                    retried = (later.id, later.index + 1)
-                }
-            }
+            let reading = verdicts.steps[index]
+            let retried = reading.fixedBy.flatMap { id in reading.fixedByNumber.map { (id, $0) } }
             return R.Failure(
                 stepID: step.id, number: index + 1, title: NeuralReading.title(of: step),
-                firstLine: Self.errorLine(of: step), retriedAt: retried?.id,
-                retriedNumber: retried?.number,
-                label: retried.map { NeuralReading.retriedAt($0.number) }
-                    ?? NeuralReading.neverRetried)
+                firstLine: Self.errorLine(of: step), retriedAt: retried?.0,
+                retriedNumber: retried?.1,
+                label: retried.map { NeuralReading.retriedAt($0.1) } ?? NeuralReading.neverRetried,
+                verdict: reading.verdict, verdictWord: reading.verdict.word)
         }
     }
 
@@ -523,7 +538,7 @@ struct NeuralReadoutBuilder {
         return R.ZoneRow(
             number: index + 1, stepID: step.id, title: NeuralReading.title(of: step),
             argument: NeuralReadoutText.oneLine(words, limit: R.argumentLimit), status: step.status,
-            tone: Self.tone(of: step))
+            tone: verdicts.steps[index].verdict.tone)
     }
 
     func zone(_ zone: NeuralZone) -> R.ZoneList {

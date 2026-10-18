@@ -72,7 +72,12 @@ public struct NeuralStepList: Sendable, Equatable {
         public let number: Int
         public let kind: Kind
         public let zone: NeuralZone
+        /// What the step did in a sentence a person reads: "Built the project", "Read film.sh".
         public let title: String
+        /// The tool's own name: "Bash", "Read".
+        public let rawTitle: String
+        /// What the step is in the reader's terms: fixed, failed, trying again, and so on.
+        public let verdict: NeuralVerdict.Step
         /// The argument on one line, whole: the command, the path, the pattern, the first line of
         /// a thought. `argument(fittingChars:)` shortens it.
         public let argument: String
@@ -90,6 +95,13 @@ public struct NeuralStepList: Sendable, Equatable {
         public let lines: [String]
 
         public var isFailure: Bool { status == .failed }
+
+        /// The words the row's mark says on the right: "Fixed on retry", "Failed", "Hit an
+        /// error", "Waiting for you"; nil for a step that is done.
+        public var markWord: String? { verdict.isMarked ? verdict.word : nil }
+
+        /// The tone of the mark: amber for fixed and trying again, red for failed only.
+        public var markTone: NeuralTone { verdict.tone }
         /// A note the agent said: a message, two lines tall.
         public var isSaid: Bool { kind == .note }
         /// A thought: one muted line.
@@ -155,6 +167,7 @@ public struct NeuralStepList: Sendable, Equatable {
     private var visible: [Int] = []
     private var positions: [String: Int] = [:]
     private var signatures: [Int] = []
+    private var builtLive = false
     private var pointerOffsets: [Double] = [0]
     private var touchOffsets: [Double] = [0]
 
@@ -166,8 +179,9 @@ public struct NeuralStepList: Sendable, Equatable {
     /// step changed, and only the new steps are read; a change in status, retry, group, tie or
     /// argument rebuilds them. A search is read again, because an output can grow.
     public mutating func update(steps newSteps: [NeuralStep], live: Bool? = nil) {
+        let liveChanged = live.map { $0 != builtLive } ?? false
         if let live { isLive = live }
-        var reusable = newSteps.count >= signatures.count
+        var reusable = newSteps.count >= signatures.count && !liveChanged
         var fresh: [Int] = []
         fresh.reserveCapacity(newSteps.count)
         for (index, step) in newSteps.enumerated() {
@@ -511,7 +525,8 @@ public struct NeuralStepList: Sendable, Equatable {
     }
 
     private mutating func rebuild() {
-        let built = Self.makeRows(steps)
+        let built = Self.makeRows(steps, live: isLive)
+        builtLive = isLive
         rows = built
         var counts: [NeuralZone: Int] = [:]
         var failed = 0
@@ -565,29 +580,41 @@ public struct NeuralStepList: Sendable, Equatable {
             !text.isEmpty && text.range(of: query, options: .caseInsensitive) != nil
         }
         if has(row.title) || has(row.argument) || has(step.detail) || has(step.text) { return true }
-        if has(step.zone.label) || has(step.zone.voiceLabel) || has(NeuralReading.statusWord(step.status)) { return true }
+        if has(step.zone.label) || has(step.zone.voiceLabel) || has(NeuralReading.statusWord(step.status))
+            || has(row.verdict.word) || has(row.rawTitle)
+        { return true }
         if case .retried = row.mark, has(NeuralReading.retriedWord) { return true }
         for line in step.outputLines where has(line) { return true }
         if let output = step.call?.call.output, has(output) { return true }
         return false
     }
 
-    private static func makeRows(_ steps: [NeuralStep]) -> [Row] {
+    private static func makeRows(_ steps: [NeuralStep], live: Bool) -> [Row] {
+        let readings = NeuralVerdict.read(
+            NeuralTurn(id: "list", steps: steps, outcome: live ? .running : .settled)).steps
         var uses: [UseKey: [Int]] = [:]
         var toolsInGroup: [Int: [Int]] = [:]
         for (index, step) in steps.enumerated() {
             if let key = step.tieKey { uses[UseKey(key: key, isCommand: step.tieIsCommand), default: []].append(index) }
             if NeuralReading.isTool(step) { toolsInGroup[step.group, default: []].append(index) }
         }
+        let titles = NeuralHuman.titles(for: steps)
         return steps.enumerated().map { index, step in
             let tool = NeuralReading.isTool(step)
             let kind: Kind = tool ? .tool : NeuralReading.isNote(step) ? .note : .thought
-            let related = related(of: step, at: index, in: steps, uses: uses)
+            let reading = readings[index]
+            var related = related(of: step, at: index, in: steps, uses: uses)
+            if reading.verdict == .fixed, let by = reading.fixedBy, let number = reading.fixedByNumber {
+                related = Related(
+                    kind: .retry, stepID: by, number: number, label: NeuralReading.retriedAt(number))
+            }
             return Row(
                 id: step.id, index: index, number: index + 1, kind: kind, zone: step.zone,
-                title: NeuralReading.title(of: step), argument: argument(of: step, kind: kind),
+                title: titles[index].text,
+                rawTitle: NeuralReading.title(of: step), verdict: reading.verdict,
+                argument: argument(of: step, kind: kind),
                 argumentKind: tool ? NeuralReadoutBuilder.subjectKind(of: step).argumentKind : .words,
-                status: step.status, mark: mark(of: step, related: related), related: related,
+                status: step.status, mark: mark(of: reading.verdict, related: related), related: related,
                 bracket: tool ? bracket(of: index, group: toolsInGroup[step.group] ?? []) : .none,
                 group: step.group, isCard: step.isCard, lines: lines(of: step, kind: kind))
         }
@@ -615,17 +642,18 @@ public struct NeuralStepList: Sendable, Equatable {
         }
     }
 
-    private static func mark(of step: NeuralStep, related: Related?) -> Mark {
-        switch step.status {
-        case .ok: return .none
-        case .failed:
-            if step.recovered, let related, related.kind == .retry {
+    private static func mark(of verdict: NeuralVerdict.Step, related: Related?) -> Mark {
+        switch verdict {
+        case .done: return .none
+        case .fixed:
+            if let related, related.kind == .retry {
                 return .retried(stepID: related.stepID, number: related.number)
             }
             return .failed
+        case .failed, .tryingAgain: return .failed
         case .running: return .running
         case .stopped: return .stopped
-        case .waitingApproval, .waitingAnswer, .stalled: return .waiting
+        case .waiting, .stalled: return .waiting
         }
     }
 

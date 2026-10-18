@@ -60,8 +60,8 @@ enum ReadingFixtures {
         #expect(line.thoughts == "2 thoughts")
         #expect(line.notes == "2 notes")
         #expect(line.tally == "+5 −2")
-        #expect(line.failure == "1 failed, then passed")
-        #expect(line.detail == "8m 25s · 2 thoughts · 2 notes · 1 failed, then passed")
+        #expect(line.failure == "fixed 1 error")
+        #expect(line.detail == "8m 25s · 2 thoughts · 2 notes · fixed 1 error")
     }
 
     @Test func aFailureNobodyRetriedIsJustFailed() {
@@ -115,7 +115,7 @@ enum ReadingFixtures {
     @Test func spokenSentenceCountsWhatHappened() {
         #expect(
             NeuralReading.spoken(ReadingFixtures.buildFix())
-                == "25 tools in 8 minutes 25 seconds. Ran 18 commands, one failed and then passed. Read 3 files. Edited 2 files, 5 lines added and 2 removed."
+                == "25 tools in 8 minutes 25 seconds. Ran 18 commands, fixed one error. Read 3 files. Edited 2 files, 5 lines added and 2 removed."
         )
     }
 
@@ -161,7 +161,7 @@ enum ReadingFixtures {
         let read = NeuralReading.card(for: turn.steps[2], in: turn.steps, timeZone: ReadingFixtures.utc)
         #expect(read.facts.first == "3 calls in one message")
         let build = NeuralReading.card(for: turn.steps[9], in: turn.steps, timeZone: ReadingFixtures.utc)
-        #expect(build.statusWord == "failed")
+        #expect(build.statusWord == "fixed on retry")
         #expect(build.facts.last == "same command as 11")
     }
 
@@ -196,7 +196,7 @@ enum ReadingFixtures {
         let turn = ReadingFixtures.buildFix()
         #expect(
             NeuralReading.announcement(for: turn.steps[9], of: turn.steps.count)
-                == "Step 10 of 29, Bash, failed, swift build")
+                == "Step 10 of 29, Bash, fixed on retry, swift build")
         #expect(
             NeuralReading.announcement(for: turn.steps[27], of: turn.steps.count)
                 == "Step 28 of 29, Thinking, done, Check the Mac manifest too.")

@@ -40,6 +40,8 @@ public struct NeuralNodeDraw: Sendable, Equatable, Identifiable {
     /// How many steps a ganglion stands for; nil for every other node.
     public let ganglionCount: Int?
     public let isRecovered: Bool
+    /// What the step is in the reader's terms; a "+7" node wears the most pressing of its members.
+    public let verdict: NeuralVerdict.Step
     /// The glyph a waiting node wears in place of its number, a pause or a question mark.
     public let mark: Character?
     /// What the node says inside it: the mark where it has one, the number, or "+N" for a ganglion.
@@ -120,6 +122,15 @@ public enum NeuralNodes {
     /// How a step's status is worn: a running step is live, a step waiting on the person or stalled
     /// is attention, a failed one is danger, a stopped one is quiet and a finished one is the
     /// zone's own.
+    public static func tone(of verdict: NeuralVerdict.Step, status: NeuralStatus) -> NeuralNodeTone {
+        switch verdict {
+        case .fixed, .tryingAgain: return .attention
+        case .failed: return .danger
+        case .done, .running, .waiting, .stalled, .stopped: return tone(of: status)
+        }
+    }
+
+    /// How a step's status is worn, from the status alone.
     public static func tone(of status: NeuralStatus) -> NeuralNodeTone {
         switch status {
         case .ok: return .zone
@@ -144,6 +155,7 @@ public enum NeuralNodes {
         model: NeuralBrainModel, time: Double, reduceMotion: Bool
     ) -> [NeuralNodeDraw] {
         let steps = model.turn.steps
+        let readings = model.verdicts.steps
         let replayTime = model.replayTime(now: time)
         let fire = replayTime == nil ? nil : model.replay?.fire
         var out: [NeuralNodeDraw] = []
@@ -155,6 +167,8 @@ public enum NeuralNodes {
             if case .leader(let members) = role { count = members } else { count = nil }
             let gathered = count == nil ? nil : model.ganglionMembers[step.id]
             let status = gathered.map { aggregate($0, model: model, fallback: step.status) } ?? step.status
+            let verdict = gathered.map { aggregateVerdict($0, model: model) }
+                ?? readings[index].verdict
             let ramp = lighting(index: index, replayTime: replayTime, fire: fire, reduceMotion: reduceMotion)
             let carried = gathered ?? [step.id]
             let inProvenance = model.isProvenanceActive
@@ -166,13 +180,15 @@ public enum NeuralNodes {
                     id: step.id, number: step.index + 1,
                     point: model.layout.placements[step.id] ?? step.zone.center,
                     radius: NeuralDesign.nodeRadius * (count == nil ? 1 : ganglionScale),
-                    zone: step.zone, shape: step.zone.shape, status: status, tone: tone(of: status),
+                    zone: step.zone, shape: step.zone.shape, status: status,
+                    tone: tone(of: verdict, status: status),
                     motion: moves ? motion(of: status) : .still, lit: ramp.lit, flash: ramp.flash,
                     dimmed: model.isProvenanceActive && !inProvenance, hot: selected || inProvenance,
                     pinned: model.pinned == step.id, ganglionCount: count,
                     isRecovered: carried.contains { id in
                         model.indexByID[id].map { steps[$0].recovered } ?? false
                     },
+                    verdict: verdict,
                     mark: step.mark,
                     label: count.map { "+\($0)" } ?? step.mark.map { String($0) }
                         ?? String(step.index + 1)))
@@ -243,6 +259,26 @@ public enum NeuralNodes {
             return joined.count > 28 ? String(joined.prefix(27)) + "\u{2026}" : joined
         }
         return tie.key.split(separator: "/").last.map(String.init) ?? tie.key
+    }
+
+    private static func aggregateVerdict(_ members: [String], model: NeuralBrainModel) -> NeuralVerdict.Step {
+        func rank(_ verdict: NeuralVerdict.Step) -> Int {
+            switch verdict {
+            case .waiting: return 6
+            case .running: return 5
+            case .stalled: return 4
+            case .failed, .tryingAgain: return 3
+            case .stopped: return 2
+            case .fixed: return 1
+            case .done: return 0
+            }
+        }
+        var chosen = NeuralVerdict.Step.done
+        for id in members {
+            guard let verdict = model.verdict(ofStep: id)?.verdict else { continue }
+            if rank(verdict) > rank(chosen) { chosen = verdict }
+        }
+        return chosen
     }
 
     private static func aggregate(

@@ -52,8 +52,12 @@ public struct NeuralTicker: Sendable, Equatable {
     public let stepID: String
     public let zone: NeuralZone
     public let status: NeuralStatus
-    /// The tool's name, or "Thinking" or "Said".
+    /// What the step did in a sentence ("Built the project"), or "Thinking" or "Said".
     public let title: String
+    /// The tool's own name, or "Thinking" or "Said".
+    public let rawTitle: String
+    /// The step's verdict in the reader's terms.
+    public let verdict: NeuralVerdict.Step
     /// The argument or the words, on one line and shortened.
     public let detail: String
     /// The title and the detail as the line reads.
@@ -134,6 +138,8 @@ public struct NeuralBrainModel: Sendable {
     var pendingBrowseEffects: [NeuralBrowse.Effect] = []
     /// The account this model last read; see `account(now:tz:answer:)`.
     let accountCache = NeuralAccountCache()
+    /// The verdicts this model last read; see `verdicts`.
+    let verdictCache = NeuralVerdictCache()
     /// How long the pointer has rested on a node and how long ago it left one, for the readout.
     public internal(set) var hoverGrace = NeuralHoverGrace()
 
@@ -490,13 +496,17 @@ public struct NeuralBrainModel: Sendable {
 
     private func makeTicker(_ index: Int) -> NeuralTicker {
         let step = turn.steps[index]
-        let title = NeuralReading.title(of: step)
+        let raw = NeuralReading.title(of: step)
+        let title = NeuralHuman.title(at: index, in: turn.steps).text
+        let verdict = verdicts.steps[index].verdict
         let said = NeuralReading.isThought(step) || NeuralReading.isNote(step) ? step.text : step.detail
         let detail = Self.oneLine(said, limit: NeuralBrainModel.tickerLimit)
         return NeuralTicker(
-            stepID: step.id, zone: step.zone, status: step.status, title: title, detail: detail,
+            stepID: step.id, zone: step.zone, status: step.status, title: title, rawTitle: raw,
+            verdict: verdict, detail: detail,
             text: detail.isEmpty ? title : Localized.text("%1$@ %2$@", title, detail),
-            statusWord: NeuralReading.statusWord(step.status),
+            statusWord: verdict == .done
+                ? NeuralReading.statusWord(of: step) : verdict.word.lowercased(),
             counter: Localized.text("step %1$lld of %2$lld", index + 1, turn.steps.count),
             number: index + 1, total: turn.steps.count)
     }

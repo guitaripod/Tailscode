@@ -47,7 +47,7 @@ import Testing
     @Test func theLinesChangedLeadTheSubLine() {
         let made = card()
         #expect(made.sub.first == NeuralShare.Run(text: "+5 −2", slot: .accent))
-        #expect(made.sub.last?.text == " · 1 failed, then passed · 2 notes · 2 thoughts")
+        #expect(made.sub.last?.text == " · fixed 1 error · 2 notes · 2 thoughts")
     }
 
     @Test func sixMetersScaleToTheBusiestZone() {

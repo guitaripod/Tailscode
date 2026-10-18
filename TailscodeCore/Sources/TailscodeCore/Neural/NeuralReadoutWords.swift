@@ -83,6 +83,8 @@ extension NeuralReading {
         case .stalled: return statusWord(.stalled).uppercased()
         case .stopped: return statusWord(.stopped).uppercased()
         case .retried: return retriedWord.uppercased()
+        case .fixed: return verdictFixed.uppercased()
+        case .hitError: return verdictHitError.uppercased()
         }
     }
 }

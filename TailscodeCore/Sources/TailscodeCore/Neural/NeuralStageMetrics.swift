@@ -176,6 +176,8 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     public static let tabSize = (width: 3.0, height: 24.0)
     /// How far the readout travels while it slides into place.
     public static let readoutTravel = 24.0
+    /// How far the account rises into place when the readout is stacked under the head.
+    public static let stackedReadoutTravel = 12.0
 
     /// The filter panel needs this much width beside the head, and the row this much width to
     /// have one at all; a turn with fewer zones than `panelMinZones` has chips.
@@ -331,7 +333,7 @@ public struct NeuralStageMetrics: Sendable, Equatable {
         NeuralTransition.Geometry(
             picture: stage, rowHeight: rowHeight, readout: readout, footer: footer,
             readoutTravel: arrangement == .split
-                ? NeuralPoint(Self.readoutTravel, 0) : NeuralPoint(0, Self.readoutTravel),
+                ? NeuralPoint(Self.readoutTravel, 0) : NeuralPoint(0, Self.stackedReadoutTravel),
             list: list, panel: filterPanel ?? filterChips ?? .zero)
     }
 

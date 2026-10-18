@@ -84,6 +84,14 @@ public struct NeuralBrainCard: Sendable, Equatable {
         /// step did. Both share the glyph's geometry.
         public let ring: NeuralGlyph.Ring?
         public let ringStyle: RingStyle
+        /// The ring's tone: amber for an error that was fixed, red for one that stayed.
+        public var ringTone: NeuralTone {
+            switch ringStyle {
+            case .none: return .quiet
+            case .repairedDashed: return .attention
+            case .failedSolid: return .danger
+            }
+        }
         /// The head is dark in every theme: the lights wear the lifted tones.
         public var toneSet: NeuralToneSet { NeuralToneSet.set(for: .cardLight) }
         /// The ring on a zone with a failure nobody recovered.
@@ -191,12 +199,35 @@ public struct NeuralBrainCard: Sendable, Equatable {
         return parts
     }
 
-    public init(turn: NeuralTurn, glyph: NeuralGlyph, eyeTone: NeuralTone, now: Date = Date()) {
+    /// The turn's verdict this card follows: its edge, its clause, its rings.
+    public let verdict: NeuralVerdict.Turn
+
+    /// What a running turn's card says while it happens; nil for a settled turn, whose card is
+    /// exactly what it was.
+    public let live: NeuralLiveCard?
+
+    /// How long the card takes to settle when its turn ends.
+    public static let settleDuration = NeuralCardSettle.duration
+
+    /// The card's settle at `elapsed` seconds after the turn ended: one 400 ms move. A card that
+    /// was never live, or settled off screen, is `NeuralCardSettle.settled`.
+    public func settle(elapsed: TimeInterval, reduceMotion: Bool = false) -> NeuralCardSettle {
+        NeuralCardSettle.at(elapsed, reduceMotion: reduceMotion)
+    }
+
+    public init(
+        turn: NeuralTurn, glyph: NeuralGlyph, eyeTone: NeuralTone, now: Date = Date(),
+        verdicts: NeuralVerdict.TurnReading? = nil, live: NeuralLiveCard? = nil
+    ) {
+        let reading = verdicts ?? NeuralVerdict.read(turn)
+        self.live = live
+        verdict = reading.verdict
         let census = NeuralReading.Census(turn.steps)
         let line = NeuralReading.line(for: turn, now: now)
         turnID = turn.id
         headline = Self.makeHeadline(
-            line, census: census, steps: turn.steps.count, state: Self.stateClause(turn))
+            line, census: census, steps: turn.steps.count, state: Self.stateClause(turn),
+            verdict: reading)
         chips = Self.makeChips(turn.steps)
         digestClauses = Self.makeClauses(census, steps: turn.steps.count)
         var repaired = Set<NeuralZone>()
@@ -247,7 +278,9 @@ public struct NeuralBrainCard: Sendable, Equatable {
                 kind: .state, text: NeuralReading.statusWord(.waitingApproval), tone: .attention)
         }
         switch turn.outcome {
-        case .stopped, .interrupted, .answerless:
+        case .answerless:
+            return Piece(kind: .state, text: NeuralReading.verdictDidntAnswer, tone: .quiet)
+        case .stopped, .interrupted:
             return Piece(kind: .state, text: NeuralReading.statusWord(.stopped), tone: .quiet)
         case .running, .settled, .failed:
             return nil
@@ -255,7 +288,8 @@ public struct NeuralBrainCard: Sendable, Equatable {
     }
 
     private static func makeHeadline(
-        _ line: NeuralReading.Line, census: NeuralReading.Census, steps: Int, state: Piece?
+        _ line: NeuralReading.Line, census: NeuralReading.Census, steps: Int, state: Piece?,
+        verdict: NeuralVerdict.TurnReading
     ) -> Headline {
         var pieces = [Piece(kind: .count, text: line.count, tone: nil)]
         if let duration = line.duration {
@@ -266,9 +300,8 @@ public struct NeuralBrainCard: Sendable, Equatable {
         }
         if let state {
             pieces.append(state)
-        } else if let failure = line.failure {
-            pieces.append(
-                Piece(kind: .failure, text: failure, tone: census.failed > 0 ? .danger : .attention))
+        } else if let clause = verdict.clause {
+            pieces.append(Piece(kind: .failure, text: clause, tone: verdict.tone))
         }
         return Headline(number: census.tools > 0 ? census.tools : steps, pieces: pieces)
     }
@@ -318,7 +351,8 @@ public struct NeuralBrainCard: Sendable, Equatable {
 extension NeuralBrainModel {
     /// The card this turn is drawn as when it is collapsed.
     public func brainCard(now: Date) -> NeuralBrainCard {
-        NeuralBrainCard(turn: turn, glyph: glyph, eyeTone: state.tone, now: now)
+        NeuralBrainCard(
+            turn: turn, glyph: glyph, eyeTone: state.tone, now: now, verdicts: verdicts, live: liveCard)
     }
 
     /// The card as of now.

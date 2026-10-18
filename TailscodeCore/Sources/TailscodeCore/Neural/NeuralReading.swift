@@ -20,7 +20,7 @@ public enum NeuralReading {
         public var removed: Int
         /// "+5 −2", only when something was written.
         public var tally: String?
-        /// "failed", or "1 failed, then passed" when a retry cleared it.
+        /// "failed", or "fixed 1 error" when a later step passed what failed.
         public var failure: String?
 
         /// Duration, thoughts, notes and failure on one line, the way the collapsed row sets them.
@@ -118,7 +118,7 @@ public enum NeuralReading {
         let thought = isThought(step) || isNote(step)
         return Card(
             zone: step.zone, title: title(of: step), status: step.status,
-            statusWord: statusWord(step.status), body: thought ? step.text : step.detail,
+            statusWord: statusWord(of: step), body: thought ? step.text : step.detail,
             tally: thought ? nil : tally(step.added ?? 0, step.removed ?? 0), output: step.outputLines,
             facts: facts, footer: footer)
     }
@@ -145,7 +145,7 @@ public enum NeuralReading {
     public static func announcement(for step: NeuralStep, of total: Int) -> String {
         let base = Localized.text(
             "Step %1$lld of %2$lld, %3$@, %4$@", step.index + 1, total, title(of: step),
-            statusWord(step.status))
+            statusWord(of: step))
         let said = (isThought(step) || isNote(step)) ? step.text : step.detail
         guard !said.isEmpty else { return base }
         return Localized.text("%1$@, %2$@", base, String(said.prefix(80)))
@@ -250,8 +250,8 @@ public enum NeuralReading {
 
     private static func failure(unrecovered: Int, recovered: Int) -> String? {
         if unrecovered > 0 { return Localized.text("failed") }
-        if recovered == 1 { return Localized.text("1 failed, then passed") }
-        if recovered > 1 { return Localized.text("%lld failed, then passed", recovered) }
+        if recovered == 1 { return Localized.text("fixed 1 error") }
+        if recovered > 1 { return Localized.text("fixed %lld errors", recovered) }
         return nil
     }
 
@@ -289,9 +289,9 @@ public enum NeuralReading {
             clauses.append(Localized.text("%lld failed", found.failed))
         }
         if found.recovered == 1 {
-            clauses.append(Localized.text("one failed and then passed"))
+            clauses.append(Localized.text("fixed one error"))
         } else if found.recovered > 1 {
-            clauses.append(Localized.text("%lld failed and then passed", found.recovered))
+            clauses.append(Localized.text("fixed %lld errors", found.recovered))
         }
         if bucket == .edit, let lines = spokenLines(added: added, removed: removed) {
             clauses.append(lines)

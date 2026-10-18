@@ -40,6 +40,8 @@ public struct NeuralAccount: Sendable, Equatable {
         public let added: Int
         public let removed: Int
         public let tally: String?
+        /// The numbers of the steps that changed it, which chips set the cursor to.
+        public let numbers: [Int]
     }
 
     /// A note the agent wrote between its calls.
@@ -96,6 +98,47 @@ public struct NeuralAccount: Sendable, Equatable {
         public let tally: String?
         /// The one line, from the reading: "Ran 3 commands, read 2 files."
         public let words: String
+        /// What the steps did as sentences, a run of the same sentence being one entry: "Built
+        /// the project", "Ran the tests", with how it went.
+        public let entries: [Entry]
+        /// How many errors in it were fixed, and how many stayed.
+        public let fixedCount: Int
+        public let unfixedCount: Int
+        /// The amber words for each fixed error: "fixed an error at step 8".
+        public let fixedWords: [String]
+        /// The work as clauses: "Searched for case .compaction", "Read 2 files", "Edited Rows.swift
+        /// +6 \u{2212}1", "Pushed (4x)". `clauses(limit:)` takes the first few.
+        public let clauseList: [Clause]
+
+        /// The first `limit` clauses (four) and how many more there are, for "+N more".
+        public func clauses(limit: Int = 4) -> (shown: [Clause], more: Int) {
+            (Array(clauseList.prefix(limit)), max(0, clauseList.count - limit))
+        }
+
+        /// The entries' sentences.
+        public var titles: [String] { entries.map(\.title) }
+        /// The entries as one line: "Built the project, Ran the tests".
+        public var line: String {
+            titles.dropFirst().reduce(titles.first ?? "") { Localized.text("%1$@, %2$@", $0, $1) }
+        }
+    }
+
+    /// One clause of a work line.
+    public struct Clause: Sendable, Equatable {
+        public let text: String
+        /// The most pressing verdict among the steps it stands for: a build that passed gets a
+        /// check, a fixed error is amber, an unfixed one red.
+        public let verdict: NeuralVerdict.Step
+        public let stepIDs: [String]
+    }
+
+    /// A sentence a work line says and how that part of the work went.
+    public struct Entry: Sendable, Equatable {
+        public let title: String
+        public let count: Int
+        /// The most pressing verdict among its steps.
+        public let verdict: NeuralVerdict.Step
+        public let firstStepID: String
     }
 
     /// What the agent is waiting on you for, in its own words.
@@ -186,6 +229,16 @@ public struct NeuralAccount: Sendable, Equatable {
     public let thoughtCount: Int
     /// The model's revision this was read at.
     public let revision: Int
+    /// The entity and its vitals; `vitals(now:)` has the words that depend on the clock.
+    public let header: Header
+    /// The person's prompt, when the client passed it.
+    public let asked: Asked?
+    /// The agent's own task list, when it keeps one.
+    public let plan: Plan?
+    /// What came of a settled turn; nil while it runs.
+    public let result: Result?
+    /// The step in flight, while the turn runs.
+    public let live: LiveStep?
 
     private let owner: [String: Int]
     private let stepIndex: [String: Int]
@@ -200,7 +253,8 @@ public struct NeuralAccount: Sendable, Equatable {
     /// a caller passes the same arguments as the readout's, and nothing is read from it. `answer`
     /// is the final message's text, which the model does not hold.
     public static func make(
-        model: NeuralBrainModel, now: Date = Date(), tz: TimeZone = .current, answer: String? = nil
+        model: NeuralBrainModel, now: Date = Date(), tz: TimeZone = .current, answer: String? = nil,
+        prompt: String? = nil
     ) -> NeuralAccount {
         let steps = model.steps
         let turn = model.turn
@@ -215,10 +269,12 @@ public struct NeuralAccount: Sendable, Equatable {
         var thoughts = 0
         var previousSaid: (speaker: String, at: Date?)?
         let builder = NeuralReadoutBuilder(model: model, now: now, tz: tz, answer: nil)
+        let readings = model.verdicts
+        let titles = NeuralHuman.titles(for: steps)
 
         func flush() {
             guard !pending.isEmpty else { return }
-            let work = makeWork(pending, steps: steps)
+            let work = makeWork(pending, steps: steps, readings: readings, titles: titles)
             for id in work.stepIDs { owner[id] = items.count }
             items.append(.work(work))
             pending = []
@@ -273,17 +329,34 @@ public struct NeuralAccount: Sendable, Equatable {
         }
         var indices: [String: Int] = [:]
         for (index, step) in steps.enumerated() { indices[step.id] = index }
+        let header = makeHeader(
+            model: model, readings: readings, said: order.count, thoughts: thoughts,
+            speaker: speaker, family: family, titles: titles)
+        let result: Result? =
+            turn.outcome == .running
+            ? nil
+            : makeResult(
+                steps: steps, readings: readings, titles: titles, answer: answer, outcome: turn.outcome)
         return NeuralAccount(
             items: items, needsYou: needsYou, answer: shown, speaker: speaker,
             utteranceCount: order.count, thoughtCount: thoughts, revision: model.revision,
+            header: header, asked: makeAsked(turn: turn, prompt: prompt),
+            plan: makePlan(steps: steps), result: result,
+            live: makeLive(model: model, readings: readings, titles: titles),
             owner: owner, stepIndex: indices, saidOrder: order)
     }
 
     private init(
         items: [Item], needsYou: Bool, answer: Answer?, speaker: String, utteranceCount: Int,
-        thoughtCount: Int, revision: Int, owner: [String: Int], stepIndex: [String: Int],
+        thoughtCount: Int, revision: Int, header: Header, asked: Asked?, plan: Plan?,
+        result: Result?, live: LiveStep?, owner: [String: Int], stepIndex: [String: Int],
         saidOrder: [(index: Int, itemIndex: Int)]
     ) {
+        self.header = header
+        self.asked = asked
+        self.plan = plan
+        self.result = result
+        self.live = live
         self.items = items
         self.needsYou = needsYou
         self.answer = answer
@@ -330,7 +403,10 @@ public struct NeuralAccount: Sendable, Equatable {
         steps.first { NeuralReading.isNote($0) }
     }
 
-    private static func makeWork(_ indices: [Int], steps: [NeuralStep]) -> Work {
+    private static func makeWork(
+        _ indices: [Int], steps: [NeuralStep], readings: NeuralVerdict.TurnReading,
+        titles: [NeuralHuman.Title]
+    ) -> Work {
         let members = indices.map { steps[$0] }
         var clusters: [Cluster] = []
         var failures = 0
@@ -361,34 +437,110 @@ public struct NeuralAccount: Sendable, Equatable {
                     failedStepID: step.id, retryStepID: later.id, number: later.index + 1,
                     label: NeuralReading.retriedAt(later.index + 1)))
         }
-        var order: [String] = []
-        var changed: [String: (id: String, added: Int, removed: Int)] = [:]
-        for step in members where step.zone == .act && step.status == .ok {
-            guard let path = step.tieKey ?? (step.detail.isEmpty ? nil : step.detail) else {
-                continue
-            }
-            var entry = changed[path] ?? (step.id, 0, 0)
-            if changed[path] == nil { order.append(path) }
-            entry.added += step.added ?? 0
-            entry.removed += step.removed ?? 0
-            changed[path] = entry
-        }
-        let changes = order.compactMap { path -> Change? in
-            guard let entry = changed[path] else { return nil }
-            let parts = NeuralReadoutText.split(path: path)
-            return Change(
-                stepID: entry.id, path: path, directory: parts.directory, fileName: parts.file,
-                shortDirectory: NeuralReadoutText.shortDirectory(parts.directory),
-                added: entry.added, removed: entry.removed,
-                tally: NeuralReading.tally(entry.added, entry.removed))
-        }
+        let changes = changes(in: indices, steps: steps)
         let added = changes.reduce(0) { $0 + $1.added }
         let removed = changes.reduce(0) { $0 + $1.removed }
+        var entries: [Entry] = []
+        var fixedWords: [String] = []
+        var fixedCount = 0
+        var unfixedCount = 0
+        for index in indices {
+            let verdict = readings.steps[index].verdict
+            if verdict == .fixed {
+                fixedCount += 1
+                fixedWords.append(NeuralReading.fixedAtStep(index + 1))
+            }
+            if verdict == .failed { unfixedCount += 1 }
+            let title = titles[index].text
+            if let last = entries.last, last.title == title {
+                entries[entries.count - 1] = Entry(
+                    title: title, count: last.count + 1,
+                    verdict: moreCurrent(last.verdict, verdict), firstStepID: last.firstStepID)
+            } else {
+                entries.append(
+                    Entry(title: title, count: 1, verdict: verdict, firstStepID: steps[index].id))
+            }
+        }
         return Work(
             id: idPrefixWork + members[0].id, stepIDs: members.map(\.id),
             numbers: indices.map { $0 + 1 }, clusters: clusters, failureCount: failures,
             firstFailedStepID: firstFailed, retries: retries, changes: changes, added: added,
-            removed: removed, tally: NeuralReading.tally(added, removed), words: words(members))
+            removed: removed, tally: NeuralReading.tally(added, removed), words: words(members),
+            entries: entries, fixedCount: fixedCount, unfixedCount: unfixedCount,
+            fixedWords: fixedWords,
+            clauseList: clauses(indices, steps: steps, readings: readings, titles: titles))
+    }
+
+    /// The work folded to clauses: runs of reads, edits and writes become "Read 2 files" and "Edited
+    /// Rows.swift +6 \u{2212}1", a repeated sentence "Pushed (4x)", the rest their own sentence.
+    private static func clauses(
+        _ indices: [Int], steps: [NeuralStep], readings: NeuralVerdict.TurnReading,
+        titles: [NeuralHuman.Title]
+    ) -> [Clause] {
+        func key(_ index: Int) -> String {
+            guard let call = steps[index].call?.call else { return "t:" + titles[index].text }
+            switch call.summaryKind {
+            case .fileRead: return "read"
+            case .fileEdit: return "edit"
+            case .fileWrite: return "write"
+            default: return "t:" + titles[index].text
+            }
+        }
+        var groups: [[Int]] = []
+        for index in indices {
+            if let last = groups.last?.last, key(last) == key(index) {
+                groups[groups.count - 1].append(index)
+            } else {
+                groups.append([index])
+            }
+        }
+        return groups.map { group in
+            var verdict = readings.steps[group[0]].verdict
+            for index in group.dropFirst() { verdict = moreCurrent(verdict, readings.steps[index].verdict) }
+            let first = group[0]
+            let text: String
+            switch key(first) {
+            case "read":
+                text = group.count == 1 ? titles[first].text : Localized.text("Read %lld files", group.count)
+            case "write":
+                text = group.count == 1 ? titles[first].text : Localized.text("Wrote %lld files", group.count)
+            case "edit":
+                let files = changes(in: group, steps: steps)
+                if files.count > 1 {
+                    text = Localized.text("Edited %lld files", files.count)
+                } else if let file = files.first {
+                    text = file.tally.map { Localized.text("Edited %1$@ %2$@", file.fileName, $0) }
+                        ?? Localized.text("Edited %@", file.fileName)
+                } else {
+                    text = titles[first].text
+                }
+            default:
+                text = group.count == 1
+                    ? titles[first].text
+                    : Localized.text("%1$@ (%2$lldx)", titles[first].text, group.count)
+            }
+            return Clause(text: text, verdict: verdict, stepIDs: group.map { steps[$0].id })
+        }
+    }
+
+    /// The more pressing of two verdicts: a step that stayed failed beats one that is waiting,
+    /// which beats running, a fixed one, and a done one.
+    private static func moreCurrent(
+        _ a: NeuralVerdict.Step, _ b: NeuralVerdict.Step
+    ) -> NeuralVerdict.Step {
+        func rank(_ v: NeuralVerdict.Step) -> Int {
+            switch v {
+            case .failed: return 7
+            case .waiting: return 6
+            case .stalled: return 5
+            case .tryingAgain: return 4
+            case .running: return 3
+            case .stopped: return 2
+            case .fixed: return 1
+            case .done: return 0
+            }
+        }
+        return rank(b) > rank(a) ? b : a
     }
 
     /// "Ran 3 commands, read 2 files": the work's clauses as one sentence, from the reading.
@@ -416,7 +568,8 @@ public struct NeuralAccount: Sendable, Equatable {
             options = question.options.map(\.label)
             if !question.question.isEmpty {
                 subject = NeuralReadout.Subject(
-                    kind: subject.kind, title: subject.title, primary: question.question,
+                    kind: subject.kind, title: subject.title, rawTitle: subject.rawTitle,
+                    primary: question.question,
                     secondary: nil, directory: nil, fileName: nil, lineCount: subject.lineCount,
                     collapsedLines: subject.collapsedLines, copyText: nil)
             }
@@ -546,6 +699,7 @@ final class NeuralAccountCache: @unchecked Sendable {
         var stamp: Int
         var zone: String
         var answer: String?
+        var prompt: String?
     }
 
     private let lock = NSLock()
@@ -554,9 +708,9 @@ final class NeuralAccountCache: @unchecked Sendable {
     private(set) var reads = 0
 
     func account(
-        stamp: Int, tz: TimeZone, answer: String?, make: () -> NeuralAccount
+        stamp: Int, tz: TimeZone, answer: String?, prompt: String? = nil, make: () -> NeuralAccount
     ) -> NeuralAccount {
-        let wanted = Key(stamp: stamp, zone: tz.identifier, answer: answer)
+        let wanted = Key(stamp: stamp, zone: tz.identifier, answer: answer, prompt: prompt)
         lock.lock()
         defer { lock.unlock() }
         if let held, key == wanted { return held }
@@ -595,11 +749,11 @@ extension NeuralBrainModel {
 
     /// The account of this turn: read once per change, whoever asks and however often.
     public func account(
-        now: Date = Date(), tz: TimeZone = .current, answer: String? = nil
+        now: Date = Date(), tz: TimeZone = .current, answer: String? = nil, prompt: String? = nil
     ) -> NeuralAccount {
         let model = self
-        return accountCache.account(stamp: accountStamp, tz: tz, answer: answer) {
-            NeuralAccount.make(model: model, now: now, tz: tz, answer: answer)
+        return accountCache.account(stamp: accountStamp, tz: tz, answer: answer, prompt: prompt) {
+            NeuralAccount.make(model: model, now: now, tz: tz, answer: answer, prompt: prompt)
         }
     }
 

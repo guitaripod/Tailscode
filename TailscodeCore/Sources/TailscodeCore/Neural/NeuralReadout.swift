@@ -44,15 +44,27 @@ public struct NeuralReadout: Sendable, Equatable {
         case waiting
         case stalled
         case stopped
-        /// A failure a later step cleared.
+        /// A failure a later step cleared. Superseded by `fixed`, which says it in the reader's terms.
         case retried
+        /// An error a later step of the same file or command passed: "Fixed on retry", amber.
+        case fixed
+        /// An error in a turn still running that nothing has retried: "Hit an error", amber.
+        case hitError
     }
 
     /// The status word of a step in its tone.
     public struct Chip: Sendable, Equatable {
         public let kind: ChipKind
+        /// The chip's words in capitals, the label role's own casing.
         public let word: String
         public let tone: NeuralTone
+        /// The same words as a reader says them: "Fixed on retry".
+        public let plainWord: String
+        /// For a fixed step, what it did: "It failed here (switch must be exhaustive) and passed
+        /// at step 12."; nil for any other.
+        public let detail: String?
+        /// The step that passed, for a fixed one.
+        public let fixedBy: String?
 
         /// A chip sits on the canvas: the theme's corrected palette.
         public var toneSet: NeuralToneSet { NeuralToneSet.set(for: .chip) }
@@ -85,8 +97,11 @@ public struct NeuralReadout: Sendable, Equatable {
         }
 
         public let kind: Kind
-        /// The tool's name, "Thinking" or "Said".
+        /// What the step did as a sentence a person reads: "Built the project", "Read film.sh";
+        /// "Thinking" or "Said" for words.
         public let title: String
+        /// The tool's own name: "Bash", "Read".
+        public let rawTitle: String
         /// The thing you came to read, whole: the command with its line breaks, the path, the
         /// pattern, the address, the agent's task, the gist of a thought.
         public let primary: String
@@ -282,6 +297,9 @@ public struct NeuralReadout: Sendable, Equatable {
         /// A failed step, taller and in danger on the strip.
         public let isFailure: Bool
         public let isRecovered: Bool
+        /// What the step is in the reader's terms: a fixed one is amber and short, a failed one
+        /// tall and red.
+        public let verdict: NeuralVerdict.Step
         /// The answer begins after this tick.
         public let answerFollows: Bool
     }
@@ -310,6 +328,10 @@ public struct NeuralReadout: Sendable, Equatable {
         public let retriedNumber: Int?
         /// "retried at 11", or "never retried".
         public let label: String
+        /// Fixed on retry (amber) or failed for good (red).
+        public let verdict: NeuralVerdict.Step
+        /// The verdict in words: "Fixed on retry", "Failed".
+        public let verdictWord: String
     }
 
     /// The digest's sections, top to bottom: the zone bars with the timeline strip fused under them
@@ -330,6 +352,13 @@ public struct NeuralReadout: Sendable, Equatable {
         /// Where the answer begins on the strip: the number of ticks, nil for a turn with none.
         public let answerBegins: Int?
         public let failures: [Failure]
+
+        /// The heading over `failures`: "Failures" while one stayed failed, "Fixed on the way" when
+        /// every error was fixed, so a turn that got there never wears the word.
+        public var failuresTitle: String {
+            failures.contains { $0.verdict != .fixed }
+                ? NeuralReading.failuresLabel : NeuralReading.fixedOnTheWayLabel
+        }
         public let changed: [Changed]
         /// The final message's first line, when the client passed the text.
         public let answer: String?

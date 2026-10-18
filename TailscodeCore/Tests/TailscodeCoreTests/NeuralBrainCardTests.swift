@@ -30,14 +30,14 @@ struct NeuralBrainCardTests {
         #expect(card.headline.piece(.duration)?.tone == .quiet)
         #expect(card.headline.piece(.tally)?.text == "+11 \u{2212}3")
         #expect(card.headline.piece(.tally)?.tone == .live)
-        #expect(card.headline.piece(.failure)?.text == "1 failed, then passed")
+        #expect(card.headline.piece(.failure)?.text == "Done, fixed 1 error")
         #expect(card.headline.piece(.failure)?.tone == .attention)
     }
 
     @Test("a failure nobody retried is danger, and a turn that only spoke counts steps")
     func failureAndSteps() {
         let failed = card(F.model(failedTurn()))
-        #expect(failed.headline.piece(.failure)?.text == "failed")
+        #expect(failed.headline.piece(.failure)?.text == "1 step failed")
         #expect(failed.headline.piece(.failure)?.tone == .danger)
         let words = card(F.model(F.turn([
             NeuralTurnFixtures.user(0),

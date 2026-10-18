@@ -83,8 +83,9 @@ struct NeuralTransitionTests {
         #expect(end.cardTextOffsetX == 0)
     }
 
-    @Test("the head's rectangle moves monotonically, and so does the row's height")
+    @Test("the head's rectangle moves monotonically up to its overscale, and so does the row's height")
     func monotonic() {
+        let slack = 1 + T.travellerOverscale
         for direction in [T.Direction.open, .close, .swap, .swapClose] {
             let move = move(direction)
             var previous = move.frame(at: 0)
@@ -92,8 +93,12 @@ struct NeuralTransitionTests {
             for p in samples.dropFirst() {
                 let frame = move.frame(at: p)
                 let sign: Double = opening ? 1 : -1
-                #expect(sign * (frame.traveller.width - previous.traveller.width) >= -1e-9)
-                #expect(sign * (frame.traveller.height - previous.traveller.height) >= -1e-9)
+                let widest = max(metrics.card.picture.width, metrics.stage.width) * slack
+                #expect(frame.traveller.width <= widest + 1e-9)
+                if frame.progress < 0.6 && previous.progress < 0.6 {
+                    #expect(sign * (frame.traveller.width - previous.traveller.width) >= -1e-9)
+                    #expect(sign * (frame.traveller.height - previous.traveller.height) >= -1e-9)
+                }
                 #expect(sign * (frame.rowHeight - previous.rowHeight) >= -1e-9)
                 let low = min(metrics.cardHeight, metrics.rowHeight)
                 let high = max(metrics.cardHeight, metrics.rowHeight)
@@ -103,14 +108,16 @@ struct NeuralTransitionTests {
         }
     }
 
-    @Test("every position of the head moves one way, edge by edge")
+    @Test("every position of the head moves one way, edge by edge, until the overscale begins")
     func travelEdges() {
         let open = move(.open)
         let first = open.frame(at: 0).traveller
         let last = open.frame(at: 1).traveller
         var previous = first
         for p in samples.dropFirst() {
-            let rect = open.frame(at: p).traveller
+            let frame = open.frame(at: p)
+            guard frame.progress < 0.6 else { break }
+            let rect = frame.traveller
             let edges: [(Double, Double, Double, Double)] = [
                 (previous.x, rect.x, first.x, last.x), (previous.maxX, rect.maxX, first.maxX, last.maxX),
                 (previous.y, rect.y, first.y, last.y), (previous.maxY, rect.maxY, first.maxY, last.maxY),
@@ -143,13 +150,14 @@ struct NeuralTransitionTests {
         func at(_ ms: Double) -> NeuralTransitionFrame { open.frame(at: ms / 320) }
         #expect(at(119).nodes.revealed == 0)
         #expect(at(121).nodes.revealed > 0)
-        #expect(at(149).readoutAlpha == 0)
-        #expect(at(151).readoutAlpha > 0)
+        #expect(at(129).readoutAlpha == 0)
+        #expect(at(131).readoutAlpha > 0)
         #expect(at(239).footerAlpha == 0)
         #expect(at(241).footerAlpha > 0)
         #expect(at(39).sweepAmount == 0)
         #expect(at(41).sweepAmount > 0)
-        #expect(at(120).sweepAmount > 0.9 || at(120).sweepAmount > 0.5)
+        #expect(abs(at(120).sweepAmount - 0.42) < 0.01)
+        #expect((0...320).allSatisfy { at(Double($0)).sweepAmount <= 0.42 + 1e-9 })
         #expect(at(201).sweepAmount == 0)
         #expect(at(90).cardTextAlpha == 0 && at(90).cardSurfaceAlpha == 0)
         #expect(at(45).cardTextAlpha > 0 && at(45).cardTextAlpha < 1)
@@ -191,20 +199,37 @@ struct NeuralTransitionTests {
         #expect(open.frame(at: 0.5).nodes.scale(0) >= 0.6)
     }
 
-    @Test("closing has no overshoot and takes nodes out last first")
+    @Test("closing has no overshoot, takes nodes out last first, and the content is gone before the head lands")
     func closeNodes() {
         let close = move(.close)
         for p in samples {
             let frame = close.frame(at: p)
             for index in 0..<29 { #expect(frame.nodes.scale(index) <= 1 + 1e-9) }
         }
-        let early = close.frame(at: 90.0 / 220)
-        #expect(early.nodes.progress(28) < early.nodes.progress(0))
-        #expect(close.frame(at: 150.0 / 220).nodes.revealed == 0)
-        #expect(close.frame(at: 100.0 / 220).readoutAlpha == 0)
-        #expect(close.frame(at: 100.0 / 220).footerAlpha == 0)
-        #expect(close.frame(at: 110.0 / 220).cardSurfaceAlpha == 0)
-        #expect(close.frame(at: 160.0 / 220).cardSurfaceAlpha > 0)
+        let early = close.frame(at: 0.43)
+        #expect(early.nodes.revealed < 29)
+        #expect(early.nodes.progress(28) <= early.nodes.progress(0))
+        #expect(close.frame(at: 0.5).nodes.revealed == 0)
+        #expect(close.frame(at: 0.2).footerAlpha == 0)
+        #expect(close.frame(at: 0.4).readoutAlpha == 0)
+        var revealed = 29
+        var alpha = 1.0
+        for p in samples {
+            let frame = close.frame(at: p)
+            #expect(frame.nodes.revealed <= revealed)
+            #expect(frame.readoutAlpha <= alpha + 1e-9)
+            revealed = frame.nodes.revealed
+            alpha = frame.readoutAlpha
+        }
+        #expect(close.frame(at: 0.9).cardSurfaceAlpha > 0)
+    }
+
+    private func sameWhere(_ left: NeuralTransitionFrame, _ right: NeuralTransitionFrame) -> Bool {
+        left.progress == right.progress && left.traveller == right.traveller
+            && left.rowHeight == right.rowHeight && left.contentTime == right.contentTime
+            && left.readoutAlpha == right.readoutAlpha && left.footerAlpha == right.footerAlpha
+            && left.cardTextAlpha == right.cardTextAlpha && left.wireDraw == right.wireDraw
+            && left.edge == right.edge && left.panelAlpha == right.panelAlpha
     }
 
     @Test("a press during the move reverses from where it is, and the frames match")
@@ -213,9 +238,29 @@ struct NeuralTransitionTests {
             let forward = move(direction)
             for p in [0.0, 0.1, 0.25, 0.5, 0.8, 1.0] {
                 let back = forward.reversed(from: p)
-                #expect(back.frame(at: 0) == forward.frame(at: p), "\(direction) at \(p)")
-                #expect(back.frame(at: 1) == forward.frame(at: 0), "\(direction) at \(p)")
+                #expect(sameWhere(back.frame(at: 0), forward.frame(at: p)), "\(direction) at \(p)")
+                #expect(sameWhere(back.frame(at: 1), forward.frame(at: 0)), "\(direction) at \(p)")
                 #expect(back.direction == direction.reversed)
+            }
+        }
+    }
+
+    @Test("a reversal never jumps the head or the row at any instant of either move")
+    func reversalNeverJumps() {
+        let moves = [T.Direction.open, .close].map { move($0) }
+        for forward in moves {
+            for p in stride(from: 0.0, through: 1.0, by: 0.05) {
+                let back = forward.reversed(from: p)
+                let there = forward.frame(at: p)
+                let here = back.frame(at: 0)
+                #expect(there.traveller == here.traveller && there.rowHeight == here.rowHeight)
+                var previous = here
+                for u in samples.dropFirst() {
+                    let frame = back.frame(at: u)
+                    #expect(abs(frame.traveller.width - previous.traveller.width) < 14)
+                    #expect(abs(frame.rowHeight - previous.rowHeight) < 40)
+                    previous = frame
+                }
             }
         }
     }
@@ -224,17 +269,21 @@ struct NeuralTransitionTests {
     func reversalSmooth() {
         let forward = move(.open)
         let back = forward.reversed(from: 0.5)
-        var previous = back.frame(at: 0).traveller
+        var previous = back.frame(at: 0).progress
         for u in samples.dropFirst() {
-            let rect = back.frame(at: u).traveller
-            #expect(rect.width <= previous.width + 1e-9)
-            previous = rect
+            let g = back.frame(at: u).progress
+            #expect(g <= previous + 1e-12)
+            previous = g
         }
         #expect(back.duration < move(.close).duration)
-        #expect(back.duration > 0)
+        #expect(back.duration >= T.reversalFloor)
+        #expect(abs(back.duration - 0.220 * forward.gradient(at: 0.5)) < 1e-9)
         let again = back.reversed(from: 0.5)
-        #expect(again.frame(at: 0) == back.frame(at: 0.5))
-        #expect(again.frame(at: 1) == forward.frame(at: 1))
+        #expect(sameWhere(again.frame(at: 0), back.frame(at: 0.5)))
+        #expect(again.frame(at: 1).traveller == forward.frame(at: 1).traveller)
+        #expect(again.frame(at: 1).rowHeight == forward.frame(at: 1).rowHeight)
+        let late = forward.reversed(from: 0.02)
+        #expect(late.duration == T.reversalFloor)
     }
 
     @Test("reduced motion is a crossfade: no travel, no sweep, no stagger, no overshoot")
@@ -326,12 +375,12 @@ struct NeuralTransitionTests {
         #expect(open.frame(at: 3) == open.frame(at: 1))
     }
 
-    @Test("a closing brings the card's lights back only after 130 ms, and an opening draws them inside the traveller")
+    @Test("a closing brings the card's lights back only when the head is near the card, and an opening draws them inside the traveller")
     func cardLights() {
         let close = move(.close)
         #expect(close.frame(at: 0).cardLightsAlpha == 0)
-        #expect(close.frame(at: 129.0 / 220).cardLightsAlpha == 0)
-        #expect(close.frame(at: 131.0 / 220).cardLightsAlpha > 0)
+        #expect(close.frame(at: 0.3).cardLightsAlpha == 0)
+        #expect(close.frame(at: 0.7).cardLightsAlpha > 0)
         #expect(close.frame(at: 1).cardLightsAlpha == 1)
         var previous = 0.0
         for p in samples {
@@ -397,28 +446,28 @@ struct NeuralTransitionListTests {
         #expect(accordion.frame(at: 1).traveller.x == 160)
     }
 
-    @Test("the panel and the list header fade in from 150 to 250 ms")
+    @Test("the panel and the list header fade in from 90 to 190 ms")
     func panel() {
         let open = move()
         func at(_ ms: Double) -> NeuralTransitionFrame { open.frame(at: ms / 320) }
-        #expect(at(149).panelAlpha == 0 && at(149).listHeaderAlpha == 0)
-        #expect(at(151).panelAlpha > 0)
-        #expect(at(200).panelAlpha > 0.4 && at(200).panelAlpha < 0.6)
-        #expect(at(250).panelAlpha == 1 && at(250).listHeaderAlpha == 1)
+        #expect(at(89).panelAlpha == 0 && at(89).listHeaderAlpha == 0)
+        #expect(at(91).panelAlpha > 0)
+        #expect(at(140).panelAlpha > 0.4 && at(140).panelAlpha < 0.6)
+        #expect(at(190).panelAlpha == 1 && at(190).listHeaderAlpha == 1)
         #expect(open.frame(at: 0).panelAlpha == 0 && open.frame(at: 1).panelAlpha == 1)
     }
 
-    @Test("rows slide in 6 points from 130 ms, 12 ms apart, and are all in by the end")
+    @Test("rows slide in 6 points from 100 ms, 12 ms apart, and are all in by the end")
     func rows() {
         let open = move()
         func at(_ ms: Double) -> NeuralRowReveal { open.frame(at: ms / 320).listRows }
-        #expect(at(129).revealed == 0)
-        #expect(at(131).revealed == 1)
-        #expect(at(143).revealed == 2)
+        #expect(at(99).revealed == 0)
+        #expect(at(101).revealed == 1)
+        #expect(at(113).revealed == 2)
         #expect(at(0).offset(0) == 6)
         #expect(at(320).revealed == 9)
         for index in 0..<9 { #expect(at(320).offset(index) == 0 && at(320).alpha(index) == 1) }
-        let mid = at(160)
+        let mid = at(140)
         #expect(mid.offset(0) < 6 && mid.offset(0) > 0)
         let offsets = (0..<9).map { mid.offset($0) }
         #expect(offsets == offsets.sorted())
@@ -437,7 +486,7 @@ struct NeuralTransitionListTests {
     @Test("closing takes the panel and rows out with the readout, and reduced motion crossfades them")
     func closing() {
         let close = move(.close)
-        #expect(close.frame(at: 0).panelAlpha == 1 && close.frame(at: 100.0 / 220).panelAlpha == 0)
+        #expect(close.frame(at: 0).panelAlpha == 1 && close.frame(at: 0.5).panelAlpha == 0)
         #expect(close.frame(at: 1).listRows.revealed == 0)
         #expect(close.frame(at: 0).listRows.revealed == 9)
         let fade = move(.open, reduce: true)

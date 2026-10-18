@@ -128,14 +128,17 @@ struct NeuralReadoutStepTests {
         let build = F.step(model, 5, pinned: true)
         #expect(build.header.zone == .shell)
         #expect(build.header.label == NeuralZone.shell.label)
-        #expect(build.header.chip.kind == .retried)
-        #expect(build.header.chip.tone == .quiet)
-        #expect(build.header.chip.word == "RETRIED")
+        #expect(build.header.chip.kind == .fixed)
+        #expect(build.header.chip.tone == .attention)
+        #expect(build.header.chip.word == "FIXED ON RETRY")
+        #expect(build.header.chip.plainWord == "Fixed on retry")
+        #expect(build.header.chip.fixedBy == model.steps[10].id)
+        #expect(build.header.chip.detail == "It failed here (switch must be exhaustive) and passed at step 11.")
         #expect(build.header.counter == "6 of 14")
         #expect(build.header.isPinned)
         let later = F.step(model, 10)
         #expect(later.header.chip.kind == .done)
-        #expect(later.header.chip.tone == .live)
+        #expect(later.header.chip.tone == .quiet)
         #expect(!later.header.isPinned)
     }
 
@@ -636,8 +639,8 @@ struct NeuralReadoutOtherModeTests {
             return
         }
         #expect(list.rows.map(\.number) == [6, 11, 12, 14])
-        #expect(list.rows[0].tone == .quiet)
-        #expect(list.rows[1].tone == .live)
+        #expect(list.rows[0].tone == .attention)
+        #expect(list.rows[1].tone == .quiet)
         #expect(list.rows[0].status == .failed)
         #expect(list.rows[0].argument.hasPrefix("swift build"))
         #expect(list.rows.allSatisfy { !$0.argument.contains("\n") })

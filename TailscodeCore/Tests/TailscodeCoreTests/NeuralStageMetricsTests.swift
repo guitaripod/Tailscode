@@ -419,7 +419,7 @@ struct NeuralStageMetricsTests {
         #expect(wide.stageGeometry.readoutTravel == NeuralPoint(24, 0))
         #expect(wide.stageGeometry.list == wide.list)
         #expect(wide.stageGeometry.panel == wide.filterChips)
-        #expect(make(400).stageGeometry.readoutTravel == NeuralPoint(0, 24))
+        #expect(make(400).stageGeometry.readoutTravel == NeuralPoint(0, 12))
         #expect(make(400).cardGeometry.picture.width == 100)
         #expect(make(400).stageGeometry.picture.x == (400 - 280) / 2)
     }
