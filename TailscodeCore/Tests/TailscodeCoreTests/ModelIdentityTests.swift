@@ -150,6 +150,33 @@ import Testing
         #expect(!ModelBadge.shortName("  ", catalogName: "").isEmpty)
     }
 
+    @Test func aCodenameShowsOnTheChipsThatReadTheCatalog() {
+        let bolt = "nemotron-3.5-bolt-74b-a9b-24gb-abliterated-gguf"
+        let catalog = [
+            ModelInfo(id: bolt, name: "Bolt Unchained", providerID: "llama-server"),
+            ModelInfo(id: "qwen38-nvfp4", name: "qwen38-nvfp4", providerID: "llama-server"),
+            ModelInfo(id: "long-one", name: "A catalog name far too long for a chip", providerID: "llama-server"),
+        ]
+        let chip = ModelBadge.chip(model: bolt, effort: "think", providerID: "llama-server", catalog: catalog)
+        #expect(chip?.name == "Bolt Unchained")
+        #expect(chip?.effort == "think")
+        #expect(
+            ModelBadge.chip(model: bolt, effort: nil, providerID: "llama-server")?.name
+                == "nemotron-3.5-bolt-74b-a9b-24gb-abliterated")
+        let selection = ModelSelection(providerID: "llama-server", modelID: bolt)
+        #expect(ModelBadge.label(model: selection, effort: nil, catalog: catalog) == "Bolt Unchained")
+        #expect(
+            ModelBadge.chip(model: "qwen38-nvfp4", effort: nil, providerID: "llama-server", catalog: catalog)?.name
+                == "qwen38")
+        #expect(
+            ModelBadge.chip(model: "long-one", effort: nil, providerID: "llama-server", catalog: catalog)?.name
+                == "long-one")
+        let claude = [ModelInfo(id: "claude-opus-4-8", name: "Big O", providerID: "anthropic")]
+        #expect(
+            ModelBadge.chip(model: "claude-opus-4-8", effort: nil, providerID: "anthropic", catalog: claude)?.name
+                == "Opus")
+    }
+
     @Test func theLocalDoorIsTold() {
         #expect(ModelBadge.runsLocally("qwen3:14b", providerID: "ollama"))
         #expect(!ModelBadge.runsLocally("qwen3:14b", providerID: "ollama-cloud"))

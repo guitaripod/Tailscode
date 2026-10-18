@@ -583,8 +583,9 @@ final class QuickAskWindow: @unchecked Sendable {
     private func modelWord() -> String {
         let server = targetServer
         let picked = QuickAskDefaults.model(forProfileID: server.id)
-        return picked == nil && ModelCatalogStore.cached(server.id).isEmpty
-            ? Localized.text("Model…") : ModelBadge.label(model: picked, effort: nil)
+        let catalog = ModelCatalogStore.cached(server.id)
+        return picked == nil && catalog.isEmpty
+            ? Localized.text("Model…") : ModelBadge.label(model: picked, effort: nil, catalog: catalog)
     }
 
     private func modelTintClass() -> String? {

@@ -15,9 +15,11 @@ public enum ModelBadge {
 
     /// Chip text for a pending choice: "Opus · max", or "Auto" while the server
     /// is the one deciding.
-    public static func label(model: ModelSelection?, effort: String?) -> String {
+    public static func label(
+        model: ModelSelection?, effort: String?, catalog: [ModelInfo] = []
+    ) -> String {
         let name =
-            model.flatMap { familyName($0.modelID, providerID: $0.providerID) }
+            model.flatMap { familyName($0.modelID, providerID: $0.providerID, catalog: catalog) }
             ?? Localized.text("Auto")
         guard let effort, !effort.isEmpty else { return name }
         return "\(name) · \(effort)"
@@ -103,7 +105,8 @@ public enum ModelBadge {
         return chip(
             model: pick?.modelID ?? entry.session.model,
             effort: EffortPreferenceStore.effort(forKey: key) ?? entry.session.reasoningEffort,
-            providerID: pick?.providerID ?? entry.session.modelProviderID)
+            providerID: pick?.providerID ?? entry.session.modelProviderID,
+            catalog: ModelCatalogStore.cached(entry.profileID))
     }
 
     public static func chip(model raw: String?, effort: String?) -> ModelChip? {
@@ -112,8 +115,12 @@ public enum ModelBadge {
 
     /// The chip with the door the model runs through, which is what decides whether a model
     /// carrying Claude's words is Claude's.
-    public static func chip(model raw: String?, effort: String?, providerID: String?) -> ModelChip? {
-        guard let raw, let name = familyName(raw, providerID: providerID) else { return nil }
+    public static func chip(
+        model raw: String?, effort: String?, providerID: String?, catalog: [ModelInfo] = []
+    ) -> ModelChip? {
+        guard let raw, let name = familyName(raw, providerID: providerID, catalog: catalog) else {
+            return nil
+        }
         let trimmed = effort?.trimmingCharacters(in: .whitespacesAndNewlines)
         return ModelChip(
             name: name, family: ModelTint.family(raw, providerID: providerID),
@@ -128,11 +135,30 @@ public enum ModelBadge {
     /// theirs does — *Opus* is how a person says `claude-opus-5` — and nothing else does: "GPT"
     /// for `gpt-oss:120b` or "Gemini" for a dated preview throws away the one word that says which
     /// model it is. The family word is only worn by a model that is Claude's (``ModelNeedles``):
-    /// a Qwen distilled from Opus is a Qwen. Every other id is worn as itself (``identityName``).
-    private static func familyName(_ raw: String, providerID: String?) -> String? {
+    /// a Qwen distilled from Opus is a Qwen. A model the catalog names with something short wears
+    /// that name, the codename its owner gave it (``catalogWord``); every other id is worn as
+    /// itself (``identityName``).
+    private static func familyName(
+        _ raw: String, providerID: String?, catalog: [ModelInfo] = []
+    ) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        return claudeWord(trimmed, providerID: providerID) ?? identityName(trimmed)
+        return claudeWord(trimmed, providerID: providerID)
+            ?? catalogWord(trimmed, providerID: providerID, catalog: catalog)
+            ?? identityName(trimmed)
+    }
+
+    /// The catalog's own name for an id when it is short enough for a chip and says more than the
+    /// id does, so a codename shows on a session row the way it does in the picker.
+    private static func catalogWord(_ id: String, providerID: String?, catalog: [ModelInfo]) -> String? {
+        let match =
+            catalog.first { $0.id == id && $0.providerID == providerID }
+            ?? catalog.first { $0.id == id }
+        guard let name = match?.name.trimmingCharacters(in: .whitespacesAndNewlines),
+            !name.isEmpty, name.count <= catalogNameLimit,
+            !isOnlyTheID(name, id: id, identity: identityName(id))
+        else { return nil }
+        return name
     }
 
     /// The family word of a model that is Claude's and names its member. Mythos wears Fable's hue

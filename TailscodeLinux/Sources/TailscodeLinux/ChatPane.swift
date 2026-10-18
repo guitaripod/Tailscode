@@ -4268,10 +4268,12 @@ final class ChatPane: @unchecked Sendable {
     private func modelPillText() -> String {
         if let chosenModel { return ModelBadge.word(for: chosenModel, in: models) }
         if let observed = observedModelID() {
-            return ModelBadge.label(model: ModelSelection(providerID: "server", modelID: observed), effort: nil)
+            return ModelBadge.label(
+                model: ModelSelection(providerID: "server", modelID: observed), effort: nil, catalog: models)
         }
         if let stored = entry?.session.model {
-            return ModelBadge.label(model: ModelSelection(providerID: "server", modelID: stored), effort: nil)
+            return ModelBadge.label(
+                model: ModelSelection(providerID: "server", modelID: stored), effort: nil, catalog: models)
         }
         return Localized.text("model")
     }
