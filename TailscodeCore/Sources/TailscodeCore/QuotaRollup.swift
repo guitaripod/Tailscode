@@ -5,10 +5,21 @@ import Foundation
 public struct QuotaHolding: Sendable, Equatable {
     public let quota: UsageQuota
     public let machines: [String]
+    /// The machines that tried to read this account and could not. They are not provenance for a
+    /// live card, but they are the answer when the card has no numbers.
+    public let failedMachines: [String]
+    /// The account this holding belongs to, when the provider names one. Two machines on different
+    /// accounts of one provider are separate holdings even though they wear the same provider name.
+    public let accountID: String?
 
-    public init(quota: UsageQuota, machines: [String]) {
+    public init(
+        quota: UsageQuota, machines: [String], failedMachines: [String] = [],
+        accountID: String? = nil
+    ) {
         self.quota = quota
         self.machines = machines
+        self.failedMachines = failedMachines
+        self.accountID = accountID
     }
 
     /// The hottest window in this provider's quota — how close the account is to a wall, and the
@@ -29,25 +40,50 @@ public struct QuotaHolding: Sendable, Equatable {
 public enum QuotaRollup {
     /// One holding per provider, tightest window first, from every server's report.
     public static func account(from reports: [(String, UsageQuota)]) -> [QuotaHolding] {
+        let knownAccounts = reports.reduce(into: [String: Set<String>]()) { result, report in
+            let family = family(of: report.1)
+            guard let account = report.1.accountID, !account.isEmpty else { return }
+            result[family, default: []].insert(account)
+        }
         var order: [String] = []
         var folded: [String: UsageQuota] = [:]
         var machines: [String: [String]] = [:]
+        var failures: [String: [String]] = [:]
+        var accounts: [String: String] = [:]
         for (server, quota) in reports {
-            let key = family(of: quota)
+            let key = holdingKey(for: quota, knownAccounts: knownAccounts)
             if let existing = folded[key] {
                 folded[key] = fold(existing, quota)
             } else {
                 folded[key] = quota
                 order.append(key)
             }
-            var reporters = machines[key] ?? []
-            if !server.isEmpty, !reporters.contains(server) { reporters.append(server) }
-            machines[key] = reporters
+            if let account = quota.accountID, !account.isEmpty {
+                accounts[key] = account
+            } else if accounts[key] == nil,
+                let only = knownAccounts[family(of: quota)], only.count == 1,
+                let account = only.first
+            {
+                accounts[key] = account
+            }
+            if quota.gauges.isEmpty, quota.error != nil {
+                var failed = failures[key] ?? []
+                if !server.isEmpty, !failed.contains(server) { failed.append(server) }
+                failures[key] = failed
+            } else {
+                var reporters = machines[key] ?? []
+                if !server.isEmpty, !reporters.contains(server) { reporters.append(server) }
+                machines[key] = reporters
+            }
         }
         return
             order
             .compactMap { key in
-                folded[key].map { QuotaHolding(quota: $0, machines: machines[key] ?? []) }
+                folded[key].map {
+                    QuotaHolding(
+                        quota: $0, machines: machines[key] ?? [],
+                        failedMachines: failures[key] ?? [], accountID: accounts[key])
+                }
             }
             .enumerated()
             .sorted { lhs, rhs in
@@ -55,6 +91,22 @@ public enum QuotaRollup {
                     ? lhs.offset < rhs.offset : lhs.element.peak > rhs.element.peak
             }
             .map(\.element)
+    }
+
+    /// A provider's account is part of its identity. A report that does not name an account —
+    /// an old bridge or a failed read — joins the only account that provider has; when there are
+    /// several, it stays in its own unknown-account bucket rather than guessing.
+    private static func holdingKey(
+        for quota: UsageQuota, knownAccounts: [String: Set<String>]
+    ) -> String {
+        let family = family(of: quota)
+        if let account = quota.accountID, !account.isEmpty {
+            return "\(family)\u{1F}\(account)"
+        }
+        if let only = knownAccounts[family], only.count == 1, let account = only.first {
+            return "\(family)\u{1F}\(account)"
+        }
+        return family
     }
 
     /// The window across the whole account that is closest to its wall — the one that decides
@@ -100,8 +152,14 @@ public enum QuotaRollup {
             }
         }
         result.gauges = gauges
-        result.error =
-            result.live && !gauges.isEmpty ? nil : (base.error ?? next.error)
+        if result.live && !gauges.isEmpty {
+            result.error = nil
+            result.errorCode = nil
+        } else {
+            result.error = base.error ?? next.error
+            result.errorCode = base.errorCode ?? next.errorCode
+        }
+        if result.accountID == nil { result.accountID = next.accountID }
 
         var details = base.details
         for detail in next.details where !details.contains(where: { $0.key == detail.key }) {
@@ -128,11 +186,16 @@ public enum QuotaRollup {
         if winner.startsAt == nil { winner.startsAt = other.startsAt }
         if winner.usedUSD == nil { winner.usedUSD = other.usedUSD }
         if winner.limitUSD == nil { winner.limitUSD = other.limitUSD }
+        if winner.key == "rolling", other.key == "five_hour" { winner.key = "five_hour" }
         return winner
     }
 
     private static func window(_ gauge: UsageQuota.Gauge) -> String {
-        gauge.key.isEmpty ? gauge.label.lowercased() : gauge.key
+        let key = gauge.key.isEmpty ? gauge.label.lowercased() : gauge.key
+        if key == "rolling", gauge.label.lowercased().contains("5-hour") {
+            return "five_hour"
+        }
+        return key
     }
 }
 

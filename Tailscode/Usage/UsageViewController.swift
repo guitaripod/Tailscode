@@ -371,7 +371,7 @@ final class UsageViewController: UIViewController {
         UsageQuota(
             providerName: provider.providerName,
             subtitle: provider.subtitle,
-            source: String(localized: "saved figures"),
+            source: provider.source ?? String(localized: "saved figures"),
             live: provider.isLive,
             gauges: provider.gauges.map { gauge in
                 UsageQuota.Gauge(
@@ -379,7 +379,9 @@ final class UsageViewController: UIViewController {
                     resetsAt: gauge.resetsAt, trustedReset: false, usedUSD: gauge.usedUSD,
                     limitUSD: gauge.limitUSD, currency: gauge.currency)
             },
-            details: [])
+            details: [],
+            accountID: provider.accountID,
+            schema: provider.schema)
     }
 
     /// The prepaid balance as a report: money with no ceiling, which every renderer draws as the
@@ -546,10 +548,18 @@ final class UsageViewController: UIViewController {
                 fraction: gauge.fraction,
                 percentText: "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%")
         }
+        let amount: String
+        if isBalance {
+            amount = percent
+        } else if let used = gauge.usedUSD, let limit = gauge.limitUSD {
+            amount = QuotaSurface.spendAmount(used, limit, currency: gauge.currency)
+        } else {
+            amount = percent
+        }
         return GaugeVM(
             name: UsageGaugeFormat.gaugeLabel(gauge.label), fraction: gauge.fraction,
-            percentText: percent, caption: caption(gauge, in: quota), isBalance: isBalance,
-            pace: pace)
+            percentText: percent, amountText: amount, caption: caption(gauge, in: quota),
+            isBalance: isBalance, pace: pace)
     }
 
     /// One line under the bar: the money where the window is money, and the reset where the
@@ -564,11 +574,6 @@ final class UsageViewController: UIViewController {
             return made.isEmpty ? "—" : made.joined(separator: " · ")
         }
         var parts: [String] = []
-        if let used = gauge.usedUSD, let limit = gauge.limitUSD {
-            parts.append(
-                "\(QuotaGlance.money(used, gauge.currency)) / \(QuotaGlance.money(limit, gauge.currency))"
-            )
-        }
         if let line = QuotaSurface.windowLine(gauge) {
             parts.append(line)
         } else if let resetsAt = gauge.resetsAt {

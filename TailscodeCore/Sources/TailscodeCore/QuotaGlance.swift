@@ -92,10 +92,12 @@ public struct QuotaGlance: Sendable, Equatable {
         clock: RangeClock = .current
     ) -> QuotaGlance {
         let reading = Reading(now: now, trail: trail, clock: clock)
-        let holdings = QuotaRollup.account(from: reports).filter {
-            !board.isHidden(QuotaBoard.key($0)) && !$0.gauges.isEmpty
+        let all = QuotaRollup.account(from: reports).filter {
+            !board.isHidden(QuotaBoard.key($0))
         }
-        guard !holdings.isEmpty else {
+        let holdings = all.filter { !$0.gauges.isEmpty }
+        let failures = all.filter { $0.gauges.isEmpty && $0.quota.error != nil }
+        guard !holdings.isEmpty || !failures.isEmpty else {
             guard answeredAt == nil else { return QuotaGlance(lines: [], tooltip: "") }
             return QuotaGlance(
                 lines: [
@@ -105,38 +107,61 @@ public struct QuotaGlance: Sendable, Equatable {
         }
 
         var lines: [Line] = []
-        if let notice = freshness(holdings, answeredAt: answeredAt, now: now) {
-            lines.append(notice)
-        }
-
-        let windows = holdings.flatMap { holding in
-            holding.gauges.filter { !isBalance($0) }.map { (holding, $0) }
-        }
-        let walls =
-            windows
-            .filter { $0.1.fraction >= QuotaSurface.exhaustedFloor && standing($0.1, now: now) }
-            .sorted { soonest($0.1) < soonest($1.1) }
-
-        if !walls.isEmpty {
-            lines += walls.prefix(maxWindows).map { line(for: $0.0, $0.1, tone: .danger, reading: reading) }
-            if walls.count > maxWindows {
-                lines.append(
-                    Line(
-                        kind: .notice,
-                        text: Localized.text(
-                            "+%@ more used up", String(walls.count - maxWindows)),
-                        tone: .danger))
+        if !holdings.isEmpty {
+            if let notice = freshness(holdings, answeredAt: answeredAt, now: now) {
+                lines.append(notice)
             }
-            lines += relief(
-                among: windows, walls: walls, holdings: holdings, board: board, reading: reading)
-        } else {
-            lines += standing(among: windows, holdings: holdings, board: board, reading: reading)
+
+            let windows = holdings.flatMap { holding in
+                holding.gauges.filter { !isBalance($0) }.map { (holding, $0) }
+            }
+            let walls =
+                windows
+                .filter { $0.1.fraction >= QuotaSurface.exhaustedFloor && standing($0.1, now: now) }
+                .sorted { soonest($0.1) < soonest($1.1) }
+
+            if !walls.isEmpty {
+                lines += walls.prefix(maxWindows).map {
+                    line(for: $0.0, $0.1, tone: .danger, reading: reading)
+                }
+                if walls.count > maxWindows {
+                    lines.append(
+                        Line(
+                            kind: .notice,
+                            text: Localized.text(
+                                "+%@ more used up", String(walls.count - maxWindows)),
+                            tone: .danger))
+                }
+                lines += relief(
+                    among: windows, walls: walls, holdings: holdings, board: board, reading: reading)
+            } else {
+                lines += standing(among: windows, holdings: holdings, board: board, reading: reading)
+            }
+
+            if let money = balance(in: holdings) {
+                lines.append(balanceLine(money.0, money.1))
+            }
         }
 
-        if let money = balance(in: holdings) {
-            lines.append(balanceLine(money.0, money.1))
+        for failure in failures.prefix(2) {
+            lines.append(
+                Line(
+                    kind: .notice,
+                    text: QuotaSurface.failureLine(
+                        failure.quota,
+                        machines: failure.failedMachines.isEmpty
+                            ? failure.machines : failure.failedMachines),
+                    tone: .warn))
         }
-        return QuotaGlance(lines: lines, tooltip: tooltip(holdings, answeredAt: answeredAt, now: now))
+        if failures.count > 2 {
+            lines.append(
+                Line(
+                    kind: .notice,
+                    text: Localized.text(
+                        "+%@ more unavailable", String(failures.count - 2)),
+                    tone: .warn))
+        }
+        return QuotaGlance(lines: lines, tooltip: tooltip(all, answeredAt: answeredAt, now: now))
     }
 
     /// One window's line: who meters it and which window, the reset as a dim tail, and the number
@@ -326,6 +351,9 @@ public struct QuotaGlance: Sendable, Equatable {
             if !holding.quota.subtitle.isEmpty { head += " · \(holding.quota.subtitle)" }
             head += " · \(QuotaSurface.badge(holding.quota))"
             out.append(head)
+            if holding.gauges.isEmpty, let error = holding.quota.error {
+                out.append("   \(error)")
+            }
             for gauge in holding.gauges {
                 var row =
                     isBalance(gauge)

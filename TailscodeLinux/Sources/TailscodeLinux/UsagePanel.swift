@@ -417,12 +417,23 @@ final class UsagePanel: @unchecked Sendable {
         gtk_box_append(ptr(header), badge)
         gtk_box_append(ptr(header), moveButtons(for: QuotaBoard.key(holding), position: position, of: keys))
         gtk_box_append(ptr(card), header)
-        if let error = quota.error {
+        if quota.error != nil {
+            let machines =
+                holding.failedMachines.isEmpty ? holding.machines : holding.failedMachines
+            let note = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
             gtk_box_append(
-                ptr(card),
+                ptr(note),
                 Gtk.label(
-                    Localized.text("Couldn't load usage: %@", error), css: "usage-source",
+                    QuotaSurface.failureLine(quota, machines: machines), css: "usage-source",
                     wrap: true, selectable: false))
+            if quota.errorCode == "key_expired" || quota.errorCode == "no_subscription" {
+                let open = Gtk.button(Localized.text("Open Console")) {
+                    Self.openConsole()
+                }
+                gtk_widget_set_halign(open, GTK_ALIGN_START)
+                gtk_box_append(ptr(note), open)
+            }
+            gtk_box_append(ptr(card), note)
         }
 
         let slug = ProviderBrand.slug(quota.providerName)
@@ -493,8 +504,7 @@ final class UsagePanel: @unchecked Sendable {
                 provider: quota.providerName, slug: slug, gauge: gauge, trail: RangeStore.trail,
                 projecting: gauge.startsAt == nil)
         let block = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
-        gtk_box_append(
-            ptr(block), PaceBar.row(row, amount: isBalance ? amount(for: gauge) : nil))
+        gtk_box_append(ptr(block), PaceBar.row(row, amount: amount(for: gauge)))
         if let extra = moneyCaption(for: gauge, in: quota) {
             gtk_box_append(ptr(block), Gtk.label(extra, css: "gauge-reset", selectable: false))
         }
@@ -504,23 +514,29 @@ final class UsagePanel: @unchecked Sendable {
     /// What the money says where the window is money and the row's own words do not: the amount
     /// against its ceiling, or a prepaid balance's own split, from the snapshot that wrote the card.
     private static func moneyCaption(for gauge: UsageQuota.Gauge, in quota: UsageQuota) -> String? {
-        if QuotaBoard.isBalance(gauge) {
-            guard quota.details.count == 2 else { return nil }
-            return "\(quota.details[0].key) \(quota.details[0].value) · \(quota.details[1].key) \(quota.details[1].value)"
-        }
-        guard let used = gauge.usedUSD, let limit = gauge.limitUSD else { return nil }
-        return "\(DeepSeekBalance.money(used, gauge.currency)) / \(DeepSeekBalance.money(limit, gauge.currency))"
+        guard QuotaBoard.isBalance(gauge) else { return nil }
+        guard quota.details.count == 2 else { return nil }
+        return "\(quota.details[0].key) \(quota.details[0].value) · \(quota.details[1].key) \(quota.details[1].value)"
     }
 
-    /// A gauge reads as the percent already used — or "Used up" when the window is at the wall.
-    /// A prepaid balance is money without a ceiling: the total itself, or "Empty" when the
-    /// account is at the wall.
+    /// A spend window reads as the API's used and ceiling; a balance as the money itself; a
+    /// time-only window as the percent already used.
     private static func amount(for gauge: UsageQuota.Gauge) -> String {
         if QuotaBoard.isBalance(gauge) {
             return DeepSeekBalance.amount(for: gauge)
         }
+        if let used = gauge.usedUSD, let limit = gauge.limitUSD {
+            return QuotaSurface.spendAmount(used, limit, currency: gauge.currency)
+        }
         let percent = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
         return QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: percent)
+    }
+
+    private static func openConsole() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/xdg-open")
+        process.arguments = ["https://opencode.ai/console"]
+        try? process.run()
     }
 
     private static func countdown(to date: Date) -> String {

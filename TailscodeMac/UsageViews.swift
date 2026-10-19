@@ -77,9 +77,7 @@ enum UsageFormat {
     /// percent already used — or "Used up" when the window is at the wall.
     static func amount(for gauge: UsageQuota.Gauge) -> String {
         if let used = gauge.usedUSD, let limit = gauge.limitUSD {
-            return Localized.text(
-                "%@ of %@", QuotaGlance.money(used, gauge.currency),
-                QuotaGlance.money(limit, gauge.currency))
+            return QuotaSurface.spendAmount(used, limit, currency: gauge.currency)
         }
         if isBalance(gauge) { return DeepSeekBalance.amount(for: gauge) }
         let percent = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
@@ -707,11 +705,24 @@ final class UsagePanelViewController: NSViewController {
         header.alignment = .centerY
         header.spacing = MacTheme.Spacing.s
         card.addArrangedSubview(header)
-        if let error = quota.error {
-            card.addArrangedSubview(
+        if quota.error != nil {
+            let machines =
+                holding.failedMachines.isEmpty ? holding.machines : holding.failedMachines
+            let note = NSStackView(views: [
                 RowKit.wrapping(
-                    Localized.text("Couldn't load usage: %@", error),
-                    font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.danger))
+                    QuotaSurface.failureLine(quota, machines: machines),
+                    font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.danger)
+            ])
+            note.orientation = .vertical
+            note.spacing = MacTheme.Spacing.xs
+            if quota.errorCode == "key_expired" || quota.errorCode == "no_subscription" {
+                note.addArrangedSubview(
+                    RowKit.linkButton(Localized.text("Open Console")) {
+                        guard let url = URL(string: "https://opencode.ai/console") else { return }
+                        NSWorkspace.shared.open(url)
+                    })
+            }
+            card.addArrangedSubview(note)
         }
 
         let trail = RangeStore.trail

@@ -355085,6 +355085,94 @@
           }
         }
       }
+    },
+    "Go key expired": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go key expired"
+          }
+        }
+      }
+    },
+    "No Go account": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Go account"
+          }
+        }
+      }
+    },
+    "No Go subscription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Go subscription"
+          }
+        }
+      }
+    },
+    "opencode.ai unreachable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode.ai unreachable"
+          }
+        }
+      }
+    },
+    "opencode.ai rate limited": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode.ai rate limited"
+          }
+        }
+      }
+    },
+    "opencode.ai server error": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode.ai server error"
+          }
+        }
+      }
+    },
+    "Open Console": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Console"
+          }
+        }
+      }
+    },
+    "+%@ more unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+%@ more unavailable"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

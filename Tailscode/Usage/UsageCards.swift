@@ -6,6 +6,7 @@ struct GaugeVM {
     let name: String
     let fraction: Double
     let percentText: String
+    let amountText: String
     let caption: String
     let isBalance: Bool
     let pace: PaceRow?
@@ -367,7 +368,7 @@ final class HeroCard: UIView {
             ])
         }
         accessibilityLabel =
-            "\(titleLabel.text ?? ""), \(gauge.percentText), \(gauge.caption), \(verdictText)"
+            "\(titleLabel.text ?? ""), \(gauge.amountText), \(gauge.caption), \(verdictText)"
     }
 
     private func build() {
@@ -442,8 +443,8 @@ final class ProviderCard: UIView {
             rows.addArrangedSubview(
                 gauge.isBalance ? balanceRow(gauge) : gaugeRow(gauge, accent: accent))
         }
-        if let error = quota.error {
-            rows.addArrangedSubview(errorRow(error))
+        if quota.error != nil {
+            rows.addArrangedSubview(errorRow(quota, holding: holding))
         }
         let container = UsageStyle.card(
             [header(quota, accent: accent), rows], spacing: Theme.Spacing.m, vertical: 14)
@@ -457,13 +458,31 @@ final class ProviderCard: UIView {
         ])
     }
 
-    private func errorRow(_ message: String) -> UIView {
+    private func errorRow(_ quota: UsageQuota, holding: QuotaHolding) -> UIView {
+        let machines =
+            holding.failedMachines.isEmpty ? holding.machines : holding.failedMachines
         let label = UILabel()
-        label.text = Localized.text("Couldn't load usage: %@", message)
+        label.text = QuotaSurface.failureLine(quota, machines: machines)
         label.font = Theme.Ramp.font(.panelFootnote)
         label.textColor = Theme.Color.danger
         label.numberOfLines = 0
-        return label
+
+        let row = UIStackView(arrangedSubviews: [label])
+        row.axis = .vertical
+        row.spacing = Theme.Spacing.xs
+        if quota.errorCode == "key_expired" || quota.errorCode == "no_subscription" {
+            let open = UIButton(type: .system)
+            open.setTitle(Localized.text("Open Console"), for: .normal)
+            open.titleLabel?.font = Theme.Ramp.font(.panelFootnote)
+            open.contentHorizontalAlignment = .leading
+            open.addAction(
+                UIAction { _ in
+                    guard let url = URL(string: "https://opencode.ai/console") else { return }
+                    UIApplication.shared.open(url)
+                }, for: .touchUpInside)
+            row.addArrangedSubview(open)
+        }
+        return row
     }
 
     private func header(_ quota: UsageQuota, accent: UIColor) -> UIView {
@@ -508,7 +527,7 @@ final class ProviderCard: UIView {
         let color = rampColor(for: gauge.fraction, accent: accent)
         let line = UIStackView(arrangedSubviews: [
             Self.nameLabel(gauge.name, clause: gauge.caption),
-            Self.valueLabel(gauge.percentText, fraction: gauge.fraction, pace: gauge.pace),
+            Self.valueLabel(gauge.amountText, fraction: gauge.fraction, pace: gauge.pace),
         ])
         line.axis = .horizontal
         line.alignment = .firstBaseline
@@ -529,15 +548,15 @@ final class ProviderCard: UIView {
         row.spacing = 7
         row.isAccessibilityElement = true
         row.accessibilityLabel =
-            gauge.pace.map { "\(gauge.name), \(gauge.percentText), \(gauge.caption), \($0.news.map { "\($0.lead) \($0.body)" } ?? $0.note ?? "")" }
-            ?? "\(gauge.name), \(gauge.percentText), \(gauge.caption)"
+            gauge.pace.map { "\(gauge.name), \(gauge.amountText), \(gauge.caption), \($0.news.map { "\($0.lead) \($0.body)" } ?? $0.note ?? "")" }
+            ?? "\(gauge.name), \(gauge.amountText), \(gauge.caption)"
         return row
     }
 
     private func balanceRow(_ gauge: GaugeVM) -> UIView {
         let line = UIStackView(arrangedSubviews: [
             Self.nameLabel(gauge.name, clause: nil),
-            Self.valueLabel(gauge.percentText, fraction: gauge.fraction, size: .balance),
+            Self.valueLabel(gauge.amountText, fraction: gauge.fraction, size: .balance),
         ])
         line.axis = .horizontal
         line.alignment = .firstBaseline
@@ -561,7 +580,7 @@ final class ProviderCard: UIView {
         row.spacing = Theme.Spacing.xs
         row.isAccessibilityElement = true
         row.accessibilityLabel =
-            "\(gauge.name), \(gauge.percentText), \(gauge.caption)"
+            "\(gauge.name), \(gauge.amountText), \(gauge.caption)"
             + (gauge.pace?.note.map { ", " + $0 } ?? "")
         return row
     }

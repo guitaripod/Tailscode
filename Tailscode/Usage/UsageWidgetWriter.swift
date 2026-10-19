@@ -34,7 +34,10 @@ extension UsageWidgetStore {
                 providerName: quota.providerName,
                 subtitle: quota.subtitle,
                 isLive: quota.live,
-                gauges: Array(gauges))
+                gauges: Array(gauges),
+                source: quota.source,
+                accountID: quota.accountID,
+                schema: quota.schema)
             upsertProvider(provider, reload: reload)
         }
     }
@@ -49,7 +52,7 @@ extension UsageWidgetStore {
             UsageQuota(
                 providerName: provider.providerName,
                 subtitle: provider.subtitle,
-                source: "last snapshot",
+                source: provider.source ?? "last snapshot",
                 live: provider.isLive,
                 gauges: provider.gauges.map { gauge in
                     UsageQuota.Gauge(
@@ -58,7 +61,9 @@ extension UsageWidgetStore {
                         usedUSD: gauge.usedUSD, limitUSD: gauge.limitUSD,
                         currency: gauge.currency)
                 },
-                details: [])
+                details: [],
+                accountID: provider.accountID,
+                schema: provider.schema)
         }
     }
 

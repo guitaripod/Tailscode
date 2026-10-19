@@ -21,11 +21,12 @@ struct QuotaRollupTests {
     private func quota(
         _ provider: String, _ gauges: [UsageQuota.Gauge], source: String = "bridge",
         live: Bool = true, subtitle: String = "", details: [UsageQuota.Detail] = [],
-        error: String? = nil
+        error: String? = nil, errorCode: String? = nil, accountID: String? = nil
     ) -> UsageQuota {
         UsageQuota(
             providerName: provider, subtitle: subtitle, source: source, live: live,
-            gauges: gauges, details: details, error: error)
+            gauges: gauges, details: details, error: error, errorCode: errorCode,
+            accountID: accountID)
     }
 
     @Test("An account nobody could read keeps the reason it could not be read")
@@ -46,6 +47,66 @@ struct QuotaRollupTests {
         ])
         #expect(holdings.count == 1)
         #expect(holdings[0].quota.error == "opencode.ai returned 401")
+    }
+
+    @Test("Two accounts of one provider are two holdings")
+    func separatesAccounts() {
+        let holdings = QuotaRollup.account(from: [
+            ("arch", quota("opencode go", [gauge("weekly", "Weekly", 0.1)], accountID: "acc_a")),
+            ("macbook", quota("opencode go", [gauge("weekly", "Weekly", 0.2)], accountID: "acc_b")),
+        ])
+        #expect(holdings.count == 2)
+        #expect(Set(holdings.compactMap(\.accountID)) == Set(["acc_a", "acc_b"]))
+    }
+
+    @Test("A failed machine joins the only account its provider has, and is not provenance for the live card")
+    func failureJoinsTheOnlyAccount() {
+        let holdings = QuotaRollup.account(from: [
+            (
+                "macbook",
+                quota(
+                    "opencode go", [], source: "opencode.ai console", live: false,
+                    error: "401", errorCode: "key_expired")
+            ),
+            (
+                "arch",
+                quota(
+                    "opencode go",
+                    [gauge("weekly", "Weekly", 0.2)],
+                    source: "opencode.ai console · live", accountID: "acc_a")
+            ),
+        ])
+        #expect(holdings.count == 1)
+        #expect(holdings[0].accountID == "acc_a")
+        #expect(holdings[0].machines == ["arch"])
+        #expect(holdings[0].failedMachines == ["macbook"])
+        #expect(holdings[0].quota.error == nil)
+        #expect(holdings[0].quota.errorCode == nil)
+    }
+
+    @Test("The old rolling 5-hour window merges with the live five_hour one")
+    func canonicalFiveHour() {
+        let holdings = QuotaRollup.account(from: [
+            (
+                "macbook",
+                quota(
+                    "opencode go",
+                    [gauge("rolling", "5-hour", 0.0)],
+                    source: "estimated · opencode.db", live: false, accountID: "acc_a")
+            ),
+            (
+                "arch",
+                quota(
+                    "opencode go",
+                    [gauge("five_hour", "5-hour session", 0.11, startsIn: -7_200)],
+                    source: "opencode.ai console · live", accountID: "acc_a")
+            ),
+        ])
+        #expect(holdings.count == 1)
+        #expect(holdings[0].gauges.count == 1)
+        #expect(holdings[0].gauges[0].key == "five_hour")
+        #expect(holdings[0].gauges[0].fraction == 0.11)
+        #expect(holdings[0].gauges[0].startsAt != nil)
     }
 
     @Test("A window's stated start survives the fold from whichever machine said it")

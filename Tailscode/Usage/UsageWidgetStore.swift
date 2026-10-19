@@ -17,6 +17,22 @@ struct UsageWidgetEntry: Codable, TimelineEntry {
         var subtitle: String
         var isLive: Bool
         var gauges: [GaugeSnapshot]
+        var source: String? = nil
+        var accountID: String? = nil
+        var schema: Int? = nil
+
+        init(
+            providerName: String, subtitle: String, isLive: Bool, gauges: [GaugeSnapshot],
+            source: String? = nil, accountID: String? = nil, schema: Int? = nil
+        ) {
+            self.providerName = providerName
+            self.subtitle = subtitle
+            self.isLive = isLive
+            self.gauges = gauges
+            self.source = source
+            self.accountID = accountID
+            self.schema = schema
+        }
     }
 
     struct GaugeSnapshot: Codable, Hashable {
@@ -159,15 +175,23 @@ enum UsageWidgetStore {
     /// Drops any provider whose numbers this device worked out for itself rather than read from
     /// the account. The phone used to replay opencode sessions against guessed windows and store
     /// the result beside the real readings, where it was indistinguishable from one; nothing writes
-    /// an estimate any more, but an install that has one keeps rendering it until it is dropped.
+    /// an estimate any more. An opencode snapshot written before the usage schema is dropped too,
+    /// because it cannot carry the account identity or exact windows the current bridge sends; the
+    /// next refresh puts the live card back.
     static func dropEstimates(reload: Bool = true) {
         var removed = false
         withProvidersLock {
             guard let data = UserDefaults(suiteName: suiteName)?.data(forKey: providersKey),
                 let stored = try? JSONDecoder().decode(Storage.self, from: data)
             else { return }
-            let remaining = stored.providers.filter {
-                !$0.subtitle.lowercased().contains("estimated")
+            let remaining = stored.providers.filter { provider in
+                let fromEstimate =
+                    provider.subtitle.lowercased().contains("estimated")
+                    || provider.source?.lowercased().contains("estimated") == true
+                let oldOpenCode =
+                    provider.providerName.lowercased().contains("opencode")
+                    && provider.schema == nil
+                return !fromEstimate && !oldOpenCode
             }
             guard remaining.count != stored.providers.count else { return }
             let storage = Storage(providers: remaining, updatedAt: stored.updatedAt)

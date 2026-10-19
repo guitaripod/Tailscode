@@ -343,6 +343,33 @@ public enum QuotaSurface {
         return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
     }
 
+    /// A spend window's figure in the form every client shows: what the API called used and its
+    /// ceiling, in the provider's currency. The bar beside it carries the share; the percent is
+    /// not repeated as if it were a second measurement.
+    public static func spendAmount(
+        _ used: Double, _ limit: Double, currency: String? = nil
+    ) -> String {
+        "\(QuotaGlance.money(used, currency)) / \(QuotaGlance.money(limit, currency))"
+    }
+
+    /// A short, actionable sentence for a provider that could not be read. The server's own
+    /// sentence stays in ``UsageQuota/error`` for the detail surface; a glance and a card's first
+    /// line get the fact and the machine, not a paragraph.
+    public static func failureLine(_ quota: UsageQuota, machines: [String] = []) -> String {
+        let fact: String
+        switch quota.errorCode {
+        case "key_expired": fact = Localized.text("Go key expired")
+        case "no_account": fact = Localized.text("No Go account")
+        case "no_subscription": fact = Localized.text("No Go subscription")
+        case "unreachable": fact = Localized.text("opencode.ai unreachable")
+        case "rate_limited": fact = Localized.text("opencode.ai rate limited")
+        case "server_error": fact = Localized.text("opencode.ai server error")
+        default: fact = quota.error ?? Localized.text("Unavailable")
+        }
+        guard let machine = machines.first, !machine.isEmpty else { return fact }
+        return Localized.text("%@ on %@", fact, machine)
+    }
+
     /// Percent label for a gauge that is full: "Used up" rather than "100%", so a bar at the wall
     /// reads as a state, not a measurement.
     public static func amountLabel(fraction: Double, percentText: String) -> String {

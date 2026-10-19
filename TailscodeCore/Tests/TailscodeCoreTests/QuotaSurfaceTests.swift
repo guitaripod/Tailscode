@@ -21,6 +21,18 @@ struct QuotaSurfaceTests {
             details: [])
     }
 
+    @Test("A failed reading names the machine and the short reason")
+    func failureLine() {
+        let failed = UsageQuota(
+            providerName: "opencode go", subtitle: "Go", source: "opencode.ai console",
+            live: false, gauges: [], details: [], error: "raw server sentence",
+            errorCode: "key_expired")
+        #expect(
+            QuotaSurface.failureLine(failed, machines: ["macbook"])
+                == Localized.text(
+                    "%@ on %@", Localized.text("Go key expired"), "macbook"))
+    }
+
     @Test("A quota nobody could read says so instead of wearing a cached badge")
     func unavailableBadge() {
         let failed = UsageQuota(

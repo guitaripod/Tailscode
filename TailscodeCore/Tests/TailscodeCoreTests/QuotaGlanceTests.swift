@@ -37,6 +37,18 @@ struct QuotaGlanceTests {
         QuotaGlance.make(from: reports, answeredAt: answeredAt ?? now, now: now)
     }
 
+    @Test("A provider nobody could read is a notice, not silence")
+    func unreadable() {
+        let failed = UsageQuota(
+            providerName: "opencode go", subtitle: "Go", source: "opencode.ai console",
+            live: false, gauges: [], details: [], error: "401", errorCode: "key_expired")
+        let strip = glance([("macbook", failed)])
+        let line = try! #require(strip.lines.first)
+        #expect(line.text.contains("Go key expired"))
+        #expect(line.text.contains("macbook"))
+        #expect(line.tone == .warn)
+    }
+
     @Test("A quiet account names each provider's window closest to mattering")
     func quiet() {
         let strip = glance([("arch", quota("Claude", [("Weekly", 0.3), ("Session", 0.1)]))])
