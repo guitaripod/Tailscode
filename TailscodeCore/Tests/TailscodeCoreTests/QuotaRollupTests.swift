@@ -46,6 +46,32 @@ struct QuotaRollupTests {
         #expect(holdings[0].quota.error == "opencode.ai returned 401")
     }
 
+    @Test("A live reading from one machine clears the reason another could not read")
+    func liveClearsFailure() {
+        let holdings = QuotaRollup.account(from: [
+            (
+                "arch",
+                quota(
+                    "opencode go", [], source: "opencode.ai console", live: false,
+                    error: "opencode.ai returned 401")
+            ),
+            (
+                "macbook",
+                quota(
+                    "opencode go",
+                    [
+                        gauge(
+                            "five_hour", "5-hour session", 0.2, resetsIn: 3_600, trusted: true,
+                            used: 2.4, limit: 12)
+                    ])
+            ),
+        ])
+        #expect(holdings.count == 1)
+        #expect(holdings[0].quota.live)
+        #expect(holdings[0].quota.error == nil)
+        #expect(holdings[0].gauges.count == 1)
+    }
+
     @Test("Two servers on one account become one holding")
     func mergesServers() {
         let holdings = QuotaRollup.account(from: [

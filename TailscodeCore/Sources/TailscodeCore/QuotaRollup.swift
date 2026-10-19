@@ -100,9 +100,8 @@ public enum QuotaRollup {
             }
         }
         result.gauges = gauges
-        if !result.live || gauges.isEmpty {
-            result.error = base.error ?? next.error
-        }
+        result.error =
+            result.live && !gauges.isEmpty ? nil : (base.error ?? next.error)
 
         var details = base.details
         for detail in next.details where !details.contains(where: { $0.key == detail.key }) {
