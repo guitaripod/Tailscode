@@ -7,6 +7,12 @@ extension UsageWidgetStore {
 
     static func writeLive(_ quotas: [UsageQuota], reload: Bool = true) {
         for quota in quotas {
+            guard !quota.gauges.isEmpty else {
+                if quota.error != nil {
+                    removeProvider(named: quota.providerName, reload: reload)
+                }
+                continue
+            }
             let gauges = quota.gauges.prefix(storedGaugeLimit).map { gauge in
                 var caption = UsageGaugeFormat.resetCaption(
                     resetsAt: gauge.resetsAt, trustedReset: gauge.trustedReset)

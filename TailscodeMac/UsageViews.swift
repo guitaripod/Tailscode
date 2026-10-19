@@ -701,6 +701,12 @@ final class UsagePanelViewController: NSViewController {
         header.alignment = .centerY
         header.spacing = MacTheme.Spacing.s
         card.addArrangedSubview(header)
+        if let error = quota.error {
+            card.addArrangedSubview(
+                RowKit.wrapping(
+                    Localized.text("Couldn't load usage: %@", error),
+                    font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.danger))
+        }
 
         let trail = RangeStore.trail
         for gauge in quota.gauges {

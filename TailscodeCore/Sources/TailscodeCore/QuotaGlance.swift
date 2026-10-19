@@ -93,7 +93,7 @@ public struct QuotaGlance: Sendable, Equatable {
     ) -> QuotaGlance {
         let reading = Reading(now: now, trail: trail, clock: clock)
         let holdings = QuotaRollup.account(from: reports).filter {
-            !board.isHidden(QuotaBoard.key($0))
+            !board.isHidden(QuotaBoard.key($0)) && !$0.gauges.isEmpty
         }
         guard !holdings.isEmpty else {
             guard answeredAt == nil else { return QuotaGlance(lines: [], tooltip: "") }

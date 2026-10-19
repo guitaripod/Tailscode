@@ -416,6 +416,13 @@ final class UsagePanel: @unchecked Sendable {
         gtk_box_append(ptr(header), badge)
         gtk_box_append(ptr(header), moveButtons(for: QuotaBoard.key(holding), position: position, of: keys))
         gtk_box_append(ptr(card), header)
+        if let error = quota.error {
+            gtk_box_append(
+                ptr(card),
+                Gtk.label(
+                    Localized.text("Couldn't load usage: %@", error), css: "usage-source",
+                    wrap: true, selectable: false))
+        }
 
         let slug = ProviderBrand.slug(quota.providerName)
         for gauge in quota.gauges {

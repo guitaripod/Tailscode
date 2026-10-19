@@ -332,6 +332,7 @@ public enum QuotaSurface {
     /// itself, a live reading names its source, and anything else is a cached snapshot.
     public static func badge(_ quota: UsageQuota) -> String {
         if quota.source.lowercased().contains("estimated") { return Localized.text("EST") }
+        if quota.gauges.isEmpty, quota.error != nil { return Localized.text("Unavailable") }
         return quota.live ? Localized.text("LIVE") : Localized.text("CACHED")
     }
 

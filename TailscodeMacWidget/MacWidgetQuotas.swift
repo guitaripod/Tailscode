@@ -59,6 +59,8 @@ enum MacWidgetQuotas {
         var fetched: [UsageQuota] = []
         if let primary = (try? await backend.usageQuota()) ?? nil { fetched.append(primary) }
         fetched += (try? await backend.additionalUsageQuotas()) ?? []
-        return fetched.filter { !$0.source.lowercased().contains("estimated") }
+        return fetched.filter {
+            !$0.gauges.isEmpty && !$0.source.lowercased().contains("estimated")
+        }
     }
 }

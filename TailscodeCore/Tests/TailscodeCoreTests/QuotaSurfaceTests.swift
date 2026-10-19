@@ -21,6 +21,15 @@ struct QuotaSurfaceTests {
             details: [])
     }
 
+    @Test("A quota nobody could read says so instead of wearing a cached badge")
+    func unavailableBadge() {
+        let failed = UsageQuota(
+            providerName: "opencode go", subtitle: "Go", source: "opencode.ai console",
+            live: false, gauges: [],
+            details: [], error: "opencode.ai returned 401: This API key has expired.")
+        #expect(QuotaSurface.badge(failed) == Localized.text("Unavailable"))
+    }
+
     @Test("A full window is exhausted; a partial one is not")
     func floor() {
         #expect(QuotaSurface.isExhausted(1.0))

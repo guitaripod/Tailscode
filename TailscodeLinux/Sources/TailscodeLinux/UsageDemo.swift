@@ -95,8 +95,8 @@ enum UsageDemo {
 
     private static func opencode(_ fraction: Double, now: Date) -> UsageQuota {
         UsageQuota(
-            providerName: "opencode go", subtitle: "$10/mo", source: "estimated · opencode.db",
-            live: false,
+            providerName: "opencode go", subtitle: "Go", source: "opencode.ai console · live",
+            live: true,
             gauges: [
                 UsageQuota.Gauge(
                     key: "weekly", label: "Weekly", fraction: fraction,

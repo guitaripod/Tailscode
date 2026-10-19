@@ -18,11 +18,32 @@ struct QuotaRollupTests {
 
     private func quota(
         _ provider: String, _ gauges: [UsageQuota.Gauge], source: String = "bridge",
-        live: Bool = true, subtitle: String = "", details: [UsageQuota.Detail] = []
+        live: Bool = true, subtitle: String = "", details: [UsageQuota.Detail] = [],
+        error: String? = nil
     ) -> UsageQuota {
         UsageQuota(
             providerName: provider, subtitle: subtitle, source: source, live: live,
-            gauges: gauges, details: details)
+            gauges: gauges, details: details, error: error)
+    }
+
+    @Test("An account nobody could read keeps the reason it could not be read")
+    func keepsFailure() {
+        let holdings = QuotaRollup.account(from: [
+            (
+                "arch",
+                quota(
+                    "opencode go", [], source: "opencode.ai console", live: false,
+                    error: "opencode.ai returned 401")
+            ),
+            (
+                "macbook",
+                quota(
+                    "opencode go", [], source: "opencode.ai console", live: false,
+                    error: "opencode.ai returned 503")
+            ),
+        ])
+        #expect(holdings.count == 1)
+        #expect(holdings[0].quota.error == "opencode.ai returned 401")
     }
 
     @Test("Two servers on one account become one holding")

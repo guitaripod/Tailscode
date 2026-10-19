@@ -442,6 +442,9 @@ final class ProviderCard: UIView {
             rows.addArrangedSubview(
                 gauge.isBalance ? balanceRow(gauge) : gaugeRow(gauge, accent: accent))
         }
+        if let error = quota.error {
+            rows.addArrangedSubview(errorRow(error))
+        }
         let container = UsageStyle.card(
             [header(quota, accent: accent), rows], spacing: Theme.Spacing.m, vertical: 14)
         container.translatesAutoresizingMaskIntoConstraints = false
@@ -452,6 +455,15 @@ final class ProviderCard: UIView {
             container.leadingAnchor.constraint(equalTo: leadingAnchor),
             container.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
+    }
+
+    private func errorRow(_ message: String) -> UIView {
+        let label = UILabel()
+        label.text = Localized.text("Couldn't load usage: %@", message)
+        label.font = Theme.Ramp.font(.panelFootnote)
+        label.textColor = Theme.Color.danger
+        label.numberOfLines = 0
+        return label
     }
 
     private func header(_ quota: UsageQuota, accent: UIColor) -> UIView {
