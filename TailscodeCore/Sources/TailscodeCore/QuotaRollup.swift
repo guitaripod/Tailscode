@@ -125,6 +125,7 @@ public enum QuotaRollup {
             winner.resetsAt = reset
             winner.trustedReset = other.trustedReset
         }
+        if winner.startsAt == nil { winner.startsAt = other.startsAt }
         if winner.usedUSD == nil { winner.usedUSD = other.usedUSD }
         if winner.limitUSD == nil { winner.limitUSD = other.limitUSD }
         return winner

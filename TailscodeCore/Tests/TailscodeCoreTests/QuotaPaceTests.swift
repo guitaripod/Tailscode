@@ -41,6 +41,22 @@ struct QuotaWindowSpanTests {
 
 @Suite("Where a quota window is heading")
 struct QuotaPaceTests {
+    @Test("A window that states both ends is drawn flat, with no projected tail or ETA")
+    func statedWindowHasNoProjection() {
+        let gauge = UsageQuota.Gauge(
+            key: "five_hour", label: "5-hour session", fraction: 0.4,
+            resetsAt: now.addingTimeInterval(3 * hour), trustedReset: true,
+            startsAt: now.addingTimeInterval(-2 * hour))
+        let row = PaceRow.window(
+            provider: "opencode go", slug: "opencode", gauge: gauge, now: now,
+            projecting: false)
+
+        #expect(row.tick == nil)
+        #expect(row.tailEnd == nil)
+        #expect(row.news == nil)
+        #expect(row.detail.contains("→"))
+    }
+
     @Test("Sixty-two percent of a five-hour window with 2h 47m left runs out in about 81 minutes")
     func sessionWillRunOut() throws {
         let pace = try #require(

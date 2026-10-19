@@ -53,7 +53,8 @@ enum UsageFormat {
         isBalance(gauge)
             ? PaceRow.balance(provider: quota.providerName, slug: slug, gauge: gauge, trail: trail)
             : PaceRow.window(
-                provider: quota.providerName, slug: slug, gauge: gauge, trail: trail)
+                provider: quota.providerName, slug: slug, gauge: gauge, trail: trail,
+                projecting: gauge.startsAt == nil)
     }
 
     /// The ink an amount wears: the register of the tank, with a quiet one left to the caller's
@@ -658,7 +659,12 @@ final class UsagePanelViewController: NSViewController {
                 PaceBarView(
                     row: row, surface: .opened, height: 9, track: MacTheme.Color.separator))
         }
-        if let resets = gauge.resetsAt {
+        if let line = QuotaSurface.windowLine(gauge) {
+            views.append(
+                RowKit.label(
+                    line, font: MacTheme.Ramp.font(.panelFootnote),
+                    color: MacTheme.Color.tertiaryLabel))
+        } else if let resets = gauge.resetsAt {
             let phrasing =
                 gauge.trustedReset
                 ? Localized.text("resets in %@", UsageFormat.countdown(to: resets))
@@ -805,7 +811,12 @@ final class UsagePanelViewController: NSViewController {
                 PaceBarView(row: paceRow, surface: .opened, height: 6))
         }
 
-        if let resets = gauge.resetsAt {
+        if let line = QuotaSurface.windowLine(gauge) {
+            block.addArrangedSubview(
+                RowKit.label(
+                    line, font: MacTheme.Ramp.font(.panelFootnote),
+                    color: MacTheme.Color.tertiaryLabel))
+        } else if let resets = gauge.resetsAt {
             let phrasing =
                 gauge.trustedReset
                 ? Localized.text("resets in %@", UsageFormat.countdown(to: resets))

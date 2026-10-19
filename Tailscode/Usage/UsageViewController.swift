@@ -532,7 +532,9 @@ final class UsageViewController: UIViewController {
         let pace =
             isBalance
             ? PaceRow.balance(provider: quota.providerName, slug: slug, gauge: gauge, trail: trail)
-            : PaceRow.window(provider: quota.providerName, slug: slug, gauge: gauge, trail: trail)
+            : PaceRow.window(
+                provider: quota.providerName, slug: slug, gauge: gauge, trail: trail,
+                projecting: gauge.startsAt == nil)
         let percent: String
         if isBalance {
             percent =
@@ -567,7 +569,9 @@ final class UsageViewController: UIViewController {
                 "\(QuotaGlance.money(used, gauge.currency)) / \(QuotaGlance.money(limit, gauge.currency))"
             )
         }
-        if let resetsAt = gauge.resetsAt {
+        if let line = QuotaSurface.windowLine(gauge) {
+            parts.append(line)
+        } else if let resetsAt = gauge.resetsAt {
             let remaining = QuotaSurface.countdown(to: resetsAt)
             parts.append(
                 gauge.trustedReset

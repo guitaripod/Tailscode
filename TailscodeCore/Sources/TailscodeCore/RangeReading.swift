@@ -96,6 +96,7 @@ public enum RangeWords {
     }
 
     public static func resets(_ gauge: UsageQuota.Gauge, now: Date) -> String {
+        if let line = QuotaSurface.windowLine(gauge, now: now) { return line }
         guard let resetsAt = gauge.resetsAt, resetsAt > now else { return "" }
         let remaining = QuotaSurface.countdown(to: resetsAt, now: now)
         return gauge.trustedReset
@@ -183,9 +184,14 @@ public struct PaceRow: Sendable, Equatable, Identifiable {
     /// the level, by the same ramp the bars have always worn.
     public static func window(
         provider: String, slug: String?, gauge: UsageQuota.Gauge, now: Date = Date(),
-        trail: QuotaTrail? = nil, dimmed: Bool = false, clock: RangeClock = .current
+        trail: QuotaTrail? = nil, dimmed: Bool = false, clock: RangeClock = .current,
+        projecting: Bool = true
     ) -> PaceRow {
-        let pace = QuotaPace.read(gauge, provider: provider, now: now, trail: trail, calendar: clock.calendar)
+        let pace =
+            projecting
+            ? QuotaPace.read(
+                gauge, provider: provider, now: now, trail: trail, calendar: clock.calendar)
+            : nil
         let fill = min(1, max(0, gauge.fraction))
         let percent = "\(Int((fill * 100).rounded()))%"
         let level = levelTone(gauge.fraction)

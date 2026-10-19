@@ -322,6 +322,27 @@ public enum QuotaSurface {
         return "\(head) · \(countdown(to: resetsAt))"
     }
 
+    /// The two ends of a window a provider stated, in the reader's own clock: "17:54 → 22:54".
+    /// A window with only a reset has no line here, because half a range is not the provider's
+    /// account of the window. A date appears only when an end is not today.
+    public static func windowLine(
+        _ gauge: UsageQuota.Gauge, now: Date = Date(), calendar: Calendar = .current
+    ) -> String? {
+        guard let startsAt = gauge.startsAt, let resetsAt = gauge.resetsAt else { return nil }
+        let start = clock(startsAt, now: now, calendar: calendar)
+        let end = clock(resetsAt, now: now, calendar: calendar)
+        return "\(start) → \(end)"
+    }
+
+    public static func clock(
+        _ date: Date, now: Date = Date(), calendar: Calendar = .current
+    ) -> String {
+        if calendar.isDate(date, inSameDayAs: now) {
+            return date.formatted(.dateTime.hour().minute())
+        }
+        return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+    }
+
     /// Percent label for a gauge that is full: "Used up" rather than "100%", so a bar at the wall
     /// reads as a state, not a measurement.
     public static func amountLabel(fraction: Double, percentText: String) -> String {

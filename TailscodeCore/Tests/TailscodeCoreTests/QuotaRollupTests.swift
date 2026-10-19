@@ -8,12 +8,14 @@ import Testing
 struct QuotaRollupTests {
     private func gauge(
         _ key: String, _ label: String, _ fraction: Double, resetsIn: TimeInterval? = nil,
-        trusted: Bool = false, used: Double? = nil, limit: Double? = nil
+        trusted: Bool = false, used: Double? = nil, limit: Double? = nil,
+        startsIn: TimeInterval? = nil
     ) -> UsageQuota.Gauge {
         UsageQuota.Gauge(
             key: key, label: label, fraction: fraction,
             resetsAt: resetsIn.map { Date().addingTimeInterval($0) }, trustedReset: trusted,
-            usedUSD: used, limitUSD: limit)
+            usedUSD: used, limitUSD: limit,
+            startsAt: startsIn.map { Date().addingTimeInterval($0) })
     }
 
     private func quota(
@@ -44,6 +46,20 @@ struct QuotaRollupTests {
         ])
         #expect(holdings.count == 1)
         #expect(holdings[0].quota.error == "opencode.ai returned 401")
+    }
+
+    @Test("A window's stated start survives the fold from whichever machine said it")
+    func keepsStartsAt() {
+        let holdings = QuotaRollup.account(from: [
+            ("macbook", quota("opencode go", [gauge("five_hour", "5-hour session", 0.1)])),
+            (
+                "arch",
+                quota(
+                    "opencode go",
+                    [gauge("five_hour", "5-hour session", 0.2, startsIn: -7_200)])
+            ),
+        ])
+        #expect(holdings[0].gauges[0].startsAt != nil)
     }
 
     @Test("A live reading from one machine clears the reason another could not read")

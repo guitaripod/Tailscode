@@ -357,7 +357,8 @@ final class UsagePanel: @unchecked Sendable {
         gtk_box_append(ptr(header), spacer)
         let isBalance = QuotaBoard.isBalance(gauge)
         let pace = PaceRow.window(
-            provider: quota.providerName, slug: slug, gauge: gauge, trail: RangeStore.trail)
+            provider: quota.providerName, slug: slug, gauge: gauge, trail: RangeStore.trail,
+            projecting: gauge.startsAt == nil)
         if !isBalance, let word = pace.status?.word {
             let verdict = Gtk.label(word, css: "usage-stale", selectable: false)
             gtk_label_set_ellipsize(op(verdict), PANGO_ELLIPSIZE_NONE)
@@ -489,7 +490,8 @@ final class UsagePanel: @unchecked Sendable {
             ? PaceRow.balance(
                 provider: quota.providerName, slug: slug, gauge: gauge, trail: RangeStore.trail)
             : PaceRow.window(
-                provider: quota.providerName, slug: slug, gauge: gauge, trail: RangeStore.trail)
+                provider: quota.providerName, slug: slug, gauge: gauge, trail: RangeStore.trail,
+                projecting: gauge.startsAt == nil)
         let block = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 3)
         gtk_box_append(
             ptr(block), PaceBar.row(row, amount: isBalance ? amount(for: gauge) : nil))
