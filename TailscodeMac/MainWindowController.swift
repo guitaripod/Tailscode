@@ -1748,7 +1748,7 @@ final class MainWindowController: NSWindowController {
             var collected: [UsageQuota] = []
             if let quota = (try? await backend.usageQuota()) ?? nil { collected.append(quota) }
             collected += (try? await backend.additionalUsageQuotas()) ?? []
-            for quota in collected {
+            for quota in collected where !quota.source.lowercased().contains("estimated") {
                 quotas.append((profile.name, quota))
             }
         }
