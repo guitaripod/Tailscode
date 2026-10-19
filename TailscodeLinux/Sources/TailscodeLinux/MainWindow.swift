@@ -298,8 +298,8 @@ final class MainWindow: @unchecked Sendable {
             onOpen: { [weak self] sessionID in
                 self?.openSession(withID: sessionID)
             },
-            onDecision: { profileID, permission, approve, identifier in
-                MainWindow.decideFromNotification(
+            onDecision: { [weak self] profileID, permission, approve, identifier in
+                self?.decideFromNotification(
                     profileID: profileID, permission: permission, approve: approve,
                     identifier: identifier)
             },
@@ -3065,29 +3065,34 @@ final class MainWindow: @unchecked Sendable {
         gtk_window_present(ptr(window))
     }
 
-    /// A notification tap arrives here: raise the window, then bring the session it names to the
-    /// eye — the pane already showing it if one is, else the focused pane.
-    /// The notification's own answer: rebuild the backend the request came from and respond by
-    /// name, without presenting the window. Failure leaves the request standing — the inbox entry
-    /// still knows about it and the chat can resolve it.
-    static func decideFromNotification(
+    /// The notification's own answer, without presenting the window. It goes through the
+    /// conversation the hub already holds for the chat, so answering there settles the card in
+    /// the chat in the same breath as the server hears it; the backend alone only told the
+    /// server, leaving the card waiting until something else happened to refresh the transcript.
+    /// A chat nobody holds is opened just long enough to answer it. Failure leaves the request
+    /// standing — the inbox entry still knows about it and the chat can resolve it.
+    func decideFromNotification(
         profileID: String, permission: PermissionRequest, approve: Bool, identifier: String
     ) {
+        let key = LiveKey(profileID: profileID, sessionID: permission.sessionID)
+        let decision: PermissionDecision = approve ? .once : .reject
         Task {
-            guard
-                let profile = await ServerDirectory.shared.profiles()
-                    .first(where: { $0.id == profileID }),
-                let backend = await ServerDirectory.shared.backend(for: profile)
-            else { return }
             do {
-                try await backend.respond(to: permission, decision: approve ? .once : .reject)
+                let held = await live.hub.conversation(for: key)
+                let opened = held == nil ? await LiveRuntime.open(key) : nil
+                guard let conversation = held ?? opened else { throw CancellationError() }
+                try await conversation.respond(to: permission, decision: decision)
                 Gtk.onMain { Notifier.shared.withdraw([identifier]) }
+            } catch is CancellationError {
+                return
             } catch {
                 Trace.mark("notification decision failed: \(error)")
             }
         }
     }
 
+    /// A notification tap arrives here: raise the window, then bring the session it names to the
+    /// eye — the pane already showing it if one is, else the focused pane.
     func openSession(withID id: String) {
         if let window { gtk_window_present(ptr(window)) }
         if let pane = splitHost.pane(showing: id) {
