@@ -424,7 +424,8 @@ final class UsagePanel: @unchecked Sendable {
             gtk_box_append(
                 ptr(note),
                 Gtk.label(
-                    QuotaSurface.failureLine(quota, machines: machines), css: "usage-source",
+                    QuotaSurface.failureLine(quota, machines: machines),
+                    css: quota.live ? "usage-source" : "pending-text-failed",
                     wrap: true, selectable: false))
             if quota.errorCode == "key_expired" || quota.errorCode == "no_subscription" {
                 let open = Gtk.button(Localized.text("Open Console")) {

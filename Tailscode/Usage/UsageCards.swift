@@ -464,7 +464,7 @@ final class ProviderCard: UIView {
         let label = UILabel()
         label.text = QuotaSurface.failureLine(quota, machines: machines)
         label.font = Theme.Ramp.font(.panelFootnote)
-        label.textColor = Theme.Color.danger
+        label.textColor = quota.live ? Theme.Color.secondaryLabel : Theme.Color.danger
         label.numberOfLines = 0
 
         let row = UIStackView(arrangedSubviews: [label])

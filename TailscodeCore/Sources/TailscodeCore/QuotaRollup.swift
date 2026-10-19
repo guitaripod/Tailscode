@@ -152,13 +152,8 @@ public enum QuotaRollup {
             }
         }
         result.gauges = gauges
-        if result.live && !gauges.isEmpty {
-            result.error = nil
-            result.errorCode = nil
-        } else {
-            result.error = base.error ?? next.error
-            result.errorCode = base.errorCode ?? next.errorCode
-        }
+        result.error = base.error ?? next.error
+        result.errorCode = base.errorCode ?? next.errorCode
         if result.accountID == nil { result.accountID = next.accountID }
 
         var details = base.details

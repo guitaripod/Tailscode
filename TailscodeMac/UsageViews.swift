@@ -711,7 +711,8 @@ final class UsagePanelViewController: NSViewController {
             let note = NSStackView(views: [
                 RowKit.wrapping(
                     QuotaSurface.failureLine(quota, machines: machines),
-                    font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.danger)
+                    font: MacTheme.Ramp.font(.panelFootnote),
+                    color: quota.live ? MacTheme.Color.secondaryLabel : MacTheme.Color.danger)
             ])
             note.orientation = .vertical
             note.spacing = MacTheme.Spacing.xs

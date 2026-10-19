@@ -80,8 +80,8 @@ struct QuotaRollupTests {
         #expect(holdings[0].accountID == "acc_a")
         #expect(holdings[0].machines == ["arch"])
         #expect(holdings[0].failedMachines == ["macbook"])
-        #expect(holdings[0].quota.error == nil)
-        #expect(holdings[0].quota.errorCode == nil)
+        #expect(holdings[0].quota.error == "401")
+        #expect(holdings[0].quota.errorCode == "key_expired")
     }
 
     @Test("The old rolling 5-hour window merges with the live five_hour one")
@@ -123,8 +123,8 @@ struct QuotaRollupTests {
         #expect(holdings[0].gauges[0].startsAt != nil)
     }
 
-    @Test("A live reading from one machine clears the reason another could not read")
-    func liveClearsFailure() {
+    @Test("A live reading from one machine keeps another's failure as a note, not as the card's state")
+    func liveKeepsFailureAsNote() {
         let holdings = QuotaRollup.account(from: [
             (
                 "arch",
@@ -145,7 +145,9 @@ struct QuotaRollupTests {
         ])
         #expect(holdings.count == 1)
         #expect(holdings[0].quota.live)
-        #expect(holdings[0].quota.error == nil)
+        #expect(holdings[0].quota.error == "opencode.ai returned 401")
+        #expect(holdings[0].machines == ["macbook"])
+        #expect(holdings[0].failedMachines == ["arch"])
         #expect(holdings[0].gauges.count == 1)
     }
 
