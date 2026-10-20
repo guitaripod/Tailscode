@@ -3387,7 +3387,9 @@ final class ChatViewController: UIViewController {
     /// The transcript's fill read against the model the next send will run on, so a model switch
     /// re-sizes the ring at once.
     private var contextFill: ContextFill? {
-        transcriptFill?.rewindowed(model: viewModel.selectedModel?.modelID, catalog: availableModels)
+        transcriptFill?.rewindowed(
+            model: viewModel.selectedModel?.modelID,
+            providerID: viewModel.selectedModel?.providerID, catalog: availableModels)
     }
     private var countedMessages = -1
 
@@ -3478,7 +3480,7 @@ final class ChatViewController: UIViewController {
         countedMessages = state.messages.count
         transcriptFill = ContextFill.read(
             messages: state.messages, sessionModel: viewModel.session.model,
-            catalog: availableModels)
+            sessionProvider: viewModel.session.modelProviderID, catalog: availableModels)
         spendReading.note(messages: state.messages, for: viewModel.session.id)
     }
 

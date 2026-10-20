@@ -2607,7 +2607,8 @@ final class TranscriptViewController: NSViewController {
         renderPendingCards(state)
         composer.noteState(state)
         transcriptFill = ContextFill.read(
-            messages: state.messages, sessionModel: entry?.session.model, catalog: composer.catalog)
+            messages: state.messages, sessionModel: entry?.session.model,
+            sessionProvider: entry?.session.modelProviderID, catalog: composer.catalog)
         updateStatus()
         refreshWorkflowRuns()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
@@ -2992,7 +2993,8 @@ final class TranscriptViewController: NSViewController {
         }
         let quotas = quotasForStatus?() ?? []
         contextFill = transcriptFill?.rewindowed(
-            model: composer.activeModelID, catalog: composer.catalog)
+            model: composer.activeModelID, providerID: composer.activeSelection?.providerID,
+            catalog: composer.catalog)
         let facts = StatusFacts.from(
             state: state, agents: agents, usage: usage,
             attachments: composer.attachmentCount, context: contextFill, quotas: quotas,

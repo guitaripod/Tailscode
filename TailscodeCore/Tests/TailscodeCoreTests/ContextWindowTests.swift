@@ -14,12 +14,12 @@ struct ContextWindowTests {
 
     private static func assistant(
         _ id: String, model: String? = "claude-opus-4-8-20260101", text: String = "ok",
-        usage: MessageUsage? = nil, context: MessageUsage? = nil
+        usage: MessageUsage? = nil, context: MessageUsage? = nil, provider: String? = nil
     ) -> ChatMessage {
         ChatMessage(
             id: id, role: .assistant, agentType: .claudeCode,
             parts: [MessagePart(id: "t", kind: .text(text))], createdAt: Date(),
-            modelID: model, usage: usage, context: context)
+            providerID: provider, modelID: model, usage: usage, context: context)
     }
 
     private static func seam(_ id: String, after: Int?, summary: String = "") -> ChatMessage {
@@ -93,9 +93,86 @@ struct ContextWindowTests {
         #expect(ContextWindow.resolve(model: "claude-sonnet-5", catalog: catalog, observed: 10) == 200_000)
     }
 
-    @Test("A name nobody knows has no share, only a count")
-    func unknownModelHasNoShare() {
+    @Test("One id at two providers is measured against the provider that runs it")
+    func providerChoosesTheWindow() {
+        let catalog = [
+            ModelInfo(id: "glm-5.3", name: "GLM", providerID: "opencode-go", contextWindow: 200_000),
+            ModelInfo(id: "glm-5.3", name: "GLM", providerID: "llama-server", contextWindow: 131_072),
+        ]
+        #expect(
+            ContextWindow.resolve(
+                model: "glm-5.3", providerID: "opencode-go", catalog: catalog, observed: 10)
+                == 200_000)
+        #expect(
+            ContextWindow.resolve(
+                model: "glm-5.3", providerID: "llama-server", catalog: catalog, observed: 10)
+                == 131_072)
+        #expect(ContextWindow.resolve(model: "glm-5.3", catalog: catalog, observed: 10) == 131_072)
+    }
+
+    @Test("A provider path or a server tag still finds the model it names")
+    func prefixedAndTaggedIds() {
+        let catalog = [
+            ModelInfo(
+                id: "deepseek-v4.1-flash", name: "DeepSeek", providerID: "opencode-go",
+                contextWindow: 1_000_000)
+        ]
+        #expect(
+            ContextWindow.resolve(
+                model: "deepseek-ai/deepseek-v4.1-flash", catalog: catalog, observed: 10)
+                == 1_000_000)
+        #expect(
+            ContextWindow.resolve(
+                model: "deepseek-v4.1-flash:1017", catalog: catalog, observed: 10) == 1_000_000)
+        #expect(
+            ContextWindow.resolve(
+                model: "deepseek-v4.1-flash-free", catalog: catalog, observed: 10) == 200_000)
+    }
+
+    @Test("Without a catalog, a model's generation decides its window")
+    func nameTableSpeaksTheGeneration() {
+        #expect(
+            ContextWindow.resolve(model: "deepseek-v4.1-flash", catalog: [], observed: 119_000)
+                == 1_000_000)
+        #expect(
+            ContextWindow.resolve(model: "deepseek-v4.1-flash-free", catalog: [], observed: 119_000)
+                == 200_000)
+        #expect(
+            ContextWindow.resolve(model: "deepseek-v3.2", catalog: [], observed: 119_000) == 128_000)
+    }
+
+    @Test("A catalog limit the fill runs past is a full window, not an unknown one")
+    func catalogWindowIsAuthoritative() {
+        let catalog = [ModelInfo(id: "tiny", name: "Tiny", providerID: "server", contextWindow: 64_000)]
+        #expect(ContextWindow.resolve(model: "tiny", catalog: catalog, observed: 90_000) == 64_000)
         let fill = ContextFill.read(
+            messages: [
+                Self.assistant(
+                    "a1", model: "tiny", context: MessageUsage(input: 60_000, output: 30_000))
+            ], catalog: catalog)
+        #expect(fill?.window == 64_000)
+        #expect(fill?.percent == 100)
+        #expect(fill?.tone == .danger)
+    }
+
+    @Test("The transcript's own provider picks the window the message was written in")
+    func messageProviderChoosesTheWindow() {
+        let catalog = [
+            ModelInfo(id: "glm-5.3", name: "GLM", providerID: "opencode-go", contextWindow: 200_000),
+            ModelInfo(id: "glm-5.3", name: "GLM", providerID: "ollama-cloud", contextWindow: 131_072),
+        ]
+        let fill = ContextFill.read(
+            messages: [
+                Self.assistant(
+                    "a1", model: "glm-5.3", context: MessageUsage(input: 10_000, output: 100),
+                    provider: "opencode-go")
+            ], catalog: catalog)
+        #expect(fill?.window == 200_000)
+        #expect(fill?.providerID == "opencode-go")
+    }
+
+    @Test("A name nobody knows has no share, only a count")
+    func unknownModelHasNoShare() {        let fill = ContextFill.read(
             messages: [
                 Self.user("u1", "go"),
                 Self.assistant("a1", model: "mystery-7b", context: MessageUsage(input: 5_000, output: 500)),

@@ -1805,6 +1805,7 @@ final class ChatPane: @unchecked Sendable {
             context.tail = 300
             context.profileID = entry.profileID
             context.sessionModel = entry.session.model
+            context.sessionProviderID = entry.session.modelProviderID
             context.models = []
         }
         if let remembered = host?.rememberedRows(for: entry.session.id) {
@@ -3804,7 +3805,9 @@ final class ChatPane: @unchecked Sendable {
         let facts = StatusFacts.from(
             state: state, agents: agents, usage: usage,
             attachments: attachments.count,
-            context: contextFill?.rewindowed(model: activeModelID, catalog: models), quotas: quotas,
+            context: contextFill?.rewindowed(
+                model: activeModelID, providerID: activeSelection?.providerID, catalog: models),
+            quotas: quotas,
             queued: queue.count, spend: spend, git: git, model: activeModelID,
             selection: activeSelection, trail: RangeStore.trail)
         RangePanel.transcriptChanged()
@@ -3947,7 +3950,8 @@ final class ChatPane: @unchecked Sendable {
     /// history of them.
     private func rangeReading() -> RangePanel.Reading? {
         guard let state = lastState else { return nil }
-        let fill = contextFill?.rewindowed(model: activeModelID, catalog: models)
+        let fill = contextFill?.rewindowed(
+            model: activeModelID, providerID: activeSelection?.providerID, catalog: models)
         let board = RangeBoard.read(
             messages: state.messages, fill: fill, quotas: host?.quotasForStatus() ?? [],
             model: activeModelID, selection: activeSelection,

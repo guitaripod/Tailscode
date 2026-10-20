@@ -41,6 +41,10 @@ public struct ContextFill: Sendable, Equatable {
     public let used: Int
     public let window: Int?
     public let model: String?
+    /// The provider the matched window belongs to, where it came from a catalog that states one.
+    /// The same model id can hold a different window at each provider, so the pair is the identity
+    /// and the bare id is not.
+    public let providerID: String?
     public let basis: Basis
     public let slices: [Slice]
     private let tiers: MessageUsage?
@@ -48,10 +52,14 @@ public struct ContextFill: Sendable, Equatable {
     public static let attentionAt = 0.5
     public static let dangerAt = 0.8
 
-    public init(used: Int, window: Int?, model: String?, basis: Basis, tiers: MessageUsage? = nil) {
+    public init(
+        used: Int, window: Int?, model: String?, basis: Basis, tiers: MessageUsage? = nil,
+        providerID: String? = nil
+    ) {
         self.used = used
         self.window = window
         self.model = model
+        self.providerID = providerID
         self.basis = basis
         self.tiers = tiers
         self.slices = Self.slices(tiers, used: used, window: window)
@@ -62,11 +70,16 @@ public struct ContextFill: Sendable, Equatable {
     /// hand this same conversation to a different window — 200k to a million, or a local model's
     /// own limit — and the share has to be read against that one. What is in use does not change;
     /// only what it is a share of.
-    public func rewindowed(model next: String?, catalog: [ModelInfo]) -> ContextFill {
-        guard let next, !next.isEmpty, next != model else { return self }
+    public func rewindowed(
+        model next: String?, providerID: String? = nil, catalog: [ModelInfo] = []
+    ) -> ContextFill {
+        guard let next, !next.isEmpty else { return self }
+        if next == model, providerID == self.providerID { return self }
         return ContextFill(
-            used: used, window: ContextWindow.resolve(model: next, catalog: catalog, observed: used),
-            model: next, basis: basis, tiers: tiers)
+            used: used,
+            window: ContextWindow.resolve(
+                model: next, providerID: providerID, catalog: catalog, observed: used),
+            model: next, basis: basis, tiers: tiers, providerID: providerID)
     }
 
     public var fraction: Double? {
@@ -189,12 +202,16 @@ public struct ContextFill: Sendable, Equatable {
     /// - Parameters:
     ///   - messages: the transcript, oldest first.
     ///   - sessionModel: what the session record says it runs, for a chat with no answer in it yet.
+    ///   - sessionProvider: the provider that session runs through, so a model id two providers
+    ///     share is measured against the right one's window.
     ///   - catalog: the server's model catalog, whose stated limits outrank anything known by name.
     public static func read(
-        messages: [ChatMessage], sessionModel: String? = nil, catalog: [ModelInfo] = []
+        messages: [ChatMessage], sessionModel: String? = nil, sessionProvider: String? = nil,
+        catalog: [ModelInfo] = []
     ) -> ContextFill? {
-        let model = messages.last(where: { $0.role == .assistant && $0.modelID != nil })?.modelID
-            ?? sessionModel
+        let author = messages.last(where: { $0.role == .assistant && $0.modelID != nil })
+        let model = author?.modelID ?? sessionModel
+        let provider = author?.providerID ?? sessionProvider
         var used: Int?
         var basis = Basis.estimated
         var tiers: MessageUsage?
@@ -219,44 +236,112 @@ public struct ContextFill: Sendable, Equatable {
         }
         if used == nil { used = StatusFacts.estimateContextTokens(messages) }
         guard let used else { return nil }
-        let window = ContextWindow.resolve(model: model, catalog: catalog, observed: used)
-        return ContextFill(used: used, window: window, model: model, basis: basis, tiers: tiers)
+        let window = ContextWindow.resolve(
+            model: model, providerID: provider, catalog: catalog, observed: used)
+        return ContextFill(
+            used: used, window: window, model: model, basis: basis, tiers: tiers,
+            providerID: window == nil ? nil : provider)
     }
 }
 
 /// How many tokens a model holds at once, from the best source that can say.
 ///
-/// A server's catalog is the authority where it states a limit — opencode publishes one per model
-/// — and Claude's own aliases are stated by the bridge's catalog. A model reached by a name the
-/// catalog does not carry is looked up by what its name is known to hold; a name nobody knows is
-/// nil, which every surface renders as a count without a share rather than as a made-up ceiling.
+/// A server's catalog is the authority where it states a limit — opencode publishes one per model,
+/// per provider — and Claude's own aliases are stated by the bridge's catalog. The id alone is not
+/// the identity: the same model id holds a different window at different providers, so a stated
+/// provider is matched first. A model reached by a name the catalog does not carry is looked up by
+/// what its name is known to hold; a name nobody knows is nil, which every surface renders as a
+/// count without a share rather than as a made-up ceiling.
 public enum ContextWindow {
-    public static func resolve(model: String?, catalog: [ModelInfo], observed: Int) -> Int? {
+    public static func resolve(
+        model: String?, providerID: String? = nil, catalog: [ModelInfo], observed: Int
+    ) -> Int? {
         guard let model, !model.isEmpty else { return nil }
-        let window = fromCatalog(model, catalog: catalog) ?? known(model)
-        guard let window else { return nil }
-        if observed > window { return stretched(model, past: window) }
-        return window
+        if declaresMillion(model) { return 1_000_000 }
+        if let stated = fromCatalog(model, providerID: providerID, catalog: catalog) {
+            return stated
+        }
+        guard let known = known(model) else { return nil }
+        return observed > known ? stretched(model, past: known) : known
     }
 
-    /// The catalog's own limit for the model, by the exact id first and then by the alias inside a
-    /// dated id: a transcript names `claude-opus-4-8-20260101` where the catalog offers `opus`.
-    static func fromCatalog(_ model: String, catalog: [ModelInfo]) -> Int? {
-        let lower = model.lowercased()
-        if let exact = catalog.first(where: { $0.id.lowercased() == lower && $0.contextWindow != nil }) {
-            return exact.contextWindow
-        }
-        let candidates = catalog.filter { info in
-            guard let limit = info.contextWindow, limit > 0 else { return false }
-            let alias = info.id.lowercased()
-            guard !alias.contains("[") else { return false }
-            return lower.hasSuffix("/" + alias) || lower.contains("-" + alias + "-")
-                || lower.hasSuffix("-" + alias) || lower.hasPrefix(alias + "-")
-        }
-        return candidates.compactMap(\.contextWindow).min()
+    /// A name that says its own window — `opus[1m]` — outranks a catalog alias it also matches,
+    /// because the variant is the model the person picked and the alias is only its base.
+    private static func declaresMillion(_ model: String) -> Bool {
+        let name = model.lowercased()
+        return name.contains("[1m]") || name.contains("-1m")
     }
 
-    /// What a model's name is known to hold, for a server that states no limit of its own.
+    /// The catalog's own limit for the model: an exact id first, then an alias inside a dated or
+    /// prefixed id, and within each pass the stated provider before anyone else's. A catalog limit
+    /// is taken as stated even when a fill runs past it — the server knows its own window, and a
+    /// measurement over it is a full window rather than no window.
+    static func fromCatalog(
+        _ model: String, providerID: String? = nil, catalog: [ModelInfo]
+    ) -> Int? {
+        let stated = catalog.compactMap { info -> (info: ModelInfo, window: Int)? in
+            guard let window = info.contextWindow, window > 0 else { return nil }
+            return (info, window)
+        }
+        let mine = providerID.map { provider in
+            stated.filter { $0.info.providerID.caseInsensitiveCompare(provider) == .orderedSame }
+        } ?? []
+        return exactWindow(model, in: mine)
+            ?? aliasWindow(model, in: mine)
+            ?? exactWindow(model, in: stated)
+            ?? aliasWindow(model, in: stated)
+    }
+
+    /// The row whose id is this model once both are reduced to their own name.
+    private static func exactWindow(
+        _ model: String, in rows: [(info: ModelInfo, window: Int)]
+    ) -> Int? {
+        let name = normalized(model)
+        let hits = rows.filter { normalized($0.info.id) == name }
+        return hits.map(\.window).min()
+    }
+
+    /// The most specific row whose id is a longer name ending in this one — a dated
+    /// `claude-opus-4-8-20260101` against `opus`, a tagged `deepseek-v4.1-flash:1017` against
+    /// `deepseek-v4.1-flash`. A name longer than the catalog's id is a different variant, not an
+    /// alias of it: a free tier does not inherit the paid model's window. Two rows of the same
+    /// specificity from different providers answer with the smaller window: without a provider to
+    /// choose, understating is the only claim that cannot be wrong about what fits.
+    private static func aliasWindow(
+        _ model: String, in rows: [(info: ModelInfo, window: Int)]
+    ) -> Int? {
+        let name = normalized(model)
+        let hits = rows.compactMap { row -> (specificity: Int, window: Int)? in
+            let alias = normalized(row.info.id)
+            guard alias != name, isAlias(alias, of: name) else { return nil }
+            return (alias.count, row.window)
+        }
+        guard let longest = hits.map(\.specificity).max() else { return nil }
+        return hits.filter { $0.specificity == longest }.map(\.window).min()
+    }
+
+    private static func isAlias(_ alias: String, of name: String) -> Bool {
+        name.hasSuffix("-" + alias) || name.contains("-" + alias + "-")
+    }
+
+    /// A catalog id reduced to the model's own name: the provider path in front of it, the server
+    /// tag behind it and a `[variant]` suffix all stripped, and case folded, so the four providers
+    /// that serve one model answer to one name.
+    static func normalized(_ id: String) -> String {
+        var name = id.lowercased()
+        if let bracket = name.firstIndex(of: "[") { name = String(name[..<bracket]) }
+        if let slash = name.lastIndex(of: "/") { name = String(name[name.index(after: slash)...]) }
+        if let colon = name.lastIndex(of: ":") {
+            let tag = name[name.index(after: colon)...]
+            if !tag.isEmpty, tag.allSatisfy(\.isNumber) { name = String(name[..<colon]) }
+        }
+        return name
+    }
+
+    /// What a model's name is known to hold, for a server that states no limit of its own. The
+    /// longest needle wins, so a family's newest window outranks its family's older one:
+    /// `deepseek-v4` is a million where `deepseek` is the hundred-and-twenty-eight thousand of the
+    /// V3 generation, and a free tier's smaller window outranks the paid model it is cut from.
     public static func known(_ model: String) -> Int? {
         let name = model.lowercased()
         if name.contains("[1m]") || name.contains("-1m") { return 1_000_000 }
@@ -267,17 +352,19 @@ public enum ContextWindow {
             ("o4", 200_000), ("codex", 400_000),
             ("gemini", 1_048_576),
             ("grok-4", 256_000), ("grok-3", 131_072), ("grok-code", 256_000),
-            ("deepseek", 128_000), ("kimi", 256_000), ("qwen3", 262_144), ("qwen", 131_072),
+            ("deepseek-v4.1-flash-free", 200_000), ("deepseek-v4-flash-free", 200_000),
+            ("deepseek-v4", 1_000_000), ("deepseek", 128_000),
+            ("kimi", 256_000), ("qwen3", 262_144), ("qwen", 131_072),
             ("glm", 200_000), ("llama", 131_072), ("mistral", 128_000), ("devstral", 262_144),
             ("gemma", 131_072), ("gpt-oss", 131_072),
         ]
-        for (needle, window) in table where name.contains(needle) { return window }
-        return nil
+        return table.filter { name.contains($0.0) }.max { $0.0.count < $1.0.count }?.1
     }
 
-    /// A fill larger than the window it was matched to means the match was wrong, not the fill:
-    /// Claude's dated ids never say whether the account runs the million-token window, so a read
-    /// past two hundred thousand is that window. Anything else is unknown rather than invented.
+    /// A fill larger than a *guessed* window means the guess was wrong, not the fill: Claude's
+    /// dated ids never say whether the account runs the million-token window, so a read past two
+    /// hundred thousand is that window. A catalog's stated limit never comes here; anything else
+    /// guessed past is unknown rather than invented.
     private static func stretched(_ model: String, past window: Int) -> Int? {
         let name = model.lowercased()
         if name.contains("claude") || name.contains("opus") || name.contains("sonnet")

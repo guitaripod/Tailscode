@@ -9,6 +9,7 @@ struct PaneBuildContext: Sendable {
     var tail = 300
     var profileID = ""
     var sessionModel: String?
+    var sessionProviderID: String?
     var models: [ModelInfo] = []
 }
 
@@ -126,7 +127,7 @@ final class PaneFeed: @unchecked Sendable {
         }
         let fill = ContextFill.read(
             messages: state.messages, sessionModel: context.sessionModel,
-            catalog: context.models)
+            sessionProvider: context.sessionProviderID, catalog: context.models)
         return PaneBuilt(
             generation: context.generation, state: state, rows: rows, fill: fill)
     }
