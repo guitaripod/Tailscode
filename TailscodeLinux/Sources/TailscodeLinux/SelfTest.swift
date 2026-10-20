@@ -123,7 +123,7 @@ public enum SelfTest {
         do {
             let checks = try checkCompactChat()
             report(
-                "compact chat: \(checks) claims hold: gaps, rail settling, plate placement, hover timing, strips, the rail in every stage, density")
+                "compact chat: \(checks) claims hold: gaps, rail settling, plate placement, hover timing, the picture gallery, the rail in every stage, density")
         } catch {
             report("compact chat: \(error)")
             failures += 1

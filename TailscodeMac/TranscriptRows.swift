@@ -315,7 +315,7 @@ final class TranscriptRowBuilder {
                 return brains.isSupersededBoardCall(row.key)
             }
         }
-        return TranscriptRow.compactTools ? TranscriptRow.fuse(all) : all
+        return TranscriptRow.gallery(TranscriptRow.compactTools ? TranscriptRow.fuse(all) : all)
     }
 
     /// The whole conversation, and the prefix the next arrivals can build on.
@@ -444,8 +444,8 @@ final class TranscriptRowBuilder {
             }
             all += rows
         }
-        all = TranscriptRow.placeBoard(in: all)
-        return TranscriptRow.compactTools ? TranscriptRow.fuse(all) : all
+        all = TranscriptRow.gallery(TranscriptRow.placeBoard(in: all))
+        return TranscriptRow.compactTools ? TranscriptRow.gallery(TranscriptRow.fuse(all)) : all
     }
 
     /// How many calls in a message just completed that were not completed in the message it
@@ -511,6 +511,9 @@ struct TranscriptRow: Hashable {
         case subagentGroup(SubagentFanout)
         case workflow(ToolCall)
         case file(FileReference, mine: Bool, messageID: String)
+        /// Pictures the agent made, consecutive ones sharing one square of tiles that opens the
+        /// conversation's viewer.
+        case pictures([GalleryPicture])
         /// A board of design alternatives the agent wrote, standing where the manifest that made
         /// it was written rather than as a line about a file.
         case designBoard(DesignSighting)
@@ -544,6 +547,12 @@ struct TranscriptRow: Hashable {
         /// lives in the pane's `BrainStore`; this is only the identity and what repaints it.
         case brain(BrainRow)
         case turnBreak
+    }
+
+    /// One picture of a gallery: the row key its pixels are cached under, and what to fetch.
+    struct GalleryPicture: Hashable {
+        let key: String
+        let reference: FileReference
     }
 
     let key: String
@@ -783,8 +792,8 @@ struct TranscriptRow: Hashable {
             }
             all += rows
         }
-        all = placeBoard(in: all)
-        return compactTools ? fuse(all) : all
+        all = gallery(placeBoard(in: all))
+        return compactTools ? gallery(fuse(all)) : all
     }
 
     /// The agent's plan shows once: the last call that moved the to-do list becomes the board —
@@ -795,6 +804,37 @@ struct TranscriptRow: Hashable {
     /// re-identified the whole card every time the agent revised its plan: a delete and an insert
     /// where a person sees one card counting up, and on a keyed diff a move rather than a repaint.
     /// There is only ever one board in a transcript, so it can simply say so.
+    /// Consecutive pictures the agent made become one gallery. A picture that is the person's own
+    /// stays where it is — it belongs to the prompt it was sent with — and so does anything that is
+    /// not an image. The gallery is named after its first picture, so a picture arriving beside it
+    /// changes the gallery's value and not its identity.
+    static func gallery(_ rows: [TranscriptRow]) -> [TranscriptRow] {
+        func picture(_ row: TranscriptRow) -> GalleryPicture? {
+            guard case .file(let reference, let mine, _) = row.kind, !mine,
+                (reference.mime ?? "").hasPrefix("image/")
+            else { return nil }
+            return GalleryPicture(key: row.key, reference: reference)
+        }
+        var result: [TranscriptRow] = []
+        result.reserveCapacity(rows.count)
+        var pending: [GalleryPicture] = []
+        func flush() {
+            guard let first = pending.first else { return }
+            result.append(TranscriptRow(key: first.key, kind: .pictures(pending)))
+            pending = []
+        }
+        for row in rows {
+            if let one = picture(row) {
+                pending.append(one)
+            } else {
+                flush()
+                result.append(row)
+            }
+        }
+        flush()
+        return result
+    }
+
     static func placeBoard(in rows: [TranscriptRow]) -> [TranscriptRow] {
         let calls = rows.compactMap { row -> ToolCall? in
             guard case .tool(let call) = row.kind, TaskBoard.isBoardCall(call.name) else {
@@ -898,6 +938,9 @@ struct TranscriptRow: Hashable {
             }.joined(separator: " ")
         case .file(let reference, _, _):
             return reference.filename ?? reference.path ?? ""
+        case .pictures(let pictures):
+            return pictures.map { $0.reference.filename ?? $0.reference.path ?? "" }
+                .joined(separator: " ")
         case .taskBoard(let board):
             return board.items.map(\.subject).joined(separator: " ")
         case .compaction(let compaction):
@@ -979,6 +1022,8 @@ struct TranscriptRow: Hashable {
             let view = ImageRowView.make(reference, mine: mine, key: key, context: context)
             guard mine else { return view }
             return Self.wrappedForUndo(view, messageID: messageID, context: context)
+        case .pictures(let pictures):
+            return PictureGalleryRowView.make(pictures, context: context)
         case .designBoard(let sighting):
             return Self.designBoard(sighting, context: context)
         case .taskBoard(let board):

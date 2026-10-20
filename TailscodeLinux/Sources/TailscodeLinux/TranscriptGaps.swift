@@ -22,7 +22,7 @@ extension TranscriptRow {
             return .seam
         case .linkRail:
             return .rail
-        case .pictureStrip:
+        case .pictures:
             return .picture
         case .file:
             return .picture

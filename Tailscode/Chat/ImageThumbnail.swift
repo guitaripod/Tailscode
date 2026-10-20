@@ -8,7 +8,7 @@ import UIKit
 ///
 /// A bubble pins its width and lets the shape of the picture set the height up to a ceiling; a
 /// strip pins its height and lets the shape set the width up to the line. Both clamp the shape
-/// with `PictureStripLayout.shape(of:)` and crop what falls outside, so the thumbnail has to
+/// with `PictureShape.shape(of:)` and crop what falls outside, so the thumbnail has to
 /// cover the cropped frame rather than the box, or a panorama drawn into a bubble is enlarged
 /// past its own pixels.
 struct ThumbnailBox: Sendable, Hashable {
@@ -41,7 +41,7 @@ struct ThumbnailBox: Sendable, Hashable {
 
     /// The frame, in points, a picture of this shape is cropped into.
     func frame(forAspect aspect: Double) -> CGSize {
-        let shape = CGFloat(PictureStripLayout.shape(of: aspect))
+        let shape = CGFloat(PictureShape.shape(of: aspect))
         switch anchor {
         case .width:
             return CGSize(width: extent, height: min(extent / shape, limit))

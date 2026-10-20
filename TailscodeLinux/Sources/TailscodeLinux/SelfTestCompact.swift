@@ -4,6 +4,11 @@ import CodingAgentKit
 import Foundation
 import TailscodeCore
 
+/// What a press on a gallery asked for, kept where a `@Sendable` closure can write it.
+private final class OpenedPicture: @unchecked Sendable {
+    var value: (String, String)?
+}
+
 /// A clock that only moves when it is told to, so the plate's 120 ms and 250 ms are proven as
 /// arithmetic rather than waited for.
 private final class FakeClock: @unchecked Sendable {
@@ -59,7 +64,7 @@ extension SelfTest {
         try checkGaps(expect)
         try checkRailSettling(expect)
         try checkPlacementAndTiming(expect)
-        try checkStrips(expect)
+        try checkGalleries(expect)
         try checkDensityStyle(expect)
         guard gtk_init_check() != 0 else { return checks }
         try checkRailWidgets(expect)
@@ -223,8 +228,8 @@ extension SelfTest {
             row("r2", .reasoning("hm again")),
             row("c1", .codeBlock(language: "swift", body: "let x = 1")),
             row("rail", .linkRail(urls: ["https://a.example"])),
-            row("s1", .pictureStrip([])),
-            row("s2", .pictureStrip([])),
+            row("s1", .pictures([])),
+            row("s2", .pictures([])),
             row("br", .turnBreak),
             row("p2", .userText("again", messageID: "u2")),
         ]
@@ -243,8 +248,8 @@ extension SelfTest {
         try expect(
             table[6] == compact.gap(from: .code, to: .rail), "code to a rail: \(table[6])")
         try expect(
-            table[7] == compact.gap(from: .rail, to: .picture), "a rail to a picture strip: \(table[7])")
-        try expect(table[8] == compact.imageStripGap, "a strip beside a strip: \(table[8])")
+            table[7] == compact.gap(from: .rail, to: .picture), "a rail to a picture gallery: \(table[7])")
+        try expect(table[8] == compact.imageStripGap, "a gallery beside a gallery: \(table[8])")
         try expect(
             table[9] == compact.turnGap / 2 && table[10] == compact.turnGap / 2,
             "a turn break splits the turn gap across its rule: \(table[9]) \(table[10])")
@@ -497,7 +502,7 @@ extension SelfTest {
         try expect(machine.open == nil, "a rail that was destroyed takes its plate with it")
     }
 
-    private static func checkStrips(
+    private static func checkGalleries(
         _ expect: (Bool, String) throws -> Void
     ) throws {
         func picture(_ name: String) -> FileReference {
@@ -512,38 +517,55 @@ extension SelfTest {
             row("m:doc", .file(FileReference(path: "/tmp/x.pdf", mime: "application/pdf", filename: "x.pdf"), mine: false)),
             row("m:d", .file(picture("d.png"), mine: false)),
         ]
-        let stripped = TranscriptRow.strip(rows)
-        let described = stripped.map { row -> String in
+        let gather = TranscriptRow.gallery(rows)
+        let described = gather.map { row -> String in
             switch row.kind {
-            case .pictureStrip(let pictures): return "strip:" + pictures.map(\.key).joined(separator: ",")
+            case .pictures(let pictures): return "gallery:" + pictures.map(\.key).joined(separator: ",")
             case .file(_, let mine): return mine ? "mine" : "file"
             default: return "prose"
             }
         }
         try expect(
-            described == ["strip:m:a,m:b", "prose", "strip:m:c", "mine", "file", "strip:m:d"],
+            described == ["gallery:m:a,m:b", "prose", "gallery:m:c", "mine", "file", "gallery:m:d"],
             "consecutive agent pictures share one row, a person's own and a document stay as they were: \(described)")
         try expect(
-            stripped[0].key == "m:a" && stripped[0].holdsPicture("m:b") && !stripped[0].holdsPicture("m:c"),
-            "a strip is named after its first picture and knows which pixels it draws")
+            gather[0].key == "m:a" && gather[0].holdsPicture("m:b") && !gather[0].holdsPicture("m:c"),
+            "a gallery is named after its first picture and knows which pixels it draws")
         try expect(
-            TranscriptRow.strip(stripped) == stripped,
+            TranscriptRow.gallery(gather) == gather,
             "chunking is idempotent")
 
-        let landscape = PictureStripView.thumbnail(width: 340, height: 236, maxHeight: 180, maxWidth: 340)
         try expect(
-            landscape.height == 180 && landscape.width == 259,
-            "a 340 × 236 landscape picture becomes 259 × 180: \(landscape)")
-        let portrait = PictureStripView.thumbnail(width: 300, height: 500, maxHeight: 180, maxWidth: 340)
-        try expect(portrait.height == 180 && portrait.width == 108, "a portrait one is 108 × 180: \(portrait)")
-        let small = PictureStripView.thumbnail(width: 50, height: 50, maxHeight: 180, maxWidth: 340)
-        try expect(small.width == 50 && small.height == 50, "a small picture is never enlarged")
-        let wide = PictureStripView.thumbnail(width: 2000, height: 400, maxHeight: 180, maxWidth: 340)
-        try expect(wide.width == 340 && wide.height == 68, "a panorama is held to the desk's width: \(wide)")
-        try expect(
-            PictureStripView.filename(of: FileReference(path: "/a/b/shot.png")) == "shot.png"
-                && PictureStripView.filename(of: FileReference()) == "file",
+            PictureGalleryView.filename(of: FileReference(path: "/a/b/shot.png")) == "shot.png"
+                && PictureGalleryView.filename(of: FileReference()) == "file",
             "a picture is known by its filename, never its path")
+        let eight = (1...8).map { picture("s\($0).png") }
+        let named = eight.map { TranscriptRow.GalleryPicture(key: $0.filename ?? "k", reference: $0) }
+        try expect(
+            PictureGalleryView.spoken(named)
+                == "8 pictures, s1.png, s2.png, s3.png, s4.png and 4 more",
+            "a gallery says how many and names the first four: \(PictureGalleryView.spoken(named))")
+        let context = TranscriptContext()
+        let opening = OpenedPicture()
+        context.openImage = { key, name in opening.value = (key, name) }
+        let square = PictureGalleryLayout.side(
+            metrics: TranscriptGaps.metrics, width: ImagePreview.deskWidth)
+        let gallery = TranscriptRow(key: named[0].key, kind: .pictures(named))
+        let widget = gallery.makeWidget(context: context)
+        var width: Int32 = 0
+        var height: Int32 = 0
+        gtk_widget_get_size_request(widget, &width, &height)
+        try expect(
+            Int(width) == Int(square.rounded()) && height == width,
+            "a gallery is one square, a picture tall: \(width) × \(height)")
+        tailscode_emit_clicked(widget)
+        try expect(
+            opening.value?.0 == "s1.png" && opening.value?.1 == "s1.png",
+            "pressing the square opens the gallery on its first picture")
+        try expect(
+            tailscode_accessible_has_label(widget, PictureGalleryView.spoken(named)) != 0,
+            "a screen reader is told how many pictures and which")
+        gtk_widget_unparent(widget)
         let table = TranscriptRow.rows(
             for: ChatMessage(
                 id: "m", role: .assistant, agentType: .claudeCode,
@@ -552,8 +574,8 @@ extension SelfTest {
                     MessagePart(id: "2", kind: .file(picture("2.png"))),
                 ], createdAt: Date()), sealed: true)
         try expect(
-            TranscriptRow.strip(table).count == 1,
-            "two pictures of one message are one strip")
+            TranscriptRow.gallery(table).count == 1,
+            "two pictures of one message are one gallery")
     }
 
     private static func checkDensityStyle(
@@ -871,7 +893,7 @@ extension TranscriptRow.Kind {
         [
             .userText("a", messageID: "m"), .agentProse(text: "a", markup: "a"),
             .codeBlock(language: nil, body: "a"), .reasoning("a"),
-            .linkRail(urls: ["https://a.example"]), .pictureStrip([]), .turnBreak,
+            .linkRail(urls: ["https://a.example"]), .pictures([]), .turnBreak,
             .compaction(Compaction(trigger: .manual)),
         ]
     }

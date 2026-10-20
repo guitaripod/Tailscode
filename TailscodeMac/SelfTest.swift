@@ -120,7 +120,7 @@ enum SelfTest {
         if chat.failures.isEmpty {
             report(
                 "compact chat: \(chat.notes) claims hold — gaps by relationship, the rail's stages and "
-                    + "its plate, strips, seams, timing")
+                    + "its plate, the picture gallery, seams, timing")
         } else {
             report("compact chat: \(chat.failures.joined(separator: " · "))")
             failures += 1

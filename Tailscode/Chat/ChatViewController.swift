@@ -1161,7 +1161,7 @@ final class ChatViewController: UIViewController {
         collectionView.register(
             LinkRailCell.self, forCellWithReuseIdentifier: LinkRailCell.reuseID)
         collectionView.register(
-            PictureStripCell.self, forCellWithReuseIdentifier: PictureStripCell.reuseID)
+            PictureGalleryCell.self, forCellWithReuseIdentifier: PictureGalleryCell.reuseID)
         collectionView.register(
             TranscriptNoteCell.self, forCellWithReuseIdentifier: TranscriptNoteCell.reuseID)
         collectionView.register(
@@ -2150,7 +2150,8 @@ final class ChatViewController: UIViewController {
             return cell
         case .pictures(let files):
             let cell = collectionView.dequeueReusableCell(
-                withReuseIdentifier: PictureStripCell.reuseID, for: indexPath) as! PictureStripCell
+                withReuseIdentifier: PictureGalleryCell.reuseID, for: indexPath)
+                as! PictureGalleryCell
             cell.delegate = self
             cell.onLoaded = { [weak self] in self?.reloadRow(row.id) }
             cell.configure(files: files, backend: viewModel.backend)
@@ -4072,8 +4073,8 @@ final class ChatViewController: UIViewController {
         /// captured from a script the way every other screen already can be.
         private func openFirstAttachment() {
             for cell in collectionView.visibleCells {
-                if let strip = cell as? PictureStripCell, let thumb = strip.firstThumb {
-                    pictureStripCell(strip, didTap: 0, from: thumb)
+                if let gallery = cell as? PictureGalleryCell {
+                    pictureGalleryCell(gallery, didTapFrom: gallery)
                     return
                 }
                 guard let cell = cell as? ImageBubbleCell, let image = cell.displayedImage else {
@@ -6986,23 +6987,17 @@ extension ChatViewController: UIGestureRecognizerDelegate {
     }
 }
 
-extension ChatViewController: PictureStripCellDelegate {
-    func pictureStripCell(_ cell: PictureStripCell, didTap index: Int, from view: UIView) {
+extension ChatViewController: PictureGalleryCellDelegate {
+    func pictureGalleryCell(_ cell: PictureGalleryCell, didTapFrom view: UIView) {
         let items = galleryImages()
         guard !items.isEmpty,
             let rowID = collectionView.indexPath(for: cell).flatMap({ dataSource.itemIdentifier(for: $0) })
         else { return }
-        let start = items.firstIndex { $0.id == Self.pictureID(row: rowID, index: index) } ?? 0
+        let start = items.firstIndex { $0.id == Self.pictureID(row: rowID, index: 0) } ?? 0
         present(
             ImageViewerViewController(
                 items: items, startIndex: start, backend: viewModel.backend, from: view),
             animated: false)
-    }
-
-    func pictureStripCell(_ cell: PictureStripCell, menuFor payload: ImagePayload, from view: UIView)
-        -> UIMenu
-    {
-        imageMenu(for: payload, from: view)
     }
 }
 

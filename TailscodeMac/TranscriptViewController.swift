@@ -1871,17 +1871,25 @@ final class TranscriptViewController: NSViewController {
         }
         context.openImage = { [weak self] key, name in
             guard let self else { return }
-            let items: [ImageViewer.Item] = self.lastFullRows.compactMap { row in
-                guard case .file(let reference, _, _) = row.kind,
-                    (reference.mime ?? "").hasPrefix("image/")
-                else { return nil }
-                let itemName =
-                    reference.filename
-                    ?? reference.path.map {
-                        URL(fileURLWithPath: $0, isDirectory: false).lastPathComponent
+            let items: [ImageViewer.Item] = self.lastFullRows.flatMap { row -> [ImageViewer.Item] in
+                let pictures: [(key: String, reference: FileReference)] = {
+                    switch row.kind {
+                    case .file(let reference, _, _): return [(row.key, reference)]
+                    case .pictures(let group): return group.map { ($0.key, $0.reference) }
+                    default: return []
                     }
-                    ?? "image"
-                return ImageViewer.Item(key: row.key, name: itemName, reference: reference)
+                }()
+                return pictures.compactMap { picture in
+                    guard (picture.reference.mime ?? "").hasPrefix("image/") else { return nil }
+                    let itemName =
+                        picture.reference.filename
+                        ?? picture.reference.path.map {
+                            URL(fileURLWithPath: $0, isDirectory: false).lastPathComponent
+                        }
+                        ?? "image"
+                    return ImageViewer.Item(
+                        key: picture.key, name: itemName, reference: picture.reference)
+                }
             }
             ImageViewer.present(
                 items: items, startKey: key, host: self.view.window,
@@ -4495,6 +4503,14 @@ final class TranscriptViewController: NSViewController {
         return nil
     }
 
+    /// Whether a row draws the pixels cached under `key`: the picture's own row, or the gallery a
+    /// group of agent pictures rests in.
+    private func rowHolds(_ row: TranscriptRow, _ key: String) -> Bool {
+        if row.key == key { return true }
+        guard case .pictures(let pictures) = row.kind else { return false }
+        return pictures.contains { $0.key == key }
+    }
+
     /// A row with no picture yet says so as it is built; whether those bytes are worth crossing the
     /// tailnet for right now is the transcript's call rather than the row's.
     private func noteImageWanted(_ reference: FileReference, key: String) {
@@ -4514,7 +4530,11 @@ final class TranscriptViewController: NSViewController {
     /// as it is built, so nothing is lost by forgetting.
     private func forgetWantedImages(_ rows: some Sequence<TranscriptRow>) {
         guard !wantedImages.isEmpty else { return }
-        for row in rows { wantedImages.removeValue(forKey: row.key) }
+        for row in rows {
+            wantedImages.removeValue(forKey: row.key)
+            guard case .pictures(let pictures) = row.kind else { continue }
+            for picture in pictures { wantedImages.removeValue(forKey: picture.key) }
+        }
     }
 
     /// Coalesced to once a runloop hop: a sweep costs a layout pass and a scroll delivers its
@@ -4545,9 +4565,12 @@ final class TranscriptViewController: NSViewController {
         let bottom = clip.bounds.origin.y + clip.bounds.height + margin
         var reach: [String: Bool] = [:]
         for (index, row) in renderedRows.enumerated()
-        where wantedImages[row.key] != nil && index < rowViews.count {
+        where index < rowViews.count && wantedImages.keys.contains(where: { rowHolds(row, $0) }) {
             let frame = rowViews[index].convert(rowViews[index].bounds, to: canvas)
-            reach[row.key] = frame.maxY >= top && frame.minY <= bottom
+            let onScreen = frame.maxY >= top && frame.minY <= bottom
+            for key in wantedImages.keys where rowHolds(row, key) {
+                reach[key] = onScreen
+            }
         }
         let ready = wantedImages.filter { reach[$0.key] ?? true }
         for (key, reference) in ready {
@@ -4642,11 +4665,11 @@ final class TranscriptViewController: NSViewController {
             guard let decoded else {
                 guard data != nil else { return }
                 self.refusedImages.insert(key)
-                self.replaceRows { $0.key == key }
+                self.replaceRows { self.rowHolds($0, key) }
                 return
             }
             ImageStore.shared.store(decoded, forKey: key)
-            self.replaceRows { $0.key == key }
+            self.replaceRows { self.rowHolds($0, key) }
         }
     }
 

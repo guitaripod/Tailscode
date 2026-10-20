@@ -1642,12 +1642,12 @@ final class ChatPane: @unchecked Sendable {
         func item(_ key: String, _ reference: FileReference) -> ImageGallery.Item? {
             guard (reference.mime ?? "").hasPrefix("image/") else { return nil }
             return ImageGallery.Item(
-                key: key, name: PictureStripView.filename(of: reference), reference: reference)
+                key: key, name: PictureGalleryView.filename(of: reference), reference: reference)
         }
         return lastFullRows.flatMap { row -> [ImageGallery.Item] in
             switch row.kind {
             case .file(let reference, _): return item(row.key, reference).map { [$0] } ?? []
-            case .pictureStrip(let pictures):
+            case .pictures(let pictures):
                 return pictures.compactMap { item($0.key, $0.reference) }
             default: return []
             }
@@ -6064,7 +6064,7 @@ final class ChatPane: @unchecked Sendable {
     private func rowIndex(showing key: String) -> Int {
         let at = renderedRows.lastIndex { row in
             if row.key == key { return true }
-            guard case .pictureStrip(let pictures) = row.kind else { return false }
+            guard case .pictures(let pictures) = row.kind else { return false }
             return pictures.contains { $0.key == key }
         }
         return at ?? .max
@@ -6091,7 +6091,7 @@ final class ChatPane: @unchecked Sendable {
         guard !keys.isEmpty, !placeholderShown else { return }
         let shows: (TranscriptRow) -> Bool = { row in
             if keys.contains(row.key) { return true }
-            guard case .pictureStrip(let pictures) = row.kind else { return false }
+            guard case .pictures(let pictures) = row.kind else { return false }
             return pictures.contains { keys.contains($0.key) }
         }
         guard renderedRows.contains(where: shows) else { return }
@@ -6656,7 +6656,7 @@ final class ChatPane: @unchecked Sendable {
                 tool("b1", "Bash", ["command": .string("python3 scripts/mock-comfyui.py")], "Start the mock"),
                 tool("w1", "Write", ["file_path": .string("docs/studio-mocks/b-painting.png")], "Write b-painting.png"),
             ]
-        for (index, path) in paths.prefix(2).enumerated() {
+        for (index, path) in paths.prefix(9).enumerated() {
             let name = URL(fileURLWithPath: path).lastPathComponent
             let part = MessagePart(
                 id: "pic\(index)",

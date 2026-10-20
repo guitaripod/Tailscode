@@ -55,6 +55,8 @@ enum ChatLayout {
             return .row(.prompt)
         case .file(_, let mine, _):
             return .row(mine ? .prompt : .picture)
+        case .pictures:
+            return .row(.picture)
         case .agentProse:
             return .row(.prose)
         case .codeBlock, .table, .tableDraft, .workflow, .designBoard, .taskBoard, .answerless,

@@ -279,7 +279,7 @@ final class TranscriptRowBuilder: @unchecked Sendable {
             all += rows
         }
         all = TranscriptRow.placeBoard(in: all)
-        return TranscriptRow.strip(Preferences.compactTools ? TranscriptRow.fuse(all) : all)
+        return TranscriptRow.gallery(Preferences.compactTools ? TranscriptRow.fuse(all) : all)
     }
 }
 
@@ -338,8 +338,9 @@ struct TranscriptRow: Hashable {
         /// only once the run has closed, so a streaming answer never carries a rail its own growth
         /// would keep pushing down, and its addresses are the whole of its identity.
         case linkRail(urls: [String])
-        /// Pictures the agent made, consecutive ones sharing a single wrapping row of thumbnails.
-        case pictureStrip([StripPicture])
+        /// Pictures the agent made, consecutive ones sharing one square of tiles that opens the
+        /// conversation's gallery.
+        case pictures([GalleryPicture])
         case table(MarkdownTable)
         /// A table still being written: its card, its count, and none of its rows measured.
         case tableDraft(TableDraft)
@@ -391,8 +392,8 @@ struct TranscriptRow: Hashable {
     /// More siblings than this from one turn collapse behind a single row.
     static let inlineAgentLimit = 3
 
-    /// One picture of a strip: the row key its pixels are cached under, and what to fetch.
-    struct StripPicture: Hashable {
+    /// One picture of a gallery: the row key its pixels are cached under, and what to fetch.
+    struct GalleryPicture: Hashable {
         let key: String
         let reference: FileReference
     }
@@ -631,26 +632,26 @@ struct TranscriptRow: Hashable {
             all += rows
         }
         all = placeBoard(in: all)
-        return strip(Preferences.compactTools ? fuse(all) : all)
+        return gallery(Preferences.compactTools ? fuse(all) : all)
     }
 
-    /// Consecutive pictures the agent made become one row of thumbnails. A picture that is the
-    /// person's own stays where it is — it belongs to the prompt it was sent with — and so does
-    /// anything that is not an image. The strip is named after its first picture, so a picture
-    /// arriving beside it changes the strip's value and not its identity.
-    static func strip(_ rows: [TranscriptRow]) -> [TranscriptRow] {
-        func picture(_ row: TranscriptRow) -> StripPicture? {
+    /// Consecutive pictures the agent made become one gallery. A picture that is the person's own
+    /// stays where it is — it belongs to the prompt it was sent with — and so does anything that is
+    /// not an image. The gallery is named after its first picture, so a picture arriving beside it
+    /// changes the gallery's value and not its identity.
+    static func gallery(_ rows: [TranscriptRow]) -> [TranscriptRow] {
+        func picture(_ row: TranscriptRow) -> GalleryPicture? {
             guard case .file(let reference, let mine) = row.kind, !mine,
                 (reference.mime ?? "").hasPrefix("image/")
             else { return nil }
-            return StripPicture(key: row.key, reference: reference)
+            return GalleryPicture(key: row.key, reference: reference)
         }
         var result: [TranscriptRow] = []
         result.reserveCapacity(rows.count)
-        var pending: [StripPicture] = []
+        var pending: [GalleryPicture] = []
         func flush() {
             guard let first = pending.first else { return }
-            result.append(TranscriptRow(key: first.key, kind: .pictureStrip(pending)))
+            result.append(TranscriptRow(key: first.key, kind: .pictures(pending)))
             pending = []
         }
         for row in rows {
@@ -757,7 +758,7 @@ struct TranscriptRow: Hashable {
 
     /// Whether this row is a strip that draws the picture cached under `key`.
     func holdsPicture(_ key: String) -> Bool {
-        guard case .pictureStrip(let pictures) = kind else { return false }
+        guard case .pictures(let pictures) = kind else { return false }
         return pictures.contains { $0.key == key }
     }
 
@@ -822,7 +823,7 @@ struct TranscriptRow: Hashable {
             return "\(language ?? "") \(body)"
         case .linkRail(let urls):
             return urls.joined(separator: " ")
-        case .pictureStrip(let pictures):
+        case .pictures(let pictures):
             return pictures.map { $0.reference.filename ?? $0.reference.path ?? "" }.joined(separator: " ")
         case .table(let table):
             return (table.header + table.rows.flatMap { $0 }).joined(separator: " ")
@@ -903,8 +904,8 @@ struct TranscriptRow: Hashable {
             return Self.codeBlock(language: language, body: body, key: key, context: context)
         case .linkRail(let urls):
             return LinkRailView.make(urls: urls, key: key, context: context)
-        case .pictureStrip(let pictures):
-            return PictureStripView.make(pictures, context: context)
+        case .pictures(let pictures):
+            return PictureGalleryView.make(pictures, context: context)
         case .table(let table):
             return Self.table(table, key: key)
         case .tableDraft(let draft):

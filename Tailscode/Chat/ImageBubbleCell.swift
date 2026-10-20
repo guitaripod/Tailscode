@@ -12,7 +12,7 @@ protocol ImageBubbleCellDelegate: AnyObject {
 /// so a screenshot reads as a screenshot and a photo as a photo. It needs no caption and is drawn
 /// small (``ImagePreview``) — you already know what you handed over, and a tap still opens it full
 /// size. Press and hold for the things you do with a picture, or drag it straight into another
-/// app. The pictures an agent made are a `PictureStripCell`.
+/// app. The pictures an agent made are a `PictureGalleryCell`.
 final class ImageBubbleCell: UICollectionViewCell {
     static let reuseID = "ImageBubbleCell"
     weak var delegate: ImageBubbleCellDelegate?
@@ -251,7 +251,7 @@ final class ImageBubbleCell: UICollectionViewCell {
     private func setRatio(_ aspect: Double) {
         ratio?.isActive = false
         ratio = imageView.widthAnchor.constraint(
-            equalTo: imageView.heightAnchor, multiplier: CGFloat(PictureStripLayout.shape(of: aspect)))
+            equalTo: imageView.heightAnchor, multiplier: CGFloat(PictureShape.shape(of: aspect)))
         ratio?.priority = UILayoutPriority(998)
         ratio?.isActive = true
     }
@@ -272,7 +272,7 @@ final class ImageBubbleCell: UICollectionViewCell {
     private func startShimmer(aspect: Double? = nil) {
         shimmer.isHidden = false
         slideShimmer()
-        setRatio(aspect ?? PictureStripLayout.placeholderAspect)
+        setRatio(aspect ?? PictureShape.placeholderAspect)
     }
 
     /// The wait's own motion, laid on apart from the shape it waits in, so a reader who changes

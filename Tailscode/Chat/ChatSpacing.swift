@@ -169,9 +169,13 @@ enum ChatSpacing {
             expect(
                 LinkRailPolicy.isSettled(lastRowIsLive: false, followedByFurniture: false, turnIsOpen: false),
                 "a finished turn's tail run settles")
-            let strip = PictureStripLayout.layout(
-                aspects: [1.0, 1.0, 1.0], width: 370, metrics: compact)
-            expect(strip.lineCount == 2 && strip.height == 368, "three squares wrap to two lines of 180")
+            let square = PictureGalleryLayout.side(metrics: compact, width: 370)
+            let mosaic = PictureGalleryLayout.mosaic(
+                count: 6, side: square, gap: compact.imageStripGap)
+            expect(
+                square == 180 && mosaic.count == 4
+                    && mosaic.last?.x == 180 - (180 - compact.imageStripGap) / 2,
+                "six pictures rest as one 180 pt square: four tiles, the rest counted")
             return failures
         }
     #endif
@@ -201,4 +205,4 @@ extension RevertBannerCell: RowGapCell {}
 extension CompactionCell: RowGapCell {}
 extension TranscriptNoteCell: RowGapCell {}
 extension LinkRailCell: RowGapCell {}
-extension PictureStripCell: RowGapCell {}
+extension PictureGalleryCell: RowGapCell {}

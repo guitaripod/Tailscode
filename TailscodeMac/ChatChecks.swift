@@ -113,6 +113,7 @@ enum ChatChecks {
         try settling(expect)
         try placement(expect)
         try strips(expect)
+        try galleries(expect)
         try timing(expect)
         try column(expect)
         try quietLines(expect)
@@ -363,6 +364,45 @@ enum ChatChecks {
         try expect(small.width == 90 && small.height == 60, "a picture is never enlarged past its pixels")
         let panorama = PictureThumb.size(pixels: CGSize(width: 6000, height: 400), maxHeight: 180, maxWidth: 600)
         try expect(panorama.width == 600, "a panorama stops at the widest")
+    }
+
+    /// The pictures an agent made rest as one gallery square, and a picture the person sent stays
+    /// where it is: consecutive agent pictures gather under the first one's key, a person's own and
+    /// a document break the run, and the square is a picture tall.
+    private static func galleries(_ expect: (Bool, String) throws -> Void) throws {
+        func picture(_ name: String) -> FileReference {
+            FileReference(path: "/tmp/\(name)", mime: "image/png", filename: name)
+        }
+        let rows: [TranscriptRow] = [
+            TranscriptRow(key: "m:a", kind: .file(picture("a.png"), mine: false, messageID: "m")),
+            TranscriptRow(key: "m:b", kind: .file(picture("b.png"), mine: false, messageID: "m")),
+            TranscriptRow(key: "m:t", kind: .reasoning("between")),
+            TranscriptRow(key: "m:mine", kind: .file(picture("mine.png"), mine: true, messageID: "m")),
+            TranscriptRow(key: "m:c", kind: .file(picture("c.png"), mine: false, messageID: "m")),
+        ]
+        let gathered = TranscriptRow.gallery(rows)
+        let described = gathered.map { row -> String in
+            switch row.kind {
+            case .pictures(let pictures): return "gallery:" + pictures.map(\.key).joined(separator: ",")
+            case .file: return "file"
+            default: return "other"
+            }
+        }
+        try expect(
+            described == ["gallery:m:a,m:b", "other", "file", "gallery:m:c"],
+            "consecutive agent pictures gather, a person's own does not: \(described)")
+        try expect(
+            gathered[0].key == "m:a", "a gallery keeps the key of its first picture")
+        try expect(TranscriptRow.gallery(gathered) == gathered, "gathering is idempotent")
+        let side = PictureGalleryLayout.side(metrics: ChatLayout.metrics, width: ImagePreview.deskWidth)
+        let mosaic = PictureGalleryLayout.mosaic(count: 9, side: side, gap: ChatLayout.metrics.imageStripGap)
+        try expect(
+            side == ChatLayout.metrics.imageMaxHeight && mosaic.count == 4
+                && PictureGalleryLayout.hidden(count: 9) == 5,
+            "nine pictures are one square of four with +5 on the corner: \(mosaic.count)")
+        try expect(
+            PictureGalleryReading.spoken(count: 2, names: ["a.png", "b.png"]) == "2 pictures, a.png, b.png",
+            "the square says how many pictures it holds and which")
     }
 
     private static func timing(_ expect: (Bool, String) throws -> Void) throws {
