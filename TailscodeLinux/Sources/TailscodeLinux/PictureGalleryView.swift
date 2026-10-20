@@ -62,15 +62,6 @@ enum PictureGalleryView {
                 widget, Int32(tile.width.rounded()), Int32(tile.height.rounded()))
         }
 
-        let plate = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        Gtk.addClass(plate, "picture-gallery-plate")
-        gtk_widget_set_hexpand(plate, 1)
-        gtk_widget_set_vexpand(plate, 1)
-        gtk_widget_set_opacity(plate, 0)
-
-        let stage = gtk_overlay_new()!
-        gtk_overlay_set_child(op(stage), fixed)
-        gtk_overlay_add_overlay(op(stage), plate)
 
         let opener = gtk_button_new()!
         Gtk.addClass(opener, "flat")
@@ -78,17 +69,19 @@ enum PictureGalleryView {
         gtk_widget_set_size_request(opener, extent.width, extent.height)
         gtk_widget_set_halign(opener, GTK_ALIGN_START)
         gtk_widget_set_valign(opener, GTK_ALIGN_START)
-        gtk_button_set_child(ptr(opener), stage)
+        gtk_widget_set_hexpand(opener, 0)
+        gtk_widget_set_vexpand(opener, 0)
+        gtk_button_set_child(ptr(opener), fixed)
 
         let said = spoken(pictures)
         gtk_widget_set_tooltip_text(opener, said)
         tailscode_set_accessible_label(opener, said)
 
-        let box = PlateBox(widget: plate)
+        let squares = TileBox(widgets: gtkWidgetChildren(of: fixed))
         Gtk.onPointer(
             opener,
-            move: { _, _ in gtk_widget_set_opacity(box.widget, 1) },
-            leave: { gtk_widget_set_opacity(box.widget, 0) })
+            move: { _, _ in squares.dim(true) },
+            leave: { squares.dim(false) })
 
         let open = context.openImage
         let first = pictures[0]
@@ -107,9 +100,12 @@ enum PictureGalleryView {
         let bits = context.texture(forKey: picture.key)
         let frame: UnsafeMutablePointer<GtkWidget>
         if bits != 0,
-            let drawn = Gtk.studioPicture(
-                bits: bits, fit: fitted ? GTK_CONTENT_FIT_CONTAIN : GTK_CONTENT_FIT_COVER)
+            let texture = UnsafeMutableRawPointer(bitPattern: bits).map({ OpaquePointer($0) }),
+            let drawn = tailscode_picture_for_texture_sized(
+                texture, Int32(tile.width.rounded()), Int32(tile.height.rounded()))
         {
+            gtk_picture_set_content_fit(
+                op(drawn), fitted ? GTK_CONTENT_FIT_CONTAIN : GTK_CONTENT_FIT_COVER)
             gtk_widget_set_size_request(
                 drawn, Int32(tile.width.rounded()), Int32(tile.height.rounded()))
             Gtk.addClass(drawn, "picture-gallery-tile")
@@ -138,8 +134,32 @@ enum PictureGalleryView {
         return stacked
     }
 
-    private final class PlateBox: @unchecked Sendable {
-        let widget: UnsafeMutablePointer<GtkWidget>
-        init(widget: UnsafeMutablePointer<GtkWidget>) { self.widget = widget }
+    /// Every tile of the square, held where a `@Sendable` pointer closure can dim them: the square
+    /// answers the pointer as one control — the tiles step back a little under it — rather than
+    /// painting a plate the width of the row behind a picture that is not that wide.
+    private final class TileBox: @unchecked Sendable {
+        private let widgets: [UnsafeMutablePointer<GtkWidget>]
+        private var lit = true
+
+        init(widgets: [UnsafeMutablePointer<GtkWidget>]) { self.widgets = widgets }
+
+        func dim(_ dimmed: Bool) {
+            guard dimmed != !lit else { return }
+            lit = !dimmed
+            for widget in widgets { gtk_widget_set_opacity(widget, dimmed ? 0.84 : 1) }
+        }
+    }
+
+    /// The fixed's own children, in the order they were put: every tile of the square.
+    private static func gtkWidgetChildren(of fixed: UnsafeMutablePointer<GtkWidget>)
+        -> [UnsafeMutablePointer<GtkWidget>]
+    {
+        var found: [UnsafeMutablePointer<GtkWidget>] = []
+        var child = gtk_widget_get_first_child(fixed)
+        while let one = child {
+            found.append(one)
+            child = gtk_widget_get_next_sibling(one)
+        }
+        return found
     }
 }

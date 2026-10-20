@@ -1203,15 +1203,17 @@ struct TranscriptRow: Hashable {
         let bits = context.texture(forKey: key)
         if bits != 0 {
             let texture = OpaquePointer(bitPattern: Int(bitPattern: bits))
-            let picture = tailscode_picture_for_texture(texture)!
             let width = tailscode_texture_width(texture)
             let height = tailscode_texture_height(texture)
             let scale = min(
                 Double(thumbWidth) / Double(max(1, width)),
                 Double(thumbHeight) / Double(max(1, height)), 1)
+            let fitted = (
+                Int32(Double(width) * scale), Int32(Double(height) * scale))
+            let picture = tailscode_picture_for_texture_sized(
+                texture, fitted.0, fitted.1)!
             gtk_picture_set_content_fit(op(picture), GTK_CONTENT_FIT_CONTAIN)
-            gtk_widget_set_size_request(
-                picture, Int32(Double(width) * scale), Int32(Double(height) * scale))
+            gtk_widget_set_size_request(picture, fitted.0, fitted.1)
             Gtk.addClass(picture, "image-part")
             let opener = gtk_button_new()!
             Gtk.addClass(opener, "flat")

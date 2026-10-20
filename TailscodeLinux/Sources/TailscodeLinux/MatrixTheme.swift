@@ -904,8 +904,11 @@ enum MatrixTheme {
         .seam-line-press { min-height: 0; padding: 0 4px; border-radius: 4px; }
         .seam-line-press:hover { background-color: alpha(\(special), 0.12); }
         .picture-gallery { padding: 0; min-height: 0; min-width: 0; border-radius: 6px; }
+        .picture-gallery, .picture-gallery:hover, .picture-gallery:active {
+            background-color: transparent;
+            box-shadow: none;
+        }
         .picture-gallery-tile { background-color: alpha(currentColor, 0.05); }
-        .picture-gallery-plate { background-color: alpha(\(accent), 0.10); border-radius: 6px; }
         .picture-gallery-scrim { background-color: alpha(black, 0.6); }
         .picture-gallery-more { color: white; font-weight: 700; font-size: 1.45rem; }
         .picture-gallery-waiting { border: 1px solid \(rule); }

@@ -565,6 +565,23 @@ extension SelfTest {
         try expect(
             tailscode_accessible_has_label(widget, PictureGalleryView.spoken(named)) != 0,
             "a screen reader is told how many pictures and which")
+        var leastWidth: Int32 = 0
+        var naturalWidth: Int32 = 0
+        var leastHeight: Int32 = 0
+        var naturalHeight: Int32 = 0
+        var ignoredA: Int32 = 0
+        var ignoredB: Int32 = 0
+        var ignoredC: Int32 = 0
+        var ignoredD: Int32 = 0
+        gtk_widget_measure(
+            widget, GTK_ORIENTATION_HORIZONTAL, -1, &leastWidth, &naturalWidth,
+            &ignoredA, &ignoredB)
+        gtk_widget_measure(
+            widget, GTK_ORIENTATION_VERTICAL, -1, &leastHeight, &naturalHeight,
+            &ignoredC, &ignoredD)
+        try expect(
+            Int(naturalWidth) == Int(square.rounded()) && Int(naturalHeight) == Int(square.rounded()),
+            "the square asks for its own size, never for the pixels inside it: \(naturalWidth) × \(naturalHeight)")
         gtk_widget_unparent(widget)
         let table = TranscriptRow.rows(
             for: ChatMessage(

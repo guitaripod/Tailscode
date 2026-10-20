@@ -497,6 +497,17 @@ enum ChatChecks {
         try expect(
             lone.frame.width == CGFloat(ImagePreview.deskWidth) && lone.frame.height == side,
             "a lone wide picture keeps its own shape, to the desk's width: \(lone.frame.size)")
+
+        let column = TranscriptColumn(frame: NSRect(x: 0, y: 0, width: 820, height: 600))
+        column.metrics = ChatLayout.metrics
+        let row = TranscriptRow(key: six[0].0.key, kind: .pictures(six.map(\.0)))
+        let placed = row.makeView(context: TranscriptContext())
+        column.addArrangedSubview(placed, spacing: ChatLayout.spacing(of: row.kind))
+        stage(column)
+        column.layoutSubtreeIfNeeded()
+        try expect(
+            placed.frame.height == side && placed.frame.width == side,
+            "in a column the square is a picture tall and no taller: \(placed.frame.size)")
     }
 
     private static func timing(_ expect: (Bool, String) throws -> Void) throws {
