@@ -403,6 +403,100 @@ enum ChatChecks {
         try expect(
             PictureGalleryReading.spoken(count: 2, names: ["a.png", "b.png"]) == "2 pictures, a.png, b.png",
             "the square says how many pictures it holds and which")
+        try galleryPixels(expect)
+    }
+
+    /// The square as it is drawn, out of the view and into pixels: a wall of four pictures shows
+    /// the four inks it was handed, the corner darkens over the fifth and counts it, and a lone
+    /// picture keeps its own shape instead of being cropped to the square.
+    private static func galleryPixels(_ expect: (Bool, String) throws -> Void) throws {
+        func swatch(_ color: NSColor) -> NSImage {
+            NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
+                color.setFill()
+                rect.fill()
+                return true
+            }
+        }
+        func picture(
+            _ name: String, _ color: NSColor, pixels: NSSize = NSSize(width: 64, height: 64)
+        ) -> (TranscriptRow.GalleryPicture, NSColor) {
+            let key = "gallery-check:\(name)"
+            ImageStore.shared.store(
+                DecodedImage(
+                    image: swatch(color), data: Data(),
+                    pixelWidth: Int(pixels.width), pixelHeight: Int(pixels.height)),
+                forKey: key)
+            return (
+                TranscriptRow.GalleryPicture(
+                    key: key,
+                    reference: FileReference(path: "/tmp/\(name)", mime: "image/png", filename: name)),
+                color
+            )
+        }
+        let inks: [NSColor] = [
+            NSColor(srgbRed: 0.9, green: 0.1, blue: 0.1, alpha: 1),
+            NSColor(srgbRed: 0.1, green: 0.8, blue: 0.1, alpha: 1),
+            NSColor(srgbRed: 0.1, green: 0.2, blue: 0.9, alpha: 1),
+            NSColor(srgbRed: 0.9, green: 0.8, blue: 0.1, alpha: 1),
+            NSColor(srgbRed: 0.8, green: 0.2, blue: 0.7, alpha: 1),
+        ]
+        let six = (0..<6).map { picture("s\($0).png", inks[$0 % inks.count]) }
+        let gallery = PictureGalleryRowView.make(six.map(\.0), context: TranscriptContext())
+        let side = CGFloat(
+            PictureGalleryLayout.side(metrics: ChatLayout.metrics, width: ImagePreview.deskWidth))
+        try expect(
+            gallery.frame.width == side && gallery.frame.height == side,
+            "six pictures are one \(Int(side)) pt square: \(gallery.frame.size)")
+        let width = Int(side.rounded())
+        guard width > 0,
+            let rep = NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: width,
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+            let context = NSGraphicsContext(bitmapImageRep: rep)
+        else { throw SelfTestFailure("compact chat: the gallery would not draw into a bitmap") }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        let flip = NSAffineTransform()
+        flip.translateX(by: 0, yBy: CGFloat(width))
+        flip.scaleX(by: 1, yBy: -1)
+        flip.concat()
+        gallery.draw(gallery.bounds)
+        context.flushGraphics()
+        NSGraphicsContext.restoreGraphicsState()
+        func ink(_ x: Double, _ y: Double) -> (r: CGFloat, g: CGFloat, b: CGFloat)? {
+            guard let color = rep.colorAt(x: Int(x.rounded()), y: Int(y.rounded())),
+                let space = color.usingColorSpace(.sRGB)
+            else { return nil }
+            return (space.redComponent, space.greenComponent, space.blueComponent)
+        }
+        func isInk(_ drawn: (r: CGFloat, g: CGFloat, b: CGFloat)?, _ expected: NSColor) -> Bool {
+            guard let drawn, let want = expected.usingColorSpace(.sRGB) else { return false }
+            return abs(drawn.r - want.redComponent) < 0.08
+                && abs(drawn.g - want.greenComponent) < 0.08
+                && abs(drawn.b - want.blueComponent) < 0.08
+        }
+        let mosaic = PictureGalleryLayout.mosaic(
+            count: 4, side: Double(side), gap: ChatLayout.metrics.imageStripGap)
+        for (index, tile) in mosaic.enumerated() where index < 3 {
+            let drawn = ink(tile.x + tile.width / 2, tile.y + tile.height / 2)
+            try expect(
+                isInk(drawn, six[index].1),
+                "tile \(index) is the picture it was handed: \(String(describing: drawn))")
+        }
+        let last = mosaic[3]
+        let covered = ink(last.x + last.width / 2, last.y + last.height / 2)
+        if let want = six[3].1.usingColorSpace(.sRGB) {
+            try expect(
+                covered.map { $0.r + $0.g + $0.b < (want.redComponent + want.greenComponent + want.blueComponent) / 2 } ?? false,
+                "the fifth picture is counted under a scrim rather than drawn: \(String(describing: covered))")
+        }
+
+        let wide = picture("wide.png", inks[0], pixels: NSSize(width: 200, height: 100))
+        let lone = PictureGalleryRowView.make([wide.0], context: TranscriptContext())
+        try expect(
+            lone.frame.width == CGFloat(ImagePreview.deskWidth) && lone.frame.height == side,
+            "a lone wide picture keeps its own shape, to the desk's width: \(lone.frame.size)")
     }
 
     private static func timing(_ expect: (Bool, String) throws -> Void) throws {
@@ -916,10 +1010,12 @@ enum ChatChecks {
             seam.topAnchor.constraint(equalTo: shelf.topAnchor),
         ])
         shelf.layoutSubtreeIfNeeded()
+        let seamMinimum = CGFloat(compact.seamRowHeight) * MacTheme.UIScale.factor
         try expect(
-            seam.frame.height == CGFloat(compact.seamRowHeight) && seam.isPressable
-                && seam.accessibilityRole() == .button,
-            "a compaction is one line the table's height tall, pressable for its reader")
+            seam.frame.height >= seamMinimum && seam.frame.height <= seamMinimum + 3
+                && seam.isPressable && seam.accessibilityRole() == .button,
+            "a compaction is as tall as a line of the table and never taller: \(seam.frame.height) "
+                + "over a minimum of \(seamMinimum)")
         let note = SeamLineView(symbol: "info.circle", text: "Model changed", tint: .secondaryLabelColor, spoken: "Note", onPress: nil)
         try expect(!note.isPressable && note.accessibilityRole() == .staticText, "a note is the same line with nothing behind it")
     }

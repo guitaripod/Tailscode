@@ -25,8 +25,9 @@ enum PictureGalleryRowView {
             maxWidth: ImagePreview.deskWidth)
         let names = pictures.map { name(of: $0.reference) }
         let spoken = PictureGalleryReading.spoken(count: pictures.count, names: names)
+        let bounds = size(of: tiles)
         let view = GalleryView(
-            pictures: pictures, tiles: tiles, side: side,
+            pictures: pictures, tiles: tiles, size: bounds,
             unshown: PictureGalleryLayout.hidden(count: pictures.count), spoken: spoken,
             name: names.first ?? "")
         for picture in pictures.prefix(PictureGalleryLayout.maximumTiles)
@@ -46,6 +47,14 @@ enum PictureGalleryRowView {
         return view
     }
 
+    /// What the square measures: a two-by-two is the square, and a lone picture keeping its own
+    /// shape is that shape's width.
+    static func size(of tiles: [PictureGalleryLayout.Tile]) -> NSSize {
+        let width = tiles.map { $0.x + $0.width }.max() ?? 0
+        let height = tiles.map { $0.y + $0.height }.max() ?? 0
+        return NSSize(width: CGFloat(width), height: CGFloat(height))
+    }
+
     private static func name(of reference: FileReference) -> String {
         reference.filename
             ?? reference.path.map { URL(fileURLWithPath: $0, isDirectory: false).lastPathComponent }
@@ -59,26 +68,26 @@ enum PictureGalleryRowView {
         var onOpen: (() -> Void)?
         private let pictures: [TranscriptRow.GalleryPicture]
         private let tiles: [PictureGalleryLayout.Tile]
-        private let side: CGFloat
+        private let square: NSSize
         private let unshown: Int
         private let spoken: String
         private let name: String
 
         init(
             pictures: [TranscriptRow.GalleryPicture], tiles: [PictureGalleryLayout.Tile],
-            side: CGFloat, unshown: Int, spoken: String, name: String
+            size: NSSize, unshown: Int, spoken: String, name: String
         ) {
             self.pictures = pictures
             self.tiles = tiles
-            self.side = side
+            self.square = size
             self.unshown = unshown
             self.spoken = spoken
             self.name = name
-            super.init(frame: NSRect(x: 0, y: 0, width: side, height: side))
+            super.init(frame: NSRect(origin: .zero, size: size))
             translatesAutoresizingMaskIntoConstraints = false
             setContentHuggingPriority(.required, for: .horizontal)
             wantsLayer = true
-            flowWidth = side
+            flowWidth = size.width
         }
 
         @available(*, unavailable)
@@ -89,7 +98,7 @@ enum PictureGalleryRowView {
         override var canBecomeKeyView: Bool { NSApp.isFullKeyboardAccessEnabled }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-        override var intrinsicContentSize: NSSize { NSSize(width: side, height: side) }
+        override var intrinsicContentSize: NSSize { square }
 
         override func drawFocusRingMask() {
             NSBezierPath(

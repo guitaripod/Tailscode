@@ -20,6 +20,14 @@ enum PictureGalleryView {
             count: pictures.count, names: pictures.map { filename(of: $0.reference) })
     }
 
+    /// What the square measures: a two-by-two is the square, and a lone picture keeping its own
+    /// shape is that shape's width.
+    private static func size(of tiles: [PictureGalleryLayout.Tile]) -> (width: Int32, height: Int32) {
+        let width = tiles.map { $0.x + $0.width }.max() ?? 0
+        let height = tiles.map { $0.y + $0.height }.max() ?? 0
+        return (Int32(width.rounded()), Int32(height.rounded()))
+    }
+
     /// Width over height of a picture whose pixels have landed; nil while it is on its way.
     private static func shape(
         of picture: TranscriptRow.GalleryPicture, context: TranscriptContext
@@ -41,8 +49,9 @@ enum PictureGalleryView {
             maxWidth: ImagePreview.deskWidth)
         let hidden = PictureGalleryLayout.hidden(count: pictures.count)
 
+        let extent = size(of: tiles)
         let fixed = gtk_fixed_new()!
-        gtk_widget_set_size_request(fixed, Int32(side.rounded()), Int32(side.rounded()))
+        gtk_widget_set_size_request(fixed, extent.width, extent.height)
         for tile in tiles {
             let widget = cell(
                 pictures[tile.index], metrics: metrics, tile: tile, context: context,
@@ -66,7 +75,7 @@ enum PictureGalleryView {
         let opener = gtk_button_new()!
         Gtk.addClass(opener, "flat")
         Gtk.addClass(opener, "picture-gallery")
-        gtk_widget_set_size_request(opener, Int32(side.rounded()), Int32(side.rounded()))
+        gtk_widget_set_size_request(opener, extent.width, extent.height)
         gtk_widget_set_halign(opener, GTK_ALIGN_START)
         gtk_widget_set_valign(opener, GTK_ALIGN_START)
         gtk_button_set_child(ptr(opener), stage)
