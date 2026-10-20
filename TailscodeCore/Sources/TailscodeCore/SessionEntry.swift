@@ -10,7 +10,7 @@ public struct SessionEntry: Hashable, Sendable {
     public let profileName: String
     public let host: String
     public let backendType: AgentType
-    public let session: AgentSession
+    public var session: AgentSession
 
     public init(
         profileID: String, profileName: String, host: String, backendType: AgentType,

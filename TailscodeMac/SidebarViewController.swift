@@ -660,6 +660,7 @@ final class SidebarViewController: NSViewController {
             if !next.isEmpty { SessionListCache.scheduleSave(next) }
             SessionMarks.reconcile(with: [entry])
             render()
+            onEntriesChanged?()
         case .remove(let id):
             entries.removeAll { $0.profileID == profile.id && $0.session.id == id }
             render()

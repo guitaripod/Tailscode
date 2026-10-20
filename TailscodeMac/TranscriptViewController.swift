@@ -1147,6 +1147,17 @@ final class TranscriptViewController: NSViewController {
         identityLabel.stringValue = title
     }
 
+    /// A pane keeps the entry it was opened with, so a conversation the server named after it
+    /// arrived, or one renamed since, would wear its first title for as long as it stayed open.
+    /// The listing is what knows the current one.
+    func adoptTitle(_ entry: SessionEntry) {
+        guard let current = self.entry, current.profileID == entry.profileID,
+            current.session.id == entry.session.id
+        else { return }
+        self.entry?.session.title = entry.session.title
+        refreshIdentity()
+    }
+
     /// A closing pane stops talking to the world before its views go: a cancelled stream is the
     /// difference between a closed pane and a leak that keeps rendering into nothing. What was
     /// half-typed into it is written first — closing a pane is not a decision to throw a prompt

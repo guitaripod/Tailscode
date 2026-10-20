@@ -430,14 +430,18 @@ final class MainWindowController: NSWindowController {
 
     /// A pane keeps the entry it was opened with, so a chat the server named after it arrived, or
     /// one renamed since, would wear its first title until the focus moved. The listing is what
-    /// knows the current one.
+    /// knows the current one, so every pane on screen is handed it.
     private func refreshTitleFromListing() {
-        guard let current = transcript.currentEntry,
-            let fresh = sidebar.allEntries.first(where: {
-                $0.profileID == current.profileID && $0.session.id == current.session.id
-            })
-        else { return }
-        showTitle(of: fresh)
+        splitPanes.eachPane { pane in
+            guard let current = pane.currentEntry,
+                let fresh = sidebar.allEntries.first(where: {
+                    $0.profileID == current.profileID && $0.session.id == current.session.id
+                })
+            else { return }
+            pane.adoptTitle(fresh)
+            guard pane === transcript else { return }
+            showTitle(of: fresh)
+        }
     }
 
     /// The marked chats opened all at once as one even tiling: the tree replaces what the window
