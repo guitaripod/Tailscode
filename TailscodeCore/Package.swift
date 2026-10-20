@@ -69,7 +69,10 @@ enum Kit {
     /// pairing link. 0.39.0 learns how far a server's clock is from this device's from the Date
     /// header of the answers it already gives. 0.42.0 names how long a request's cache writes
     /// live, which is what tells a client whether the prompt cache is still held.
-    static let version = Version(0, 42, 0)
+    /// 0.42.1 names a fresh opencode 2 conversation: the model a prompt sets is read back
+    /// before the prompt goes out, and a session the server has not titled yet is not mistaken
+    /// for one called by its id.
+    static let version = Version(0, 42, 1)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

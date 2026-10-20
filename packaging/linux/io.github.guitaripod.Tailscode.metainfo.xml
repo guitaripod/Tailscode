@@ -69,6 +69,29 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.79" date="2026-10-21">
+      <description>
+        <p>New:</p>
+        <ul>
+          <li>Every turn is a brain. Thoughts, tool calls and the agent&#x27;s own notes become one neural trace instead of a wall of activity lines: a collapsed line with a rendered head, its counts and its tally while it works, and an open stage with numbered steps, hover cards, pinning, a dive into a zone, replay with its scrubber, the answer&#x27;s paths as chips, keys, and Share as a poster. The latest turn opens itself and older turns stay one line. Choose Brain or Lines in Settings.</li>
+          <li>The picture gallery is a wide grid, and every tile opens its own picture.</li>
+          <li>Meridian, a world clock. A chip beside the update mark carries the time here and a sky glyph; hovering opens the pinned places, each machine&#x27;s clock skew and the quota windows about to reopen, and a click opens the sheet with a lane per place, the hours everyone is awake, alarms, and copy as ISO, UTC or epoch.</li>
+          <li>Talk to the agent, in beta. A call strip above the composer listens and types into the chat on the model and effort the chat is on, with mute, hang up and the agent&#x27;s account. It is an ear, not a voice, and it needs libpulse.</li>
+          <li>First run is one checklist. Find the machine on your tailnet, paste a pairing link, install claude-bridge and prove it works, with the one action that fixes each failure.</li>
+          <li>A machine proves it can paint and render before you ask: the picture and video studios show every missing ComfyUI model file and node with a copy-the-command row.</li>
+          <li>Quotas are one card per provider and account, with the provider&#x27;s own window start and reset drawn flat, the reason a machine could not be read, and the month&#x27;s analytics dropping an old estimate.</li>
+          <li>Notices say what happened and can be answered from where they are: a finished turn, a failure with Try again, an approval with Approve and Deny, a question with its options.</li>
+        </ul>
+        <p>Fixes:</p>
+        <ul>
+          <li>An approval answered from the desktop notice comes down in the chat too, instead of leaving the waiting card behind.</li>
+          <li>Stepping the effort is silent when it moves; only a notch pinned at either end says where it stopped.</li>
+          <li>A picture&#x27;s own pixels no longer size the row it rests in.</li>
+          <li>A session row and the quick ask wear the catalog&#x27;s codename for a local model instead of its cleaned id.</li>
+          <li>opencode 2 conversations get their names instead of staying untitled.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.78" date="2026-10-16">
       <description>
         <p>New:</p>

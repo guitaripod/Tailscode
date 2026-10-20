@@ -152,7 +152,10 @@ enum Kit {
     /// 0.36.1 writes a streaming answer's saved transcript at most every thirty seconds and not
     /// at all when nothing changed. 0.37.0 speaks to a preview host: a Mac's simulator watched,
     /// read and touched.
-    static let version = Version(0, 38, 0)
+    /// 0.42.1 names a fresh opencode 2 conversation: the model a prompt sets is read back
+    /// before the prompt goes out, and a session the server has not titled yet is not mistaken
+    /// for one called by its id.
+    static let version = Version(0, 42, 1)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
