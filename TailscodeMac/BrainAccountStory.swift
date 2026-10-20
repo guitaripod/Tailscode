@@ -245,8 +245,24 @@ extension BrainAccountView {
     }
 
     /// Makes the items near the viewport and lets go of the rest, then places them.
+    ///
+    /// A follow that scrolls to the end posts a bounds change, whose observer asks for a realize in
+    /// the middle of this one: the nested call is held back and made once afterwards, because a
+    /// realize that ran itself again on every scroll it made would recurse until the stack ran out.
     func realize() {
         guard viewHeight > 0, boxWidth > 0 else { return }
+        guard !realizing else {
+            realizeAgain = true
+            return
+        }
+        realizing = true
+        defer {
+            realizing = false
+            if realizeAgain {
+                realizeAgain = false
+                scheduleRealize()
+            }
+        }
         realizeCount += 1
         if offsets.count != entries.count { recomputeOffsets() }
         let range = wanted()

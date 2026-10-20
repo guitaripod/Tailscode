@@ -89,6 +89,8 @@ final class BrainAccountView: NSView, BrainKeyTaker {
     var lastCursor: String?
     var suppressReveal: String?
     var realizeScheduled = false
+    var realizing = false
+    var realizeAgain = false
     var lastRefresh = 0.0
     var refreshPending = false
     var workStamps: [String: Int] = [:]
