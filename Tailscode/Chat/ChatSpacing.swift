@@ -171,13 +171,13 @@ enum ChatSpacing {
                 "a finished turn's tail run settles")
             let side = PictureGalleryLayout.side(metrics: compact, width: 370)
             let phone = PictureGalleryLayout.grid(
-                count: 6, side: side, gap: compact.imageStripGap, available: 370)
+                count: 6, side: side, available: 370)
             expect(
                 side == 180 && phone.tiles.count == 6 && phone.hidden == 0
                     && phone.height <= side,
                 "six pictures rest in one picture's height and widen with the row: \(phone.tiles.count) tiles, \(phone.height) tall")
             let wide = PictureGalleryLayout.grid(
-                count: 17, side: side, gap: compact.imageStripGap, available: 900)
+                count: 17, side: side, available: 900)
             expect(
                 wide.tiles.count > 4 && wide.width > 600 && wide.height <= side,
                 "seventeen pictures fill a wide row rather than a square: \(wide.tiles.count) tiles across \(wide.width)")

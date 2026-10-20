@@ -570,12 +570,12 @@ extension SelfTest {
             Int(naturalHeight) == Int(side.rounded()),
             "a gallery is one picture tall, never the pixels it holds: \(naturalWidth) × \(naturalHeight)")
         try expect(
-            Int(naturalWidth) <= Int(ImagePreview.deskWidth),
-            "a gallery never asks for more row than it was given: \(naturalWidth)")
+            Int(naturalWidth) <= Int(ImagePreview.deskWidth) + 4,
+            "a gallery never asks for more row than it was given, bar the rounding of its tiles: \(naturalWidth)")
         let tiles = galleryFixed(of: widget).map(gtkWidgetChildren(of:)) ?? []
         try expect(
-            tiles.count == 6,
-            "eight pictures rest as a sheet of six, the last one counting the rest: \(tiles.count)")
+            tiles.count == 8,
+            "eight pictures rest as one grid of small tiles, all of them drawn: \(tiles.count)")
         try expect(
             tailscode_accessible_has_label(
                 tiles[1],

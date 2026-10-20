@@ -395,11 +395,15 @@ enum ChatChecks {
             gathered[0].key == "m:a", "a gallery keeps the key of its first picture")
         try expect(TranscriptRow.gallery(gathered) == gathered, "gathering is idempotent")
         let side = PictureGalleryLayout.side(metrics: ChatLayout.metrics, width: ImagePreview.deskWidth)
-        let sheet = PictureGalleryLayout.grid(
-            count: 10, side: side, gap: ChatLayout.metrics.imageStripGap, available: 420)
+        let sheet = PictureGalleryLayout.grid(count: 10, side: side, available: 420)
         try expect(
-            sheet.tiles.count == 8 && sheet.hidden == 2 && sheet.height <= side + 0.001,
-            "ten pictures in a narrow row are a sheet of eight with +2 on the corner: \(sheet.tiles.count) + \(sheet.hidden)")
+            sheet.tiles.count == 10 && sheet.hidden == 0 && sheet.height <= side + 0.001
+                && Set(sheet.tiles.map(\.y)) == [0, 91],
+            "ten pictures in a row are a grid of two rows, one picture tall: \(sheet.tiles.count) tiles, \(sheet.height) tall")
+        let crowded = PictureGalleryLayout.grid(count: 26, side: side, available: 420)
+        try expect(
+            crowded.hidden > 0 && crowded.tiles.count + crowded.hidden == 26,
+            "a grid takes the columns it can and counts the rest: \(crowded.tiles.count) + \(crowded.hidden)")
         try expect(
             PictureGalleryReading.spoken(count: 2, names: ["a.png", "b.png"]) == "2 pictures, a.png, b.png",
             "the gallery says how many pictures it holds and which")
@@ -441,14 +445,14 @@ enum ChatChecks {
             NSColor(srgbRed: 0.9, green: 0.8, blue: 0.1, alpha: 1),
             NSColor(srgbRed: 0.8, green: 0.2, blue: 0.7, alpha: 1),
         ]
-        let ten = (0..<10).map { picture("s\($0).png", inks[$0 % inks.count]) }
+        let crowd = (0..<26).map { picture("s\($0).png", inks[$0 % inks.count]) }
 
         let column = TranscriptColumn(frame: NSRect(x: 0, y: 0, width: 420, height: 600))
         column.metrics = ChatLayout.metrics
         var opened: String?
         let context = TranscriptContext()
         context.openImage = { key, _ in opened = key }
-        let row = TranscriptRow(key: ten[0].0.key, kind: .pictures(ten.map(\.0)))
+        let row = TranscriptRow(key: crowd[0].0.key, kind: .pictures(crowd.map(\.0)))
         let gallery = row.makeView(context: context)
         column.addArrangedSubview(gallery, spacing: ChatLayout.spacing(of: row.kind))
         stage(column)
@@ -459,7 +463,7 @@ enum ChatChecks {
             gallery.frame.width == 420 && gallery.frame.height == side,
             "in a column a gallery takes the row's width and one picture's height: \(gallery.frame.size)")
         let placed = PictureGalleryLayout.grid(
-            count: 10, side: Double(side), gap: ChatLayout.metrics.imageStripGap, available: 420)
+            count: 26, side: Double(side), available: 420)
         if let second = placed.tiles.dropFirst().first,
             let view = gallery as? PictureGalleryRowView.GalleryView,
             let pressed = view.picture(
@@ -467,7 +471,7 @@ enum ChatChecks {
         {
             view.onOpen?(pressed)
             try expect(
-                opened == ten[1].0.key,
+                opened == crowd[1].0.key,
                 "a press lands on the tile under it, and that is the picture the viewer opens on: \(opened ?? "-")")
         }
 
@@ -504,12 +508,12 @@ enum ChatChecks {
         for (index, tile) in placed.tiles.enumerated() where index < 3 {
             let drawn = ink(tile.x + tile.width / 2, tile.y + tile.height / 2)
             try expect(
-                isInk(drawn, ten[index].1),
+                isInk(drawn, crowd[index].1),
                 "tile \(index) is the picture it was handed: \(String(describing: drawn))")
         }
         if let last = placed.tiles.last {
-            let covered = ink(last.x + last.width / 2, last.y + last.height / 2)
-            if let want = ten[last.index].1.usingColorSpace(.sRGB) {
+            let covered = ink(last.x + last.width * 0.16, last.y + last.height * 0.18)
+            if let want = crowd[last.index].1.usingColorSpace(.sRGB) {
                 try expect(
                     covered.map { $0.r + $0.g + $0.b < (want.redComponent + want.greenComponent + want.blueComponent) / 2 } ?? false,
                     "the pictures the sheet cannot draw are counted under a scrim: \(String(describing: covered))")

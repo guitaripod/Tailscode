@@ -151,7 +151,7 @@ final class PictureGalleryCell: UICollectionViewCell {
         let metrics = Theme.Chat.metrics
         let side = PictureGalleryLayout.side(metrics: metrics, width: Double(width))
         return PictureGalleryLayout.grid(
-            count: files.count, side: side, gap: metrics.imageStripGap, available: Double(width),
+            count: files.count, side: side, available: Double(width),
             shape: files.count == 1 ? PictureShape.shape(of: tiles.first?.aspect) : nil,
             maxWidth: min(Double(width), Double(ImagePreview.deskWidth)))
     }

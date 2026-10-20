@@ -92,7 +92,7 @@ enum PictureGalleryRowView {
             let metrics = ChatLayout.metrics
             let side = PictureGalleryLayout.side(metrics: metrics, width: Double(width))
             return PictureGalleryLayout.grid(
-                count: pictures.count, side: side, gap: metrics.imageStripGap,
+                count: pictures.count, side: side,
                 available: Double(width),
                 shape: pictures.first.flatMap { picture in
                     ImageStore.shared.entry(forKey: picture.key).map {

@@ -71,7 +71,7 @@ enum PictureGalleryView {
             let metrics = TranscriptGaps.metrics
             let side = PictureGalleryLayout.side(metrics: metrics, width: room)
             let next = PictureGalleryLayout.grid(
-                count: pictures.count, side: side, gap: metrics.imageStripGap, available: room,
+                count: pictures.count, side: side, available: room,
                 shape: pictures.count == 1 ? shape(of: pictures[0]) : nil,
                 maxWidth: ImagePreview.deskWidth)
             guard next != arrangement || placed.isEmpty else { return }

@@ -9,18 +9,6 @@ import Foundation
 /// paged, where it can actually be read. The arrangement is arithmetic, so a client only places
 /// views at the rectangles it is handed and asks again when its width changes.
 public enum PictureGalleryLayout: Sendable {
-    /// The narrowest a one-row tile may be as a share of the row's height before the pictures take
-    /// a second row instead: a strip of needle-thin crops is not a gallery, a sheet of squares is.
-    public static let narrowestStripShare = 0.45
-
-    /// How many tiles a two-row sheet may draw across, so a wall-sized window does not turn a
-    /// group of pictures into a bead curtain of thumbnails.
-    public static let maximumColumns = 12
-
-    /// How much wider than tall a two-row tile may be: the sheet grows into the row's width when
-    /// there is room, and stops before its crops stop looking like pictures.
-    public static let widestSheetTile = 1.25
-
     public struct Tile: Sendable, Equatable {
         public let index: Int
         public let x: Double
@@ -60,18 +48,38 @@ public enum PictureGalleryLayout: Sendable {
         max(0, min(metrics.imageMaxHeight, width))
     }
 
+    /// The air between two tiles: two points of gutter, so a grid reads as one block of pictures
+    /// rather than a shelf of separate ones.
+    public static let tileGap: Double = 2
+
+    /// The narrowest a two-row tile may be drawn before the grid stops taking more columns and
+    /// counts the rest: a tile has to stay a picture and a press.
+    public static let narrowestTile: Double = 40
+
+    /// The narrowest a one-row tile may be as a share of the block's height before the pictures
+    /// take a second row instead: a strip of needle-thin crops is not a gallery, a sheet is.
+    public static let narrowestStripShare = 0.5
+
+    /// How many tiles a two-row sheet may draw across, so a wall-sized window does not turn a
+    /// group of pictures into a bead curtain of thumbnails.
+    public static let maximumColumns = 12
+
+    /// How much wider than tall a tile may be: a sheet grows into the row's width when there is
+    /// room, and stops before its crops stop looking like pictures.
+    public static let widestSheetTile = 1.25
+
     /// Rectangles for `count` pictures in a block `side` tall and `available` wide, a gutter of
     /// `gap` between neighbours.
     ///
     /// A lone picture keeps its own shape instead of being cropped — one screenshot squared would
     /// hide most of what it is — and is given `maxWidth` to spread into, which is the row's own
-    /// width. Two or more are cropped tiles: one row of them across the row when each tile stays
-    /// at least `narrowestStripShare` of the height wide, otherwise a two-row sheet of squares that
-    /// spreads into whatever width the row has, counting the pictures it cannot show on its last
-    /// tile's corner. Either way the block is one picture tall, never more.
+    /// width. A few pictures are one strip across the row while each tile stays at least
+    /// `narrowestStripShare` of the height wide; more of them are a two-row grid that takes as many
+    /// columns as the row has room for, shrinking the tiles to `narrowestTile` before it counts the
+    /// rest on the last one's corner. Either way the block is one picture tall, never more.
     public static func grid(
-        count: Int, side: Double, gap: Double, available: Double = 0, shape: Double? = nil,
-        maxWidth: Double? = nil
+        count: Int, side: Double, available: Double = 0, gap: Double = tileGap,
+        shape: Double? = nil, maxWidth: Double? = nil
     ) -> Arrangement {
         guard count > 0, side > 0 else { return .empty }
         guard count > 1 else {
@@ -91,21 +99,21 @@ public enum PictureGalleryLayout: Sendable {
             }
             return Arrangement(tiles: tiles, hidden: 0)
         }
-        let square = (side - gap) / 2
-        guard square > 0 else {
+        let height = (side - gap) / 2
+        guard height > 0 else {
             return Arrangement(
                 tiles: [Tile(index: 0, x: 0, y: 0, width: side, height: side)],
                 hidden: max(0, count - 1))
         }
-        let fitting = max(1, Int(((room + gap) / (square + gap)).rounded(.down)))
+        let fitting = max(1, Int(((room + gap) / (narrowestTile + gap)).rounded(.down)))
         let columns = max(1, min(maximumColumns, min((count + 1) / 2, fitting)))
         let shown = min(count, columns * 2)
-        let cell = min(square * widestSheetTile, (room - Double(columns - 1) * gap) / Double(columns))
-        let width = max(square, cell)
+        let share = (room - Double(columns - 1) * gap) / Double(columns)
+        let width = max(1, min(height * widestSheetTile, share))
         let tiles = (0..<shown).map { index in
             Tile(
                 index: index, x: Double(index % columns) * (width + gap),
-                y: Double(index / columns) * (square + gap), width: width, height: square)
+                y: Double(index / columns) * (height + gap), width: width, height: height)
         }
         return Arrangement(tiles: tiles, hidden: count - shown)
     }
