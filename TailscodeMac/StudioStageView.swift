@@ -1115,7 +1115,6 @@ final class StudioVerbsCapsule: NSView {
     private var buttons: [StudioVerbButton] = []
     private let glass = NSGlassEffectView()
     private let scrim = NSView()
-    private let row = NSView()
     private var iconsOnly = false
 
     init() {
@@ -1126,7 +1125,6 @@ final class StudioVerbsCapsule: NSView {
         scrim.layer?.cornerRadius = StudioTheme.capsuleHeight / 2
         scrim.layer?.cornerCurve = .continuous
         glass.contentView = scrim
-        scrim.addSubview(row)
         addSubview(glass)
         setAccessibilityRole(.toolbar)
         setAccessibilityLabel(Localized.text("Picture actions"))
@@ -1161,7 +1159,7 @@ final class StudioVerbsCapsule: NSView {
         buttons = next.map { verb in
             let button = StudioVerbButton(verb: verb)
             button.onPress = { [weak self] in self?.onVerb?(verb) }
-            row.addSubview(button)
+            scrim.addSubview(button)
             return button
         }
         needsLayout = true
@@ -1179,7 +1177,6 @@ final class StudioVerbsCapsule: NSView {
     override func layout() {
         super.layout()
         glass.frame = bounds
-        row.frame = scrim.bounds
         var x: CGFloat = 8
         for button in buttons {
             let width = button.width(iconsOnly: iconsOnly)

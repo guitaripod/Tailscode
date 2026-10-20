@@ -190,7 +190,7 @@ final class StudioWorkspaceView: NSView {
         let dock = lane.dock
         dock.frame = NSRect(
             x: stageX + StudioTheme.dockInset, y: dockBottom - dockHeight, width: dockWidth, height: dockHeight)
-        var reserve = lane.dock.baseHeight + StudioTheme.dockInset + 12
+        var reserve = dockHeight + StudioTheme.dockInset + 12
         if folds {
             let strip = StudioTheme.stripHeight
             reserve += strip + 8

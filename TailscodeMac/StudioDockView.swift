@@ -38,7 +38,6 @@ final class StudioDockView: NSView, StudioDocking {
     private var popover: NSPopover?
 
     static let baseHeight: CGFloat = StudioTheme.dockBase
-    var baseHeight: CGFloat { Self.baseHeight }
 
     init(brief: any StudioBriefing) {
         self.brief = brief

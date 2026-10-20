@@ -35,6 +35,7 @@ enum StudioCheck {
         sheetKeys(expect)
         sheetMenu(expect)
         sheet(expect)
+        capsulePresses(expect)
         return failures
     }
 
@@ -1042,6 +1043,76 @@ enum StudioCheck {
         expect(controller.state == .closed && sheet.superview == nil, "a window closed with the sheet in it takes the sheet with it")
         second.close()
         other.close()
+    }
+
+    private static func capsulePresses(_ expect: (Bool, String) -> Void) {
+        let studio = MacImageStudio(endpoint: ImageGenEndpoint(host: "127.0.0.1"))
+        StudioDemo.apply("done", to: studio)
+        let controller = StudioWindowController(studio: studio)
+        controller.reducedMotionOverride = true
+        let (window, _) = offscreen(1180, 760)
+        controller.show(lane: .image, in: window)
+        controller.motionFinished()
+        window.contentView?.layoutSubtreeIfNeeded()
+        guard let capsule = first(StudioVerbsCapsule.self, in: window.contentView),
+            let exhibit = studio.exhibit
+        else {
+            expect(false, "a finished picture draws the verbs capsule")
+            return
+        }
+        let expected = StudioVerbs.faces(
+            state: .done, kept: exhibit.isKept, hasWords: studio.hasWords(exhibit)
+        ).map(\.id)
+        let buttons = all(StudioVerbButton.self, in: capsule)
+        expect(
+            buttons.map(\.verb.id) == expected,
+            "the capsule draws one button per verb the stage offers, in its order")
+        expect(!capsule.isHidden && capsule.alphaValue == 1, "and it is on the stage")
+        for size in [NSSize(width: 1180, height: 760), NSSize(width: 640, height: 600)] {
+            window.setContentSize(size)
+            window.contentView?.layoutSubtreeIfNeeded()
+            for button in all(StudioVerbButton.self, in: capsule) {
+                expect(
+                    pressed(button, in: window),
+                    "the \(button.verb.id) button answers a press at \(Int(size.width))×\(Int(size.height))")
+            }
+            expect(
+                clearOfTheDock(capsule, in: window),
+                "and the capsule stands clear of the dock at \(Int(size.width))×\(Int(size.height))")
+        }
+        controller.dismiss()
+        controller.motionFinished()
+        window.close()
+    }
+
+    private static func clearOfTheDock(_ capsule: StudioVerbsCapsule, in window: NSWindow) -> Bool {
+        guard let stage = capsule.superview as? StudioStageView,
+            let workspace = stage.superview,
+            let dock = workspace.subviews.first(where: { $0 is StudioDockView })
+        else { return false }
+        return capsule.convert(capsule.bounds, to: workspace).maxY <= dock.frame.minY
+    }
+
+    private static func pressed(_ button: StudioVerbButton, in window: NSWindow) -> Bool {
+        guard let root = window.contentView else { return false }
+        let centre = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
+        return root.hitTest(root.convert(centre, from: nil)) is StudioVerbButton
+    }
+
+    private static func first<T: NSView>(_ type: T.Type, in root: NSView?) -> T? {
+        guard let root else { return nil }
+        if let match = root as? T { return match }
+        for child in root.subviews {
+            if let found = first(type, in: child) { return found }
+        }
+        return nil
+    }
+
+    private static func all<T: NSView>(_ type: T.Type, in root: NSView) -> [T] {
+        var found: [T] = []
+        if let match = root as? T { found.append(match) }
+        for child in root.subviews { found += all(type, in: child) }
+        return found
     }
 
     private static var closeChord: KeyChord {

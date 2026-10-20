@@ -71,14 +71,13 @@ protocol StudioStaging: AnyObject {
 }
 
 /// The dock as a lane draws it. The shell asks how tall it wants to be for a width and whether its
-/// second row has folded, and is told when it grows — a words box that takes a third line grows
-/// upward over the stage rather than moving the picture.
+/// second row has folded, and is told when it grows — a words box that takes a third line stands
+/// higher over the stage, and the stage keeps the picture and its verbs clear of it.
 @MainActor
 protocol StudioDocking: AnyObject {
     var foldsChips: Bool { get set }
     var onHeightChange: (() -> Void)? { get set }
     func preferredHeight(forWidth width: CGFloat) -> CGFloat
-    var baseHeight: CGFloat { get }
     func focusWords()
     var wordsAreFocused: Bool { get }
     func take(brief words: String)
