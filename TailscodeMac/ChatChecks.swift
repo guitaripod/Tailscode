@@ -395,20 +395,21 @@ enum ChatChecks {
             gathered[0].key == "m:a", "a gallery keeps the key of its first picture")
         try expect(TranscriptRow.gallery(gathered) == gathered, "gathering is idempotent")
         let side = PictureGalleryLayout.side(metrics: ChatLayout.metrics, width: ImagePreview.deskWidth)
-        let mosaic = PictureGalleryLayout.mosaic(count: 9, side: side, gap: ChatLayout.metrics.imageStripGap)
+        let sheet = PictureGalleryLayout.grid(
+            count: 10, side: side, gap: ChatLayout.metrics.imageStripGap, available: 420)
         try expect(
-            side == ChatLayout.metrics.imageMaxHeight && mosaic.count == 4
-                && PictureGalleryLayout.hidden(count: 9) == 5,
-            "nine pictures are one square of four with +5 on the corner: \(mosaic.count)")
+            sheet.tiles.count == 8 && sheet.hidden == 2 && sheet.height <= side + 0.001,
+            "ten pictures in a narrow row are a sheet of eight with +2 on the corner: \(sheet.tiles.count) + \(sheet.hidden)")
         try expect(
             PictureGalleryReading.spoken(count: 2, names: ["a.png", "b.png"]) == "2 pictures, a.png, b.png",
-            "the square says how many pictures it holds and which")
+            "the gallery says how many pictures it holds and which")
         try galleryPixels(expect)
     }
 
-    /// The square as it is drawn, out of the view and into pixels: a wall of four pictures shows
-    /// the four inks it was handed, the corner darkens over the fifth and counts it, and a lone
-    /// picture keeps its own shape instead of being cropped to the square.
+    /// The gallery as it is drawn, out of the view and into pixels: the tiles show the inks they
+    /// were handed, the corner darkens over the pictures it cannot draw and counts them, a press
+    /// lands on the picture under it rather than on the group's first, and a lone picture keeps its
+    /// own shape instead of being cropped.
     private static func galleryPixels(_ expect: (Bool, String) throws -> Void) throws {
         func swatch(_ color: NSColor) -> NSImage {
             NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
@@ -440,29 +441,53 @@ enum ChatChecks {
             NSColor(srgbRed: 0.9, green: 0.8, blue: 0.1, alpha: 1),
             NSColor(srgbRed: 0.8, green: 0.2, blue: 0.7, alpha: 1),
         ]
-        let six = (0..<6).map { picture("s\($0).png", inks[$0 % inks.count]) }
-        let gallery = PictureGalleryRowView.make(six.map(\.0), context: TranscriptContext())
-        let side = CGFloat(
-            PictureGalleryLayout.side(metrics: ChatLayout.metrics, width: ImagePreview.deskWidth))
+        let ten = (0..<10).map { picture("s\($0).png", inks[$0 % inks.count]) }
+
+        let column = TranscriptColumn(frame: NSRect(x: 0, y: 0, width: 420, height: 600))
+        column.metrics = ChatLayout.metrics
+        var opened: String?
+        let context = TranscriptContext()
+        context.openImage = { key, _ in opened = key }
+        let row = TranscriptRow(key: ten[0].0.key, kind: .pictures(ten.map(\.0)))
+        let gallery = row.makeView(context: context)
+        column.addArrangedSubview(gallery, spacing: ChatLayout.spacing(of: row.kind))
+        stage(column)
+        column.layoutSubtreeIfNeeded()
+
+        let side = CGFloat(PictureGalleryLayout.side(metrics: ChatLayout.metrics, width: 420))
         try expect(
-            gallery.frame.width == side && gallery.frame.height == side,
-            "six pictures are one \(Int(side)) pt square: \(gallery.frame.size)")
-        let width = Int(side.rounded())
-        guard width > 0,
+            gallery.frame.width == 420 && gallery.frame.height == side,
+            "in a column a gallery takes the row's width and one picture's height: \(gallery.frame.size)")
+        let placed = PictureGalleryLayout.grid(
+            count: 10, side: Double(side), gap: ChatLayout.metrics.imageStripGap, available: 420)
+        if let second = placed.tiles.dropFirst().first,
+            let view = gallery as? PictureGalleryRowView.GalleryView,
+            let pressed = view.picture(
+                at: NSPoint(x: second.x + second.width / 2, y: second.y + second.height / 2))
+        {
+            view.onOpen?(pressed)
+            try expect(
+                opened == ten[1].0.key,
+                "a press lands on the tile under it, and that is the picture the viewer opens on: \(opened ?? "-")")
+        }
+
+        let width = Int(420)
+        let height = Int(side.rounded())
+        guard width > 0, height > 0,
             let rep = NSBitmapImageRep(
-                bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: width,
+                bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
-            let context = NSGraphicsContext(bitmapImageRep: rep)
+            let bitmaps = NSGraphicsContext(bitmapImageRep: rep)
         else { throw SelfTestFailure("compact chat: the gallery would not draw into a bitmap") }
         NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = context
+        NSGraphicsContext.current = bitmaps
         let flip = NSAffineTransform()
-        flip.translateX(by: 0, yBy: CGFloat(width))
+        flip.translateX(by: 0, yBy: CGFloat(height))
         flip.scaleX(by: 1, yBy: -1)
         flip.concat()
         gallery.draw(gallery.bounds)
-        context.flushGraphics()
+        bitmaps.flushGraphics()
         NSGraphicsContext.restoreGraphicsState()
         func ink(_ x: Double, _ y: Double) -> (r: CGFloat, g: CGFloat, b: CGFloat)? {
             guard let color = rep.colorAt(x: Int(x.rounded()), y: Int(y.rounded())),
@@ -476,38 +501,29 @@ enum ChatChecks {
                 && abs(drawn.g - want.greenComponent) < 0.08
                 && abs(drawn.b - want.blueComponent) < 0.08
         }
-        let mosaic = PictureGalleryLayout.mosaic(
-            count: 4, side: Double(side), gap: ChatLayout.metrics.imageStripGap)
-        for (index, tile) in mosaic.enumerated() where index < 3 {
+        for (index, tile) in placed.tiles.enumerated() where index < 3 {
             let drawn = ink(tile.x + tile.width / 2, tile.y + tile.height / 2)
             try expect(
-                isInk(drawn, six[index].1),
+                isInk(drawn, ten[index].1),
                 "tile \(index) is the picture it was handed: \(String(describing: drawn))")
         }
-        let last = mosaic[3]
-        let covered = ink(last.x + last.width / 2, last.y + last.height / 2)
-        if let want = six[3].1.usingColorSpace(.sRGB) {
-            try expect(
-                covered.map { $0.r + $0.g + $0.b < (want.redComponent + want.greenComponent + want.blueComponent) / 2 } ?? false,
-                "the fifth picture is counted under a scrim rather than drawn: \(String(describing: covered))")
+        if let last = placed.tiles.last {
+            let covered = ink(last.x + last.width / 2, last.y + last.height / 2)
+            if let want = ten[last.index].1.usingColorSpace(.sRGB) {
+                try expect(
+                    covered.map { $0.r + $0.g + $0.b < (want.redComponent + want.greenComponent + want.blueComponent) / 2 } ?? false,
+                    "the pictures the sheet cannot draw are counted under a scrim: \(String(describing: covered))")
+            }
         }
 
         let wide = picture("wide.png", inks[0], pixels: NSSize(width: 200, height: 100))
         let lone = PictureGalleryRowView.make([wide.0], context: TranscriptContext())
+        let loneSide = CGFloat(PictureGalleryLayout.side(metrics: ChatLayout.metrics, width: 420))
+        lone.frame = NSRect(x: 0, y: 0, width: 420, height: loneSide)
+        lone.layoutSubtreeIfNeeded()
         try expect(
-            lone.frame.width == CGFloat(ImagePreview.deskWidth) && lone.frame.height == side,
-            "a lone wide picture keeps its own shape, to the desk's width: \(lone.frame.size)")
-
-        let column = TranscriptColumn(frame: NSRect(x: 0, y: 0, width: 820, height: 600))
-        column.metrics = ChatLayout.metrics
-        let row = TranscriptRow(key: six[0].0.key, kind: .pictures(six.map(\.0)))
-        let placed = row.makeView(context: TranscriptContext())
-        column.addArrangedSubview(placed, spacing: ChatLayout.spacing(of: row.kind))
-        stage(column)
-        column.layoutSubtreeIfNeeded()
-        try expect(
-            placed.frame.height == side && placed.frame.width == side,
-            "in a column the square is a picture tall and no taller: \(placed.frame.size)")
+            lone.intrinsicContentSize.height == loneSide,
+            "a lone picture is one picture tall: \(lone.intrinsicContentSize.height)")
     }
 
     private static func timing(_ expect: (Bool, String) throws -> Void) throws {

@@ -548,23 +548,10 @@ extension SelfTest {
         let context = TranscriptContext()
         let opening = OpenedPicture()
         context.openImage = { key, name in opening.value = (key, name) }
-        let square = PictureGalleryLayout.side(
+        let side = PictureGalleryLayout.side(
             metrics: TranscriptGaps.metrics, width: ImagePreview.deskWidth)
         let gallery = TranscriptRow(key: named[0].key, kind: .pictures(named))
         let widget = gallery.makeWidget(context: context)
-        var width: Int32 = 0
-        var height: Int32 = 0
-        gtk_widget_get_size_request(widget, &width, &height)
-        try expect(
-            Int(width) == Int(square.rounded()) && height == width,
-            "a gallery is one square, a picture tall: \(width) × \(height)")
-        tailscode_emit_clicked(widget)
-        try expect(
-            opening.value?.0 == "s1.png" && opening.value?.1 == "s1.png",
-            "pressing the square opens the gallery on its first picture")
-        try expect(
-            tailscode_accessible_has_label(widget, PictureGalleryView.spoken(named)) != 0,
-            "a screen reader is told how many pictures and which")
         var leastWidth: Int32 = 0
         var naturalWidth: Int32 = 0
         var leastHeight: Int32 = 0
@@ -580,8 +567,24 @@ extension SelfTest {
             widget, GTK_ORIENTATION_VERTICAL, -1, &leastHeight, &naturalHeight,
             &ignoredC, &ignoredD)
         try expect(
-            Int(naturalWidth) == Int(square.rounded()) && Int(naturalHeight) == Int(square.rounded()),
-            "the square asks for its own size, never for the pixels inside it: \(naturalWidth) × \(naturalHeight)")
+            Int(naturalHeight) == Int(side.rounded()),
+            "a gallery is one picture tall, never the pixels it holds: \(naturalWidth) × \(naturalHeight)")
+        try expect(
+            Int(naturalWidth) <= Int(ImagePreview.deskWidth),
+            "a gallery never asks for more row than it was given: \(naturalWidth)")
+        let tiles = galleryFixed(of: widget).map(gtkWidgetChildren(of:)) ?? []
+        try expect(
+            tiles.count == 6,
+            "eight pictures rest as a sheet of six, the last one counting the rest: \(tiles.count)")
+        try expect(
+            tailscode_accessible_has_label(
+                tiles[1],
+                Localized.text("Open %1$@, picture %2$@ of %3$@", "s2.png", "2", "8")) != 0,
+            "a screen reader hears which picture a tile opens")
+        tailscode_emit_clicked(tiles[1])
+        try expect(
+            opening.value?.0 == "s2.png" && opening.value?.1 == "s2.png",
+            "pressing a tile opens the gallery on that picture, not the first: \(opening.value?.0 ?? "-")")
         gtk_widget_unparent(widget)
         let table = TranscriptRow.rows(
             for: ChatMessage(
@@ -914,6 +917,24 @@ extension TranscriptRow.Kind {
             .compaction(Compaction(trigger: .manual)),
         ]
     }
+}
+
+/// The fixed a gallery builds its tiles into: the row's own child, under the width watch laid
+/// over it.
+private func galleryFixed(of widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget>? {
+    gtk_widget_get_first_child(widget)
+}
+
+private func gtkWidgetChildren(of parent: UnsafeMutablePointer<GtkWidget>)
+    -> [UnsafeMutablePointer<GtkWidget>]
+{
+    var found: [UnsafeMutablePointer<GtkWidget>] = []
+    var child = gtk_widget_get_first_child(parent)
+    while let one = child {
+        found.append(one)
+        child = gtk_widget_get_next_sibling(one)
+    }
+    return found
 }
 
 private final class LandedKeys: @unchecked Sendable {

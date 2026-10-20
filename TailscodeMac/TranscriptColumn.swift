@@ -110,7 +110,8 @@ final class TranscriptColumn: NSView {
             guard !row.isHidden else { continue }
             let resolved = row.frame.height > 0 ? row.frame.height : host.heldHeight ?? 0
             let height = (resolved * scale).rounded(.up) / scale
-            let isPicture = host.spacing == .row(.picture) && metrics != nil
+            let isPicture =
+                host.spacing == .row(.picture) && metrics != nil && row.flowWidth != nil
             if isPicture, previous?.spacing == .row(.picture), let metrics {
                 let natural = rowWidth(of: row)
                 if line.accepts(natural, in: width) {

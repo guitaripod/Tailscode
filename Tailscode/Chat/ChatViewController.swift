@@ -4074,7 +4074,7 @@ final class ChatViewController: UIViewController {
         private func openFirstAttachment() {
             for cell in collectionView.visibleCells {
                 if let gallery = cell as? PictureGalleryCell {
-                    pictureGalleryCell(gallery, didTapFrom: gallery)
+                    pictureGalleryCell(gallery, didTapPictureAt: 0)
                     return
                 }
                 guard let cell = cell as? ImageBubbleCell, let image = cell.displayedImage else {
@@ -6988,15 +6988,15 @@ extension ChatViewController: UIGestureRecognizerDelegate {
 }
 
 extension ChatViewController: PictureGalleryCellDelegate {
-    func pictureGalleryCell(_ cell: PictureGalleryCell, didTapFrom view: UIView) {
+    func pictureGalleryCell(_ cell: PictureGalleryCell, didTapPictureAt index: Int) {
         let items = galleryImages()
         guard !items.isEmpty,
             let rowID = collectionView.indexPath(for: cell).flatMap({ dataSource.itemIdentifier(for: $0) })
         else { return }
-        let start = items.firstIndex { $0.id == Self.pictureID(row: rowID, index: 0) } ?? 0
+        let start = items.firstIndex { $0.id == Self.pictureID(row: rowID, index: index) } ?? 0
         present(
             ImageViewerViewController(
-                items: items, startIndex: start, backend: viewModel.backend, from: view),
+                items: items, startIndex: start, backend: viewModel.backend, from: cell),
             animated: false)
     }
 }

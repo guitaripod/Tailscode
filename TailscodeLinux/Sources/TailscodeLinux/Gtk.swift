@@ -410,6 +410,40 @@ enum Gtk {
         return UInt32(clamping: whole)
     }
 
+    final class AreaBox: @unchecked Sendable {
+        let handler: @Sendable (Int32, Int32) -> Void
+        init(_ handler: @escaping @Sendable (Int32, Int32) -> Void) { self.handler = handler }
+    }
+
+    /// A drawing area's own size, every time it changes. `GtkDrawingArea` is the one widget that
+    /// announces its allocation, so a row that has to place things by hand for its width puts an
+    /// area of no height at its top and hears the row's width from it — never from a guess made
+    /// when the row was built, which is the width the pane had at the time.
+    static func onAreaResize(
+        _ area: UnsafeMutablePointer<GtkWidget>, _ handler: @escaping @Sendable (Int32, Int32) -> Void
+    ) {
+        _ = releaseInstalled
+        let box = Unmanaged.passRetained(AreaBox(handler)).toOpaque()
+        let callback:
+            @convention(c) (UnsafeMutableRawPointer?, Int32, Int32, UnsafeMutableRawPointer?) -> Void =
+            { _, width, height, raw in
+                guard let raw else { return }
+                Unmanaged<AreaBox>.fromOpaque(raw).takeUnretainedValue().handler(width, height)
+            }
+        tailscode_connect(
+            UnsafeMutableRawPointer(area), "resize",
+            unsafeBitCast(callback, to: GCallback.self), box)
+    }
+
+    /// The area an ``onAreaResize(_:_:)`` watches: it paints nothing and takes no pointer, and it
+    /// is laid over the row so the space it measures is the space the row has.
+    static func widthWatch() -> UnsafeMutablePointer<GtkWidget> {
+        let area = gtk_drawing_area_new()!
+        gtk_widget_set_can_target(area, 0)
+        gtk_widget_set_can_focus(area, 0)
+        return area
+    }
+
     /// Runs `work` on the GLib main context after a delay — the timed cousin of ``onMain(_:)``.
     static func after(_ milliseconds: UInt32, _ work: @escaping @Sendable () -> Void) {
         let box = Unmanaged.passRetained(Box(work)).toOpaque()

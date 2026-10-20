@@ -1,16 +1,25 @@
 import Foundation
 
-/// The pictures an agent made, as one square of small tiles rather than a poster per picture.
+/// The pictures an agent made, as one grid of small tiles rather than a poster per picture.
 ///
 /// A turn that looked at sixteen screenshots used to spend sixteen pictures of height on them and
 /// push the answer off the page; the pictures are one fact about the turn, so they rest as a single
-/// pressable tile — four at most, the rest counted — and the whole set opens in the viewer, paged,
-/// where a picture can actually be read. The arrangement is arithmetic, so a client only places
-/// views at the rectangles it is handed.
+/// block — a strip across the transcript when the pictures are few, a two-row sheet when they are
+/// many, never taller than one picture — and a press on a tile opens that picture in the viewer,
+/// paged, where it can actually be read. The arrangement is arithmetic, so a client only places
+/// views at the rectangles it is handed and asks again when its width changes.
 public enum PictureGalleryLayout: Sendable {
-    /// The tiles drawn: a two-by-two of squares, which is what makes the shape read as a grid
-    /// rather than as one picture among the answer.
-    public static let maximumTiles = 4
+    /// The narrowest a one-row tile may be as a share of the row's height before the pictures take
+    /// a second row instead: a strip of needle-thin crops is not a gallery, a sheet of squares is.
+    public static let narrowestStripShare = 0.45
+
+    /// How many tiles a two-row sheet may draw across, so a wall-sized window does not turn a
+    /// group of pictures into a bead curtain of thumbnails.
+    public static let maximumColumns = 12
+
+    /// How much wider than tall a two-row tile may be: the sheet grows into the row's width when
+    /// there is room, and stops before its crops stop looking like pictures.
+    public static let widestSheetTile = 1.25
 
     public struct Tile: Sendable, Equatable {
         public let index: Int
@@ -28,58 +37,81 @@ public enum PictureGalleryLayout: Sendable {
         }
     }
 
-    /// How many pictures the tile counts rather than shows, which is what its `+N` says.
-    public static func hidden(count: Int) -> Int {
-        max(0, count - maximumTiles)
+    /// What a group of pictures comes to in a given width: the tiles to draw, in order, and how
+    /// many pictures the last one's corner has to count.
+    public struct Arrangement: Sendable, Equatable {
+        public let tiles: [Tile]
+        public let hidden: Int
+
+        public init(tiles: [Tile], hidden: Int) {
+            self.tiles = tiles
+            self.hidden = hidden
+        }
+
+        public var width: Double { tiles.map { $0.x + $0.width }.max() ?? 0 }
+        public var height: Double { tiles.map { $0.y + $0.height }.max() ?? 0 }
+
+        public static let empty = Arrangement(tiles: [], hidden: 0)
     }
 
-    /// The square's side: as tall as a picture the metrics allow, and never past the row it is
-    /// drawn in, because a square wider than the transcript is a square cut off.
+    /// The block's height: as tall as a picture the metrics allow, and never past the row it is
+    /// drawn in, because a picture taller than the transcript is a picture cut off.
     public static func side(metrics: ChatMetrics, width: Double) -> Double {
         max(0, min(metrics.imageMaxHeight, width))
     }
 
-    /// Rectangles for `count` pictures in a square `side` wide, a gutter of `gap` between
-    /// neighbours: one picture fills it, two split it top to bottom, three give half the square to
-    /// the first, and four or more are the two-by-two the tile is named for. A lone picture keeps
-    /// its own shape instead — one screenshot cropped to a square would hide most of what it is —
-    /// and is given `maxWidth` to spread into, which is the row's own width.
-    public static func mosaic(
-        count: Int, side: Double, gap: Double, shape: Double? = nil, maxWidth: Double? = nil
-    ) -> [Tile] {
-        guard count > 0, side > 0 else { return [] }
+    /// Rectangles for `count` pictures in a block `side` tall and `available` wide, a gutter of
+    /// `gap` between neighbours.
+    ///
+    /// A lone picture keeps its own shape instead of being cropped — one screenshot squared would
+    /// hide most of what it is — and is given `maxWidth` to spread into, which is the row's own
+    /// width. Two or more are cropped tiles: one row of them across the row when each tile stays
+    /// at least `narrowestStripShare` of the height wide, otherwise a two-row sheet of squares that
+    /// spreads into whatever width the row has, counting the pictures it cannot show on its last
+    /// tile's corner. Either way the block is one picture tall, never more.
+    public static func grid(
+        count: Int, side: Double, gap: Double, available: Double = 0, shape: Double? = nil,
+        maxWidth: Double? = nil
+    ) -> Arrangement {
+        guard count > 0, side > 0 else { return .empty }
         guard count > 1 else {
             let room = max(side, maxWidth ?? side)
             let width = min(room, side * PictureShape.shape(of: shape))
-            return [Tile(index: 0, x: 0, y: 0, width: width, height: side)]
+            return Arrangement(
+                tiles: [Tile(index: 0, x: 0, y: 0, width: width, height: side)], hidden: 0)
         }
-        let half = (side - gap) / 2
-        guard half > 0 else { return [Tile(index: 0, x: 0, y: 0, width: side, height: side)] }
-        let far = half + gap
-        switch count {
-        case 2:
-            return [
-                Tile(index: 0, x: 0, y: 0, width: half, height: side),
-                Tile(index: 1, x: far, y: 0, width: half, height: side),
-            ]
-        case 3:
-            return [
-                Tile(index: 0, x: 0, y: 0, width: half, height: side),
-                Tile(index: 1, x: far, y: 0, width: half, height: half),
-                Tile(index: 2, x: far, y: far, width: half, height: half),
-            ]
-        default:
-            return [
-                Tile(index: 0, x: 0, y: 0, width: half, height: half),
-                Tile(index: 1, x: far, y: 0, width: half, height: half),
-                Tile(index: 2, x: 0, y: far, width: half, height: half),
-                Tile(index: 3, x: far, y: far, width: half, height: half),
-            ]
+        let room = available > 0 ? available : side
+        let strip = (room - Double(count - 1) * gap) / Double(count)
+        if strip >= side * narrowestStripShare {
+            let width = min(side, strip)
+            let tiles = (0..<count).map { index in
+                Tile(
+                    index: index, x: Double(index) * (width + gap), y: 0, width: width,
+                    height: side)
+            }
+            return Arrangement(tiles: tiles, hidden: 0)
         }
+        let square = (side - gap) / 2
+        guard square > 0 else {
+            return Arrangement(
+                tiles: [Tile(index: 0, x: 0, y: 0, width: side, height: side)],
+                hidden: max(0, count - 1))
+        }
+        let fitting = max(1, Int(((room + gap) / (square + gap)).rounded(.down)))
+        let columns = max(1, min(maximumColumns, min((count + 1) / 2, fitting)))
+        let shown = min(count, columns * 2)
+        let cell = min(square * widestSheetTile, (room - Double(columns - 1) * gap) / Double(columns))
+        let width = max(square, cell)
+        let tiles = (0..<shown).map { index in
+            Tile(
+                index: index, x: Double(index % columns) * (width + gap),
+                y: Double(index / columns) * (square + gap), width: width, height: square)
+        }
+        return Arrangement(tiles: tiles, hidden: count - shown)
     }
 }
 
-/// What a gallery tile says: how many pictures it holds, and what its corner counts.
+/// What a gallery says: how many pictures it holds, and what its corner counts.
 public enum PictureGalleryReading {
     public static func label(count: Int) -> String {
         switch count {
@@ -89,10 +121,9 @@ public enum PictureGalleryReading {
         }
     }
 
-    /// The tile's corner, wordless: `+12`, or nothing when every picture is already drawn.
-    public static func badge(count: Int) -> String? {
-        let hidden = PictureGalleryLayout.hidden(count: count)
-        return hidden > 0 ? "+\(hidden)" : nil
+    /// The last tile's corner, wordless: `+12`, or nothing when every picture is already drawn.
+    public static func badge(hidden: Int) -> String? {
+        hidden > 0 ? "+\(hidden)" : nil
     }
 
     /// What a screen reader hears: the count, then the pictures by name, because a picture the

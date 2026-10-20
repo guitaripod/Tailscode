@@ -169,13 +169,18 @@ enum ChatSpacing {
             expect(
                 LinkRailPolicy.isSettled(lastRowIsLive: false, followedByFurniture: false, turnIsOpen: false),
                 "a finished turn's tail run settles")
-            let square = PictureGalleryLayout.side(metrics: compact, width: 370)
-            let mosaic = PictureGalleryLayout.mosaic(
-                count: 6, side: square, gap: compact.imageStripGap)
+            let side = PictureGalleryLayout.side(metrics: compact, width: 370)
+            let phone = PictureGalleryLayout.grid(
+                count: 6, side: side, gap: compact.imageStripGap, available: 370)
             expect(
-                square == 180 && mosaic.count == 4
-                    && mosaic.last?.x == 180 - (180 - compact.imageStripGap) / 2,
-                "six pictures rest as one 180 pt square: four tiles, the rest counted")
+                side == 180 && phone.tiles.count == 6 && phone.hidden == 0
+                    && phone.height <= side,
+                "six pictures rest in one picture's height and widen with the row: \(phone.tiles.count) tiles, \(phone.height) tall")
+            let wide = PictureGalleryLayout.grid(
+                count: 17, side: side, gap: compact.imageStripGap, available: 900)
+            expect(
+                wide.tiles.count > 4 && wide.width > 600 && wide.height <= side,
+                "seventeen pictures fill a wide row rather than a square: \(wide.tiles.count) tiles across \(wide.width)")
             return failures
         }
     #endif

@@ -903,15 +903,25 @@ enum MatrixTheme {
         .seam-line .seam-text { letter-spacing: 0; }
         .seam-line-press { min-height: 0; padding: 0 4px; border-radius: 4px; }
         .seam-line-press:hover { background-color: alpha(\(special), 0.12); }
-        .picture-gallery { padding: 0; min-height: 0; min-width: 0; border-radius: 6px; }
-        .picture-gallery, .picture-gallery:hover, .picture-gallery:active {
-            background-color: transparent;
+        .picture-gallery { padding: 0; min-height: 0; min-width: 0; background: none; }
+        .picture-gallery-tile {
+            padding: 0;
+            min-height: 0;
+            min-width: 0;
+            border: none;
+            border-radius: 6px;
+            background: none;
             box-shadow: none;
         }
-        .picture-gallery-tile { background-color: alpha(currentColor, 0.05); }
+        .picture-gallery-tile:hover { opacity: 0.86; }
+        .picture-gallery-tile:active { opacity: 0.74; }
         .picture-gallery-scrim { background-color: alpha(black, 0.6); }
         .picture-gallery-more { color: white; font-weight: 700; font-size: 1.45rem; }
-        .picture-gallery-waiting { border: 1px solid \(rule); }
+        .picture-gallery-waiting {
+            border: 1px solid \(rule);
+            border-radius: 6px;
+            background-color: alpha(currentColor, 0.05);
+        }
         .queued-row { padding: 2px 0; border-radius: 4px; }
         .queued-row .prompt-text { color: \(dimInk); }
         .queued-row:hover { background-color: alpha(\(accent), 0.07); }
