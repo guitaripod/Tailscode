@@ -10,7 +10,9 @@ import TailscodeCore
 /// health, its session list, and the newest session's stream until a transcript lands.
 ///
 /// A Mac reached over ssh has no window server, so a screenshot cannot prove the app works from a
-/// build loop. This can.
+/// build loop. This can. It is driven by the main run loop and not by `dispatchMain()`, which parks
+/// the main thread: a main-actor task resumed after an await would then make AppKit windows and
+/// Auto Layout on a worker thread, and Auto Layout aborts the process for it.
 @MainActor
 enum SelfTest {
     static var isRequested: Bool {

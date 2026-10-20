@@ -143,7 +143,7 @@ if TileCanvasBench.isRequested {
 
 if SelfTest.isRequested {
     Task { await SelfTest.run() }
-    dispatchMain()
+    CFRunLoopRun()
 }
 
 if CommandLine.arguments.contains("--flight") {
