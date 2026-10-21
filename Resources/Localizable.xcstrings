@@ -355653,6 +355653,77 @@
           }
         }
       }
+    },
+    "Downloads a prebuilt program in seconds. No Swift or git needed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloads a prebuilt program in seconds. No Swift or git needed."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lädt ein fertiges Programm in Sekunden herunter. Swift oder git sind nicht nötig."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descarga un programa ya compilado en segundos. No hace falta Swift ni git."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Télécharge un programme déjà compilé en quelques secondes. Ni Swift ni git requis."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scarica in pochi secondi un programma già compilato. Non servono Swift né git."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ビルド済みのプログラムを数秒でダウンロードします。Swift も git も不要です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "미리 빌드된 프로그램을 몇 초 만에 내려받습니다. Swift나 git은 필요 없습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pobiera gotowy program w kilka sekund. Swift ani git nie są potrzebne."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Baixa um programa já compilado em segundos. Não precisa de Swift nem de git."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "几秒内下载预编译程序，无需 Swift 或 git。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "幾秒內下載預先編譯的程式，無需 Swift 或 git。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -167,7 +167,7 @@ enum FirstRunReading {
     private static func commandNote(_ install: BridgeInstall.Install) -> String {
         let base: String
         switch install.agent {
-        case .claudeCode: base = Localized.text("Needs git and a Swift 6 toolchain on that machine.")
+        case .claudeCode: base = Localized.text("Downloads a prebuilt program in seconds. No Swift or git needed.")
         case .openCode:
             base = Localized.text(
                 "Installs opencode if it is missing, serves it on port 4096, and keeps its model list current."
