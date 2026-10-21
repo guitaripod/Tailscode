@@ -237,11 +237,15 @@ enum FirstRunBlocks {
         return row
     }
 
+    /// The three ways in are one choice, so their buttons share a width instead of ragging by title length.
+    private static let wayButtonWidth: CGFloat = 280
+
     private static func way(_ way: FirstRunPlan.Way, intents: FirstRunIntents) -> NSView {
         let column = FillingStack(topDown: true)
         column.spacing = 2
-        column.addArrangedSubview(
-            buttonRow([RowKit.ActionButton(title: way.title) { intents.choose(way.kind) }]))
+        let button = RowKit.ActionButton(title: way.title) { intents.choose(way.kind) }
+        button.widthAnchor.constraint(greaterThanOrEqualToConstant: wayButtonWidth).isActive = true
+        column.addArrangedSubview(buttonRow([button]))
         column.addArrangedSubview(
             RowKit.wrapping(
                 way.detail, font: MacTheme.Ramp.font(.panelFootnote),
