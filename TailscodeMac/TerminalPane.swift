@@ -111,7 +111,9 @@ import TailscodeCore
         /// colour that answers again — so a system that crossed into dark, or a palette that moved,
         /// would otherwise leave a pale slab under a dark transcript until the app was relaunched.
         private func applyPaneColours() {
-            view.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
+            view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                view.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
+            }
             notice.textColor = MacTheme.Color.tertiaryLabel
         }
 

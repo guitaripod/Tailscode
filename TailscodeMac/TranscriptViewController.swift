@@ -3352,9 +3352,13 @@ final class TranscriptViewController: NSViewController {
     /// row snapshots hold rendering baked at the old size, so both are dropped before the
     /// rebuild.
     /// The pane's own opaque surfaces, which are `CGColor` in a layer and so keep whatever colour
-    /// they were given until they are given another.
+    /// they were given until they are given another. `cgColor` is resolved against the appearance
+    /// current while it is asked, which in a callback is the face the pane just left, so the
+    /// new face is made current around every colour.
     func applyPaneColours() {
-        view.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
+        view.effectiveAppearance.performAsCurrentDrawingAppearance {
+            view.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
+        }
     }
 
     /// The pane restyled for a light/dark flip nobody chose inside the app. `applyPaneColours` is

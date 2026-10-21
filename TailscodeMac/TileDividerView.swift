@@ -118,8 +118,10 @@ final class TileDividerView: NSView {
     /// two points wide, so the band a person can grab is visible before they grab it.
     private func restyle() {
         let active = hovered || dragging || holdsKeyboard
-        line.backgroundColor =
-            (active ? MacTheme.Color.accent : MacTheme.Color.separator).cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            line.backgroundColor =
+                (active ? MacTheme.Color.accent : MacTheme.Color.separator).cgColor
+        }
     }
 
     override func viewDidChangeEffectiveAppearance() {
