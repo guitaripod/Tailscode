@@ -1,3 +1,4 @@
+import AgentTestSupport
 import AppKit
 import CodingAgentKit
 import CodingAgentKitApple
@@ -55,6 +56,15 @@ enum SelfTest {
             report("dial pill: \(checks) levels hold the pill's width")
         } catch {
             report("dial pill: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkSessionSync()
+            report(
+                "session sync: \(checks) claims hold — a level another desk picked reaches an open pane and is what a send from here carries")
+        } catch {
+            report("session sync: \(error)")
             failures += 1
         }
 
@@ -1309,6 +1319,45 @@ enum SelfTest {
             "the wave leads with an accent the tokens do not know")
         checks += 1
         return checks
+    }
+
+    /// One conversation, two desks: the level a turn was picked at on another machine is the
+    /// listing's, and it has to reach a pane that is already open — and be what that pane sends
+    /// next — while a pick made here still wins until it is sent, which is the rule every client
+    /// keeps. Composer only, no window: the rule is the store order, not a drawing.
+    private static func checkSessionSync() throws -> Int {
+        func expect(_ condition: Bool, _ label: String) throws {
+            if !condition { throw SelfTestFailure(label) }
+        }
+        let profileID = "session-sync-check"
+        let key = "\(profileID)/ses_sync"
+        defer {
+            EffortPreferenceStore.setEffort(nil, forKey: key)
+            ModelPreferenceStore.setModel(nil, forKey: key)
+            EffortPreferenceStore.setGlobalEffort(nil, forContextID: profileID)
+            ModelPreferenceStore.setGlobalModel(nil, forContextID: profileID)
+        }
+        func entry(_ effort: String?, _ model: String?) -> SessionEntry {
+            SessionEntry(
+                profileID: profileID, profileName: "sync", host: "sync", backendType: .openCode,
+                session: AgentSession(
+                    id: "ses_sync", agentType: .openCode, title: "sync",
+                    createdAt: Date(), updatedAt: Date(), model: model,
+                    modelProviderID: model == nil ? nil : "opencode-go",
+                    reasoningEffort: effort))
+        }
+        let backend = MockBackend(
+            agentType: .openCode, reasoningEffortOptions: ["low", "high", "max"])
+        let composer = ComposerView()
+        composer.prepare(for: entry("high", "deepseek-v4.1-flash"), backend: backend)
+        try expect(composer.shownEffort == "high", "a pane does not open at the session's level")
+        composer.adopt(entry("max", "deepseek-v4.1-flash"))
+        try expect(composer.shownEffort == "max", "a level another desk picked never reaches the pane")
+        try expect(composer.activeEffort == "max", "and a send from here carries the old level")
+        EffortPreferenceStore.recordPick("low", sessionKey: key, contextID: profileID)
+        composer.adopt(entry("high", "deepseek-v4.1-flash"))
+        try expect(composer.shownEffort == "low", "a pick made here loses to the listing")
+        return 4
     }
 
     /// The dial's one promise a headless check can hold it to: the pill is as wide for every level

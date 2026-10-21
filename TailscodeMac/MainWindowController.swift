@@ -431,6 +431,8 @@ final class MainWindowController: NSWindowController {
     /// A pane keeps the entry it was opened with, so a chat the server named after it arrived, or
     /// one renamed since, would wear its first title until the focus moved. The listing is what
     /// knows the current one, so every pane on screen is handed it.
+    /// Every listing change that renames a chat, or moves the model and level it runs on, is
+    /// handed to every pane that is showing it — whoever drove the turn.
     private func refreshTitleFromListing() {
         splitPanes.eachPane { pane in
             guard let current = pane.currentEntry,
@@ -438,7 +440,7 @@ final class MainWindowController: NSWindowController {
                     $0.profileID == current.profileID && $0.session.id == current.session.id
                 })
             else { return }
-            pane.adoptTitle(fresh)
+            pane.adopt(fresh)
             guard pane === transcript else { return }
             showTitle(of: fresh)
         }

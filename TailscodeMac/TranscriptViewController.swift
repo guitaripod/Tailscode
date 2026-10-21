@@ -1148,13 +1148,22 @@ final class TranscriptViewController: NSViewController {
     }
 
     /// A pane keeps the entry it was opened with, so a conversation the server named after it
-    /// arrived, or one renamed since, would wear its first title for as long as it stayed open.
-    /// The listing is what knows the current one.
-    func adoptTitle(_ entry: SessionEntry) {
+    /// arrived, renamed since, or ran a turn on from another desk would wear the answer it had at
+    /// birth for as long as it stayed open. The listing is what knows the current one, and the
+    /// model and level belong to it too: a chat driven from the Arch box must show that effort
+    /// here rather than the server deciding, and a send from here must carry it back.
+    func adopt(_ entry: SessionEntry) {
         guard let current = self.entry, current.profileID == entry.profileID,
             current.session.id == entry.session.id
         else { return }
-        self.entry?.session.title = entry.session.title
+        guard
+            current.session.title != entry.session.title
+                || current.session.model != entry.session.model
+                || current.session.modelProviderID != entry.session.modelProviderID
+                || current.session.reasoningEffort != entry.session.reasoningEffort
+        else { return }
+        self.entry = entry
+        composer.adopt(entry)
         refreshIdentity()
     }
 

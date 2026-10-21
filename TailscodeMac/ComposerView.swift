@@ -216,6 +216,21 @@ final class ComposerView: NSView {
         loadSessionExtras(entry: entry, backend: backend)
     }
 
+    /// The listing says something new about this chat — the name a server gave it, or the model
+    /// and level a turn from another machine ran. This device's own pick still wins, but the
+    /// fallback behind it is the listing's, so a chat driven elsewhere keeps one face here.
+    func adopt(_ entry: SessionEntry) {
+        self.entry = entry
+        let key = Self.preferenceKey(entry)
+        chosenModel = ModelPreferenceStore.initialModel(
+            sessionKey: key, contextID: entry.profileID, sessionModel: entry.session.model,
+            sessionModelProviderID: entry.session.modelProviderID)
+        chosenEffort = EffortPreferenceStore.initialEffort(
+            sessionKey: key, contextID: entry.profileID,
+            sessionEffort: entry.session.reasoningEffort)
+        refreshPills()
+    }
+
     /// Every state the stream delivers, echoed here so the pills can tell the truth the
     /// transcript already knows: which model actually answered last, and whether a turn is
     /// running — which is when Send means Queue and Stop appears at all.
