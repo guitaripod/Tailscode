@@ -157,10 +157,11 @@ final class BrainCard: @unchecked Sendable {
     }
 
     private static func signature(of card: NeuralBrainCard) -> String {
-        (card.live == nil ? "" : "live#")
-            + card.headline.pieces.map(\.text).joined(separator: "|")
-            + "#" + card.chips.map { "\($0.zone)\($0.count)\($0.tone)" }.joined(separator: ",")
-            + "#" + card.digest + "#" + (card.quote.map { $0.speaker + $0.words } ?? "") + "#" + card.verdict.word
+        let live = card.live == nil ? "" : "live"
+        let headline = card.headline.pieces.map(\.text).joined(separator: "|")
+        let chips = card.chips.map { "\($0.zone)\($0.count)\($0.tone)" }.joined(separator: ",")
+        let quote = card.quote.map { $0.speaker + $0.words } ?? ""
+        return [live, headline, chips, card.digest, quote, card.verdict.word].joined(separator: "#")
     }
 
     func retheme() {
@@ -618,7 +619,10 @@ final class BrainCard: @unchecked Sendable {
 
     /// Where the column of words begins: past the edge, the inset, the picture and the inset.
     static func textInset(for layout: NeuralStageMetrics.CardLayout) -> Double {
-        layout == .wide ? 3 + 12 + 132 + 12 + 2 : 3 + 10 + 100 + 10 + 2
+        let edge = 3.0
+        let inset = layout == .wide ? 12.0 : 10.0
+        let picture = layout == .wide ? 132.0 : 100.0
+        return edge + inset + picture + inset + 2.0
     }
 
     /// What the harness reads: the card's layout class and what it shows.
