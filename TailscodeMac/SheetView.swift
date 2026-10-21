@@ -446,6 +446,12 @@ final class SheetCarrier: NSView {
         let hit = super.hitTest(point)
         return hit === self ? nil : hit
     }
+
+    /// A press the sheet's own content did not take is still the sheet's: AppKit offers an unhandled
+    /// press to the view behind it, which here is the scrim, and answering that offer would close the
+    /// sheet under a click that landed squarely inside it. Presses outside the sheet never come
+    /// through the carrier at all, so the scrim keeps every press that is really the scrim's.
+    override func mouseDown(with event: NSEvent) {}
 }
 
 /// A plain top-down view: the sheet's body and its clipped face lay their children out from the top,

@@ -18,7 +18,10 @@ enum MeridianChecks {
         Task { @MainActor in
             do {
                 let result = try labelsAreWhole()
-                print("MERIDIAN_NOTES \(result.checks) layouts \(result.audited) labels")
+                let press = try sheetKeepsPresses()
+                print(
+                    "MERIDIAN_NOTES \(result.checks) layouts \(result.audited) labels "
+                        + "\(press.checks) press: \(press.note)")
                 print("MERIDIAN_OK")
                 exit(0)
             } catch {
@@ -360,6 +363,76 @@ enum MeridianChecks {
             content.styleSegments.allSatisfy { $0.intrinsicContentSize.width > 40 }, "a segment has no room for its words")
         checks += 4
         return checks
+    }
+
+    /// A press inside the sheet is the sheet's. A window is built, the sheet raised in it, and one
+    /// click sent through the application as a hand's would be: it reaches the place row under it,
+    /// pins that place and leaves the sheet standing. Before the carrier took presses, AppKit
+    /// offered the press the sheet did not take to the scrim behind it, and Meridian closed instead.
+    static func sheetKeepsPresses() throws -> (checks: Int, note: String) {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            if !condition { throw SelfTestFailure(label) }
+            checks += 1
+        }
+        let feed = MeridianFeed.shared
+        let stash = WorldClockStore.current
+        defer {
+            WorldClockStore.save(stash)
+            feed.preferencesOverride = nil
+            feed.forcesFixtures = false
+        }
+        feed.forcesFixtures = true
+        feed.preferencesOverride = .default
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1392, height: 796),
+            styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.setFrameOrigin(NSPoint(x: -10_000, y: -10_000))
+        window.makeKeyAndOrderFront(nil)
+        defer { window.close() }
+        let content = MeridianSheetContent()
+        let sheet = SheetView(
+            content: content, toolbar: NSView(), dialogName: "check, dialog",
+            closeLabel: "Close check")
+        let presenter = SheetPresenter(sheet: sheet, stack: SheetStack())
+        presenter.reducedMotion = { true }
+        presenter.show(in: window)
+        content.layoutSubtreeIfNeeded()
+        content.addPlace.open(focusing: false)
+        content.addPlace.setQuery("to")
+        sheet.layoutSubtreeIfNeeded()
+        content.layoutSubtreeIfNeeded()
+        guard let row = content.addPlace.rows.first else {
+            throw SelfTestFailure("the add-a-place list is empty")
+        }
+        let point = row.convert(NSPoint(x: row.bounds.midX, y: row.bounds.midY), to: nil)
+        if let host = window.contentView {
+            try expect(
+                host.hitTest(host.convert(point, from: nil)) === row,
+                "the row under the press is not the view a hit test finds")
+        }
+        if let down = NSEvent.mouseEvent(
+            with: .leftMouseDown, location: point, modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1,
+            pressure: 1),
+            let up = NSEvent.mouseEvent(
+                with: .leftMouseUp, location: point, modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1,
+                pressure: 0)
+        {
+            NSApp.sendEvent(down)
+            NSApp.sendEvent(up)
+        }
+        try expect(
+            presenter.state != .closing && presenter.state != .closed,
+            "a press on a place row closed the sheet")
+        try expect(
+            WorldClockStore.current.pins.contains(row.place.id),
+            "the press on a place row did not reach the row")
+        try expect(!content.addPlace.isExpanded, "the list stayed open after the place was pinned")
+        presenter.dismiss()
+        return (checks, "a press on a place row pins it and leaves the sheet standing")
     }
 
     static func labelsAreWhole() throws -> (checks: Int, audited: Int) {
