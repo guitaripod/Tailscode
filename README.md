@@ -12,6 +12,18 @@
 
 Free is the whole core with one server; **Pro** is a one-time $14.99 purchase for unlimited servers, concurrent Live Activities and the delegate board.
 
+## Quick start
+
+1. **On the machine where you code**, install a server. For Claude Code, one command, no Swift or git needed; it ends with a QR code:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/guitaripod/claude-bridge/master/install.sh | bash
+   ```
+
+   (`brew install guitaripod/tap/claude-bridge` works too. For opencode or Oh My Pi see [Requirements](#requirements).)
+2. **Install Tailscale** on that machine and on your phone or computer, signed in to the same account.
+3. **Open Tailscode** and scan the QR code, open the link, or pick the machine it discovers. It checks each step and tells you what is left; "Try the demo" shows every screen with no server at all.
+
 ## What it does
 
 - **Every turn, live** — thinking, tool calls, subagents in place, diffs in the code's own colours, pictures the agent looked at. Prose is written out at an even pace, never re-wrapping under you.
@@ -25,23 +37,6 @@ Free is the whole core with one server; **Pro** is a one-time $14.99 purchase fo
 - **iPad** — a sidebar of places, servers and pinned chats beside the chat list and the conversation, folding into the phone's single stack whenever the window narrows and back without closing anything; drag a chat out for a window of its own.
 - **Desktops** — tiling splits with vim-grade verbs, a terminal, file tree, browser and video panes, a global chord that summons quick ask from any program, vim in the composer.
 - **Eight themes with two faces each**, one typography ramp, ten languages, Liquid Glass where the platform draws it.
-
-## Parity is a build gate
-
-`TailscodeCore/Sources/TailscodeCore/Parity.swift` declares `AppCapability` — one case per user-facing capability, each with a toolkit-free spec — and every client answers every case in its own `Parity.swift` with an exhaustive switch and no `default`. Adding a capability is a compile error in all three clients until each says what it does about it: `.implemented(anchor)`, `.partial`, `.gap(reason)`, `.notApplicable(reason)`, or on the Mac `.varies(direct:appStore:)`, because the ad-hoc build and the sandboxed App Store build are allowed different answers.
-
-`scripts/parity.sh` prints the matrix and greps every claimed anchor inside that client's own tree, reading `#if TAILSCODE_MAS` the way the compiler does so the store column cannot claim code it compiles out. It runs as a Claude Code Stop hook, and both desktops assert it under `--selftest`.
-
-```
-$ scripts/parity.sh
-capability                 iOS         linux       mac         mac-store
-sessionSections            ok          ok          ok          ok
-...
-564/652 implemented, 19 partial, 31 gaps, 38 n/a
-PARITY_OK
-```
-
-Exhaustiveness forces disclosure, not implementation — `.gap("later")` compiles. What it guarantees is that nothing can exist on one platform while the others say nothing.
 
 ## Requirements
 
@@ -76,7 +71,7 @@ tar xf tailscode-*-linux-x86_64.tar.gz -C ~/.local --strip-components=2
 
 The app watches the release feed and lights an update mark in its own chrome, then hands you the command for the way it was installed. A Flatpak manifest lives in `packaging/flatpak/` but is not on Flathub. On a Steam Deck use Desktop Mode with a keyboard; install Tailscale with the [deck script](https://github.com/tailscale-dev/deck-tailscale) first.
 
-First run scans the tailnet for machines already answering — pick one and there is nothing to type.
+First run is a checklist the app verifies: Tailscale on this device, your machine (scan its QR code, open its link, or pick one it found on the tailnet), connected. Nothing to type.
 
 ## Build
 
@@ -118,6 +113,23 @@ scripts/             Parity gate, packaging, dev loops, release, App Store Conne
 ```
 
 Programmatic UIKit and AppKit, GTK4 through C shims, Swift 6 strict concurrency, no SwiftUI outside the widgets. All networking, streaming and state live in [CodingAgentKit](https://github.com/guitaripod/CodingAgentKit); the clients render `ConversationState` and forward intent.
+
+## Parity is a build gate
+
+`TailscodeCore/Sources/TailscodeCore/Parity.swift` declares `AppCapability` — one case per user-facing capability, each with a toolkit-free spec — and every client answers every case in its own `Parity.swift` with an exhaustive switch and no `default`. Adding a capability is a compile error in all three clients until each says what it does about it: `.implemented(anchor)`, `.partial`, `.gap(reason)`, `.notApplicable(reason)`, or on the Mac `.varies(direct:appStore:)`, because the ad-hoc build and the sandboxed App Store build are allowed different answers.
+
+`scripts/parity.sh` prints the matrix and greps every claimed anchor inside that client's own tree, reading `#if TAILSCODE_MAS` the way the compiler does so the store column cannot claim code it compiles out. It runs as a Claude Code Stop hook, and both desktops assert it under `--selftest`.
+
+```
+$ scripts/parity.sh
+capability                 iOS         linux       mac         mac-store
+sessionSections            ok          ok          ok          ok
+...
+684/788 implemented, 28 partial, 20 gaps, 56 n/a
+PARITY_OK
+```
+
+Exhaustiveness forces disclosure, not implementation — `.gap("later")` compiles. What it guarantees is that nothing can exist on one platform while the others say nothing.
 
 ## Related projects
 
