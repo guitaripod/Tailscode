@@ -704,7 +704,8 @@ final class BrainStore {
         held.anchorMessageID = held.anchor.flatMap { id in
             turn.steps.first(where: { $0.id == id })?.messageID
         }
-        held.messageIDs = Set(turn.steps.map(\.messageID))
+        held.messageIDs =
+            turn.memberMessageIDs.isEmpty ? Set(turn.steps.map(\.messageID)) : turn.memberMessageIDs
         held.boardKeys = Set(
             turn.steps.filter { $0.isCard && $0.zone == .think && TaskBoard.isBoardCall($0.title) }
                 .map(\.id))

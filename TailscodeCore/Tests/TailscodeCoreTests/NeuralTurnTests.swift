@@ -304,10 +304,10 @@ struct NeuralTurnTests {
         let turn = NeuralTurns.partition(messages: messages, running: false)[0]
         #expect(turn.steps.count == 1)
         #expect(turn.answerPartIDs.isEmpty)
-        #expect(turn.memberPartIDs == ["m1:p2"])
+        #expect(turn.memberPartIDs == ["m1:p0", "m1:p1", "m1:p2", "m1:p3", "m1:p4"])
     }
 
-    @Test("file, compaction, note and unknown parts are never steps")
+    @Test("file, compaction, note and unknown parts are never steps but the turn consumes them")
     func nonSteps() {
         let messages = [
             Fixtures.user(0),
@@ -324,7 +324,37 @@ struct NeuralTurnTests {
         let turn = NeuralTurns.partition(messages: messages, running: false)[0]
         #expect(turn.steps.count == 1)
         #expect(turn.answerPartIDs == ["m1:p4"])
-        #expect(turn.memberPartIDs == ["m1:p2"])
+        #expect(turn.memberPartIDs == ["m1:p0", "m1:p1", "m1:p2", "m1:p3"])
+    }
+
+    /// A tool's picture and a note the server wrote while the turn ran are the turn's work, so the
+    /// brain consumes them with its steps. A picture the agent delivered after its answer is the
+    /// answer's own, and keeps its row.
+    @Test("a tool's picture and a note go with the brain, a delivered picture does not")
+    func workPartsGoWithTheBrain() {
+        let picture = MessagePart.Kind.file(FileReference(path: "shot.png", mime: "image/png"))
+        let delivered = MessagePart.Kind.file(FileReference(path: "out.png", mime: "image/png"))
+        let note = ChatMessage(
+            id: "n2", role: .system, agentType: .claudeCode,
+            parts: [
+                MessagePart(
+                    id: "note", kind: .note(TranscriptNote(.workFinished("swift build", work: .command, outcome: .completed))))
+            ],
+            createdAt: Fixtures.date(2), completedAt: Fixtures.date(2))
+        let messages = [
+            Fixtures.user(0),
+            Fixtures.message(1, [Fixtures.read("a/b.swift"), picture]),
+            note,
+            Fixtures.message(3, [.text("Done"), delivered]),
+        ]
+        let turn = NeuralTurns.partition(messages: messages, running: false)[0]
+        #expect(turn.steps.count == 1)
+        #expect(turn.answerPartIDs == ["m3:p0"])
+        #expect(turn.memberPartIDs.contains("m1:p1"))
+        #expect(turn.memberPartIDs.contains("n2:note"))
+        #expect(!turn.memberPartIDs.contains("m3:p0"))
+        #expect(!turn.memberPartIDs.contains("m3:p1"))
+        #expect(turn.memberMessageIDs == ["m1", "n2", "m3"])
     }
 
     @Test("user messages split turns and a turn needs an assistant message")

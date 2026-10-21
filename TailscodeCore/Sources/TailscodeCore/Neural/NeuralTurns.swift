@@ -56,7 +56,7 @@ public enum NeuralTurns {
             case .assistant:
                 current.append(message)
             case .system:
-                continue
+                if !current.isEmpty { current.append(message) }
             }
         }
         if !current.isEmpty { turns.append(current) }
@@ -172,12 +172,34 @@ public enum NeuralTurns {
             steps[steps.count - 1].status = .running
         }
         markRecovered(&steps)
+        let answersSet = Set(answers)
+        let cards = Set(steps.filter(\.isCard).map(\.id))
+        var lastAnswer: (message: Int, part: Int)?
+        for (messageIndex, message) in messages.enumerated() {
+            for (partIndex, part) in message.parts.enumerated()
+            where answersSet.contains("\(message.id):\(part.id)") {
+                lastAnswer = (messageIndex, partIndex)
+            }
+        }
+        for (messageIndex, message) in messages.enumerated() {
+            for (partIndex, part) in message.parts.enumerated() {
+                let id = "\(message.id):\(part.id)"
+                if answersSet.contains(id) || cards.contains(id) { continue }
+                if case .file = part.kind,
+                    lastAnswer.map({ (messageIndex, partIndex) > $0 }) ?? false
+                {
+                    continue
+                }
+                members.insert(id)
+            }
+        }
         let first = messages[0]
         let last = messages[messages.count - 1]
         let outcome = readOutcome(
             of: messages, steps: steps, answers: answers, running: running, awaiting: awaiting)
         return NeuralTurn(
             id: first.id, steps: steps, answerPartIDs: answers, memberPartIDs: members,
+            memberMessageIDs: Set(messages.map(\.id)),
             outcome: outcome, startedAt: first.createdAt,
             endedAt: outcome == .running ? nil : last.completedAt,
             modelID: messages.reversed().lazy.compactMap(\.modelID).first,

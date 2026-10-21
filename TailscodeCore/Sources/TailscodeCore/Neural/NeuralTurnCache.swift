@@ -321,7 +321,7 @@ public final class NeuralTurnCache: @unchecked Sendable {
                 if current.isEmpty { currentStart = index }
                 current.append(index)
             case .system:
-                continue
+                if !current.isEmpty { current.append(index) }
             }
         }
         if !current.isEmpty { tail.append((currentStart, current)) }
@@ -392,7 +392,8 @@ public final class NeuralTurnCache: @unchecked Sendable {
     }
 
     /// The runs of assistant messages between user messages, the way the partition splits them:
-    /// a message seen twice counts once, system messages are skipped, and a user message ends a run.
+    /// a message seen twice counts once, a system note joins the turn it arrived in, and a user
+    /// message ends a run.
     static func groups(of messages: [ChatMessage]) -> [[ChatMessage]] { grouped(messages).groups }
 
     /// The runs, the index of each run's first message, and the indices of the last run's messages.
@@ -420,7 +421,10 @@ public final class NeuralTurnCache: @unchecked Sendable {
                 current.append(message)
                 indices.append(index)
             case .system:
-                continue
+                if !current.isEmpty {
+                    current.append(message)
+                    indices.append(index)
+                }
             }
         }
         if !current.isEmpty {

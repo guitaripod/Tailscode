@@ -139,6 +139,11 @@ public struct NeuralTurn: Identifiable, Sendable, Hashable {
     public var answerPartIDs: [String]
     /// The parts the brain consumes. A client skips their own rows.
     public var memberPartIDs: Set<String>
+    /// The messages the turn covers: its own, and any note the server wrote while it ran. A client
+    /// matches these to the turn so a row the brain does not draw as a step — a picture a tool
+    /// handed back, a note between two of its steps — goes with the brain instead of standing
+    /// beside it.
+    public var memberMessageIDs: Set<String>
     public var outcome: NeuralOutcome
     public var startedAt: Date?
     public var endedAt: Date?
@@ -147,13 +152,15 @@ public struct NeuralTurn: Identifiable, Sendable, Hashable {
 
     public init(
         id: String, steps: [NeuralStep] = [], answerPartIDs: [String] = [],
-        memberPartIDs: Set<String> = [], outcome: NeuralOutcome = .settled, startedAt: Date? = nil,
+        memberPartIDs: Set<String> = [], memberMessageIDs: Set<String> = [],
+        outcome: NeuralOutcome = .settled, startedAt: Date? = nil,
         endedAt: Date? = nil, modelID: String? = nil, effort: String? = nil
     ) {
         self.id = id
         self.steps = steps
         self.answerPartIDs = answerPartIDs
         self.memberPartIDs = memberPartIDs
+        self.memberMessageIDs = memberMessageIDs
         self.outcome = outcome
         self.startedAt = startedAt
         self.endedAt = endedAt

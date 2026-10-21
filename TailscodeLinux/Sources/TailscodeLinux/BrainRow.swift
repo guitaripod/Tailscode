@@ -156,7 +156,8 @@ final class BrainLedger: @unchecked Sendable {
             let anchor = plan.anchors.keys.first
             let record = BrainPass.Record(
                 turn: turn, anchor: anchor, members: plan.skip,
-                messages: Set(turn.steps.map(\.messageID)))
+                messages: turn.memberMessageIDs.isEmpty
+                    ? Set(turn.steps.map(\.messageID)) : turn.memberMessageIDs)
             records[turn.id] = record
             if let anchor { anchors[anchor] = turn.id }
             for part in record.members { skip[part] = turn.id }
