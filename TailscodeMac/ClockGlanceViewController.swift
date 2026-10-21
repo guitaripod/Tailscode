@@ -204,7 +204,7 @@ final class ClockGlanceViewController: NSViewController {
         let name = Self.plain(
             machine.name, font: MacTheme.Ramp.font(.rowTitleStrong), color: MacTheme.Color.label)
         let status = Self.plain(
-            machine.status, font: MacTheme.Ramp.font(.panelDetail), color: tone)
+            machine.status, font: MacTheme.Ramp.font(.panelDetail), color: Self.ink(machine.tone))
         status.setContentCompressionResistancePriority(.required, for: .horizontal)
         status.setContentHuggingPriority(.required, for: .horizontal)
         let time = Self.plain(
@@ -228,7 +228,7 @@ final class ClockGlanceViewController: NSViewController {
         let card = TintView(
             fill: { MacTheme.Color.warning.withAlphaComponent(0.1) }, radius: 10)
         let label = RowKit.wrapping(
-            text, font: MacTheme.Ramp.font(.panelDetail), color: MacTheme.Color.warning)
+            text, font: MacTheme.Ramp.font(.panelDetail), color: Self.ink(.warn))
         label.preferredMaxLayoutWidth = rowWidth - 20
         card.addSubview(label)
         NSLayoutConstraint.activate([
@@ -307,6 +307,13 @@ final class ClockGlanceViewController: NSViewController {
         case .warn: return MacTheme.Color.warning
         case .quiet: return MacTheme.Color.secondaryLabel
         }
+    }
+
+    /// A tone as text: the signal colour mixed a third of the way into the label's ink, so it keeps
+    /// its meaning and gains the contrast a bare system hue lacks as small type on a light canvas.
+    static func ink(_ tone: ClockTone) -> NSColor {
+        let base = color(tone)
+        return base.blended(withFraction: 0.3, of: MacTheme.Color.label) ?? base
     }
 
     private final class HoverHost: NSView {

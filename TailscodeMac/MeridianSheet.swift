@@ -870,7 +870,8 @@ final class MeridianSheetContent: NSView {
     private let insightLabel = MeridianLabel.wrapping("", role: .rowTitle)
     private let machinesContent = FillingStack(topDown: true)
     private let machinesFlow = MeridianFlowView()
-    private let warningLabel = MeridianLabel.wrapping("", role: .panelDetail, color: MacTheme.Color.warning)
+    private let warningLabel = MeridianLabel.wrapping(
+        "", role: .panelDetail, color: ClockGlanceViewController.ink(.warn))
     private let alarmsFlow = MeridianFlowView()
     private var machinesSection: MeridianSectionRow!
     private var alarmsSection: MeridianSectionRow!
@@ -1147,7 +1148,9 @@ final class MeridianSheetContent: NSView {
         dateLabel.stringValue = board.dateLine
         headLabel.stringValue = board.head
         deltaLabel.stringValue = board.delta
-        deltaLabel.textColor = board.scrubMinute == board.nowMinute ? MacTheme.Color.accent : MacTheme.Color.warning
+        deltaLabel.textColor =
+            board.scrubMinute == board.nowMinute
+            ? MacTheme.Color.accent : ClockGlanceViewController.ink(.warn)
         lanes.apply(board, animateLine: animateLine)
         addPlace.apply(preferences: feed.preferences, viewer: feed.viewer, now: now)
         renderInsight()
@@ -1173,7 +1176,7 @@ final class MeridianSheetContent: NSView {
         insightLabel.font = MacTheme.Ramp.font(.rowTitle)
         insightLabel.textColor = MacTheme.Color.label
         warningLabel.font = MacTheme.Ramp.font(.panelDetail)
-        warningLabel.textColor = MacTheme.Color.warning
+        warningLabel.textColor = ClockGlanceViewController.ink(.warn)
         titleIcon.contentTintColor = MacTheme.Color.accent
         insightIcon.contentTintColor = MacTheme.Color.info
         notify.bezelColor = MacTheme.Color.accent
@@ -1206,7 +1209,8 @@ final class MeridianSheetContent: NSView {
         var views: [NSView] = [
             dot,
             MeridianLabel.make(machine.name, role: .rowTitleStrong),
-            MeridianLabel.make(machine.status, role: .panelDetail, color: tone),
+            MeridianLabel.make(
+                machine.status, role: .panelDetail, color: ClockGlanceViewController.ink(machine.tone)),
         ]
         if let time = machine.time {
             views.append(MeridianLabel.make(time, role: .statusLine))

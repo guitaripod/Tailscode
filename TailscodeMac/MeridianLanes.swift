@@ -103,7 +103,8 @@ final class MeridianMarkView: NSView {
         ground =
             isReset
             ? TintView(
-                fill: { MacTheme.Color.canvas.blended(withFraction: 0.35, of: .black)?.withAlphaComponent(0.92) ?? MacTheme.Color.canvas })
+                fill: { MacTheme.Color.canvasRaised },
+                stroke: { MacTheme.Color.separator })
             : nil
         super.init(frame: .zero)
         wantsLayer = true
@@ -386,8 +387,10 @@ final class MeridianLaneBar: NSView {
     private static func flat(appearance: NSAppearance) -> (colors: [CGColor], locations: [NSNumber]) {
         var colors: [CGColor] = []
         appearance.performAsCurrentDrawingAppearance {
-            let night = DaylightPalette.night
-            colors = [night.cgColor, (night.blended(withFraction: 0.25, of: DaylightPalette.day) ?? night).cgColor]
+            let dark = DaylightPalette.isDark(appearance)
+            let night = DaylightPalette.night(dark: dark)
+            let day = DaylightPalette.day(dark: dark)
+            colors = [night.cgColor, (night.blended(withFraction: 0.25, of: day) ?? night).cgColor]
         }
         return (colors, [0, 1])
     }
@@ -637,7 +640,8 @@ final class MeridianOverlay: NSView {
 
     override init(frame frameRect: NSRect) {
         bandTag = TintView(
-            fill: { MacTheme.Color.canvas.blended(withFraction: 0.3, of: .black)?.withAlphaComponent(0.85) ?? MacTheme.Color.canvas })
+            fill: { MacTheme.Color.canvasRaised },
+            stroke: { MacTheme.Color.separator })
         super.init(frame: frameRect)
         wantsLayer = true
         scrubLine.shadowOffset = .zero

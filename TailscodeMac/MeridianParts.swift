@@ -67,18 +67,30 @@ final class TintView: NSView {
 }
 
 /// How a strip of daylight is coloured, in one place so the glance's strips and the sheet's lanes
-/// cannot drift apart: night is the theme's canvas turned down, day is the info colour a little way
-/// into the canvas, and a stop's light says how far between them. A gradient layer holds colours
-/// resolved under one appearance, so these are computed under the view's own.
+/// cannot drift apart: night is the theme's canvas turned down, day is the info colour blended into
+/// the canvas, and a stop's light says how far between them. The two faces need two weights of the
+/// same recipe — the light canvas can carry a soft cool grey and a clear wash of the day colour,
+/// while the dark one needs its night turned right down for the day to show at all. A gradient layer
+/// holds colours resolved under one appearance, so these are computed under the view's own.
 @MainActor
 enum DaylightPalette {
-    static var night: NSColor {
-        MacTheme.Color.canvas.blended(withFraction: 0.45, of: .black) ?? MacTheme.Color.canvas
+    static func isDark(_ appearance: NSAppearance) -> Bool {
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     }
 
-    static var day: NSColor {
-        MacTheme.Color.canvas.blended(withFraction: 0.45, of: MacTheme.Color.info)
-            ?? MacTheme.Color.canvas
+    static func night(dark: Bool) -> NSColor {
+        let canvas = MacTheme.Color.canvas
+        guard !dark else {
+            return canvas.blended(withFraction: 0.45, of: .black) ?? canvas
+        }
+        let cool = canvas.blended(withFraction: 0.07, of: MacTheme.Color.info) ?? canvas
+        return cool.blended(withFraction: 0.09, of: .black) ?? cool
+    }
+
+    static func day(dark: Bool) -> NSColor {
+        let canvas = MacTheme.Color.canvas
+        return canvas.blended(withFraction: dark ? 0.45 : 0.34, of: MacTheme.Color.info)
+            ?? canvas
     }
 
     static var sun: NSColor { MacTheme.Color.warning }
@@ -92,8 +104,8 @@ enum DaylightPalette {
     {
         var colors: [CGColor] = []
         appearance.performAsCurrentDrawingAppearance {
-            let night = Self.night
-            let day = Self.day
+            let night = Self.night(dark: Self.isDark(appearance))
+            let day = Self.day(dark: Self.isDark(appearance))
             colors = bar.stops.map {
                 (night.blended(withFraction: CGFloat($0.light), of: day) ?? night).cgColor
             }
