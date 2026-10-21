@@ -581,6 +581,7 @@ final class MeridianAddPlaceView: NSView, NSSearchFieldDelegate {
         inner.translatesAutoresizingMaskIntoConstraints = false
         for view in [field, caption, empty, list] { inner.addArrangedSubview(view) }
         panel.addSubview(inner)
+        panel.takesPresses = true
         NSLayoutConstraint.activate([
             inner.topAnchor.constraint(equalTo: panel.topAnchor),
             inner.bottomAnchor.constraint(equalTo: panel.bottomAnchor),
@@ -685,6 +686,14 @@ final class MeridianAddPlaceView: NSView, NSSearchFieldDelegate {
         onPin?(place.id)
         dismissedByPerson = false
         close(returningFocus: false)
+    }
+
+    /// What a press at the middle of `row` reaches, walked through the whole view as the window
+    /// would, so a check can prove a place row is not behind a plate that swallows the press.
+    func hitTest(row: MeridianPlaceRowView) -> NSView? {
+        guard let superview else { return nil }
+        let point = row.convert(NSPoint(x: row.bounds.midX, y: row.bounds.midY), to: superview)
+        return hitTest(point)
     }
 
     private func refresh() {

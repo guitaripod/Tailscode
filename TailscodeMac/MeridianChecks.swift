@@ -304,6 +304,23 @@ enum MeridianChecks {
         try expect(content.addPlace.rows.count == matches.count, "typing did not narrow the list to its matches")
         content.addPlace.moveHighlight(1)
         try expect(content.addPlace.highlight == 1, "Down did not move the highlight")
+        place(content, width: 1392, height: 796)
+        if let row = content.addPlace.rows.first {
+            try expect(
+                content.addPlace.hitTest(row: row) === row,
+                "a press on a place row is swallowed before it reaches the row")
+            checks += 1
+        }
+        let field = content.addPlace.field
+        if let host = content.addPlace.superview {
+            let centre = field.convert(
+                NSPoint(x: field.bounds.midX, y: field.bounds.midY), to: host)
+            let hit = content.addPlace.hitTest(centre)
+            try expect(
+                hit === field || hit?.isDescendant(of: field) == true,
+                "a press on the search field is swallowed before it reaches the field")
+            checks += 1
+        }
         try expect(content.handleEscape() && content.addPlace.query.isEmpty, "Esc did not clear the field first")
         try expect(content.addPlace.isExpanded, "Esc closed the list before the field was empty")
         try expect(content.handleEscape() && !content.addPlace.isExpanded, "Esc did not close the list second")

@@ -17,6 +17,10 @@ final class TintView: NSView {
         didSet { needsLayout = true }
     }
 
+    /// Whether the plate itself takes a press, so a child it holds — a search field, a row — can be
+    /// reached. A ground whose children only draw leaves it false and is transparent to the pointer.
+    var takesPresses = false
+
     override var wantsUpdateLayer: Bool { true }
 
     init(fill: (() -> NSColor)? = nil, stroke: (() -> NSColor)? = nil, radius: CGFloat? = nil) {
@@ -36,7 +40,9 @@ final class TintView: NSView {
 
     isolated deinit { NotificationCenter.default.removeObserver(self) }
 
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        takesPresses ? super.hitTest(point) : nil
+    }
 
     override func layout() {
         super.layout()
