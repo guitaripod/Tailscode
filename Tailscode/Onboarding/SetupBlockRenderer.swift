@@ -143,7 +143,7 @@ final class SetupBlockRenderer {
         }
         if let note = card.note {
             stack.addArrangedSubview(
-                SetupLink.label(note, role: .panelFootnote, color: Theme.Color.tertiaryLabel))
+                SetupLink.label(note, role: .panelFootnote, color: Theme.Color.secondaryLabel))
         }
         return stack
     }

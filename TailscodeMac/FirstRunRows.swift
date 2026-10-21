@@ -276,7 +276,7 @@ enum FirstRunBlocks {
             views.append(
                 RowKit.wrapping(
                     note, font: MacTheme.Ramp.font(.panelFootnote),
-                    color: MacTheme.Color.tertiaryLabel))
+                    color: MacTheme.Color.secondaryLabel))
         }
         return views
     }
