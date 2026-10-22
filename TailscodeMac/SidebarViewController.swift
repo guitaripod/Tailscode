@@ -285,6 +285,9 @@ final class SidebarViewController: NSViewController {
 
     /// A fresh listing landed: the hub restates any chooser standing on the old one.
     var onEntriesChanged: (() -> Void)?
+    /// A streamed push changed a chat's title and nothing else the window must take in: the panes
+    /// showing it, the window and the strip are redrawn without the full listing's work.
+    var onTitleChanged: (() -> Void)?
 
     /// The directories chats already work in, newest first — the seed for the per-project walk a
     /// listing needs, and the same places the new-chat chooser ranks.
@@ -651,6 +654,10 @@ final class SidebarViewController: NSViewController {
                 profileID: profile.id, profileName: profile.name,
                 host: profile.baseURL.host ?? profile.name,
                 backendType: profile.backend, session: session)
+            let retitled = entries.contains {
+                $0.profileID == profile.id && $0.session.id == session.id
+                    && $0.session.title != session.title
+            }
             var next = entries.filter {
                 !($0.profileID == profile.id && $0.session.id == session.id)
             }
@@ -660,7 +667,7 @@ final class SidebarViewController: NSViewController {
             if !next.isEmpty { SessionListCache.scheduleSave(next) }
             SessionMarks.reconcile(with: [entry])
             render()
-            onEntriesChanged?()
+            if retitled { onTitleChanged?() }
         case .remove(let id):
             entries.removeAll { $0.profileID == profile.id && $0.session.id == id }
             render()

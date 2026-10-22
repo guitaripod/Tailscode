@@ -433,20 +433,24 @@ final class MainWindowController: NSWindowController {
 
     /// A pane keeps the entry it was opened with, so a chat the server named after it arrived, or
     /// one renamed since, would wear its first title until the focus moved. The listing is what
-    /// knows the current one, so every pane on screen is handed it.
-    /// Every listing change that renames a chat, or moves the model and level it runs on, is
-    /// handed to every pane that is showing it — whoever drove the turn.
+    /// knows the current one, so every pane on screen is handed it — a rename, or a move of the
+    /// model and level it runs on, whoever drove the turn — and what else reads a chat's title
+    /// (the window, the overflow strip, the notice raised for it) follows the pane's.
     private func refreshTitleFromListing() {
+        var renamed = false
         splitPanes.eachPane { pane in
             guard let current = pane.currentEntry,
                 let fresh = sidebar.allEntries.first(where: {
                     $0.profileID == current.profileID && $0.session.id == current.session.id
-                })
+                }),
+                pane.adopt(fresh)
             else { return }
-            pane.adopt(fresh)
-            guard pane === transcript else { return }
-            showTitle(of: fresh)
+            renamed = true
+            guard pane === transcript, let adopted = pane.currentEntry else { return }
+            showTitle(of: adopted)
         }
+        let noticed = TileRuntime.shared.adoptTitles(from: sidebar.allEntries)
+        if renamed || noticed { (splitPanes as? TileHost)?.refreshStrip() }
     }
 
     /// The marked chats opened all at once as one even tiling: the tree replaces what the window
@@ -1585,6 +1589,9 @@ final class MainWindowController: NSWindowController {
         }
         splitPanes.onChatDropped = { [weak self] pane, payload, zone in
             self?.pane(pane, received: payload, zone: zone) ?? false
+        }
+        sidebar.onTitleChanged = { [weak self] in
+            self?.refreshTitleFromListing()
         }
         sidebar.onEntriesChanged = { [weak self] in
             guard let self else { return }

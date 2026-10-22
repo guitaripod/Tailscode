@@ -347,6 +347,23 @@ final class TileRuntime {
         return made
     }
 
+    /// Hands every chat the hub holds the title the chat list now carries, so a notice raised
+    /// for a conversation the server named after it opened wears that name rather than the one
+    /// it opened under. Says whether any title moved.
+    @discardableResult
+    func adoptTitles(from listed: [SessionEntry]) -> Bool {
+        var moved = false
+        for (key, held) in entries {
+            guard let fresh = listed.first(where: {
+                $0.profileID == held.profileID && $0.session.id == held.session.id
+            }), let renamed = held.adoptingTitle(from: fresh)
+            else { continue }
+            entries[key] = renamed
+            moved = true
+        }
+        return moved
+    }
+
     private func sweep() {
         let live = Set(hub.keys)
         for key in instances.keys where !live.contains(key) && holders[key] == nil {

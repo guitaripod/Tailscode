@@ -232,6 +232,8 @@ final class TranscriptViewController: NSViewController {
         (sessionID: String, send: QuickAskSend, attachments: [PendingAttachment])?
     private var pendingSignature = "\u{0}"
     private var compactingElapsed: NSTextField?
+    /// The rows of the last few chats this pane showed, keyed as every other store keys a chat
+    /// (`SessionPinStore.key`): a session id alone is not unique across servers.
     private var sessionRows: [String: [TranscriptRow]] = [:]
     private var sessionRowOrder: [String] = []
     private var inFlightImages: Set<String> = []
@@ -779,7 +781,7 @@ final class TranscriptViewController: NSViewController {
             keptOrder.removeAll { $0 == pageKey }
             restorePage(kept)
             endOpenJourney(as: "kept")
-        } else if let remembered = sessionRows[entry.session.id] {
+        } else if let remembered = sessionRows[pageKey] {
             placeholderShown = true
             lastFullRows = remembered
             let limit = rowLimit
@@ -1151,20 +1153,18 @@ final class TranscriptViewController: NSViewController {
     /// arrived, renamed since, or ran a turn on from another desk would wear the answer it had at
     /// birth for as long as it stayed open. The listing is what knows the current one, and the
     /// model and level belong to it too: a chat driven from the Arch box must show that effort
-    /// here rather than the server deciding, and a send from here must carry it back.
-    func adopt(_ entry: SessionEntry) {
-        guard let current = self.entry, current.profileID == entry.profileID,
-            current.session.id == entry.session.id
-        else { return }
-        guard
-            current.session.title != entry.session.title
-                || current.session.model != entry.session.model
-                || current.session.modelProviderID != entry.session.modelProviderID
-                || current.session.reasoningEffort != entry.session.reasoningEffort
-        else { return }
-        self.entry = entry
-        composer.adopt(entry)
+    /// here rather than the server deciding, and a send from here must carry it back. Core decides
+    /// what is worth taking (never the untitled placeholder), and the identity line is redrawn
+    /// only when something was.
+    @discardableResult
+    func adopt(_ listed: SessionEntry) -> Bool {
+        guard let current = entry, let adopted = current.adoptingListing(from: listed) else {
+            return false
+        }
+        entry = adopted
+        composer.adopt(adopted)
         refreshIdentity()
+        return true
     }
 
     /// A closing pane stops talking to the world before its views go: a cancelled stream is the
@@ -1891,26 +1891,7 @@ final class TranscriptViewController: NSViewController {
         }
         context.openImage = { [weak self] key, name in
             guard let self else { return }
-            let items: [ImageViewer.Item] = self.lastFullRows.flatMap { row -> [ImageViewer.Item] in
-                let pictures: [(key: String, reference: FileReference)] = {
-                    switch row.kind {
-                    case .file(let reference, _, _): return [(row.key, reference)]
-                    case .pictures(let group): return group.map { ($0.key, $0.reference) }
-                    default: return []
-                    }
-                }()
-                return pictures.compactMap { picture in
-                    guard (picture.reference.mime ?? "").hasPrefix("image/") else { return nil }
-                    let itemName =
-                        picture.reference.filename
-                        ?? picture.reference.path.map {
-                            URL(fileURLWithPath: $0, isDirectory: false).lastPathComponent
-                        }
-                        ?? "image"
-                    return ImageViewer.Item(
-                        key: picture.key, name: itemName, reference: picture.reference)
-                }
-            }
+            let items = ImageViewer.items(in: self.lastFullRows)
             ImageViewer.present(
                 items: items, startKey: key, host: self.view.window,
                 fetch: { [weak self] reference, key in self?.fetchImage(reference, key: key) },
@@ -2606,7 +2587,9 @@ final class TranscriptViewController: NSViewController {
         let turnOpen = state.status == .running
         let turnEnded = context.turnOpen && !turnOpen
         context.turnOpen = turnOpen
-        if let entry { rememberRows(confirmed, for: entry.session.id) }
+        if let entry {
+            rememberRows(confirmed, for: SessionPinStore.key(entry.profileID, entry.session.id))
+        }
         pending.reconcile(userMessages: state.messages.count { $0.role == .user })
         armResumeForWalledTurn(state)
         armRetryWake(state.retry, now: Date())
@@ -4416,15 +4399,15 @@ final class TranscriptViewController: NSViewController {
 
     /// At most a handful of transcripts are kept renderable; the oldest falls out so a long day
     /// of chats does not become a memory of every one of them.
-    private func rememberRows(_ rows: [TranscriptRow], for sessionID: String) {
-        if sessionRows[sessionID] == nil {
-            sessionRowOrder.append(sessionID)
+    private func rememberRows(_ rows: [TranscriptRow], for pageKey: String) {
+        if sessionRows[pageKey] == nil {
+            sessionRowOrder.append(pageKey)
             if sessionRowOrder.count > 6 {
                 let evicted = sessionRowOrder.removeFirst()
                 sessionRows[evicted] = nil
             }
         }
-        sessionRows[sessionID] = rows
+        sessionRows[pageKey] = rows
     }
 
     private func tearDownAllRows() {

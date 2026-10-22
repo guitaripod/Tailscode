@@ -52,4 +52,23 @@ import Testing
         _ = opened.adoptingTitle(from: entry("Fix login"))
         #expect(opened.session.title == AgentSession.untitledTitle)
     }
+
+    @Test func aListingMovesTheModelAndLevelAndStillRefusesAPlaceholderTitle() {
+        let opened = entry("Fix login")
+        var listed = entry(AgentSession.untitledTitle)
+        listed.session.model = "gpt-5.6"
+        listed.session.modelProviderID = "openai"
+        listed.session.reasoningEffort = "high"
+        let adopted = opened.adoptingListing(from: listed)
+        #expect(adopted?.session.title == "Fix login")
+        #expect(adopted?.session.model == "gpt-5.6")
+        #expect(adopted?.session.modelProviderID == "openai")
+        #expect(adopted?.session.reasoningEffort == "high")
+        #expect(adopted?.adoptingListing(from: listed) == nil, "nothing new is nothing to redraw")
+    }
+
+    @Test func aListingForAnotherChatIsNeverAdopted() {
+        #expect(entry("Fix login").adoptingListing(from: entry("Other", id: "s2")) == nil)
+        #expect(entry("Fix login").adoptingListing(from: entry("Other", profile: "p2")) == nil)
+    }
 }

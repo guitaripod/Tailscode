@@ -50,4 +50,24 @@ public struct SessionEntry: Hashable, Sendable {
             profileID: profileID, profileName: profileName, host: host,
             backendType: backendType, session: renamed)
     }
+
+    /// The entry a pane should wear once a listing has moved on, or nil when nothing it holds
+    /// changed: the title under ``adoptingTitle(from:)``'s rule (a name, never the untitled
+    /// placeholder) together with the model and level the listing says the conversation runs on,
+    /// because a chat driven from another desk must show that effort here and send with it.
+    public func adoptingListing(from listed: SessionEntry) -> SessionEntry? {
+        guard profileID == listed.profileID, session.id == listed.session.id else { return nil }
+        var next = session
+        if !listed.session.hasPlaceholderTitle { next.title = listed.session.title }
+        next.model = listed.session.model
+        next.modelProviderID = listed.session.modelProviderID
+        next.reasoningEffort = listed.session.reasoningEffort
+        guard next.title != session.title || next.model != session.model
+            || next.modelProviderID != session.modelProviderID
+            || next.reasoningEffort != session.reasoningEffort
+        else { return nil }
+        return SessionEntry(
+            profileID: profileID, profileName: profileName, host: host,
+            backendType: backendType, session: next)
+    }
 }
