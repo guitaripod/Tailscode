@@ -357,6 +357,16 @@ extension SelfTest {
             view.model.pinnedStep == cursor && !account.unfolded.contains(other ?? ""),
             "folding it again keeps it too")
 
+        try expect(account.maxScroll > 1, "the account has room to scroll")
+        account.driveScroll(-1_000_000)
+        try expect(
+            !account.wheel(-1) && account.wheel(1),
+            "a notch moving up from the top of the account goes on to the page, and one moving down is the account's")
+        account.driveScroll(1_000_000)
+        try expect(
+            !account.wheel(1) && account.wheel(-1),
+            "a notch moving down from the end goes on to the page, and one moving up is the account's")
+
         account.driveScroll(60)
         settleAccount(view)
         let held = account.anchor()

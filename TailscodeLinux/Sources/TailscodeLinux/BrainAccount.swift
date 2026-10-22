@@ -811,7 +811,8 @@ final class BrainAccount: @unchecked Sendable {
 
 
     func wheel(_ dy: Double) -> Bool {
-        guard maxScroll > 0 else { return false }
+        let place = ScrollHandoff.Metrics(offset: target, content: total, viewport: viewHeight)
+        guard ScrollHandoff.notch(-dy, in: place) == .inner else { return false }
         holdAnchor = nil
         let next = min(max(target + dy * Self.wheelStep, 0), maxScroll)
         guard next != target else { return true }
