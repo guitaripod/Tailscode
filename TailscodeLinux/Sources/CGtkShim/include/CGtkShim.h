@@ -175,20 +175,6 @@ void tailscode_file_save(
     GtkWindow *parent, const char *suggested_name, const void *bytes, gsize len,
     void (*handler)(const char *path, void *data), void *data);
 
-/// Renders a month-in-numbers share card into a PNG. Layout is the same fixed geometry Core
-/// measures (`AnalyticsShare.Card`); colours are six-digit hex without the leading `#`. Returns
-/// newly-allocated PNG bytes (caller frees with `g_free`) and writes their length to `out_len`,
-/// or NULL on failure.
-unsigned char *tailscode_analytics_card_png(
-    int width, int height, double scale, double pad,
-    const char *canvas, const char *canvas_end, const char *raised, const char *rule,
-    const char *text,
-    const char *text_dim, const char *accent, const char *info, const char *warn,
-    const char *special,
-    const char *const *kinds, const char *const *a, const char *const *b,
-    const char *const *c, const double *d0, const double *d1, const int *i0,
-    int block_count, gsize *out_len);
-
 /// A shoulder-tap's face: a tone squircle and its glyph, or the picture a turn handed back with
 /// that face in the corner. It is drawn to be read at the size a notice shows it, which is small,
 /// so it carries a glyph and no words. Colours are six-digit hex. `picture` may be NULL. Returns

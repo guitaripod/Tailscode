@@ -580,6 +580,10 @@ final class MainWindow: @unchecked Sendable {
             self.driverUsageState(argument)
         case "analytics":
             AnalyticsPanel.present(parent: self.sidebarPane)
+        case "share":
+            if let analytics = ShareFixtures.analytics(named: argument.isEmpty ? "rich" : argument) {
+                ShareCardDialog.present(analytics, parent: self.window)
+            }
         case "type":
             let pane = self.activePane
             pane.driverType(argument)

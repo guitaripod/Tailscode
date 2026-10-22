@@ -343,6 +343,30 @@ double tailscode_poster_text(
     return draw_layout(cr, layout, x, y, red, green, blue, alpha);
 }
 
+double tailscode_poster_text_leaded(
+    cairo_t *cr, const char *text, const char *font, double x, double y, double width, int align,
+    int max_lines, double line_height, double tracking, double red, double green, double blue,
+    double alpha) {
+    PangoLayout *layout = text_layout_build(cr, font, width, align, max_lines, FALSE, text);
+    if (line_height > 0 && max_lines != 1) {
+        PangoLayoutLine *first = pango_layout_get_line_readonly(layout, 0);
+        if (first) {
+            PangoRectangle logical;
+            pango_layout_line_get_extents(first, NULL, &logical);
+            double natural = logical.height / (double)PANGO_SCALE;
+            pango_layout_set_spacing(layout, (int)((line_height - natural) * PANGO_SCALE));
+        }
+    }
+    if (tracking != 0) {
+        PangoAttrList *attributes = pango_attr_list_new();
+        pango_attr_list_insert(
+            attributes, pango_attr_letter_spacing_new((int)(tracking * PANGO_SCALE)));
+        pango_layout_set_attributes(layout, attributes);
+        pango_attr_list_unref(attributes);
+    }
+    return draw_layout(cr, layout, x, y, red, green, blue, alpha);
+}
+
 static cairo_status_t poster_png_write(void *closure, const unsigned char *data, unsigned int length) {
     g_byte_array_append((GByteArray *)closure, data, length);
     return CAIRO_STATUS_SUCCESS;

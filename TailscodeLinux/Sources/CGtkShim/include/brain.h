@@ -82,6 +82,14 @@ double tailscode_poster_text(
     int max_lines, double line_factor, double tracking, double red, double green, double blue,
     double alpha);
 
+/// Text for a card: wrapped lines set `line_height` apart in user units, whatever the face's own
+/// leading is and at whatever scale the context is drawn, so a paragraph reserves the room its
+/// layout computed. The leading is read from the layout's own first line.
+double tailscode_poster_text_leaded(
+    cairo_t *cr, const char *text, const char *font, double x, double y, double width, int align,
+    int max_lines, double line_height, double tracking, double red, double green, double blue,
+    double alpha);
+
 /// A cairo surface as PNG bytes, newly allocated (free with `g_free`), or NULL on failure.
 unsigned char *tailscode_surface_png(cairo_surface_t *surface, gsize *out_len);
 

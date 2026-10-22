@@ -147,6 +147,7 @@ extension SelfTest {
             case "sidebar": report("sidebar: \(try checkSidebar()) claims hold")
             case "clock": report("clock: \(try checkClock()) claims hold")
             case "shutdown": report("shutdown: \(try checkShutdown()) claims hold")
+            case "share": report("analytics share: \(try checkAnalyticsShare()) claims hold")
             case "brain": report("brain: \(try checkBrain()) claims hold")
             case "chatswitch": report("chat switch: \(try checkChatSwitch()) claims hold")
             case "readoutswap": report("readout swap: \(try checkBrainSwap()) claims hold")

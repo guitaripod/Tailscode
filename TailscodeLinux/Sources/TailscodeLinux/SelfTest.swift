@@ -3557,10 +3557,12 @@ public enum SelfTest {
         return 6
     }
 
-    /// The share card is Core geometry painted by the shim: a demo ledger must yield words, a
-    /// stable filename, and a non-empty PNG whose signature is a real image — not a layout that
-    /// only looks right once someone opens the panel by hand.
-    private static func checkAnalyticsShare() throws -> Int {
+    /// The share card is Core geometry painted through cairo: a demo ledger must yield words, a
+    /// stable filename and a PNG whose signature is a real image, every awkward account must paint
+    /// on every format at the size the format promises with ink in every panel, and the share
+    /// window must offer the choices the person is owed — not a layout that only looks right once
+    /// someone opens the panel by hand.
+    static func checkAnalyticsShare() throws -> Int {
         guard
             let analytics = UsageAnalytics(
                 servers: [("demo", DemoWorld.demoAnalytics())], missingServers: [])
@@ -3577,64 +3579,147 @@ public enum SelfTest {
         guard package.card.height > 400, AnalyticsShare.Card.width == 1080 else {
             throw SelfTestFailure("card geometry drifted")
         }
-        guard let png = AnalyticsCardRenderer.png(package, scale: 1), png.count > 800 else {
-            throw SelfTestFailure("renderer produced no PNG")
-        }
+        let long = ShareSelection(format: .long, style: .midnight)
+        guard let png = AnalyticsCardRenderer.png(package, selection: long, scale: 1), png.count > 800
+        else { throw SelfTestFailure("renderer produced no PNG") }
         let signature = [UInt8](png.prefix(8))
         guard signature == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] else {
             throw SelfTestFailure("PNG signature missing")
         }
-        try dumpShareCard()
-        return 5
+        let painted = try checkEveryFormatPaints()
+        try checkShareDialog()
+        try dumpShareCards()
+        return 7 + painted
     }
 
-    /// `TAILSCODE_SHARE_CARD_OUT=<path>` writes the card an agent can look at: the demo ledger
-    /// merged with a second, per-conversation server whose models run for nothing, so every
-    /// section the card can draw — providers, the free line, the coverage note — is on it. A
-    /// path ending in `/` is a directory and gets one card per style.
-    private static func dumpShareCard() throws {
-        guard let path = ProcessInfo.processInfo.environment["TAILSCODE_SHARE_CARD_OUT"],
-            !path.isEmpty
-        else { return }
-        let tokens = SessionSpendReport.Tokens(input: 4_000_000, output: 600_000)
-        let free = UsageAnalyticsReport(
-            since: Date(timeIntervalSinceNow: -30 * 86400), generatedAt: Date(), days: 30,
-            totals: UsageAnalyticsReport.Totals(
-                costUSD: 0, tokens: tokens, sessions: 41, activeDays: 12),
-            daily: [
-                UsageAnalyticsReport.Day(
-                    day: Self.today(), costUSD: 0, tokens: tokens, sessions: 41)
-            ],
-            models: [
-                SessionSpendReport.ModelShare(
-                    model: "ollama/qwen3-coder:30b", turns: 0, tokens: tokens, costUSD: 0)
-            ],
-            projects: [
-                UsageAnalyticsReport.Project(
-                    directory: "/home/demo/dev/pulse-server", name: "pulse-server",
-                    sessions: 41, tokens: tokens)
-            ],
-            coverage: .sessionTotals)
-        guard
-            let analytics = UsageAnalytics(
-                servers: [("studio", DemoWorld.demoAnalytics()), ("desk · opencode", free)],
-                missingServers: ["laptop"])
-        else { throw SelfTestFailure("the mixed ledger cannot be shared") }
-        let package = AnalyticsShare(analytics)
-        guard path.hasSuffix("/") else {
-            guard let png = AnalyticsCardRenderer.png(package, scale: 2) else {
-                throw SelfTestFailure("the mixed ledger cannot be painted")
+    /// Every fixture account on every format: the picture is the size the format promises, the
+    /// hero panel and every tile carry ink of their own, and the footer says what the numbers are.
+    private static func checkEveryFormatPaints() throws -> Int {
+        var painted = 0
+        for fixture in ShareFixtures.all() {
+            let package = AnalyticsShare(
+                fixture.analytics, now: ShareFixtures.now, calendar: ShareFixtures.calendar)
+            for format in ShareFormat.allCases {
+                let selection = ShareSelection(format: format, style: .midnight)
+                let card = package.card(selection)
+                guard let poster = AnalyticsCardRenderer.paint(card, scale: 1) else {
+                    throw SelfTestFailure("\(fixture.name) cannot be painted as \(format)")
+                }
+                guard poster.width == Int(card.canvasWidth.rounded()),
+                    poster.height == Int(card.height.rounded()),
+                    card.canvasWidth == format.canvasWidth
+                else { throw SelfTestFailure("\(fixture.name) \(format): wrong size") }
+                if let height = format.canvasHeight, card.height != height {
+                    throw SelfTestFailure("\(fixture.name) \(format): height \(card.height)")
+                }
+                let ground = poster.pixel(x: card.canvasWidth - 2, y: card.height / 2)
+                for panel in card.panels {
+                    let ink = poster.pixels(in: panel.content, notNear: ground)
+                    guard ink > 40 else {
+                        throw SelfTestFailure(
+                            "\(fixture.name) \(format): the \(panel.module) panel is empty (\(ink))")
+                    }
+                }
+                if let footer = card.footer {
+                    guard poster.pixels(in: footer.rect, notNear: ground) > 20 else {
+                        throw SelfTestFailure("\(fixture.name) \(format): the footer is empty")
+                    }
+                }
+                guard let png = poster.png, png.count > 800 else {
+                    throw SelfTestFailure("\(fixture.name) \(format): no PNG")
+                }
+                painted += 1
             }
-            try png.write(to: URL(fileURLWithPath: path))
-            return
         }
+        return painted
+    }
+
+    /// The share window offers every format, a chip per module with the unavailable ones disabled
+    /// and explained, and the picture follows what is pressed: a different format is a different
+    /// canvas, a module switched off is a different picture, and a full poster refuses another.
+    private static func checkShareDialog() throws {
+        guard gtk_init_check() != 0 else { return }
+        Gtk.installStyle()
+        guard let analytics = ShareFixtures.analytics(named: "localSessions") else {
+            throw SelfTestFailure("the local-only fixture is missing")
+        }
+        let suite = UserDefaults.standard
+        let rememberedFormat = suite.string(forKey: ShareFormat.storageKey)
+        let rememberedModules = suite.string(forKey: ShareSelectionStore.modulesKey)
+        let rememberedStyle = suite.string(forKey: CardStyleSelection.storageKey)
+        defer {
+            suite.set(rememberedFormat, forKey: ShareFormat.storageKey)
+            suite.set(rememberedModules, forKey: ShareSelectionStore.modulesKey)
+            suite.set(rememberedStyle, forKey: CardStyleSelection.storageKey)
+            SettingsFile.capture()
+        }
+        let window = gtk_window_new()!
+        gtk_window_set_default_size(ptr(window), 900, 900)
+        gtk_window_present(ptr(window))
+        let dialog = ShareCardDialog.present(
+            analytics, parent: ptr(window), selection: ShareSelection(format: .post))
+        defer {
+            dialog.close()
+            gtk_window_destroy(ptr(window))
+        }
+        let drawn = brainPump(60) { dialog.hasPreview }
+        guard drawn else { throw SelfTestFailure("the share window draws no picture") }
+        guard dialog.offers.contains(Localized.text("Copy caption")),
+            dialog.offers.contains(Localized.text("Save image…")),
+            dialog.offers.contains(Localized.text("Copy card"))
+        else { throw SelfTestFailure("the share window does not offer its ways out: \(dialog.offers)") }
+        guard let first = dialog.previewSize, first.width * 9 == first.height * 16 || abs(Double(first.width) / Double(first.height) - 16.0 / 9.0) < 0.01
+        else { throw SelfTestFailure("a post preview is not 16:9: \(String(describing: dialog.previewSize))") }
+        guard !dialog.isEnabled(.tools), !dialog.isOn(.tools), dialog.isEnabled(.models) else {
+            throw SelfTestFailure("a module the account cannot fill is offered")
+        }
+        guard dialog.caption.hasPrefix(analytics.headline), dialog.altText.contains(analytics.windowLabel)
+        else { throw SelfTestFailure("the caption or the description lost the headline") }
+        let before = dialog.altText
+        dialog.press(.models)
+        guard !dialog.isOn(.models), dialog.altText != before else {
+            throw SelfTestFailure("switching a module off changed nothing")
+        }
+        dialog.choose(.square)
+        let followed = brainPump(60) { dialog.previewSize.map { $0.width == $0.height } ?? false }
+        guard followed else {
+            throw SelfTestFailure(
+                "the preview did not follow the format: \(String(describing: dialog.previewSize))")
+        }
+        guard suite.string(forKey: ShareFormat.storageKey) == "square" else {
+            throw SelfTestFailure("the format was not remembered")
+        }
+    }
+
+    /// `TAILSCODE_SHARE_CARD_OUT=<dir>` writes the cards an agent can look at: every fixture account
+    /// in every format and look, at one point per pixel (`TAILSCODE_SHARE_CARD_SCALE` to change
+    /// it), named `<fixture>-<format>-<style>.png`. `TAILSCODE_SHARE_CARD_FIXTURES`,
+    /// `_FORMATS` and `_STYLES` take comma lists to narrow it.
+    private static func dumpShareCards() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let path = environment["TAILSCODE_SHARE_CARD_OUT"], !path.isEmpty else { return }
+        func list(_ key: String) -> Set<String>? {
+            environment[key].map { Set($0.split(separator: ",").map(String.init)) }
+        }
+        let fixtures = list("TAILSCODE_SHARE_CARD_FIXTURES")
+        let formats = list("TAILSCODE_SHARE_CARD_FORMATS")
+        let styles = list("TAILSCODE_SHARE_CARD_STYLES")
+        let scale = environment["TAILSCODE_SHARE_CARD_SCALE"].flatMap(Double.init) ?? 1
         let directory = URL(fileURLWithPath: path, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        for style in CardStyle.all {
-            guard let png = AnalyticsCardRenderer.png(package, scale: 1, style: style) else {
-                throw SelfTestFailure("style \(style.id) cannot be painted")
+        for fixture in ShareFixtures.all() where fixtures?.contains(fixture.name) ?? true {
+            let package = AnalyticsShare(
+                fixture.analytics, now: ShareFixtures.now, calendar: ShareFixtures.calendar)
+            for format in ShareFormat.allCases where formats?.contains(format.rawValue) ?? true {
+                for style in CardStyle.all where styles?.contains(style.id) ?? (style.id == CardStyleSelection.defaultStyle(for: format).id) {
+                    let selection = ShareSelection(format: format, style: style)
+                    guard let png = AnalyticsCardRenderer.png(package, selection: selection, scale: scale)
+                    else { throw SelfTestFailure("\(fixture.name) \(format) \(style.id) cannot be painted") }
+                    try png.write(
+                        to: directory.appendingPathComponent(
+                            "\(fixture.name)-\(format.rawValue)-\(style.id).png"))
+                }
             }
-            try png.write(to: directory.appendingPathComponent("\(style.id).png"))
         }
     }
 
@@ -3681,7 +3766,9 @@ public enum SelfTest {
         guard analytics.coverageNote?.contains("desktop · opencode") == true else {
             throw SelfTestFailure("the machine that could not count is not named")
         }
-        guard let png = AnalyticsCardRenderer.png(AnalyticsShare(analytics), scale: 1),
+        guard let png = AnalyticsCardRenderer.png(
+                AnalyticsShare(analytics), selection: ShareSelection(format: .post, style: .midnight),
+                scale: 1),
             png.count > 800
         else { throw SelfTestFailure("a free month cannot be shared") }
         return 8
