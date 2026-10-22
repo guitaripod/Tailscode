@@ -578,6 +578,14 @@ public enum ActivityKind: Sendable, Equatable {
         }
     }
 
+    /// Every kind of tool the vocabulary draws, for whatever has to prove it has an answer for each:
+    /// the band's glyph slot measures the mark of every one. A kind added to the Kit belongs here as
+    /// well as in the switches below, which the compiler already insists on.
+    public static let toolKinds: [ToolCallSummary.Kind] = [
+        .shell, .fileRead, .fileEdit, .fileWrite, .fileSearch, .webSearch, .webFetch,
+        .taskTracking, .subagent, .workflow, .skill, .question, .other,
+    ]
+
     /// The same reading for a client that draws text: one column wide, so a band that swaps tools
     /// mid-turn never shifts the words beside it.
     public static func glyph(forTool kind: ToolCallSummary.Kind) -> String {
