@@ -129,7 +129,7 @@ final class LinkRailController: NSResponder {
         pending = nil
         guard let deadline = hover.deadline else { return }
         let work = DispatchWorkItem { [weak self] in
-            MainActor.assumeIsolated { self?.refresh() }
+            MainThread.call { self?.refresh() }
         }
         pending = work
         DispatchQueue.main.asyncAfter(
@@ -273,7 +273,7 @@ final class LinkRailController: NSResponder {
         guard escapeMonitor == nil else { return }
         escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.keyCode == 53 else { return event }
-            let consumed = MainActor.assumeIsolated { () -> Bool in
+            let consumed = MainThread.call { () -> Bool in
                 guard let self, self.isOpen else { return false }
                 self.close()
                 return true

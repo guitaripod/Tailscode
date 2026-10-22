@@ -1387,7 +1387,7 @@ final class MeridianSheetController {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
             nonisolated(unsafe) let pressed = event
-            let consumed = MainActor.assumeIsolated { self.consumes(pressed) }
+            let consumed = MainThread.call { self.consumes(pressed) }
             return consumed ? nil : event
         }
     }

@@ -480,7 +480,7 @@ import TailscodeCore
             accountsWatch = NotificationCenter.default.addObserver(
                 forName: MediaAccounts.didChange, object: nil, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.refreshBoard() }
+                MainThread.call { self?.refreshBoard() }
             }
         }
 

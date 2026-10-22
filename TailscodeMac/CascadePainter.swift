@@ -323,7 +323,7 @@ final class CascadePainter {
     private func watch() {
         guard watchdog == nil else { return }
         watchdog = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard let self else { return }
                 guard self.live.isActive, self.live.tempo != .stopped || self.live.owes else {
                     self.unwatch()
@@ -533,7 +533,7 @@ enum CascadeEntrance {
                 context.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 view.animator().alphaValue = 1
             } completionHandler: {
-                MainActor.assumeIsolated { view.alphaValue = 1 }
+                MainThread.call { view.alphaValue = 1 }
             }
         }
     }

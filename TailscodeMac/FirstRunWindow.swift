@@ -132,13 +132,9 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
         ServerDirectory.shared.profiles.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }
     }
 
-    private static var offersTailnetScan: Bool {
-        #if TAILSCODE_MAS
-            return false
-        #else
-            return true
-        #endif
-    }
+    /// Both builds offer the scan. The direct build asks Tailscale's command line; the store build
+    /// asks the API with a token, because a container may not run that command.
+    private static var offersTailnetScan: Bool { true }
 
     private static func environment() -> FirstRunEnvironment {
         FirstRunEnvironment(
@@ -417,53 +413,49 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
     }
 
     private func findOnTailnet() {
-        #if !TAILSCODE_MAS
-            let flow = self.flow
-            DiscoveryPanel.present(on: window, configured: Self.realProfiles) { suggestion in
-                Task { await flow.adopt(suggestion) }
-            }
-        #endif
+        let flow = self.flow
+        DiscoveryPanel.present(on: window, configured: Self.realProfiles) { suggestion in
+            Task { await flow.adopt(suggestion) }
+        }
     }
 
     /// While the person installs a machine, the tailnet is asked every few seconds and the first
     /// agent that was not there at the start is taken as the machine being installed.
     private func watchForInstall(_ plan: FirstRunPlan) {
-        #if !TAILSCODE_MAS
-            let installing = plan.row(.machine)?.blocks.contains {
-                if case .command = $0 { return true }
-                return false
-            } ?? false
-            guard installing else {
-                installWatch?.cancel()
-                installWatch = nil
-                return
-            }
-            guard installWatch == nil else { return }
-            let flow = self.flow
-            installWatch = Task { [weak self] in
-                var baseline: Set<String>?
-                while !Task.isCancelled {
-                    let found = await FirstRunMachineScan.once()
-                    guard let self, !Task.isCancelled else { return }
-                    if let known = baseline {
-                        let saved = Self.realProfiles
-                        let fresh = found.first {
-                            !known.contains($0.dedupeKey)
-                                && !ConfiguredServers.isConfigured(
-                                    $0.baseURL, profiles: saved, devices: [])
-                        }
-                        if let fresh {
-                            self.installWatch = nil
-                            await flow.adopt(fresh)
-                            return
-                        }
-                    } else {
-                        baseline = Set(found.map(\.dedupeKey))
+        let installing = plan.row(.machine)?.blocks.contains {
+            if case .command = $0 { return true }
+            return false
+        } ?? false
+        guard installing else {
+            installWatch?.cancel()
+            installWatch = nil
+            return
+        }
+        guard installWatch == nil else { return }
+        let flow = self.flow
+        installWatch = Task { [weak self] in
+            var baseline: Set<String>?
+            while !Task.isCancelled {
+                let found = await FirstRunMachineScan.once()
+                guard let self, !Task.isCancelled else { return }
+                if let known = baseline {
+                    let saved = Self.realProfiles
+                    let fresh = found.first {
+                        !known.contains($0.dedupeKey)
+                            && !ConfiguredServers.isConfigured(
+                                $0.baseURL, profiles: saved, devices: [])
                     }
-                    try? await Task.sleep(for: .seconds(6))
+                    if let fresh {
+                        self.installWatch = nil
+                        await flow.adopt(fresh)
+                        return
+                    }
+                } else {
+                    baseline = Set(found.map(\.dedupeKey))
                 }
+                try? await Task.sleep(for: .seconds(6))
             }
-        #endif
+        }
     }
 
     /// This Mac's tailnet presence, re-proved every few seconds while the window is open, so

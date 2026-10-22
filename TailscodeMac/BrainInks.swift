@@ -72,7 +72,7 @@ enum MacBrainPalette {
         NotificationCenter.default.addObserver(
             forName: MacTheme.Chrome.didRepaint, object: nil, queue: .main
         ) { _ in
-            MainActor.assumeIsolated { memo = [:] }
+            MainThread.call { memo = [:] }
         }
     }
 }

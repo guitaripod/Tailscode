@@ -509,7 +509,7 @@ final class StudioStageView: NSView, StudioStaging {
         guard state.isWorking, gate.isOpen else { return stopClock() }
         guard clock == nil else { return }
         clock = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.updateCaption() }
+            MainThread.call { self?.updateCaption() }
         }
         clock?.tolerance = 0.2
     }
@@ -528,7 +528,7 @@ final class StudioStageView: NSView, StudioStaging {
         CATransaction.setAnimationDuration(StudioTheme.crossfade)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
         CATransaction.setCompletionBlock { [weak self] in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard let self else { return }
                 self.sketchLayer.isHidden = true
                 self.sketchLayer.contents = nil

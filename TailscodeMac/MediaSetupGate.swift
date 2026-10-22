@@ -33,7 +33,7 @@ enum MediaSetupGate {
             ForgeRunner.shared.pointAtStoredRenderer()
             onChanged?()
             DispatchQueue.main.async {
-                MainActor.assumeIsolated {
+                MainThread.call {
                     SetupSheet.dismiss {
                         present(
                             endpoint: ForgeRunner.shared.endpoint, focus: focus, on: host, onFinish: onFinish,

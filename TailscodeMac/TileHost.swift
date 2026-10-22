@@ -105,7 +105,7 @@ final class TileHost: NSViewController, PaneTiling {
         view = canvas
         reliefToken = MemoryRelief.shared.register(name: "glance readings") { [weak self] depth in
             DispatchQueue.main.async {
-                MainActor.assumeIsolated { self?.relieve(depth) }
+                MainThread.call { self?.relieve(depth) }
             }
         }
     }
@@ -461,7 +461,7 @@ final class TileHost: NSViewController, PaneTiling {
             promotionHold[id] = CACurrentMediaTime() + NSEvent.doubleClickInterval
             DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval + 0.02) {
                 [weak self] in
-                MainActor.assumeIsolated {
+                MainThread.call {
                     self?.promotionHold[id] = nil
                     self?.reconcile()
                 }
@@ -648,7 +648,7 @@ final class TileHost: NSViewController, PaneTiling {
         if placement.frames.count != lastVisible {
             lastVisible = placement.frames.count
             DispatchQueue.main.async { [weak self] in
-                MainActor.assumeIsolated { self?.applyFocusStyling() }
+                MainThread.call { self?.applyFocusStyling() }
             }
         }
     }
@@ -826,7 +826,7 @@ final class TileHost: NSViewController, PaneTiling {
         guard !reconcileScheduled else { return }
         reconcileScheduled = true
         DispatchQueue.main.async { [weak self] in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard let self else { return }
                 self.reconcileScheduled = false
                 self.reconcile()
@@ -961,7 +961,7 @@ final class TileHost: NSViewController, PaneTiling {
     private func scheduleRelease(_ id: PaneID) {
         guard releases[id] == nil else { return }
         let timer = Timer(timeInterval: demotedKeep, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard let self else { return }
                 self.releases[id] = nil
                 guard let shell = self.shells[id], shell.face != .full else { return }
@@ -1122,7 +1122,7 @@ final class TileHost: NSViewController, PaneTiling {
         panes[id]?.setLiveResize(false)
         guard !deferredPeers.isEmpty else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 60) { [weak self] in
-            MainActor.assumeIsolated { self?.releaseDeferred() }
+            MainThread.call { self?.releaseDeferred() }
         }
     }
 
@@ -1373,7 +1373,7 @@ final class GlanceFeed {
         return DrainSlot(
             pane: slotID, priority: .glance, minInterval: Self.drainInterval(interval),
             hasWork: { lease.hasFrame },
-            apply: { [weak self] in MainActor.assumeIsolated { self?.applyNewest() } })
+            apply: { [weak self] in MainThread.call { self?.applyNewest() } })
     }
 
     private func applyNewest() {

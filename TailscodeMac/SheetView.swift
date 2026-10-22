@@ -224,11 +224,11 @@ class SheetView: NSView {
         ].map { name in
             NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) {
                 [weak self] _ in
-                MainActor.assumeIsolated { self?.needsLayout = true }
+                MainThread.call { self?.needsLayout = true }
             }
         }
         layoutObservation = window.observe(\.contentLayoutRect, options: [.new]) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.needsLayout = true }
+            MainThread.call { self?.needsLayout = true }
         }
         applyFlipping()
         needsLayout = true
@@ -370,7 +370,7 @@ class SheetView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         CATransaction.setCompletionBlock { [weak self] in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard let self, self.token == mine else { return }
                 completion()
             }
@@ -782,7 +782,7 @@ final class SheetPresenter {
         closeObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: window, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.teardown() }
+            MainThread.call { self?.teardown() }
         }
     }
 

@@ -13,6 +13,18 @@ import TailscodeCore
     typealias NeuralPlatformView = NSView
 #endif
 
+/// A main-queue callback's body. The Mac's runtime is asked for the main executor by
+/// `assumeIsolated`, and that read segfaults on macOS 27.2; the client's own helper trusts the
+/// queue it was handed instead. iOS keeps the ordinary check.
+@inline(__always)
+private func neuralOnMain(_ body: @MainActor () -> Void) {
+    #if os(macOS)
+        MainThread.call(body)
+    #else
+        MainActor.assumeIsolated { body() }
+    #endif
+}
+
 /// Notification tokens that take themselves off their centres when the owner goes, so a view's
 /// deinit has nothing to say about them. Only the main thread touches one.
 private final class NeuralObservers: @unchecked Sendable {
@@ -398,7 +410,7 @@ extension NeuralHeadView {
         guard link == nil, !renderScheduled else { return }
         renderScheduled = true
         DispatchQueue.main.async { [weak self] in
-            MainActor.assumeIsolated {
+            neuralOnMain {
                 guard let self else { return }
                 self.renderScheduled = false
                 self.render(time: CACurrentMediaTime())
@@ -486,7 +498,7 @@ extension NeuralHeadView {
     /// the system posted it from.
     fileprivate func observe(_ name: Notification.Name, center: NotificationCenter = .default) {
         let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.environmentChanged() }
+            neuralOnMain { self?.environmentChanged() }
         }
         observers.add(token, in: center)
     }
@@ -597,7 +609,7 @@ extension NeuralHeadView {
                 let token = NotificationCenter.default.addObserver(
                     forName: name, object: window, queue: .main
                 ) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.environmentChanged() }
+                    neuralOnMain { self?.environmentChanged() }
                 }
                 windowObservers.add(token, in: .default)
             }

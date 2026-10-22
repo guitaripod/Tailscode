@@ -107,7 +107,7 @@ extension BrainRowView {
         guard hoverFlush == nil else { return }
         hoverFlush = Timer.scheduledTimer(withTimeInterval: Self.hoverSpacing, repeats: false) {
             [weak self] _ in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 self?.hoverFlush = nil
                 self?.flushHover()
             }
@@ -139,7 +139,7 @@ extension BrainRowView {
         guard let next = model.nextReadoutChange(after: clock) else { return }
         let wait = max(0.01, next - clock + 0.01)
         graceTimerStore = Timer.scheduledTimer(withTimeInterval: wait, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 self?.account?.refresh()
                 self?.updateLeader()
             }

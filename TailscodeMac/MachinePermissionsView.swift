@@ -198,12 +198,18 @@ final class MachinePermissionsView: NSView {
 
     /// The preferred road is always the server's own — it opens the pane on the machine that has
     /// it and records `requestedAt`, which is what lets a phone across the room show the same
-    /// steps. Only a local client, and only once that road fails, falls back to opening System
-    /// Settings on this very screen itself.
+    /// steps. A server on this very Mac cannot be trusted with the opening: its bridge is a
+    /// daemon without this person's window server, so it can answer that it asked while nothing
+    /// appears. This screen opens the pane itself first and still asks the server for the record.
     private func request(_ kind: MachinePermissions.Grant.Kind) {
         guard let permissions = current else { return }
         let local = MachinePermissionReading.isLocal(permissions, thisHost: thisHost)
         requestFailedKinds.remove(kind)
+        if local {
+            openLocally(permissions)
+            localFallback = (kind, Date())
+            apply(permissions)
+        }
         Task { [weak self] in
             guard let self else { return }
             do {

@@ -114,11 +114,11 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
         let center = NotificationCenter.default
         contextObservers.append(
             center.addObserver(forName: MacTheme.Chrome.didRepaint, object: nil, queue: .main) {
-                [weak self] _ in MainActor.assumeIsolated { self?.rethemed() }
+                [weak self] _ in MainThread.call { self?.rethemed() }
             })
         contextObservers.append(
             center.addObserver(forName: ChatDensitySetting.didChange, object: nil, queue: .main) {
-                [weak self] _ in MainActor.assumeIsolated { self?.densityChanged() }
+                [weak self] _ in MainThread.call { self?.densityChanged() }
             })
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(motionChanged),
@@ -1038,14 +1038,14 @@ final class MacBrainIdle {
         let center = NotificationCenter.default
         for name in [NSApplication.didResignActiveNotification, NSApplication.didHideNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.away() }
+                MainThread.call { self?.away() }
             }
         }
         for name in [
             NSApplication.didBecomeActiveNotification, NSApplication.didUnhideNotification,
         ] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.back() }
+                MainThread.call { self?.back() }
             }
         }
         center.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) {
@@ -1053,7 +1053,7 @@ final class MacBrainIdle {
             guard let closing = (note.object as? NSWindow).map({ ObjectIdentifier($0) }) else {
                 return
             }
-            MainActor.assumeIsolated {
+            MainThread.call {
                 for row in BrainRowView.live where row.window.map({ ObjectIdentifier($0) }) == closing {
                     row.setParked(true, reason: "window")
                 }
@@ -1064,7 +1064,7 @@ final class MacBrainIdle {
     func away() {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: Self.delay, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.fallIdle() }
+            MainThread.call { self?.fallIdle() }
         }
     }
 

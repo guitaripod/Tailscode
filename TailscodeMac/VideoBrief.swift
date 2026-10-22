@@ -348,7 +348,7 @@ final class VideoBrief: StudioBriefing {
         panel.canChooseDirectories = false
         panel.title = ForgeField.frame.label
         panel.begin { [runner] response in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard response == .OK, let url = panel.url else { return }
                 runner.start(from: .file(url.path))
             }

@@ -951,7 +951,7 @@ enum ChatChecks {
         column.postsFrameChangedNotifications = true
         let watch = NotificationCenter.default.addObserver(
             forName: NSView.frameDidChangeNotification, object: column, queue: nil
-        ) { _ in MainActor.assumeIsolated { heights.append(column.frame.height) } }
+        ) { _ in MainThread.call { heights.append(column.frame.height) } }
         defer { NotificationCenter.default.removeObserver(watch) }
         for round in 0..<4 {
             let at = rows.count - 1 - round

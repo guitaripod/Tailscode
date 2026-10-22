@@ -563,7 +563,7 @@ final class TranscriptViewController: NSViewController {
                     clip.animator().setBoundsOrigin(target)
                 },
                 completionHandler: { [weak self] in
-                    MainActor.assumeIsolated {
+                    MainThread.call {
                         guard let self else { return }
                         self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
                         self.isAutoScrolling = false
@@ -1222,11 +1222,11 @@ final class TranscriptViewController: NSViewController {
         let me = ObjectIdentifier(self)
         lifetime.add { taken.cancel() }
         lifetime.add { token.cancel() }
-        lifetime.add { MainActor.assumeIsolated { TileRuntime.shared.detach(me, from: key) } }
+        lifetime.add { MainThread.call { TileRuntime.shared.detach(me, from: key) } }
         let call = calls
         call.paneBecameLive()
         lifetime.add {
-            MainActor.assumeIsolated {
+            MainThread.call {
                 call.paneStopped(because: "the pane let go of its conversation")
             }
         }
@@ -1241,7 +1241,7 @@ final class TranscriptViewController: NSViewController {
         DrainSlot(
             pane: paneID, priority: isFocusedPane ? .focused : .full,
             hasWork: { lease.hasFrame },
-            apply: { [weak self] in MainActor.assumeIsolated { self?.applyNewestFrame() } })
+            apply: { [weak self] in MainThread.call { self?.applyNewestFrame() } })
     }
 
     /// The frame's turn for this pane: the newest state the hub holds, built and applied once,
@@ -1362,7 +1362,7 @@ final class TranscriptViewController: NSViewController {
         guard !lifetimeArmed else { return }
         lifetimeArmed = true
         brains.parkViews(false)
-        lifetime.add { [weak self] in MainActor.assumeIsolated { self?.releaseClocks() } }
+        lifetime.add { [weak self] in MainThread.call { self?.releaseClocks() } }
         if isViewLoaded { observeScrolling() }
     }
 
@@ -1517,7 +1517,7 @@ final class TranscriptViewController: NSViewController {
                 clip.animator().setBoundsOrigin(NSPoint(x: clip.bounds.origin.x, y: origin))
             },
             completionHandler: { [weak self] in
-                MainActor.assumeIsolated {
+                MainThread.call {
                     guard let self else { return }
                     self.scrollView.reflectScrolledClipView(self.scrollView.contentView)
                 }
@@ -5431,12 +5431,12 @@ private final class DropForwardingView: NSView {
                 NotificationCenter.default.addObserver(
                     forName: NSView.boundsDidChangeNotification, object: transcript.probeClip,
                     queue: .main
-                ) { [weak self] _ in MainActor.assumeIsolated { self?.stamp("bounds") } })
+                ) { [weak self] _ in MainThread.call { self?.stamp("bounds") } })
             observers.append(
                 NotificationCenter.default.addObserver(
                     forName: NSView.frameDidChangeNotification, object: transcript.probeCanvas,
                     queue: .main
-                ) { [weak self] _ in MainActor.assumeIsolated { self?.stamp("canvas") } })
+                ) { [weak self] _ in MainThread.call { self?.stamp("canvas") } })
             let link = transcript.view.displayLink(target: self, selector: #selector(tick))
             link.add(to: .main, forMode: .common)
             self.link = link

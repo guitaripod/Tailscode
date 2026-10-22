@@ -204,7 +204,7 @@ extension PresenceOrbView: MTKViewDelegate {
     nonisolated func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
     nonisolated func draw(in view: MTKView) {
-        MainActor.assumeIsolated { render(in: view) }
+        MainThread.call { render(in: view) }
     }
 
     private func render(in view: MTKView) {

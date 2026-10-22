@@ -271,7 +271,7 @@ final class AccountReadoutPage: NSView {
             boundsObserver = NotificationCenter.default.addObserver(
                 forName: NSView.boundsDidChangeNotification, object: scrolling.contentView, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.updateFade() }
+                MainThread.call { self?.updateFade() }
             }
         } else {
             addSubview(flow)
@@ -618,7 +618,7 @@ final class AccountReadoutPage: NSView {
         owner.host?.updateModel { $0.setBrowseOutputExpanded(expanded) }
         for (delay, first) in [(0.06, true), (0.35, false)] {
             Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self, weak block] _ in
-                MainActor.assumeIsolated {
+                MainThread.call {
                     guard let self, let block, block.expanded == expanded else { return }
                     self.placeDiff(block, opening: expanded, first: first)
                 }

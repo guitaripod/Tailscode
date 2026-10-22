@@ -122,17 +122,17 @@ final class MainWindowController: NSWindowController {
         NotificationCenter.default.addObserver(
             forName: MacTheme.Chrome.didRepaint, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.applyTheme() }
+            MainThread.call { self?.applyTheme() }
         }
         NotificationCenter.default.addObserver(
             forName: MacUpdateWatch.didChange, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.updateMark?.render() }
+            MainThread.call { self?.updateMark?.render() }
         }
         NotificationCenter.default.addObserver(
             forName: TypeScaleStore.didChange, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.typeScaleChanged() }
+            MainThread.call { self?.typeScaleChanged() }
         }
         if !shortcuts.issues.isEmpty {
             setNotice(
@@ -171,7 +171,7 @@ final class MainWindowController: NSWindowController {
         NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard let self, let window = self.window else { return }
                 self.splitPanes.setOccluded(!window.occlusionState.contains(.visible))
             }
@@ -260,7 +260,7 @@ final class MainWindowController: NSWindowController {
                 continue
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                MainActor.assumeIsolated { self?.wake(step.pane, entry: entry, backend: backend) }
+                MainThread.call { self?.wake(step.pane, entry: entry, backend: backend) }
             }
         }
         wakingQueueEnd =
@@ -2499,7 +2499,7 @@ final class MainWindowController: NSWindowController {
         NSAnimationContext.runAnimationGroup(
             { _ in item.animator().isCollapsed = !shown },
             completionHandler: { [weak self] in
-                MainActor.assumeIsolated {
+                MainThread.call {
                     guard let self, shown else { return }
                     self.applyStoredDividers()
                     if pane == .terminal { self.focus(.terminal) }

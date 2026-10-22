@@ -139,10 +139,9 @@ enum ParityManifest {
         case .tailnetDiscovery:
             return .varies(
                 direct: .implemented("DiscoveryPanel"),
-                appStore: .gap(
-                    "the panel is still compiled but nothing opens it and nothing would fill it — Find my machines is absent from the servers window and the survey answers sandboxed with no peers at all — so setting a machine up in this copy is the typed address and nothing else"),
+                appStore: .implemented("MacTailnetList"),
                 because:
-                    "The scan is the tailnet asked for its own peers by running the Tailscale command line, and a container may neither spawn that binary nor reach the socket behind it. What the store copy owes is another road to the peer list, not a scan rewritten to always come back empty.")
+                    "The scan is the tailnet asked for its own peers. The direct build runs the Tailscale command line. A container may neither spawn that binary nor reach the socket behind it, so the store copy asks Tailscale's API with a token — the phone's road — and keeps the machines last seen when the token is missing or refused.")
         case .connectDiagnosis: return .implemented("MacConnectFix")
         case .serverAccess: return .implemented("ServerAccessReading")
         case .firstRunPlan: return .implemented("FirstRunFlow")
@@ -258,22 +257,16 @@ enum ParityManifest {
             return .varies(
                 direct: .implemented("FirstRunWindow"),
                 appStore: .partial(
-                    "FirstRunWindow", missing: "the half of the checklist that proves the typed address still runs whole — probeCandidates is a request and this copy has the network — but the half that proves this Mac is on a tailnet cannot run at all, so that step states that it cannot see instead of ticking or failing"),
+                    "FirstRunWindow", missing: "the half of the checklist that proves the typed address still runs whole — probeCandidates is a request and this copy has the network — and a tunnel that is up is read off the interface, so that step can tick. What it still cannot do is tell signed-out from not-installed, because those words live in the command line's JSON"),
                 because:
                     "A checklist proves what it is allowed to run, and an address is a request while a machine's own tailnet presence is a program.")
         case .emptyWelcome: return .implemented("EmptyWelcomeView")
-        case .addAnotherMachine:
-            return .varies(
-                direct: .implemented("FirstRunWindow"),
-                appStore: .partial(
-                    "FirstRunWindow", missing: "the tailnet scan is compiled out of this copy, so Add a machine offers the link and the install command and says once, in Core's words, that this copy cannot look at the tailnet; the typed address on the servers screen is unchanged"),
-                because:
-                    "Scanning a tailnet runs the tailscale program and walks every peer, which the sandbox does not allow, so the way that depends on it is absent rather than pretended.")
+        case .addAnotherMachine: return .implemented("FirstRunWindow")
         case .tailscaleReadiness:
             return .varies(
                 direct: .implemented("TailnetRemedyView"),
                 appStore: .partial(
-                    "TailnetRemedyView", missing: "the reading is always the sandboxed one, which the doctrine counts as an honest state rather than a hole — but this copy cannot tell up from signed out from not installed, and the door it offers is the Tailscale app or the download page rather than tailscale up run where the person is already looking"),
+                    "TailnetRemedyView", missing: "a tunnel that is up is read off the interface, so the step can tick; what this copy cannot tell is signed out from not installed, and the door it offers is the Tailscale app or the download page rather than tailscale up run where the person is already looking"),
                 because:
                     "All four of the other states are read out of the command line's own JSON, which a container may not run, so the store copy has exactly the one state that was written for it and none of the ones that need a subprocess.")
         case .demoMode: return .implemented("enterDemoMode")

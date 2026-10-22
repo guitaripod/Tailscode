@@ -421,7 +421,7 @@ extension BrainAccountView {
                     clip.animator().setBoundsOrigin(NSPoint(x: 0, y: target))
                 },
                 completionHandler: { [weak self] in
-                    MainActor.assumeIsolated {
+                    MainThread.call {
                         guard let self else { return }
                         self.scrollAnimating = false
                         if self.model.turn.outcome == .running, self.model.stepList.isFollowing {

@@ -135,13 +135,13 @@ final class StudioWorkspaceView: NSView {
         needsLayout = true
         noticeTimer?.invalidate()
         noticeTimer = Timer.scheduledTimer(withTimeInterval: 2.8, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard let self else { return }
                 NSAnimationContext.runAnimationGroup({ context in
                     context.duration = StudioTheme.motionAllowed ? 0.25 : 0
                     self.notice.animator().alphaValue = 0
                 }, completionHandler: {
-                    MainActor.assumeIsolated { self.notice.isHidden = true }
+                    MainThread.call { self.notice.isHidden = true }
                 })
             }
         }
@@ -158,7 +158,7 @@ final class StudioWorkspaceView: NSView {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
             nonisolated(unsafe) let pressed = event
-            let consumed = MainActor.assumeIsolated { self.handle(pressed) }
+            let consumed = MainThread.call { self.handle(pressed) }
             return consumed ? nil : event
         }
         needsLayout = true

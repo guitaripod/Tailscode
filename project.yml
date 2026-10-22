@@ -489,6 +489,7 @@ targets:
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: NO
+        OTHER_SWIFT_FLAGS: "$(inherited) -disable-dynamic-actor-isolation -disable-actor-data-race-checks"
 
   TailscodeMac:
     templates: [MacApp]
@@ -501,6 +502,7 @@ targets:
         CODE_SIGN_IDENTITY: "-"
         ENABLE_APP_SANDBOX: NO
         ENABLE_HARDENED_RUNTIME: NO
+        OTHER_SWIFT_FLAGS: "$(inherited) -disable-dynamic-actor-isolation -disable-actor-data-race-checks"
 
   TailscodeMacStore:
     templates: [MacApp]
@@ -515,6 +517,7 @@ targets:
         DEVELOPMENT_TEAM: P4DQK6SRKR
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "-"
+        OTHER_SWIFT_FLAGS: "$(inherited) -disable-dynamic-actor-isolation -disable-actor-data-race-checks"
 
 schemes:
   Tailscode:

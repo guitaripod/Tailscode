@@ -20,7 +20,7 @@ enum MacDelegateGate {
             guard let notice = note.userInfo?["notice"] as? DelegateNotice,
                 let runID = note.userInfo?["runID"] as? String
             else { return }
-            MainActor.assumeIsolated {
+            MainThread.call {
                 MacNotifier.shared.raiseDelegate(notice, identifier: "delegate:\(runID):\(notice.kind)")
             }
         }

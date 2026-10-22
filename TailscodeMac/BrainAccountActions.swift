@@ -215,7 +215,7 @@ extension BrainAccountView {
         let running = account.header.isRunning && window != nil
         if running, secondTimer == nil {
             let timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.tickSecond() }
+                MainThread.call { self?.tickSecond() }
             }
             timer.tolerance = 0.2
             secondTimer = timer

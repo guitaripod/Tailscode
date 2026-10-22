@@ -251,10 +251,8 @@ final class ForgeSetupSheet: NSObject {
     /// `TailnetStatusMac` still proves a tunnel on a Mac whose Tailscale cannot be run from here,
     /// while the survey is the machine list a sweep would ask — the same one the server scan asks,
     /// so a renderer scan and an agent scan look at one tailnet.
-    private static func readings() async -> (tailnet: TailscaleReading, survey: DiscoverySurvey) {
-        let status = await Task.detached(priority: .utility) { TailnetStatusMac.read() }.value
-        let survey = await Task.detached(priority: .utility) { DiscoverySurvey.read() }.value
-        return (status.reading, survey)
+    private static func readings() async -> MacTailnetList.Listing {
+        await MacTailnetList.load(includingThisMachine: true)
     }
 
     /// A reading taken into the sheet: the line about this Mac, the machines a sweep would ask, and
@@ -263,10 +261,10 @@ final class ForgeSetupSheet: NSObject {
     /// This Mac is one of the machines asked. The desk somebody codes at is the likeliest box on the
     /// whole tailnet to be holding the graphics card, and a sweep that only asked peers could never
     /// find the renderer it is running on.
-    private func took(_ reading: (tailnet: TailscaleReading, survey: DiscoverySurvey)) {
-        peers = reading.survey.scannable(includingThisMachine: true)
-        setup.tailnet = reading.tailnet
-        sweepBlock = Self.blocker(reading.tailnet, reading.survey)
+    private func took(_ listing: MacTailnetList.Listing) {
+        peers = listing.devices
+        setup.tailnet = listing.reading
+        sweepBlock = Self.blocker(listing)
         sweep = sweepBlock.map(ForgeSweepReading.init(blocked:)) ?? ForgeSweepReading()
     }
 
@@ -275,11 +273,11 @@ final class ForgeSetupSheet: NSObject {
     /// has no way of being told what else is on it. Two states, two doors — and neither of them is
     /// "start ComfyUI on the machine with the card", which is what a machine list that came back
     /// empty would otherwise be reported as.
-    private static func blocker(_ tailnet: TailscaleReading, _ survey: DiscoverySurvey)
-        -> TailscaleReading?
-    {
-        guard tailnet.isUp else { return tailnet }
-        guard survey.foundCLI else { return survey.reading }
+    /// A Mac off the tailnet has nothing to ask. A store copy with no token and nothing remembered
+    /// cannot list peers either, and that is the sandboxed reading rather than an empty tailnet.
+    private static func blocker(_ listing: MacTailnetList.Listing) -> TailscaleReading? {
+        guard listing.reading.isUp else { return listing.reading }
+        guard !listing.needsToken else { return .sandboxed }
         return nil
     }
 
@@ -376,6 +374,12 @@ final class ForgeSetupSheet: NSObject {
             let reading = await Self.readings()
             guard !Task.isCancelled, let self, self.scanID == id else { return }
             self.took(reading)
+            if reading.needsToken {
+                self.sweepTask = nil
+                self.render()
+                TailnetTokenSheet.present(on: self.sheet) { [weak self] in self?.scan() }
+                return
+            }
             guard let blocked = self.sweepBlock else {
                 await self.sweepTailnet(id)
                 return

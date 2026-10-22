@@ -204,7 +204,7 @@ final class Seatbelts {
         activation = NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { _ in
-            MainActor.assumeIsolated { Seatbelts.shared.nudge() }
+            MainThread.call { Seatbelts.shared.nudge() }
         }
         quitOnTerminate()
     }
@@ -215,7 +215,7 @@ final class Seatbelts {
         self.interval = interval
         let fresh = Timer(fire: Date().addingTimeInterval(first), interval: interval, repeats: true) {
             _ in
-            MainActor.assumeIsolated { Seatbelts.shared.sample() }
+            MainThread.call { Seatbelts.shared.sample() }
         }
         fresh.tolerance = interval * 0.1
         RunLoop.main.add(fresh, forMode: .common)
@@ -254,7 +254,7 @@ final class Seatbelts {
         signal(SIGTERM) { _ in }
         let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
         source.setEventHandler {
-            MainActor.assumeIsolated { NSApp.terminate(nil) }
+            MainThread.call { NSApp.terminate(nil) }
         }
         source.resume()
         terminate = source

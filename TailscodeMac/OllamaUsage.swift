@@ -165,7 +165,7 @@ enum OllamaKeySheet {
             return
         }
         DispatchQueue.main.async {
-            MainActor.assumeIsolated {
+            MainThread.call {
                 alert.beginSheetModal(for: window, completionHandler: nil)
             }
         }

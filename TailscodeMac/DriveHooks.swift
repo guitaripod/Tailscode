@@ -53,7 +53,7 @@
                 let action = String(parts[1])
                 pending += 1
                 DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(delay)) {
-                    MainActor.assumeIsolated {
+                    MainThread.call {
                         perform(action, at: delay)
                         pending -= 1
                     }

@@ -111,7 +111,7 @@ final class PaneCallController {
         gateObserver = NotificationCenter.default.addObserver(
             forName: MacVoiceCallGate.didChange, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refreshEntry() }
+            MainThread.call { self?.refreshEntry() }
         }
     }
 

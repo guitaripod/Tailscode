@@ -83,7 +83,7 @@ enum StudioDrop {
             receiver.receivePromisedFiles(
                 atDestination: folder, options: [:], operationQueue: .main
             ) { url, error in
-                MainActor.assumeIsolated {
+                MainThread.call {
                     done(error == nil && isUsable(url) ? .path(url.path) : nil)
                 }
             }

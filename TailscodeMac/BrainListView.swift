@@ -332,7 +332,7 @@ final class BrainListView: NSView, BrainKeyTaker {
                 clip.animator().setBoundsOrigin(NSPoint(x: 0, y: clamped))
             },
             completionHandler: { [weak self] in
-                MainActor.assumeIsolated {
+                MainThread.call {
                     guard let self else { return }
                     self.programmatic = max(0, self.programmatic - 1)
                     self.scroll.reflectScrolledClipView(self.scroll.contentView)
@@ -431,7 +431,7 @@ final class BrainListView: NSView, BrainKeyTaker {
         copiedID = id
         copiedTimer?.invalidate()
         copiedTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 self?.copiedID = nil
                 self?.rows.needsDisplay = true
                 self?.host?.animationChanged()

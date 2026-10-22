@@ -157,7 +157,7 @@ final class BrainAccountView: NSView, BrainKeyTaker {
         scrollObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.scrolled() }
+            MainThread.call { self?.scrolled() }
         }
         narrowBar.host = host
         setAccessibilityElement(true)

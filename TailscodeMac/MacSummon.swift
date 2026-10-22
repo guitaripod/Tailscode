@@ -91,7 +91,7 @@ final class MacSummon {
         InstallEventHandler(
             GetApplicationEventTarget(),
             { _, _, _ -> OSStatus in
-                MainActor.assumeIsolated { MacSummon.shared.fire() }
+                MainThread.call { MacSummon.shared.fire() }
                 return noErr
             }, 1, &kind, nil, nil)
     }

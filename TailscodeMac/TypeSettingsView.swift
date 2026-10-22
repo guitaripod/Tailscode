@@ -31,7 +31,7 @@ final class TypeSettingsView: NSStackView {
         watch = NotificationCenter.default.addObserver(
             forName: TypeScaleStore.didChange, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refresh() }
+            MainThread.call { self?.refresh() }
         }
     }
 

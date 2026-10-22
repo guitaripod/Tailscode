@@ -168,7 +168,7 @@ extension TranscriptViewController {
         guard tailRepair == nil else { return }
         var attempts = 0
         tailRepair = Timer.scheduledTimer(withTimeInterval: 0.32, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard let self else { return }
                 guard let key = self.repairKey, key != self.cascade.key else {
                     self.stopTailRepair()

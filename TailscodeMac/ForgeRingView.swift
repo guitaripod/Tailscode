@@ -217,7 +217,7 @@ final class ForgeRingView: NSView {
         CATransaction.begin()
         CATransaction.setAnimationDuration(Self.fadeTime)
         CATransaction.setCompletionBlock { [weak self] in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard let self, self.isFading, self.fadeTicket == ticket else { return }
                 self.clear()
             }

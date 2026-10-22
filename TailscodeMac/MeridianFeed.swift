@@ -101,13 +101,13 @@ final class MeridianFeed {
         let wake = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.fire() }
+            MainThread.call { self?.fire() }
         }
         let changes = [Notification.Name.NSSystemClockDidChange, .NSSystemTimeZoneDidChange].map {
             name in
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {
                 [weak self] _ in
-                MainActor.assumeIsolated { self?.fire() }
+                MainThread.call { self?.fire() }
             }
         }
         observers = [wake] + changes
@@ -128,7 +128,7 @@ final class MeridianFeed {
         timer?.invalidate()
         let next = WorldClockReading.nextMinute(after: now)
         let timer = Timer(fire: next, interval: 0, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.fire() }
+            MainThread.call { self?.fire() }
         }
         timer.tolerance = 0.25
         RunLoop.main.add(timer, forMode: .common)

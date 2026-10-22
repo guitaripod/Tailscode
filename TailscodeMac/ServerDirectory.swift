@@ -35,7 +35,26 @@ final class ServerDirectory {
 
     init() {
         store = try? ConnectionProfileStore()
+        importStagedSecrets()
         reload()
+    }
+
+    /// A store copy cannot read the unsandboxed profile file, so a one-time import drops passwords
+    /// into the keychain this process can use and then deletes the file. Absent, it does nothing.
+    private func importStagedSecrets() {
+        #if TAILSCODE_MAS
+            guard let store else { return }
+            let url = store.directory.appendingPathComponent("import-secrets.json")
+            guard let data = try? Data(contentsOf: url),
+                let map = try? JSONDecoder().decode([String: String].self, from: data)
+            else { return }
+            let keychain = KeychainSecretStore()
+            var failed = false
+            for (id, password) in map where !password.isEmpty {
+                do { try keychain.setValue(password, for: id) } catch { failed = true }
+            }
+            if !failed { try? FileManager.default.removeItem(at: url) }
+        #endif
     }
 
     /// Re-reads the profiles, keeping the backend of every server whose profile did not change.

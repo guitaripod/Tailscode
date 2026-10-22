@@ -67,9 +67,9 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
         lock.unlock()
         guard first else { return }
         if Thread.isMainThread {
-            MainActor.assumeIsolated { arm() }
+            MainThread.call { arm() }
         } else {
-            DispatchQueue.main.async { MainActor.assumeIsolated { self.arm() } }
+            DispatchQueue.main.async { MainThread.call { self.arm() } }
         }
     }
 
@@ -117,7 +117,7 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
         if let link {
             link.isPaused = false
         } else {
-            DispatchQueue.main.async { MainActor.assumeIsolated { self.runIfPending() } }
+            DispatchQueue.main.async { MainThread.call { self.runIfPending() } }
         }
         armGuard()
     }
@@ -126,7 +126,7 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
         guard !guardArmed else { return }
         guardArmed = true
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.starvationGuard) {
-            MainActor.assumeIsolated { self.guardFired() }
+            MainThread.call { self.guardFired() }
         }
     }
 
@@ -145,7 +145,7 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
         let wait = restUntil - now()
         guard wait <= 0 else {
             DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
-                MainActor.assumeIsolated { self.runIfPending() }
+                MainThread.call { self.runIfPending() }
             }
             return
         }
@@ -153,7 +153,7 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
     }
 
     @objc private func tick(_ link: CADisplayLink) {
-        MainActor.assumeIsolated {
+        MainThread.call {
             linkTicks += 1
             guard now() >= restUntil else { return }
             runDrain()
@@ -180,7 +180,7 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
         if let wakeAt = outcome?.wakeAt, wakeArmed.map({ wakeAt < $0 }) ?? true {
             wakeArmed = wakeAt
             DispatchQueue.main.asyncAfter(deadline: .now() + max(0, wakeAt - now())) {
-                MainActor.assumeIsolated {
+                MainThread.call {
                     self.wakeArmed = nil
                     self.requestDrain()
                 }
@@ -195,10 +195,11 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
     @MainActor private func observeTurn() {
         guard turnObserver == nil else { return }
         let activities: CFRunLoopActivity = [.beforeTimers, .beforeWaiting, .exit]
+        let clock = WeakBox(self)
         let observer = CFRunLoopObserverCreateWithHandler(
             kCFAllocatorDefault, activities.rawValue, true, CFIndex.max
-        ) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.turnEnded() }
+        ) { @Sendable _, _ in
+            DispatchQueue.main.async { MainThread.call { clock.value?.turnEnded() } }
         }
         guard let observer else { return }
         CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
@@ -219,7 +220,7 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
     @MainActor private static var range: CAFrameRateRange { MotionBudget.cascadeRange }
 
     @objc private func budgetChanged() {
-        MainActor.assumeIsolated { link?.preferredFrameRateRange = Self.range }
+        MainThread.call { link?.preferredFrameRateRange = Self.range }
     }
 }
 
@@ -466,7 +467,7 @@ final class TileRuntime {
         redialDelay[key] = min(30, delay * 2)
         redialArmed.insert(key)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            MainActor.assumeIsolated {
+            MainThread.call {
                 let runtime = TileRuntime.shared
                 runtime.redialArmed.remove(key)
                 guard runtime.hub.leaseCount(key) > 0, !runtime.hub.isStreaming(key) else { return }

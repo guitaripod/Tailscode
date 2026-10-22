@@ -898,8 +898,10 @@ final class SidebarViewController: NSViewController {
     /// then rather than a tenth of a second later, when the button comes up.
     private func watchPresses() {
         guard pressWatch == nil else { return }
-        pressWatch = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            MainActor.assumeIsolated { self?.pressed(event) }
+        let sidebar = WeakBox(self)
+        pressWatch = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { @Sendable event in
+            nonisolated(unsafe) let pressed = event
+            DispatchQueue.main.async { MainThread.call { sidebar.value?.pressed(pressed) } }
             return event
         }
     }
@@ -1344,7 +1346,7 @@ final class SidebarViewController: NSViewController {
         for name in names {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {
                 [weak self] _ in
-                MainActor.assumeIsolated { self?.render() }
+                MainThread.call { self?.render() }
             }
         }
     }

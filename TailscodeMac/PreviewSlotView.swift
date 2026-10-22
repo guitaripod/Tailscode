@@ -810,7 +810,7 @@ private final class PreviewClock: HostClock, @unchecked Sendable {
 
     func requestDrain() {
         DispatchQueue.main.async { [weak self] in
-            MainActor.assumeIsolated { self?.view?.wake() }
+            MainThread.call { self?.view?.wake() }
         }
     }
 }

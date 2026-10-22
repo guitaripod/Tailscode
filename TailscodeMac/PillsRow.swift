@@ -119,7 +119,7 @@ final class PillsRow: NSView {
             laneObservers.append(
                 NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {
                     [weak self] _ in
-                    MainActor.assumeIsolated { self?.refreshLanes() }
+                    MainThread.call { self?.refreshLanes() }
                 })
         }
 
@@ -525,7 +525,7 @@ final class DialPill: ChipButton {
         }
         guard shimmer == nil else { return }
         let timer = Timer(timeInterval: DialPill.shimmerStep, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.shimmerTick() }
+            MainThread.call { self?.shimmerTick() }
         }
         RunLoop.main.add(timer, forMode: .common)
         shimmer = timer

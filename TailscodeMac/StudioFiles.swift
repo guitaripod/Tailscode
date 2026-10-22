@@ -17,7 +17,7 @@ enum StudioFiles {
         }
         panel.canCreateDirectories = true
         let write: (NSApplication.ModalResponse) -> Void = { response in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard response == .OK, let url = panel.url else { return }
                 if (try? data.write(to: url, options: .atomic)) != nil {
                     report(ImageGenWords.savedNotice(path: url.path))

@@ -78,13 +78,13 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
             accountsWatch = NotificationCenter.default.addObserver(
                 forName: MediaAccounts.didChange, object: nil, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.renderWatchAccounts() }
+                MainThread.call { self?.renderWatchAccounts() }
             }
         #endif
         summonWatch = NotificationCenter.default.addObserver(
             forName: MacSummon.didChange, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.renderSummon() }
+            MainThread.call { self?.renderSummon() }
         }
     }
 
@@ -156,7 +156,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     /// because the control that asked for it is inside what is being replaced.
     @objc private func repaint() {
         DispatchQueue.main.async { [weak self] in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard let self, let window = self.window, window.isVisible else { return }
                 self.install(selecting: nil)
             }
@@ -334,6 +334,15 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
                 subtitle: Localized.text(
                     "Add a machine, change an address or a password, or remove one"),
                 button: manage))
+        #if TAILSCODE_MAS
+            let token = NSButton(
+                title: Localized.text("Change"), target: self, action: #selector(editTailnetToken))
+            column.addArrangedSubview(
+                buttonRow(
+                    title: Localized.text("API access token"),
+                    subtitle: MacTailnetCredentials.key.settingsValue,
+                    button: token))
+        #endif
 
         gap(column)
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("About")))
@@ -702,6 +711,13 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func manageServers() { actions.manageServers() }
+
+    @objc private func editTailnetToken() {
+        guard let window else { return }
+        TailnetTokenSheet.present(on: window) { [weak self] in
+            DispatchQueue.main.async { self?.install(selecting: nil) }
+        }
+    }
     @objc private func openUpdates() { actions.openUpdates() }
     @objc private func openPro() { actions.openPro() }
     @objc private func showCheatsheet() { actions.showCheatsheet() }
@@ -1207,7 +1223,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
             return
         }
         summonRecorder = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            MainActor.assumeIsolated { self?.heardSummonChord(event) }
+            MainThread.call { self?.heardSummonChord(event) }
             return nil
         }
         renderSummon()

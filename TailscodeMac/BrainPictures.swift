@@ -140,7 +140,7 @@ enum BrainPictures {
         }
         holdTimer?.invalidate()
         holdTimer = Timer.scheduledTimer(withTimeInterval: 6, repeats: false) { _ in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard holding, waiting.isEmpty else { return }
                 holding = false
                 renderer = nil

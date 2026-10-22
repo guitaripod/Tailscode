@@ -199,7 +199,7 @@ final class MessageHoverBar: NSResponder {
                 view.animator().alphaValue = alpha
             },
             completionHandler: {
-                MainActor.assumeIsolated { completion?() }
+                MainThread.call { completion?() }
             })
     }
 

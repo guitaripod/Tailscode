@@ -316,7 +316,7 @@ final class BetaBadge: NSControl, NSPopoverDelegate {
     private func scheduleClose() {
         closing?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            MainActor.assumeIsolated { self?.close() }
+            MainThread.call { self?.close() }
         }
         closing = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.lingerBeforeClosing, execute: work)

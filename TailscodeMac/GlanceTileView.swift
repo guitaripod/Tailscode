@@ -295,7 +295,7 @@ final class GlanceTileView: NSView {
             MotionBudget.level < .critical
         else { return }
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tickClock() }
+            MainThread.call { self?.tickClock() }
         }
         timer.tolerance = 0.2
         RunLoop.main.add(timer, forMode: .common)

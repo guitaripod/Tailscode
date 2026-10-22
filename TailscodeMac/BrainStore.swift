@@ -352,7 +352,7 @@ final class BrainStore {
             withTimeInterval: max(Self.tailInterval, tailCost * 5), repeats: false
         ) {
             [weak self] _ in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 self?.tailTimer = nil
                 self?.onChange?()
             }
@@ -756,7 +756,7 @@ final class BrainStore {
         }
         guard restateTimer == nil else { return }
         restateTimer = Timer.scheduledTimer(withTimeInterval: wait, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.restateNow() }
+            MainThread.call { self?.restateNow() }
         }
     }
 

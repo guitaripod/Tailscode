@@ -526,15 +526,29 @@ final class DiscoveryPanel {
         radar.show(blips: blips, scanning: true)
 
         Task { [weak self] in
-            let survey = await Task.detached(priority: .userInitiated) {
-                DiscoverySurvey.read()
-            }.value
+            let listing = await MacTailnetList.load(includingThisMachine: true)
             guard let self, self.scanID == id else { return }
-            let devices = survey.scannable(includingThisMachine: true)
-            self.knownDevices = (survey.peers + [survey.me].compactMap { $0 })
+            if listing.needsToken {
+                self.scanning = false
+                self.radar.show(blips: self.blips, scanning: false)
+                self.setStatus(
+                    listing.rejected
+                        ? TailnetKey.rejected.settingsValue
+                        : Localized.text("Add a Tailscale API access token to discover servers."),
+                    detail: TailnetTokenReading.note,
+                    actions: [
+                        RowKit.ActionButton(title: Localized.text("API access token")) { [weak self] in
+                            guard let self else { return }
+                            TailnetTokenSheet.present(on: self.sheet) { [weak self] in self?.scan() }
+                        }
+                    ])
+                return
+            }
+            let devices = listing.devices
+            self.knownDevices = devices
             self.peerCount = devices.count
             guard !devices.isEmpty else {
-                let blocked = Self.blocked(survey)
+                let blocked = Self.blocked(listing)
                 self.finish(id: id, blocked: blocked)
                 return
             }
@@ -637,31 +651,15 @@ final class DiscoveryPanel {
         }
     }
 
-    /// Why there was nothing to ask. Four different states share an empty peer list and only one of
-    /// them is "your tailnet is quiet", so each says which it is in Core's own words.
-    private static func blocked(_ survey: DiscoverySurvey) -> (title: String, detail: String) {
-        guard survey.foundCLI else {
+    /// Why there was nothing to ask. An empty list is a Mac off the tailnet, a list of only phones,
+    /// or a tailnet with nobody awake — and only the last of those is "quiet".
+    private static func blocked(_ listing: MacTailnetList.Listing) -> (title: String, detail: String) {
+        guard listing.reading.isUp else {
             return (
-                Localized.text("Tailscale's command line isn't on this Mac"),
-                Localized.text(
-                    "Discovery asks Tailscale itself which machines are on your tailnet. Install Tailscale, or type the address by hand — the field behind this sheet needs nothing installed."
-                )
-            )
-        }
-        guard survey.reading.isUp else {
-            return (
-                survey.reading.title,
-                survey.reading.detail
+                listing.reading.title,
+                listing.reading.detail
                     ?? Localized.text(
                         "This Mac is not on a tailnet, so there is nothing to look at.")
-            )
-        }
-        guard survey.peers.isEmpty else {
-            return (
-                Localized.text("Nothing to ask"),
-                Localized.text(
-                    "Everything awake on your tailnet is a phone or a tablet, and neither can run an agent."
-                )
             )
         }
         return (

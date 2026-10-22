@@ -152,7 +152,7 @@ final class ClockChipView: ChipButton, NSPopoverDelegate {
     private func scheduleClose() {
         closing?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            MainActor.assumeIsolated { self?.closeGlance() }
+            MainThread.call { self?.closeGlance() }
         }
         closing = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.lingerBeforeClosing, execute: work)

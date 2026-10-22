@@ -218,7 +218,7 @@ private final class RowHost: NSView {
             self, selector: #selector(rowFrameChanged), name: NSView.frameDidChangeNotification,
             object: row)
         visibility = row.observe(\.isHidden) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.column?.rowResized() }
+            MainThread.call { self?.column?.rowResized() }
         }
     }
 

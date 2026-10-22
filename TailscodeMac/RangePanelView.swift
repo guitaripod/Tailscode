@@ -160,7 +160,7 @@ final class RangePanelViewController: NSViewController {
     private func start() {
         guard timer == nil else { return }
         timer = Timer.scheduledTimer(withTimeInterval: Self.tick, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refresh() }
+            MainThread.call { self?.refresh() }
         }
         refresh()
     }

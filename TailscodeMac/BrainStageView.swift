@@ -8,7 +8,7 @@ private final class BrainStepElement: NSAccessibilityElement {
 
     override func accessibilityPerformPress() -> Bool {
         let handler = onPress
-        MainActor.assumeIsolated { handler?() }
+        MainThread.call { handler?() }
         return true
     }
 }
@@ -192,12 +192,12 @@ final class BrainStageView: NSView, BrainKeyTaker {
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refresh(force: true) }
+            MainThread.call { self?.refresh(force: true) }
         }
         themeObserver = NotificationCenter.default.addObserver(
             forName: MacTheme.Chrome.didRepaint, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refresh(force: true) }
+            MainThread.call { self?.refresh(force: true) }
         }
         gate = DisplayGate(self) { [weak self] in self?.noteVisibility() }
     }

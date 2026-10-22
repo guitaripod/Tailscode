@@ -1202,7 +1202,7 @@ final class BrainPressElement: NSAccessibilityElement {
 
     override func accessibilityPerformPress() -> Bool {
         let handler = onPress
-        MainActor.assumeIsolated { handler?() }
+        MainThread.call { handler?() }
         return true
     }
 }
@@ -1251,7 +1251,7 @@ final class BrainLiveTick {
         let seen = cards.allObjects.contains { $0.isSeen }
         if seen, timer == nil {
             timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.tick() }
+                MainThread.call { self?.tick() }
             }
             timer?.tolerance = 0.1
         } else if !seen, timer != nil {
@@ -1271,7 +1271,7 @@ final class BrainLiveTick {
             NSWindow.didDeminiaturizeNotification, NSView.boundsDidChangeNotification,
         ] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.reconsider() }
+                MainThread.call { self?.reconsider() }
             }
         }
     }

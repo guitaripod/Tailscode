@@ -8,7 +8,7 @@ final class BrainChipElement: NSAccessibilityElement {
 
     override func accessibilityPerformPress() -> Bool {
         guard let onPress else { return false }
-        MainActor.assumeIsolated { onPress() }
+        MainThread.call { onPress() }
         return true
     }
 }

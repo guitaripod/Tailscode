@@ -71,7 +71,7 @@ enum TileBench {
         guard lagRunning else { return }
         lagStart = now
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            MainActor.assumeIsolated { lagTick() }
+            MainThread.call { lagTick() }
         }
     }
 
@@ -348,7 +348,7 @@ enum DisplayCensus {
             let calayer = layer as! CALayer
             let name = calayer.delegate.map { String(describing: type(of: $0)) } ?? "nil"
             let area = Double(calayer.bounds.width * calayer.bounds.height)
-            MainActor.assumeIsolated {
+            MainThread.call {
                 if name == "NSTextFieldSimpleLabel", let inner = calayer.delegate as? NSView, let field = inner.superview as? NSTextField {
                     var chain: [String] = []
                     var view: NSView? = field.superview
@@ -374,7 +374,7 @@ enum DisplayCensus {
                 if old != size, (view as! NSView).subviews.count > 2 || view is TranscriptColumn {
                     let name = String(describing: type(of: view))
                     let dh = size.height - old.height
-                    MainActor.assumeIsolated {
+                    MainThread.call {
                         sized[name + (abs(dh) < 1 ? " <1px" : " >=1px") + (size.width != old.width ? " W" : ""), default: 0] += 1
                     }
                 }
@@ -396,7 +396,7 @@ enum DisplayCensus {
                 let original = unsafeBitCast(method_getImplementation(method), to: Fn.self)
                 let block: @convention(block) (AnyObject) -> Void = { layer in
                     if let view = (layer as? CALayer)?.delegate as AnyObject? {
-                        MainActor.assumeIsolated { note(tag, view) }
+                        MainThread.call { note(tag, view) }
                     }
                     original(layer, NSSelectorFromString(selectorName))
                 }
@@ -405,7 +405,7 @@ enum DisplayCensus {
                 typealias Fn = @convention(c) (AnyObject, Selector, Bool) -> Void
                 let original = unsafeBitCast(method_getImplementation(method), to: Fn.self)
                 let block: @convention(block) (AnyObject, Bool) -> Void = { view, flag in
-                    MainActor.assumeIsolated { note(tag, view) }
+                    MainThread.call { note(tag, view) }
                     original(view, NSSelectorFromString(selectorName), flag)
                 }
                 method_setImplementation(method, imp_implementationWithBlock(block))
@@ -414,7 +414,7 @@ enum DisplayCensus {
                 let original = unsafeBitCast(method_getImplementation(method), to: Fn.self)
                 let block: @convention(block) (AnyObject, NSRect) -> Void = { view, rect in
                     let target = ((view as? CALayer)?.delegate as AnyObject?) ?? view
-                    MainActor.assumeIsolated { note(tag, target) }
+                    MainThread.call { note(tag, target) }
                     original(view, NSSelectorFromString(selectorName), rect)
                 }
                 method_setImplementation(method, imp_implementationWithBlock(block))

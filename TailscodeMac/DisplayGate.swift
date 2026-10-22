@@ -33,7 +33,7 @@ final class DisplayGate {
         ] {
             appObservers.append(
                 center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.onChange() }
+                    MainThread.call { self?.onChange() }
                 })
         }
     }
@@ -57,7 +57,7 @@ final class DisplayGate {
                 NotificationCenter.default.addObserver(
                     forName: name, object: window, queue: .main
                 ) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.onChange() }
+                    MainThread.call { self?.onChange() }
                 })
         }
     }

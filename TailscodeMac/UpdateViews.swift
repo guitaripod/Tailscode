@@ -318,7 +318,7 @@ final class UpdateCardView: NSView {
         tick()
         guard clock == nil else { return }
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
+            MainThread.call { self?.tick() }
         }
         timer.tolerance = 0.2
         RunLoop.main.add(timer, forMode: .common)

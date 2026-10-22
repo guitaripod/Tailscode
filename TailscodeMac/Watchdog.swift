@@ -150,7 +150,7 @@ final class Watchdog: @unchecked Sendable {
         let resumed = hint
         lock.unlock()
         guard resumed else { return }
-        MainActor.assumeIsolated { onResume() }
+        MainThread.call { onResume() }
     }
 
     /// User plus system time the thread has run, and whether it is on a core right now.

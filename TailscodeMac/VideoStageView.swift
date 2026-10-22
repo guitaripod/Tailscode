@@ -563,18 +563,18 @@ final class VideoStageView: NSView, StudioStaging {
         readiness = playerLayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] layer, _ in
             guard layer.isReadyForDisplay else { return }
             DispatchQueue.main.async {
-                MainActor.assumeIsolated { self?.playerBecameReady() }
+                MainThread.call { self?.playerBecameReady() }
             }
         }
         endObserver = NotificationCenter.default.addObserver(
             forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.loop() }
+            MainThread.call { self?.loop() }
         }
         timeObserver = fresh.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.layoutProgress() }
+            MainThread.call { self?.layoutProgress() }
         }
     }
 
@@ -623,7 +623,7 @@ final class VideoStageView: NSView, StudioStaging {
         CATransaction.setAnimationDuration(StudioTheme.crossfade)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
         CATransaction.setCompletionBlock { [weak self] in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard let self else { return }
                 self.sketchLayer.isHidden = true
                 self.sketchLayer.contents = nil

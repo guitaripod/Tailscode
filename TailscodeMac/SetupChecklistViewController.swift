@@ -321,7 +321,7 @@ final class SetupSheet: NSObject {
             return
         }
         open.end()
-        DispatchQueue.main.async { MainActor.assumeIsolated { then() } }
+        DispatchQueue.main.async { MainThread.call { then() } }
     }
 
     static func present(

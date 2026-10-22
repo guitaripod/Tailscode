@@ -266,7 +266,7 @@ final class VideoLane: StudioLane {
         }
         guard clock == nil else { return }
         clock = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.emit(.progress) }
+            MainThread.call { self?.emit(.progress) }
         }
         clock?.tolerance = 0.2
     }

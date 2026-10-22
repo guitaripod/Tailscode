@@ -242,7 +242,7 @@ final class PictureGalleryView: ViewerSurface {
         magnifyObserver = NotificationCenter.default.addObserver(
             forName: NSScrollView.didEndLiveMagnifyNotification, object: scrollView, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.pinched() }
+            MainThread.call { self?.pinched() }
         }
         buildToolbar()
     }

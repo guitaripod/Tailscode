@@ -341,8 +341,10 @@ final class HoverPlate: NSResponder {
     /// Only while the pointer is over the view, so the window carries one watch at most.
     private func watchPress() {
         guard pressWatch == nil else { return }
-        pressWatch = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            MainActor.assumeIsolated { self?.pressed(event) }
+        let plate = WeakBox(self)
+        pressWatch = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { @Sendable event in
+            nonisolated(unsafe) let pressed = event
+            DispatchQueue.main.async { MainThread.call { plate.value?.pressed(pressed) } }
             return event
         }
     }
@@ -405,8 +407,9 @@ enum PointerSweep {
             keyWatch, selector: #selector(KeyWindowWatch.becameKey(_:)),
             name: NSWindow.didBecomeKeyNotification, object: nil)
         for window in NSApp.windows { window.acceptsMouseMovedEvents = true }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { event in
-            MainActor.assumeIsolated { answer(event) }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { @Sendable event in
+            nonisolated(unsafe) let moved = event
+            DispatchQueue.main.async { MainThread.call { answer(moved) } }
             return event
         }
     }

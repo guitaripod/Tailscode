@@ -288,7 +288,7 @@ final class MarkClock: NSObject {
             NSWindow.didChangeOcclusionStateNotification, NSWindow.didDeminiaturizeNotification,
         ] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.wake() }
+                MainThread.call { self?.wake() }
             }
         }
     }

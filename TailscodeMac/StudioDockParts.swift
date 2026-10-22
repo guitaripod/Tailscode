@@ -470,7 +470,7 @@ enum StudioReferenceMenu {
         panel.canChooseDirectories = false
         panel.title = ImageGenWords.attachTitle
         panel.begin { response in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard response == .OK, let url = panel.url else { return }
                 studio.hold(ImageGenReference(path: url.path))
             }
@@ -1088,7 +1088,7 @@ final class StudioRewriteCard: StudioRaisedView {
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             animator().alphaValue = 0
         }, completionHandler: { [weak self] in
-            MainActor.assumeIsolated {
+            MainThread.call {
                 guard let self, self.draft == nil else { return }
                 self.isHidden = true
                 self.alphaValue = 1

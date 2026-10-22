@@ -57,7 +57,7 @@
             timer = Timer.scheduledTimer(
                 withTimeInterval: 1 / Double(hz), repeats: true
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.step() }
+                MainThread.call { self?.step() }
             }
         }
 
