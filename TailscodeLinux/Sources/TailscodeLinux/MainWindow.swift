@@ -1765,6 +1765,27 @@ final class MainWindow: @unchecked Sendable {
         splitHost.eachPane { pane in
             if let id = pane.sessionID, touchedIDs.contains(id) { pane.refreshPills() }
         }
+        refreshTitleFromListing(touched)
+    }
+
+    /// A pane keeps the entry it was opened with, so a chat the server named after it opened, or
+    /// one renamed since, would wear its first title until it was opened again. Every pane is
+    /// handed the listing's current entry for its chat, and what else reads the title (the
+    /// header, the overflow strip) follows the panes that took it.
+    private func refreshTitleFromListing(_ listed: [SessionEntry]) {
+        var renamed = false
+        splitHost.eachPane { pane in
+            guard let current = pane.entry,
+                let fresh = listed.first(where: {
+                    $0.profileID == current.profileID && $0.session.id == current.session.id
+                }),
+                pane.adoptTitle(from: fresh)
+            else { return }
+            renamed = true
+        }
+        guard renamed else { return }
+        refreshChromeForActivePane()
+        (splitHost as? TileHost)?.refreshStrip()
     }
 
     func refresh() async {
@@ -1809,6 +1830,7 @@ final class MainWindow: @unchecked Sendable {
             }
         }
         resolvePendingBindings()
+        refreshTitleFromListing(self.entries)
         scheduleSidebarRender()
         restateChoosers()
         let active = activePane

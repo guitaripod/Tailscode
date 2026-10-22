@@ -1572,6 +1572,20 @@ final class ChatPane: @unchecked Sendable {
         setIdentity(Self.title(of: entry), activity: identityActivity)
     }
 
+    /// A pane keeps the entry it was opened with, so a conversation the server named after it
+    /// opened would wear its first title for as long as the pane stayed open. The listing is what
+    /// knows the current one; Core decides whether it is a name worth taking (never the untitled
+    /// placeholder), and the strip is redrawn only when it was.
+    @discardableResult
+    func adoptTitle(from listed: SessionEntry) -> Bool {
+        guard let current = entry, let renamed = current.adoptingTitle(from: listed) else {
+            return false
+        }
+        entry = renamed
+        refreshIdentity()
+        return true
+    }
+
     private static func title(of entry: SessionEntry) -> String {
         entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
@@ -6664,7 +6678,7 @@ final class ChatPane: @unchecked Sendable {
                 tool("b1", "Bash", ["command": .string("python3 scripts/mock-comfyui.py")], "Start the mock"),
                 tool("w1", "Write", ["file_path": .string("docs/studio-mocks/b-painting.png")], "Write b-painting.png"),
             ]
-        for (index, path) in paths.prefix(9).enumerated() {
+        for (index, path) in paths.prefix(30).enumerated() {
             let name = URL(fileURLWithPath: path).lastPathComponent
             let part = MessagePart(
                 id: "pic\(index)",

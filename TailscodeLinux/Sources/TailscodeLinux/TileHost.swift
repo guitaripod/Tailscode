@@ -1094,7 +1094,7 @@ final class TileHost: PaneTiling, @unchecked Sendable {
         return (Localized.text("No conversation"), nil)
     }
 
-    private func refreshStrip() {
+    func refreshStrip() {
         guard let placement, placement.stripNeeded else { return }
         let chips = placement.hidden.map { id -> OverflowStrip.Chip in
             let face = describe(id)

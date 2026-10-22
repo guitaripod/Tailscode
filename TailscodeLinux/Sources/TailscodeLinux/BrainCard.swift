@@ -36,6 +36,9 @@ final class BrainCard: @unchecked Sendable {
     private var contentSignature = ""
     private var builtDensity = ChatDensity.comfortable
     private(set) var width = 0.0
+    /// The text column's width as Core's metrics lay it out, so what the zone strip budgets is the
+    /// column the words actually stand in.
+    private var textColumnWidth = 0.0
     private var picturePending = false
     var restPicture: BrainPicture?
     private var restKey: BrainPictures.Key?
@@ -124,8 +127,6 @@ final class BrainCard: @unchecked Sendable {
     /// The widgets the row stacks for a card, bottom to top.
     var widgets: [UnsafeMutablePointer<GtkWidget>] { [surface, edgeLive, picture, text, buttons] }
 
-    // MARK: state
-
     func refresh() {
         card = owner.model.brainCard(now: Date())
         refreshLive()
@@ -156,12 +157,18 @@ final class BrainCard: @unchecked Sendable {
         redraw()
     }
 
+    /// The unit separator between the parts of a card's signature: free text (a quote, a digest)
+    /// can hold any printable character, and a printable joiner would let two different cards
+    /// read as one.
+    private static let signatureSeparator = "\u{1F}"
+
     private static func signature(of card: NeuralBrainCard) -> String {
         let live = card.live == nil ? "" : "live"
-        let headline = card.headline.pieces.map(\.text).joined(separator: "|")
-        let chips = card.chips.map { "\($0.zone)\($0.count)\($0.tone)" }.joined(separator: ",")
+        let headline = card.headline.pieces.map(\.text).joined(separator: "\u{1E}")
+        let chips = card.chips.map { "\($0.zone)\($0.count)\($0.tone)" }.joined(separator: "\u{1E}")
         let quote = card.quote.map { $0.speaker + $0.words } ?? ""
-        return [live, headline, chips, card.digest, quote, card.verdict.word].joined(separator: "#")
+        return [live, headline, chips, card.digest, quote, card.verdict.word]
+            .joined(separator: Self.signatureSeparator)
     }
 
     func retheme() {
@@ -178,14 +185,13 @@ final class BrainCard: @unchecked Sendable {
         redraw()
     }
 
-    // MARK: layout
-
     /// The card laid out for a row `width` points wide: the metrics decide the picture's place and
     /// the layout class; the zone strip and the digest follow `fit`.
     func configure(metrics: NeuralStageMetrics) {
         let next = metrics.card.layout
         let widthChanged = abs(metrics.width - width) > 0.5
         width = metrics.width
+        textColumnWidth = metrics.card.text.width
         pictureRect = metrics.card.picture
         if next != layout || owner.density != builtDensity {
             layout = next
@@ -233,6 +239,7 @@ final class BrainCard: @unchecked Sendable {
         let metrics = NeuralStageMetrics.make(width: sampleWidth, density: owner.density)
         layout = metrics.card.layout
         width = sampleWidth
+        textColumnWidth = metrics.card.text.width
         ensureContent()
         if !narrow, let digest = digestLabel { gtk_widget_set_visible(digest, 1) }
         let column = Int32(metrics.card.text.width)
@@ -258,8 +265,6 @@ final class BrainCard: @unchecked Sendable {
         if owner.density == .compact, !card.hasQuote { shown.remove(.digest) }
         return shown
     }
-
-    // MARK: the picture
 
     func requestPicture() {
         guard pictureRect.width > 1, NeuralAssetFiles.isAvailable, BrainBudget.stageAllowed else { return }
@@ -357,8 +362,6 @@ final class BrainCard: @unchecked Sendable {
         cairo_restore(cr)
         if !hasContent, contentTicket == 0, owner.isVisible { scheduleContent() }
     }
-
-    // MARK: the words
 
     private func scheduleContent() {
         contentTicket += 1
@@ -520,9 +523,8 @@ final class BrainCard: @unchecked Sendable {
     /// narrower card gives up before its picture, its headline, Replay and Rows.
     func fitContent() {
         guard hasContent, layout == .wide || card.hasQuote else { return }
-        let textWidth = max(0, width - Self.textInset(for: layout) - 12)
         let shown = parts
-        var room = textWidth
+        var room = textColumnWidth
         var visibleChips = 0
         for chip in chipWidgets {
             let need = Double(naturalWidth(chip)) + 6
@@ -539,14 +541,14 @@ final class BrainCard: @unchecked Sendable {
         guard let digest = digestLabel else { return }
         gtk_widget_set_visible(digest, shown.contains(.digest) ? 1 : 0)
         if card.hasQuote {
-            let markup = fittedQuote(width: textWidth, label: digest)
+            let markup = fittedQuote(width: textColumnWidth, label: digest)
             if markup != digestFitted {
                 digestFitted = markup
                 gtk_label_set_markup(op(digest), markup)
             }
             return
         }
-        let fitted = fittedDigest(width: textWidth, label: digest)
+        let fitted = fittedDigest(width: textColumnWidth, label: digest)
         if fitted != digestFitted {
             digestFitted = fitted
             gtk_label_set_markup(op(digest), BrainUI.escape(fitted))
@@ -615,14 +617,6 @@ final class BrainCard: @unchecked Sendable {
         var natural: Int32 = 0
         gtk_widget_measure(widget, GTK_ORIENTATION_HORIZONTAL, -1, nil, &natural, nil, nil)
         return natural
-    }
-
-    /// Where the column of words begins: past the edge, the inset, the picture and the inset.
-    static func textInset(for layout: NeuralStageMetrics.CardLayout) -> Double {
-        let edge = 3.0
-        let inset = layout == .wide ? 12.0 : 10.0
-        let picture = layout == .wide ? 132.0 : 100.0
-        return edge + inset + picture + inset + 2.0
     }
 
     /// What the harness reads: the card's layout class and what it shows.
