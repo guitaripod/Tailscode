@@ -2153,7 +2153,6 @@ final class ChatViewController: UIViewController {
                 withReuseIdentifier: PictureGalleryCell.reuseID, for: indexPath)
                 as! PictureGalleryCell
             cell.delegate = self
-            cell.onLoaded = { [weak self] in self?.reloadRow(row.id) }
             cell.configure(files: files, backend: viewModel.backend)
             return cell
         case .note(let line):
@@ -4179,15 +4178,6 @@ final class ChatViewController: UIViewController {
         var snapshot = dataSource.snapshot()
         guard snapshot.itemIdentifiers.contains(id) else { return }
         snapshot.reconfigureItems([id])
-        dataSource.apply(snapshot, animatingDifferences: false)
-    }
-
-    /// A row whose height came from arithmetic rather than constraints — a picture strip, once a
-    /// picture's real shape is known — has to be made again for the list to ask it its height.
-    private func reloadRow(_ id: String) {
-        var snapshot = dataSource.snapshot()
-        guard snapshot.itemIdentifiers.contains(id) else { return }
-        snapshot.reloadItems([id])
         dataSource.apply(snapshot, animatingDifferences: false)
     }
 

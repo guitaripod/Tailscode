@@ -73,15 +73,17 @@ public enum PictureGalleryLayout: Sendable {
         }
     }
 
-    /// The corner chip that counts what the grid could not draw: where it sits on its tile and
-    /// how large its type is, from the width the client measured the words at.
+    /// The corner chip that counts what the grid could not draw: where it sits on its tile, from
+    /// the width the client measured the words at `chipFontSize`.
     public struct Chip: Sendable, Equatable {
         public let x: Double
         public let y: Double
         public let width: Double
         public let height: Double
-        public let fontSize: Double
     }
+
+    /// The point size the chip's words are set in, bold, on every client.
+    public static let chipFontSize: Double = 13
 
     /// The air between a chip and its tile's edges.
     public static let chipInset: Double = 4
@@ -95,8 +97,7 @@ public enum PictureGalleryLayout: Sendable {
         let width = min(room, max(height, textWidth + height * 0.7))
         return Chip(
             x: tile.x + tile.width - chipInset - width,
-            y: tile.y + tile.height - chipInset - height, width: width, height: height,
-            fontSize: max(9, height * 0.58))
+            y: tile.y + tile.height - chipInset - height, width: width, height: height)
     }
 
     /// The block's height: as tall as a picture the metrics allow, and never past the row it is

@@ -9,7 +9,7 @@ protocol PictureGalleryCellDelegate: AnyObject {
 
 /// The pictures an agent made, as one grid of small tiles rather than a poster each: a turn that
 /// looked at sixteen screenshots spends one picture's height on them, spread across the row's
-/// width, and the last tile's corner counts the ones the grid could not draw. Every tile is its own
+/// width, and a chip in the last tile's corner counts the ones the grid could not draw. Every tile is its own
 /// press — it opens the conversation's gallery on that picture, where every picture can be paged
 /// through, zoomed, put in Photos, copied, shared or dragged out — so the verbs a single picture
 /// used to carry in the transcript are a press away on the picture itself rather than many small
@@ -17,16 +17,12 @@ protocol PictureGalleryCellDelegate: AnyObject {
 ///
 /// The frames are `PictureGalleryLayout`'s and the height is the same arithmetic asked in
 /// `preferredLayoutAttributesFitting`, so the row has its height before any picture has loaded and
-/// a picture arriving changes it only when the group's first picture turns out to be a different
-/// shape than the guess. Tiles are made as the layout asks for them, so a group of seventeen scoped
+/// a picture arriving never changes it: the block is always one picture tall, and a lone picture's
+/// real shape moves only its width, which the cell lays out again by itself. Tiles are made as the layout asks for them, so a group of seventeen scoped
 /// to six on a phone loads six pictures rather than seventeen.
 final class PictureGalleryCell: UICollectionViewCell {
     static let reuseID = "PictureGalleryCell"
     weak var delegate: PictureGalleryCellDelegate?
-
-    /// Called once a picture's bytes land, so the list measures the row again against its real
-    /// shape.
-    var onLoaded: (() -> Void)?
 
     private var tiles: [PictureThumb] = []
     private var placed: [PictureGalleryLayout.Tile] = []
@@ -34,7 +30,7 @@ final class PictureGalleryCell: UICollectionViewCell {
     private var backend: (any CodingAgentBackend)?
     private var badge: UILabel?
     private var loadToken = UUID()
-    private var tap: UITapGestureRecognizer?
+    private var elements: [PictureTileElement] = []
     private static let inset = Theme.Spacing.l
 
     var gapAbove: CGFloat = 0 {
@@ -43,8 +39,9 @@ final class PictureGalleryCell: UICollectionViewCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        isAccessibilityElement = true
-        accessibilityTraits = [.image, .button]
+        isAccessibilityElement = false
+        contentView.addGestureRecognizer(
+            UITapGestureRecognizer(target: self, action: #selector(pressed)))
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -59,10 +56,8 @@ final class PictureGalleryCell: UICollectionViewCell {
         backend = nil
         badge?.removeFromSuperview()
         badge = nil
-        gestureRecognizers?.forEach(removeGestureRecognizer)
-        tap = nil
+        elements = []
         delegate = nil
-        onLoaded = nil
     }
 
     func configure(files: [FileReference], backend: any CodingAgentBackend) {
@@ -75,13 +70,7 @@ final class PictureGalleryCell: UICollectionViewCell {
         badge = nil
         self.files = files
         self.backend = backend
-        if tap == nil {
-            let recognizer = UITapGestureRecognizer(target: self, action: #selector(pressed))
-            contentView.addGestureRecognizer(recognizer)
-            tap = recognizer
-        }
-        accessibilityLabel = PictureGalleryReading.spoken(
-            count: files.count, names: files.map(\.displayName))
+        elements = []
         setNeedsLayout()
     }
 
@@ -117,7 +106,6 @@ final class PictureGalleryCell: UICollectionViewCell {
                 tile.showFailure()
             }
             self.setNeedsLayout()
-            self.onLoaded?()
         }
     }
 
@@ -136,15 +124,45 @@ final class PictureGalleryCell: UICollectionViewCell {
                 .offsetBy(dx: Self.inset, dy: gapAbove)
                 .contains(point)
         }) else { return }
-        Theme.Haptics.tap()
-        delegate?.pictureGalleryCell(self, didTapPictureAt: tile.index)
+        open(tile.index)
     }
 
-    override func accessibilityActivate() -> Bool {
-        guard !files.isEmpty else { return false }
+    private func open(_ index: Int) {
         Theme.Haptics.tap()
-        delegate?.pictureGalleryCell(self, didTapPictureAt: 0)
-        return true
+        delegate?.pictureGalleryCell(self, didTapPictureAt: index)
+    }
+
+    /// One accessibility element per tile drawn, each named for its own picture and opening that
+    /// picture when activated: the tiles are plain image views, so without these a screen reader
+    /// reaches one lump for the whole grid and every activation opens the first picture.
+    override var accessibilityElements: [Any]? {
+        get {
+            if elements.count != placed.count { rebuildElements() }
+            return elements
+        }
+        set {}
+    }
+
+    private func rebuildElements() {
+        elements = placed.compactMap { tile in
+            guard files.indices.contains(tile.index) else { return nil }
+            let element = PictureTileElement(accessibilityContainer: self)
+            element.accessibilityLabel = Localized.text(
+                "Open %1$@, picture %2$@ of %3$@", files[tile.index].displayName,
+                "\(tile.index + 1)", "\(files.count)")
+            element.accessibilityTraits = [.image, .button]
+            element.onActivate = { [weak self] in self?.open(tile.index) }
+            return element
+        }
+        refreshElementFrames()
+    }
+
+    private func refreshElementFrames() {
+        for (element, tile) in zip(elements, placed) {
+            element.accessibilityFrameInContainerSpace = CGRect(
+                x: Self.inset + CGFloat(tile.x), y: gapAbove + CGFloat(tile.y),
+                width: CGFloat(tile.width), height: CGFloat(tile.height))
+        }
     }
 
     private func layout(in width: CGFloat) -> PictureGalleryLayout.Arrangement {
@@ -186,27 +204,33 @@ final class PictureGalleryCell: UICollectionViewCell {
         for (index, thumb) in tiles.enumerated() where index >= shown {
             thumb.isHidden = true
         }
-        if arrangement.hidden > 0, let last = arrangement.tiles.last {
+        if elements.count == placed.count { refreshElementFrames() } else { rebuildElements() }
+        if let words = PictureGalleryReading.badge(hidden: arrangement.hidden),
+            let last = arrangement.tiles.last
+        {
             let badge = badgeLabel()
-            badge.text = "+\(arrangement.hidden)"
+            badge.text = words
+            let width = (words as NSString).size(withAttributes: [.font: badge.font as Any]).width
+            let chip = PictureGalleryLayout.badge(on: last, textWidth: Double(width))
             badge.frame = CGRect(
-                x: Self.inset + CGFloat(last.x), y: gapAbove + CGFloat(last.y),
-                width: CGFloat(last.width), height: CGFloat(last.height))
+                x: Self.inset + CGFloat(chip.x), y: gapAbove + CGFloat(chip.y),
+                width: CGFloat(chip.width), height: CGFloat(chip.height))
+            badge.layer.cornerRadius = badge.bounds.height / 2
             badge.isHidden = false
+            contentView.bringSubviewToFront(badge)
         } else {
             badge?.isHidden = true
         }
     }
 
-    /// The corner that counts what the grid could not draw, made once and moved with the last tile.
+    /// The chip that counts what the grid could not draw, made once and moved with the last tile.
     private func badgeLabel() -> UILabel {
         if let badge { return badge }
         let label = UILabel()
-        label.font = .systemFont(ofSize: 17, weight: .bold)
+        label.font = .systemFont(ofSize: CGFloat(PictureGalleryLayout.chipFontSize), weight: .bold)
         label.textColor = .white
         label.textAlignment = .center
         label.backgroundColor = UIColor.black.withAlphaComponent(0.6)
-        label.layer.cornerRadius = Theme.Radius.control
         label.layer.cornerCurve = .continuous
         label.layer.masksToBounds = true
         label.isUserInteractionEnabled = false
@@ -214,6 +238,17 @@ final class PictureGalleryCell: UICollectionViewCell {
         contentView.addSubview(label)
         badge = label
         return label
+    }
+}
+
+/// One tile of a gallery as a screen reader meets it: its own name and its own activation.
+private final class PictureTileElement: UIAccessibilityElement {
+    var onActivate: (() -> Void)?
+
+    override func accessibilityActivate() -> Bool {
+        guard let onActivate else { return false }
+        onActivate()
+        return true
     }
 }
 

@@ -181,6 +181,22 @@ enum ChatSpacing {
             expect(
                 wide.tiles.count > 4 && wide.width > 600 && wide.height <= side,
                 "seventeen pictures fill a wide row rather than a square: \(wide.tiles.count) tiles across \(wide.width)")
+            let strip = PictureGalleryLayout.grid(count: 3, side: side, available: 370)
+            expect(
+                strip.tiles.count == 3 && strip.tiles.allSatisfy { $0.y == 0 && $0.width <= side }
+                    && strip.width <= 370,
+                "three pictures are one strip of squares that never outgrow the row: \(strip.width)")
+            let lone = PictureGalleryLayout.grid(
+                count: 1, side: side, available: 370, shape: 1.6, maxWidth: 370).tiles[0]
+            expect(
+                lone.height == side && abs(lone.width / lone.height - 1.6) < 0.001,
+                "a lone picture keeps its shape at the block's height: \(lone.width) x \(lone.height)")
+            let crowded = PictureGalleryLayout.grid(count: 40, side: side, available: 370)
+            let chip = crowded.tiles.last.map { PictureGalleryLayout.badge(on: $0, textWidth: 28) }
+            expect(
+                crowded.hidden > 0 && PictureGalleryReading.badge(hidden: crowded.hidden) != nil
+                    && chip.map { $0.width < (crowded.tiles.last?.width ?? 0) } == true,
+                "the count is a chip in the last tile's corner, not the tile")
             return failures
         }
     #endif
