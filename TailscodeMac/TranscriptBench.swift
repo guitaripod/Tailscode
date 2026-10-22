@@ -21,7 +21,7 @@ enum TranscriptBench {
         guard let flag = arguments.firstIndex(of: "--bench") else { exit(2) }
         let paths = arguments[(flag + 1)...].prefix { !$0.hasPrefix("-") }
         guard !paths.isEmpty else {
-            print("usage: TailscodeMac --bench <transcript.json …> | tiles=N[:R:K:S] | tiles [<transcript.json …>]")
+            print("usage: TailscodeMac --bench <transcript.json …> | brain | tiles=N[:R:K:S] | tiles [<transcript.json …>]")
             exit(2)
         }
         if let spec = paths.first, spec.hasPrefix("brain-stream") {
@@ -31,6 +31,15 @@ enum TranscriptBench {
             let only = pieces.dropFirst().first.flatMap { BrainStreamBench.Mode(rawValue: String($0)) }
             let count = pieces.dropFirst(2).first.flatMap { Int($0) }
             BrainStreamBench.run(sizes: sizes, only: only, tokens: count ?? (only == nil ? nil : 600))
+            exit(0)
+        }
+        if paths.first == "brain" {
+            if MacBrain.isEnabled { BrainBench.run() }
+            exit(0)
+        }
+        if let spec = paths.first, spec.hasPrefix("brain-open") {
+            let rounds = spec.split(separator: "=").dropFirst().first.flatMap { Int($0) } ?? 200
+            if MacBrain.isEnabled { BrainBench.runOpening(rounds: rounds) }
             exit(0)
         }
         if paths.first == "tiles" {
