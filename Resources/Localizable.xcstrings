@@ -323065,77 +323065,6 @@
         }
       }
     },
-    "Brain": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Brain"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gehirn"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cerebro"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cerveau"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cervello"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ブレイン"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "브레인"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mózg"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cérebro"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "大脑"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "大腦"
-          }
-        }
-      }
-    },
     "Lines": {
       "extractionState": "manual",
       "localizations": {
@@ -323278,77 +323207,6 @@
         }
       }
     },
-    "Tool calls and thoughts rest as flat lines, one run after another, the way the transcript read before the brain.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tool calls and thoughts rest as flat lines, one run after another, the way the transcript read before the brain."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tool-Aufrufe und Gedanken stehen als flache Zeilen hintereinander, so wie das Protokoll vor dem Gehirn aussah."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Las llamadas a herramientas y los pensamientos quedan como líneas planas, una tras otra, como se leía la conversación antes del cerebro."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Les appels d’outils et les réflexions restent des lignes à plat, l’une après l’autre, comme la conversation se lisait avant le cerveau."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Le chiamate agli strumenti e i pensieri restano righe piatte, una dopo l’altra, come si leggeva la conversazione prima del cervello."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ツール呼び出しと思考は、脳が登場する前と同じく、平らな行として順に並びます。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "도구 호출과 생각은 브레인이 생기기 전처럼 납작한 줄로 차례차례 이어집니다."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wywołania narzędzi i myśli pozostają płaskimi wierszami, jeden po drugim, tak jak rozmowa wyglądała przed mózgiem."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "As chamadas de ferramenta e os pensamentos ficam como linhas planas, uma depois da outra, como a conversa era lida antes do cérebro."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工具调用和想法保持为平铺的行，依次排列，就像有大脑之前的对话那样。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工具呼叫和想法維持為平鋪的行，依序排列，就像有大腦之前的對話那樣。"
-          }
-        }
-      }
-    },
     "Activity style": {
       "extractionState": "manual",
       "localizations": {
@@ -323416,77 +323274,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "活動樣式"
-          }
-        }
-      }
-    },
-    "How the transcript shows what an agent did before it answered. The brain draws one head per turn; lines keep the flat rows.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "How the transcript shows what an agent did before it answered. The brain draws one head per turn; lines keep the flat rows."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wie das Protokoll zeigt, was ein Agent vor seiner Antwort getan hat. Das Gehirn zeichnet pro Runde einen Kopf; Zeilen behalten die flachen Reihen."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cómo muestra la conversación lo que hizo un agente antes de responder. El cerebro dibuja una cabeza por turno; las líneas conservan las filas planas."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La façon dont la conversation montre ce qu’un agent a fait avant de répondre. Le cerveau dessine une tête par tour ; les lignes gardent les rangées à plat."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Come la conversazione mostra ciò che un agente ha fatto prima di rispondere. Il cervello disegna una testa per turno; le righe mantengono le file piatte."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "エージェントが答える前に行ったことを会話にどう表示するかを選びます。ブレインはターンごとに一つの頭を描き、行は従来の平らな行のままにします。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "에이전트가 답하기 전에 한 일을 대화에서 어떻게 보여 줄지 정합니다. 브레인은 턴마다 하나의 머리를 그리고, 줄은 기존의 납작한 행을 유지합니다."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Jak rozmowa pokazuje to, co agent zrobił przed odpowiedzią. Mózg rysuje jedną głowę na turę; wiersze zachowują płaskie rzędy."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Como a conversa mostra o que um agente fez antes de responder. O cérebro desenha uma cabeça por turno; as linhas mantêm as fileiras planas."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择对话如何显示智能体在回答前做的事。大脑为每个回合绘制一个头部；行则保留原来的平铺行。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "選擇對話如何顯示代理在回答前做的事。大腦為每個回合繪製一個頭部；行則保留原來的平鋪行。"
           }
         }
       }
@@ -328887,77 +328674,6 @@
         }
       }
     },
-    "Neural": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neural"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neural"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neuronal"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neuronal"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neurale"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ニューラル"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "뉴럴"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neuronowy"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neural"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "神经"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "神經"
-          }
-        }
-      }
-    },
     "Black-green with phosphor ink": {
       "extractionState": "manual",
       "localizations": {
@@ -330019,148 +329735,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "顯示 %@ 背後的步驟"
-          }
-        }
-      }
-    },
-    "brain head lines tools thinking activity neural nodes style": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "brain head lines tools thinking activity neural nodes style"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "gehirn kopf zeilen werkzeuge denken aktivität neuronal knoten stil"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "cerebro cabeza líneas herramientas pensando actividad neuronal nodos estilo"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "cerveau tête lignes outils réflexion activité neuronal nœuds style"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "cervello testa righe strumenti pensiero attività neurale nodi stile"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "脳 頭 行 ツール 思考 アクティビティ ニューラル ノード スタイル"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "뇌 머리 줄 도구 생각 활동 신경 노드 스타일"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "mózg głowa wiersze narzędzia myślenie aktywność neuronowy węzły styl"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "cérebro cabeça linhas ferramentas pensando atividade neural nós estilo"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "大脑 头部 行 工具 思考 活动 神经 节点 样式"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "大腦 頭部 行 工具 思考 活動 神經 節點 樣式"
-          }
-        }
-      }
-    },
-    "Show Turns as Brains": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Show Turns as Brains"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Runden als Gehirne zeigen"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mostrar los turnos como cerebros"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Afficher les tours comme des cerveaux"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mostra i turni come cervelli"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ターンを脳として表示"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "턴을 뇌로 표시"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pokaż tury jako mózgi"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mostrar turnos como cérebros"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "以大脑显示每个回合"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "以大腦顯示每個回合"
           }
         }
       }
@@ -332433,77 +332007,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "點擊一行即可將其固定在舞台上"
-          }
-        }
-      }
-    },
-    "Close the brain": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Close the brain"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gehirn schließen"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cerrar el cerebro"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fermer le cerveau"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Chiudi il cervello"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "脳を閉じる"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "두뇌 닫기"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zamknij mózg"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fechar o cérebro"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭大脑"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "關閉大腦"
           }
         }
       }
@@ -353169,219 +352672,6 @@
         }
       }
     },
-    "Open or Close the Newest Brain": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Open or Close the Newest Brain"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neuestes Gehirn öffnen oder schließen"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abrir o cerrar el cerebro más reciente"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ouvrir ou fermer le cerveau le plus récent"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apri o chiudi il cervello più recente"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "最新の頭脳を開く/閉じる"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "최신 두뇌 열기/닫기"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Otwórz lub zamknij najnowszy mózg"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abrir ou fechar o cérebro mais recente"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开或关闭最新的大脑"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "開啟或關閉最新的大腦"
-          }
-        }
-      }
-    },
-    "Open the Newest Brain": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Open the Newest Brain"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neuestes Gehirn öffnen"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abrir el cerebro más reciente"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ouvrir le cerveau le plus récent"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apri il cervello più recente"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "最新の頭脳を開く"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "최신 두뇌 열기"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Otwórz najnowszy mózg"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abrir o cérebro mais recente"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开最新的大脑"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "開啟最新的大腦"
-          }
-        }
-      }
-    },
-    "Close the Open Brain": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Close the Open Brain"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Geöffnetes Gehirn schließen"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cerrar el cerebro abierto"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fermer le cerveau ouvert"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Chiudi il cervello aperto"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "開いている頭脳を閉じる"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "열린 두뇌 닫기"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zamknij otwarty mózg"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fechar o cérebro aberto"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭已打开的大脑"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "關閉已開啟的大腦"
-          }
-        }
-      }
-    },
     "%lld FIXED": {
       "extractionState": "manual",
       "localizations": {
@@ -355654,6 +354944,575 @@
         }
       }
     },
+    "Tool calls and thoughts rest as flat lines, one run after another, the way the transcript read before Megatron.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tool calls and thoughts rest as flat lines, one run after another, the way the transcript read before Megatron."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tool-Aufrufe und Gedanken stehen als flache Zeilen hintereinander, so wie das Protokoll vor Megatron aussah."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las llamadas a herramientas y los pensamientos quedan como líneas planas, una tras otra, como se leía la conversación antes de Megatron."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les appels d’outils et les réflexions restent des lignes à plat, l’une après l’autre, comme la conversation se lisait avant Megatron."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le chiamate agli strumenti e i pensieri restano righe piatte, una dopo l’altra, come si leggeva la conversazione prima di Megatron."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ツール呼び出しと思考は、Megatronが登場する前と同じく、平らな行として順に並びます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "도구 호출과 생각은 Megatron이 생기기 전처럼 납작한 줄로 차례차례 이어집니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wywołania narzędzi i myśli pozostają płaskimi wierszami, jeden po drugim, tak jak rozmowa wyglądała, zanim pojawił się Megatron."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As chamadas de ferramenta e os pensamentos ficam como linhas planas, uma depois da outra, como a conversa era lida antes do Megatron."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工具调用和想法保持为平铺的行，依次排列，就像 Megatron 出现之前的对话那样。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工具呼叫和想法維持為平鋪的行，依序排列，就像 Megatron 出現之前的對話那樣。"
+          }
+        }
+      }
+    },
+    "How the transcript shows what an agent did before it answered. Megatron draws one head per turn; lines keep the flat rows.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How the transcript shows what an agent did before it answered. Megatron draws one head per turn; lines keep the flat rows."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wie das Protokoll zeigt, was ein Agent vor seiner Antwort getan hat. Megatron zeichnet pro Runde einen Kopf; Zeilen behalten die flachen Reihen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cómo muestra la conversación lo que hizo un agente antes de responder. Megatron dibuja una cabeza por turno; las líneas conservan las filas planas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La façon dont la conversation montre ce qu’un agent a fait avant de répondre. Megatron dessine une tête par tour ; les lignes gardent les rangées à plat."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Come la conversazione mostra ciò che un agente ha fatto prima di rispondere. Megatron disegna una testa per turno; le righe mantengono le file piatte."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントが答える前に行ったことを会話にどう表示するかを選びます。Megatronはターンごとに一つの頭を描き、行は従来の平らな行のままにします。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트가 답하기 전에 한 일을 대화에서 어떻게 보여 줄지 정합니다. Megatron은 턴마다 하나의 머리를 그리고, 줄은 기존의 납작한 행을 유지합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jak rozmowa pokazuje to, co agent zrobił przed odpowiedzią. Megatron rysuje jedną głowę na turę; wiersze zachowują płaskie rzędy."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Como a conversa mostra o que um agente fez antes de responder. O Megatron desenha uma cabeça por turno; as linhas mantêm as fileiras planas."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择对话如何显示智能体在回答前做的事。Megatron 为每个回合绘制一个头部；行则保留原来的平铺行。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選擇對話如何顯示代理在回答前做的事。Megatron 為每個回合繪製一個頭部；行則保留原來的平鋪行。"
+          }
+        }
+      }
+    },
+    "Show Megatron": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Megatron"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron anzeigen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar Megatron"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afficher Megatron"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra Megatron"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatronを表示"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron 표시"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pokaż Megatron"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar Megatron"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示 Megatron"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "顯示 Megatron"
+          }
+        }
+      }
+    },
+    "Open or Close Megatron on the Latest Turn": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open or Close Megatron on the Latest Turn"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron der neuesten Runde öffnen oder schließen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir o cerrar Megatron en el turno más reciente"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir ou fermer Megatron au dernier tour"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri o chiudi Megatron sul turno più recente"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最新のターンのMegatronを開く/閉じる"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "최신 턴의 Megatron 열기/닫기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otwórz lub zamknij Megatron w najnowszej turze"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir ou fechar o Megatron no turno mais recente"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开或关闭最新回合的 Megatron"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟或關閉最新回合的 Megatron"
+          }
+        }
+      }
+    },
+    "Open Megatron on the Latest Turn": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Megatron on the Latest Turn"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron der neuesten Runde öffnen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir Megatron en el turno más reciente"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir Megatron au dernier tour"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri Megatron sul turno più recente"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最新のターンのMegatronを開く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "최신 턴의 Megatron 열기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otwórz Megatron w najnowszej turze"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir o Megatron no turno mais recente"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开最新回合的 Megatron"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟最新回合的 Megatron"
+          }
+        }
+      }
+    },
+    "Close Megatron": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close Megatron"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron schließen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrar Megatron"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fermer Megatron"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiudi Megatron"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatronを閉じる"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron 닫기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zamknij Megatron"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fechar Megatron"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭 Megatron"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "關閉 Megatron"
+          }
+        }
+      }
+    },
+    "Megatron": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megatron"
+          }
+        }
+      }
+    },
+    "megatron brain head lines tools thinking activity neural nodes style": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "megatron brain head lines tools thinking activity neural nodes style"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "megatron gehirn kopf zeilen werkzeuge denken aktivität neuronal knoten stil"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "megatron cerebro cabeza líneas herramientas pensando actividad neuronal nodos estilo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "megatron cerveau tête lignes outils réflexion activité neuronal nœuds style"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "megatron cervello testa righe strumenti pensiero attività neurale nodi stile"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "megatron 脳 頭 行 ツール 思考 アクティビティ ニューラル ノード スタイル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "megatron 뇌 머리 줄 도구 생각 활동 신경 노드 스타일"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "megatron mózg głowa wiersze narzędzia myślenie aktywność neuronowy węzły styl"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "megatron cérebro cabeça linhas ferramentas pensando atividade neural nós estilo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "megatron 大脑 头部 行 工具 思考 活动 神经 节点 样式"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "megatron 大腦 頭部 行 工具 思考 活動 神經 節點 樣式"
+          }
+        }
+      }
+    }
+,
     "Downloads a prebuilt program in seconds. No Swift or git needed.": {
       "extractionState": "manual",
       "localizations": {
