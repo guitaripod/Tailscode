@@ -93,7 +93,10 @@ struct UsageAnalyticsCoverageTests {
         #expect(analytics.models.first?.isFree == true)
         #expect(analytics.models.first?.money == "Local")
         #expect(analytics.models.first?.share == 1)
-        #expect(analytics.modelsLine?.isEmpty == false)
+        let work = try #require(analytics.localWork)
+        #expect(work.models.count == 1)
+        #expect(work.headline.hasSuffix("on your own hardware"))
+        #expect(analytics.modelsLine == nil)
         #expect(analytics.weekdays.contains { $0.share > 0 })
     }
 
@@ -122,7 +125,8 @@ struct UsageAnalyticsCoverageTests {
         #expect(analytics.models.first?.isFree == true)
         #expect(analytics.models.last?.isFree == false)
         #expect(analytics.models.last?.money == "~$0.02")
-        #expect(analytics.modelsLine?.contains("99%") == true)
+        #expect(analytics.localWork?.stats[1].value == "99%")
+        #expect(analytics.localWork?.stats[1].detail == "of the window")
     }
 
     @Test("Providers are split when there is more than one door")
@@ -187,8 +191,8 @@ struct UsageAnalyticsCoverageTests {
         #expect(analytics.coverageNote?.contains("1 of 2") == true)
         #expect(analytics.activityLine.contains("40 turns"))
         #expect(analytics.hours.isEmpty == false)
-        #expect(analytics.machines.map(\.label) == ["studio", "desktop"])
-        #expect(analytics.machines.last?.isFree == true)
+        #expect(analytics.machines.map(\.label) == ["desktop", "studio"])
+        #expect(analytics.machines.first?.isFree == true)
     }
 
     @Test("Every server reporting the full ledger says nothing about coverage")
@@ -320,7 +324,10 @@ struct UsageAnalyticsCoverageTests {
         let ollamaRow = try #require(analytics.providers.first { $0.label == "Ollama" })
         #expect(ollamaRow.detail.contains("on your own machine"))
         let line = try #require(analytics.modelsLine)
-        #expect(line.contains("hardware you already own"))
+        #expect(line.contains("hardware you already own") == false)
+        let work = try #require(analytics.localWork)
+        #expect(work.tokens == 1_020_000)
+        #expect(work.stats[1].value == "29%")
         #expect(line.contains("ran on a plan"))
         #expect(line.contains("Ollama Cloud"))
         #expect(line.contains("unpriced"))

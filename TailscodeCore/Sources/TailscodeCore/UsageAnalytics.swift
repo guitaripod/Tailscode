@@ -60,10 +60,15 @@ public struct UsageAnalytics: Sendable, Equatable {
         /// or a machine. It is what makes a cost of nothing legible: hardware the person owns, a
         /// plan they already pay for, or a rate the server does not have.
         public let door: ModelDoorKind?
+        /// How fast the model has run on this device, where the speed ledger has watched enough
+        /// turns to say ("74 tok/s"). Only a model on the person's own machine carries one: its
+        /// speed is a property of their hardware, where a hosted model's belongs to the provider's
+        /// load that hour.
+        public let speed: String?
 
         public init(
             label: String, detail: String, money: String?, share: Double, isFree: Bool = false,
-            door: ModelDoorKind? = nil
+            door: ModelDoorKind? = nil, speed: String? = nil
         ) {
             self.label = label
             self.detail = detail
@@ -71,7 +76,48 @@ public struct UsageAnalytics: Sendable, Equatable {
             self.share = share
             self.isFree = isFree
             self.door = door
+            self.speed = speed
         }
+
+        /// What a row wears at its trailing edge: the speed where there is one, then the money
+        /// word. A client draws this and composes nothing of its own.
+        public var trailing: String? {
+            let parts = [speed, money].compactMap { $0 }.filter { !$0.isEmpty }
+            return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        }
+    }
+
+    /// What ran on the person's own hardware, arranged to lead the page for an account that does
+    /// most of its work there. The money cannot say any of it: a local model costs nothing, so the
+    /// facts that matter are how much it did, how that divides between reading and writing, which
+    /// model did it, how fast, and how much room its window has.
+    public struct LocalWork: Sendable, Equatable {
+        /// One tile in the stats row: a label, the number, and a dim line that qualifies it.
+        public struct Stat: Sendable, Equatable {
+            public let label: String
+            public let value: String
+            public let detail: String?
+        }
+
+        public let title: String
+        public let headline: String
+        /// The work: fresh tokens, cache reads left out, summed over every model on a local door.
+        public let tokens: Int
+        /// `0...1` of the window's fresh tokens across every door.
+        public let share: Double
+        /// What the models wrote and what they read, where the ledger separates the two. Nil when
+        /// it cannot, so a surface says nothing rather than splitting a number it never had.
+        public let generated: Int?
+        public let read: Int?
+        /// Turns on a local door, where the servers counted them; nil is not zero.
+        public let turns: Int?
+        /// Days with local work in them, where every machine that ran a local model ran nothing
+        /// else, so the daily buckets are the local model's alone; nil when they are shared.
+        public let activeDays: Int?
+        public let stats: [Stat]
+        public let models: [Meter]
+        /// What the list left out when there were more local models than it will show.
+        public let caption: String?
     }
 
     /// One thing worth saying about the window, typed by what it is about so a surface that
@@ -111,6 +157,17 @@ public struct UsageAnalytics: Sendable, Equatable {
     /// What the window comes to in the unit the account has: the money, or the work itself when
     /// every model in it ran for free. This is the number the surface leads with.
     public let headline: String
+    /// What the account spent on hosted models, said once under a headline that is tokens: an
+    /// account whose work mostly ran on its own machine leads with the work, and the bill it did
+    /// run up is a dim line beneath rather than the number. Nil when the headline is the money
+    /// or when nothing was spent.
+    public let hostedLine: String?
+    /// What ran on the person's own hardware, or nil when nothing did.
+    public let localWork: LocalWork?
+    /// Whether at least half the window's work ran on the person's own hardware. Such an account
+    /// is measured in tokens everywhere — the headline, the bars, the rankings — and its page
+    /// leads with ``localWork`` and the models.
+    public let isLocalLed: Bool
     public let windowLabel: String
     public let perDayLine: String
     public let activityLine: String
@@ -161,7 +218,7 @@ public struct UsageAnalytics: Sendable, Equatable {
     public let trophies: [Trophy]
     public let scores: [TrophyScore]
     private let rankedModels: [SessionSpendReport.ModelShare]
-    private let priced: Bool
+    private let modelNames: [String: String]
     private let prefix: String
 
     public static let defaultWindowDays = UsageWindow.fallback.days
@@ -170,20 +227,27 @@ public struct UsageAnalytics: Sendable, Equatable {
     /// An account that reaches for one model has three; one that reaches for whatever is cheapest
     /// has thirty, and a list that long is a wall rather than a chart. What is cut is stated.
     private static let modelLimit = 12
+    /// The share of the window's work at or above which an account is called local-led and is
+    /// measured by its work instead of by its bill.
+    static let localLedShare = 0.5
 
     public init?(
         servers: [(name: String, report: UsageAnalyticsReport)],
         missingServers: [String] = [],
         window: UsageWindow = .fallback,
         now: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        modelNames: [String: String] = [:],
+        contextWindows: [String: Int] = [:],
+        speeds: ModelSpeedLedger = .shared
     ) {
         let reports = servers.filter { !$0.report.isEmpty }
         guard !reports.isEmpty || !missingServers.isEmpty else { return nil }
         self.window = window
 
         var dayCost: [String: Double] = [:]
-        var dayTokens: [String: Int] = [:]
+        var dayTotals: [String: Int] = [:]
+        var dayFresh: [String: Int] = [:]
         var dayTurns: [String: Int] = [:]
         var dayTools: [String: Int] = [:]
         var daySessions: [String: Int] = [:]
@@ -200,13 +264,23 @@ public struct UsageAnalytics: Sendable, Equatable {
 
         var coverage = UsageAnalyticsReport.Coverage.all
         var coarse: [String] = []
+        var localDays = Set<String>()
+        var localDaysAreKnown = true
         for (name, report) in reports {
             coverage.formIntersection(report.covers)
             if !report.covers.contains(.turns) { coarse.append(name) }
+            switch Self.door(ofServing: report.models) {
+            case .local:
+                localDays.formUnion(
+                    report.daily.filter { $0.turns > 0 || $0.tokens.total > 0 }.map(\.day))
+            case .mixed: localDaysAreKnown = false
+            case .none: break
+            }
             for day in report.daily
             where day.turns > 0 || day.costUSD > 0 || day.tokens.total > 0 {
                 dayCost[day.day, default: 0] += day.costUSD
-                dayTokens[day.day, default: 0] += day.tokens.total
+                dayTotals[day.day, default: 0] += day.tokens.total
+                dayFresh[day.day, default: 0] += day.tokens.fresh
                 dayTurns[day.day, default: 0] += day.turns
                 dayTools[day.day, default: 0] += day.toolCalls
                 daySessions[day.day, default: 0] += day.sessions
@@ -257,10 +331,23 @@ public struct UsageAnalytics: Sendable, Equatable {
         self.coverage = coverage
         let estimated = reports.contains { $0.report.estimated }
         let prefix = estimated ? "~" : ""
-        // Money is the yardstick wherever any was spent. An account whose models all run on a
-        // machine the person owns has no money to scale by, and a chart of zeroes would say the
-        // month never happened, so it is measured in the work itself instead.
-        let priced = totals.costUSD > 0
+        modelRows = Self.adoptDoors(modelRows)
+        let names = Names(table: modelNames)
+        let allWork = max(
+            totals.tokens.fresh, modelRows.values.reduce(0) { $0 + $1.tokens.fresh })
+        let localRows = Self.localRows(modelRows)
+        let localWorkTokens = localRows.reduce(0) { $0 + $1.tokens.fresh }
+        let localLed = Self.isLocalLed(localTokens: localWorkTokens, allTokens: allWork)
+        self.isLocalLed = localLed
+        // Money is the yardstick wherever any was spent and the work did not mostly run for
+        // free. An account whose models all run on a machine the person owns has no money to
+        // scale by, and a chart of zeroes would say the month never happened; one that did most
+        // of its work there and paid a little for the rest is about the work, with the bill a
+        // line beneath. Either way it is measured in the work itself.
+        let priced = totals.costUSD > 0 && !localLed
+        let tokenYardstickWithBill = totals.costUSD > 0 && localLed
+        let dayTokens = localLed ? dayFresh : dayTotals
+        let work: (SessionSpendReport.Tokens) -> Int = { localLed ? $0.fresh : $0.total }
         let dayKeys = Self.windowKeys(window: window.days, now: now, calendar: calendar)
         let groups = Self.group(days: dayKeys, grain: window.grain, now: now, calendar: calendar)
         let weight = { (keys: [String]) -> Double in
@@ -291,14 +378,18 @@ public struct UsageAnalytics: Sendable, Equatable {
         self.headline =
             priced
             ? prefix + SessionSpend.money(totals.costUSD)
-            : Localized.text("%@ tokens", StatusFacts.tokens(tokens.total))
+            : Localized.text("%@ tokens", StatusFacts.tokens(work(tokens)))
+        self.hostedLine =
+            tokenYardstickWithBill
+            ? Self.hostedLine(costUSD: totals.costUSD, prefix: prefix, estimated: estimated)
+            : nil
         self.windowLabel = window.label
         let active = Double(max(1, totals.activeDays))
         var perDay = Localized.text(
             "%@ a day, over %d active days",
             priced
                 ? prefix + SessionSpend.money(totals.costUSD / active)
-                : StatusFacts.tokens(Int(Double(tokens.total) / active)),
+                : StatusFacts.tokens(Int(Double(work(tokens)) / active)),
             totals.activeDays)
         if let today = bars.last, today.isToday, priced ? today.costUSD > 0 : today.tokens > 0 {
             perDay += Localized.text(" · today %@", today.value)
@@ -315,7 +406,7 @@ public struct UsageAnalytics: Sendable, Equatable {
         if totals.toolCalls > 0 {
             clauses.append(Localized.text("%@ tool calls", Self.count(totals.toolCalls)))
         }
-        clauses.append(Localized.text("%@ tokens", StatusFacts.tokens(totals.tokens.total)))
+        clauses.append(Localized.text("%@ tokens", StatusFacts.tokens(work(totals.tokens))))
         self.activityLine = clauses.joined(separator: " · ")
         (self.deltaLine, self.trend) = Self.delta(
             days: dayKeys, dayCost: dayCost, dayTokens: dayTokens, priced: priced, window: window)
@@ -342,24 +433,24 @@ public struct UsageAnalytics: Sendable, Equatable {
             self.clockLine = nil
         }
 
-        modelRows = Self.adoptDoors(modelRows)
         // Which model did the work is a token count, not a bill: a model on the server's own GPU
         // costs nothing and can still have done most of the month. The money stays on the row.
         let rankedModels = modelRows.values.sorted(by: Self.byWork)
         self.rankedModels = rankedModels
-        self.priced = priced
+        self.modelNames = modelNames
         self.prefix = prefix
         let modelPeak = rankedModels.map { Double($0.tokens.fresh) }.max() ?? 0
-        let modelLabels = Self.modelLabels(Array(rankedModels.prefix(Self.modelLimit)))
+        let modelLabels = Self.modelLabels(Array(rankedModels.prefix(Self.modelLimit)), names: names)
         self.models = rankedModels.prefix(Self.modelLimit).map { row in
-            let short = ModelBadge.shortName(row.model)
+            let short = names(row.model)
             let label = modelLabels[row.model] ?? short
             let provider = ProviderIdentity.provider(ofModel: row.model)
             let door = provider.map(ModelDoorKind.classify)
             return Meter(
                 label: label,
                 detail: Self.workDetail(
-                    turns: row.turns, tokens: row.tokens, costUSD: row.costUSD, prefix: prefix,
+                    turns: row.turns, counted: work(row.tokens), costUSD: row.costUSD,
+                    prefix: prefix,
                     through: label == short ? provider : nil),
                 money: Self.value(
                     costUSD: row.costUSD, tokens: row.tokens, prefix: prefix, door: door),
@@ -367,9 +458,13 @@ public struct UsageAnalytics: Sendable, Equatable {
                 isFree: Self.isFree(costUSD: row.costUSD, tokens: row.tokens, door: door),
                 door: door)
         }
-        self.providers = Self.providerMeters(models: modelRows, prefix: prefix)
+        self.providers = Self.providerMeters(models: modelRows, prefix: prefix, localLed: localLed)
         self.modelsLine = Self.modelsLine(
-            ranked: rankedModels, priced: priced, prefix: prefix, shown: Self.modelLimit)
+            ranked: rankedModels, prefix: prefix, shown: Self.modelLimit, names: names)
+        self.localWork = Self.localWork(
+            rows: localRows, allTokens: allWork, led: localLed,
+            activeDays: localDaysAreKnown && !localDays.isEmpty ? localDays.count : nil,
+            prefix: prefix, names: names, contextWindows: contextWindows, speeds: speeds)
 
         let projectPeak = projectRows.values.map { Self.rank($0.costUSD, $0.tokens, priced) }
             .max() ?? 0
@@ -382,18 +477,18 @@ public struct UsageAnalytics: Sendable, Equatable {
                 var detail = Localized.text("%@ chats", Self.count(row.sessions))
                 if row.turns > 0 {
                     detail += Localized.text(" · %@ turns", Self.count(row.turns))
-                } else {
-                    detail += Localized.text(" · %@ tokens", StatusFacts.tokens(row.tokens.total))
+                } else if !tokenYardstickWithBill {
+                    detail += Localized.text(" · %@ tokens", StatusFacts.tokens(work(row.tokens)))
                 }
+                let trailing = Self.unpricedRow(
+                    costUSD: row.costUSD, tokens: row.tokens, prefix: prefix, priced: priced,
+                    byWork: tokenYardstickWithBill)
                 return Meter(
                     label: projectLabels[row.directory] ?? row.name, detail: detail,
-                    money: Self.value(
-                        costUSD: row.costUSD, tokens: row.tokens, prefix: prefix,
-                        door: priced ? nil : .local),
+                    money: trailing.value,
                     share: projectPeak > 0
                         ? Self.rank(row.costUSD, row.tokens, priced) / projectPeak : 0,
-                    isFree: Self.isFree(
-                        costUSD: row.costUSD, tokens: row.tokens, door: priced ? nil : .local))
+                    isFree: trailing.isFree)
             }
 
         let toolPeak = toolRows.values.max() ?? 0
@@ -446,10 +541,10 @@ public struct UsageAnalytics: Sendable, Equatable {
                 turns: dayTurns[busiestKey] ?? 0)
         }
         let streak = Self.streak(
-            days: Set(dayTokens.keys).union(dayCost.keys), calendar: calendar)
+            days: Set(dayTotals.keys).union(dayCost.keys), calendar: calendar)
         self.records = Self.recordRows(
             records: records, streak: streak, subagents: subagents, compactions: compactions,
-            totalCostUSD: totals.costUSD, priced: priced,
+            totalCostUSD: totals.costUSD, priced: priced, billed: tokenYardstickWithBill,
             busiestTokens: busiestKey.flatMap { dayTokens[$0] } ?? 0,
             busiestSessions: busiestKey.flatMap { daySessions[$0] } ?? 0,
             prefix: prefix, calendar: calendar)
@@ -485,20 +580,30 @@ public struct UsageAnalytics: Sendable, Equatable {
                     var detail = Localized.text("%@ chats", Self.count(totals.sessions))
                     if totals.turns > 0 {
                         detail += Localized.text(" · %@ turns", Self.count(totals.turns))
-                    } else {
+                    } else if !tokenYardstickWithBill {
                         detail += Localized.text(
-                            " · %@ tokens", StatusFacts.tokens(totals.tokens.total))
+                            " · %@ tokens", StatusFacts.tokens(work(totals.tokens)))
                     }
                     let door =
-                        Self.door(ofModels: server.report.models) ?? (priced ? nil : .local)
+                        Self.door(ofModels: server.report.models)
+                        ?? (priced || tokenYardstickWithBill ? nil : .local)
+                    let trailing =
+                        tokenYardstickWithBill && door == nil
+                        ? Self.unpricedRow(
+                            costUSD: totals.costUSD, tokens: totals.tokens, prefix: prefix,
+                            priced: priced, byWork: true)
+                        : (
+                            value: Self.value(
+                                costUSD: totals.costUSD, tokens: totals.tokens, prefix: prefix,
+                                door: door),
+                            isFree: Self.isFree(
+                                costUSD: totals.costUSD, tokens: totals.tokens, door: door)
+                        )
                     return Meter(
                         label: server.name, detail: detail,
-                        money: Self.value(
-                            costUSD: totals.costUSD, tokens: totals.tokens, prefix: prefix,
-                            door: door),
+                        money: trailing.value,
                         share: machinePeak > 0 ? machineRank(server.report) / machinePeak : 0,
-                        isFree: Self.isFree(
-                            costUSD: totals.costUSD, tokens: totals.tokens, door: door),
+                        isFree: trailing.isFree,
                         door: door)
                 }
         } else {
@@ -507,7 +612,8 @@ public struct UsageAnalytics: Sendable, Equatable {
 
         self.findings = Self.findings(
             totals: totals, models: modelRows, tools: toolRows, hourTurns: hourTurns,
-            cacheSaved: cacheSaved, streak: streak, subagents: subagents, prefix: prefix)
+            cacheSaved: cacheSaved, streak: streak, subagents: subagents, prefix: prefix,
+            names: names)
 
         self.source = reports.count > 1
             ? Localized.text(
@@ -523,7 +629,8 @@ public struct UsageAnalytics: Sendable, Equatable {
     /// and what ran for nothing. A card that draws four rows must not caption them with what a
     /// list of twelve left out.
     public func modelsLine(shown: Int) -> String? {
-        Self.modelsLine(ranked: rankedModels, priced: priced, prefix: prefix, shown: shown)
+        Self.modelsLine(
+            ranked: rankedModels, prefix: prefix, shown: shown, names: Names(table: modelNames))
     }
 
     /// The tallest bar in the daily chart, which the chart annotates along with today and
@@ -586,10 +693,9 @@ public struct UsageAnalytics: Sendable, Equatable {
     /// itself does not already carry it — which is how the list answers *what am I actually
     /// running* rather than only *what did it cost*.
     private static func workDetail(
-        turns: Int, tokens: SessionSpendReport.Tokens, costUSD: Double, prefix: String,
-        through: String? = nil
+        turns: Int, counted: Int, costUSD: Double, prefix: String, through: String? = nil
     ) -> String {
-        var detail = Localized.text("%@ tokens", StatusFacts.tokens(tokens.total))
+        var detail = Localized.text("%@ tokens", StatusFacts.tokens(counted))
         if turns > 0 {
             detail = Localized.text("%@ turns · ", Self.count(turns)) + detail
             if costUSD > 0 {
@@ -606,7 +712,7 @@ public struct UsageAnalytics: Sendable, Equatable {
     /// Every model folded up by the door its tokens went through. A provider is only worth a row
     /// when there is another to compare it against.
     private static func providerMeters(
-        models: [String: SessionSpendReport.ModelShare], prefix: String
+        models: [String: SessionSpendReport.ModelShare], prefix: String, localLed: Bool
     ) -> [Meter] {
         var rows: [String: (share: SessionSpendReport.ModelShare, models: Int)] = [:]
         for model in models.values {
@@ -624,13 +730,16 @@ public struct UsageAnalytics: Sendable, Equatable {
             rows[key] = row
         }
         guard rows.count > 1 else { return [] }
+        guard !(localLed && rows.keys.allSatisfy(ProviderIdentity.isLocal)) else { return [] }
         let ranked = rows.values.sorted { byWork($0.share, $1.share) }
         let peak = ranked.map { Double($0.share.tokens.fresh) }.max() ?? 0
         return ranked.map { row in
             var detail =
                 row.models == 1
                 ? Localized.text("1 model") : Localized.text("%d models", row.models)
-            detail += Localized.text(" · %@ tokens", StatusFacts.tokens(row.share.tokens.total))
+            detail += Localized.text(
+                " · %@ tokens",
+                StatusFacts.tokens(localLed ? row.share.tokens.fresh : row.share.tokens.total))
             let door = ModelDoorKind.classify(row.share.model)
             switch door {
             case .local: detail += Localized.text(" · on your own machine")
@@ -653,12 +762,14 @@ public struct UsageAnalytics: Sendable, Equatable {
     /// by a gateway and by its vendor — and two identical rows read as a bug rather than as a
     /// choice. Only the names that collide among the rows actually listed are qualified; a twin
     /// the list cut leaves the row it cannot be confused with short.
-    private static func modelLabels(_ ranked: [SessionSpendReport.ModelShare]) -> [String: String] {
+    private static func modelLabels(
+        _ ranked: [SessionSpendReport.ModelShare], names: Names
+    ) -> [String: String] {
         var counts: [String: Int] = [:]
-        for row in ranked { counts[ModelBadge.shortName(row.model), default: 0] += 1 }
+        for row in ranked { counts[names(row.model), default: 0] += 1 }
         var labels: [String: String] = [:]
         for row in ranked {
-            let short = ModelBadge.shortName(row.model)
+            let short = names(row.model)
             guard counts[short, default: 0] > 1, let key = ProviderIdentity.provider(ofModel: row.model)
             else {
                 labels[row.model] = short
@@ -690,10 +801,11 @@ public struct UsageAnalytics: Sendable, Equatable {
         return labels
     }
 
-    /// The caption under the models: what the list could not fit, and what the models that cost
-    /// nothing actually did — the fact a column of "$0" hides.
+    /// The caption under the models: what the list could not fit, and what ran through a plan or
+    /// through a door with no rate — the facts a column of "$0" hides. What ran on the person's
+    /// own hardware is ``localWork``'s to say.
     private static func modelsLine(
-        ranked: [SessionSpendReport.ModelShare], priced: Bool, prefix: String, shown: Int
+        ranked: [SessionSpendReport.ModelShare], prefix: String, shown: Int, names: Names
     ) -> String? {
         var parts: [String] = []
         let hidden = ranked.dropFirst(shown)
@@ -710,9 +822,8 @@ public struct UsageAnalytics: Sendable, Equatable {
                     : Localized.text(
                         "%d more models not shown · %@ tokens · %@", hidden.count, tokens, money))
         }
-        if let local = localLine(models: ranked, priced: priced) { parts.append(local) }
-        if let plan = planLine(models: ranked) { parts.append(plan) }
-        if let unpriced = unpricedLine(models: ranked) { parts.append(unpriced) }
+        if let plan = planLine(models: ranked, names: names) { parts.append(plan) }
+        if let unpriced = unpricedLine(models: ranked, names: names) { parts.append(unpriced) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -779,7 +890,9 @@ public struct UsageAnalytics: Sendable, Equatable {
     /// What went through a plan rather than a meter. A subscription buys a flat month, so its
     /// tokens are neither free nor unpriced — the money was spent and this ledger cannot divide
     /// it — and saying so is the difference between a plan and a hole in the numbers.
-    private static func planLine(models: [SessionSpendReport.ModelShare]) -> String? {
+    private static func planLine(
+        models: [SessionSpendReport.ModelShare], names: Names
+    ) -> String? {
         let plan = unbilled(models, through: [.subscription])
         guard !plan.isEmpty else { return nil }
         let tokens = StatusFacts.tokens(plan.reduce(0) { $0 + $1.tokens.total })
@@ -787,7 +900,7 @@ public struct UsageAnalytics: Sendable, Equatable {
         return plan.count == 1
             ? Localized.text(
                 "%@ tokens on %@%@ ran on a plan — billed by the month, not per token",
-                tokens, ModelBadge.shortName(plan[0].model), through)
+                tokens, names(plan[0].model), through)
             : Localized.text(
                 "%@ tokens across %d models%@ ran on a plan — billed by the month, not per token",
                 tokens, plan.count, through)
@@ -795,7 +908,9 @@ public struct UsageAnalytics: Sendable, Equatable {
 
     /// What ran through a hosted door the server has no rate for. A gateway's free tier is
     /// somebody's money; a card that called it free would be claiming a bill that exists is zero.
-    private static func unpricedLine(models: [SessionSpendReport.ModelShare]) -> String? {
+    private static func unpricedLine(
+        models: [SessionSpendReport.ModelShare], names: Names
+    ) -> String? {
         let unpriced = unbilled(models, through: [.key, .gateway, .free])
         guard !unpriced.isEmpty else { return nil }
         let tokens = StatusFacts.tokens(unpriced.reduce(0) { $0 + $1.tokens.total })
@@ -803,40 +918,10 @@ public struct UsageAnalytics: Sendable, Equatable {
         return unpriced.count == 1
             ? Localized.text(
                 "%@ tokens on %@%@ are unpriced — the server reports no rate for it",
-                tokens, ModelBadge.shortName(unpriced[0].model), through)
+                tokens, names(unpriced[0].model), through)
             : Localized.text(
                 "%@ tokens across %d models%@ are unpriced — the server reports no rate for them",
                 tokens, unpriced.count, through)
-    }
-
-    /// What the models on the person's own hardware actually did, which is the fact a column of
-    /// "$0" hides.
-    private static func localLine(
-        models: [SessionSpendReport.ModelShare], priced: Bool
-    ) -> String? {
-        let free = unbilled(models, through: [.local])
-        guard !free.isEmpty else { return nil }
-        let freeTokens = free.reduce(0) { $0 + $1.tokens.fresh }
-        guard freeTokens > 0 else { return nil }
-        guard priced else {
-            return Localized.text(
-                "Every token this window ran on hardware you already own — %@ of them, at no cost",
-                StatusFacts.tokens(freeTokens))
-        }
-        let allTokens = models.reduce(0) { $0 + $1.tokens.fresh }
-        // A hundred percent is reserved for a window where nothing was paid for at all: rounding
-        // a sliver of paid work away would say the month was free when it was not.
-        var percent =
-            allTokens > 0 ? Int((Double(freeTokens) / Double(allTokens) * 100).rounded()) : 0
-        if freeTokens < allTokens { percent = min(99, percent) }
-        if free.count == 1 {
-            return Localized.text(
-                "%@ tokens on %@ ran on hardware you already own — %d%% of the window's work",
-                StatusFacts.tokens(freeTokens), ModelBadge.shortName(free[0].model), percent)
-        }
-        return Localized.text(
-            "%@ tokens across %d models ran on hardware you already own — %d%% of the window's work",
-            StatusFacts.tokens(freeTokens), free.count, percent)
     }
 
     /// What nobody counted, named. A server whose ledger is one running total per conversation
@@ -1087,7 +1172,7 @@ public struct UsageAnalytics: Sendable, Equatable {
         records: UsageAnalyticsReport.Records, streak: Int,
         subagents: UsageAnalyticsReport.Subagents,
         compactions: UsageAnalyticsReport.Compactions, totalCostUSD: Double, priced: Bool,
-        busiestTokens: Int, busiestSessions: Int, prefix: String, calendar: Calendar
+        billed: Bool, busiestTokens: Int, busiestSessions: Int, prefix: String, calendar: Calendar
     ) -> [Record] {
         var rows: [Record] = []
         if let busiest = records.busiestDay {
@@ -1147,11 +1232,14 @@ public struct UsageAnalytics: Sendable, Equatable {
                     detail: nil))
         }
         if subagents.runs > 0 {
-            var detail = Localized.text(
-                "%@ tokens · %@", StatusFacts.tokens(subagents.tokens.total),
-                value(
-                    costUSD: subagents.costUSD, tokens: subagents.tokens, prefix: prefix,
-                    door: priced ? nil : .local))
+            var detail =
+                billed && subagents.costUSD <= 0
+                ? Localized.text("%@ tokens", StatusFacts.tokens(subagents.tokens.total))
+                : Localized.text(
+                    "%@ tokens · %@", StatusFacts.tokens(subagents.tokens.total),
+                    value(
+                        costUSD: subagents.costUSD, tokens: subagents.tokens, prefix: prefix,
+                        door: priced || billed ? nil : .local))
             if totalCostUSD > 0, subagents.costUSD > 0 {
                 let share = Int((subagents.costUSD / totalCostUSD * 100).rounded())
                 detail += Localized.text(" · %d%% of the window", share)
@@ -1179,7 +1267,7 @@ public struct UsageAnalytics: Sendable, Equatable {
     private static func findings(
         totals: UsageAnalyticsReport.Totals, models: [String: SessionSpendReport.ModelShare],
         tools: [String: Int], hourTurns: [Int], cacheSaved: Double, streak: Int,
-        subagents: UsageAnalyticsReport.Subagents, prefix: String
+        subagents: UsageAnalyticsReport.Subagents, prefix: String, names: Names
     ) -> [Insight] {
         var lines: [Insight] = []
         let work = models.values.reduce(0) { $0 + $1.tokens.fresh }
@@ -1191,7 +1279,7 @@ public struct UsageAnalytics: Sendable, Equatable {
                         topic: .model,
                         text: Localized.text(
                             "%@ did most of it: %d%% of the window's tokens",
-                            ModelBadge.shortName(top.model), percent)))
+                            names(top.model), percent)))
             }
         }
         if cacheSaved > totals.costUSD, totals.costUSD > 0 {
@@ -1236,6 +1324,243 @@ public struct UsageAnalytics: Sendable, Equatable {
                     text: Localized.text("The %02d:00 hour starts the most turns", peak)))
         }
         return lines
+    }
+
+    /// A model as every row names it: the codename the catalog gives it where a client had one
+    /// to hand, which is what the person's own picker shows, and the id cleaned of its packaging
+    /// otherwise. The rule for what a catalog name is worth wearing is ``ModelBadge``'s, applied
+    /// once by ``modelNames(from:)``; this only looks the result up.
+    private struct Names: Sendable, Equatable {
+        let table: [String: String]
+
+        func callAsFunction(_ model: String) -> String {
+            table[model] ?? ModelBadge.shortName(model)
+        }
+    }
+
+    /// The names a catalog gives its models, keyed the way a ledger keys them — `provider/id`,
+    /// and the bare id too where no two providers disagree about it, because a Claude bridge
+    /// names its models without a door. A name is whatever ``ModelBadge`` would put on a session
+    /// row, so a codename shows here the way it does in the picker.
+    public static func modelNames(from catalog: [ModelInfo]) -> [String: String] {
+        catalogTable(catalog) {
+            ModelBadge.shortName($0.id, catalogName: $0.name, providerID: $0.providerID)
+        }
+    }
+
+    /// The context windows a catalog states, keyed like ``modelNames(from:)``. A model whose
+    /// catalog entry says nothing has no entry, so no row claims a window nobody reported.
+    public static func contextWindows(from catalog: [ModelInfo]) -> [String: Int] {
+        catalogTable(catalog) { ($0.contextWindow ?? 0) > 0 ? $0.contextWindow : nil }
+    }
+
+    /// The same names from what each server last told this device about its models.
+    public static func modelNames(profileIDs: [String]) -> [String: String] {
+        modelNames(from: profileIDs.flatMap(ModelCatalogStore.cached))
+    }
+
+    public static func contextWindows(profileIDs: [String]) -> [String: Int] {
+        contextWindows(from: profileIDs.flatMap(ModelCatalogStore.cached))
+    }
+
+    private static func catalogTable<Value: Equatable>(
+        _ catalog: [ModelInfo], _ value: (ModelInfo) -> Value?
+    ) -> [String: Value] {
+        var table: [String: Value] = [:]
+        var bare: [String: Value] = [:]
+        var contested = Set<String>()
+        for model in catalog {
+            guard let known = value(model) else { continue }
+            table["\(model.providerID)/\(model.id)"] = known
+            if let seen = bare[model.id], seen != known { contested.insert(model.id) }
+            bare[model.id] = known
+        }
+        for (id, known) in bare where !contested.contains(id) && table[id] == nil {
+            table[id] = known
+        }
+        return table
+    }
+
+    /// Whether the work mostly ran on the person's own hardware. Compared as tokens rather than
+    /// as a rounded percentage, so a window at 49.6% is not called led by the rounding.
+    static func isLocalLed(localTokens: Int, allTokens: Int) -> Bool {
+        localTokens > 0 && allTokens > 0
+            && Double(localTokens) >= Double(allTokens) * localLedShare
+    }
+
+    /// The models that did work through a door on the person's own machine, busiest first.
+    private static func localRows(
+        _ models: [String: SessionSpendReport.ModelShare]
+    ) -> [SessionSpendReport.ModelShare] {
+        models.values.filter { door(of: $0) == .local && $0.tokens.fresh > 0 }.sorted(by: byWork)
+    }
+
+    /// What one machine's models went through: all on the person's own hardware, some of them,
+    /// or none of them. It is what says whether that machine's daily buckets are a local
+    /// model's alone.
+    private enum Serving {
+        case local
+        case mixed
+        case none
+    }
+
+    private static func door(ofServing models: [SessionSpendReport.ModelShare]) -> Serving {
+        var rows: [String: SessionSpendReport.ModelShare] = [:]
+        for model in models {
+            var row = rows[model.model] ?? SessionSpendReport.ModelShare(
+                model: model.model, turns: 0, tokens: .init(), costUSD: 0)
+            row.tokens = add(row.tokens, model.tokens)
+            rows[model.model] = row
+        }
+        let doors = adoptDoors(rows).values.filter { $0.tokens.fresh > 0 }.map(door(of:))
+        let local = doors.filter { $0 == .local }.count
+        if local == 0 { return .none }
+        return local == doors.count ? .local : .mixed
+    }
+
+    /// The bill an account that leads with its work still ran up, as a dim line under the number.
+    private static func hostedLine(costUSD: Double, prefix: String, estimated: Bool) -> String {
+        let money = SessionSpend.money(costUSD)
+        return estimated
+            ? Localized.text("%@ of hosted spend, an estimate", money)
+            : Localized.text("%@ of hosted spend", money)
+    }
+
+    /// The trailing value of a project, machine or record whose door is not known. In an account
+    /// measured by its money it is the money; in one that spent nothing it is the word for what a
+    /// zero means on a machine the person owns; in one that leads with its work but paid a little
+    /// it is the work, because a zero there could be a plan or a local model and nothing says.
+    private static func unpricedRow(
+        costUSD: Double, tokens: SessionSpendReport.Tokens, prefix: String, priced: Bool,
+        byWork: Bool
+    ) -> (value: String, isFree: Bool) {
+        if byWork { return (StatusFacts.tokens(tokens.fresh), false) }
+        let door: ModelDoorKind? = priced ? nil : .local
+        return (
+            value(costUSD: costUSD, tokens: tokens, prefix: prefix, door: door),
+            isFree(costUSD: costUSD, tokens: tokens, door: door)
+        )
+    }
+
+    /// A window as a person says it: 262k, 1M. Never a decimal on a thousand, because a context
+    /// window is a size class and 262.1k reads as a measurement.
+    static func contextLabel(_ window: Int) -> String {
+        if window >= 1_000_000 {
+            let tenths = Int((Double(window) / 100_000).rounded())
+            return tenths % 10 == 0 ? "\(tenths / 10)M" : "\(tenths / 10).\(tenths % 10)M"
+        }
+        if window >= 1000 { return "\(Int((Double(window) / 1000).rounded()))k" }
+        return "\(window)"
+    }
+
+    /// What the speed ledger remembers of a model. The ledger is keyed by the id a turn carries,
+    /// which has no door in front of it, and a ledger row is keyed by the door and the id.
+    private static func speed(
+        of model: String, in ledger: ModelSpeedLedger
+    ) -> ModelSpeedLedger.Reading? {
+        let bare = model.firstIndex(of: "/").map { String(model[model.index(after: $0)...]) }
+        return bare.flatMap { ledger.reading(model: $0) } ?? ledger.reading(model: model)
+    }
+
+    private static func speedWord(_ reading: ModelSpeedLedger.Reading) -> String {
+        Localized.text("%@ tok/s", ResponseStats.rate(reading.tokensPerSecond))
+    }
+
+    /// The share of the window the local work is, as a person reads a percentage: never zero for
+    /// something, never a hundred while anything else ran, and never half for an account that is
+    /// not led by it.
+    private static func shareWord(
+        _ share: Double, led: Bool, everything: Bool
+    ) -> String {
+        var points = Int((share * 100).rounded())
+        if !led { points = min(points, 49) }
+        if !everything { points = min(points, 99) }
+        return points == 0 ? Localized.text("<1%") : "\(points)%"
+    }
+
+    private static func localWork(
+        rows: [SessionSpendReport.ModelShare], allTokens: Int, led: Bool, activeDays: Int?,
+        prefix: String, names: Names, contextWindows: [String: Int], speeds: ModelSpeedLedger
+    ) -> LocalWork? {
+        guard !rows.isEmpty else { return nil }
+        let tokens = rows.reduce(0) { $0 + $1.tokens.fresh }
+        let share = min(1, Double(tokens) / Double(max(allTokens, tokens)))
+        let generated = rows.reduce(0) { $0 + $1.tokens.output }
+        let read = tokens - generated
+        let separates = generated > 0 && read > 0
+        let turns = rows.reduce(0) { $0 + $1.turns }
+        let shown = rows.prefix(modelLimit)
+        let labels = modelLabels(Array(shown), names: names)
+        let providers = Set(rows.compactMap { ProviderIdentity.provider(ofModel: $0.model) })
+        let peak = Double(rows.first?.tokens.fresh ?? 0)
+        let meters = shown.map { row -> Meter in
+            let short = names(row.model)
+            let label = labels[row.model] ?? short
+            let provider = ProviderIdentity.provider(ofModel: row.model)
+            var detail = workDetail(
+                turns: row.turns, counted: row.tokens.fresh, costUSD: row.costUSD,
+                prefix: prefix,
+                through: providers.count > 1 && label == short ? provider : nil)
+            if let window = contextWindows[row.model], window > 0 {
+                detail += " · " + Localized.text("%@ context", contextLabel(window))
+            }
+            return Meter(
+                label: label, detail: detail,
+                money: value(
+                    costUSD: row.costUSD, tokens: row.tokens, prefix: prefix, door: .local),
+                share: peak > 0 ? Double(row.tokens.fresh) / peak : 0,
+                isFree: isFree(costUSD: row.costUSD, tokens: row.tokens, door: .local),
+                door: .local,
+                speed: speed(of: row.model, in: speeds).map(speedWord))
+        }
+
+        var stats = [
+            LocalWork.Stat(
+                label: Localized.text("Work"), value: StatusFacts.tokens(tokens),
+                detail: Localized.text("tokens")),
+            LocalWork.Stat(
+                label: Localized.text("Share of work"),
+                value: shareWord(share, led: led, everything: tokens >= allTokens),
+                detail: Localized.text("of the window")),
+        ]
+        if separates {
+            stats.append(
+                LocalWork.Stat(
+                    label: Localized.text("Wrote"), value: StatusFacts.tokens(generated),
+                    detail: Localized.text("read %@", StatusFacts.tokens(read))))
+        }
+        if let fastest = rows.first(where: { speed(of: $0.model, in: speeds) != nil }),
+            let reading = speed(of: fastest.model, in: speeds)
+        {
+            stats.append(
+                LocalWork.Stat(
+                    label: Localized.text("Speed"), value: speedWord(reading),
+                    detail: labels[fastest.model] ?? names(fastest.model)))
+        }
+        if stats.count < 4, turns > 0 {
+            stats.append(
+                LocalWork.Stat(
+                    label: Localized.text("Turns"), value: count(turns),
+                    detail: activeDays.map { Localized.text("%d active days", $0) }))
+        }
+
+        let hidden = rows.dropFirst(modelLimit)
+        let caption: String? =
+            hidden.isEmpty
+            ? nil
+            : hidden.count == 1
+                ? Localized.text(
+                    "1 more local model not shown · %@ tokens",
+                    StatusFacts.tokens(hidden.reduce(0) { $0 + $1.tokens.fresh }))
+                : Localized.text(
+                    "%d more local models not shown · %@ tokens", hidden.count,
+                    StatusFacts.tokens(hidden.reduce(0) { $0 + $1.tokens.fresh }))
+        return LocalWork(
+            title: Localized.text("On your own machine"),
+            headline: Localized.text("%@ tokens on your own hardware", StatusFacts.tokens(tokens)),
+            tokens: tokens, share: share, generated: separates ? generated : nil,
+            read: separates ? read : nil, turns: turns > 0 ? turns : nil, activeDays: activeDays,
+            stats: stats, models: meters, caption: caption)
     }
 
     static func count(_ value: Int) -> String {

@@ -460,15 +460,18 @@ public struct AnalyticsShare: Sendable, Equatable {
             analytics.perDayLine,
             analytics.activityLine,
         ]
+        if let hosted = analytics.hostedLine { lines.append(hosted) }
         if let delta = analytics.deltaLine { lines.append(delta) }
-        if let peak = analytics.peakDay, peak.costUSD > 0 {
+        if let peak = analytics.peakDay, peak.share > 0 {
             lines.append(
                 Localized.text("Peak %@ · %@", peak.title, peak.value))
         }
         if let clock = analytics.clockLine { lines.append(clock) }
+        if analytics.isLocalLed { appendLocalLines(&lines, analytics.localWork) }
         appendMeterLines(
             &lines, title: Localized.text("Providers"), meters: analytics.providers, limit: 5)
         appendMeterLines(&lines, title: Localized.text("Models"), meters: analytics.models, limit: 5)
+        if !analytics.isLocalLed { appendLocalLines(&lines, analytics.localWork) }
         appendMeterLines(
             &lines, title: Localized.text("Projects"), meters: analytics.projects, limit: 5)
         appendMeterLines(&lines, title: Localized.text("Tools"), meters: analytics.tools, limit: 5)
@@ -514,18 +517,24 @@ public struct AnalyticsShare: Sendable, Equatable {
             "",
             analytics.activityLine,
         ]
+        if let hosted = analytics.hostedLine {
+            lines.append("")
+            lines.append("_\(hosted)_")
+        }
         if let delta = analytics.deltaLine {
             lines.append("")
             lines.append(delta)
         }
-        if let peak = analytics.peakDay, peak.costUSD > 0 {
+        if let peak = analytics.peakDay, peak.share > 0 {
             lines.append("")
             lines.append(
                 Localized.text("Peak %@ · %@", peak.title, peak.value))
         }
+        if analytics.isLocalLed { appendMarkdownLocal(&lines, analytics.localWork) }
         appendMarkdownMeters(
             &lines, title: Localized.text("Providers"), meters: analytics.providers)
         appendMarkdownMeters(&lines, title: Localized.text("Models"), meters: analytics.models)
+        if !analytics.isLocalLed { appendMarkdownLocal(&lines, analytics.localWork) }
         appendMarkdownMeters(&lines, title: Localized.text("Projects"), meters: analytics.projects)
         appendMarkdownMeters(&lines, title: Localized.text("Tools"), meters: analytics.tools)
         if !analytics.records.isEmpty {
@@ -569,10 +578,53 @@ public struct AnalyticsShare: Sendable, Equatable {
         lines.append("")
         lines.append(title)
         for meter in meters.prefix(limit) {
-            let money = meter.money.map { " · \($0)" } ?? ""
+            let money = meter.trailing.map { " · \($0)" } ?? ""
             let detail = meter.detail.isEmpty ? "" : " · \(meter.detail)"
             lines.append("\(meter.label)\(money)\(detail)")
         }
+    }
+
+    /// What ran on the person's own machine, as the same stats and rows the screen draws: a
+    /// pasted summary of a month spent mostly on a local GPU is about that GPU.
+    private static func appendLocalLines(_ lines: inout [String], _ work: UsageAnalytics.LocalWork?) {
+        guard let work else { return }
+        lines.append("")
+        lines.append(work.title)
+        lines.append(work.headline)
+        lines.append(statLine(work))
+        for meter in work.models {
+            let money = meter.trailing.map { " · \($0)" } ?? ""
+            let detail = meter.detail.isEmpty ? "" : " · \(meter.detail)"
+            lines.append("\(meter.label)\(money)\(detail)")
+        }
+        if let caption = work.caption { lines.append(caption) }
+    }
+
+    private static func appendMarkdownLocal(
+        _ lines: inout [String], _ work: UsageAnalytics.LocalWork?
+    ) {
+        guard let work else { return }
+        lines.append("")
+        lines.append("## \(work.title)")
+        lines.append("")
+        lines.append("**\(work.headline)**")
+        lines.append("")
+        lines.append(statLine(work))
+        for meter in work.models {
+            let money = meter.trailing.map { " · \($0)" } ?? ""
+            let detail = meter.detail.isEmpty ? "" : " · \(meter.detail)"
+            lines.append("- **\(meter.label)**\(money)\(detail)")
+        }
+        if let caption = work.caption {
+            lines.append("")
+            lines.append("_\(caption)_")
+        }
+    }
+
+    private static func statLine(_ work: UsageAnalytics.LocalWork) -> String {
+        work.stats.map { stat in
+            "\(stat.label) \(stat.value)" + (stat.detail.map { " \($0)" } ?? "")
+        }.joined(separator: " · ")
     }
 
     private static func appendMarkdownMeters(
@@ -582,7 +634,7 @@ public struct AnalyticsShare: Sendable, Equatable {
         lines.append("")
         lines.append("## \(title)")
         for meter in meters.prefix(5) {
-            let money = meter.money.map { " · \($0)" } ?? ""
+            let money = meter.trailing.map { " · \($0)" } ?? ""
             let detail = meter.detail.isEmpty ? "" : " · \(meter.detail)"
             lines.append("- **\(meter.label)**\(money)\(detail)")
         }
