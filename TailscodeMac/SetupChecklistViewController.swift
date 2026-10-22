@@ -201,7 +201,7 @@ final class SetupChecklistViewController: NSViewController {
     private func renderRows(_ rows: [SetupRow]) {
         let ids = rows.map(\.id)
         for stale in Set(rowViews.keys).subtracting(ids) {
-            rowViews[stale]?.removeFromSuperview()
+            if let view = rowViews[stale] { detach(view) }
             rowViews[stale] = nil
         }
         for row in rows {
@@ -215,11 +215,18 @@ final class SetupChecklistViewController: NSViewController {
             }
         }
         guard ids != order else { return }
-        for view in rowViews.values { column.removeArrangedSubview(view) }
+        for view in rowViews.values { detach(view) }
         for id in ids {
             if let view = rowViews[id] { column.addArrangedSubview(view) }
         }
         order = ids
+    }
+
+    /// Takes a row out of the column only if the column holds it: NSStackView raises on removing a view it never arranged, and a raise inside a Task is swallowed by the run loop and corrupts the next main-actor isolation check.
+    private func detach(_ view: NSView) {
+        guard column.arrangedSubviews.contains(view) else { return }
+        column.removeArrangedSubview(view)
+        view.removeFromSuperview()
     }
 
     private func renderPrimary(_ action: SetupAction?) {

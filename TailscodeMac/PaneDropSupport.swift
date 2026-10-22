@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 extension NSPasteboard.PasteboardType {
     /// Private type for a chat in flight — never plain text, so a drop on a prompt box cannot
     /// arrive as pasted words.
-    static let tailscodeChat = NSPasteboard.PasteboardType(PaneDragPayload.identifier)
+    static let tailscodeChat = privateType(PaneDragPayload.identifier)
     /// Private type for a pane in flight, distinct from a chat's so a chat target never mistakes a
     /// pane for a chat and a prompt box never receives it as words.
     static let tailscodePane = privateType(PaneMovePayload.identifier)
