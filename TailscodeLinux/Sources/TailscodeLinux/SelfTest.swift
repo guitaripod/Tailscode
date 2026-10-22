@@ -3678,14 +3678,16 @@ public enum SelfTest {
         else { throw SelfTestFailure("the share window does not offer its ways out: \(dialog.offers)") }
         guard let first = dialog.previewSize, first.width * 9 == first.height * 16 || abs(Double(first.width) / Double(first.height) - 16.0 / 9.0) < 0.01
         else { throw SelfTestFailure("a post preview is not 16:9: \(String(describing: dialog.previewSize))") }
-        guard !dialog.isEnabled(.tools), !dialog.isOn(.tools), dialog.isEnabled(.models) else {
+        guard !dialog.isEnabled(.tools), !dialog.isOn(.tools), dialog.isEnabled(.tokens),
+            dialog.isOn(.local)
+        else {
             throw SelfTestFailure("a module the account cannot fill is offered")
         }
         guard dialog.caption.hasPrefix(analytics.headline), dialog.altText.contains(analytics.windowLabel)
         else { throw SelfTestFailure("the caption or the description lost the headline") }
         let before = dialog.altText
-        dialog.press(.models)
-        guard !dialog.isOn(.models), dialog.altText != before else {
+        dialog.press(.tokens)
+        guard !dialog.isOn(.tokens), dialog.altText != before else {
             throw SelfTestFailure("switching a module off changed nothing")
         }
         dialog.choose(.square)

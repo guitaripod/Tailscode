@@ -224,7 +224,7 @@ struct UsageAnalyticsTests {
             UsageAnalytics(
                 servers: [("studio", report(daily: daily))], now: now, calendar: calendar))
         #expect(analytics.records.contains { $0.id == "streak" && $0.value.contains("2") })
-        #expect(analytics.perDayLine.contains("3 active days"))
+        #expect(analytics.perDayLine?.contains("3 active days") == true)
     }
 
     @Test("Every server too old is still a surface, not a vanished account")
@@ -260,7 +260,7 @@ struct UsageAnalyticsTests {
                     )
                 ], now: now, calendar: calendar))
         #expect(analytics.models.first?.detail.contains("$3.00 a turn") == true)
-        #expect(analytics.perDayLine.contains("today"))
+        #expect(analytics.perDayLine?.contains("today") == true)
         #expect(analytics.cacheLine?.contains("came from cache") == true)
     }
 

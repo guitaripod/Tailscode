@@ -14,16 +14,21 @@ extension AnalyticsShare {
         let shown = selection.fit(analytics).shown
         var head = "\(analytics.headline) · \(analytics.windowLabel)"
         if let delta = analytics.deltaLine { head += "\n\(delta)" }
-        let estimate = analytics.headline == analytics.totalMoney
-            ? Localized.text("API-equivalent estimate · not a bill") : nil
+        let estimate = Localized.text("API-equivalent estimate · not a bill")
+        let reserve = Self.xLength("\n" + estimate)
+        var estimating = analytics.headline == analytics.totalMoney
         var lines = [head]
-        let reserve = estimate.map { Self.xLength("\n" + $0) } ?? 0
-        for module in ShareModule.priority where shown.contains(module) {
+        for module in ShareModule.priority(for: analytics) where shown.contains(module) {
             guard let line = captionLine(for: module) else { continue }
+            let carriesMoney = line.contains("$")
             let candidate = (lines + [line]).joined(separator: "\n")
-            if Self.xLength(candidate) + reserve <= Self.captionLimit { lines.append(line) }
+            let held = estimating || carriesMoney ? reserve : 0
+            if Self.xLength(candidate) + held <= Self.captionLimit {
+                lines.append(line)
+                estimating = estimating || carriesMoney
+            }
         }
-        if let estimate {
+        if estimating {
             let candidate = (lines + [estimate]).joined(separator: "\n")
             if Self.xLength(candidate) <= Self.captionLimit { lines.append(estimate) }
         }
@@ -42,7 +47,8 @@ extension AnalyticsShare {
             "\(analytics.window.surfaceTitle): \(analytics.headline), \(analytics.windowLabel).",
         ]
         if let delta = analytics.deltaLine { parts.append("\(delta).") }
-        parts.append("\(analytics.perDayLine).")
+        if let perDay = analytics.perDayLine { parts.append("\(perDay).") }
+        if let hosted = analytics.hostedLine { parts.append("\(hosted).") }
         parts.append("\(Localized.text("API-equivalent estimate · not a bill")).")
         if let coverage = analytics.coverageNote { parts.append(coverage) }
         if !analytics.missingServers.isEmpty {
@@ -67,6 +73,9 @@ extension AnalyticsShare {
                 busiest.share > 0, let money = busiest.money
             else { return nil }
             return Localized.text("Busiest on %@ · %@", busiest.label, money)
+        case .local:
+            guard let share = Self.localShare(analytics) else { return nil }
+            return Localized.text("%@ of it ran on my own machine", share)
         case .models: return list(Localized.text("Models"), analytics.models, count: 3)
         case .providers: return list(Localized.text("Providers"), analytics.providers, count: 3)
         case .projects: return list(Localized.text("Projects"), analytics.projects, count: 3)
@@ -93,6 +102,13 @@ extension AnalyticsShare {
         case .week:
             guard let line = captionLine(for: .week) else { return nil }
             return "\(Localized.text("The week")): \(line)."
+        case .local:
+            guard let work = analytics.localWork else { return nil }
+            let models = work.models.prefix(Card.meterLimit).map { meter in
+                meter.speed.map { "\(meter.label) (\($0))" } ?? meter.label
+            }
+            return "\(work.title): \(work.headline). \(Self.statLine(work)). "
+                + "\(models.joined(separator: ", "))."
         case .models: return meterAlt(Localized.text("Models"), analytics.models)
         case .providers: return meterAlt(Localized.text("Providers"), analytics.providers)
         case .projects: return meterAlt(Localized.text("Projects"), analytics.projects)
@@ -113,6 +129,11 @@ extension AnalyticsShare {
             let lines = AnalyticsShare.standouts(analytics).prefix(3)
             return lines.isEmpty ? nil : "\(Localized.text("What stands out")): \(lines.joined(separator: " "))"
         }
+    }
+
+    private static func localShare(_ analytics: UsageAnalytics) -> String? {
+        let label = Localized.text("Share of work")
+        return analytics.localWork?.stats.first { $0.label == label }?.value
     }
 
     private func list(_ title: String, _ meters: [UsageAnalytics.Meter], count: Int) -> String? {

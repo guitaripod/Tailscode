@@ -254,12 +254,14 @@ final class AnalyticsViewController: UIViewController {
 
         let window = label(
             analytics.windowLabel, role: .panelDetail, color: Theme.Color.secondaryLabel)
-        let perDay = label(
-            analytics.perDayLine, role: .panelLabel, color: Theme.Color.secondaryLabel)
         let activity = label(
             analytics.activityLine, role: .metricDetail, color: Theme.Color.secondaryLabel)
 
-        var views: [UIView] = [windowPicker, money, window, perDay, activity]
+        var views: [UIView] = [windowPicker, money, window, activity]
+        if let perDayLine = analytics.perDayLine {
+            views.insert(
+                label(perDayLine, role: .panelLabel, color: Theme.Color.secondaryLabel), at: 3)
+        }
         if let hostedLine = analytics.hostedLine {
             views.insert(
                 label(hostedLine, role: .metricDetail, color: Theme.Color.tertiaryLabel), at: 2)

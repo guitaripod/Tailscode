@@ -169,12 +169,17 @@ public struct UsageAnalytics: Sendable, Equatable {
     /// leads with ``localWork`` and the models.
     public let isLocalLed: Bool
     public let windowLabel: String
-    public let perDayLine: String
+    /// The rate over the days that had work in them, or nil when no day did: a rate over zero
+    /// days is not a sentence, and one over a single day reads in the singular.
+    public let perDayLine: String?
     public let activityLine: String
     public let deltaLine: String?
     public let trend: Trend
     public let days: [DayBar]
     public let weekdays: [Meter]
+    /// The one-letter name of each weekday in the language of the calendar the analytics were
+    /// read with, Monday first like ``weekdays``, for a chart too narrow for the short name.
+    public let weekdayInitials: [String]
     public let hours: [HourBar]
     public let clockLine: String?
     public let models: [Meter]
@@ -380,15 +385,14 @@ public struct UsageAnalytics: Sendable, Equatable {
             : nil
         self.windowLabel = window.label
         let active = Double(max(1, totals.activeDays))
-        var perDay = Localized.text(
-            "%@ a day, over %d active days",
-            priced
+        let perDay = Self.perDay(
+            rate: priced
                 ? prefix + SessionSpend.money(totals.costUSD / active)
                 : StatusFacts.tokens(Int(Double(work(tokens)) / active)),
-            totals.activeDays)
-        if let today = bars.last, today.isToday, priced ? today.costUSD > 0 : today.tokens > 0 {
-            perDay += Localized.text(" · today %@", today.value)
-        }
+            activeDays: totals.activeDays,
+            today: bars.last.flatMap { today in
+                today.isToday && (priced ? today.costUSD > 0 : today.tokens > 0) ? today.value : nil
+            })
         self.perDayLine = perDay
         // Only the counts somebody actually measured. A server that keeps a running total per
         // conversation and no record of the turns inside reports zero turns, and a zero drawn as
@@ -406,6 +410,7 @@ public struct UsageAnalytics: Sendable, Equatable {
         (self.deltaLine, self.trend) = Self.delta(
             days: dayKeys, dayCost: dayCost, dayTokens: dayTokens, priced: priced, window: window)
 
+        self.weekdayInitials = Self.weekdayInitials(calendar: calendar)
         self.weekdays = Self.weekdayMeters(
             dayCost: dayCost, dayTokens: dayTokens, priced: priced, prefix: prefix,
             calendar: calendar)
@@ -1078,6 +1083,24 @@ public struct UsageAnalytics: Sendable, Equatable {
 
     /// Monday first regardless of locale: the chart reads as a work week, and the weekend
     /// belongs together at its end.
+    static func weekdayInitials(calendar: Calendar) -> [String] {
+        let symbols = calendar.veryShortStandaloneWeekdaySymbols
+        return (0..<7).map { index in
+            let weekdayIndex = (index + 1) % 7
+            return symbols.indices.contains(weekdayIndex) ? symbols[weekdayIndex] : ""
+        }
+    }
+
+    static func perDay(rate: String, activeDays: Int, today: String?) -> String? {
+        guard activeDays > 0 else { return nil }
+        var line =
+            activeDays == 1
+            ? Localized.text("%@ a day, over 1 active day", rate)
+            : Localized.text("%@ a day, over %d active days", rate, activeDays)
+        if let today { line += Localized.text(" · today %@", today) }
+        return line
+    }
+
     private static func weekdayMeters(
         dayCost: [String: Double], dayTokens: [String: Int], priced: Bool, prefix: String,
         calendar: Calendar

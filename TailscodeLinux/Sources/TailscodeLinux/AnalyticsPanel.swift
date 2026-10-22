@@ -316,8 +316,10 @@ enum AnalyticsPanel {
         let money = Gtk.label(analytics.headline, css: "analytics-total", selectable: false)
         gtk_label_set_ellipsize(op(money), PANGO_ELLIPSIZE_NONE)
         gtk_box_append(ptr(card), money)
-        gtk_box_append(
-            ptr(card), Gtk.label(analytics.perDayLine, css: "usage-detail-key", selectable: false))
+        if let perDay = analytics.perDayLine {
+            gtk_box_append(
+                ptr(card), Gtk.label(perDay, css: "usage-detail-key", selectable: false))
+        }
         let activity = Gtk.label(
             analytics.activityLine, css: "usage-detail-key", wrap: true, selectable: false)
         gtk_box_append(ptr(card), activity)

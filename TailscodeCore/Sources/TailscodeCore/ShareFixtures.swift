@@ -4,13 +4,14 @@ import Foundation
 /// Accounts to lay the share card out against, one per way a ledger can be awkward: the rich
 /// month it is designed for, a single model, twelve of them, names far longer than a tile,
 /// no chart to draw, an account that spent nothing because every model ran on its own
-/// machine, a window with one active day, a server that could only count conversations, and the
-/// two long windows. Deterministic (a fixed clock, a UTC calendar, a seeded generator), so a
+/// machine, a window with one active day, a server that could only count conversations, a month
+/// led by two codenamed models on the owner's GPU beside a little hosted work (with and without
+/// speeds the ledger has measured), and the two long windows. Deterministic (a fixed clock, a UTC calendar, a seeded generator), so a
 /// test, a dump of PNGs on any client and a screenshot all look at the same accounts.
 public enum ShareFixtures {
     public static let names = [
         "rich", "oneModel", "twelveModels", "longNames", "noDaily", "localOnly", "tinyWindow",
-        "partialCoverage", "quarter", "year", "localSessions",
+        "partialCoverage", "quarter", "year", "localSessions", "localMixed", "localSpeeds",
     ]
 
     public static var now: Date {
@@ -92,7 +93,7 @@ public enum ShareFixtures {
                                 Model("ollama/qwen3-coder:30b", 0.7, rate: 0),
                                 Model("ollama/gpt-oss:120b", 0.3, rate: 0),
                             ], projects: [Project("pulse-server", 0.6), Project("blog", 0.4)],
-                            priced: false)
+                            priced: false, modelsHoldEveryToken: true)
                     )
                 ])
         case "localSessions":
@@ -103,9 +104,17 @@ public enum ShareFixtures {
                         report(
                             models: [Model("ollama/qwen3-coder:30b", 1, rate: 0)],
                             projects: [Project("pulse-server", 1)], priced: false,
-                            coverage: .sessionTotals)
+                            modelsHoldEveryToken: true, coverage: .sessionTotals)
                     )
                 ])
+        case "localMixed":
+            return build(
+                servers: [("arch · opencode", localLedReport())], names: localNames)
+        case "localSpeeds":
+            return build(
+                servers: [("arch · opencode", localLedReport())], names: localNames,
+                contexts: ["llama-server/bolt": 262_144, "llama-server/pennyroyal": 131_072],
+                speeds: measuredSpeeds())
         case "tinyWindow":
             return build(
                 servers: [("studio", report(spanDays: 7, activeDays: 1, toolCount: 2))],
@@ -152,13 +161,48 @@ public enum ShareFixtures {
         }
     }
 
+    private static let localNames = [
+        "llama-server/bolt": "Bolt", "llama-server/pennyroyal": "Pennyroyal",
+    ]
+
+    private static func localLedReport() -> UsageAnalyticsReport {
+        report(
+            models: [
+                Model("llama-server/bolt", 0.55, rate: 0),
+                Model("llama-server/pennyroyal", 0.3, rate: 0),
+                Model("claude-opus-5", 0.15, rate: 1),
+            ], costScale: 0.04, modelsHoldEveryToken: true)
+    }
+
+    /// A speed ledger that exists only for the fixture: the suite is emptied on every call, so
+    /// what a fixture reads never depends on the speeds of the machine it is drawn on.
+    private static func speedLedger() -> ModelSpeedLedger {
+        let name = "tailscode.share-fixtures"
+        let defaults = UserDefaults(suiteName: name) ?? .standard
+        defaults.removePersistentDomain(forName: name)
+        return ModelSpeedLedger(defaults: defaults)
+    }
+
+    private static func measuredSpeeds() -> ModelSpeedLedger {
+        let ledger = speedLedger()
+        for (model, tokens) in [("bolt", 740.0), ("pennyroyal", 410.0)] {
+            for index in 0..<4 {
+                ledger.record(
+                    turnID: "\(model)-\(index)", model: model, tokens: Int(tokens), seconds: 10)
+            }
+        }
+        return ledger
+    }
+
     private static func build(
         servers: [(String, UsageAnalyticsReport)], window: UsageWindow = .month,
-        missing: [String] = []
+        missing: [String] = [], names: [String: String] = [:],
+        contexts: [String: Int] = [:], speeds: ModelSpeedLedger? = nil
     ) -> UsageAnalytics? {
         UsageAnalytics(
             servers: servers, missingServers: missing, window: window, now: now,
-            calendar: calendar)
+            calendar: calendar, modelNames: names, contextWindows: contexts,
+            speeds: speeds ?? speedLedger())
     }
 
     private static func key(daysAgo: Int) -> String {
@@ -184,8 +228,9 @@ public enum ShareFixtures {
             Project("blog", 0.1),
         ],
         tools: [String] = [],
-        toolCount: Int = 7, daily: Bool = true, priced: Bool = true,
-        coverage: UsageAnalyticsReport.Coverage? = nil, sessionTitle: String? = nil
+        toolCount: Int = 7, daily: Bool = true, priced: Bool = true, costScale: Double = 1,
+        modelsHoldEveryToken: Bool = false, coverage: UsageAnalyticsReport.Coverage? = nil,
+        sessionTitle: String? = nil
     ) -> UsageAnalyticsReport {
         var seed: UInt64 = 0x5EED
         func noise() -> Double {
@@ -209,7 +254,7 @@ public enum ShareFixtures {
                 guard recent > spanDays - kept - 1, noise() > 0.18 else { continue }
             }
             let heat = 0.35 + noise() * 0.9 + (offset == 0 ? 0.4 : 0)
-            let dayCost = priced ? (20 + 70 * heat).rounded() : 0
+            let dayCost = priced ? ((20 + 70 * heat) * costScale).rounded() : 0
             let dayTurns = measured ? Int(9 + 38 * heat) : 0
             let tokens = UsageAnalyticsReport.Tokens(
                 input: Int(41_000 * heat), output: Int(210_000 * heat),
@@ -238,7 +283,9 @@ public enum ShareFixtures {
                 tokens: UsageAnalyticsReport.Tokens(
                     input: Int(Double(total.input) * share),
                     output: Int(Double(total.output) * share),
-                    cacheRead: Int(Double(total.cacheRead) * share)),
+                    cacheRead: Int(Double(total.cacheRead) * share),
+                    cacheWrite5m: modelsHoldEveryToken ? Int(Double(total.cacheWrite5m) * share) : 0,
+                    cacheWrite1h: modelsHoldEveryToken ? Int(Double(total.cacheWrite1h) * share) : 0),
                 costUSD: priced ? cost * model.rate : 0)
         }
         let projectSum = projects.reduce(0) { $0 + $1.weight }

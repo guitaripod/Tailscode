@@ -36,13 +36,15 @@ struct ShareLayoutTests {
             ("oneModel", 67, 2008.28, 16054255526380622137),
             ("twelveModels", 83, 2433.88, 16136486078972869222),
             ("longNames", 81, 2398.28, 10786998483671902042),
-            ("noDaily", 65, 1851.0, 13889980715033891329),
-            ("localOnly", 67, 1974.6, 3167643613813908979),
-            ("tinyWindow", 81, 2394.28, 7350596591293990516),
+            ("noDaily", 63, 1809.16, 9618534230326994709),
+            ("localOnly", 77, 2223.16, 17244110624263107331),
+            ("tinyWindow", 81, 2394.28, 3613661625279450389),
             ("partialCoverage", 93, 2692.68, 4610502490482796064),
             ("quarter", 87, 2566.28, 4762300423976403436),
             ("year", 87, 2566.28, 6934635237041340523),
-            ("localSessions", 47, 1423.96, 3960120816126441618),
+            ("localSessions", 55, 1616.52, 2490236975596223718),
+            ("localMixed", 97, 2795.56, 11935090031087450198),
+            ("localSpeeds", 97, 2795.56, 13402434626207899531),
         ]
         for (name, count, height, hash) in golden {
             let analytics = try #require(ShareFixtures.analytics(named: name))
@@ -53,7 +55,8 @@ struct ShareLayoutTests {
             #expect(abs(package.card.height - height) < 0.01, "\(name) height")
             var legacy = ShareSelection(format: .long, style: .app)
             legacy = ShareSelection(
-                format: .long, style: .app, chosen: [.long: ShareFormat.long.curated])
+                format: .long, style: .app,
+                chosen: [.long: ShareFormat.long.curated(for: analytics)])
             let chosen = package.card(legacy)
             #expect(chosen.blocks == package.card.blocks, "\(name) selection card")
             #expect(chosen.panels.count == 1)

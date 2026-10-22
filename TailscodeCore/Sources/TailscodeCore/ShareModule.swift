@@ -80,6 +80,22 @@ public enum ShareFormat: String, CaseIterable, Sendable, Codable {
             ]
         }
     }
+
+    /// What the format opens with for an account. A month spent mostly on the person's own
+    /// machine is told by the section that says so, so a local-led account trades the token
+    /// tiers (cache re-reads on a model that costs nothing) for it; every other account opens on
+    /// ``curated`` exactly.
+    public func curated(for analytics: UsageAnalytics) -> [ShareModule] {
+        guard analytics.isLocalLed, ShareModule.local.isAvailable(in: analytics) else {
+            return curated
+        }
+        let second: ShareModule = ShareModule.localNamesEveryModel(in: analytics) ? .tokens : .models
+        switch self {
+        case .post, .square: return [.daily, .local, second, .records]
+        case .portrait: return [.activity, .daily, .week, .local, second, .records]
+        case .long: return ShareSelection.canonical(curated + [.local])
+        }
+    }
 }
 
 /// One section of the picture a person can switch on or off. The headline number, the window and
@@ -90,6 +106,7 @@ public enum ShareModule: String, CaseIterable, Sendable, Codable {
     case activity
     case daily
     case week
+    case local
     case providers
     case models
     case projects
@@ -106,8 +123,28 @@ public enum ShareModule: String, CaseIterable, Sendable, Codable {
     /// month, the models, the records — before the detail that explains it.
     public static let priority: [ShareModule] = [
         .daily, .models, .records, .tokens, .activity, .week, .providers, .projects, .tools,
-        .insights,
+        .insights, .local,
     ]
+
+    /// ``priority`` for an account: where most of the work ran on the person's own machine, that
+    /// section is the story and ranks right after the chart, and everywhere else it is a module
+    /// that is offered but never chosen for the person.
+    public static func priority(for analytics: UsageAnalytics) -> [ShareModule] {
+        guard analytics.isLocalLed else { return priority }
+        var ranked = priority.filter { $0 != .local }
+        if localNamesEveryModel(in: analytics) {
+            ranked.removeAll { $0 == .models }
+            ranked.append(.models)
+        }
+        ranked.insert(.local, at: 1)
+        return ranked
+    }
+
+    /// Whether the local section already names every model the account used, so a models tile
+    /// beside it would say the same rows again: every model ran on the person's own machine.
+    static func localNamesEveryModel(in analytics: UsageAnalytics) -> Bool {
+        analytics.localWork != nil && analytics.models.allSatisfy { $0.door == .local }
+    }
 
     public var isSelectable: Bool { self != .hero }
 
@@ -118,6 +155,7 @@ public enum ShareModule: String, CaseIterable, Sendable, Codable {
         case .activity: return Localized.text("Activity")
         case .daily: return Localized.text("Over time")
         case .week: return Localized.text("Week")
+        case .local: return Localized.text("On your own machine")
         case .models: return Localized.text("Models")
         case .providers: return Localized.text("Providers")
         case .projects: return Localized.text("Projects")
@@ -135,6 +173,7 @@ public enum ShareModule: String, CaseIterable, Sendable, Codable {
         case .activity: return "bolt.fill"
         case .daily: return "chart.bar.fill"
         case .week: return "calendar"
+        case .local: return "desktopcomputer"
         case .models: return "cpu"
         case .providers: return "server.rack"
         case .projects: return "folder"
@@ -152,6 +191,7 @@ public enum ShareModule: String, CaseIterable, Sendable, Codable {
         case .hero, .activity: return true
         case .daily: return analytics.days.contains { $0.share > 0 }
         case .week: return analytics.weekdays.contains { $0.share > 0 }
+        case .local: return analytics.localWork != nil
         case .models: return !analytics.models.isEmpty
         case .providers: return !analytics.providers.isEmpty
         case .projects: return !analytics.projects.isEmpty
@@ -168,6 +208,7 @@ public enum ShareModule: String, CaseIterable, Sendable, Codable {
         switch self {
         case .hero, .activity: return nil
         case .daily, .week: return Localized.text("No activity in this window")
+        case .local: return Localized.text("Nothing ran on your own machine")
         case .models: return Localized.text("No model usage in this window")
         case .providers: return Localized.text("All the work went through one provider")
         case .projects: return Localized.text("No project in this window")
@@ -191,6 +232,7 @@ public enum ShareModule: String, CaseIterable, Sendable, Codable {
         case .hero: return Footprint(width: 480, height: 300)
         case .activity: rows = 2
         case .daily, .week: rows = 2.4
+        case .local: rows = 3
         case .models, .providers, .projects, .tools, .tokens, .records: rows = 2
         case .insights: rows = 2
         }
@@ -263,6 +305,12 @@ public struct ShareSelection: Sendable, Equatable {
     /// The modules asked for in the current format, whether or not the account can fill them.
     public var requested: [ShareModule] { chosen[format] ?? format.curated }
 
+    /// ``requested`` for an account: a format nobody has touched wears what it opens with for
+    /// that account (``ShareFormat/curated(for:)``).
+    public func requested(for analytics: UsageAnalytics) -> [ShareModule] {
+        chosen[format] ?? format.curated(for: analytics)
+    }
+
     /// Whether the person has changed this format's modules, or it still wears its curated set.
     public var isCustomised: Bool { chosen[format] != nil }
 
@@ -276,21 +324,22 @@ public struct ShareSelection: Sendable, Equatable {
     /// (``ShareModule/priority``). A curated set is filled up to the format's capacity from the
     /// modules the account does have, so a thin account still gets a full poster.
     public func fit(_ analytics: UsageAnalytics) -> ShareFit {
-        let asked = requested
+        let asked = requested(for: analytics)
+        let priority = ShareModule.priority(for: analytics)
         var unavailable: [ShareModule: String] = [:]
         for module in ShareModule.selectable {
             if let reason = module.unavailableReason(in: analytics) { unavailable[module] = reason }
         }
         var usable = asked.filter { unavailable[$0] == nil }
         if !isCustomised, let capacity = format.capacity, usable.count < capacity {
-            for module in ShareModule.priority
+            for module in priority
             where usable.count < capacity && unavailable[module] == nil && !usable.contains(module) {
                 usable.append(module)
             }
         }
         var dropped: [ShareModule] = []
         if let capacity = format.capacity, usable.count > capacity {
-            let keep = Set(ShareModule.priority.filter(usable.contains).prefix(capacity))
+            let keep = Set(priority.filter(usable.contains).prefix(capacity))
             dropped = Self.canonical(usable.filter { !keep.contains($0) })
             usable = usable.filter(keep.contains)
         }

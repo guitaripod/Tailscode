@@ -111,7 +111,7 @@ struct UsageLocalWorkTests {
 
     private func dump(_ analytics: UsageAnalytics) -> String {
         var lines: [String] = [
-            analytics.headline, analytics.totalMoney, analytics.windowLabel, analytics.perDayLine,
+            analytics.headline, analytics.totalMoney, analytics.windowLabel, analytics.perDayLine ?? "-",
             analytics.activityLine, analytics.deltaLine ?? "-", analytics.modelsLine ?? "-",
             analytics.clockLine ?? "-", analytics.toolsLine ?? "-", analytics.cacheLine ?? "-",
             analytics.source, analytics.coverageNote ?? "-",
@@ -169,7 +169,7 @@ struct UsageLocalWorkTests {
         #expect(result.isLocalLed)
         #expect(result.headline == "53.0k tokens")
         #expect(result.hostedLine == "$3.20 of hosted spend, an estimate")
-        #expect(result.perDayLine.contains("$") == false)
+        #expect(result.perDayLine?.contains("$") == false)
         #expect(result.days.filter { $0.share > 0 }.allSatisfy { $0.value.hasSuffix("k") || !$0.value.contains("$") })
         #expect(result.weekdays.allSatisfy { $0.money?.contains("$") == false })
         #expect(result.peakDay?.value.contains("$") == false)

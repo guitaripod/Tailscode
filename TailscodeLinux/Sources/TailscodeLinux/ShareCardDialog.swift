@@ -331,6 +331,7 @@ final class ShareCardDialog: @unchecked Sendable {
         case .activity: return "emblem-system-symbolic"
         case .daily: return "view-continuous-symbolic"
         case .week: return "x-office-calendar-symbolic"
+        case .local: return "computer-symbolic"
         case .providers: return "network-server-symbolic"
         case .models: return "applications-engineering-symbolic"
         case .projects: return "folder-symbolic"

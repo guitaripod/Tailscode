@@ -258,12 +258,16 @@ final class AnalyticsWindowController: NSWindowController {
             color: MacTheme.Color.tertiaryLabel)
         let money = RowKit.label(
             analytics.headline, font: Self.heroFont(), color: MacTheme.Color.label)
-        let perDay = RowKit.label(
-            analytics.perDayLine, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.secondaryLabel)
         let activity = RowKit.label(
             analytics.activityLine, font: MacTheme.Ramp.font(.panelFootnote),
             color: MacTheme.Color.secondaryLabel)
-        var views: [NSView] = [windowPicker, windowLabel, money, perDay, activity]
+        var views: [NSView] = [windowPicker, windowLabel, money, activity]
+        if let perDayLine = analytics.perDayLine {
+            views.insert(
+                RowKit.label(
+                    perDayLine, font: MacTheme.Ramp.font(.panelLabel),
+                    color: MacTheme.Color.secondaryLabel), at: 3)
+        }
         if let hosted = analytics.hostedLine {
             views.insert(caption(hosted), at: 3)
         }

@@ -287,7 +287,6 @@ private struct Painter {
         let column = metrics.contentWidth / Double(bars.count)
         let barWidth = min(column * 0.45, 28 * s)
         let chartHeight = metrics.weekdayHeight
-        let letters = ["M", "T", "W", "T", "F", "S", "S"]
         for (index, bar) in bars.enumerated() {
             let middle = x + column * (Double(index) + 0.5)
             let height = bar.isEmpty ? 3 : max(4 * s, chartHeight * bar.share)
@@ -298,11 +297,9 @@ private struct Painter {
                 with: bar.isEmpty
                     ? color(palette.rule)
                     : (peak ? color(palette.accent) : color(palette.info, alpha: 0.85)))
-            if index < letters.count {
-                text(
-                    letters[index], x: middle - column / 2, y: y + chartHeight + 6 * s, width: column,
-                    size: Card.axisSize * s, weight: .medium, ink: palette.textDim, alignment: .center)
-            }
+            text(
+                bar.label, x: middle - column / 2, y: y + chartHeight + 6 * s, width: column,
+                size: Card.axisSize * s, weight: .medium, ink: palette.textDim, alignment: .center)
         }
     }
 

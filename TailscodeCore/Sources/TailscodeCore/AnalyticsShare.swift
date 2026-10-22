@@ -124,6 +124,9 @@ public struct AnalyticsShare: Sendable, Equatable {
         /// The tallest bar, which a tile paints in the accent: the one thing in a chart the eye
         /// is meant to land on. The full-length column marks today instead and leaves this false.
         public var isPeak: Bool = false
+        /// The caption under a weekday column: the localized one-letter name of the day. Empty
+        /// for a bar that has no caption of its own.
+        public var label: String = ""
     }
 
     public struct MeterBar: Sendable, Equatable {
@@ -292,7 +295,7 @@ public struct AnalyticsShare: Sendable, Equatable {
 
         /// The full-length column with the modules it has always had.
         public init(analytics: UsageAnalytics, palette: Palette = .shareDefault) {
-            let built = Self.longBlocks(for: analytics, modules: Set(ShareFormat.long.curated))
+            let built = Self.longBlocks(for: analytics, modules: Set(ShareFormat.long.curated(for: analytics)))
             self.init(blocks: built, palette: palette, height: Self.measure(built))
         }
 
@@ -322,9 +325,15 @@ public struct AnalyticsShare: Sendable, Equatable {
                 .hero(analytics.headline),
                 .spacer(10),
                 .dim(analytics.windowLabel),
-                .spacer(6),
-                .body(analytics.perDayLine),
             ]
+            if let hosted = analytics.hostedLine {
+                out.append(.spacer(6))
+                out.append(.dim(hosted))
+            }
+            if let perDay = analytics.perDayLine {
+                out.append(.spacer(6))
+                out.append(.body(perDay))
+            }
             if modules.contains(.activity) {
                 out.append(.spacer(4))
                 out.append(.dim(analytics.activityLine))
@@ -364,11 +373,7 @@ public struct AnalyticsShare: Sendable, Equatable {
                 out.append(.spacer(28))
                 out.append(.section(Localized.text("The week")))
                 out.append(.spacer(14))
-                out.append(
-                    .weekday(
-                        analytics.weekdays.map {
-                            DayBar(share: $0.share, isToday: false, isEmpty: $0.share <= 0)
-                        }))
+                out.append(.weekday(weekdayBars(analytics)))
                 if let busiest = analytics.weekdays.max(by: { $0.share < $1.share }),
                     busiest.share > 0, let money = busiest.money
                 {
@@ -377,6 +382,25 @@ public struct AnalyticsShare: Sendable, Equatable {
                 }
             }
             var drawnTopics: Set<UsageAnalytics.Insight.Topic> = [.cache]
+            if modules.contains(.local), let work = analytics.localWork {
+                out.append(.spacer(28))
+                out.append(.section(work.title))
+                out.append(.spacer(10))
+                out.append(.body(work.headline))
+                let stats = localStats(work)
+                if !stats.isEmpty {
+                    out.append(.spacer(6))
+                    out.append(.dim(stats.map { "\($0.label) \($0.value)" }.joined(separator: " · ")))
+                }
+                for (index, meter) in work.models.enumerated() {
+                    out.append(.spacer(12))
+                    out.append(.meter(localMeter(meter, hot: index == 0)))
+                }
+                if let caption = work.caption {
+                    out.append(.spacer(10))
+                    out.append(.dim(caption))
+                }
+            }
             if modules.contains(.providers), !analytics.providers.isEmpty {
                 out.append(
                     contentsOf: meterSection(
@@ -456,6 +480,38 @@ public struct AnalyticsShare: Sendable, Equatable {
                             "Not counted: %@", analytics.missingServers.joined(separator: ", "))))
             }
             return out
+        }
+
+        /// The seven columns of the week, Monday first, each captioned with the calendar's own
+        /// one-letter day so no painter has to know a language.
+        static func weekdayBars(_ analytics: UsageAnalytics) -> [DayBar] {
+            analytics.weekdays.enumerated().map { index, day in
+                DayBar(
+                    share: day.share, isToday: false, isEmpty: day.share <= 0,
+                    label: analytics.weekdayInitials.indices.contains(index)
+                        ? analytics.weekdayInitials[index] : "")
+            }
+        }
+
+        /// The numbers a local-work section leads with. The amount of work is the headline's, so
+        /// it only returns as a stat when there is nothing else to count beside the share.
+        static func localStats(_ work: UsageAnalytics.LocalWork) -> [Stat] {
+            let amount = Localized.text("Work")
+            var rest = work.stats.filter { $0.label != amount }
+            if rest.count < 2 { rest = work.stats }
+            return rest.map { Stat(value: $0.value, label: $0.label) }
+        }
+
+        /// A local model as a meter row: the speed where the ledger has one is the trailing
+        /// value, and the tokens lead the detail because the bar is drawn by them. The word
+        /// "Local" is left off every row since the section's title already says it.
+        static func localMeter(_ meter: UsageAnalytics.Meter, hot: Bool) -> MeterBar {
+            let phrases = meter.detail.components(separatedBy: " · ")
+            let tokens = phrases.filter { split($0, format: "%@ tokens") != nil }
+            let others = phrases.filter { split($0, format: "%@ tokens") == nil }
+            return MeterBar(
+                label: meter.label, detail: (tokens + others).joined(separator: " · "),
+                money: meter.speed, share: meter.share, hot: hot)
         }
 
         static func tone(_ trend: UsageAnalytics.Trend) -> TrendTone {
@@ -673,9 +729,9 @@ public struct AnalyticsShare: Sendable, Equatable {
             analytics.window.surfaceTitle,
             analytics.headline,
             analytics.windowLabel,
-            analytics.perDayLine,
-            analytics.activityLine,
         ]
+        if let perDay = analytics.perDayLine { lines.append(perDay) }
+        lines.append(analytics.activityLine)
         if let hosted = analytics.hostedLine { lines.append(hosted) }
         if let delta = analytics.deltaLine { lines.append(delta) }
         if let peak = analytics.peakDay, peak.share > 0 {
@@ -728,11 +784,13 @@ public struct AnalyticsShare: Sendable, Equatable {
             "# \(analytics.window.surfaceTitle)",
             "",
             "**\(analytics.headline)** · \(analytics.windowLabel)",
-            "",
-            analytics.perDayLine,
-            "",
-            analytics.activityLine,
         ]
+        if let perDay = analytics.perDayLine {
+            lines.append("")
+            lines.append(perDay)
+        }
+        lines.append("")
+        lines.append(analytics.activityLine)
         if let hosted = analytics.hostedLine {
             lines.append("")
             lines.append("_\(hosted)_")
@@ -837,7 +895,7 @@ public struct AnalyticsShare: Sendable, Equatable {
         }
     }
 
-    private static func statLine(_ work: UsageAnalytics.LocalWork) -> String {
+    static func statLine(_ work: UsageAnalytics.LocalWork) -> String {
         work.stats.map { stat in
             "\(stat.label) \(stat.value)" + (stat.detail.map { " \($0)" } ?? "")
         }.joined(separator: " · ")

@@ -11,7 +11,7 @@ translated it and the iOS follow-up remains.
 | Type | File | What it is |
 | --- | --- | --- |
 | `ShareFormat` | `ShareModule.swift` | `post` 1600x900 (X's in-feed image, the default), `square` 1080x1080, `portrait` 1080x1350 (4:5), `long` (1080 wide, as tall as its content). Capacity 4 / 4 / 6 / unlimited. Logical points, rasterise at 2x. |
-| `ShareModule` | `ShareModule.swift` | `hero` (always drawn, not selectable) and the selectable `activity daily week providers models projects tools tokens records insights`, in the one order they are drawn. `isAvailable(in:)`, `unavailableReason(in:)`, `title`, `symbolName` (an SF Symbol name; map it to your icon set), `footprint(in:)`. A one-case follow-up adds `local`: add the case, its `isAvailable`, its builder in `TileBuilder.blocks(for:)`, and its place in `ShareModule.priority`. |
+| `ShareModule` | `ShareModule.swift` | `hero` (always drawn, not selectable) and the selectable `activity daily week local providers models projects tools tokens records insights`, in the one order they are drawn. `isAvailable(in:)`, `unavailableReason(in:)`, `title`, `symbolName` (an SF Symbol name; map it to your icon set), `footprint(in:)`. `local` ("On your own machine", `desktopcomputer`) is available when `analytics.localWork` exists; `priority(for:)` ranks it second for a local-led account and last otherwise, and `ShareFormat.curated(for:)` opens a local-led account's posters on it in place of the token tiers. |
 | `ShareFit` | `ShareModule.swift` | What a choice becomes for an account: `shown`, `dropped` (left out for room), `unavailable` (module to reason), `note` (the sentence for the dropped ones), and `state(of:)` for a chip: `.on`, `.off`, `.blocked(reason)`. |
 | `ShareSelection` | `ShareModule.swift` | `format`, `style: CardStyle`, and each format's own modules (`chosen`; a format nobody has touched wears `ShareFormat.curated`). `fit(_:)`, `toggle(_:in:)` (returns `.added`, `.removed` or `.refused(reason)`), `forgetChoices(for:)`. |
 | `ShareSelectionStore` | `ShareModule.swift` | `load()` / `save(_:)` over `UserDefaults`: `tailscode.shareFormat` and `tailscode.shareModules` (`post=daily,models;long=...`). The look stays `CardStyleSelection` (`tailscode.shareCardStyle`). Linux captures both new keys in `SettingsFile`. |
@@ -23,7 +23,10 @@ translated it and the iOS follow-up remains.
 | `ShareFixtures` | `ShareFixtures.swift` | Deterministic accounts for tests and dumps (below). |
 
 `Block` gained `.stats([Stat])` (two-across big numbers); `DayBar` gained `isPeak` (the one accented
-bar in a tile).
+bar in a tile) and `label` (the weekday chart's one-letter caption, from `UsageAnalytics.weekdayInitials`: the
+calendar's own letters, Monday first; a painter draws `label` and keeps no list of letters). The full-length
+column never emits `.stats`: its local section is a `.dim` line of the same numbers, so the unchanged Mac and
+iOS painters draw all of it.
 
 ## How a painter walks a card
 
@@ -60,7 +63,7 @@ Block drawing, in the reference painter's terms (sizes are the constants in `Car
   semibold right (tabular), a rounded track in `rule` with the fill in `accent` for the `hot` row and
   `info` for the rest.
 - `daily`: bars at `barGeometry`, `isPeak`/`isToday` in `accent`, empty in `rule`, others `info` at
-  0.85; the axis labels 6 pt under the chart. `weekday`: seven columns, the tallest in `accent`.
+  0.85; the axis labels 6 pt under the chart. `weekday`: seven columns, the tallest in `accent`, each captioned with its bar's `label`.
 - `record`: glyph in `special`, caption (dim, medium) over the value (semibold, tabular).
 - `stats`: `Card.statColumns` columns, value bold tabular (44 pt x scale) over its label (textDim).
 - Accent is used for exactly one thing per tile: the lead meter, the peak bar, the tallest weekday.
@@ -80,6 +83,8 @@ Grid for n tiles: 1 fills the area; 2 stack; odd counts open with one wide tile 
 even counts are rows of two (`PosterPlan.grid`). Tiles are raised rounded cards (corner 28 / 24,
 inset 28 / 24). The footer is the last line at the bottom margin, 20 pt, so it reads at timeline
 size. With no module selected the hero takes the whole area.
+A local-led account's hero counts tokens (its unit sits beside the window) and carries `hostedLine` (the dim
+"$3.20 of hosted spend, an estimate") under them; the hero shrinks to make the room.
 
 Text never overflows a panel by construction and by test (`ShareLayoutTests`): a tile builder adds a
 row, a caption or an insight only while the next one still fits the tile's content height, so a meter
@@ -126,8 +131,8 @@ TAILSCODE_SHARE_CARD_OUT=/path/to/dir scripts/dev-linuxapp.sh selftest
 and iOS selftests should dump the same names so the three can be compared side by side.
 
 Fixtures (`ShareFixtures.names`): `rich`, `oneModel`, `twelveModels`, `longNames`, `noDaily`,
-`localOnly` (every model free, local), `localSessions` (a session-totals ledger: no tools, no clock),
-`tinyWindow` (one active day in the week window), `partialCoverage` (two servers, one coarse, one not
+`localOnly` (every model free, local, so local-led), `localSessions` (a session-totals ledger: no tools, no clock),
+`localMixed` (local-led: two codenamed models on the owner's GPU beside a little hosted spend) and `localSpeeds` (the same with measured speeds and context windows; the speed ledger of every fixture is private and emptied per call), `tinyWindow` (one active day in the week window), `partialCoverage` (two servers, one coarse, one not
 counted), `quarter`, `year`.
 
 ## Tests that guard it

@@ -209,18 +209,30 @@ struct PosterPlan {
         let number = parts?.value ?? analytics.headline
         let unit = parts?.label
         let label = [unit, analytics.windowLabel].compactMap { $0 }.joined(separator: " · ")
+        let hosted = analytics.hostedLine
+        let dimSize = Card.dimSize * geometry.heroScale
+        let sharesLine = hosted.map {
+            Card.estimatedWidth("\(label) · \($0)", size: dimSize) <= rect.width
+        } ?? false
 
         let brand: [Block] = [.brand("TAILSCODE"), .spacer(12 * geometry.heroScale)]
         var cluster: [Block] = [
             .kicker(analytics.window.surfaceTitle), .spacer(14 * geometry.heroScale), .hero(number),
-            .spacer(16 * geometry.heroScale), .dim(label),
+            .spacer(16 * geometry.heroScale),
+            .dim(sharesLine ? "\(label) · \(hosted ?? "")" : label),
         ]
+        if let hosted, !sharesLine {
+            cluster.append(.spacer(8 * geometry.heroScale))
+            cluster.append(.dim(hosted))
+        }
         if let delta = analytics.deltaLine {
             cluster.append(.spacer(16 * geometry.heroScale))
             cluster.append(.trend(delta, Card.tone(analytics.trend)))
         }
-        cluster.append(.spacer(8 * geometry.heroScale))
-        cluster.append(.body(analytics.perDayLine))
+        if let perDay = analytics.perDayLine {
+            cluster.append(.spacer(8 * geometry.heroScale))
+            cluster.append(.body(perDay))
+        }
 
         let maximum = geometry.heroMaximum
         metrics.heroSize = 60
@@ -277,6 +289,7 @@ struct TileBuilder {
         case .activity: return activity()
         case .daily: return daily()
         case .week: return week()
+        case .local: return local()
         case .models:
             return meters(
                 Localized.text("Models"), analytics.models.map(meterBar),
@@ -371,6 +384,89 @@ struct TileBuilder {
         }
     }
 
+    private func local() -> [Block] {
+        guard let work = analytics.localWork else { return [] }
+        let stats = Self.fitted(Card.localStats(work), toWidth: width, scale: scale)
+        let bars = work.models.enumerated().map { index, meter in
+            let bar = meterBar(
+                UsageAnalytics.Meter(
+                    label: meter.label, detail: Card.localMeter(meter, hot: false).detail,
+                    money: meter.speed, share: meter.share))
+            return AnalyticsShare.MeterBar(
+                label: bar.label, detail: bar.detail, money: bar.money, share: bar.share,
+                hot: index == 0)
+        }
+        let headline = captionIsWhole(work.headline) ? work.headline : nil
+        var plan = LocalPlan()
+        func grow(_ change: (inout LocalPlan) -> Void) {
+            var attempt = plan
+            change(&attempt)
+            guard attempt != plan,
+                height(localBlocks(work, attempt, headline, stats, bars)) <= budget
+            else { return }
+            plan = attempt
+        }
+        grow { if !stats.isEmpty { $0.statRows = 1 } }
+        grow { if !bars.isEmpty { $0.meterRows = 1 } }
+        grow { $0.meterRows = min(2, bars.count) }
+        grow { if headline != nil { $0.headline = true } }
+        grow { if $0.statRows * Card.statColumns < stats.count { $0.statRows += 1 } }
+        while plan.meterRows < bars.count {
+            let before = plan
+            grow { $0.meterRows += 1 }
+            if plan == before { break }
+        }
+        var out = localBlocks(work, plan, headline, stats, bars)
+        if plan.meterRows == bars.count { appendCaption(work.caption, to: &out) }
+        return out
+    }
+
+    /// What the local tile holds, decided one piece at a time in the order the pieces matter:
+    /// the share and the first model, then the second model, then the headline sentence (the hero
+    /// already says most of it), then the second row of numbers, then the rest of the models.
+    private struct LocalPlan: Equatable {
+        var headline = false
+        var statRows = 0
+        var meterRows = 0
+    }
+
+    private func localBlocks(
+        _ work: UsageAnalytics.LocalWork, _ plan: LocalPlan, _ headline: String?,
+        _ stats: [AnalyticsShare.Stat], _ bars: [AnalyticsShare.MeterBar]
+    ) -> [Block] {
+        var out = title(work.title)
+        var first = true
+        func gap() {
+            if !first { out.append(.spacer(rowGap)) }
+            first = false
+        }
+        if plan.headline, let headline {
+            gap()
+            out.append(.dim(headline))
+        }
+        let shown = Array(stats.prefix(plan.statRows * Card.statColumns))
+        if !shown.isEmpty {
+            gap()
+            out.append(.stats(shown))
+        }
+        for bar in bars.prefix(plan.meterRows) {
+            gap()
+            out.append(.meter(bar))
+        }
+        return out
+    }
+
+    private static func fitted(
+        _ stats: [AnalyticsShare.Stat], toWidth width: Double, scale: Double
+    ) -> [AnalyticsShare.Stat] {
+        let cell = (width - 20 * scale * Double(Card.statColumns - 1)) / Double(Card.statColumns)
+        return stats.map {
+            AnalyticsShare.Stat(
+                value: $0.value,
+                label: Card.truncated($0.label, toWidth: cell, size: Card.statLabelSize * scale))
+        }
+    }
+
     private func activity() -> [Block] {
         let formats = ["%@ turns", "%@ conversations", "%@ tool calls", "%@ tokens"]
         let clauses = analytics.activityLine.components(separatedBy: " · ")
@@ -428,9 +524,7 @@ struct TileBuilder {
 
     private mutating func week() -> [Block] {
         var out = title(Localized.text("The week"))
-        let bars = analytics.weekdays.map {
-            AnalyticsShare.DayBar(share: $0.share, isToday: false, isEmpty: $0.share <= 0)
-        }
+        let bars = Card.weekdayBars(analytics)
         var captions: [String] = []
         if let busiest = analytics.weekdays.max(by: { $0.share < $1.share }), busiest.share > 0,
             let money = busiest.money

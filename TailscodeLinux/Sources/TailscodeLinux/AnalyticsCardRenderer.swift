@@ -241,7 +241,6 @@ private struct Painter {
         let column = metrics.contentWidth / Double(bars.count)
         let barWidth = min(column * 0.45, 28 * s)
         let chartHeight = metrics.weekdayHeight
-        let letters = ["M", "T", "W", "T", "F", "S", "S"]
         for (index, bar) in bars.enumerated() {
             let middle = x + column * (Double(index) + 0.5)
             let height = bar.isEmpty ? 3 : max(4 * s, chartHeight * bar.share)
@@ -249,11 +248,9 @@ private struct Painter {
             BrainPainter.round(cr, middle - barWidth / 2, y + chartHeight - height, barWidth, height, 3 * s)
             setColor(bar.isEmpty ? palette.rule : (peak ? palette.accent : palette.info), alpha: !bar.isEmpty && !peak ? 0.85 : 1)
             cairo_fill(cr)
-            if index < letters.count {
-                text(
-                    letters[index], x: middle - column / 2, y: y + chartHeight + 6 * s, width: column,
-                    size: Card.axisSize * s, weight: .medium, ink: palette.textDim, alignment: 1)
-            }
+            text(
+                bar.label, x: middle - column / 2, y: y + chartHeight + 6 * s, width: column,
+                size: Card.axisSize * s, weight: .medium, ink: palette.textDim, alignment: 1)
         }
     }
 
@@ -261,9 +258,9 @@ private struct Painter {
         let s = metrics.scale
         let width = metrics.contentWidth
         let labelSize = Card.meterSize * s
-        let labelRoom = width * 0.55
-        text(meter.label, x: x, y: y, width: labelRoom, size: labelSize, weight: .semibold, ink: palette.text)
         let moneyWidth = meter.money.map { measured($0, size: labelSize, weight: .semibold) } ?? 0
+        let labelRoom = max(width * 0.3, width - moneyWidth - 20 * s)
+        text(meter.label, x: x, y: y, width: labelRoom, size: labelSize, weight: .semibold, ink: palette.text)
         if !meter.detail.isEmpty {
             let ink = min(measured(meter.label, size: labelSize, weight: .semibold), labelRoom)
             let detailX = x + ink + 14 * s
