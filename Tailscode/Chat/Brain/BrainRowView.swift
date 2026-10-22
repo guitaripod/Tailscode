@@ -51,6 +51,7 @@ final class BrainRowView: UIView {
     private var lastTextScale: CGFloat = 1
     private var cardIsStale = false
     private var wasAsking = false
+    private var cardRevision = -1
     private var openedByMove = false
     private var wasConfigured = false
     private var liveRegistered = false
@@ -122,6 +123,7 @@ final class BrainRowView: UIView {
         cardMetrics = makeCardMetrics(model: model)
         if !sameTurn { resetState() }
         card.configure(model: model, row: new, memory: newStore.memory(for: new.turnID), metrics: cardMetrics!)
+        cardRevision = model.revision
         let wantsOpen = new.isOpen
         switch (phase, wantsOpen) {
         case (.closed, true):
@@ -147,6 +149,8 @@ final class BrainRowView: UIView {
         guard let store, let row, let model = store.model(for: row.turnID) else { return }
         switch phase {
         case .closed:
+            guard model.turn.outcome == .running || model.revision != cardRevision else { return }
+            cardRevision = model.revision
             card.refresh(model: model)
         case .open:
             let asking = model.stepList.pendingAskID != nil

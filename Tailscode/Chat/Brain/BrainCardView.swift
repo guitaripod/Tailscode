@@ -55,6 +55,7 @@ final class BrainCardView: UIView {
     private var memory: BrainLiveMemory?
     private var ink: BrainInk?
     private var drawnSignature = ""
+    private var layoutMemo: (key: String, layout: Layout)?
     private var settleLink: CADisplayLink?
     private var quoteRelease: DispatchWorkItem?
     private var lastLayout: Layout?
@@ -788,7 +789,21 @@ final class BrainCardView: UIView {
     /// type is large enough that the lines would not fit in it.
     func requiredHeight(width: CGFloat) -> CGFloat {
         guard let metrics else { return 0 }
-        return max(CGFloat(metrics.card.height), computeLayout(width: width).height)
+        return max(CGFloat(metrics.card.height), fittedLayout(width: width).height)
+    }
+
+    /// The card's layout at a width. Measuring its lines is what a card costs the main thread
+    /// most, and every state a conversation emits asks the transcript to size every card again, so
+    /// a layout is kept for what it was made from: the words drawn (`drawnSignature` changes with
+    /// any of them), the width, the metrics' height and the reader's type size.
+    private func fittedLayout(width: CGFloat) -> Layout {
+        guard !drawnSignature.isEmpty, let metrics else { return computeLayout(width: width) }
+        let key =
+            "\(drawnSignature)|\(Int(width * 4))|\(metrics.card.height)|\(traitCollection.preferredContentSizeCategory.rawValue)"
+        if let memo = layoutMemo, memo.key == key { return memo.layout }
+        let made = computeLayout(width: width)
+        layoutMemo = (key, made)
+        return made
     }
 
     private func computeLayout(width: CGFloat) -> Layout {
@@ -963,7 +978,7 @@ final class BrainCardView: UIView {
         picture.frame = CGRect(
             x: metrics.card.picture.x, y: metrics.card.picture.y, width: metrics.card.picture.width,
             height: metrics.card.picture.height)
-        let layout = computeLayout(width: bounds.width)
+        let layout = fittedLayout(width: bounds.width)
         let live = card.live != nil || settle.progress < 1 && memory?.settleClock.settleStartedAt != nil
         lastLayout = layout
         let wide = !layout.narrow

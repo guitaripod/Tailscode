@@ -717,6 +717,18 @@
                 return
             }
             report("closed-live token", time(300) { closed.refreshLive(); closed.layoutIfNeeded() })
+            let settled = collection.visibleCells.compactMap { $0 as? NeuralBrainCell }.first { $0.brainRow.turnID != id }
+            if let settled {
+                report("settled-card token", time(300) { settled.refreshLive(); settled.layoutIfNeeded() })
+            } else {
+                AppLogger.ui.info("brain-perf no settled card on screen")
+            }
+            let attributes = UICollectionViewLayoutAttributes(forCellWith: IndexPath(item: 0, section: 0))
+            attributes.size = CGSize(width: collection.bounds.width, height: 100)
+            report("closed-live self-size", time(300) { _ = closed.preferredLayoutAttributesFitting(attributes) })
+            if let settled {
+                report("settled-card self-size", time(300) { _ = settled.preferredLayoutAttributesFitting(attributes) })
+            }
             let meter = GapMeter()
             meter.start()
             let tap = time(1) { toggle(id); collection.layoutIfNeeded() }
