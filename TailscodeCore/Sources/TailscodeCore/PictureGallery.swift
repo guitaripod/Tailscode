@@ -15,8 +15,10 @@ import Foundation
 /// - A lone picture is one tile as wide as its own shape asks (`PictureShape`) and the row
 ///   allows, flush left. It is fitted whole inside that tile, so it is letterboxed only when its
 ///   shape is wider than the row can hold at that height; it is never cropped.
-/// - Two or three pictures are a strip of squares, flush left, each as wide as it is tall and
-///   narrower only when the row cannot hold them side by side; they are not stretched to the row.
+/// - Pictures that fit one row at no less than `narrowestStripShare` of a picture each (two or
+///   three on any row, a handful on a wide one) are a strip of squares, flush left, each as wide
+///   as it is tall and narrower only when the row cannot hold them side by side; they are not
+///   stretched to the row.
 /// - More pictures are two rows of crops (`widestSheetTile` wide at most), spread to the row's
 ///   width up to `maximumColumns` columns and shrunk to `narrowestTile` before any are counted.
 /// - What the grid cannot draw is counted in a corner chip on the last tile (`badge(on:textWidth:)`),
