@@ -6,14 +6,16 @@ import TailscodeCore
 
 /// The pictures an agent made, as one grid of small tiles rather than a poster and a caption each:
 /// a turn that looked at sixteen screenshots spends one picture's height on them, spread across
-/// whatever width the transcript has, and the last tile's corner counts the ones the grid could
-/// not draw. Every tile is its own press — it opens the conversation's gallery on that picture,
+/// whatever width the transcript has, and a chip in the last tile's corner counts the ones the grid
+/// could not draw. Every tile is its own press — it opens the conversation's gallery on that picture,
 /// where every picture can be paged through, zoomed and saved — and a tile under the pointer steps
 /// its picture back to say so.
 ///
 /// The grid is `PictureGalleryLayout`'s arithmetic asked again whenever the row's width changes, so
 /// a pane widened gives the pictures more room rather than more air, and one narrowed folds them
-/// into a second row instead of thinning them to needles.
+/// into a second row instead of thinning them to needles. The tiles sit in a scroller that never
+/// scrolls its width: a `GtkFixed` asks for as much width as its furthest tile, and a gallery
+/// that asked for the width it was last given could never be narrowed to be laid out again.
 enum PictureGalleryView {
     /// The words a picture is known by: its filename, never its path.
     static func filename(of reference: FileReference) -> String {
@@ -36,7 +38,12 @@ enum PictureGalleryView {
         let fixed = gtk_fixed_new()!
         gtk_widget_set_halign(fixed, GTK_ALIGN_START)
         gtk_widget_set_valign(fixed, GTK_ALIGN_START)
-        gtk_overlay_set_child(op(outer), fixed)
+        let clip = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(clip), GTK_POLICY_EXTERNAL, GTK_POLICY_NEVER)
+        gtk_scrolled_window_set_propagate_natural_height(op(clip), 1)
+        gtk_widget_set_can_focus(clip, 0)
+        gtk_scrolled_window_set_child(op(clip), fixed)
+        gtk_overlay_set_child(op(outer), clip)
 
         let watch = Gtk.widthWatch()
         gtk_overlay_add_overlay(op(outer), watch)
@@ -74,9 +81,10 @@ enum PictureGalleryView {
                 count: pictures.count, side: side, available: room,
                 shape: pictures.count == 1 ? shape(of: pictures[0]) : nil,
                 maxWidth: ImagePreview.deskWidth)
-            guard next != arrangement || placed.isEmpty else { return }
-            arrangement = next
-            place(next)
+            let snapped = next.snapped()
+            guard snapped != arrangement || placed.isEmpty else { return }
+            arrangement = snapped
+            place(snapped)
         }
 
         /// The tiles of one arrangement on the row, left to right: each the picture's crop at the
@@ -84,16 +92,13 @@ enum PictureGalleryView {
         private func place(_ arrangement: PictureGalleryLayout.Arrangement) {
             for widget in placed { gtk_widget_unparent(widget) }
             placed = []
-            gtk_widget_set_size_request(
-                fixed, Int32(arrangement.width.rounded()), Int32(arrangement.height.rounded()))
+            gtk_widget_set_size_request(fixed, Int32(arrangement.width), Int32(arrangement.height))
             for tile in arrangement.tiles where pictures.indices.contains(tile.index) {
                 let button = tileButton(
                     pictures[tile.index], tile: tile,
                     more: tile.index == arrangement.tiles.count - 1 ? arrangement.hidden : 0,
                     fitted: pictures.count == 1, of: pictures.count)
-                gtk_fixed_put(
-                    ptr(UnsafeMutableRawPointer(fixed)), button, tile.x.rounded(),
-                    tile.y.rounded())
+                gtk_fixed_put(ptr(UnsafeMutableRawPointer(fixed)), button, tile.x, tile.y)
                 placed.append(button)
             }
         }
@@ -108,8 +113,7 @@ enum PictureGalleryView {
             let opener = gtk_button_new()!
             Gtk.addClass(opener, "flat")
             Gtk.addClass(opener, "picture-gallery-tile")
-            gtk_widget_set_size_request(
-                opener, Int32(tile.width.rounded()), Int32(tile.height.rounded()))
+            gtk_widget_set_size_request(opener, Int32(tile.width), Int32(tile.height))
             gtk_button_set_child(ptr(opener), content)
 
             let name = PictureGalleryView.filename(of: picture.reference)
@@ -128,8 +132,8 @@ enum PictureGalleryView {
             more: Int
         ) -> UnsafeMutablePointer<GtkWidget> {
             let bits = context.texture(forKey: picture.key)
-            let width = Int32(tile.width.rounded())
-            let height = Int32(tile.height.rounded())
+            let width = Int32(tile.width)
+            let height = Int32(tile.height)
             let frame: UnsafeMutablePointer<GtkWidget>
             if bits != 0,
                 let texture = UnsafeMutableRawPointer(bitPattern: bits).map({ OpaquePointer($0) }),
@@ -147,21 +151,32 @@ enum PictureGalleryView {
                 context.requestImage?(picture.reference, picture.key)
                 frame = waiting
             }
-            guard more > 0 else { return frame }
-            let scrim = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-            Gtk.addClass(scrim, "picture-gallery-scrim")
-            gtk_widget_set_hexpand(scrim, 1)
-            gtk_widget_set_vexpand(scrim, 1)
-            let count = Gtk.label("+\(more)", css: "picture-gallery-more", selectable: false)
+            guard let words = PictureGalleryReading.badge(hidden: more) else { return frame }
+            let count = Gtk.label(words, css: "picture-gallery-more", selectable: false)
+            let chip = PictureGalleryLayout.badge(on: tile, textWidth: textWidth(of: count))
+            let corner = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+            Gtk.addClass(corner, "picture-gallery-scrim")
+            gtk_widget_set_size_request(corner, Int32(chip.width), Int32(chip.height))
+            gtk_widget_set_halign(corner, GTK_ALIGN_START)
+            gtk_widget_set_valign(corner, GTK_ALIGN_START)
+            gtk_widget_set_margin_start(corner, Int32(chip.x - tile.x))
+            gtk_widget_set_margin_top(corner, Int32(chip.y - tile.y))
+            gtk_widget_set_can_target(corner, 0)
             gtk_widget_set_halign(count, GTK_ALIGN_CENTER)
             gtk_widget_set_valign(count, GTK_ALIGN_CENTER)
             gtk_widget_set_vexpand(count, 1)
-            gtk_box_append(ptr(scrim), count)
+            gtk_box_append(ptr(corner), count)
             let stacked = gtk_overlay_new()!
             gtk_widget_set_size_request(stacked, width, height)
             gtk_overlay_set_child(op(stacked), frame)
-            gtk_overlay_add_overlay(op(stacked), scrim)
+            gtk_overlay_add_overlay(op(stacked), corner)
             return stacked
+        }
+
+        private func textWidth(of label: UnsafeMutablePointer<GtkWidget>) -> Double {
+            var natural: Int32 = 0
+            gtk_widget_measure(label, GTK_ORIENTATION_HORIZONTAL, -1, nil, &natural, nil, nil)
+            return Double(natural)
         }
 
         /// Width over height of a picture whose pixels have landed; nil while it is on its way.

@@ -585,6 +585,17 @@ extension SelfTest {
         try expect(
             opening.value?.0 == "s2.png" && opening.value?.1 == "s2.png",
             "pressing a tile opens the gallery on that picture, not the first: \(opening.value?.0 ?? "-")")
+        let snapped = PictureGalleryLayout.grid(
+            count: 8, side: side, available: ImagePreview.deskWidth).snapped()
+        let drawn = tiles.map { tile -> Int in
+            var width: Int32 = 0
+            var height: Int32 = 0
+            gtk_widget_get_size_request(tile, &width, &height)
+            return Int(width)
+        }
+        try expect(
+            drawn == snapped.tiles.map { Int($0.width) },
+            "the tiles are drawn at the snapped widths, so a gutter is never a pixel wider than the next: \(drawn)")
         gtk_widget_unparent(widget)
         let table = TranscriptRow.rows(
             for: ChatMessage(
@@ -922,7 +933,10 @@ extension TranscriptRow.Kind {
 /// The fixed a gallery builds its tiles into: the row's own child, under the width watch laid
 /// over it.
 private func galleryFixed(of widget: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<GtkWidget>? {
-    gtk_widget_get_first_child(widget)
+    guard let clip = gtk_widget_get_first_child(widget),
+        let viewport = gtk_scrolled_window_get_child(op(clip))
+    else { return nil }
+    return gtk_viewport_get_child(op(viewport))
 }
 
 private func gtkWidgetChildren(of parent: UnsafeMutablePointer<GtkWidget>)

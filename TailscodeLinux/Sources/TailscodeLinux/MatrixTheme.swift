@@ -915,8 +915,8 @@ enum MatrixTheme {
         }
         .picture-gallery-tile:hover { opacity: 0.86; }
         .picture-gallery-tile:active { opacity: 0.74; }
-        .picture-gallery-scrim { background-color: alpha(black, 0.6); }
-        .picture-gallery-more { color: white; font-weight: 700; font-size: 1.45rem; }
+        .picture-gallery-scrim { background-color: alpha(black, 0.6); border-radius: 999px; }
+        .picture-gallery-more { color: white; font-weight: 700; font-size: 13px; }
         .picture-gallery-waiting {
             border: 1px solid \(rule);
             border-radius: 6px;
