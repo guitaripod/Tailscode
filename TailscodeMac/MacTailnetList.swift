@@ -132,6 +132,10 @@ enum MacTailnetList {
 /// with Tailscale before it is kept, so a wrong paste is said here rather than as an empty scan.
 @MainActor
 final class TailnetTokenSheet: NSObject {
+    /// A sheet outlives the call that opened it, and its buttons only know their target weakly:
+    /// without this the controller was gone before the first press, so Save and Cancel did nothing.
+    private static var active: [TailnetTokenSheet] = []
+
     private let host: NSWindow
     private let onSaved: () -> Void
     private let window: NSWindow
@@ -141,7 +145,10 @@ final class TailnetTokenSheet: NSObject {
 
     static func present(on host: NSWindow, onSaved: @escaping @MainActor () -> Void = {}) {
         let sheet = TailnetTokenSheet(host: host, onSaved: onSaved)
-        host.beginSheet(sheet.window, completionHandler: nil)
+        active.append(sheet)
+        host.beginSheet(sheet.window) { _ in
+            active.removeAll { $0 === sheet }
+        }
     }
 
     private init(host: NSWindow, onSaved: @escaping @MainActor () -> Void) {
@@ -200,9 +207,11 @@ final class TailnetTokenSheet: NSObject {
         guard !token.isEmpty else { return }
         checking = true
         status.stringValue = TailnetTokenReading.checking
+        let policy = ConnectionPolicy(
+            requestTimeout: .seconds(15), resourceTimeout: .seconds(20))
         Task { [weak self] in
             do {
-                let devices = try await TailscaleClient().fetchDevices(with: token)
+                let devices = try await TailscaleClient(policy: policy).fetchDevices(with: token)
                 try MacTailnetCredentials.setToken(token)
                 MacTailnetCredentials.remember(devices)
                 await MainActor.run {
