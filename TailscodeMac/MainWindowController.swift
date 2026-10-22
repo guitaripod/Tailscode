@@ -1818,6 +1818,7 @@ final class MainWindowController: NSWindowController {
             do {
                 if let report = try await backend.usageAnalytics(days: window.days)
                 {
+                    await UsageAnalytics.rememberModels(profileID: profile.id, backend: backend)
                     reports.append((name, report))
                 } else {
                     missing.append(name)
@@ -1828,7 +1829,11 @@ final class MainWindowController: NSWindowController {
                 continue
             }
         }
-        return UsageAnalytics(servers: reports, missingServers: missing, window: window)
+        let profileIDs = ServerDirectory.shared.profiles.map(\.id)
+        return UsageAnalytics(
+            servers: reports, missingServers: missing, window: window,
+            modelNames: UsageAnalytics.modelNames(profileIDs: profileIDs),
+            contextWindows: UsageAnalytics.contextWindows(profileIDs: profileIDs))
     }
 
     private func handleOpen(_ entry: SessionEntry, backend: any CodingAgentBackend) {

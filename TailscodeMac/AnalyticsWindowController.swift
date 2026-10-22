@@ -183,6 +183,20 @@ final class AnalyticsWindowController: NSWindowController {
         column.addArrangedSubview(footer())
     }
 
+    /// Lays the window out for a ledger and reads back every word it drew, in the order they sit
+    /// on the page. This is how a check proves where a section is without a screenshot: the
+    /// order is the layout, and the words are Core's.
+    func texts(laying analytics: UsageAnalytics) -> [String] {
+        self.analytics = analytics
+        render()
+        return Self.texts(in: column)
+    }
+
+    private static func texts(in view: NSView) -> [String] {
+        if let field = view as? NSTextField { return [field.stringValue] }
+        return view.subviews.flatMap { texts(in: $0) }
+    }
+
     private func render() {
         clearColumn()
         guard let analytics else {
@@ -193,6 +207,10 @@ final class AnalyticsWindowController: NSWindowController {
             return
         }
         column.addArrangedSubview(heroSection(analytics))
+        if analytics.isLocalLed, let work = analytics.localWork {
+            column.addArrangedSubview(localWorkSection(work))
+            addModelsSection(analytics)
+        }
         if !analytics.days.isEmpty { column.addArrangedSubview(dailySection(analytics)) }
         if analytics.weekdays.contains(where: { $0.share > 0 }) || !analytics.hours.isEmpty {
             column.addArrangedSubview(rhythmSection(analytics))
@@ -201,11 +219,9 @@ final class AnalyticsWindowController: NSWindowController {
             column.addArrangedSubview(
                 meterSection(title: Localized.text("Providers"), meters: analytics.providers))
         }
-        if !analytics.models.isEmpty {
-            column.addArrangedSubview(
-                meterSection(
-                    title: Localized.text("Models"), meters: analytics.models,
-                    footnote: analytics.modelsLine))
+        if !analytics.isLocalLed {
+            addModelsSection(analytics)
+            if let work = analytics.localWork { column.addArrangedSubview(localWorkSection(work)) }
         }
         if !analytics.projects.isEmpty {
             column.addArrangedSubview(
@@ -228,6 +244,14 @@ final class AnalyticsWindowController: NSWindowController {
         column.addArrangedSubview(footer())
     }
 
+    private func addModelsSection(_ analytics: UsageAnalytics) {
+        guard !analytics.models.isEmpty else { return }
+        column.addArrangedSubview(
+            meterSection(
+                title: Localized.text("Models"), meters: analytics.models,
+                footnote: analytics.modelsLine))
+    }
+
     private func heroSection(_ analytics: UsageAnalytics) -> NSView {
         let windowLabel = RowKit.label(
             analytics.windowLabel, font: MacTheme.Ramp.font(.metricLabel),
@@ -240,6 +264,9 @@ final class AnalyticsWindowController: NSWindowController {
             analytics.activityLine, font: MacTheme.Ramp.font(.panelFootnote),
             color: MacTheme.Color.secondaryLabel)
         var views: [NSView] = [windowPicker, windowLabel, money, perDay, activity]
+        if let hosted = analytics.hostedLine {
+            views.insert(caption(hosted), at: 3)
+        }
         if let delta = analytics.deltaLine {
             views.append(
                 RowKit.label(
@@ -404,7 +431,7 @@ final class AnalyticsWindowController: NSWindowController {
         for meter in meters {
             views.append(
                 meterRow(
-                    label: meter.label, detail: meter.detail, money: meter.money,
+                    label: meter.label, detail: meter.detail, money: meter.trailing,
                     share: meter.share, hot: false, free: meter.isFree))
         }
         if let footnote {
@@ -414,6 +441,55 @@ final class AnalyticsWindowController: NSWindowController {
                     color: MacTheme.Color.tertiaryLabel))
         }
         return card(views: views)
+    }
+
+    /// What ran on the person's own machine: the headline, a row of stat tiles and one meter per
+    /// model, every word Core's. The tiles sit in a single row because the window is wide enough
+    /// to read four side by side.
+    private func localWorkSection(_ work: UsageAnalytics.LocalWork) -> NSView {
+        var views: [NSView] = [
+            heading(work.title),
+            RowKit.label(
+                work.headline, font: MacTheme.Ramp.font(.panelLabel),
+                color: MacTheme.Color.secondaryLabel),
+            statRow(work.stats),
+        ]
+        for (index, meter) in work.models.enumerated() {
+            views.append(
+                meterRow(
+                    label: meter.label, detail: meter.detail, money: meter.trailing,
+                    share: meter.share, hot: index == 0, free: meter.isFree))
+        }
+        if let caption = work.caption { views.append(self.caption(caption)) }
+        return card(views: views)
+    }
+
+    private func statRow(_ stats: [UsageAnalytics.LocalWork.Stat]) -> NSView {
+        let row = NSStackView(views: stats.map(statTile))
+        row.orientation = .horizontal
+        row.distribution = .fillEqually
+        row.alignment = .top
+        row.spacing = MacTheme.Spacing.m
+        return row
+    }
+
+    private func statTile(_ stat: UsageAnalytics.LocalWork.Stat) -> NSView {
+        var views: [NSView] = [
+            RowKit.label(
+                stat.label, font: MacTheme.Ramp.font(.sectionLabel),
+                color: MacTheme.Color.secondaryLabel),
+            RowKit.label(
+                stat.value, font: MacTheme.Ramp.font(.metricValue), color: MacTheme.Color.label),
+        ]
+        if let detail = stat.detail { views.append(caption(detail)) }
+        let tile = NSStackView(views: views)
+        tile.orientation = .vertical
+        tile.alignment = .leading
+        tile.spacing = 2
+        tile.setAccessibilityElement(true)
+        tile.setAccessibilityLabel(
+            [stat.label, stat.value, stat.detail].compactMap { $0 }.joined(separator: ", "))
+        return tile
     }
 
     private func tiersSection(_ analytics: UsageAnalytics) -> NSView {

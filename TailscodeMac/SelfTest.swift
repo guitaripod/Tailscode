@@ -197,6 +197,16 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkLocalWorkLayout()
+            report(
+                "analytics local work: \(checks) claims hold — the section leads a local-led page and carries its tiles"
+            )
+        } catch {
+            report("analytics local work: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkRepeatingMotion()
             report(
                 "repeating motion: \(checks) claims hold — every never-ending lap asks again")
@@ -2049,6 +2059,82 @@ enum SelfTest {
             }
         }
         return 4
+    }
+
+    /// A month spent mostly on the owner's own GPU: the window must put the section about it
+    /// directly under the number, ahead of the daily chart, with its tiles and its codenamed rows;
+    /// a month spent mostly on hosted models must keep the money first and put the section after
+    /// the models.
+    private static func checkLocalWorkLayout() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("local work case failed: \(label)") }
+            checks += 1
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        func report(local: Int, hosted: Int) -> UsageAnalyticsReport {
+            let localTokens = SessionSpendReport.Tokens(input: local * 8 / 10, output: local * 2 / 10)
+            let hostedTokens = SessionSpendReport.Tokens(output: hosted)
+            let total = SessionSpendReport.Tokens(
+                input: localTokens.input, output: localTokens.output + hostedTokens.output)
+            return UsageAnalyticsReport(
+                since: Date(timeIntervalSinceNow: -30 * 86400), generatedAt: Date(), days: 30,
+                totals: UsageAnalyticsReport.Totals(
+                    costUSD: 3.2, tokens: total, sessions: 8, activeDays: 1),
+                daily: [
+                    UsageAnalyticsReport.Day(
+                        day: formatter.string(from: Date()), costUSD: 3.2, tokens: total,
+                        sessions: 8)
+                ],
+                models: [
+                    SessionSpendReport.ModelShare(
+                        model: "llama-server/qwen3-coder-30b-a3b", turns: 0, tokens: localTokens,
+                        costUSD: 0),
+                    SessionSpendReport.ModelShare(
+                        model: "claude-opus-5", turns: 0, tokens: hostedTokens, costUSD: 3.2),
+                ],
+                coverage: .sessionTotals)
+        }
+        let names = ["llama-server/qwen3-coder-30b-a3b": "Bolt"]
+        func positions(_ analytics: UsageAnalytics) -> (hero: Int, local: Int, daily: Int, models: Int, texts: [String]) {
+            let controller = AnalyticsWindowController { _ in nil }
+            let texts = controller.texts(laying: analytics)
+            func first(_ word: String) -> Int { texts.firstIndex(of: word) ?? Int.max }
+            return (
+                first(analytics.headline), first("On your own machine"),
+                first(analytics.window.chartTitle), first("Models"), texts
+            )
+        }
+        guard
+            let led = UsageAnalytics(
+                servers: [("homelab", report(local: 9_000_000, hosted: 1_000_000))],
+                modelNames: names),
+            let mixed = UsageAnalytics(
+                servers: [("homelab", report(local: 1_000_000, hosted: 9_000_000))],
+                modelNames: names)
+        else { throw SelfTestFailure("the local-led fixture produced no analytics") }
+        let ledAt = positions(led)
+        try expect(led.isLocalLed, "nine tenths of the work on a local door is local-led")
+        try expect(ledAt.hero < ledAt.local, "the section sits under the number")
+        try expect(ledAt.local < ledAt.daily, "and ahead of the daily chart")
+        try expect(ledAt.local < ledAt.models, "and ahead of the models")
+        try expect(ledAt.models < ledAt.daily, "with the models moved up beside it")
+        try expect(!led.headline.contains("$"), "the number is the work rather than the bill")
+        try expect(ledAt.texts.contains("Bolt"), "a model wears the name the catalog gave it")
+        for stat in led.localWork?.stats ?? [] {
+            try expect(ledAt.texts.contains(stat.value), "the tile for \(stat.label) is drawn")
+        }
+        try expect(
+            led.hostedLine.map { ledAt.texts.contains($0) } == true,
+            "the bill is one line under the number")
+        let mixedAt = positions(mixed)
+        try expect(!mixed.isLocalLed && mixed.headline.contains("$"), "a hosted-led month keeps the money")
+        try expect(mixedAt.local != Int.max, "and still gains the section")
+        try expect(mixedAt.daily < mixedAt.models, "the chart stays above the models")
+        try expect(mixedAt.models < mixedAt.local, "and the section follows the models")
+        return checks
     }
 
     private static func checkWorkflowCard() throws -> Int {
