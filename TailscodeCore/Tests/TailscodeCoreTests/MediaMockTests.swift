@@ -67,15 +67,19 @@ struct MediaMockTests {
 
     @Test("A proxy that accepts while the process loads is starting, then ready")
     func slowStart() async throws {
-        try await MockComfy.run(["MOCK_START_DELAY": "3"]) { endpoint in
+        try await MockComfy.run(["MOCK_START_DELAY": "6"]) { endpoint in
             let early = MediaVerdict(
                 endpoint: endpoint, report: await MediaDoctor(transport: .live).examine(endpoint))
             #expect(early.comfy == .starting)
             #expect(early.recheck == 5)
-            try await Task.sleep(nanoseconds: 3_200_000_000)
-            let late = MediaVerdict(
-                endpoint: endpoint, report: await MediaDoctor(transport: .live).examine(endpoint))
-            #expect(late.isAnswering)
+            var answering = false
+            for _ in 0..<60 where !answering {
+                try await Task.sleep(nanoseconds: 500_000_000)
+                let late = MediaVerdict(
+                    endpoint: endpoint, report: await MediaDoctor(transport: .live).examine(endpoint))
+                answering = late.isAnswering
+            }
+            #expect(answering)
         }
     }
 
