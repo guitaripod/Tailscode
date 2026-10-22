@@ -41,8 +41,9 @@ final class ModelDialPill: UIView {
     var footer: ((EffortRung) -> String?)?
 
     /// The screen the rail opens over, and the view it must stay beneath so the thing being aimed
-    /// is never covered.
-    var railHost: UIView? {
+    /// is never covered. Held weakly because the pill lives inside that very view, so a strong
+    /// reference would keep a popped chat's whole view tree alive.
+    weak var railHost: UIView? {
         didSet { presenter = nil }
     }
     weak var railBelow: UIView? {
