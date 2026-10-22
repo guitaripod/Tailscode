@@ -215,8 +215,10 @@ final class TailnetTokenSheet: NSObject {
                 try MacTailnetCredentials.setToken(token)
                 MacTailnetCredentials.remember(devices)
                 await MainActor.run {
-                    self?.close()
-                    self?.onSaved()
+                    guard let self else { return }
+                    let saved = self.onSaved
+                    self.close()
+                    saved()
                 }
             } catch {
                 await MainActor.run {
