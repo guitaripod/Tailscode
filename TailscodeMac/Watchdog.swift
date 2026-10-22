@@ -138,8 +138,9 @@ final class Watchdog: @unchecked Sendable {
         if let event { report(event, state) }
     }
 
-    /// The answer also says which thread drains the main queue. In the app that is always the
-    /// main thread; under `dispatchMain` — the selftest — it is whichever worker is free.
+    /// The answer also says which thread drains the main queue, so a stall is read against the
+    /// thread that was meant to answer. It is the main thread in the app and in the selftest
+    /// alike, since the selftest runs on the main run loop rather than under `dispatchMain`.
     private func answered() {
         let thread = pthread_mach_thread_np(pthread_self())
         lock.lock()

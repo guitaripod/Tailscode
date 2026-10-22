@@ -244,11 +244,19 @@ extension BrainAccountView {
         }
     }
 
+    /// How many times one `realize` may go round again before it hands the rest to the next run
+    /// loop turn: a follow settles in two, and a story that never settles must not hold the main
+    /// thread.
+    static let realizePassLimit = 4
+
     /// Makes the items near the viewport and lets go of the rest, then places them.
     ///
     /// A follow that scrolls to the end posts a bounds change, whose observer asks for a realize in
-    /// the middle of this one: the nested call is held back and made once afterwards, because a
-    /// realize that ran itself again on every scroll it made would recurse until the stack ran out.
+    /// the middle of this one: the nested call is held back and made again right after, here and
+    /// not on a later turn of the run loop, because a story that waited a frame for the rows at its
+    /// new end showed that frame unrealized. It is a loop rather than the nested call itself, since
+    /// a realize that ran itself again on every scroll it made would recurse until the stack ran
+    /// out, and it is bounded for a story that never settles.
     func realize() {
         guard viewHeight > 0, boxWidth > 0 else { return }
         guard !realizing else {
@@ -256,13 +264,20 @@ extension BrainAccountView {
             return
         }
         realizing = true
-        defer {
-            realizing = false
-            if realizeAgain {
-                realizeAgain = false
-                scheduleRealize()
-            }
+        defer { realizing = false }
+        var passes = 0
+        repeat {
+            realizeAgain = false
+            realizePass()
+            passes += 1
+        } while realizeAgain && passes < Self.realizePassLimit
+        if realizeAgain {
+            realizeAgain = false
+            scheduleRealize()
         }
+    }
+
+    private func realizePass() {
         realizeCount += 1
         if offsets.count != entries.count { recomputeOffsets() }
         let range = wanted()

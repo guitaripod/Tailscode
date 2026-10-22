@@ -20,6 +20,7 @@ enum BrainAccountChecks {
         try words(check)
         try live(check)
         try scale(check)
+        try followRealizes(check)
         try takeover(check)
         try paintsAfterMove(check)
         try expect(failures.isEmpty, "account: " + failures.joined(separator: " | "))
@@ -502,6 +503,36 @@ enum BrainAccountChecks {
         try check(account.nowView == nil, "a turn that ends takes the Now line away")
     }
 
+
+    /// A following turn scrolls the story to its end inside the realize that made it, and the bounds
+    /// change that scroll posts asks for another realize in the middle of the first. One call must
+    /// settle it — the held request made right away, within the pass limit, so the rows at the new
+    /// end exist when the call returns instead of a frame later.
+    private static func followRealizes(_ check: (Bool, String) throws -> Void) throws {
+        let big = NeuralDemo.largeTurn(steps: 2000, prefix: "f-", origin: 1_792_000_000, answer: false)
+        let fixture = BrainFixture(messages: big, running: true, width: 1200)
+        defer { fixture.tearDown() }
+        guard let (row, account) = opened(fixture, 0) else {
+            try check(false, "the running two-thousand step turn opens")
+            return
+        }
+        try check(row.model.stepList.isFollowing, "a running turn follows its end")
+        account.scrollTo(0, animated: false)
+        account.realize()
+        account.scrollTo(0, animated: false)
+        let before = account.realizeCount
+        account.realize()
+        let passes = account.realizeCount - before
+        try check(
+            passes >= 2 && passes <= BrainAccountView.realizePassLimit,
+            "a realize that follows to the end is made again at once, inside the limit (\(passes) passes)")
+        try check(!account.needsRealizeNow(), "the rows at the end exist when the call returns")
+        try check(
+            abs(account.scrollY - account.maxScroll) < 2, "and the story rests at its end (\(account.scrollY) of \(account.maxScroll))")
+        let settled = account.realizeCount
+        account.realize()
+        try check(account.realizeCount - settled == 1, "a story that is already settled realizes once")
+    }
 
     private static func scale(_ check: (Bool, String) throws -> Void) throws {
         let big = NeuralDemo.buildFix(prefix: "a-", origin: 1_792_000_000)
