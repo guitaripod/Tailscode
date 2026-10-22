@@ -160,3 +160,19 @@ The three clients were read for clocks that ignore settled, hidden or occluded, 
 | Always-on one-second timers (Mac Seatbelts, Watchdog) | stop when nothing changes | |
 
 Not done: the iOS data-source diff is not tail-only, a single 90-message turn costs 3.4 to 3.9 ms a token on the Mac because the turn is re-read whole (an incremental turn read in `NeuralTurnCache` would fix it), the Linux Seatbelts one-second tick and the Linux cascade's chained entrance timeouts were not revisited, and nothing was measured on a phone (Metal System Trace on the iPhone Air is still the next measurement).
+
+## Mac, scroll handoff and per-state costs (2026-10-23)
+
+`TailscodeMac --bench brain` (Release, the macbook, main-thread CPU in a window that is never ordered front) before and after the scroll handoff, the hover revalidation and the bounded realize loop. The machine was shared with other builds (load average 35 to 130), so absolute figures are upper bounds; before and after were run back to back and agree within the noise.
+
+| | before | after |
+|---|---|---|
+| scroll event over the step list (median) | 0.003-0.005 ms | 0.003 ms |
+| scroll event over the account, 29 / 174 / 600 steps (median) | 0.43 / 0.83 / 1.42 ms | 0.42 / 0.84 / 1.42 ms |
+| open one brain, 29 / 174 / 600 steps (median, move landed at once) | 29.8 / 36.7 / 31.9 ms | 27.8 / 35.3 / 36.7 ms |
+| close one brain (median) | 11.0 / 16.8 / 18.2 ms | 11.7 / 16.9 / 17.3 ms |
+| streamed token as a card, brain's own mean, 100 / 600 / 2,400 turns | 0.214 / 0.299 / 1.144 ms | 0.200 / 0.295 / 0.785 ms |
+| streamed token open, brain's own mean, 100 / 600 / 2,400 turns | 0.690 / 0.644 / 0.611 ms | 0.612 / 0.805 / 0.585 ms |
+| nothing arriving, open | 0.9 / 0.0 / 0.0 ms of each second | 0.8 / 0.1 / 0.0 |
+
+The scroll handoff asks Core once per event (a few reads of the scroller's geometry), so it costs nothing a wheel can feel; the account's 0.4-1.4 ms an event is its realize, unchanged. `--bench brain-open[=rounds]` repeats the open and close for `sample`; on the loaded machine the main thread's own time was spread over string and Unicode-property work in the account and list builds with no single hot spot.
