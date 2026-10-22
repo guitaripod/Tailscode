@@ -83,9 +83,9 @@ extension DeviceStores {
 
         @Test("A model badge reads the same as it did in the app target")
         func modelBadgeLabels() {
-            #expect(ModelBadge.label(model: nil, effort: nil) == Localized.text("Auto"))
+            #expect(ModelBadge.label(model: nil, effort: nil, catalog: []) == Localized.text("Auto"))
             let opus = ModelSelection(providerID: "anthropic", modelID: "claude-opus-4-20250514")
-            #expect(ModelBadge.label(model: opus, effort: "high").hasSuffix("· high"))
+            #expect(ModelBadge.label(model: opus, effort: "high", catalog: []).hasSuffix("· high"))
         }
 
         @Test("An address types the same way it did before the move")

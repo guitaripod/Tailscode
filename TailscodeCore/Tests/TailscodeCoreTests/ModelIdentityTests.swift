@@ -33,10 +33,10 @@ import Testing
 
     @Test func theDoorSettlesClaude() {
         #expect(ModelNeedles.isClaude("opus-preview", providerID: "anthropic"))
-        #expect(ModelBadge.chip(model: "opus-preview", effort: nil, providerID: "anthropic")?.family == .opus)
-        #expect(ModelBadge.chip(model: "opus-preview", effort: nil)?.family == nil)
+        #expect(ModelBadge.chip(model: "opus-preview", effort: nil, providerID: "anthropic", catalog: [])?.family == .opus)
+        #expect(ModelBadge.chip(model: "opus-preview", effort: nil, providerID: nil, catalog: [])?.family == nil)
         #expect(
-            ModelBadge.label(model: ModelSelection(providerID: "claude", modelID: "best-sonnet"), effort: "high")
+            ModelBadge.label(model: ModelSelection(providerID: "claude", modelID: "best-sonnet"), effort: "high", catalog: [])
                 == "Sonnet · high")
     }
 
@@ -46,9 +46,9 @@ import Testing
         #expect(ModelTint.family(distill) == .qwen)
         #expect(ModelTint.family(distill, providerID: "ollama") == .qwen)
         #expect(ModelFamily.of(name: distill, id: distill).title == "Qwen")
-        #expect(ModelBadge.chip(model: distill, effort: nil)?.name != "Opus")
+        #expect(ModelBadge.chip(model: distill, effort: nil, providerID: nil, catalog: [])?.name != "Opus")
         #expect(
-            ModelBadge.label(model: ModelSelection(providerID: "ollama", modelID: distill), effort: nil)
+            ModelBadge.label(model: ModelSelection(providerID: "ollama", modelID: distill), effort: nil, catalog: [])
                 != "Opus")
 
         #expect(!ModelNeedles.isClaude("some-vendor/haiku-mt"))
@@ -161,7 +161,7 @@ import Testing
         #expect(chip?.name == "Bolt Unchained")
         #expect(chip?.effort == "think")
         #expect(
-            ModelBadge.chip(model: bolt, effort: nil, providerID: "llama-server")?.name
+            ModelBadge.chip(model: bolt, effort: nil, providerID: "llama-server", catalog: [])?.name
                 == "nemotron-3.5-bolt-74b-a9b-24gb-abliterated")
         let selection = ModelSelection(providerID: "llama-server", modelID: bolt)
         #expect(ModelBadge.label(model: selection, effort: nil, catalog: catalog) == "Bolt Unchained")

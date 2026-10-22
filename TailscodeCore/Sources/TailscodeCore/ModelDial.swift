@@ -398,10 +398,82 @@ public enum ModelDial {
         Localized.text("↑↓ model · ←→ 0–9 effort · ⇥ column · ⌃S pin the pair · ⏎ use · ⌃⏎ all models · esc")
     }
 
-    /// What the wheel over the closed pill says it did, for a toast or a tooltip.
+    /// What the wheel over the closed pill says it did, for a screen reader.
     public static func stepped(to level: String?) -> String {
         guard let level else { return Localized.text("effort: server decides") }
         return Localized.text("effort: %@", isPower(level) ? Ultracode.menuTitle.lowercased() : level)
+    }
+
+    /// One step of the wheel or one chord, read: where the level landed and whether it moved. A
+    /// step that cannot go further is a fact worth saying — to a hand that cannot see the pill the
+    /// wheel would otherwise turn mute at the end of the ladder.
+    public static func notch(from level: String?, by delta: Int, options: [String]) -> EffortNotch {
+        let here = ModelEffort.surviving(level, options: options)
+        let next = step(level, by: delta, options: options)
+        return EffortNotch(level: next, moved: next != here, direction: delta >= 0 ? 1 : -1)
+    }
+}
+
+/// What one step of the effort dial amounted to. Every client states it the same way and only to a
+/// reader who cannot see the pill: the pill's word and bars move for everyone else, so a step is
+/// never drawn as text.
+public struct EffortNotch: Sendable, Equatable {
+    public let level: String?
+    public let moved: Bool
+    public let direction: Int
+
+    public init(level: String?, moved: Bool, direction: Int) {
+        self.level = level
+        self.moved = moved
+        self.direction = direction
+    }
+
+    /// The words a screen reader hears: the level a step landed on, or that it is already the
+    /// hottest or the coldest the model takes.
+    public var spoken: String {
+        let landed = ModelDial.stepped(to: level)
+        guard !moved, level != nil else { return landed }
+        return direction > 0
+            ? Localized.text("%@, the highest level", landed)
+            : Localized.text("%@, the lowest level", landed)
+    }
+}
+
+/// The one voice of the effort dial. A key held down steps many times a second, and a screen
+/// reader that is told about each of them is a screen reader that has not finished saying the
+/// first when the last arrives; so a step is held for ``settle`` and replaced by the next, and
+/// what is spoken is where the hand stopped — once, whether it stopped between levels or leaning
+/// on the end of the ladder.
+public final class EffortVoice: @unchecked Sendable {
+    public static let settle: TimeInterval = 0.4
+
+    private let delay: TimeInterval
+    private let speak: @Sendable (String) -> Void
+    private let lock = NSLock()
+    private var generation = 0
+
+    public init(settle: TimeInterval = EffortVoice.settle, speak: @escaping @Sendable (String) -> Void) {
+        self.delay = settle
+        self.speak = speak
+    }
+
+    public func note(_ notch: EffortNotch) {
+        let words = notch.spoken
+        lock.lock()
+        generation += 1
+        let mine = generation
+        lock.unlock()
+        Task.detached { [delay, speak, weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self, self.isCurrent(mine) else { return }
+            speak(words)
+        }
+    }
+
+    private func isCurrent(_ mine: Int) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return generation == mine
     }
 }
 

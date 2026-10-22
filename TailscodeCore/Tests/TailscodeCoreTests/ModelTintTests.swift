@@ -134,20 +134,20 @@ extension DeviceStores {
         }
 
         @Test func chipCarriesPartsAndDropsEmptyEffort() {
-            let chip = ModelBadge.chip(model: "claude-fable-5", effort: "max")
+            let chip = ModelBadge.chip(model: "claude-fable-5", effort: "max", providerID: nil, catalog: [])
             #expect(chip == ModelChip(name: "Fable", family: .fable, effort: "max"))
             #expect(chip?.isUltracode == false)
-            #expect(ModelBadge.chip(model: "claude-opus-5", effort: "  ")?.effort == nil)
-            #expect(ModelBadge.chip(model: nil, effort: "high") == nil)
+            #expect(ModelBadge.chip(model: "claude-opus-5", effort: "  ", providerID: nil, catalog: [])?.effort == nil)
+            #expect(ModelBadge.chip(model: nil, effort: "high", providerID: nil, catalog: []) == nil)
             #expect(
-                ModelBadge.chip(model: "ollama/qwen3:14b", effort: nil)
+                ModelBadge.chip(model: "ollama/qwen3:14b", effort: nil, providerID: nil, catalog: [])
                     == ModelChip(name: "qwen3-14b", family: .qwen, effort: nil))
-            #expect(ModelBadge.chip(model: "ollama-cloud/gpt-oss:120b", effort: nil)?.name == "gpt-oss-120b")
-            #expect(ModelBadge.chip(model: "gpt-5.1-codex", effort: nil)?.name == "gpt-5.1-codex")
-            #expect(ModelBadge.chip(model: "gemini-3-flash-preview", effort: nil)?.name == "gemini-3-flash-preview")
-            #expect(ModelBadge.chip(model: "hf.co/org/Qwen3.6-9B:IQ2_M", effort: nil)?.name == "Qwen3.6-9B")
-            #expect(ModelBadge.chip(model: "ollama/llama3:latest", effort: nil)?.name == "llama3")
-            #expect(ModelBadge.chip(model: "sonnet", effort: "ultracode")?.isUltracode == true)
+            #expect(ModelBadge.chip(model: "ollama-cloud/gpt-oss:120b", effort: nil, providerID: nil, catalog: [])?.name == "gpt-oss-120b")
+            #expect(ModelBadge.chip(model: "gpt-5.1-codex", effort: nil, providerID: nil, catalog: [])?.name == "gpt-5.1-codex")
+            #expect(ModelBadge.chip(model: "gemini-3-flash-preview", effort: nil, providerID: nil, catalog: [])?.name == "gemini-3-flash-preview")
+            #expect(ModelBadge.chip(model: "hf.co/org/Qwen3.6-9B:IQ2_M", effort: nil, providerID: nil, catalog: [])?.name == "Qwen3.6-9B")
+            #expect(ModelBadge.chip(model: "ollama/llama3:latest", effort: nil, providerID: nil, catalog: [])?.name == "llama3")
+            #expect(ModelBadge.chip(model: "sonnet", effort: "ultracode", providerID: nil, catalog: [])?.isUltracode == true)
         }
     }
 }

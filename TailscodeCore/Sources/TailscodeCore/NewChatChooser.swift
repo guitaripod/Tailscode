@@ -559,11 +559,17 @@ public struct NewChatDefaults: Sendable, Equatable {
     public static func resolve(profileID: String) -> NewChatDefaults {
         made(
             model: ModelPreferenceStore.initialModel(sessionKey: nil, contextID: profileID),
-            effort: EffortPreferenceStore.initialEffort(sessionKey: nil, contextID: profileID))
+            effort: EffortPreferenceStore.initialEffort(sessionKey: nil, contextID: profileID),
+            catalog: ModelCatalogStore.cached(profileID))
     }
 
-    static func made(model: ModelSelection?, effort: String?) -> NewChatDefaults {
-        if let chip = ModelBadge.chip(model: model?.modelID, effort: effort) {
+    static func made(
+        model: ModelSelection?, effort: String?, catalog: [ModelInfo]
+    ) -> NewChatDefaults {
+        if let chip = ModelBadge.chip(
+            model: model?.modelID, effort: effort, providerID: model?.providerID,
+            catalog: catalog)
+        {
             return NewChatDefaults(chip: chip, line: Localized.text("Starts with"))
         }
         if let effort, !effort.isEmpty {
@@ -744,16 +750,16 @@ public enum NewChatChooserCheck {
 
         let recorded = NewChatDefaults.made(
             model: ModelSelection(providerID: "anthropic", modelID: "claude-fable-5"),
-            effort: "xhigh")
+            effort: "xhigh", catalog: [])
         expect(
             recorded.chip?.name == "Fable" && recorded.chip?.effort == "xhigh",
             "a recorded pick is named as its chip")
         expect(recorded.sentence == "\(recorded.line) Fable · xhigh", "and read out whole")
-        let auto = NewChatDefaults.made(model: nil, effort: nil)
+        let auto = NewChatDefaults.made(model: nil, effort: nil, catalog: [])
         expect(
             auto.chip == nil && auto.sentence == auto.line,
             "no pick says the server decides rather than guessing")
-        let effortOnly = NewChatDefaults.made(model: nil, effort: "high")
+        let effortOnly = NewChatDefaults.made(model: nil, effort: "high", catalog: [])
         expect(
             effortOnly.chip == nil && effortOnly.line.contains("high"),
             "an effort picked without a model still travels")

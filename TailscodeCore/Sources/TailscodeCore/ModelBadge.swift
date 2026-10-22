@@ -5,9 +5,9 @@ import CodingAgentKit
 /// ("sonnet") or a full model id ("claude-fable-5"); both collapse to the
 /// family name. Sessions without a reported model produce nothing.
 public enum ModelBadge {
-    public static func text(for session: AgentSession) -> String? {
+    public static func text(for session: AgentSession, catalog: [ModelInfo]) -> String? {
         guard let raw = session.model,
-            let name = familyName(raw, providerID: session.modelProviderID)
+            let name = familyName(raw, providerID: session.modelProviderID, catalog: catalog)
         else { return nil }
         guard let effort = session.reasoningEffort, !effort.isEmpty else { return name }
         return "\(name) \(effort)"
@@ -16,7 +16,7 @@ public enum ModelBadge {
     /// Chip text for a pending choice: "Opus · max", or "Auto" while the server
     /// is the one deciding.
     public static func label(
-        model: ModelSelection?, effort: String?, catalog: [ModelInfo] = []
+        model: ModelSelection?, effort: String?, catalog: [ModelInfo]
     ) -> String {
         let name =
             model.flatMap { familyName($0.modelID, providerID: $0.providerID, catalog: catalog) }
@@ -27,7 +27,7 @@ public enum ModelBadge {
 
     /// The family name alone, for a legend or a table where the effort is not the point.
     public static func shortName(_ raw: String) -> String {
-        familyName(raw, providerID: nil) ?? raw
+        familyName(raw, providerID: nil, catalog: []) ?? raw
     }
 
     /// The word a pill wears for a model the catalog lists. A Claude model answers to its family
@@ -60,9 +60,7 @@ public enum ModelBadge {
     /// one worth showing, the id with its packaging taken off otherwise, so a local build or a
     /// gateway id reads as what it is rather than as a Claude alias or a tail-truncated path.
     public static func word(for selection: ModelSelection, in models: [ModelInfo]) -> String {
-        let name =
-            models.first { $0.id == selection.modelID && $0.providerID == selection.providerID }?.name
-            ?? models.first { $0.id == selection.modelID }?.name
+        let name = catalogRow(selection.modelID, providerID: selection.providerID, in: models)?.name
         return shortName(selection.modelID, catalogName: name, providerID: selection.providerID)
     }
 
@@ -86,10 +84,10 @@ public enum ModelBadge {
 
     /// The badge as parts rather than a sentence, for a surface that colours the model by its
     /// family and the effort by its heat instead of folding both into one dim line.
-    public static func chip(for session: AgentSession) -> ModelChip? {
+    public static func chip(for session: AgentSession, catalog: [ModelInfo]) -> ModelChip? {
         chip(
             model: session.model, effort: session.reasoningEffort,
-            providerID: session.modelProviderID)
+            providerID: session.modelProviderID, catalog: catalog)
     }
 
     /// The chip for a listed conversation, read in the order the composer's own pill reads: the
@@ -109,14 +107,10 @@ public enum ModelBadge {
             catalog: ModelCatalogStore.cached(entry.profileID))
     }
 
-    public static func chip(model raw: String?, effort: String?) -> ModelChip? {
-        chip(model: raw, effort: effort, providerID: nil)
-    }
-
     /// The chip with the door the model runs through, which is what decides whether a model
     /// carrying Claude's words is Claude's.
     public static func chip(
-        model raw: String?, effort: String?, providerID: String?, catalog: [ModelInfo] = []
+        model raw: String?, effort: String?, providerID: String?, catalog: [ModelInfo]
     ) -> ModelChip? {
         guard let raw, let name = familyName(raw, providerID: providerID, catalog: catalog) else {
             return nil
@@ -127,8 +121,12 @@ public enum ModelBadge {
             effort: (trimmed?.isEmpty ?? true) ? nil : trimmed)
     }
 
-    public static func chip(selection: ModelSelection?, effort: String?) -> ModelChip? {
-        chip(model: selection?.modelID, effort: effort, providerID: selection?.providerID)
+    public static func chip(
+        selection: ModelSelection?, effort: String?, catalog: [ModelInfo]
+    ) -> ModelChip? {
+        chip(
+            model: selection?.modelID, effort: effort, providerID: selection?.providerID,
+            catalog: catalog)
     }
 
     /// The name a badge wears. Claude's models answer to a family word because every client of
@@ -139,7 +137,7 @@ public enum ModelBadge {
     /// that name, the codename its owner gave it (``catalogWord``); every other id is worn as
     /// itself (``identityName``).
     private static func familyName(
-        _ raw: String, providerID: String?, catalog: [ModelInfo] = []
+        _ raw: String, providerID: String?, catalog: [ModelInfo]
     ) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -151,14 +149,20 @@ public enum ModelBadge {
     /// The catalog's own name for an id when it is short enough for a chip and says more than the
     /// id does, so a codename shows on a session row the way it does in the picker.
     private static func catalogWord(_ id: String, providerID: String?, catalog: [ModelInfo]) -> String? {
-        let match =
-            catalog.first { $0.id == id && $0.providerID == providerID }
-            ?? catalog.first { $0.id == id }
-        guard let name = match?.name.trimmingCharacters(in: .whitespacesAndNewlines),
+        guard let name = catalogRow(id, providerID: providerID, in: catalog)?.name.trimmingCharacters(in: .whitespacesAndNewlines),
             !name.isEmpty, name.count <= catalogNameLimit,
             !isOnlyTheID(name, id: id, identity: identityName(id))
         else { return nil }
         return name
+    }
+
+    /// The row a model is listed by. A stated door picks its own row and nobody else's: the same id
+    /// served by `llama-server` and by `ollama` is two models with two codenames, and a session on
+    /// one must not wear the other's. Only an id with no door at all takes the first row that
+    /// carries it.
+    static func catalogRow(_ id: String, providerID: String?, in catalog: [ModelInfo]) -> ModelInfo? {
+        guard let providerID, !providerID.isEmpty else { return catalog.first { $0.id == id } }
+        return catalog.first { $0.id == id && $0.providerID == providerID }
     }
 
     /// The family word of a model that is Claude's and names its member. Mythos wears Fable's hue

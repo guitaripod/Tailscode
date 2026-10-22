@@ -1274,10 +1274,11 @@ public struct ModelChooser: Sendable, Equatable {
         sections += elsewhere
         sections += literalSections()
         let keys = pinnedKeys
+        let catalog = sources.flatMap(\.models)
         self.sections = sections.map { section in
             ModelChooserSection(
                 id: section.id, title: section.title, detail: section.detail,
-                rows: section.rows.map { decorated($0, pinned: keys) },
+                rows: section.rows.map { decorated($0, pinned: keys, catalog: catalog) },
                 canCollapse: section.canCollapse,
                 isCollapsed: section.isCollapsed, count: section.count)
         }
@@ -1306,9 +1307,11 @@ public struct ModelChooser: Sendable, Equatable {
     /// The facts every row carries beyond its words: the level a pick would run at, the chip, the
     /// pin its star toggles, and the word for where it runs. A Pinned row arrives with its own
     /// reading and pin already set, because its level is the pair's rather than the aim's.
-    private func decorated(_ row: ModelChooserRow, pinned keys: Set<String>) -> ModelChooserRow {
+    private func decorated(
+        _ row: ModelChooserRow, pinned keys: Set<String>, catalog: [ModelInfo]
+    ) -> ModelChooserRow {
         var row = row
-        row.chip = ModelBadge.chip(selection: row.selection, effort: nil)
+        row.chip = ModelBadge.chip(selection: row.selection, effort: nil, catalog: catalog)
         row.place = place(of: row)
         guard row.pair == nil else { return row }
         guard let selection = row.selection else { return row }

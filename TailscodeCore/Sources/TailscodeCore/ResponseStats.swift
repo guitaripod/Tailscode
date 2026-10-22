@@ -136,7 +136,9 @@ public struct ResponseStats: Sendable, Hashable {
                         "What these tokens would have cost on the metered API. A subscription bills a flat fee, so this is never a bill.")))
         }
 
-        if let chip = ModelBadge.chip(model: turn.modelID, effort: turn.reasoningEffort) {
+        if let chip = ModelBadge.chip(
+            model: turn.modelID, effort: turn.reasoningEffort, providerID: nil, catalog: [])
+        {
             facts.append(
                 ResponseStat(
                     kind: .model, symbol: "cpu", glyph: "◆",
