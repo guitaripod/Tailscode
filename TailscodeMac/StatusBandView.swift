@@ -7,6 +7,13 @@ import TailscodeCore
 /// someone is reading. Menus and action clicks read the newest facts at the moment they fire, so
 /// a list opened mid-turn is the list as it is now. The notice rides the trailing edge and
 /// truncates first: it must never push a live fact off the band.
+///
+/// A fact holds still. Each keeps room for the widest it has been in this conversation
+/// (`StatusBandSlots`, as a minimum a narrow pane can still compress), the leading mark owns a slot
+/// as wide as the widest mark in the vocabulary, and the context fact reserves the ring's room
+/// whether or not a ring is drawn — so the clock, the share and the counts change their own words
+/// and nothing beside them moves. Only what changed is written: a tick that says the same thing
+/// again costs no layout.
 @MainActor
 final class StatusBandView: NSView {
     var perform: ((StatusFacts.Action) -> Void)?
@@ -27,9 +34,12 @@ final class StatusBandView: NSView {
 
     private let stack = NSStackView()
     private let noticeLabel = NSTextField(labelWithString: "")
-    private var facts = StatusFacts()
+    private var segments: [StatusFacts.Segment] = []
     private var widgets: [String: NSView] = [:]
     private var kinds: [String: String] = [:]
+    private var written: [String: Written] = [:]
+    private var ranks: [String: Int] = [:]
+    private var slots = StatusBandSlots()
     /// One hand per fact that is about something happening. Kept beside the widgets so a segment
     /// that leaves the band takes its clock with it.
     private var pulses: [String: ActivityPulse] = [:]
@@ -74,15 +84,75 @@ final class StatusBandView: NSView {
         for pulse in pulses.values { pulse.windowChanged() }
     }
 
+    struct Placement {
+        let id: String
+        let frame: NSRect
+        let natural: CGFloat
+        let image: CGFloat
+    }
+
+    /// Where each fact sits on the band, in order, and how wide its words alone would make it, for
+    /// the selftest that holds the band still.
+    var placements: [Placement] {
+        segments.compactMap { segment in
+            guard let view = widgets[segment.id] as? (NSView & HeldWidth) else { return nil }
+            return Placement(
+                id: segment.id, frame: view.frame, natural: view.naturalWidth,
+                image: (view as? NSButton)?.image?.size.width ?? 0)
+        }
+    }
+
+    /// The facts belong to one conversation's band: showing another starts the widths over, so a
+    /// long tool name from one chat does not leave room in the next.
+    func resetSlots() {
+        slots.reset()
+        applyHeldWidths()
+    }
+
+    /// One frame of a sweeping mark, written in place of the segment's leading glyph. The mark owns
+    /// a slot as wide as the widest glyph there is, so a frame repaints and never re-measures.
+    func sweep(_ frame: String, segment id: String) {
+        guard let segment = segments.first(where: { $0.id == id }), let view = widgets[id]
+        else { return }
+        write(frame + segment.text.dropFirst(), to: view, segment: segment)
+    }
+
+    override func layout() {
+        super.layout()
+        applyHeldWidths()
+    }
+
+    /// Held widths are read against the band's width now, so a narrower pane lowers the room a fact
+    /// keeps and a wider one gives back what was clamped.
+    private func applyHeldWidths() {
+        let band = bandWidth
+        for (id, view) in widgets {
+            (view as? HeldWidth)?.heldWidth = CGFloat(slots.width(of: id, in: band))
+        }
+    }
+
+    private var bandWidth: Double? { bounds.width > 0 ? Double(bounds.width) : nil }
+
+    private func hold(_ view: NSView, id: String) {
+        guard let view = view as? HeldWidth else { return }
+        let band = bandWidth
+        slots.widen(id, to: Double(view.naturalWidth), in: band)
+        view.heldWidth = CGFloat(slots.width(of: id, in: band))
+    }
+
     func render(facts: StatusFacts?, notice: String?) {
-        self.facts = facts ?? StatusFacts()
+        let interval = Pace.signposter.beginInterval("band render")
+        defer { Pace.signposter.endInterval("band render", interval) }
         let segments = facts?.segments ?? []
+        self.segments = segments
         let wanted = Set(segments.map(\.id))
 
         for (id, view) in widgets where !wanted.contains(id) {
             view.removeFromSuperview()
             widgets[id] = nil
             kinds[id] = nil
+            written[id] = nil
+            ranks[id] = nil
             pulses[id]?.stop()
             pulses[id] = nil
         }
@@ -97,30 +167,35 @@ final class StatusBandView: NSView {
             }
             if let stale = widgets[segment.id] { stale.removeFromSuperview() }
             pulses[segment.id]?.stop()
+            written[segment.id] = nil
+            ranks[segment.id] = nil
             let view = make(segment)
             stack.insertArrangedSubview(view, at: index)
             widgets[segment.id] = view
             kinds[segment.id] = tag
-            pulses[segment.id] = ActivityPulse(view: view) { [weak self, weak view] frame in
-                guard let self, let view,
-                    let text = self.facts.segments.first(where: { $0.id == segment.id })?.text
-                else { return }
-                self.write(frame + text.dropFirst(), to: view, css: segment.css)
+            written[segment.id] = Written(segment)
+            hold(view, id: segment.id)
+            let id = segment.id
+            pulses[id] = ActivityPulse(view: view) { [weak self] frame in
+                self?.sweep(frame, segment: id)
             }
             animate(segment)
             index += 1
         }
-        for (rank, segment) in segments.enumerated() {
+        for (rank, segment) in segments.enumerated() where ranks[segment.id] != rank {
             guard let view = widgets[segment.id] else { continue }
+            ranks[segment.id] = rank
             stack.setVisibilityPriority(Self.visibility(rank: rank), for: view)
         }
 
-        noticeLabel.font = MacTheme.Ramp.font(.segment)
-        noticeLabel.textColor = MacTheme.Color.onGlassSecondary
-        minimumHeight.constant = Self.height
-        noticeLabel.stringValue = notice ?? ""
-        noticeLabel.isHidden = notice?.isEmpty != false
-        hasContent = !segments.isEmpty || notice?.isEmpty == false
+        let font = MacTheme.Ramp.font(.segment)
+        if noticeLabel.font != font { noticeLabel.font = font }
+        let height = Self.height
+        if minimumHeight.constant != height { minimumHeight.constant = height }
+        let words = notice ?? ""
+        if noticeLabel.stringValue != words { noticeLabel.stringValue = words }
+        noticeLabel.isHidden = words.isEmpty
+        hasContent = !segments.isEmpty || !words.isEmpty
     }
 
     /// A pane too narrow for every fact drops them from the end rather than holding the window
@@ -153,16 +228,62 @@ final class StatusBandView: NSView {
         }
     }
 
-    private static func title(_ text: String, css: String) -> NSAttributedString {
-        NSAttributedString(
-            string: text,
-            attributes: [.font: MacTheme.Ramp.font(.segment), .foregroundColor: color(for: css)])
+    /// What a segment last put on its view. A tick that would write the same thing again is not
+    /// written: setting a title invalidates the control and so costs a layout pass, and every fact
+    /// but the clock says the same words as a second ago.
+    private struct Written: Equatable {
+        let text: String
+        let css: String
+        let parts: [GitBadgePart]?
+        let meter: Double?
+        let icon: ActivityIcon?
+        let slot: CGFloat
+
+        @MainActor
+        init(_ segment: StatusFacts.Segment) {
+            text = segment.text
+            css = segment.css
+            parts = segment.parts
+            meter = segment.meter
+            icon = segment.icon
+            slot = Self.slot(for: segment)
+        }
+
+        @MainActor
+        static func slot(for segment: StatusFacts.Segment) -> CGFloat {
+            StatusBandView.wearsGlyphSlot(segment) ? GlyphSlot.current().width : 0
+        }
+    }
+
+    /// The facts that lead with a mark of the activity vocabulary, and so with a slot sized for the
+    /// widest of them: the turn's phase, what is queued behind it and the agents out.
+    fileprivate static func wearsGlyphSlot(_ segment: StatusFacts.Segment) -> Bool {
+        segment.icon != nil || segment.id == "agents"
+    }
+
+    private static func title(
+        _ text: String, css: String, slotted: Bool = false
+    ) -> NSAttributedString {
+        let font = MacTheme.Ramp.font(.segment)
+        let title = NSMutableAttributedString(
+            string: text, attributes: [.font: font, .foregroundColor: color(for: css)])
+        guard slotted, let glyph = text.first.map(String.init) else { return title }
+        let kern = GlyphSlot.current().kern(for: glyph)
+        if kern > 0 {
+            title.addAttribute(
+                .kern, value: kern, range: NSRange(location: 0, length: (glyph as NSString).length))
+        }
+        return title
     }
 
     private func update(_ view: NSView, segment: StatusFacts.Segment) {
-        write(Self.words(segment), to: view, css: segment.css, parts: segment.parts)
+        let now = Written(segment)
+        guard written[segment.id] != now else { return }
+        written[segment.id] = now
+        write(Self.words(segment), to: view, segment: segment)
         name(view, for: segment)
         ring(segment, on: view)
+        hold(view, id: segment.id)
         animate(segment)
     }
 
@@ -198,6 +319,12 @@ final class StatusBandView: NSView {
         return String(segment.text.dropFirst()).trimmingCharacters(in: .whitespaces)
     }
 
+    private static let ringSlot = NSImage(
+        size: NSSize(width: ringDiameter, height: ringDiameter), flipped: false
+    ) { _ in true }
+
+    fileprivate static let ringDiameter: CGFloat = 11
+
     private static func symbolImage(_ name: String, ink: NSColor) -> NSImage? {
         let configuration = NSImage.SymbolConfiguration(
             pointSize: MacTheme.Ramp.font(.segment).pointSize, weight: .regular)
@@ -220,11 +347,13 @@ final class StatusBandView: NSView {
             return
         }
         guard let fraction = segment.meter else {
-            button.image = nil
+            button.image = segment.id == "context" ? Self.ringSlot : nil
+            button.imagePosition = segment.id == "context" ? .imageLeading : .noImage
             return
         }
         button.image = ContextRing.image(
-            fraction: fraction, ink: Self.color(for: segment.css), diameter: 11, stroke: 2)
+            fraction: fraction, ink: Self.color(for: segment.css), diameter: Self.ringDiameter,
+            stroke: 2)
         button.imagePosition = .imageLeading
         button.imageHugsTitle = true
     }
@@ -232,10 +361,10 @@ final class StatusBandView: NSView {
     /// A segment that arrives as runs is written run by run, each in the colour of what it means —
     /// a branch, what it owes its upstream, what the tree is holding — because one colour over all
     /// of it makes a conflict read as another number.
-    private func write(
-        _ text: String, to view: NSView, css: String, parts: [GitBadgePart]? = nil
-    ) {
-        let rendered = parts.map(Self.tinted) ?? Self.title(text, css: css)
+    private func write(_ text: String, to view: NSView, segment: StatusFacts.Segment) {
+        let rendered =
+            segment.parts.map(Self.tinted)
+            ?? Self.title(text, css: segment.css, slotted: Self.wearsGlyphSlot(segment))
         if let label = view as? NSTextField {
             label.attributedStringValue = rendered
         } else if let button = view as? BandButton {
@@ -270,10 +399,13 @@ final class StatusBandView: NSView {
     private func make(_ segment: StatusFacts.Segment) -> NSView {
         switch segment.kind {
         case .plain:
-            let label = RowKit.label(
-                Self.words(segment), font: MacTheme.Ramp.font(.segment),
-                color: Self.color(for: segment.css))
-            if let parts = segment.parts { label.attributedStringValue = Self.tinted(parts) }
+            let label = BandLabel(labelWithString: "")
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.lineBreakMode = .byTruncatingTail
+            label.attributedStringValue =
+                segment.parts.map(Self.tinted)
+                ?? Self.title(
+                    Self.words(segment), css: segment.css, slotted: Self.wearsGlyphSlot(segment))
             label.setContentCompressionResistancePriority(.init(700), for: .horizontal)
             name(label, for: segment)
             return label
@@ -281,13 +413,14 @@ final class StatusBandView: NSView {
             let id = segment.id
             let button = BandButton { [weak self] in
                 guard let self,
-                    let action = self.facts.segments.first(where: { $0.id == id })?.action
+                    let action = self.segments.first(where: { $0.id == id })?.action
                 else { return }
                 self.perform?(action)
             }
             button.attributedTitle =
                 segment.parts.map(Self.tinted)
-                ?? Self.title(Self.words(segment), css: segment.css)
+                ?? Self.title(
+                    Self.words(segment), css: segment.css, slotted: Self.wearsGlyphSlot(segment))
             ring(segment, on: button)
             button.setAccessibilityRole(.button)
             button.setAccessibilityHelp(Localized.text("Opens details"))
@@ -298,7 +431,7 @@ final class StatusBandView: NSView {
             let button = BandButton {}
             button.onClick = { [weak self, weak button] in
                 guard let self, let button else { return }
-                let rows = self.facts.segments.first { $0.id == id }?.rows ?? []
+                let rows = self.segments.first { $0.id == id }?.rows ?? []
                 guard !rows.isEmpty else { return }
                 let menu = NSMenu()
                 for row in rows {
@@ -317,7 +450,8 @@ final class StatusBandView: NSView {
                 menu.popUp(
                     positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
             }
-            button.attributedTitle = Self.title(segment.text, css: segment.css)
+            button.attributedTitle = Self.title(
+                segment.text, css: segment.css, slotted: Self.wearsGlyphSlot(segment))
             button.setAccessibilityRole(.menuButton)
             button.setAccessibilityHelp(Localized.text("Opens a list"))
             name(button, for: segment)
@@ -330,8 +464,12 @@ final class StatusBandView: NSView {
 /// moment it is clicked — the title under the pointer may be a second newer than the closure
 /// that made it.
 @MainActor
-private final class BandButton: NSButton {
+private final class BandButton: NSButton, HeldWidth {
     var onClick: (() -> Void)?
+    var heldWidth: CGFloat = 0 {
+        didSet { if oldValue != heldWidth { invalidateIntrinsicContentSize() } }
+    }
+    var naturalWidth: CGFloat { super.intrinsicContentSize.width }
 
     init(onClick: @escaping () -> Void = {}) {
         self.onClick = onClick
@@ -348,10 +486,76 @@ private final class BandButton: NSButton {
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: super.intrinsicContentSize.width, height: StatusBandView.height)
+        NSSize(width: max(naturalWidth, heldWidth), height: StatusBandView.height)
     }
 
     @objc private func fire() {
         onClick?()
+    }
+}
+
+/// A fact that keeps the room of the widest it has been: the width its words alone ask for, and the
+/// least it will take. Held as a minimum on the intrinsic size rather than a constraint, so the
+/// stack still compresses or detaches it in a pane too narrow, and a hidden fact holds nothing the
+/// window's width would have to answer to.
+@MainActor
+protocol HeldWidth: AnyObject {
+    var heldWidth: CGFloat { get set }
+    var naturalWidth: CGFloat { get }
+}
+
+@MainActor
+private final class BandLabel: NSTextField, HeldWidth {
+    var heldWidth: CGFloat = 0 {
+        didSet { if oldValue != heldWidth { invalidateIntrinsicContentSize() } }
+    }
+    var naturalWidth: CGFloat { super.intrinsicContentSize.width }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: max(naturalWidth, heldWidth), height: super.intrinsicContentSize.height)
+    }
+}
+
+/// The room the leading mark keeps: as wide as the widest glyph in the vocabulary, in the band's
+/// own font. A mark's advance is the font's only when the font has the glyph — ⚒ and the half
+/// circles of a sweep come from a fallback face — so the slot is measured here, once per font, and
+/// each mark is padded up to it with a kern.
+@MainActor
+private final class GlyphSlot {
+    let width: CGFloat
+    private let font: NSFont
+    private var advances: [String: CGFloat] = [:]
+
+    private static var cache: [String: GlyphSlot] = [:]
+
+    static func current() -> GlyphSlot {
+        let font = MacTheme.Ramp.font(.segment)
+        let key = "\(font.fontName) \(font.pointSize)"
+        if let held = cache[key] { return held }
+        let slot = GlyphSlot(font: font)
+        cache[key] = slot
+        return slot
+    }
+
+    private init(font: NSFont) {
+        self.font = font
+        var widest: CGFloat = 0
+        var advances: [String: CGFloat] = [:]
+        for glyph in StatusBandSlots.leadingGlyphs {
+            let advance = Self.advance(of: glyph, in: font)
+            advances[glyph] = advance
+            widest = max(widest, advance)
+        }
+        self.advances = advances
+        width = widest
+    }
+
+    func kern(for glyph: String) -> CGFloat {
+        let advance = advances[glyph] ?? Self.advance(of: glyph, in: font)
+        return max(0, width - advance)
+    }
+
+    private static func advance(of glyph: String, in font: NSFont) -> CGFloat {
+        NSAttributedString(string: glyph, attributes: [.font: font]).size().width
     }
 }

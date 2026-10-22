@@ -730,6 +730,7 @@ final class TranscriptViewController: NSViewController {
         self.entry = entry
         self.backend = backend
         calls.bind(entry)
+        statusBand.resetSlots()
         editingQueued = nil
         queue = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
         lastState = nil
@@ -1424,6 +1425,7 @@ final class TranscriptViewController: NSViewController {
         conversation = nil
         entry = nil
         backend = nil
+        statusBand.resetSlots()
         lastState = nil
         lastFullRows = []
         lastStreamedKey = nil
@@ -3007,7 +3009,7 @@ final class TranscriptViewController: NSViewController {
         guard let state = lastState else {
             lastFacts = nil
             statusBand.render(facts: nil, notice: notice)
-            bandGlass?.isHidden = !statusBand.hasContent
+            showBand(statusBand.hasContent)
             return
         }
         let quotas = quotasForStatus?() ?? []
@@ -3023,7 +3025,43 @@ final class TranscriptViewController: NSViewController {
         noteBrainContext(facts)
         let bandNotice = quotaNotice(state: state, quotas: quotas) ?? notice
         statusBand.render(facts: facts, notice: bandNotice)
-        bandGlass?.isHidden = !statusBand.hasContent
+        showBand(statusBand.hasContent)
+    }
+
+    private var bandShown = false
+    private var bandFade = 0
+
+    /// The band floats over the transcript, whose inset follows the composer alone, so it arriving
+    /// at the start of a turn moves nothing the person is reading; it fades in over the length of a
+    /// glance instead of snapping on. It never animates while the window is being dragged to a new
+    /// size, where a fade would trail the edge, or under reduced motion.
+    private func showBand(_ shown: Bool) {
+        guard let band = bandGlass, shown != bandShown else { return }
+        bandShown = shown
+        bandFade += 1
+        let generation = bandFade
+        guard view.window != nil, !view.inLiveResize, MotionBudget.animationAllowed else {
+            band.alphaValue = 1
+            band.isHidden = !shown
+            return
+        }
+        if shown {
+            band.alphaValue = 0
+            band.isHidden = false
+        }
+        NSAnimationContext.runAnimationGroup(
+            { context in
+                context.duration = 0.18
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                band.animator().alphaValue = shown ? 1 : 0
+            },
+            completionHandler: { [weak self, weak band] in
+                MainActor.assumeIsolated {
+                    guard let self, let band, self.bandFade == generation else { return }
+                    band.isHidden = !shown
+                    band.alphaValue = 1
+                }
+            })
     }
 
     /// What the machine is doing, how full the window is and whether a call is open, handed to the

@@ -38,6 +38,12 @@ enum ChatChecks {
             } catch {
                 failures.append("\(error)")
             }
+            do {
+                notes.append("\(try BandChecks.run()) status band")
+            } catch {
+                failures.append("\(error)")
+            }
+            notes.append(BandChecks.costs())
             print("CHAT_NOTES \(notes.joined(separator: " + "))")
             print(failures.isEmpty ? "CHAT_OK" : "CHAT_FAILED \(failures.joined(separator: " · "))")
             exit(failures.isEmpty ? 0 : 1)
