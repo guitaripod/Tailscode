@@ -98,7 +98,7 @@ public struct ChatMetrics: Sendable, Equatable {
     public var railPlateRows: Int
 
     public var imageMaxHeight: Double
-    public var imageStripGap: Double
+    public var pictureRowGap: Double
     public var codeCollapseLines: Int
     public var promptBubblePadding: Double
 
@@ -114,20 +114,20 @@ public struct ChatMetrics: Sendable, Equatable {
                 paragraphGap: 8, proseToFurnitureGap: 4, proseToCodeGap: 6, furnitureGap: 2,
                 pictureStripGap: 6, turnGap: 16, activityRowHeight: activity, seamRowHeight: seam,
                 railRowHeight: rail, railOpenRowHeight: open, railPlateWidth: 440, railPlateRows: 8,
-                imageMaxHeight: 180, imageStripGap: 8, codeCollapseLines: 14, promptBubblePadding: 6)
+                imageMaxHeight: 180, pictureRowGap: 8, codeCollapseLines: 14, promptBubblePadding: 6)
         case .comfortable:
             return ChatMetrics(
                 paragraphGap: air, proseToFurnitureGap: air, proseToCodeGap: air, furnitureGap: air,
                 pictureStripGap: air, turnGap: 24, activityRowHeight: activity, seamRowHeight: seam,
                 railRowHeight: rail, railOpenRowHeight: open, railPlateWidth: 440, railPlateRows: 8,
-                imageMaxHeight: 300, imageStripGap: 8, codeCollapseLines: 14, promptBubblePadding: 8)
+                imageMaxHeight: 300, pictureRowGap: 8, codeCollapseLines: 14, promptBubblePadding: 8)
         }
     }
 
     /// The air between two neighbouring rows, from the row above to the row below; zero above the
     /// first. A prompt starts a turn, so the space above one is the turn gap; below it the answer
     /// sits at the paragraph gap, because a question is the heading of its own answer. A picture
-    /// beside anything is the strip gap, and beside another picture the strip's gutter; code beside
+    /// beside anything is the strip gap, and beside another picture the gutter between picture rows; code beside
     /// anything is the code gap; prose beside a flat line is the furniture-edge gap; two flat lines
     /// sit nearly touching. Every pair except the ones touching a prompt is symmetric, so a client
     /// never asks which way round a pair is.
@@ -135,7 +135,7 @@ public struct ChatMetrics: Sendable, Equatable {
         guard let previous else { return 0 }
         if next == .prompt { return turnGap }
         if previous == .prompt { return paragraphGap }
-        if previous == .picture && next == .picture { return imageStripGap }
+        if previous == .picture && next == .picture { return pictureRowGap }
         if previous == .picture || next == .picture { return pictureStripGap }
         switch (previous, next) {
         case (.prose, .prose): return paragraphGap

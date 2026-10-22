@@ -117,7 +117,7 @@ final class TranscriptColumn: NSView {
                 if line.accepts(natural, in: width) {
                     let frame = NSRect(x: line.cursor, y: line.top, width: natural, height: height)
                     if host.frame != frame { host.frame = frame }
-                    line.take(width: natural, height: height, gap: CGFloat(metrics.imageStripGap))
+                    line.take(width: natural, height: height, gap: CGFloat(metrics.pictureRowGap))
                     y = line.top + line.height
                     previous = host
                     continue
@@ -129,7 +129,7 @@ final class TranscriptColumn: NSView {
                 let natural = rowWidth(of: row)
                 frame = NSRect(x: 0, y: y, width: natural, height: height)
                 line = PictureLine(
-                    top: y, cursor: natural + CGFloat(metrics.imageStripGap), height: height)
+                    top: y, cursor: natural + CGFloat(metrics.pictureRowGap), height: height)
             } else {
                 frame = NSRect(x: 0, y: y, width: width, height: height)
             }

@@ -249,7 +249,7 @@ extension SelfTest {
             table[6] == compact.gap(from: .code, to: .rail), "code to a rail: \(table[6])")
         try expect(
             table[7] == compact.gap(from: .rail, to: .picture), "a rail to a picture gallery: \(table[7])")
-        try expect(table[8] == compact.imageStripGap, "a gallery beside a gallery: \(table[8])")
+        try expect(table[8] == compact.pictureRowGap, "a gallery beside a gallery: \(table[8])")
         try expect(
             table[9] == compact.turnGap / 2 && table[10] == compact.turnGap / 2,
             "a turn break splits the turn gap across its rule: \(table[9]) \(table[10])")
