@@ -168,7 +168,7 @@ enum ShareChecks {
         try expect(panel.content.previewSize == NSSize(width: 1600, height: 900), "the preview is on the sheet")
         try expect(
             !panel.content.isChipEnabled(.tools) && !panel.content.isChipOn(.tools)
-                && panel.content.isChipEnabled(.models),
+                && panel.content.isChipEnabled(.local),
             "a module the account cannot fill is dimmed and one it can is on offer")
         try expect(
             panel.content.chipHelp(.tools) == ShareModule.tools.unavailableReason(in: sessions),
@@ -184,12 +184,12 @@ enum ShareChecks {
             ], "the sheet offers its four ways out")
 
         let before = panel.altText
-        panel.press(.models)
-        try expect(!panel.content.isChipOn(.models) && panel.altText != before, "a chip switches its module")
+        panel.press(.local)
+        try expect(!panel.content.isChipOn(.local) && panel.altText != before, "a chip switches its module")
         let saved = ShareSelectionStore.load(defaults: suite)
         try expect(
             saved.format == .post && saved.chosen[.post] == panel.selection.chosen[.post]
-                && !(saved.chosen[.post] ?? []).contains(.models),
+                && !(saved.chosen[.post] ?? []).contains(.local),
             "a switched module is remembered")
         panel.choose(.square)
         await panel.settle()
