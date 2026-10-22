@@ -3669,7 +3669,7 @@ public enum SelfTest {
         guard analytics.models.first?.isFree == true, analytics.models.first?.share == 1 else {
             throw SelfTestFailure("a free model is drawn as an unused one")
         }
-        guard analytics.modelsLine?.isEmpty == false else {
+        guard analytics.localWork?.models.first?.money == "Local" else {
             throw SelfTestFailure("nothing says the work ran for nothing")
         }
         guard analytics.hours.isEmpty, analytics.tools.isEmpty else {

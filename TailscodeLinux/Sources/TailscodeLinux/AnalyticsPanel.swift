@@ -147,6 +147,7 @@ enum AnalyticsPanel {
             let name = ServerLabel.display(profile)
             do {
                 if let report = try await backend.usageAnalytics(days: window.days) {
+                    await UsageAnalytics.rememberModels(profileID: profile.id, backend: backend)
                     reports.append((name, report))
                 } else {
                     missing.append(name)
@@ -157,7 +158,11 @@ enum AnalyticsPanel {
                 continue
             }
         }
-        return UsageAnalytics(servers: reports, missingServers: missing, window: window)
+        let profileIDs = profiles.map(\.id)
+        return UsageAnalytics(
+            servers: reports, missingServers: missing, window: window,
+            modelNames: UsageAnalytics.modelNames(profileIDs: profileIDs),
+            contextWindows: UsageAnalytics.contextWindows(profileIDs: profileIDs))
     }
 
     /// A state that is the whole window sits in the middle of it, not in a corner.
@@ -178,6 +183,10 @@ enum AnalyticsPanel {
             return
         }
         gtk_box_append(ptr(column), hero(analytics))
+        if analytics.isLocalLed, let work = analytics.localWork {
+            gtk_box_append(ptr(column), localWorkCard(work))
+            appendModels(analytics, to: column)
+        }
         if !analytics.days.isEmpty { gtk_box_append(ptr(column), daily(analytics)) }
         if analytics.weekdays.contains(where: { $0.share > 0 }) || !analytics.hours.isEmpty {
             gtk_box_append(ptr(column), rhythm(analytics))
@@ -188,12 +197,9 @@ enum AnalyticsPanel {
                 meterCard(
                     title: Localized.text("Providers"), meters: analytics.providers, caption: nil))
         }
-        if !analytics.models.isEmpty {
-            gtk_box_append(
-                ptr(column),
-                meterCard(
-                    title: Localized.text("Models"), meters: analytics.models,
-                    caption: analytics.modelsLine))
+        if !analytics.isLocalLed {
+            appendModels(analytics, to: column)
+            if let work = analytics.localWork { gtk_box_append(ptr(column), localWorkCard(work)) }
         }
         if !analytics.projects.isEmpty {
             gtk_box_append(
@@ -217,6 +223,64 @@ enum AnalyticsPanel {
                     title: Localized.text("Machines"), meters: analytics.machines, caption: nil))
         }
         gtk_box_append(ptr(column), footer(analytics))
+    }
+
+    private static func appendModels(
+        _ analytics: UsageAnalytics, to column: UnsafeMutablePointer<GtkWidget>
+    ) {
+        guard !analytics.models.isEmpty else { return }
+        gtk_box_append(
+            ptr(column),
+            meterCard(
+                title: Localized.text("Models"), meters: analytics.models,
+                caption: analytics.modelsLine))
+    }
+
+    /// What ran on the person's own machine: a headline, a row of stat tiles and one meter per
+    /// model, all of it Core's words.
+    private static func localWorkCard(_ work: UsageAnalytics.LocalWork)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        Gtk.addClass(card, "usage-card")
+        gtk_box_append(ptr(card), heading(work.title, trailing: nil))
+        gtk_box_append(
+            ptr(card),
+            Gtk.label(work.headline, css: "usage-detail-key", wrap: true, selectable: false))
+        let tiles = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_set_homogeneous(ptr(tiles), 1)
+        for stat in work.stats { gtk_box_append(ptr(tiles), statTile(stat)) }
+        gtk_box_append(ptr(card), tiles)
+        for (index, row) in work.models.enumerated() {
+            gtk_box_append(
+                ptr(card),
+                meter(
+                    label: row.label, value: row.trailing, detail: row.detail,
+                    fraction: row.share, hot: index == 0, free: row.isFree))
+        }
+        if let caption = work.caption {
+            gtk_box_append(
+                ptr(card), Gtk.label(caption, css: "spend-caption", wrap: true, selectable: false))
+        }
+        return card
+    }
+
+    private static func statTile(_ stat: UsageAnalytics.LocalWork.Stat)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let cell = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        Gtk.addClass(cell, "record-card")
+        let title = Gtk.label(stat.label.uppercased(), css: "record-title", selectable: false)
+        gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_NONE)
+        gtk_box_append(ptr(cell), title)
+        gtk_box_append(ptr(cell), Gtk.label(stat.value, css: "record-value", selectable: false))
+        if let detail = stat.detail {
+            let text = Gtk.label(detail, css: "record-detail", wrap: true, selectable: false)
+            gtk_label_set_ellipsize(op(text), PANGO_ELLIPSIZE_END)
+            gtk_label_set_lines(op(text), 2)
+            gtk_box_append(ptr(cell), text)
+        }
+        return cell
     }
 
     /// The span is picked where the number it qualifies is: a total with no window on it is not a
@@ -257,6 +321,10 @@ enum AnalyticsPanel {
         let activity = Gtk.label(
             analytics.activityLine, css: "usage-detail-key", wrap: true, selectable: false)
         gtk_box_append(ptr(card), activity)
+        if let hosted = analytics.hostedLine {
+            gtk_box_append(
+                ptr(card), Gtk.label(hosted, css: "spend-caption", wrap: true, selectable: false))
+        }
         if let delta = analytics.deltaLine {
             let tone: String
             switch analytics.trend {
@@ -379,7 +447,7 @@ enum AnalyticsPanel {
             gtk_box_append(
                 ptr(card),
                 meter(
-                    label: row.label, value: row.money, detail: row.detail, fraction: row.share,
+                    label: row.label, value: row.trailing, detail: row.detail, fraction: row.share,
                     hot: false, free: row.isFree))
         }
         if let caption {

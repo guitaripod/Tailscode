@@ -376,7 +376,7 @@ public enum DemoWorld {
             let day = UsageAnalyticsReport.Day(
                 day: formatter.string(from: date), costUSD: 0,
                 tokens: UsageAnalyticsReport.Tokens(
-                    input: Int(330_000 * heat), output: Int(55_000 * heat)),
+                    input: Int(96_000 * heat), output: Int(19_000 * heat)),
                 sessions: 1 + Int(2.4 * heat))
             daily.append(day)
             sessions += day.sessions
