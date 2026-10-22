@@ -79,7 +79,7 @@ import Testing
         let found = CapabilityRegistry.all.filter { $0.id == .neuralTrace }
         #expect(found.count == 1)
         #expect(found.first?.area == "transcript")
-        #expect(found.first?.title == "Everything an agent did is one brain")
+        #expect(found.first?.title == "Everything an agent did is one Megatron")
         #expect((found.first?.spec.count ?? 0) > 200)
     }
 
