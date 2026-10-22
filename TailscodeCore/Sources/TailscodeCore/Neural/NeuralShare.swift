@@ -4,7 +4,7 @@ extension CardStyle {
     /// The poster look of a shared turn: a black-green canvas and phosphor ink, authored for the
     /// head to sit on. Not part of ``CardStyle/all``, which is the analytics card's menu.
     public static let neural = CardStyle(
-        id: "neural", name: Localized.text("Neural"),
+        id: "neural", name: Localized.text("Megatron"),
         tagline: Localized.text("Black-green with phosphor ink"),
         authored: .init(
             canvas: "#04120b", canvasEnd: "#020504", text: "#d3f7e0", textDim: "#7fae93",

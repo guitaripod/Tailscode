@@ -73,7 +73,7 @@
       <description>
         <p>New:</p>
         <ul>
-          <li>Every turn is a brain. Thoughts, tool calls and the agent&#x27;s own notes become one neural trace instead of a wall of activity lines: a collapsed line with a rendered head, its counts and its tally while it works, and an open stage with numbered steps, hover cards, pinning, a dive into a zone, replay with its scrubber, the answer&#x27;s paths as chips, keys, and Share as a poster. The latest turn opens itself and older turns stay one line. Choose Brain or Lines in Settings.</li>
+          <li>Meet Megatron. Thoughts, tool calls and the agent&#x27;s own notes become one head per turn instead of a wall of activity lines: a collapsed line with a rendered head, its counts and its tally while it works, and an open stage with numbered steps, hover cards, pinning, a dive into a zone, replay with its scrubber, the answer&#x27;s paths as chips, keys, and Share as a poster. The latest turn opens itself and older turns stay one line. Choose Megatron or Lines in Settings.</li>
           <li>The picture gallery is a wide grid, and every tile opens its own picture.</li>
           <li>Meridian, a world clock. A chip beside the update mark carries the time here and a sky glyph; hovering opens the pinned places, each machine&#x27;s clock skew and the quota windows about to reopen, and a click opens the sheet with a lane per place, the hours everyone is awake, alarms, and copy as ISO, UTC or epoch.</li>
           <li>Talk to the agent, in beta. A call strip above the composer listens and types into the chat on the model and effort the chat is on, with mute, hang up and the agent&#x27;s account. It is an ear, not a voice, and it needs libpulse.</li>

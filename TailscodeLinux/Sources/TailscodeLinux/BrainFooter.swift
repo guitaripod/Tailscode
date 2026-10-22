@@ -81,7 +81,7 @@ final class BrainFooter: @unchecked Sendable {
         gtk_widget_set_visible(chipHost, 0)
         gtk_widget_set_tooltip_text(share, Localized.text("Share this turn"))
         tailscode_set_accessible_label(share, Localized.text("Share this turn"))
-        tailscode_set_accessible_label(close, Localized.text("Close the brain"))
+        tailscode_set_accessible_label(close, Localized.text("Close Megatron"))
         tailscode_set_accessible_label(rows, NeuralReading.rowsLabel)
         for button in [replay, rows, share, close] { gtk_widget_set_valign(button, GTK_ALIGN_CENTER) }
         BrainUI.add(widget, replay, scrubHost, clock, chipHost, rows, share, close)

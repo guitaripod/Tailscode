@@ -375,10 +375,10 @@ final class MainMenu: NSObject {
         menu.addItem(item(Localized.text("Zoom Out"), #selector(zoomOut), "-"))
         menu.addItem(item(Localized.text("Actual Size"), #selector(zoomReset), "0"))
         menu.addItem(item(Localized.text("Type Size…"), #selector(typeSize), ""))
-        menu.addItem(item(Localized.text("Show Turns as Brains"), #selector(toggleBrain), ""))
+        menu.addItem(item(Localized.text("Show Megatron"), #selector(toggleBrain), ""))
         menu.addItem(
             item(
-                Localized.text("Open or Close the Newest Brain"), #selector(toggleNewestBrain), "b",
+                Localized.text("Open or Close Megatron on the Latest Turn"), #selector(toggleNewestBrain), "b",
                 [.command, .option]))
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("The month in numbers"), #selector(monthInNumbers), ""))
@@ -753,7 +753,7 @@ extension MainMenu: NSMenuItemValidation {
             let brains = hub.transcript.brains
             menuItem.title =
                 brains.openTurnID == nil
-                ? Localized.text("Open the Newest Brain") : Localized.text("Close the Open Brain")
+                ? Localized.text("Open Megatron on the Latest Turn") : Localized.text("Close Megatron")
             return brains.isActive && brains.order.last != nil
         }
         if menuItem.action == #selector(toggleBrain) {

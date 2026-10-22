@@ -1,6 +1,6 @@
 # Neural trace
 
-A turn's thinking and working, drawn as one mecha brain instead of a stack of "N tools" lines. Everything the agent did before its final message is the brain; the final message is the answer below it. Design board: `.tailscode/design/neural-trace/` (A Cortex, B Lanes, C In the transcript, D The whole turn, E The hero, F The layout, G States, H State sheet, I Away, J Share a turn). Screens and sources: `docs/neural-trace-mocks/`. States, meters, the face, replay, provenance, the away surfaces and sharing are in `docs/neural-trace-states.md`. Pipeline: `scripts/neural-head/render.sh`.
+A turn's thinking and working, drawn as one mecha head instead of a stack of "N tools" lines. **Megatron** is the name the person sees for it (Settings, the menus, the share poster, VoiceOver); this document and the code keep the working names brain and neural trace. Everything the agent did before its final message is Megatron; the final message is the answer below it. Design board: `.tailscode/design/neural-trace/` (A Cortex, B Lanes, C In the transcript, D The whole turn, E The hero, F The layout, G States, H State sheet, I Away, J Share a turn). Screens and sources: `docs/neural-trace-mocks/`. States, meters, the face, replay, provenance, the away surfaces and sharing are in `docs/neural-trace-states.md`. Pipeline: `scripts/neural-head/render.sh`.
 
 ## What the person sees
 

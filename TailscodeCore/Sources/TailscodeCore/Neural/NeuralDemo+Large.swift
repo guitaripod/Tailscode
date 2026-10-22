@@ -289,7 +289,7 @@ private struct LargeTurnScript {
 
     func turn(answer: Bool) -> [ChatMessage] {
         let beats = layout().map { $0 ?? .read }
-        var out: [ChatMessage] = [user(0, "Work through the whole backlog on the brain and ship it.")]
+        var out: [ChatMessage] = [user(0, "Work through the whole backlog on Megatron and ship it.")]
         var parts: [MessagePart.Kind] = []
         var previous: LargeBeat?
         var number = 1

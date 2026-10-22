@@ -316,7 +316,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
         stage.refresh()
         stage.setRing(currentRing(model))
         stage.setDimmed(list.hiddenIDs)
-        accessibilityLabel = Localized.text("%1$@, %2$@", Localized.text("Brain"), model.spoken)
+        accessibilityLabel = Localized.text("%1$@, %2$@", Localized.text("Megatron"), model.spoken)
         let filterKey = "\(list.filter.zones.map(\.rawValue).sorted())|\(list.filter.failedOnly)|\(list.filter.query)|\(list.visibleCount)"
         if fromBrowse, filterKey == lastFilterKey {
             account.restyle()

@@ -1244,7 +1244,7 @@ final class SettingsViewController: UIViewController {
                     comment: "search keywords")
         case .activityStyle:
             return "\(ActivityStyleSetting.title) "
-                + Localized.text("brain head lines tools thinking activity neural nodes style")
+                + Localized.text("megatron brain head lines tools thinking activity neural nodes style")
         case .pro:
             return String(
                 localized: "pro purchase upgrade supporter restore tip", comment: "search keywords")
