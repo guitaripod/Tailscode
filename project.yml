@@ -509,7 +509,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Tailscode
-        CURRENT_PROJECT_VERSION: "195"
+        CURRENT_PROJECT_VERSION: "198"
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) TAILSCODE_MAS"
         CODE_SIGN_ENTITLEMENTS: TailscodeMac/TailscodeMac-Store.entitlements
         ENABLE_APP_SANDBOX: YES
