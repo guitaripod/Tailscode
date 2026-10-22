@@ -3,8 +3,8 @@
 The month-in-numbers share is a picture the person composes: a **format** (the canvas), a set of
 **modules** (the sections), a **look** (the palette). Core decides every word, every rectangle and
 every line count; a client paints. The Linux client is the reference painter
-(`TailscodeLinux/.../AnalyticsCardRenderer.swift`, `ShareCardDialog.swift`); the Mac and iOS
-follow-ups translate it.
+(`TailscodeLinux/.../AnalyticsCardRenderer.swift`, `ShareCardDialog.swift`); the Mac client has
+translated it and the iOS follow-up remains.
 
 ## Core types (`TailscodeCore`)
 
@@ -15,7 +15,7 @@ follow-ups translate it.
 | `ShareFit` | `ShareModule.swift` | What a choice becomes for an account: `shown`, `dropped` (left out for room), `unavailable` (module to reason), `note` (the sentence for the dropped ones), and `state(of:)` for a chip: `.on`, `.off`, `.blocked(reason)`. |
 | `ShareSelection` | `ShareModule.swift` | `format`, `style: CardStyle`, and each format's own modules (`chosen`; a format nobody has touched wears `ShareFormat.curated`). `fit(_:)`, `toggle(_:in:)` (returns `.added`, `.removed` or `.refused(reason)`), `forgetChoices(for:)`. |
 | `ShareSelectionStore` | `ShareModule.swift` | `load()` / `save(_:)` over `UserDefaults`: `tailscode.shareFormat` and `tailscode.shareModules` (`post=daily,models;long=...`). The look stays `CardStyleSelection` (`tailscode.shareCardStyle`). Linux captures both new keys in `SettingsFile`. |
-| `AnalyticsShare` | `AnalyticsShare.swift` | `card(_ selection:, dark:)` the picture; `caption(_:)` the post's words; `altText(_:)` the picture's description; `plainText`, `markdown`, `filename` as before. `share.card` is still the full-length card with every classic module, which the unchanged Mac and iOS painters draw. |
+| `AnalyticsShare` | `AnalyticsShare.swift` | `card(_ selection:, dark:)` the picture; `caption(_:)` the post's words; `altText(_:)` the picture's description; `plainText`, `markdown`, `filename` as before. `share.card` is still the full-length card with every classic module, which the unchanged iOS painter draws. |
 | `AnalyticsShare.Card` | `AnalyticsShare.swift` | `palette`, `format`, `canvasWidth`, `height`, `panels`, `footer`, `fit`. `with(palette:)` re-skins. |
 | `Card.Panel` | `AnalyticsShare.swift` | `module`, `rect`, `surface` (`.bare` or `.raised`), `corner`, `inset`, `metrics`, `blocks`; `content` is the rect less the inset. |
 | `Card.Metrics` | `AnalyticsShare.swift` | `contentWidth`, `scale`, `heroSize`, `dailyHeight`, `weekdayHeight`: the type and spacing a panel's blocks are measured in. `Metrics.long` is the old card's. |
@@ -141,9 +141,17 @@ in every format and drives the share window.
 
 ## What the follow-ups owe
 
-Mac (`TailscodeMac/AnalyticsCardRenderer.swift`, `ShareCardPanel.swift`) and iOS
-(`Tailscode/Usage/AnalyticsCardRenderer.swift`, `ShareCardViewController.swift`): replace the block
-loop with the panel walk above, move the meter track to `Card.meterTrackOffset`, add the format
-picker, the module chips (disabled with `ShareFit.state(of:)`'s reason), Copy caption, the picture's
-description, a debounced redraw, and the remembered selection through `ShareSelectionStore`; then
-flip each manifest's `usageAnalytics` answer from `.partial` to `.implemented`.
+The Mac is done: `TailscodeMac/AnalyticsCardRenderer.swift` walks the panels in AppKit and CoreText
+(tabular digits from the system's monospaced-digit face, leading and ellipsis by Core's rules), and
+`ShareCardPanel.swift` / `ShareSheetContent.swift` are the sheet on the shared `SheetView` host. The
+Mac selftest (`ShareChecks.swift`) paints every fixture on every format at 2x, asserts the size,
+ink in every panel and nothing outside the panels and footer, drives the sheet's state machine and
+dumps the same `<fixture>-<format>-<style>.png` names with the same `TAILSCODE_SHARE_CARD_*`
+variables; `--open share[:fixture[+format]]` stages the sheet for a screenshot.
+
+iOS (`Tailscode/Usage/AnalyticsCardRenderer.swift`, `ShareCardViewController.swift`) still owes:
+replace the block loop with the panel walk above, move the meter track to `Card.meterTrackOffset`,
+add the format picker, the module chips (disabled with `ShareFit.state(of:)`'s reason), Copy
+caption, the picture's description, a debounced redraw, and the remembered selection through
+`ShareSelectionStore`; then flip its manifest's `usageAnalytics` answer from `.partial` to
+`.implemented`.

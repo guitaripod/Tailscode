@@ -118,11 +118,7 @@ enum ParityManifest {
         case .stopTurn: return .implemented("cancelCurrentTurn")
         case .statusBand: return .implemented("StatusBandView")
         case .usagePanel: return .implemented("UsagePanel")
-        case .usageAnalytics:
-            return .partial(
-                "AnalyticsCardRenderer",
-                missing:
-                    "the share card is still the full-length column: the Mac share panel has no format picker, module chips, Copy caption or picture description yet — Core's AnalyticsShare.card(_:) and docs/usage-share.md carry the contract, and the Linux client already draws every format")
+        case .usageAnalytics: return .implemented("ShareCardPanel")
         case .deepseekBalance:
             return .partial(
                 "DeepSeekBalance",

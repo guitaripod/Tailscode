@@ -1105,6 +1105,16 @@ final class MainWindowController: NSWindowController {
                     }
                 }
             }
+        case "share":
+            if window?.isVisible != true { showWindow(nil) }
+            let staged = (parts.count > 1 ? parts[1] : "").split(separator: "+").map(String.init)
+            if let window,
+                let analytics = ShareFixtures.analytics(named: staged.first ?? "rich")
+            {
+                let format = staged.dropFirst().first.flatMap(ShareFormat.init(rawValue:))
+                ShareCardPanel.present(
+                    analytics, on: window, selection: format.map { ShareSelection(format: $0) })
+            }
         case "delegate": presentDelegate()
         case "delegate-beta":
             presentDelegate()
@@ -1120,7 +1130,7 @@ final class MainWindowController: NSWindowController {
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, typesize, analytics, newchat[:browse], "
                         + "quickask, cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
-                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], clock-glance, clock-sheet[:minute+add+q=text], draw, preview[:state[+split]], preview=HOST:PORT:/folder[+split], renderer, delegate\n").utf8))
+                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], clock-glance, clock-sheet[:minute+add+q=text], share[:fixture[+format]], draw, preview[:state[+split]], preview=HOST:PORT:/folder[+split], renderer, delegate\n").utf8))
         }
     }
 
