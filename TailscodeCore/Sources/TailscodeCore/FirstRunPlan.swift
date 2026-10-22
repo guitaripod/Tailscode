@@ -108,6 +108,13 @@ public struct FirstRunPlan: Sendable, Equatable {
         public let detail: String
     }
 
+    /// A link found on the pasteboard, offered and never used: the title and the machine it names,
+    /// without the key, which stays in the pairing link until the person presses Connect.
+    public struct Offer: Sendable, Equatable {
+        public let title: String
+        public let detail: String
+    }
+
     public let mode: FirstRunState.Mode
     public let intro: String
     public let rows: [Row]
@@ -116,6 +123,7 @@ public struct FirstRunPlan: Sendable, Equatable {
     public let dismiss: String
     public let back: String?
     public let demo: Demo?
+    public let offer: Offer?
     public let isFinished: Bool
     public let outcome: FirstRunState.Outcome?
 
@@ -137,8 +145,16 @@ extension FirstRunPlan {
             dismiss: later(state) ?? (state.mode == .addition ? ConnectLinkReading.notNow : FirstRunReading.later),
             back: state.way != .choosing && !state.hasLiveConnection ? FirstRunReading.back : nil,
             demo: state.mode == .firstRun && !state.hasLiveConnection ? FirstRunReading.demo : nil,
+            offer: offer(state),
             isFinished: state.finished,
             outcome: state.outcome)
+    }
+
+    private static func offer(_ state: FirstRunState) -> Offer? {
+        guard let link = state.clipboard, !state.hasLiveConnection, state.way != .link else {
+            return nil
+        }
+        return FirstRunReading.clipboardOffer(link)
     }
 
     private static func tailscaleRow(_ state: FirstRunState) -> Row {
@@ -209,6 +225,9 @@ extension FirstRunPlan {
         switch state.way {
         case .choosing:
             blocks.append(.ways(FirstRunReading.ways(state, includingInstall: true)))
+            if state.platform.watchesTailnet, !state.offersTailnetScan {
+                blocks.append(.note(FirstRunReading.tailnetScanUnavailable))
+            }
         case .paste:
             blocks.append(.paste(FirstRunReading.paste(state)))
         case .install:

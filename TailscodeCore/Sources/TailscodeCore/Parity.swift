@@ -163,6 +163,8 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case settingsSurface
     case goalControl
     case firstRunSetup
+    case emptyWelcome
+    case addAnotherMachine
     case tailscaleReadiness
     case demoMode
     case activityNotifications
@@ -704,7 +706,7 @@ public enum CapabilityRegistry {
         CapabilityDefinition(
             id: .pairingLink, area: "servers", title: "A pairing link prefills first run",
             spec:
-                "The machine prints a tailscode://connect link (PairingKit) and the app opens it: ConnectLink reads it into a PairingLink or the plain reason it is not one (damaged, asks for something else, not a link), ConnectLinkPlan decides what happens — first run pre-selects the agent, fills the host and port and probes at once; a link for a server already added just opens that server; a link arriving when servers exist asks Add this machine? first — and ConnectLinkReading says what the link says, including This address is not on a tailnet when the host cannot be one, in which case nothing is tried until the person goes on. The link only prefills: nothing is saved until Connect, and the password the link may carry (key) goes to the keychain and to the host only after that press, never into a log (PairingLink.redacted). Every client has a way to hand the app a link: iOS opens it from any app and from a scanned code, the Mac registers the tailscode scheme and handles the open, Linux registers x-scheme-handler/tailscode and accepts tailscode --connect <link> or a bare tailscode:// argument on the single instance already running, and all of them have a paste field that notices a link on the clipboard and offers it."),
+                "The machine prints a tailscode://connect link (PairingKit) and the app opens it: ConnectLink reads it into a PairingLink or the plain reason it is not one (damaged, asks for something else, not a link), ConnectLinkPlan decides what happens — first run pre-selects the agent, fills the host and port and probes at once; a link for a server already added just opens that server; a link arriving when servers exist asks Add this machine? first — and ConnectLinkReading says what the link says, including This address is not on a tailnet when the host cannot be one, in which case nothing is tried until the person goes on. The link only prefills: nothing is saved until Connect, and the password the link may carry (key) goes to the keychain and to the host only after that press, never into a log (PairingLink.redacted). Every client has a way to hand the app a link: iOS opens it from any app and from a scanned code, the Mac registers the tailscode scheme and handles the open, Linux registers x-scheme-handler/tailscode and accepts tailscode --connect <link> or a bare tailscode:// argument on the single instance already running, and the desktops' machine step notices a link on the clipboard and offers it (addAnotherMachine)."),
         CapabilityDefinition(
             id: .pairingScan, area: "servers", title: "Scan the code the computer printed",
             spec:
@@ -873,6 +875,14 @@ public enum CapabilityRegistry {
             id: .firstRunSetup, area: "app", title: "First run is a verified checklist",
             spec:
                 "Setup states each requirement and proves what it can — this machine's tailnet presence, and which agent answers the typed address via probeCandidates — before asking for anything."),
+        CapabilityDefinition(
+            id: .emptyWelcome, area: "app", title: "An empty window is a welcome",
+            spec:
+                "When the app holds no real server (the demo's are not one) the main pane draws EmptyWelcome instead of a blank transcript: a title, one sentence, the next step read from the same FirstRunPlan the first-run window draws (Tailscale not running shows the Tailscale row's own remedy, a missing machine shows the machine row, a signed-out Claude shows the sign-in) and three actions with one primary: Set up a machine opens first run, Paste a link opens it on the link way, Try the demo enters the demo. The sidebar's empty list carries the same primary button and EmptyWelcome.sidebarLine. Every word is Core's; a client decides only how it is drawn, and the welcome goes away the moment a real server is saved."),
+        CapabilityDefinition(
+            id: .addAnotherMachine, area: "servers", title: "Adding a machine is first run's job, everywhere",
+            spec:
+                "The servers screen has no form of its own for adding a machine. Add a machine opens the first-run checklist in its addition mode (FirstRunState.Mode.addition: no Tailscale row, no demo, no Later, so it never claims Tailscale is missing when a machine is already connected), which is the one place the link way, the install-command way and the tailnet scan exist; a copy that cannot scan the tailnet says so once and leads with the link. A link on the pasteboard is offered, never used: while the checklist is the key window and the clipboard holds a parseable ConnectLink the machine step shows Use the link you copied with the machine's name and place and never its key, which stays redacted and held back until Connect (FirstRunPlan.offer). A failed probe on the servers screen is ConnectDiagnosis with the one tap that fixes it, never a hand-written sentence. When first run or an addition ends with a live server the window closes, a toast names the machine that connected (FirstRunLanding) and the active pane opens PaneChooser on that machine's own step, so the person lands where a conversation starts."),
         CapabilityDefinition(
             id: .tailscaleReadiness, area: "app",
             title: "Not on the tailnet is four states, each with its own fix",

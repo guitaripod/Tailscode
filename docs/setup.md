@@ -180,6 +180,28 @@ door; it writes no sentence of its own, so the three clients cannot drift.
   arrives when servers exist asks "Add this machine?" first.
 - **Claude's sign-in is read right after the save.** Signed out opens the existing sign-in inside
   first run; a bridge too old to say is not called signed out.
+- **An empty window is a welcome.** On the desktops, while the app holds no real server (the demo's
+  are not one), the main pane draws `EmptyWelcome` instead of a blank transcript: a title, a
+  sentence, the next step read from the same plan (Tailscale's own remedy while it is down, the
+  machine, or the sign-in) and three actions with one primary, Set up a machine, Paste a link, Try
+  the demo. The sidebar's empty list carries the same primary.
+- **A machine is added from the checklist and nowhere else.** The Servers screen's Add a machine
+  opens it in its addition mode (no Tailscale row, no demo, Not now rather than Later), which is
+  where the link way, the install command and the tailnet scan live. A copy that cannot scan the
+  tailnet says so once and leads with the link. A failed probe on the Servers screen is
+  `ConnectDiagnosis` with the same one-tap fix the checklist shows.
+- **A copied link is offered, never used.** While the checklist is the key window and the
+  pasteboard holds a parseable link, the machine step shows "Use the link you copied" with the
+  machine's name and place. The key stays in the link, redacted, until Connect.
+- **A connect ends in a conversation.** The window closes, a toast names the machine
+  (`FirstRunLanding`) and a pane that holds no conversation opens `PaneChooser` already on that
+  machine's step.
+- **Every state can be put on screen.** `FirstRunFixtures` names them (`checking`,
+  `tailscale-down`, `machine-asking`, `link-offered`, `link-pasted`, `probing`, `signed-out`,
+  `connected`, `failed:<cause>`, each optionally `+add`). The Mac opens one with
+  `--open first-run[:state]`, the welcome with `--open welcome[:state]` and the Servers screen
+  with a failure on it with `--open servers:failed:<cause>`; its selftest (`FirstRunChecks`)
+  reads every state back from what was drawn.
 
 What only a real device shows, and was therefore not seen:
 

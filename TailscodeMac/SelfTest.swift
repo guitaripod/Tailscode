@@ -371,6 +371,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try FirstRunChecks.run()
+            report("first run: \(checks) claims hold — every state draws, Return connects, Escape is Later")
+        } catch {
+            report("first run: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkParity()
             report("parity: \(checks) capabilities answered")
         } catch {

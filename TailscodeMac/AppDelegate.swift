@@ -50,12 +50,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             saved: { [weak controller] in
                 Task { [weak controller] in await controller?.sidebar.refresh() }
             },
+            landed: { [weak controller] landing in
+                Task { [weak controller] in await controller?.land(on: landing) }
+            },
             seePro: { [weak controller] in controller?.presentPro() },
             openServer: { [weak controller] id in
                 guard let controller else { return }
                 ConnectLinkDoor.show(serverID: id, main: controller)
             })
-        FirstRunWindow.presentIfNeeded()
+        if MacShot.surface?.hasPrefix("welcome") != true { FirstRunWindow.presentIfNeeded() }
         openPendingLinks()
         #if DEBUG
             if !LiveShot.holdsBack("activation") { NSApp.activate(ignoringOtherApps: true) }

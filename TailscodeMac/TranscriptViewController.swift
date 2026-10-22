@@ -66,6 +66,7 @@ final class TranscriptViewController: NSViewController {
     private let starters = NSStackView()
     private let starterFlow = StarterFlow()
     private let chooserView = ChooserView()
+    private let welcomeView = EmptyWelcomeView()
     private var chooser: PaneChooser?
     private var composerGlass: NSView?
     private var jumpGlass: NSView?
@@ -304,6 +305,7 @@ final class TranscriptViewController: NSViewController {
         chooserView.isHidden = true
         chooserView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(chooserView)
+        container.addSubview(welcomeView)
 
         let identity = configureIdentityStrip()
         container.addSubview(identity)
@@ -395,6 +397,12 @@ final class TranscriptViewController: NSViewController {
             chooserView.widthAnchor.constraint(lessThanOrEqualToConstant: 520),
             chooserView.leadingAnchor.constraint(
                 greaterThanOrEqualTo: container.leadingAnchor, constant: MacTheme.Spacing.l),
+
+            welcomeView.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            welcomeView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            welcomeView.widthAnchor.constraint(
+                lessThanOrEqualTo: container.widthAnchor, constant: -MacTheme.Spacing.xl * 2),
+            welcomeView.widthAnchor.constraint(lessThanOrEqualToConstant: 460),
         ])
         identityBesideFind = identity.trailingAnchor.constraint(
             lessThanOrEqualTo: findBar.leadingAnchor, constant: -MacTheme.Spacing.m)
@@ -3491,6 +3499,31 @@ final class TranscriptViewController: NSViewController {
     private func hideEmptyState() {
         emptyLabel.isHidden = true
         starters.isHidden = true
+        welcomeView.isHidden = true
+    }
+
+    /// The pane with no conversation and no server to hold one draws Core's welcome instead of a
+    /// caption. A pane that holds a chat or is asking which server keeps what it has: the hub asks
+    /// for the welcome only when nothing else is the pane's business.
+    func showWelcome(_ welcome: EmptyWelcome, onAction: @escaping (EmptyWelcome.Intent) -> Void) {
+        guard entry == nil, chooser == nil else { return }
+        hideEmptyState()
+        welcomeView.onAction = onAction
+        welcomeView.show(welcome)
+        welcomeView.isHidden = false
+    }
+
+    func clearWelcome() {
+        guard !welcomeView.isHidden else { return }
+        welcomeView.isHidden = true
+        emptyLabel.isHidden = entry != nil || chooser != nil
+    }
+
+    var shownWelcome: EmptyWelcome? { welcomeView.isHidden ? nil : welcomeView.shown }
+
+    var welcomeButtonTitles: [String] {
+        guard !welcomeView.isHidden else { return [] }
+        return welcomeView.buttonTitles
     }
 
     /// The empty conversation's headline and the four ways Core offers to begin one, as chips the

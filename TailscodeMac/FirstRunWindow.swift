@@ -10,24 +10,107 @@ import TailscodeCore
 /// machine needs once it is saved.
 ///
 /// It is also the door for a pairing link: with no server it is the first run with the link
-/// already read, and with servers it asks whether to add the machine the link names.
+/// already read, and with servers it asks whether to add the machine the link names. And it is the
+/// one place a machine is added from: the Servers window and the empty window both open it, in the
+/// addition mode when a machine is already there, so the link way, the install command and the
+/// tailnet scan exist here and nowhere else.
 @MainActor
 final class FirstRunWindow: NSObject, NSWindowDelegate {
     struct Hooks {
         var saved: () -> Void
+        var landed: (FirstRunLanding?) -> Void
         var seePro: () -> Void
         var openServer: (String) -> Void
     }
 
-    static var hooks = Hooks(saved: {}, seePro: {}, openServer: { _ in })
+    static var hooks = Hooks(saved: {}, landed: { _ in }, seePro: {}, openServer: { _ in })
     private static var open: FirstRunWindow?
 
     static func presentIfNeeded() {
         ServerDirectory.shared.reload()
         guard realProfiles.isEmpty else { return }
-        let checklist = FirstRunWindow(mode: .firstRun)
+        present(way: nil)
+    }
+
+    /// The checklist, for whoever asks for a machine to be added: the first run when no real
+    /// server exists, the addition mode when one does, which has no Tailscale row to wrongly claim
+    /// anything is missing. A window already open is raised, and moved to the way asked for.
+    static func present(way: FirstRunPlan.Way.Kind?) {
+        ServerDirectory.shared.reload()
+        if let existing = open {
+            existing.raise()
+            if let way { existing.choose(way) }
+            return
+        }
+        let mode: FirstRunState.Mode = realProfiles.isEmpty ? .firstRun : .addition
+        let checklist = FirstRunWindow(mode: mode, fixture: nil, linked: false)
         open = checklist
-        checklist.begin(pasting: nil)
+        checklist.begin(pasting: nil, way: way)
+    }
+
+    /// One state of the checklist from `FirstRunFixtures`, drawn through the ordinary plan and
+    /// left alone: no tailnet is read, no clipboard is looked at and nothing is probed, so a
+    /// picture of "the machine refused" needs no machine.
+    /// - Parameter ordersFront: false draws the plan into a window nobody sees, which is how the
+    ///   selftest reads every state without a screen.
+    @discardableResult
+    static func presentFixture(named name: String, ordersFront: Bool = true) -> FirstRunWindow? {
+        guard let state = FirstRunFixtures.state(named: name, platform: .mac) else { return nil }
+        if ordersFront { open?.window.close() }
+        let checklist = FirstRunWindow(mode: state.mode, fixture: state, linked: false)
+        if ordersFront { open = checklist }
+        checklist.show(fixture: state, ordersFront: ordersFront)
+        return checklist
+    }
+
+    /// Another state in the same window: a picture of each state needs one window, not one each.
+    /// A state of the other mode is a different checklist and is refused.
+    @discardableResult
+    func redraw(fixtureNamed name: String) -> Bool {
+        guard fixture != nil, let state = FirstRunFixtures.state(named: name, platform: .mac),
+            state.mode == mode
+        else { return false }
+        show(fixture: state, ordersFront: false)
+        return true
+    }
+
+    var drawnTexts: [String] { Self.texts(in: window.contentView) }
+
+    var windowTitle: String { window.title }
+
+    /// The button Return presses, when there is one on screen, and whether it can be pressed.
+    var returnButton: (title: String, isEnabled: Bool)? {
+        guard !primaryButton.isHidden, primaryButton.keyEquivalent == "\r" else { return nil }
+        return (primaryButton.title, primaryButton.isEnabled)
+    }
+
+    /// Every visible button Escape presses: exactly one, Later or Not now, whichever the step has.
+    var escapeButtons: [String] {
+        [notNowButton, laterButton].filter { !$0.isHidden && $0.keyEquivalent == Self.escape }
+            .map(\.title)
+    }
+
+    private static func texts(in view: NSView?) -> [String] {
+        guard let view, !view.isHidden else { return [] }
+        var found: [String] = []
+        if let field = view as? NSTextField, !field.stringValue.isEmpty {
+            found.append(field.stringValue)
+        }
+        if let button = view as? NSButton, !button.title.isEmpty { found.append(button.title) }
+        for child in view.subviews { found += texts(in: child) }
+        return found
+    }
+
+    func closeFixture() {
+        window.close()
+    }
+
+    /// The demo's two servers, taken from the checklist or from the empty window, with the window
+    /// closed behind them.
+    static func enterDemoMode() {
+        ServerDirectory.shared.enterDemoMode()
+        hooks.saved()
+        open?.window.close()
     }
 
     /// A pairing link that arrived from outside: pasted into the window that is already open, or
@@ -39,9 +122,10 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
             existing.paste(text)
             return
         }
-        let window = FirstRunWindow(mode: realProfiles.isEmpty ? .firstRun : .addition)
+        let window = FirstRunWindow(
+            mode: realProfiles.isEmpty ? .firstRun : .addition, fixture: nil, linked: true)
         open = window
-        window.begin(pasting: text)
+        window.begin(pasting: text, way: nil)
     }
 
     private static var realProfiles: [ConnectionProfile] {
@@ -78,6 +162,7 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
     private let flow: FirstRunFlow
     private let environment: FirstRunEnvironment
     private let mode: FirstRunState.Mode
+    private let fixture: FirstRunState?
     private let window: FloatingWindow
     private let column = FillingStack(topDown: true)
     private let intro = RowKit.wrapping(
@@ -122,7 +207,6 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
             guard let flow = self?.flow else { return }
             Task { await flow.confirmOffTailnet() }
         },
-        signIn: { [weak self] in self?.signIn() },
         fix: { [weak self] in self?.fix($0) },
         back: { [weak self] in
             guard let flow = self?.flow else { return }
@@ -130,27 +214,35 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
         })
     }
 
-    private init(mode: FirstRunState.Mode) {
+    private init(mode: FirstRunState.Mode, fixture: FirstRunState?, linked: Bool) {
         self.mode = mode
+        self.fixture = fixture
         environment = Self.environment()
         flow = FirstRunFlow(platform: .mac, mode: mode, environment: environment)
         window = FloatingWindow(
             contentRect: NSRect(x: 0, y: 0, width: 620, height: 520),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         super.init()
-        build()
+        build(linked: linked)
     }
 
-    private func build() {
+    private func build(linked: Bool) {
         column.spacing = MacTheme.Spacing.s
         column.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 18, right: 20)
         column.addArrangedSubview(intro)
         column.addArrangedSubview(footer())
 
-        window.title = mode == .addition ? ConnectLinkReading.addQuestion : Localized.text("Welcome")
+        window.title = Self.title(for: mode, linked: linked)
         window.minSize = NSSize(width: 620, height: 320)
         window.contentView = MacDialogs.scrollColumn(holding: column)
         window.delegate = self
+    }
+
+    private static func title(for mode: FirstRunState.Mode, linked: Bool) -> String {
+        switch mode {
+        case .firstRun: return Localized.text("Welcome")
+        case .addition: return linked ? ConnectLinkReading.addQuestion : ConnectLinkReading.addMachine
+        }
     }
 
     private func footer() -> NSView {
@@ -167,6 +259,7 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
         }
         primaryButton.keyEquivalent = "\r"
         primaryButton.setAction { [weak self] in self?.primaryPressed() }
+        primaryButton.setAccessibilityIdentifier("firstrun.primary")
         let actions = NSStackView(views: [
             RowKit.spacer(), demoButton, notNowButton, laterButton, busy, primaryButton,
         ])
@@ -176,7 +269,13 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
         return actions
     }
 
-    private func begin(pasting text: String?) {
+    private func show(fixture state: FirstRunState, ordersFront: Bool) {
+        latestTailscale = state.tailscale
+        render(FirstRunPlan.make(state))
+        if ordersFront { show() }
+    }
+
+    private func begin(pasting text: String?, way: FirstRunPlan.Way.Kind?) {
         let flow = self.flow
         planTask = Task { [weak self] in
             let plans = await flow.plans()
@@ -187,7 +286,11 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
         }
         pollTailnet()
         Task { [weak self] in
-            if let text { await flow.paste(text) }
+            if let text {
+                await flow.paste(text)
+            } else if let way {
+                await flow.choose(way)
+            }
             let plan = await flow.plan
             guard let self, !self.isClosed, plan.outcome == nil else { return }
             self.show()
@@ -218,6 +321,7 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
+        guard fixture == nil else { return }
         let text = NSPasteboard.general.string(forType: .string)
         let flow = self.flow
         Task { await flow.clipboard(text) }
@@ -233,11 +337,13 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
         intro.isHidden = plan.mode == .addition
         for (index, row) in plan.rows.enumerated() {
             let drawn = rowView(row.id, at: index)
-            drawn.update(row, back: row.id == .machine ? plan.back : nil)
+            drawn.update(
+                row, back: row.id == .machine ? plan.back : nil,
+                offer: row.id == .machine ? plan.offer : nil)
         }
         showFooter(plan)
         watchForInstall(plan)
-        if plan.isFinished { finish() }
+        if plan.isFinished, fixture == nil { finish() }
     }
 
     private func rowView(_ id: FirstRunPlan.Row.ID, at index: Int) -> FirstRunRow {
@@ -252,10 +358,13 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
         demoButton.isHidden = plan.demo == nil
         demoButton.title = plan.demo?.title ?? ""
         demoButton.toolTip = plan.demo?.detail
+        demoButton.setAccessibilityHelp(plan.demo?.detail)
         notNowButton.isHidden = plan.later != nil
         notNowButton.title = plan.dismiss
+        notNowButton.keyEquivalent = plan.later == nil ? Self.escape : ""
         laterButton.isHidden = plan.later == nil
         laterButton.title = plan.later ?? ""
+        laterButton.keyEquivalent = plan.later == nil ? "" : Self.escape
         primary = plan.primary
         primaryButton.isHidden = plan.primary == nil
         primaryButton.title = plan.primary?.title ?? ""
@@ -267,6 +376,8 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
         }
     }
 
+    private static let escape = "\u{1b}"
+
     private func primaryPressed() {
         guard let primary else { return }
         let flow = self.flow
@@ -275,7 +386,7 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
             window.makeFirstResponder(nil)
             Task { await flow.connect() }
         case .openTailscale:
-            openTailscale()
+            fix(.openTailscale)
         case .signIn:
             signIn()
         }
@@ -296,40 +407,13 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
     private func fix(_ fix: ConnectDiagnosis.Fix) {
         window.makeFirstResponder(nil)
         let flow = self.flow
-        switch fix {
-        case .none:
-            return
-        case .openTailscale:
-            openTailscale()
-        case .openAppSettings:
-            if let url = URL(string: "x-apple.systempreferences:") { NSWorkspace.shared.open(url) }
-        case .retry:
-            Task { await flow.retry() }
-        case .retryOtherPort(let url), .usePlainHTTP(let url):
-            Task { await flow.typeAddress(url.absoluteString) }
-        case .revealPassword:
-            Task { await flow.revealPassword() }
-        case .seePro:
-            Self.hooks.seePro()
-        case .copyCommand(let command):
-            RowKit.copyToClipboard(command)
-        }
-    }
-
-    /// The door Tailscale offers for what this Mac reads, or the Tailscale app, or its download
-    /// page when the reading is a healthy one and the diagnosis still names Tailscale (a machine
-    /// signed into another account says so from an `up` reading).
-    private func openTailscale() {
-        if let reading = latestTailscale, TailnetStatusMac.door(for: reading) != nil {
-            remedy.write(reading)
-            remedy.enterDoor()
-            return
-        }
-        if let app = TailnetStatusMac.appURL {
-            NSWorkspace.shared.open(app)
-        } else if let page = URL(string: TailnetStatusMac.downloadPage) {
-            NSWorkspace.shared.open(page)
-        }
+        MacConnectFix(
+            remedy: remedy, tailscale: { [weak self] in self?.latestTailscale },
+            retry: { Task { await flow.retry() } },
+            retarget: { url in Task { await flow.typeAddress(url.absoluteString) } },
+            revealPassword: { Task { await flow.revealPassword() } },
+            seePro: { Self.hooks.seePro() }
+        ).perform(fix)
     }
 
     private func findOnTailnet() {
@@ -386,6 +470,7 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
     /// someone starting Tailscale mid-setup watches the step turn green by itself. The CLI is
     /// asked off the main actor, because a step that polls must never be a step that stutters.
     private func pollTailnet() {
+        guard fixture == nil else { return }
         let flow = self.flow
         tailnetTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -401,9 +486,7 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
 
     private func enterDemo() {
         completed = true
-        ServerDirectory.shared.enterDemoMode()
-        Self.hooks.saved()
-        window.close()
+        Self.enterDemoMode()
     }
 
     private func handle(_ outcome: FirstRunState.Outcome) {
@@ -465,8 +548,9 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
     private func complete() {
         guard !completed else { return }
         completed = true
-        Self.hooks.saved()
+        let flow = self.flow
         window.close()
+        Task { Self.hooks.landed(await flow.landing) }
     }
 
     /// The machine just saved may be a Mac still missing a grant it needs to work anywhere in the

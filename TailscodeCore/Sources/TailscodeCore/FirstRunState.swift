@@ -114,6 +114,17 @@ public struct FirstRunState: Sendable, Equatable {
 }
 
 extension TailscaleReading {
+    /// The address a diagnosis is told this device has on the tailnet: its own when up, nothing
+    /// when it is known not to be on one, and "unknown" while the answer is not in or cannot be had
+    /// (a sandbox), which keeps a diagnosis from blaming the tailnet for what it cannot see.
+    public static func diagnosisAddress(_ reading: TailscaleReading?) -> String? {
+        switch reading {
+        case .up(let address): return address
+        case .none, .some(.sandboxed): return "unknown"
+        case .some: return nil
+        }
+    }
+
     /// Whether nothing can answer until this is fixed. A sandbox that cannot see the host's
     /// Tailscale is not that: it may well be connected, so the probe is allowed to find out.
     public var blocksReaching: Bool {

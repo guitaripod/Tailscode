@@ -144,8 +144,12 @@ public struct PaneChooser: Sendable, Equatable {
     /// - Parameter preferredServer: the server the pane was already looking at, if any; it is
     ///   pre-focused rather than pre-chosen, so the question is still asked and still answerable
     ///   with one Enter.
+    /// - Parameter startingOn: a server the question has already been answered for, because the
+    ///   person has just connected it: the chooser opens on that server's step, and a server that
+    ///   is not in the list leaves the question as it would have been.
     public init(
-        servers: [PaneChooserServer], entries: [SessionEntry], preferredServer: String? = nil
+        servers: [PaneChooserServer], entries: [SessionEntry], preferredServer: String? = nil,
+        startingOn answered: String? = nil
     ) {
         self.servers = servers
         self.entries = entries
@@ -156,6 +160,9 @@ public struct PaneChooser: Sendable, Equatable {
             let index = servers.firstIndex(where: { $0.profileID == preferred })
         {
             cursor = index
+        }
+        if let answered, servers.contains(where: { $0.profileID == answered }) {
+            serverID = answered
         }
     }
 

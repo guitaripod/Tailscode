@@ -14,6 +14,9 @@ enum SidebarRow: Equatable {
     /// The offer the launch pad owed: a new chat in the scoped project, pre-aimed at its
     /// directory, riding the board's own chrome.
     case scopeNew(String)
+    /// The sidebar's answer to an empty list when the cause is that no machine is set up: the
+    /// one press that starts setting one up, so the sentence above it is never a dead end.
+    case addMachine(String)
     case header(String, Int)
     /// - Parameter marked: whether the row is held by the bulk selection. It travels in the row
     ///   value rather than being read from the store at configure time, so the table's diff sees a
@@ -138,6 +141,10 @@ enum SidebarCellFactory {
         case .scopeNew(let name):
             let cell = reuse("action", in: tableView) { SidebarMessageCell() }
             cell.configure(text: Localized.text("＋ New chat in %@", name), style: .action)
+            return cell
+        case .addMachine(let title):
+            let cell = reuse("action", in: tableView) { SidebarMessageCell() }
+            cell.configure(text: title, style: .primary)
             return cell
         case .missedHeader(let count):
             let cell = reuse("missedHeader", in: tableView) { SidebarHeaderCell() }
@@ -1047,6 +1054,7 @@ final class SidebarMessageCell: NSView {
         case banner
         case empty
         case action
+        case primary
     }
 
     private let label = NSTextField(wrappingLabelWithString: "")
@@ -1081,6 +1089,10 @@ final class SidebarMessageCell: NSView {
         case .action:
             label.font = MacTheme.Ramp.font(.panelFootnote)
             label.textColor = MacTheme.Color.secondaryLabel
+            label.alignment = .center
+        case .primary:
+            label.font = MacTheme.Ramp.font(.panelLabel)
+            label.textColor = MacTheme.Color.accent
             label.alignment = .center
         }
     }

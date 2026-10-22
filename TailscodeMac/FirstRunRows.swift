@@ -13,7 +13,6 @@ struct FirstRunIntents {
     var copied: () -> Void
     var setPassword: (String) -> Void
     var confirmOffTailnet: () -> Void
-    var signIn: () -> Void
     var fix: (ConnectDiagnosis.Fix) -> Void
     var back: () -> Void
 }
@@ -54,6 +53,18 @@ final class FirstRunRow {
         self?.intents.back()
     }
     private lazy var backRow = FirstRunBlocks.buttonRow([backButton])
+    private lazy var offerButton = RowKit.ActionButton(title: "") { [weak self] in
+        self?.intents.useClipboard()
+    }
+    private let offerDetail = RowKit.wrapping(
+        "", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
+    private lazy var offerRow: NSView = {
+        let column = FillingStack(topDown: true)
+        column.spacing = 2
+        column.addArrangedSubview(FirstRunBlocks.buttonRow([offerButton]))
+        column.addArrangedSubview(offerDetail)
+        return column
+    }()
 
     init(intents: FirstRunIntents, remedy: TailnetRemedyView) {
         self.intents = intents
@@ -85,16 +96,20 @@ final class FirstRunRow {
         view.addArrangedSubview(body)
     }
 
-    func update(_ row: FirstRunPlan.Row, back: String?) {
+    func update(_ row: FirstRunPlan.Row, back: String?, offer: FirstRunPlan.Offer?) {
         number.stringValue = "\(row.number) ·"
         title.stringValue = row.title
         pill.stringValue = row.pill ?? ""
         pill.isHidden = row.pill == nil
         pill.textColor = Self.ink(row.glyph)
         showGlyph(row.glyph)
+        let remedyTellsIt = row.blocks.contains {
+            if case .remedy = $0 { return true }
+            return false
+        }
         detail.stringValue = row.detail ?? ""
-        detail.isHidden = row.detail == nil
-        reconcile(row.blocks, back: back)
+        detail.isHidden = row.detail == nil || remedyTellsIt
+        reconcile(row.blocks, back: back, offer: offer)
     }
 
     private func showGlyph(_ state: FirstRunPlan.Row.Glyph) {
@@ -133,7 +148,7 @@ final class FirstRunRow {
 
     /// Parts are matched to blocks by kind and by how many of that kind came before, so the field
     /// the person is typing in keeps its place while a status line comes and goes around it.
-    private func reconcile(_ planned: [FirstRunPlan.Block], back: String?) {
+    private func reconcile(_ planned: [FirstRunPlan.Block], back: String?, offer: FirstRunPlan.Offer?) {
         var counts: [String: Int] = [:]
         var wanted: [(key: String, view: NSView)] = []
         var fresh: [FirstRunBlockPart] = []
@@ -156,6 +171,12 @@ final class FirstRunRow {
             wanted.append((key, part.view))
         }
         for key in parts.keys where !live.contains(key) { parts[key] = nil }
+        if let offer {
+            offerButton.title = offer.title
+            offerButton.setAccessibilityHelp(offer.detail)
+            offerDetail.stringValue = offer.detail
+            wanted.insert(("offer", offerRow), at: 0)
+        }
         if let back {
             backButton.title = back
             wanted.append(("back", backRow))
@@ -223,7 +244,7 @@ enum FirstRunBlocks {
         case .link(let card):
             return [linkCard(card, intents: intents)]
         case .signIn(let card):
-            return signIn(card, intents: intents)
+            return signIn(card)
         case .paste, .agents, .password, .remedy:
             return []
         }
@@ -328,11 +349,10 @@ enum FirstRunBlocks {
         return view
     }
 
-    private static func signIn(_ card: FirstRunPlan.SignInCard, intents: FirstRunIntents) -> [NSView] {
+    private static func signIn(_ card: FirstRunPlan.SignInCard) -> [NSView] {
         [
             RowKit.wrapping(
-                card.title, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.label),
-            buttonRow([RowKit.ActionButton(title: card.action) { intents.signIn() }]),
+                card.title, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.label)
         ]
     }
 }
@@ -371,10 +391,6 @@ final class FirstRunPastePart: NSObject, FirstRunBlockPart, NSTextFieldDelegate 
     private let intents: FirstRunIntents
     private var sent = ""
     private var shownMessage: ConnectLinkReading.Message?
-    private lazy var offer = RowKit.ActionButton(title: "") { [weak self] in
-        self?.intents.useClipboard()
-    }
-    private lazy var offerRow = FirstRunBlocks.buttonRow([offer])
 
     init(intents: FirstRunIntents) {
         self.intents = intents
@@ -388,7 +404,6 @@ final class FirstRunPastePart: NSObject, FirstRunBlockPart, NSTextFieldDelegate 
         stack.addArrangedSubview(field)
         stack.addArrangedSubview(reading)
         stack.addArrangedSubview(messageSlot)
-        stack.addArrangedSubview(offerRow)
     }
 
     func apply(_ block: FirstRunPlan.Block) {
@@ -411,8 +426,6 @@ final class FirstRunPastePart: NSObject, FirstRunBlockPart, NSTextFieldDelegate 
             }
             messageSlot.isHidden = paste.message == nil
         }
-        offer.title = paste.offer ?? ""
-        offerRow.isHidden = paste.offer == nil
     }
 
     func didAppear() {

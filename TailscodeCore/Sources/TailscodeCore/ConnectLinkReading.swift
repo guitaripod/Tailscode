@@ -69,6 +69,13 @@ public enum ConnectLinkReading {
 
     public static var addQuestion: String { Localized.text("Add this machine?") }
 
+    public static var addMachine: String { Localized.text("Add a machine") }
+
+    public static var addMachineDetail: String {
+        Localized.text(
+            "Paste the link your machine printed, or install the agent on a computer. Tailscode checks each step.")
+    }
+
     public static func addDetail(_ link: PairingLink) -> String {
         Localized.text("A link wants to add %@ to Tailscode.", displayName(link))
     }

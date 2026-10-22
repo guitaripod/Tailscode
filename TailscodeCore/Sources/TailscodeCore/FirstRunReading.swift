@@ -101,6 +101,23 @@ enum FirstRunReading {
         return ways
     }
 
+    static var tailnetScanUnavailable: String {
+        Localized.text(
+            "This copy of Tailscode can't look at your tailnet for machines. Paste the link your machine printed, or its address."
+        )
+    }
+
+    static func clipboardOffer(_ link: PairingLink) -> FirstRunPlan.Offer {
+        let place = "\(link.bracketedHost):\(link.port)"
+        return FirstRunPlan.Offer(
+            title: Localized.text("Use the link you copied"),
+            detail: link.name.map { "\($0) · \(place)" } ?? place)
+    }
+
+    static func connectedToast(_ name: String) -> String {
+        Localized.text("Connected to %@. Start a chat on it.", name)
+    }
+
     static func paste(_ state: FirstRunState) -> FirstRunPlan.Paste {
         FirstRunPlan.Paste(
             text: state.typed,

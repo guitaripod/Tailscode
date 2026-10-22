@@ -186,6 +186,10 @@ enum ParityManifest {
         case .settingsSurface: return .implemented("SettingsViewController")
         case .goalControl: return .implemented("updateGoalChip")
         case .firstRunSetup: return .implemented("ServerSetupViewController")
+        case .emptyWelcome:
+            return .notApplicable(
+                "the phone's empty app is its first run: ServerSetupViewController is the first screen while no server exists and draws the same FirstRunPlan, so there is no blank main pane to fill; Home's empty state could carry EmptyWelcome's words later")
+        case .addAnotherMachine: return .implemented("FirstRunFlow")
         case .tailscaleReadiness:
             return .partial(
                 "TailnetStatus",

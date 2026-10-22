@@ -70,6 +70,9 @@ final class MainWindowController: NSWindowController {
     private var quotasAnsweredAt: Date?
     private var usageTick: Timer?
     private var serversWindow: ServersWindow?
+    private var welcomeTailscale: TailscaleReading?
+    private var welcomeFixture: FirstRunState?
+    private var readingTailscaleForWelcome = false
     private var preferencesWindow: PreferencesWindow?
     private var analyticsWindow: AnalyticsWindowController?
     private var updateWindow: UpdateWindowController?
@@ -990,7 +993,11 @@ final class MainWindowController: NSWindowController {
         }
         let parts = name.split(separator: ":", maxSplits: 1).map(String.init)
         switch parts.first ?? name {
-        case "servers": presentServers()
+        case "servers":
+            presentServers()
+            if parts.count > 1 { stageServersFailure(parts[1]) }
+        case "first-run": presentFirstRunFixture(parts.count > 1 ? parts[1] : "machine-asking")
+        case "welcome": presentWelcomeFixture(parts.count > 1 ? parts[1] : "machine-asking")
         case "updates": presentUpdates()
         case "preferences", "prefs":
             presentPreferences(page: parts.count > 1 ? PreferencesWindow.page(named: parts[1]) : nil)
@@ -1285,11 +1292,128 @@ final class MainWindowController: NSWindowController {
         }
     }
 
+    /// A machine just connected, from first run or from adding another: the chat list is read so the
+    /// machine's own chats are there, the toast says which machine it was, and a pane that holds no
+    /// conversation opens the chooser already on that machine, so the next press is a chat. A pane
+    /// that holds a conversation keeps it; the person is in one.
+    func land(on landing: FirstRunLanding?) async {
+        await sidebar.refresh()
+        refreshWelcome()
+        guard let landing else { return }
+        showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        toast(landing.toast)
+        let pane = transcript
+        guard pane.currentEntry == nil, !pane.chooserShown else { return }
+        presentChooser(in: pane, landing: landing)
+    }
+
+    /// The welcome an empty window draws while the app holds no real server, and its removal the
+    /// moment one is saved. Tailscale is read once off the main actor and the welcome redrawn only
+    /// if the answer changed what it says.
+    func refreshWelcome() {
+        let pane = transcript
+        guard EmptyWelcome.holdsNoRealServer(ServerDirectory.shared.profiles),
+            pane.currentEntry == nil, !pane.chooserShown
+        else {
+            pane.clearWelcome()
+            return
+        }
+        drawWelcome(in: pane)
+        if welcomeFixture == nil { readTailscaleForWelcome() }
+    }
+
+    /// `--open servers:failed:<cause>`: the servers window the moment a probe has failed, with the
+    /// card and the one tap Core's diagnosis offers, so it is looked at without a machine to fail.
+    private func stageServersFailure(_ name: String) {
+        guard let state = FirstRunFixtures.state(named: name, platform: .mac),
+            case .failed(let diagnosis) = state.machine
+        else {
+            FileHandle.standardError.write(Data("servers: no failure \(name)\n".utf8))
+            return
+        }
+        serversWindow?.stage(diagnosis)
+    }
+
+    /// `--open first-run[:state]`: one state of the checklist, drawn from `FirstRunFixtures`.
+    private func presentFirstRunFixture(_ name: String) {
+        if FirstRunWindow.presentFixture(named: name) == nil {
+            FileHandle.standardError.write(
+                Data("first-run: no state \(name); try \(FirstRunFixtures.names.joined(separator: ", "))\n".utf8))
+        }
+    }
+
+    /// `--open welcome[:state]`: the main pane's welcome in one of the checklist's states, so what
+    /// it says while Tailscale is down or Claude is signed out can be looked at without either.
+    private func presentWelcomeFixture(_ name: String) {
+        guard let state = FirstRunFixtures.state(named: name, platform: .mac) else {
+            FileHandle.standardError.write(Data("welcome: no state \(name)\n".utf8))
+            return
+        }
+        welcomeFixture = state
+        drawWelcome(in: transcript)
+    }
+
+    private func drawWelcome(in pane: TranscriptViewController) {
+        var state = FirstRunState(platform: .mac)
+        state.tailscale = welcomeTailscale
+        if let welcomeFixture { state = welcomeFixture }
+        let demoActive = !ServerDirectory.shared.profiles.isEmpty
+        pane.showWelcome(EmptyWelcome.make(state, demoActive: demoActive)) { [weak self] in
+            self?.answerWelcome($0)
+        }
+    }
+
+    private func readTailscaleForWelcome() {
+        guard !readingTailscaleForWelcome else { return }
+        readingTailscaleForWelcome = true
+        Task { [weak self] in
+            let status = await Task.detached(priority: .utility) { TailnetStatusMac.read() }.value
+            guard let self else { return }
+            self.readingTailscaleForWelcome = false
+            guard self.welcomeTailscale != status.reading else { return }
+            self.welcomeTailscale = status.reading
+            let pane = self.transcript
+            if pane.shownWelcome != nil { self.drawWelcome(in: pane) }
+        }
+    }
+
+    private func answerWelcome(_ intent: EmptyWelcome.Intent) {
+        switch intent {
+        case .setUpMachine: FirstRunWindow.present(way: nil)
+        case .pasteLink: FirstRunWindow.present(way: .link)
+        case .tryDemo: FirstRunWindow.enterDemoMode()
+        case .openTailscale: openTailscaleFromWelcome()
+        case .signIn: presentServers()
+        }
+    }
+
+    /// A page or the app opens straight away; a command has to run where its output can be read,
+    /// which is the checklist's Tailscale row, so that is where it goes.
+    private func openTailscaleFromWelcome() {
+        guard let reading = welcomeTailscale, let door = TailnetStatusMac.door(for: reading) else {
+            FirstRunWindow.present(way: nil)
+            return
+        }
+        if case .page(let address) = door, let url = URL(string: address) {
+            NSWorkspace.shared.open(url)
+        } else if case .app(let url) = door {
+            NSWorkspace.shared.open(url)
+        } else {
+            FirstRunWindow.present(way: nil)
+        }
+    }
+
     /// A pane with nothing in it asks which server, then what on it — the question the chat list
     /// cannot ask, at the moment a split makes it worth asking.
-    func presentChooser(in pane: TranscriptViewController, preferring serverID: String? = nil) {
-        var chooser = PaneChooser(
-            servers: chooserServers, entries: sidebar.allEntries, preferredServer: serverID)
+    func presentChooser(
+        in pane: TranscriptViewController, preferring serverID: String? = nil,
+        landing: FirstRunLanding? = nil
+    ) {
+        var chooser =
+            landing?.chooser(servers: chooserServers, entries: sidebar.allEntries)
+            ?? PaneChooser(
+                servers: chooserServers, entries: sidebar.allEntries, preferredServer: serverID)
         chooser.watchSummary = watchSummary
         #if TAILSCODE_MAS
             chooser.offersWatching = false
@@ -1400,14 +1524,14 @@ final class MainWindowController: NSWindowController {
         }
     }
 
-    /// ⌘N: a server and a directory, then Enter. No configured server means the servers window —
-    /// the form that fixes the actual problem — rather than an empty picker.
+    /// ⌘N: a server and a directory, then Enter. No configured server means the checklist that sets
+    /// one up — the thing that fixes the actual problem — rather than an empty picker.
     /// - Parameter profile: the server the sheet opens on, when the question has already been
     ///   answered somewhere else — a pane's chooser — so it is never asked twice.
     func presentNewChat(on profile: ConnectionProfile? = nil, browsing: Bool = false) {
         let profiles = ServerDirectory.shared.profiles
         guard !profiles.isEmpty else {
-            presentServers()
+            FirstRunWindow.present(way: nil)
             return
         }
         let entries = sidebar.allEntries
@@ -1603,8 +1727,10 @@ final class MainWindowController: NSWindowController {
         sidebar.onTitleChanged = { [weak self] in
             self?.refreshTitleFromListing()
         }
+        sidebar.onAddMachine = { FirstRunWindow.present(way: nil) }
         sidebar.onEntriesChanged = { [weak self] in
             guard let self else { return }
+            self.refreshWelcome()
             self.restateChoosers()
             self.refreshTitleFromListing()
             self.resolvePendingBindings()

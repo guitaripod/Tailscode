@@ -30,6 +30,11 @@ enum ServerProbe {
 /// fails here, named, rather than becoming a row that never loads — and the failure names its
 /// cause: the address didn't parse, the port didn't answer, the password was refused.
 ///
+/// A machine is added from the first-run checklist (Add a machine…), which is the one place the link
+/// way, the install command and the tailnet scan live. The typed address below it stays for the
+/// person who knows it, and a probe that fails says why in Core's `ConnectDiagnosis` with the one
+/// tap that fixes it, the same card and the same taps as the checklist.
+///
 /// Every address here is a tailnet address, so this Mac's own tailnet stands above the form as one
 /// of five readings — up, signed out, not running, not installed, or unable to see — each with the
 /// one press that changes it, re-taken while the window is open.
@@ -65,8 +70,11 @@ final class ServersWindow: NSWindowController {
     private let tailnetRemedy = TailnetRemedyView()
     private var tailnet: TailscaleReading?
     private var watchingTailnet = false
+    private var contentColumn: NSStackView?
+    private var tailnetRow: NSStackView?
     private let addHeader = MacDialogs.sectionHeader(Localized.text("ADD A SERVER"))
     private let statusLabel = NSTextField(wrappingLabelWithString: "")
+    private let diagnosisSlot = FillingStack(topDown: true)
     private let passwordHint = NSTextField(wrappingLabelWithString: ServerPasswordRule.summary)
     private let addressField = NSTextField()
     private let probeButton = NSButton()
@@ -176,6 +184,9 @@ final class ServersWindow: NSWindowController {
         tailnetPill.stringValue = reading.title
         tailnetPill.textColor = reading.tone.color
         tailnetRemedy.write(reading)
+        guard let tailnetRow else { return }
+        contentColumn?.setCustomSpacing(
+            tailnetRemedy.isHidden ? MacTheme.Spacing.xl : MacTheme.Spacing.xs, after: tailnetRow)
     }
 
     private func makeContent() -> NSView {
@@ -206,32 +217,39 @@ final class ServersWindow: NSWindowController {
         probe.target = self
         probe.action = #selector(probeAndSave)
         probe.keyEquivalent = "\r"
-        #if TAILSCODE_MAS
-            let actions = NSStackView(views: [Self.spacer(), close, probe])
-        #else
-            let scan = NSButton(
-                title: Localized.text("Find my machines"), target: self,
-                action: #selector(findMachines))
-            let actions = NSStackView(views: [scan, Self.spacer(), close, probe])
-        #endif
+        let actions = NSStackView(views: [Self.spacer(), close, probe])
         actions.orientation = .horizontal
         actions.spacing = MacTheme.Spacing.s
 
         let tailnetRow = NSStackView(views: [tailnetCaption, Self.spacer(), tailnetPill])
+        self.tailnetRow = tailnetRow
         tailnetRow.orientation = .horizontal
         tailnetRow.spacing = MacTheme.Spacing.s
         tailnetRemedy.isHidden = true
 
+        let addMachine = RowKit.ActionButton(title: ConnectLinkReading.addMachine + "…") {
+            FirstRunWindow.present(way: nil)
+        }
+        addMachine.setAccessibilityHelp(ConnectLinkReading.addMachineDetail)
+        let addMachineRow = FirstRunBlocks.buttonRow([addMachine])
+        let addMachineDetail = MacDialogs.detailLabel(ConnectLinkReading.addMachineDetail, wraps: true)
+        diagnosisSlot.isHidden = true
+        statusLabel.isHidden = true
+
         let column = FillingStack(views: [
             listHeader, listColumn, tailnetHeader, tailnetRow, tailnetRemedy, addHeader,
-            addressField, nameField, passwordField, passwordHint, kindRow, statusLabel, actions,
+            addMachineRow, addMachineDetail, addressField, nameField, passwordField, passwordHint,
+            kindRow, statusLabel, diagnosisSlot, actions,
         ])
         column.spacing = MacTheme.Spacing.m
+        column.setCustomSpacing(MacTheme.Spacing.xs, after: addMachineRow)
+        column.setCustomSpacing(MacTheme.Spacing.xl, after: addMachineDetail)
         column.setCustomSpacing(MacTheme.Spacing.xs, after: passwordField)
         column.setCustomSpacing(MacTheme.Spacing.xl, after: listColumn)
         column.setCustomSpacing(MacTheme.Spacing.xs, after: tailnetRow)
         column.setCustomSpacing(MacTheme.Spacing.xl, after: tailnetRemedy)
         column.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
+        contentColumn = column
         return MacDialogs.scrollColumn(holding: column)
     }
 
@@ -458,39 +476,6 @@ final class ServersWindow: NSWindowController {
         }
     }
 
-    /// The other way to add a server: ask the tailnet instead of typing an address. What the scan
-    /// finds is filled into the form rather than saved behind the person's back — the label and the
-    /// password are still theirs to give, and the probe that saves is the same one either road ends
-    /// at, so a machine found by scanning is checked exactly as a machine typed by hand.
-    #if !TAILSCODE_MAS
-        @objc private func findMachines() {
-            guard let window else { return }
-            DiscoveryPanel.present(
-                on: window, configured: ServerDirectory.shared.profiles
-            ) { [weak self] suggestion in
-                guard let self else { return }
-                self.addressField.stringValue = suggestion.baseURL.absoluteString
-                if self.nameField.stringValue.isEmpty {
-                    self.nameField.stringValue = suggestion.recommendedProfileName
-                }
-                self.claudeRadio.state = suggestion.backend == .claudeCode ? .on : .off
-                self.opencodeRadio.state = suggestion.backend == .openCode ? .on : .off
-                self.ompRadio.state = suggestion.backend == .omp ? .on : .off
-                if suggestion.tailnetOnly {
-                    self.setStatus(
-                        ServerAccessReading.tailnetOnlyTitle(host: suggestion.recommendedProfileName)
-                            + " — " + ServerAccessReading.tailnetOnlyDetail)
-                } else if suggestion.requiresAuth, self.passwordField.stringValue.isEmpty {
-                    self.setStatus(
-                        Localized.text("%@ wants a password.", suggestion.recommendedProfileName))
-                    self.window?.makeFirstResponder(self.passwordField)
-                } else {
-                    self.probeAndSave()
-                }
-            }
-        }
-    #endif
-
     @objc private func probeAndSave() {
         guard !isProbing else { return }
         let raw = addressField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -517,66 +502,97 @@ final class ServersWindow: NSWindowController {
         }
 
         setStatus(Localized.text("Probing %@…", address.url.absoluteString))
+        showDiagnosis(nil)
         setProbing(true)
         Task { [weak self] in
-            let verdict = await ProbeSweep.best(
-                address: address, password: password.isEmpty ? nil : password,
-                preferring: backend)
+            let result = await FirstRunEnvironment.liveProbe(
+                address, password.isEmpty ? nil : password, backend, true)
             guard let self else { return }
             defer { self.setProbing(false) }
-            switch verdict.outcome {
-            case .ok(let agent, let version):
-                let profile = ConnectionProfile(
-                    id: UUID().uuidString,
-                    name: label.isEmpty ? address.displayHost : label,
-                    backend: agent,
-                    baseURL: verdict.url,
-                    username: ProbeSweep.username(for: agent))
-                do {
-                    try ServerDirectory.shared.save(
-                        profile, password: password.isEmpty ? nil : password)
-                    self.onChanged()
-                    self.setStatus(
-                        Localized.text(
-                            "Saved %@ — %@", profile.name, version ?? Localized.text("connected")))
-                    self.renderList()
-                    self.addressField.stringValue = ""
-                    self.nameField.stringValue = ""
-                    self.passwordField.stringValue = ""
-                } catch is ServerDirectory.ProRequired {
-                    self.setStatus(ProOffer.requirement)
-                    self.offerPro()
-                } catch {
-                    self.setStatus(
-                        Localized.text(
-                            "Could not save: %@",
-                            (error as? AgentError)?.errorDescription
-                                ?? error.localizedDescription))
-                }
-            case .authFailed(.tailnetOnly):
+            guard case .ok(let agent, let version) = result.outcome else {
+                self.setStatus("")
+                self.showDiagnosis(
+                    self.diagnosis(of: result, for: address, sentPassword: !password.isEmpty))
+                return
+            }
+            let profile = ConnectionProfile(
+                id: UUID().uuidString,
+                name: label.isEmpty ? address.displayHost : label,
+                backend: agent,
+                baseURL: result.url,
+                username: ProbeSweep.username(for: agent))
+            do {
+                try ServerDirectory.shared.save(profile, password: password.isEmpty ? nil : password)
+                self.onChanged()
                 self.setStatus(
-                    ServerAccessReading.tailnetOnlyTitle(host: verdict.url.absoluteString)
-                        + " — " + ServerAccessReading.tailnetOnlyDetail)
-            case .authFailed:
+                    Localized.text(
+                        "Saved %@ — %@", profile.name, version ?? Localized.text("connected")))
+                self.renderList()
+                self.addressField.stringValue = ""
+                self.nameField.stringValue = ""
+                self.passwordField.stringValue = ""
+            } catch is ServerDirectory.ProRequired {
+                self.setStatus(ProOffer.requirement)
+                self.offerPro()
+            } catch {
                 self.setStatus(
-                    password.isEmpty
-                        ? Localized.text(
-                            "%@ answered and wants a password.", verdict.url.absoluteString)
-                        : Localized.text(
-                            "%@ answered but refused the password. Check it on the server.",
-                            verdict.url.absoluteString))
-            case .notAnAgentServer, .unreachable:
-                if let tailnet = self.tailnet, !tailnet.isUp, tailnet != .sandboxed {
-                    self.setStatus(
-                        Localized.text(
-                            "This Mac is not on the tailnet — %@. Nothing over it answers until "
-                                + "that is true.", tailnet.title))
-                    return
-                }
-                let cause = await Self.diagnose(address: address, backend: backend)
-                self.setStatus(cause)
+                    Localized.text(
+                        "Could not save: %@",
+                        (error as? AgentError)?.errorDescription ?? error.localizedDescription))
             }
         }
+    }
+
+    /// What went wrong, in Core's words and with Core's one fix, for a probe that did not find an
+    /// agent. A reading of this Mac's tailnet that is not up outranks whatever the machine did,
+    /// because nothing over the tailnet answers until that is true.
+    private func diagnosis(
+        of result: FirstRunProbe, for address: HostAddress, sentPassword: Bool
+    ) -> ConnectDiagnosis {
+        let device = FirstRunPlatform.mac.thisDevice
+        let alternate = address.probeCandidates().first { $0 != result.url }
+        return ConnectDiagnosis.make(
+            outcome: result.outcome, address: address,
+            tailnetAddress: TailscaleReading.diagnosisAddress(tailnet), alternatePort: alternate,
+            sentPassword: sentPassword, reachability: result.reachability, deviceName: device)
+            ?? ConnectDiagnosis.offTailnet(deviceName: device)
+    }
+
+    func stage(_ diagnosis: ConnectDiagnosis) {
+        showDiagnosis(diagnosis)
+    }
+
+    private func showDiagnosis(_ diagnosis: ConnectDiagnosis?) {
+        diagnosisSlot.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        diagnosisSlot.isHidden = diagnosis == nil
+        guard let diagnosis else { return }
+        let card = RowKit.card(
+            symbol: diagnosis.symbol, title: diagnosis.title, detail: diagnosis.detail,
+            tint: MacTheme.Color.warning)
+        if let title = diagnosis.actionTitle, diagnosis.fix != .none {
+            card.addArrangedSubview(
+                FirstRunBlocks.buttonRow([
+                    RowKit.ActionButton(title: title) { [weak self] in self?.fix(diagnosis.fix) }
+                ]))
+        }
+        diagnosisSlot.addArrangedSubview(card)
+        if diagnosis.fix == .revealPassword { window?.makeFirstResponder(passwordField) }
+    }
+
+    private func fix(_ fix: ConnectDiagnosis.Fix) {
+        MacConnectFix(
+            remedy: tailnetRemedy, tailscale: { [weak self] in self?.tailnet },
+            retry: { [weak self] in self?.probeAndSave() },
+            retarget: { [weak self] url in
+                self?.addressField.stringValue = url.absoluteString
+                self?.probeAndSave()
+            },
+            revealPassword: { [weak self] in
+                guard let self else { return }
+                self.window?.makeFirstResponder(self.passwordField)
+            },
+            seePro: { [weak self] in self?.offerPro() }
+        ).perform(fix)
     }
 
     /// A probe in flight owns the form: Return pressed twice, or Return and then the button, would
@@ -702,34 +718,6 @@ final class ServersWindow: NSWindowController {
         box.addArrangedSubview(MacDialogs.detailLabel(text, wraps: true))
     }
 
-    /// A failed probe names its cause rather than surfacing a raw error: the port not answering,
-    /// the host not resolving, or something on the port that is not an agent.
-    private static func diagnose(address: HostAddress, backend: AgentType) async -> String {
-        guard let host = address.url.host, let port = address.url.port else {
-            return Localized.text("Could not reach %@.", address.url.absoluteString)
-        }
-        switch await PortReachability.check(host: host, port: UInt16(port)) {
-        case .listening:
-            let expected: String
-            switch backend {
-            case .openCode: expected = "opencode"
-            case .claudeCode: expected = "claude-bridge"
-            case .omp: expected = "omp-bridge"
-            }
-            return Localized.text(
-                "%@:%@ answers, but not like a %@ server — is the other agent on this port?",
-                host, "\(port)", expected)
-        case .refused:
-            return Localized.text(
-                "%@ is up but nothing listens on %@ — is the server running?", host, "\(port)")
-        case .timedOut:
-            return Localized.text("%@ did not answer — check Tailscale on both machines.", host)
-        case .nameNotResolved:
-            return Localized.text(
-                "“%@” does not resolve — is MagicDNS on, or use the 100.x address.", host)
-        }
-    }
-
     /// The gate does not just refuse — it opens the one window that answers it. A price stated
     /// with no way to pay it is a dead end, and this is the only place in the app that asks.
     private func offerPro() {
@@ -738,6 +726,7 @@ final class ServersWindow: NSWindowController {
 
     private func setStatus(_ text: String) {
         statusLabel.stringValue = text
+        statusLabel.isHidden = text.isEmpty
     }
 
     private func makeInlineButton(

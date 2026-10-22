@@ -127,6 +127,10 @@ public actor FirstRunFlow {
         savedProfile.map { ($0, savedSecret) }
     }
 
+    public var landing: FirstRunLanding? {
+        savedProfile.map(FirstRunLanding.make(profile:))
+    }
+
     public func plans() -> AsyncStream<FirstRunPlan> {
         let id = UUID()
         return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
@@ -354,13 +358,7 @@ public actor FirstRunFlow {
 
     private var hasTarget: Bool { target() != nil }
 
-    private var tailnetAddress: String? {
-        switch state.tailscale {
-        case .up(let address): return address
-        case .none, .some(.sandboxed): return "unknown"
-        case .some: return nil
-        }
-    }
+    private var tailnetAddress: String? { TailscaleReading.diagnosisAddress(state.tailscale) }
 
     private func address(for url: URL) -> HostAddress {
         HostAddress(url: url, portWasInferred: false)

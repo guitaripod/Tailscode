@@ -24,6 +24,7 @@ final class SidebarViewController: NSViewController {
     var onOpen: ((SessionEntry, any CodingAgentBackend) -> Void)?
     var onOpenInSplit: ((SessionEntry) -> Void)?
     var onNewChatInScope: ((ProjectScope) -> Void)?
+    var onAddMachine: (() -> Void)?
     var onDeleted: ((SessionEntry) -> Void)?
     var onNotice: ((String) -> Void)?
     var onOpenSplit: (([SessionEntry], SplitArrangement) -> Void)?
@@ -811,6 +812,9 @@ final class SidebarViewController: NSViewController {
         if showingArchive { next.append(.backLink) }
         if visible.isEmpty {
             next.append(.empty(emptyReading()))
+            if ServerDirectory.shared.profiles.isEmpty {
+                next.append(.addMachine(EmptyWelcome.setUpTitle))
+            }
         } else {
             var built = 0
             for (title, members) in sections {
@@ -982,7 +986,7 @@ final class SidebarViewController: NSViewController {
     /// one morning the sentence is the only thing in the window.
     private func emptyReading() -> String {
         if ServerDirectory.shared.profiles.isEmpty {
-            return Localized.text("No servers yet — add the machine your agent runs on")
+            return EmptyWelcome.sidebarLine
         }
         if showingArchive { return Localized.text("Nothing archived") }
         if !filter.isEmpty { return Localized.text("Nothing matches “%@”", filter) }
@@ -1403,6 +1407,8 @@ final class SidebarViewController: NSViewController {
         case .scopeNew:
             guard let scope = projectScope else { break }
             onNewChatInScope?(scope)
+        case .addMachine:
+            onAddMachine?()
         case .missed(let item):
             openMissed(sessionID: item.sessionID)
         case .searchResult(let result):

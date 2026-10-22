@@ -143,7 +143,7 @@ enum ParityManifest {
                     "the panel is still compiled but nothing opens it and nothing would fill it — Find my machines is absent from the servers window and the survey answers sandboxed with no peers at all — so setting a machine up in this copy is the typed address and nothing else"),
                 because:
                     "The scan is the tailnet asked for its own peers by running the Tailscale command line, and a container may neither spawn that binary nor reach the socket behind it. What the store copy owes is another road to the peer list, not a scan rewritten to always come back empty.")
-        case .connectDiagnosis: return .implemented("diagnose")
+        case .connectDiagnosis: return .implemented("MacConnectFix")
         case .serverAccess: return .implemented("ServerAccessReading")
         case .firstRunPlan: return .implemented("FirstRunFlow")
         case .pairingLink: return .implemented("ConnectLink")
@@ -261,6 +261,14 @@ enum ParityManifest {
                     "FirstRunWindow", missing: "the half of the checklist that proves the typed address still runs whole — probeCandidates is a request and this copy has the network — but the half that proves this Mac is on a tailnet cannot run at all, so that step states that it cannot see instead of ticking or failing"),
                 because:
                     "A checklist proves what it is allowed to run, and an address is a request while a machine's own tailnet presence is a program.")
+        case .emptyWelcome: return .implemented("EmptyWelcomeView")
+        case .addAnotherMachine:
+            return .varies(
+                direct: .implemented("FirstRunWindow"),
+                appStore: .partial(
+                    "FirstRunWindow", missing: "the tailnet scan is compiled out of this copy, so Add a machine offers the link and the install command and says once, in Core's words, that this copy cannot look at the tailnet; the typed address on the servers screen is unchanged"),
+                because:
+                    "Scanning a tailnet runs the tailscale program and walks every peer, which the sandbox does not allow, so the way that depends on it is absent rather than pretended.")
         case .tailscaleReadiness:
             return .varies(
                 direct: .implemented("TailnetRemedyView"),

@@ -173,6 +173,8 @@ enum ParityManifest {
         case .settingsSurface: return .implemented("Preferences")
         case .goalControl: return .implemented("goal-line")
         case .firstRunSetup: return .implemented("FirstRunDialog")
+        case .emptyWelcome: return .gap("the empty pane still draws its caption; EmptyWelcome lands with the next change")
+        case .addAnotherMachine: return .gap("the server manager still carries its own form; first run's addition mode lands with the next change")
         case .tailscaleReadiness: return .implemented("TailscaleReading")
         case .demoMode: return .implemented("enterDemoMode")
         case .activityNotifications: return .implemented("Notifier")
