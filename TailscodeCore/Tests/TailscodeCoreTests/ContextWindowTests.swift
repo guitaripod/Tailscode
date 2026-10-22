@@ -172,7 +172,8 @@ struct ContextWindowTests {
     }
 
     @Test("A name nobody knows has no share, only a count")
-    func unknownModelHasNoShare() {        let fill = ContextFill.read(
+    func unknownModelHasNoShare() {
+        let fill = ContextFill.read(
             messages: [
                 Self.user("u1", "go"),
                 Self.assistant("a1", model: "mystery-7b", context: MessageUsage(input: 5_000, output: 500)),

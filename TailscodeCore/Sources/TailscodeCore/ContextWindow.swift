@@ -74,7 +74,7 @@ public struct ContextFill: Sendable, Equatable {
         model next: String?, providerID: String? = nil, catalog: [ModelInfo] = []
     ) -> ContextFill {
         guard let next, !next.isEmpty else { return self }
-        if next == model, providerID == self.providerID { return self }
+        if next == model, providerID == nil || providerID == self.providerID { return self }
         return ContextFill(
             used: used,
             window: ContextWindow.resolve(
@@ -211,7 +211,7 @@ public struct ContextFill: Sendable, Equatable {
     ) -> ContextFill? {
         let author = messages.last(where: { $0.role == .assistant && $0.modelID != nil })
         let model = author?.modelID ?? sessionModel
-        let provider = author?.providerID ?? sessionProvider
+        let provider = author == nil ? sessionProvider : author?.providerID
         var used: Int?
         var basis = Basis.estimated
         var tiers: MessageUsage?
@@ -257,25 +257,35 @@ public enum ContextWindow {
         model: String?, providerID: String? = nil, catalog: [ModelInfo], observed: Int
     ) -> Int? {
         guard let model, !model.isEmpty else { return nil }
-        if declaresMillion(model) { return 1_000_000 }
         if let stated = fromCatalog(model, providerID: providerID, catalog: catalog) {
             return stated
         }
+        if declaresMillion(model) { return 1_000_000 }
         guard let known = known(model) else { return nil }
         return observed > known ? stretched(model, past: known) : known
     }
 
-    /// A name that says its own window — `opus[1m]` — outranks a catalog alias it also matches,
-    /// because the variant is the model the person picked and the alias is only its base.
-    private static func declaresMillion(_ model: String) -> Bool {
+    /// A name that says its own window — `opus[1m]`, `sonnet-4-1m` — is the million-token variant
+    /// when the catalog does not carry it. The marker has to be a word of its own: `-1m` inside
+    /// `-1mini` says nothing about a window.
+    static func declaresMillion(_ model: String) -> Bool {
         let name = model.lowercased()
-        return name.contains("[1m]") || name.contains("-1m")
+        if name.contains("[1m]") { return true }
+        var search = name.startIndex..<name.endIndex
+        while let range = name.range(of: "-1m", range: search) {
+            if range.upperBound == name.endIndex { return true }
+            if name[range.upperBound] == "[" || name[range.upperBound] == "-" { return true }
+            search = range.upperBound..<name.endIndex
+        }
+        return false
     }
 
     /// The catalog's own limit for the model: an exact id first, then an alias inside a dated or
-    /// prefixed id, and within each pass the stated provider before anyone else's. A catalog limit
-    /// is taken as stated even when a fill runs past it — the server knows its own window, and a
-    /// measurement over it is a full window rather than no window.
+    /// prefixed id, and within each pass the stated provider before anyone else's. When the catalog
+    /// lists the stated provider at all, only its rows answer: another provider's window for the
+    /// same name is the thing a stated provider exists to rule out. A catalog limit is taken as
+    /// stated even when a fill runs past it — the server knows its own window, and a measurement
+    /// over it is a full window rather than no window.
     static func fromCatalog(
         _ model: String, providerID: String? = nil, catalog: [ModelInfo]
     ) -> Int? {
@@ -283,13 +293,22 @@ public enum ContextWindow {
             guard let window = info.contextWindow, window > 0 else { return nil }
             return (info, window)
         }
+        let listsProvider = providerID.map { provider in
+            catalog.contains { $0.providerID.caseInsensitiveCompare(provider) == .orderedSame }
+        } ?? false
         let mine = providerID.map { provider in
             stated.filter { $0.info.providerID.caseInsensitiveCompare(provider) == .orderedSame }
         } ?? []
-        return exactWindow(model, in: mine)
-            ?? aliasWindow(model, in: mine)
-            ?? exactWindow(model, in: stated)
-            ?? aliasWindow(model, in: stated)
+        if listsProvider {
+            return exactWindow(model, in: mine) ?? aliasWindow(model, in: mine)
+        }
+        return exactWindow(model, in: stated) ?? aliasWindow(model, in: stated)
+    }
+
+    /// A catalog row for the plain model is not the row for its `[variant]`, and the other way
+    /// round: the variant is the model the person picked, with a window of its own.
+    private static func sameVariant(_ id: String, _ model: String) -> Bool {
+        id.contains("[") == model.contains("[")
     }
 
     /// The row whose id is this model once both are reduced to their own name.
@@ -297,14 +316,17 @@ public enum ContextWindow {
         _ model: String, in rows: [(info: ModelInfo, window: Int)]
     ) -> Int? {
         let name = normalized(model)
-        let hits = rows.filter { normalized($0.info.id) == name }
+        let hits = rows.filter {
+            normalized($0.info.id) == name && sameVariant($0.info.id, model)
+        }
         return hits.map(\.window).min()
     }
 
     /// The most specific row whose id is a longer name ending in this one — a dated
     /// `claude-opus-4-8-20260101` against `opus`, a tagged `deepseek-v4.1-flash:1017` against
-    /// `deepseek-v4.1-flash`. A name longer than the catalog's id is a different variant, not an
-    /// alias of it: a free tier does not inherit the paid model's window. Two rows of the same
+    /// `deepseek-v4.1-flash`. A name with a word after the catalog's id is a different variant,
+    /// not an alias of it — only a date or version may follow — so a free tier does not inherit
+    /// the paid model's window. Two rows of the same
     /// specificity from different providers answer with the smaller window: without a provider to
     /// choose, understating is the only claim that cannot be wrong about what fits.
     private static func aliasWindow(
@@ -313,15 +335,33 @@ public enum ContextWindow {
         let name = normalized(model)
         let hits = rows.compactMap { row -> (specificity: Int, window: Int)? in
             let alias = normalized(row.info.id)
-            guard alias != name, isAlias(alias, of: name) else { return nil }
+            guard alias != name, sameVariant(row.info.id, model), isAlias(alias, of: name)
+            else { return nil }
             return (alias.count, row.window)
         }
         guard let longest = hits.map(\.specificity).max() else { return nil }
         return hits.filter { $0.specificity == longest }.map(\.window).min()
     }
 
+    /// The alias stands as a whole word of the name, and what follows it is at most a date or a
+    /// version — digits, dots and dashes. A word after it (`-free`, `-thinking`) makes a different
+    /// model, which is how a free tier stays off the paid model's window.
     private static func isAlias(_ alias: String, of name: String) -> Bool {
-        name.hasSuffix("-" + alias) || name.contains("-" + alias + "-")
+        var search = name.startIndex..<name.endIndex
+        while let range = name.range(of: alias, range: search) {
+            let startsWord =
+                range.lowerBound == name.startIndex
+                || name[name.index(before: range.lowerBound)] == "-"
+            if startsWord, endsInDateOrVersion(name[range.upperBound...]) { return true }
+            search = name.index(after: range.lowerBound)..<name.endIndex
+        }
+        return false
+    }
+
+    private static func endsInDateOrVersion(_ tail: Substring) -> Bool {
+        guard !tail.isEmpty else { return true }
+        guard tail.first == "-" else { return false }
+        return tail.dropFirst().allSatisfy { $0.isNumber || $0 == "-" || $0 == "." }
     }
 
     /// A catalog id reduced to the model's own name: the provider path in front of it, the server
@@ -344,7 +384,7 @@ public enum ContextWindow {
     /// V3 generation, and a free tier's smaller window outranks the paid model it is cut from.
     public static func known(_ model: String) -> Int? {
         let name = model.lowercased()
-        if name.contains("[1m]") || name.contains("-1m") { return 1_000_000 }
+        if declaresMillion(name) { return 1_000_000 }
         let table: [(String, Int)] = [
             ("claude", 200_000), ("fable", 200_000), ("opus", 200_000), ("sonnet", 200_000),
             ("haiku", 200_000),
