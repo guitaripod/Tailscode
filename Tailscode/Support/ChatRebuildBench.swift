@@ -17,7 +17,7 @@ import TailscodeCore
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { run(turns: turns) }
         }
 
-        private static func conversation(turns: Int, growing: String) -> [ChatMessage] {
+        static func conversation(turns: Int, growing: String) -> [ChatMessage] {
             var out: [ChatMessage] = []
             let origin = Date(timeIntervalSince1970: 1_792_000_000)
             for turn in 0..<turns {
