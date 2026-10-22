@@ -11,6 +11,14 @@ enum AnalyticsFetcher {
     struct Haul: Sendable {
         let servers: [(name: String, report: UsageAnalyticsReport)]
         let missing: [String]
+        let profileIDs: [String]
+
+        func analytics(window: UsageWindow) -> UsageAnalytics? {
+            UsageAnalytics(
+                servers: servers, missingServers: missing, window: window,
+                modelNames: UsageAnalytics.modelNames(profileIDs: profileIDs),
+                contextWindows: UsageAnalytics.contextWindows(profileIDs: profileIDs))
+        }
     }
 
     private enum Answer: Sendable {
@@ -35,17 +43,22 @@ enum AnalyticsFetcher {
             .enumerated()
             .compactMap { index, profile in
                 controller.makeBackend(for: profile, policy: policy).map {
-                    (index: index, name: ServerLabel.display(profile), backend: $0)
+                    (
+                        index: index, name: ServerLabel.display(profile), backend: $0,
+                        profileID: profile.id
+                    )
                 }
             }
-        guard !servers.isEmpty else { return Haul(servers: [], missing: []) }
+        let profileIDs = controller.profiles.map(\.id)
+        guard !servers.isEmpty else { return Haul(servers: [], missing: [], profileIDs: profileIDs) }
         let answers = await withTaskGroup(of: Answer?.self) { group in
-            for (index, name, backend) in servers {
+            for (index, name, backend, profileID) in servers {
                 group.addTask {
                     do {
                         guard let report = try await backend.usageAnalytics(days: days) else {
                             return .tooOld(index: index, name: name)
                         }
+                        await UsageAnalytics.rememberModels(profileID: profileID, backend: backend)
                         return .report(index: index, name: name, report: report)
                     } catch AgentError.decoding(let detail) {
                         AppLogger.session.error("analytics: \(name) answered unreadably: \(detail)")
@@ -84,6 +97,6 @@ enum AnalyticsFetcher {
                 + "\(missing.count) too old")
         return Haul(
             servers: reported.sorted { $0.index < $1.index }.map { ($0.name, $0.report) },
-            missing: missing.sorted { $0.index < $1.index }.map(\.name))
+            missing: missing.sorted { $0.index < $1.index }.map(\.name), profileIDs: profileIDs)
     }
 }

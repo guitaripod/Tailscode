@@ -335,8 +335,7 @@ final class UsageViewController: UIViewController {
         analyticsTask = Task {
             let haul = await AnalyticsFetcher.fetch()
             guard !Task.isCancelled else { return }
-            analytics = UsageAnalytics(
-                servers: haul.servers, missingServers: haul.missing, window: UsageWindow.current)
+            analytics = haul.analytics(window: UsageWindow.current)
             GameCenterCoordinator.shared.note(analytics)
             monthCard.render(analytics)
             analyticsTask = nil

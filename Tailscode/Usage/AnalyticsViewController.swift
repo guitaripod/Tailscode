@@ -174,8 +174,7 @@ final class AnalyticsViewController: UIViewController {
             let window = UsageWindow.current
             let haul = await AnalyticsFetcher.fetch(window: window)
             guard !Task.isCancelled else { return }
-            analytics = UsageAnalytics(
-                servers: haul.servers, missingServers: haul.missing, window: window)
+            analytics = haul.analytics(window: window)
             GameCenterCoordinator.shared.note(analytics)
             render()
             refreshShareButton()
@@ -208,12 +207,19 @@ final class AnalyticsViewController: UIViewController {
         stateStack.isHidden = true
 
         column.addArrangedSubview(hero(analytics))
+        if analytics.isLocalLed, let work = analytics.localWork {
+            column.addArrangedSubview(localWork(work))
+            if !analytics.models.isEmpty { column.addArrangedSubview(models(analytics)) }
+        }
         column.addArrangedSubview(daily(analytics))
         if analytics.weekdays.contains(where: { $0.share > 0 }) || !analytics.hours.isEmpty {
             column.addArrangedSubview(rhythm(analytics))
         }
         if !analytics.providers.isEmpty { column.addArrangedSubview(providers(analytics)) }
-        if !analytics.models.isEmpty { column.addArrangedSubview(models(analytics)) }
+        if !analytics.isLocalLed {
+            if !analytics.models.isEmpty { column.addArrangedSubview(models(analytics)) }
+            if let work = analytics.localWork { column.addArrangedSubview(localWork(work)) }
+        }
         if !analytics.projects.isEmpty { column.addArrangedSubview(projects(analytics)) }
         if !analytics.tools.isEmpty { column.addArrangedSubview(tools(analytics)) }
         if !analytics.tiers.isEmpty { column.addArrangedSubview(tiers(analytics)) }
@@ -254,6 +260,10 @@ final class AnalyticsViewController: UIViewController {
             analytics.activityLine, role: .metricDetail, color: Theme.Color.secondaryLabel)
 
         var views: [UIView] = [windowPicker, money, window, perDay, activity]
+        if let hostedLine = analytics.hostedLine {
+            views.insert(
+                label(hostedLine, role: .metricDetail, color: Theme.Color.tertiaryLabel), at: 2)
+        }
         if let deltaLine = analytics.deltaLine {
             views.append(label(deltaLine, role: .metricDetail, color: deltaColor(analytics.trend)))
         }
@@ -422,6 +432,51 @@ final class AnalyticsViewController: UIViewController {
             String(localized: "Which provider"), meters: analytics.providers, caption: nil)
     }
 
+    private func localWork(_ work: UsageAnalytics.LocalWork) -> UIView {
+        var views: [UIView] = [
+            heading(work.title, trailing: nil),
+            label(work.headline, role: .panelLabel, color: Theme.Color.secondaryLabel),
+        ]
+        var index = 0
+        while index < work.stats.count {
+            let pair = work.stats[index..<min(index + 2, work.stats.count)].map(statTile)
+            let row = UIStackView(arrangedSubviews: pair + (pair.count == 1 ? [UIView()] : []))
+            row.axis = .horizontal
+            row.distribution = .fillEqually
+            row.alignment = .top
+            row.spacing = Theme.Spacing.m
+            views.append(row)
+            index += 2
+        }
+        for (index, row) in work.models.enumerated() {
+            views.append(
+                meter(
+                    label: row.label, value: row.trailing ?? "", detail: row.detail,
+                    fraction: row.share, hot: index == 0, free: row.isFree))
+        }
+        if let caption = work.caption {
+            views.append(label(caption, role: .panelFootnote, color: Theme.Color.tertiaryLabel))
+        }
+        return card(views)
+    }
+
+    private func statTile(_ stat: UsageAnalytics.LocalWork.Stat) -> UIView {
+        let title = label(stat.label, role: .panelDetail, color: Theme.Color.secondaryLabel)
+        let value = label(stat.value, role: .metricValue, color: Theme.Color.label)
+        let tile = UIStackView(arrangedSubviews: [title, value])
+        tile.axis = .vertical
+        tile.alignment = .leading
+        tile.spacing = Theme.Spacing.xs
+        if let detail = stat.detail {
+            tile.addArrangedSubview(
+                label(detail, role: .metricDetail, color: Theme.Color.tertiaryLabel))
+        }
+        tile.isAccessibilityElement = true
+        tile.accessibilityLabel = [stat.label, stat.value, stat.detail]
+            .compactMap { $0 }.joined(separator: ", ")
+        return tile
+    }
+
     private func models(_ analytics: UsageAnalytics) -> UIView {
         meterSection(
             String(localized: "Which model"), meters: analytics.models,
@@ -452,7 +507,7 @@ final class AnalyticsViewController: UIViewController {
         for (index, row) in meters.enumerated() {
             views.append(
                 meter(
-                    label: row.label, value: row.money ?? "", detail: row.detail,
+                    label: row.label, value: row.trailing ?? "", detail: row.detail,
                     fraction: row.share, hot: index == 0, free: row.isFree))
         }
         return card(views)
