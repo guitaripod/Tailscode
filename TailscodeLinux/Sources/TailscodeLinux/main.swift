@@ -239,6 +239,15 @@ Gtk.connect(UnsafeMutableRawPointer(app), "shutdown") {
     Seatbelts.shared.exitClean()
 }
 
+tailscode_on_terminate(
+    { _ in
+        if let window = mainWindow {
+            window.quitCleanly()
+        } else {
+            g_application_quit(ptr(app))
+        }
+    }, nil)
+
 Trace.stamp("gtk run")
 let status = g_application_run(ptr(app), 0, nil)
 g_object_unref(app)

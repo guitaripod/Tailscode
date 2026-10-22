@@ -459,6 +459,10 @@ const char *tailscode_markup_text(gpointer holder, const char *markup);
 /// lands two frames in one and none in the next, which is the stutter a cascade exists to remove;
 /// the frame clock is what the screen is actually doing.
 guint tailscode_add_tick(GtkWidget *widget, void (*handler)(void *), void *data);
+
+/// Runs `handler` on the main loop when the process is asked to stop (`SIGTERM`, `SIGINT`,
+/// `SIGHUP`), so the app can leave the way a closed window does instead of being cut down.
+void tailscode_on_terminate(void (*handler)(void *), void *data);
 void tailscode_remove_tick(GtkWidget *widget, guint id);
 
 /// The same clock for a caller that cannot promise to outlive it. `data` is a retained box the

@@ -4522,6 +4522,35 @@ void tailscode_between_frames(GtkWidget *widget, void (*handler)(void *), void *
     gdk_frame_clock_request_phase(clock, GDK_FRAME_CLOCK_PHASE_AFTER_PAINT);
 }
 
+#include <glib-unix.h>
+#include <signal.h>
+
+typedef struct {
+    void (*handler)(void *);
+    void *data;
+} TailscodeTerminate;
+
+static gboolean tailscode_terminate_fired(gpointer raw) {
+    TailscodeTerminate *box = raw;
+    box->handler(box->data);
+    return G_SOURCE_REMOVE;
+}
+
+/// Runs `handler` on the main loop when the process is asked to stop: `SIGTERM` from the
+/// installer, systemd or a session ending, `SIGINT` and `SIGHUP`. With no handler the default
+/// action ends the process on the spot, nothing is written down and the ledger still says the
+/// launch is running, so the next start reads an ordinary stop as a crash. A source fires once;
+/// if the handler did not get the app out, a second signal takes the default action and ends it.
+void tailscode_on_terminate(void (*handler)(void *), void *data) {
+    static const int stops[] = {SIGTERM, SIGINT, SIGHUP};
+    for (size_t index = 0; index < sizeof stops / sizeof stops[0]; index++) {
+        TailscodeTerminate *box = g_new0(TailscodeTerminate, 1);
+        box->handler = handler;
+        box->data = data;
+        g_unix_signal_add_full(G_PRIORITY_HIGH, stops[index], tailscode_terminate_fired, box, g_free);
+    }
+}
+
 #include <malloc.h>
 
 /// Bytes malloc reports in use, for the soak: growth here is retention, growth in RSS beside a

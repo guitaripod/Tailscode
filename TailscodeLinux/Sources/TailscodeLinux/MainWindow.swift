@@ -3725,6 +3725,16 @@ final class MainWindow: @unchecked Sendable {
     /// and this is the only thing in the update that closes a window, which is why it happens at
     /// the restart rather than at the press.
     func quitForUpdate() {
+        quitCleanly()
+    }
+
+    /// The process was asked to stop — by an update, by the installer or systemd sending
+    /// `SIGTERM`, or by a session ending — and leaves the way a person closing the window does:
+    /// drafts written down and the launch recorded as a clean exit. Cut down instead, the next
+    /// launch reads an ordinary stop as a crash, and two in a row floor the governor at *loaded*
+    /// for ten minutes, which turns the written-not-pasted reveal into text that lands in lumps.
+    func quitCleanly() {
+        guard !Gtk.isQuitting else { return }
         stashDrafts()
         DraftStore.flush()
         SettingsFile.flush()
