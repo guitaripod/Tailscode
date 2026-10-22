@@ -174,7 +174,19 @@ public enum NeuralReading {
     public static var replayLabel: String { Localized.text("Replay") }
     public static var scrubLabel: String { Localized.text("Scrub through the turn") }
     public static var rowsLabel: String { Localized.text("Rows") }
-    public static var stageLabel: String { Localized.text("Everything the agent did before answering") }
+    public static var stageLabel: String { named(Localized.text("Everything the agent did before answering")) }
+
+    /// Words a screen reader says about Megatron, led by its name so the part that is read is
+    /// known to be Megatron before anything is said of it.
+    public static func named(_ words: String) -> String { Localized.text("Megatron: %@", words) }
+
+    /// What the Rows button does, said both ways round: Megatron is the default look, so the
+    /// button is the way to the plain rows and, once they show, the way back.
+    public static func rowsHelp(showingRows: Bool) -> String {
+        showingRows
+            ? Localized.text("Show Megatron instead of the plain rows")
+            : Localized.text("Show the plain rows instead of Megatron")
+    }
     public static var noNotification: String { Localized.text("No notification while it works") }
 
     /// "8m 25s", "42s", "1h 5m".

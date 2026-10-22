@@ -119,6 +119,14 @@ enum ReadingFixtures {
         )
     }
 
+    @Test func megatronIsNamedWhereItIsRead() {
+        #expect(NeuralReading.named("25 tools") == "Megatron: 25 tools")
+        #expect(NeuralReading.stageLabel == "Megatron: Everything the agent did before answering")
+        #expect(NeuralReading.rowsHelp(showingRows: false).contains("Megatron"))
+        #expect(NeuralReading.rowsHelp(showingRows: true).contains("Megatron"))
+        #expect(NeuralReading.rowsHelp(showingRows: true) != NeuralReading.rowsHelp(showingRows: false))
+    }
+
     @Test func spokenNamesAnEndingTheTranscriptCannotHide() {
         let stopped = NeuralReading.spoken(ReadingFixtures.buildFix(outcome: .stopped))
         #expect(stopped.hasSuffix("You stopped it."))
