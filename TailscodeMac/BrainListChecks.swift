@@ -228,7 +228,7 @@ enum BrainListChecks {
             list.rows.rowsDrawn > 0 && list.rows.rowsDrawn <= list.visibleIDs.count + 2,
             "a pass draws the rows in view and no more (\(list.rows.rowsDrawn))")
         try expect(list.scroll.hasVerticalScroller && !list.scroll.hasHorizontalScroller, "the scroll view is the system's")
-        try expect(list.scroll.verticalScrollElasticity != .none, "the wheel is kinetic")
+        try expect(list.scroll.verticalScrollElasticity == .none, "the list never rubber-bands, so it cannot hold on to a gesture at its end")
         try expect(list.snapshot.list.row(atVisible: 6)?.isSaid == true, "step 7 is a said message")
         let said = steps.rows(in: 6..<7).first
         try expect(said?.height() == 40, "a said row is 40 tall")

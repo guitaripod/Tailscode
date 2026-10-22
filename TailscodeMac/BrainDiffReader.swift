@@ -11,7 +11,7 @@ final class AccountDiffReader: NSView {
     let lines: [NeuralReadout.DiffLine]
     let numbered: Bool
     let canvas: AccountDiffCanvas
-    let scroll = NSScrollView()
+    let scroll = HandoffScrollView()
 
     /// How many readers have been made, for the check that a step nobody opened builds none.
     private(set) static var built = 0
@@ -22,14 +22,7 @@ final class AccountDiffReader: NSView {
         canvas = AccountDiffCanvas(lines: lines, numbered: numbered, paint: paint)
         super.init(frame: .zero)
         Self.built += 1
-        scroll.drawsBackground = false
-        scroll.borderType = .noBorder
-        scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.scrollerStyle = .overlay
-        scroll.horizontalScrollElasticity = .none
-        scroll.usesPredominantAxisScrolling = true
         scroll.documentView = canvas
         scroll.wantsLayer = true
         scroll.layer?.cornerRadius = 5.5

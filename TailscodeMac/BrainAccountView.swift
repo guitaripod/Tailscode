@@ -1,20 +1,6 @@
 import AppKit
 import TailscodeCore
 
-/// A scroll view that tells the account when the person, and not the account, moved it.
-@MainActor
-final class AccountScrollView: NSScrollView {
-    var onUserScroll: (() -> Void)?
-    var keys: ((NSEvent) -> Bool)?
-
-    override func scrollWheel(with event: NSEvent) {
-        if event.deltaY != 0 || event.scrollingDeltaY != 0 { onUserScroll?() }
-        super.scrollWheel(with: event)
-    }
-
-    override var acceptsFirstResponder: Bool { false }
-}
-
 /// The long flipped view the story's items are placed in: it draws nothing, so it owns no backing
 /// store whatever its height.
 @MainActor
@@ -53,7 +39,7 @@ final class BrainAccountView: NSView, BrainKeyTaker {
 
     let header = AccountHeaderView()
     let narrowBar: AccountNarrowBar
-    let scroll = AccountScrollView()
+    let scroll = HandoffScrollView()
     let document = AccountDocumentView()
     /// The one painter of a step's row, the list's own, so the story's unfolded rows and the list
     /// beside the head draw the same pixels.
@@ -150,14 +136,7 @@ final class BrainAccountView: NSView, BrainKeyTaker {
         addSubview(header)
         addSubview(narrowBar)
         scroll.documentView = document
-        scroll.drawsBackground = false
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.scrollerStyle = .overlay
-        scroll.borderType = .noBorder
-        scroll.verticalScrollElasticity = .allowed
-        scroll.automaticallyAdjustsContentInsets = false
-        scroll.contentView.postsBoundsChangedNotifications = true
+        scroll.acceptsFocus = false
         scroll.contentView.drawsBackground = false
         addSubview(scroll)
         addSubview(footerStrip)

@@ -22,7 +22,7 @@ final class BrainListView: NSView, BrainKeyTaker {
     let painter: BrainRowPainter
     private(set) var snapshot = BrainListSnapshot()
     private(set) var header: BrainListHeader!
-    private(set) var scroll: BrainListScrollView!
+    private(set) var scroll: HandoffScrollView!
     private(set) var rows: BrainListRowsView!
     private(set) var overlay: BrainListOverlay!
     private(set) var hint: BrainListHint!
@@ -57,7 +57,7 @@ final class BrainListView: NSView, BrainKeyTaker {
         setAccessibilityRole(.group)
         setAccessibilityLabel(BrainListWords.stepList)
         header = BrainListHeader(owner: self)
-        scroll = BrainListScrollView(frame: .zero)
+        scroll = HandoffScrollView(frame: .zero)
         rows = BrainListRowsView(owner: self)
         overlay = BrainListOverlay(owner: self)
         hint = BrainListHint(owner: self)
@@ -357,6 +357,9 @@ final class BrainListView: NSView, BrainKeyTaker {
         if copy { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
         if rowChanged { host?.hoverStep(id) }
     }
+
+    /// The page scrolled under a resting pointer: the row it was on is not the row it is on.
+    func viewportMoved() { if pointerPoint != nil { refreshPointer() } }
 
     /// The pointer has not moved but what is under it has, because the list scrolled or changed.
     private func refreshPointer() {

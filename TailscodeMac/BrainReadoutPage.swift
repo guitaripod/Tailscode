@@ -227,7 +227,7 @@ final class AccountReadoutPage: NSView {
     let header: AccountPageHeader
     let foot: AccountPageFoot
     let flow = AccountStack()
-    private(set) var scroll: NSScrollView?
+    private(set) var scroll: HandoffScrollView?
     private let document = AccountDocumentView()
     private let fade = AccountFadeView()
     private(set) var shown: NeuralReadout?
@@ -260,12 +260,7 @@ final class AccountReadoutPage: NSView {
         addSubview(header)
         flow.onHeight = { [weak self] in self?.flowChanged() }
         if mode == .column {
-            let scrolling = NSScrollView()
-            scrolling.drawsBackground = false
-            scrolling.hasVerticalScroller = true
-            scrolling.autohidesScrollers = true
-            scrolling.scrollerStyle = .overlay
-            scrolling.borderType = .noBorder
+            let scrolling = HandoffScrollView()
             scrolling.documentView = document
             document.addSubview(flow)
             addSubview(scrolling)

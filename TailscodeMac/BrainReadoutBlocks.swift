@@ -165,7 +165,7 @@ final class AccountOutputBlock: AccountBlock {
 
     private let paint: AccountPaint
     private let text: AccountTextView
-    private var scroller: NSScrollView?
+    private var scroller: HandoffScrollView?
     private let link: AccountButton
     private let failed: Bool
     private let caret: Bool
@@ -255,11 +255,7 @@ final class AccountOutputBlock: AccountBlock {
         var box = textHeight + 16
         if expanded, textHeight > Self.maxExpanded - 16 {
             let region = Self.maxExpanded - 16
-            let scroll = NSScrollView(frame: CGRect(x: 12, y: 8, width: inner, height: region))
-            scroll.drawsBackground = false
-            scroll.hasVerticalScroller = true
-            scroll.autohidesScrollers = true
-            scroll.scrollerStyle = .overlay
+            let scroll = HandoffScrollView(frame: CGRect(x: 12, y: 8, width: inner, height: region))
             text.removeFromSuperview()
             text.frame = CGRect(x: 0, y: 0, width: inner, height: textHeight)
             scroll.documentView = text
