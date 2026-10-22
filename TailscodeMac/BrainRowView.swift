@@ -144,7 +144,7 @@ final class BrainRowView: NSView, BrainSurfaceHost {
         return !visibleRect.isEmpty
     }
 
-    var accessibleLabel: String { announcement ?? model.spoken }
+    var accessibleLabel: String { NeuralReading.named(announcement ?? model.spoken) }
 
     func relayout() {
         needsLayout = true
@@ -490,7 +490,7 @@ final class BrainRowView: NSView, BrainSurfaceHost {
                 card: brainCard, inks: inks, hovered: card.hovered, lift: 1, liveZone: liveZone,
                 liveMotion: liveMotion)
         }
-        setAccessibilityLabel(brainCard.spoken)
+        setAccessibilityLabel(NeuralReading.named(brainCard.spoken))
         if phase == .closed { toolTip = nil }
     }
 
@@ -796,7 +796,10 @@ final class BrainRowView: NSView, BrainSurfaceHost {
     func pressLine() { store?.toggleOpen(turnID) }
 
     /// The reader scrolled: the head may have come into view or left it.
-    func viewportMoved() { stage?.visibilityChanged() }
+    func viewportMoved() {
+        stage?.visibilityChanged()
+        list?.viewportMoved()
+    }
 }
 
 /// The view the stage and the head's picture live in: a plain flipped view the row moves with one

@@ -461,6 +461,31 @@ enum BrainAccountChecks {
         return messages
     }
 
+    /// A follow that scrolls to the end from inside a realize posts the bounds change that asks for
+    /// another: it is settled by passes of the one call that began it, and the story it leaves is the one at
+    /// the end, made before the call returns rather than a turn of the run loop later.
+    private static func followsInsideRealize(
+        _ account: BrainAccountView, _ check: (Bool, String) throws -> Void
+    ) throws {
+        try check(account.maxScroll > 200, "the running story is long enough to follow (\(Int(account.maxScroll)) pt)")
+        account.realize()
+        let clip = account.scroll.contentView
+        clip.postsBoundsChangedNotifications = false
+        clip.setBoundsOrigin(.zero)
+        clip.postsBoundsChangedNotifications = true
+        let before = account.realizeCount
+        account.realize()
+        let passes = account.realizeCount - before
+        try check(
+            passes >= 1 && passes <= BrainAccountView.realizePassLimit,
+            "a follow that scrolls inside a realize settles within the pass limit (\(passes) passes)")
+        try check(!account.realizing && !account.realizeAgain, "and leaves nothing held back")
+        try check(abs(account.scrollY - account.maxScroll) < 2, "the follow lands at the end of the story")
+        try check(
+            !account.needsRealizeNow() && !account.cells.isEmpty,
+            "the story at the end is made before the call returns, not a turn of the run loop later")
+    }
+
     private static func live(_ check: (Bool, String) throws -> Void) throws {
         let messages = running()
         let fixture = BrainFixture(messages: messages, running: true, width: 1200)
@@ -496,6 +521,7 @@ enum BrainAccountChecks {
             account.jumpToLatest()
             try check(row.model.stepList.isFollowing, "the pill resumes following")
         }
+        try followsInsideRealize(account, check)
 
         fixture.replace(messages: NeuralDemo.conversation(), running: false)
         settle(row)

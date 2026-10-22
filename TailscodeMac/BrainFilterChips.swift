@@ -96,23 +96,27 @@ final class BrainFilterChips: NSView, NSViewToolTipOwner {
 
     /// The chips again from what the turn holds: their widths, their tooltips and their accessible
     /// elements. A chip is 28 high; the row never wraps, so when the chips do not fit at full
-    /// width they give up 2 points of glyph padding each.
+    /// width they give up 2 points of glyph padding each, and when that is not enough the Said chip
+    /// gives up its word.
     func invalidate() {
         guard let host else { return }
         let list = host.model.browseState.list
         let chips = list.zoneChips
         let room = bounds.width
-        let full = chips.map { width(for: $0, compact: false) }
-        let needed = full.reduce(0, +) + Self.gap * CGFloat(max(chips.count - 1, 0))
-        isCompact = room > 0 && needed > room
+        func total(compact: Bool, labelled: Bool) -> CGFloat {
+            chips.map { width(for: $0, compact: compact, labelled: labelled) }.reduce(0, +)
+                + Self.gap * CGFloat(max(chips.count - 1, 0))
+        }
+        isCompact = room > 0 && total(compact: false, labelled: true) > room
+        let labelled = room <= 0 || total(compact: isCompact, labelled: true) <= room
         var made: [Entry] = []
         var x: CGFloat = 0
         for chip in chips {
-            let size = width(for: chip, compact: isCompact)
+            let size = width(for: chip, compact: isCompact, labelled: labelled)
             made.append(
                 Entry(
                     zone: chip.zone, count: chip.count, isOn: chip.isOn, x: x, width: size,
-                    label: chip.zone == .say ? chip.zone.displayLabel : nil))
+                    label: labelled && chip.zone == .say ? chip.zone.displayLabel : nil))
             x += size + Self.gap
         }
         entries = made
@@ -123,11 +127,11 @@ final class BrainFilterChips: NSView, NSViewToolTipOwner {
         NSAccessibility.post(element: self, notification: .layoutChanged)
     }
 
-    private func width(for chip: NeuralStepList.ZoneChip, compact: Bool) -> CGFloat {
+    private func width(for chip: NeuralStepList.ZoneChip, compact: Bool, labelled: Bool) -> CGFloat {
         let fonts = painter.fonts
         let digits = fonts.width("\(chip.count)", fonts.chipCount)
         var size = (compact ? 4 : 5) + 18 + 4 + digits + 8
-        if chip.zone == .say { size += fonts.saidWidth(chip.zone.displayLabel) + 8 }
+        if labelled, chip.zone == .say { size += fonts.saidWidth(chip.zone.displayLabel) + 8 }
         return size
     }
 

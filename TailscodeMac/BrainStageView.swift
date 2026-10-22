@@ -264,7 +264,18 @@ final class BrainStageView: NSView, BrainKeyTaker {
 
     /// A stage scrolled out of the pane's view, in a window nobody can see or under an app in the
     /// background draws nothing and ticks nothing.
-    func visibilityChanged() { noteVisibility() }
+    func visibilityChanged() {
+        noteVisibility()
+        revalidateHover()
+    }
+
+    /// A page that scrolls under a resting pointer sends it no move, so a node hovered a moment ago
+    /// would stay lit, with its card, under a pointer that is somewhere else by now.
+    private func revalidateHover() {
+        guard currentModel()?.hovered != nil, let window else { return }
+        let local = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        host?.hoverStep(visibleRect.contains(local) ? hit(at: local) : nil)
+    }
 
     private func noteVisibility() {
         let visible = !visibleRect.isEmpty && (gate?.isOpen ?? true)

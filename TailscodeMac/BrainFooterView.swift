@@ -448,6 +448,8 @@ final class BrainFooterView: NSView {
         if clock.stringValue != text { clock.stringValue = text }
         clock.textColor = inks.textDim
         rows.isOn = host.isShowingRows
+        rows.setAccessibilityHelp(NeuralReading.rowsHelp(showingRows: host.isShowingRows))
+        rows.toolTip = NeuralReading.rowsHelp(showingRows: host.isShowingRows)
         chips.show(
             settled ? host.answerChips : [], inks: inks, held: model.provenanceToken)
         needsLayout = true

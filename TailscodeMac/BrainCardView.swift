@@ -1000,10 +1000,13 @@ final class BrainCardView: NSView {
     private func invalidateAccessibility() {
         guard let content else { return }
         elements = []
-        func element(_ label: String, _ rect: CGRect, _ press: @escaping @MainActor () -> Void) {
+        func element(
+            _ label: String, _ rect: CGRect, help: String? = nil, _ press: @escaping @MainActor () -> Void
+        ) {
             let item = BrainPressElement()
             item.setAccessibilityRole(.button)
             item.setAccessibilityLabel(label)
+            item.setAccessibilityHelp(help)
             item.setAccessibilityParent(self)
             item.setAccessibilityFrameInParentSpace(rect)
             item.onPress = press
@@ -1012,7 +1015,11 @@ final class BrainCardView: NSView {
         for target in layout.targets {
             switch target.kind {
             case .replay: element(NeuralReading.replayLabel, target.rect) { [weak self] in self?.onReplay?() }
-            case .rows: element(NeuralReading.rowsLabel, target.rect) { [weak self] in self?.onRows?() }
+            case .rows:
+                element(
+                    NeuralReading.rowsLabel, target.rect,
+                    help: NeuralReading.rowsHelp(showingRows: content.showsRows)
+                ) { [weak self] in self?.onRows?() }
             case .open: element(Localized.text("Open"), target.rect) { [weak self] in self?.onOpen?() }
             case .zone(let zone):
                 element(zone.displayLabel, target.rect) { [weak self] in self?.onZone?(zone) }
@@ -1020,7 +1027,7 @@ final class BrainCardView: NSView {
         }
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel(content.card.spoken)
+        setAccessibilityLabel(NeuralReading.named(content.card.spoken))
     }
 
     override func accessibilityChildren() -> [Any]? { elements }
