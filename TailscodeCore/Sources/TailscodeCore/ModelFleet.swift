@@ -16,9 +16,17 @@ public enum ModelCatalogStore {
         return models
     }
 
+    /// Posted when a server's remembered catalog changes, so a list that wore a model's id because
+    /// the catalog had not arrived can wear its codename the moment it has. A write that changes
+    /// nothing posts nothing.
+    public static let didChange = Notification.Name("tailscode.modelCatalog.didChange")
+
     public static func store(_ models: [ModelInfo], for profileID: String) {
         guard !models.isEmpty, let data = try? JSONEncoder().encode(models) else { return }
-        UserDefaults.standard.set(data, forKey: prefix + profileID)
+        let key = prefix + profileID
+        guard UserDefaults.standard.data(forKey: key) != data else { return }
+        UserDefaults.standard.set(data, forKey: key)
+        NotificationCenter.default.post(name: didChange, object: nil)
     }
 
     /// Forgets one server's catalog — what a removed profile leaves behind, and what a test that

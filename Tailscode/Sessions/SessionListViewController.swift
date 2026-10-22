@@ -969,6 +969,9 @@ final class SessionListViewController: UIViewController {
             name: SessionPinStore.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(activityDidChange),
+            name: ModelCatalogStore.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(activityDidChange),
             name: SessionSeenStore.didSync, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(connectionsDidChange),

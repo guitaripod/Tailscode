@@ -324,7 +324,9 @@ final class ModelDialPopover: @unchecked Sendable {
         gtk_widget_set_valign(dot, GTK_ALIGN_CENTER)
         if let candidate = row.candidate {
             gtk_label_set_text(op(dot), "●")
-            let chip = ModelBadge.chip(model: candidate.selection.modelID, effort: nil)
+            let chip = ModelBadge.chip(
+                model: candidate.selection.modelID, effort: nil, providerID: nil,
+                catalog: [candidate.primary.model])
             Gtk.addClass(
                 dot, ModelTint.identityClass(family: chip?.family, name: chip?.name ?? candidate.name))
         } else if row.kind == .serverDefault {

@@ -1040,7 +1040,9 @@ final class TileHost: PaneTiling, @unchecked Sendable {
         let tile = shell.ensureGlance()
         if let rect = placement?.frames[id] { tile.fit(width: rect.width, height: rect.height) }
         tile.render(
-            title: title, reading: readings[id]?.reading, pinned: pinned.contains(id),
+            title: title, reading: readings[id]?.reading,
+            catalog: pane.entry.map { ModelCatalogStore.cached($0.profileID) } ?? [],
+            pinned: pinned.contains(id),
             index: (order.firstIndex(of: id) ?? 0) + 1, of: order.count)
     }
 

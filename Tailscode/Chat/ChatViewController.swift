@@ -5691,7 +5691,7 @@ final class ChatViewController: UIViewController {
         dialPill.content = ModelDialPill.Content(
             modelWord: model.map { ModelBadge.word(for: $0, in: availableModels) }
                 ?? String(localized: "Auto"),
-            chip: ModelBadge.chip(selection: model, effort: nil),
+            chip: ModelBadge.chip(selection: model, effort: nil, catalog: availableModels),
             effort: effort, options: viewModel.reasoningEffortOptions,
             choosesModel: viewModel.supportsModelSelection)
         dialPill.modelMenu = UIMenu(title: String(localized: "Model"), children: dialMenuElements())
@@ -5781,7 +5781,8 @@ final class ChatViewController: UIViewController {
         presentToast(carry.notice(modelName: name) ?? ModelPresetCycle.said(preset, modelName: name))
     }
 
-    /// One notch hotter or colder from a hardware key, said the way the desktops say it.
+    /// One notch hotter or colder from a hardware key, said the way the desktops say it: the pill
+    /// moves, and a screen reader is told where it landed.
     private func stepEffort(by delta: Int) {
         let options = viewModel.reasoningEffortOptions
         guard ModelEffort.isOffered(options: options) else {
@@ -5790,10 +5791,10 @@ final class ChatViewController: UIViewController {
             presentToast(ModelDial.headline(modelName: name, options: []))
             return
         }
-        let next = ModelDial.step(viewModel.displayedEffort, by: delta, options: options)
-        setEffortFromDial(next)
+        let notch = ModelDial.notch(from: viewModel.displayedEffort, by: delta, options: options)
+        setEffortFromDial(notch.level)
         Theme.Haptics.notch()
-        presentToast(ModelDial.stepped(to: next))
+        EffortSpeech.note(notch)
     }
 
     @objc private func presentModelPicker() {
@@ -5864,7 +5865,7 @@ final class ChatViewController: UIViewController {
         return ModelPickerViewController.Dial(
             modelName: model.map { ModelBadge.word(for: $0, in: availableModels) }
                 ?? String(localized: "Auto"),
-            chip: ModelBadge.chip(selection: model, effort: nil),
+            chip: ModelBadge.chip(selection: model, effort: nil, catalog: availableModels),
             options: viewModel.reasoningEffortOptions,
             agentOptions: viewModel.backend.reasoningEffortOptions,
             effort: viewModel.displayedEffort, contextTokens: transcriptFill?.used,
@@ -5893,7 +5894,9 @@ final class ChatViewController: UIViewController {
                 quotas: ModelChooserDemo.quotas(), recents: ModelChooserDemo.recents,
                 dial: ModelPickerViewController.Dial(
                     modelName: "Opus",
-                    chip: ModelBadge.chip(selection: ModelChooserDemo.selected, effort: nil),
+                    chip: ModelBadge.chip(
+                        selection: ModelChooserDemo.selected, effort: nil,
+                        catalog: ModelChooserDemo.sources().flatMap(\.models)),
                     options: ["low", "medium", "high"], agentOptions: ["low", "medium", "high"],
                     effort: "high", contextTokens: 148_900, onEffort: { _ in }),
                 onSelect: onSelect)

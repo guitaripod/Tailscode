@@ -45,6 +45,7 @@ final class GlanceTileView: NSView {
     private var clock: Timer?
 
     private(set) var reading: GlanceReading?
+    private var catalog: [ModelInfo] = []
     private var title = ""
     private var pinned = false
     private var position = (index: 1, count: 1)
@@ -197,9 +198,11 @@ final class GlanceTileView: NSView {
 
     /// Draws the tile from a reading. Nil is a conversation nothing has been heard from yet.
     func render(
-        title: String, reading: GlanceReading?, pinned: Bool, index: Int, of count: Int
+        title: String, reading: GlanceReading?, catalog: [ModelInfo], pinned: Bool, index: Int,
+        of count: Int
     ) {
         self.title = title
+        self.catalog = catalog
         self.pinned = pinned
         position = (index, count)
         self.reading = reading
@@ -233,7 +236,8 @@ final class GlanceTileView: NSView {
             tailLabel.textColor = MacTheme.Color.label
             shownChars = capacity
         }
-        let chip = ModelBadge.chip(model: reading.model, effort: reading.effort)
+        let chip = ModelBadge.chip(
+            model: reading.model, effort: reading.effort, providerID: nil, catalog: catalog)
         dotColor = chip.map { MacTheme.Color.modelIdentity($0) } ?? MacTheme.Color.tertiaryLabel
         modelDot.layer?.backgroundColor = dotColor.cgColor
         modelDot.isHidden = chip == nil

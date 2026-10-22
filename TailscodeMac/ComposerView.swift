@@ -560,7 +560,9 @@ final class ComposerView: NSView {
         let activeModel = activeModelID
         pills.setFace(
             face,
-            modelTint: activeModel.flatMap { ModelBadge.chip(model: $0, effort: nil) }
+            modelTint: activeModel.flatMap {
+                ModelBadge.chip(model: $0, effort: nil, providerID: nil, catalog: models)
+            }
                 .map(MacTheme.Color.modelIdentity))
         if let dialPopover, dialPopover.isShown { dialPopover.update(state: dialState()) }
         pills.setAttachShown(abilities.attachments)
@@ -581,11 +583,13 @@ final class ComposerView: NSView {
         if let chosenModel { return ModelBadge.word(for: chosenModel, in: models) }
         if let observed = observedModelID() {
             return ModelBadge.label(
-                model: ModelSelection(providerID: "server", modelID: observed), effort: nil)
+                model: ModelSelection(providerID: "server", modelID: observed), effort: nil,
+                catalog: models)
         }
         if let stored = entry?.session.model {
             return ModelBadge.label(
-                model: ModelSelection(providerID: "server", modelID: stored), effort: nil)
+                model: ModelSelection(providerID: "server", modelID: stored), effort: nil,
+                catalog: models)
         }
         return Localized.text("model")
     }
@@ -746,7 +750,7 @@ final class ComposerView: NSView {
         let carry = ModelEffort.adoption(
             asked, for: selection, models: models,
             agentOptions: backend?.reasoningEffortOptions ?? [])
-        let name = modelName ?? ModelBadge.label(model: selection, effort: nil)
+        let name = modelName ?? ModelBadge.label(model: selection, effort: nil, catalog: models)
         if let said = notice ?? carry.notice(modelName: name) { onToast?(said) }
         if effort != .unchanged || carry.level != chosenEffort {
             setEffort(carry.level)
@@ -757,17 +761,19 @@ final class ComposerView: NSView {
     }
 
     /// One notch of the wheel or one ⌃⌥ arrow: the next stop cold-to-hot from the level the dial
-    /// shows, pinned at both ends. Nothing opens and nothing is said — the pill's word and bars
-    /// move under the pointer, which is the whole answer — except for a model that takes no level,
-    /// which says so rather than letting the wheel turn in silence.
+    /// shows, pinned at both ends. Nothing opens and nothing is written — the pill's word and bars
+    /// move under the pointer, which is the whole answer to anyone who can see them, and a screen
+    /// reader is told where the level landed — except for a model that takes no level, which says
+    /// so rather than letting the wheel turn in silence.
     func stepEffort(by delta: Int) {
         let options = effortOptions()
         guard ModelEffort.isOffered(options: options) else {
             onDialToast?(ModelDial.headline(modelName: modelPillText(), options: []))
             return
         }
-        let next = ModelDial.step(displayedEffort(), by: delta, options: options)
-        if next != displayedEffort() { setEffort(next) }
+        let notch = ModelDial.notch(from: displayedEffort(), by: delta, options: options)
+        if notch.level != displayedEffort() { setEffort(notch.level) }
+        EffortSpeech.note(notch)
     }
 
     /// The level handed back to the machine, from the Model menu: the server's own stop on the
@@ -794,7 +800,9 @@ final class ComposerView: NSView {
             (
                 preset,
                 ModelPresetCycle.said(
-                    preset, modelName: ModelBadge.label(model: preset.selection, effort: nil)),
+                    preset,
+                    modelName: ModelBadge.label(
+                        model: preset.selection, effort: nil, catalog: models)),
                 preset.matches(model: model, effort: effort)
             )
         }
@@ -832,7 +840,7 @@ final class ComposerView: NSView {
     /// the level the pair asks for, carried onto the model's own levels — and one toast saying
     /// which pair it was and, when the level had to move, where it went.
     func applyPreset(_ preset: ModelPreset) {
-        let name = ModelBadge.label(model: preset.selection, effort: nil)
+        let name = ModelBadge.label(model: preset.selection, effort: nil, catalog: models)
         let carry = preset.applied(
             currentEffort: displayedEffort(), models: models,
             agentOptions: backend?.reasoningEffortOptions ?? [])
@@ -898,8 +906,10 @@ final class ComposerView: NSView {
         }
         pills.setFace(
             ModelDial.face(modelWord: word, effort: effort, options: options),
-            modelTint: ModelBadge.chip(model: tinted, effort: nil)
-                .map(MacTheme.Color.modelIdentity))
+            modelTint: ModelBadge.chip(
+                model: tinted, effort: nil, providerID: nil,
+                catalog: ModelChooserDemo.sources().flatMap(\.models)
+            ).map(MacTheme.Color.modelIdentity))
         guard popover else { return }
         var state = ModelDialState(
             sources: ModelChooserDemo.sources(), selected: ModelChooserDemo.selected,

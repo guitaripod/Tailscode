@@ -1001,7 +1001,9 @@ final class TileHost: NSViewController, PaneTiling {
             readings[id] = (GlanceReading(state: state, queued: pane.queuedCount), Date())
         }
         shell.glance.render(
-            title: title, reading: readings[id]?.reading, pinned: pinned.contains(id),
+            title: title, reading: readings[id]?.reading,
+            catalog: pane.currentEntry.map { ModelCatalogStore.cached($0.profileID) } ?? [],
+            pinned: pinned.contains(id),
             index: (order.firstIndex(of: id) ?? 0) + 1, of: order.count)
     }
 

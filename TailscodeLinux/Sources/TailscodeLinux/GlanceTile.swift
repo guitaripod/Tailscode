@@ -45,6 +45,7 @@ final class GlanceTile: @unchecked Sendable {
     private var clockRunning = false
 
     private(set) var reading: GlanceReading?
+    private var catalog: [ModelInfo] = []
     private var title = ""
     private var pinned = false
     private var position = (index: 1, count: 1)
@@ -138,9 +139,11 @@ final class GlanceTile: @unchecked Sendable {
 
     /// Draws the tile from a reading. Nil is a conversation nothing has been heard from yet.
     func render(
-        title: String, reading: GlanceReading?, pinned: Bool, index: Int, of count: Int
+        title: String, reading: GlanceReading?, catalog: [ModelInfo], pinned: Bool, index: Int,
+        of count: Int
     ) {
         self.title = title
+        self.catalog = catalog
         self.pinned = pinned
         position = (index, count)
         self.reading = reading
@@ -187,7 +190,8 @@ final class GlanceTile: @unchecked Sendable {
         gtk_label_set_text(op(tail), shownTail)
         if capacityLines > 0 { gtk_label_set_lines(op(tail), Int32(capacityLines)) }
 
-        let chip = ModelBadge.chip(model: reading.model, effort: reading.effort)
+        let chip = ModelBadge.chip(
+            model: reading.model, effort: reading.effort, providerID: nil, catalog: catalog)
         gtk_widget_set_visible(dot, chip == nil ? 0 : 1)
         DialPill.swapClass(
             on: dot, among: DialPill.modelTintClasses,

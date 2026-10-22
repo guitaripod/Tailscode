@@ -359,6 +359,12 @@ final class TileRuntime {
         }
     }
 
+    /// The conversation a chat already has in this process, if any: what an answer from a
+    /// notification goes through so the open chat's card settles with the server.
+    func heldConversation(_ key: LiveKey) -> AgentConversation? {
+        instances[key]
+    }
+
     /// An interest in a chat, with the conversation to send through.
     func lease(
         _ entry: SessionEntry, backend: any CodingAgentBackend, interest: LiveInterest,

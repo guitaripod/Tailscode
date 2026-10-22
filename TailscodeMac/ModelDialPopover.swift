@@ -602,7 +602,11 @@ private final class DialModelRowView: NSView {
         let dot = NSTextField(labelWithString: row.candidate == nil ? "" : "●")
         dot.font = MacTheme.Ramp.font(.chip)
         dot.textColor =
-            row.candidate.flatMap { ModelBadge.chip(model: $0.selection.modelID, effort: nil) }
+            row.candidate.flatMap {
+                ModelBadge.chip(
+                    model: $0.selection.modelID, effort: nil, providerID: nil,
+                    catalog: [$0.primary.model])
+            }
             .map(MacTheme.Color.modelIdentity) ?? MacTheme.Color.tertiaryLabel
         dot.setContentHuggingPriority(.required, for: .horizontal)
         dot.isHidden = row.candidate == nil

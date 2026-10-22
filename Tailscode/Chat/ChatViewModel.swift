@@ -1363,6 +1363,16 @@ final class ChatViewModel {
         Task { try? await conversation.refresh() }
     }
 
+    /// An approval answered from outside the chat — a notification button — through the chat's own
+    /// conversation, so the card settles here in the same breath as the server hears it, and a
+    /// request the chat has already settled is not asked twice.
+    func answerFromNotice(
+        _ permission: PermissionRequest, decision: PermissionDecision
+    ) async throws -> PermissionAnswer.Outcome {
+        try await PermissionAnswer.answer(
+            permission, decision: decision, through: conversation, backend: nil)
+    }
+
     func respond(to permission: PermissionRequest, decision: PermissionDecision) {
         AppLogger.chat.info("permission \(permission.toolName ?? "?") -> \(decision.rawValue)")
         Task {

@@ -508,9 +508,12 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
         return SceneRouting.sessionURL(sessionID)
     }
 
-    /// The lock-screen answer: rebuild the backend the request came from and respond by name.
-    /// Failure leaves the request standing — the inbox entry and the in-app banner still know
-    /// about it, and resolving it from inside the chat stays possible.
+    /// The lock-screen answer. A chat this process is holding answers through its own
+    /// conversation, so the open chat's card settles with the server; otherwise the backend the
+    /// request came from is rebuilt and responds by name. A request somebody already answered is
+    /// not asked again, and its notice goes. Failure leaves the request standing — the inbox
+    /// entry and the in-app banner still know about it, and resolving it from inside the chat
+    /// stays possible.
     @MainActor
     private static func decide(
         payload: String?, profileID: String?, identifier: String, approve: Bool
@@ -518,18 +521,31 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
         guard let payload,
             let permission = try? JSONDecoder().decode(
                 PermissionRequest.self, from: Data(payload.utf8)),
-            let profileID,
-            let profile = ConnectionController.shared.profiles.first(where: { $0.id == profileID }),
-            let backend = ConnectionController.shared.makeBackend(for: profile)
+            let profileID
         else {
+            AppLogger.session.error("notification decision: no stored payload")
+            return
+        }
+        let decision: PermissionDecision = approve ? .once : .reject
+        let held = SessionActivity.shared.retainedViewModel(
+            for: permission.sessionID, contextID: profileID)
+        let backend = ConnectionController.shared.profiles.first(where: { $0.id == profileID })
+            .flatMap { ConnectionController.shared.makeBackend(for: $0) }
+        guard held != nil || backend != nil else {
             AppLogger.session.error("notification decision: no backend for stored payload")
             return
         }
         do {
-            try await backend.respond(to: permission, decision: approve ? .once : .reject)
+            let outcome: PermissionAnswer.Outcome
+            if let held {
+                outcome = try await held.answerFromNotice(permission, decision: decision)
+            } else {
+                outcome = try await PermissionAnswer.answer(
+                    permission, decision: decision, through: nil, backend: backend)
+            }
             NotificationManager.withdraw(identifiers: [identifier])
             AppLogger.session.info(
-                "notification decision \(approve ? "approved" : "denied"): \(permission.id)")
+                "notification decision \(approve ? "approved" : "denied") (\(outcome)): \(permission.id)")
         } catch {
             AppLogger.session.error("notification decision failed: \(error)")
         }

@@ -127,6 +127,9 @@ final class MainWindow: @unchecked Sendable {
     private var watchCheckedAt: Date?
     private var watchCheck: Task<Void, Never>?
     private var lastQuotas: [(String, UsageQuota)] = []
+    /// The last good reading each machine gave for each account, served as cached while a poll
+    /// fails and for no longer than ``QuotaFreshness/keptFor``.
+    private var heldQuotas: [HeldReading] = []
     /// When the last poll actually answered. Nil is a state rather than a missing value: nobody
     /// has come back yet, and the strip says so instead of showing a quiet account.
     private var quotasAnsweredAt: Date?
@@ -1289,6 +1292,11 @@ final class MainWindow: @unchecked Sendable {
                 guard let self else { return }
                 self.renderUsage(self.lastQuotas)
             }
+        }
+        NotificationCenter.default.addObserver(
+            forName: ModelCatalogStore.didChange, object: nil, queue: nil
+        ) { [weak self] _ in
+            Gtk.onMain { [weak self] in self?.renderSidebar() }
         }
         gtk_widget_set_tooltip_text(orb.widget, Localized.text("Nothing is running"))
         Gtk.onRelease(orb.widget) { [weak self] in
@@ -3069,7 +3077,8 @@ final class MainWindow: @unchecked Sendable {
     /// conversation the hub already holds for the chat, so answering there settles the card in
     /// the chat in the same breath as the server hears it; the backend alone only told the
     /// server, leaving the card waiting until something else happened to refresh the transcript.
-    /// A chat nobody holds is opened just long enough to answer it. Failure leaves the request
+    /// A chat nobody holds is opened just long enough to answer it. A request the chat has
+    /// already settled is not asked again, and its notice goes. Failure leaves the request
     /// standing — the inbox entry still knows about it and the chat can resolve it.
     func decideFromNotification(
         profileID: String, permission: PermissionRequest, approve: Bool, identifier: String
@@ -3080,11 +3089,9 @@ final class MainWindow: @unchecked Sendable {
             do {
                 let held = await live.hub.conversation(for: key)
                 let opened = held == nil ? await LiveRuntime.open(key) : nil
-                guard let conversation = held ?? opened else { throw CancellationError() }
-                try await conversation.respond(to: permission, decision: decision)
+                _ = try await PermissionAnswer.answer(
+                    permission, decision: decision, through: held ?? opened, backend: nil)
                 Gtk.onMain { Notifier.shared.withdraw([identifier]) }
-            } catch is CancellationError {
-                return
             } catch {
                 Trace.mark("notification decision failed: \(error)")
             }
@@ -4849,9 +4856,12 @@ final class MainWindow: @unchecked Sendable {
             if snapshot.isEmpty {
                 if self.lastQuotas.isEmpty { self.quotasAnsweredAt = answeredAt }
             } else {
-                self.lastQuotas = snapshot
+                self.lastQuotas = QuotaKeeping.carry(
+                    snapshot, held: self.heldQuotas, now: answeredAt)
+                self.heldQuotas = QuotaKeeping.remember(
+                    snapshot, into: self.heldQuotas, now: answeredAt)
                 self.quotasAnsweredAt = answeredAt
-                ClockWatch.shared.setHoldings(from: snapshot)
+                ClockWatch.shared.setHoldings(from: self.lastQuotas)
                 Self.recordRange(snapshot)
             }
             self.renderUsage(self.lastQuotas)
@@ -4886,7 +4896,7 @@ final class MainWindow: @unchecked Sendable {
             var collected: [UsageQuota] = []
             if let quota = (try? await backend.usageQuota()) ?? nil { collected.append(quota) }
             collected += (try? await backend.additionalUsageQuotas()) ?? []
-            for quota in collected where !quota.source.lowercased().contains("estimated") {
+            for quota in QuotaReports.admitted(collected) {
                 quotas.append((profile.name, quota))
             }
         }

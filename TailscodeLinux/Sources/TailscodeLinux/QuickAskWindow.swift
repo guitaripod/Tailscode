@@ -564,7 +564,7 @@ final class QuickAskWindow: @unchecked Sendable {
     }
 
     /// One notch of the wheel or one chord: the level moves one stop along the aimed model's own
-    /// ladder, pinned at the ends, and the dial shows where it landed.
+    /// ladder, pinned at the ends, and the dial shows where it landed; a screen reader is told.
     private func stepEffort(by delta: Int) {
         guard !asking else { return }
         let server = targetServer
@@ -575,9 +575,18 @@ final class QuickAskWindow: @unchecked Sendable {
         }
         let current = ModelEffort.surviving(
             QuickAskDefaults.effort(forProfileID: server.id), options: options)
-        let next = ModelDial.step(current, by: delta, options: options)
-        if next != current { setEffort(next, on: server.id, refocus: false) }
-        setHint(ModelDial.stepped(to: next))
+        let notch = ModelDial.notch(from: current, by: delta, options: options)
+        if notch.level != current { setEffort(notch.level, on: server.id, refocus: false) }
+        effortVoice.note(notch)
+    }
+
+    private lazy var effortVoice = EffortVoice { [weak self] words in
+        Gtk.onMain { [weak self] in self?.announceEffort(words) }
+    }
+
+    private func announceEffort(_ words: String) {
+        guard tailscode_can_announce() != 0, !words.isEmpty else { return }
+        tailscode_accessible_announce(window, words, 0)
     }
 
     private func modelWord() -> String {
@@ -591,7 +600,9 @@ final class QuickAskWindow: @unchecked Sendable {
     private func modelTintClass() -> String? {
         let server = targetServer
         guard let picked = QuickAskDefaults.model(forProfileID: server.id),
-            let chip = ModelBadge.chip(model: picked.modelID, effort: nil)
+            let chip = ModelBadge.chip(
+                model: picked.modelID, effort: nil, providerID: nil,
+                catalog: ModelCatalogStore.cached(server.id))
         else { return nil }
         return ModelTint.identityClass(family: chip.family, name: chip.name)
     }

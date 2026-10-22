@@ -351,9 +351,11 @@ extension MacNotifier: UNUserNotificationCenterDelegate {
         }
     }
 
-    /// The banner's own answer: rebuild the backend the request came from and respond by name,
-    /// without pulling the window forward. Failure leaves the request standing — the inbox entry
-    /// still knows about it and the chat can resolve it.
+    /// The banner's own answer, without pulling the window forward. A chat this process holds
+    /// answers through its own conversation, so the open pane's card settles with the server;
+    /// otherwise the backend the request came from is rebuilt and responds by name. A request
+    /// somebody already answered is not asked again, and its banner goes. Failure leaves the
+    /// request standing — the inbox entry still knows about it and the chat can resolve it.
     private static func decide(
         payload: String?, profileID: String?, identifier: String, approve: Bool
     ) async {
@@ -362,15 +364,19 @@ extension MacNotifier: UNUserNotificationCenterDelegate {
                 PermissionRequest.self, from: Data(payload.utf8)),
             let profileID
         else { return }
-        let backend = await MainActor.run { () -> (any CodingAgentBackend)? in
-            guard
-                let profile = ServerDirectory.shared.profiles.first(where: { $0.id == profileID })
-            else { return nil }
-            return ServerDirectory.shared.backend(for: profile)
+        let route = await MainActor.run {
+            () -> (conversation: AgentConversation?, backend: (any CodingAgentBackend)?) in
+            let held = TileRuntime.shared.heldConversation(
+                LiveKey(profileID: profileID, sessionID: permission.sessionID))
+            let backend = ServerDirectory.shared.profiles.first(where: { $0.id == profileID })
+                .flatMap { ServerDirectory.shared.backend(for: $0) }
+            return (held, backend)
         }
-        guard let backend else { return }
+        guard route.conversation != nil || route.backend != nil else { return }
         do {
-            try await backend.respond(to: permission, decision: approve ? .once : .reject)
+            _ = try await PermissionAnswer.answer(
+                permission, decision: approve ? .once : .reject, through: route.conversation,
+                backend: route.backend)
             ActivityInbox.withdraw([identifier])
             let center = UNUserNotificationCenter.current()
             center.removeDeliveredNotifications(withIdentifiers: [identifier])

@@ -633,7 +633,8 @@ final class ModelPickerViewController: UIViewController {
 
     private func contextMenu(for row: ModelChooserRow) -> UIContextMenuConfiguration? {
         guard let reading = peekReading(for: row) else { return nil }
-        let hue = ModelBadge.chip(selection: row.selection, effort: nil)
+        let hue = ModelBadge.chip(
+            selection: row.selection, effort: nil, catalog: chooser.sources.flatMap(\.models))
             .map { Theme.Color.modelIdentity($0) } ?? Theme.Color.tertiaryLabel
         return UIContextMenuConfiguration(
             identifier: row.id as NSString,
@@ -822,7 +823,8 @@ final class ModelPickerViewController: UIViewController {
                 }),
                 let reading = peekReading(for: row)
             else { return }
-            let hue = ModelBadge.chip(selection: row.selection, effort: nil)
+            let hue = ModelBadge.chip(
+            selection: row.selection, effort: nil, catalog: chooser.sources.flatMap(\.models))
                 .map { Theme.Color.modelIdentity($0) } ?? Theme.Color.tertiaryLabel
             let card = ModelPeekViewController(reading: reading, hue: hue)
             card.loadViewIfNeeded()

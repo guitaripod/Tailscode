@@ -239,7 +239,8 @@ enum ModelMenu {
     }
 
     private static func identity(_ candidate: ModelCandidate) -> UIColor {
-        let chip = ModelBadge.chip(selection: candidate.selection, effort: nil)
+        let chip = ModelBadge.chip(
+            selection: candidate.selection, effort: nil, catalog: [candidate.primary.model])
         return chip.map { Theme.Color.modelIdentity($0) } ?? Theme.Color.tertiaryLabel
     }
 
@@ -273,7 +274,10 @@ enum ModelMenu {
             let asked = preset.asks(current: choice.effort)
             let level = ModelEffort.carry(asked, options: levels).level
             let hue =
-                ModelBadge.chip(selection: preset.selection, effort: nil)
+                ModelBadge.chip(
+                    selection: preset.selection, effort: nil,
+                    catalog: candidate.map { [$0.primary.model] } ?? []
+                )
                 .map { Theme.Color.modelIdentity($0) } ?? Theme.Color.tertiaryLabel
             let image: UIImage
             var detail: String?

@@ -629,7 +629,9 @@ final class QuickAskPanel: NSPanel {
         }
         refreshAim()
         let name = pick.modelName.isEmpty
-            ? ModelBadge.label(model: pick.selection, effort: nil) : pick.modelName
+            ? ModelBadge.label(
+                model: pick.selection, effort: nil, catalog: ModelCatalogStore.cached(profileID))
+            : pick.modelName
         if let said = notice ?? carry.notice(modelName: name), !asking { setStatus(said) }
         editor.focus()
     }
@@ -656,12 +658,12 @@ final class QuickAskPanel: NSPanel {
             return
         }
         let current = QuickAskDefaults.effort(forProfileID: server.id)
-        let next = ModelDial.step(current, by: delta, options: options)
-        if next != current {
-            QuickAskDefaults.recordEffort(next, forProfileID: server.id)
+        let notch = ModelDial.notch(from: current, by: delta, options: options)
+        if notch.level != current {
+            QuickAskDefaults.recordEffort(notch.level, forProfileID: server.id)
             refreshAim()
         }
-        setStatus(ModelDial.stepped(to: next))
+        EffortSpeech.note(notch)
     }
 
     /// The catalog is asked once per aim, in the background: a server that has never been
@@ -753,7 +755,11 @@ final class QuickAskPanel: NSPanel {
             ModelDial.face(
                 modelWord: modelWord(for: server),
                 effort: QuickAskDefaults.effort(forProfileID: server.id), options: options),
-            modelTint: picked.flatMap { ModelBadge.chip(model: $0.modelID, effort: nil) }
+            modelTint: picked.flatMap {
+                ModelBadge.chip(
+                    model: $0.modelID, effort: nil, providerID: nil,
+                    catalog: ModelCatalogStore.cached(server.id))
+            }
                 .map(MacTheme.Color.modelIdentity))
         if let dialPopover, dialPopover.isShown { dialPopover.update(state: dialState()) }
     }
@@ -765,7 +771,8 @@ final class QuickAskPanel: NSPanel {
         let catalog = ModelCatalogStore.cached(server.id)
         guard let picked = QuickAskDefaults.model(forProfileID: server.id) else {
             return catalog.isEmpty
-                ? Localized.text("Model…") : ModelBadge.label(model: nil, effort: nil)
+                ? Localized.text("Model…")
+                : ModelBadge.label(model: nil, effort: nil, catalog: catalog)
         }
         return ModelBadge.word(for: picked, in: catalog)
     }

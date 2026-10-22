@@ -520,7 +520,9 @@ final class ServerDetailViewController: UIViewController {
         let button = UIButton(configuration: .plain())
         button.showsMenuAsPrimaryAction = true
         var config = UIButton.Configuration.plain()
-        config.title = ModelBadge.label(model: modelChoice.model, effort: modelChoice.effort)
+        config.title = ModelBadge.label(
+            model: modelChoice.model, effort: modelChoice.effort,
+            catalog: ModelCatalog.cached(for: profile.id))
         config.image = UIImage(
             systemName: "chevron.up.chevron.down",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))

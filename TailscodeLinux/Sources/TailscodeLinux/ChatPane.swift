@@ -922,18 +922,25 @@ final class ChatPane: @unchecked Sendable {
     }
 
     /// One notch of the wheel or one chord from the editor: the level moves one stop along the
-    /// model's own ladder, pinned at the ends, and the pill's word and bars are the whole answer —
-    /// nothing is said over a step, at either end or anywhere between. Only a model that takes no
-    /// level at all speaks, because there the wheel is inert and the pill has nothing to show.
+    /// model's own ladder, pinned at the ends, and the pill's word and bars are the whole answer to
+    /// anyone who can see them — nothing is written over a step, at either end or anywhere between.
+    /// A screen reader is told where the level landed, or that it is pinned, once the hand
+    /// pauses. Only a model that takes no level at all speaks on screen, because there the wheel
+    /// is inert and the pill has nothing to show.
     func stepEffort(by delta: Int) {
         let options = effortOptions()
         guard ModelEffort.isOffered(options: options) else {
             host?.flash(ModelDial.headline(modelName: modelPillText(), options: []))
             return
         }
-        let next = ModelDial.step(resolvedEffort(), by: delta, options: options)
-        guard next != resolvedEffort() else { return }
-        setChosenEffort(next)
+        let notch = ModelDial.notch(from: resolvedEffort(), by: delta, options: options)
+        effortVoice.note(notch)
+        guard notch.level != resolvedEffort() else { return }
+        setChosenEffort(notch.level)
+    }
+
+    private lazy var effortVoice = EffortVoice { [weak self] words in
+        Gtk.onMain { [weak self] in self?.announce(words) }
     }
 
     /// The pinned pairs this chat's machine can run, in the order they were pinned.
@@ -985,7 +992,7 @@ final class ChatPane: @unchecked Sendable {
     private func modelName(of selection: ModelSelection) -> String {
         models.first { $0.providerID == selection.providerID && $0.id == selection.modelID }?.name
             ?? models.first { $0.id == selection.modelID }?.name
-            ?? ModelBadge.label(model: selection, effort: nil)
+            ?? ModelBadge.label(model: selection, effort: nil, catalog: models)
     }
 
     func openModelDial() {
@@ -4249,7 +4256,8 @@ final class ChatPane: @unchecked Sendable {
     }
 
     private func modelTintClass() -> String? {
-        guard let active = activeModelID, let chip = ModelBadge.chip(model: active, effort: nil)
+        guard let active = activeModelID, let chip = ModelBadge.chip(
+                model: active, effort: nil, providerID: nil, catalog: models)
         else { return nil }
         return ModelTint.identityClass(family: chip.family, name: chip.name)
     }
