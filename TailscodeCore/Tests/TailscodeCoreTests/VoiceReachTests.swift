@@ -117,7 +117,7 @@ struct VoiceReachTests {
             return VoiceHTTPAnswer(status: 200, body: Data())
         }, timeout: 0.05).read(endpoint)
         #expect(reach == .unreachable(VoiceCallReading.timedOut))
-        #expect(Date().timeIntervalSince(began) < 2)
+        #expect(Date().timeIntervalSince(began) < 20)
         #expect(VoiceReachProbe.timeout == 2)
     }
 

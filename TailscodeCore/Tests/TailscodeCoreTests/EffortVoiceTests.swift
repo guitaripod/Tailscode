@@ -50,30 +50,74 @@ struct EffortVoiceTests {
         #expect(notch.level == "low")
     }
 
+    private final class Hand: @unchecked Sendable {
+        private let lock = NSLock()
+        private var waiting: [CheckedContinuation<Void, Never>] = []
+
+        func sleep(_ seconds: TimeInterval) async {
+            await withCheckedContinuation { continuation in
+                lock.lock()
+                waiting.append(continuation)
+                lock.unlock()
+            }
+        }
+
+        var pending: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return waiting.count
+        }
+
+        func turn() {
+            lock.lock()
+            let all = waiting
+            waiting = []
+            lock.unlock()
+            for continuation in all { continuation.resume() }
+        }
+    }
+
+    private func until(_ condition: @escaping @Sendable () -> Bool) async throws {
+        for _ in 0..<2000 {
+            if condition() { return }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        Issue.record("the condition never held")
+    }
+
     @Test("A hand that keeps stepping is told once, where it stopped")
     func coalesced() async throws {
         let said = Said()
-        let voice = EffortVoice(settle: 0.25) { said.add($0) }
+        let hand = Hand()
+        let voice = EffortVoice(sleeper: { await hand.sleep($0) }) { said.add($0) }
         for _ in 0..<12 {
             voice.note(ModelDial.notch(from: "ultracode", by: 1, options: claude))
         }
         voice.note(ModelDial.notch(from: "medium", by: 1, options: claude))
         let last = ModelDial.notch(from: "high", by: 1, options: claude)
         voice.note(last)
-        try await Task.sleep(nanoseconds: 1_200_000_000)
+        try await until { hand.pending == 14 }
+        hand.turn()
+        try await until { !said.all.isEmpty }
+        try await Task.sleep(nanoseconds: 50_000_000)
         #expect(said.all == [last.spoken])
     }
 
     @Test("A pause between steps is two announcements")
     func paused() async throws {
         let said = Said()
-        let voice = EffortVoice(settle: 0.25) { said.add($0) }
+        let hand = Hand()
+        let voice = EffortVoice(sleeper: { await hand.sleep($0) }) { said.add($0) }
         let first = ModelDial.notch(from: "low", by: 1, options: claude)
         let second = ModelDial.notch(from: "medium", by: 1, options: claude)
         voice.note(first)
-        try await Task.sleep(nanoseconds: 1_000_000_000)
+        try await until { hand.pending == 1 }
+        hand.turn()
+        try await until { said.all.count == 1 }
         voice.note(second)
-        try await Task.sleep(nanoseconds: 1_000_000_000)
+        try await until { hand.pending == 1 }
+        hand.turn()
+        try await until { said.all.count == 2 }
         #expect(said.all == [first.spoken, second.spoken])
     }
 }

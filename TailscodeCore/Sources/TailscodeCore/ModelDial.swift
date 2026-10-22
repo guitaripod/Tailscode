@@ -447,13 +447,23 @@ public struct EffortNotch: Sendable, Equatable {
 public final class EffortVoice: @unchecked Sendable {
     public static let settle: TimeInterval = 0.4
 
+    public typealias Sleeper = @Sendable (TimeInterval) async -> Void
+
     private let delay: TimeInterval
+    private let sleeper: Sleeper
     private let speak: @Sendable (String) -> Void
     private let lock = NSLock()
     private var generation = 0
 
-    public init(settle: TimeInterval = EffortVoice.settle, speak: @escaping @Sendable (String) -> Void) {
+    /// `sleeper` is the wait between a step and its announcement: a clock in production, a hand
+    /// the test turns when it needs the pause to be over without watching a wall clock.
+    public init(
+        settle: TimeInterval = EffortVoice.settle,
+        sleeper: @escaping Sleeper = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
+        speak: @escaping @Sendable (String) -> Void
+    ) {
         self.delay = settle
+        self.sleeper = sleeper
         self.speak = speak
     }
 
@@ -463,8 +473,8 @@ public final class EffortVoice: @unchecked Sendable {
         generation += 1
         let mine = generation
         lock.unlock()
-        Task.detached { [delay, speak, weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        Task.detached { [delay, sleeper, speak, weak self] in
+            await sleeper(delay)
             guard let self, self.isCurrent(mine) else { return }
             speak(words)
         }
