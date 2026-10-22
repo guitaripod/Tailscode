@@ -88,6 +88,9 @@ final class MainWindow: @unchecked Sendable {
     /// The configured servers, kept on the main context so an empty pane can ask its question in
     /// the same frame the split happens rather than after a hop through the directory actor.
     private var knownProfiles: [ConnectionProfile] = []
+    private var welcomeTailscale: TailscaleReading?
+    private var welcomeFixture: FirstRunState?
+    private var readingTailscaleForWelcome = false
     private var mintingPanes: Set<PaneID> = []
     private var servers: ServerManager?
     /// Sessions whose delete is confirmed but not yet acknowledged by the server. Every listing
@@ -325,6 +328,9 @@ final class MainWindow: @unchecked Sendable {
         observeUpdates()
         renderUpdates()
         UpdateWatch.start { [weak self] in self?.quitForUpdate() }
+        FirstRunDialog.onLanded = { [weak self] landing in
+            Gtk.onMain { [weak self] in self?.land(on: landing) }
+        }
         presentFirstRun()
         if let seed = ProcessInfo.processInfo.environment["TAILSCODE_COMPOSER"] {
             activePane.insertIntoComposer(seed.replacingOccurrences(of: "\\n", with: "\n"))
@@ -339,6 +345,99 @@ final class MainWindow: @unchecked Sendable {
         FirstRunDialog.presentIfNeeded(parent: window) { [weak self] in
             Task { [weak self] in await self?.refresh() }
         }
+    }
+
+    /// The checklist for whoever asks for a machine to be added, from the empty pane or the
+    /// Servers window: first run when no server exists, its addition mode when one does.
+    func presentAddMachine(way: FirstRunPlan.Way.Kind? = nil) {
+        FirstRunDialog.present(way: way, parent: window) { [weak self] in
+            Task { [weak self] in await self?.refresh() }
+        }
+    }
+
+    /// A machine just connected, from first run or from adding another: the toast says which, and
+    /// a pane that holds no conversation opens the chooser already on that machine so the next
+    /// press is a chat. The list was read when the server was saved, so the machine is known.
+    func land(on landing: FirstRunLanding) {
+        raise()
+        toast(landing.toast)
+        Task { [weak self] in
+            await self?.refresh()
+            Gtk.onMain { [weak self] in self?.openLandingChooser(landing) }
+        }
+    }
+
+    private func openLandingChooser(_ landing: FirstRunLanding) {
+        let pane = activePane
+        guard pane.sessionID == nil, !pane.chooserShown else { return }
+        pane.showChooser(chooserModel(preferredServer: nil, landing: landing))
+        splitHost.focus(pane, grabKeyboard: true)
+        focused = .transcript
+    }
+
+    /// The welcome an empty pane draws while the app holds no real server, and its removal the
+    /// moment one is saved. Tailscale is read once off the main thread and the welcome redrawn only
+    /// if the answer changed what it says.
+    func refreshWelcome() {
+        let pane = activePane
+        guard EmptyWelcome.holdsNoRealServer(knownProfiles), pane.sessionID == nil,
+            !pane.chooserShown
+        else {
+            pane.clearWelcome()
+            return
+        }
+        drawWelcome(in: pane)
+        if welcomeFixture == nil { readTailscaleForWelcome() }
+    }
+
+    private func drawWelcome(in pane: ChatPane) {
+        var state = FirstRunState(platform: .linux)
+        state.tailscale = welcomeTailscale
+        if let welcomeFixture { state = welcomeFixture }
+        let demoActive = !knownProfiles.isEmpty
+        pane.showWelcome(EmptyWelcome.make(state, demoActive: demoActive)) { [weak self] intent in
+            self?.answerWelcome(intent)
+        }
+    }
+
+    private func readTailscaleForWelcome() {
+        guard !readingTailscaleForWelcome else { return }
+        readingTailscaleForWelcome = true
+        Task.detached { [weak self] in
+            let reading = TailnetStatusLinux.read().reading
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.readingTailscaleForWelcome = false
+                guard self.welcomeTailscale != reading else { return }
+                self.welcomeTailscale = reading
+                let pane = self.activePane
+                if pane.welcomeShown { self.drawWelcome(in: pane) }
+            }
+        }
+    }
+
+    private func answerWelcome(_ intent: EmptyWelcome.Intent) {
+        switch intent {
+        case .setUpMachine, .openTailscale: presentAddMachine()
+        case .pasteLink: presentAddMachine(way: .link)
+        case .tryDemo:
+            Task { [weak self] in
+                await ServerDirectory.shared.enterDemoMode()
+                await self?.refresh()
+            }
+        case .signIn: presentServers()
+        }
+    }
+
+    /// `frwelcome=<state>`: the welcome in one of the checklist's states, from `FirstRunFixtures`,
+    /// so what it says while Tailscale is down or Claude is signed out can be looked at without either.
+    func stageWelcome(_ name: String) {
+        guard let state = FirstRunFixtures.state(named: name, platform: .linux) else {
+            FileHandle.standardError.write(Data("welcome: no state \(name)\n".utf8))
+            return
+        }
+        welcomeFixture = state
+        drawWelcome(in: activePane)
     }
 
     /// `TAILSCODE_DRIVE="2000:open=1;4000:up=400;6000:jump"` — timed UI actions for headless
@@ -409,8 +508,10 @@ final class MainWindow: @unchecked Sendable {
         case "openlink":
             self.openConnectLink(argument)
         case "frpaste", "frchoose", "frback", "frconfirm", "frconnect", "fragent", "frhanded",
-            "frpassword", "frretry":
+            "frpassword", "frretry", "frstate", "frlater":
             FirstRunDialog.drive(verb, argument)
+        case "frwelcome":
+            self.stageWelcome(argument)
         case "notice":
             if argument == "test" || argument.isEmpty {
                 Notifier.shared.sendTest()
@@ -1807,6 +1908,7 @@ final class MainWindow: @unchecked Sendable {
         _ = Self.localAddresses
         Gtk.onMain { [weak self] in
             self?.knownProfiles = profiles
+            self?.refreshWelcome()
             self?.ensureListStreams(profiles)
             self?.warmCatalogs(profiles)
             self?.rememberDividers()
@@ -2294,13 +2396,11 @@ final class MainWindow: @unchecked Sendable {
             // that never finished, and the only screen that could finish it has been dismissed.
             // Pressing Later used to leave a window with no visible road anywhere.
             if !showingArchive, filter.isEmpty, projectScope == nil, knownProfiles.isEmpty {
+                gtk_box_append(ptr(sidebarList), SidebarRow.empty(EmptyWelcome.sidebarLine))
                 gtk_box_append(
                     ptr(sidebarList),
-                    SidebarRow.empty(Localized.text("No server yet — nothing can answer.")))
-                gtk_box_append(
-                    ptr(sidebarList),
-                    Gtk.button(Localized.text("Set up a machine"), css: ["flat"]) { [weak self] in
-                        Gtk.onMain { [weak self] in self?.presentFirstRun() }
+                    Gtk.button(EmptyWelcome.setUpTitle, css: ["flat"]) { [weak self] in
+                        Gtk.onMain { [weak self] in self?.presentAddMachine() }
                     })
                 return
             }
@@ -3328,9 +3428,13 @@ final class MainWindow: @unchecked Sendable {
         splitHost.eachPane { $0.followTerminal(folder) }
     }
 
-    private func chooserModel(preferredServer: String?) -> PaneChooser {
-        var model = PaneChooser(
-            servers: chooserServers, entries: entries, preferredServer: preferredServer)
+    private func chooserModel(
+        preferredServer: String?, landing: FirstRunLanding? = nil
+    ) -> PaneChooser {
+        var model =
+            landing?.chooser(servers: chooserServers, entries: entries)
+            ?? PaneChooser(
+                servers: chooserServers, entries: entries, preferredServer: preferredServer)
         model.watchSummary = watchSummary
         model.offersPreview = true
         model.previewHosts = PreviewAccessStore.all()
@@ -3399,7 +3503,7 @@ final class MainWindow: @unchecked Sendable {
         case .newChatInFolder(let profileID, let directory):
             startChat(onProfileID: profileID, in: directory, into: pane)
         case .addServer:
-            presentServers()
+            presentAddMachine()
         case .browse:
             pane.showWeb(nil)
             splitHost.focus(pane, grabKeyboard: false)

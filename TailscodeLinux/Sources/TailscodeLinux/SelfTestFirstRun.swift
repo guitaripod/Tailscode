@@ -96,5 +96,80 @@ extension SelfTest {
             texts.filter { $0 == "Sign in to Claude" }.count >= 1,
             "a signed-out Claude opens the sign-in inside first run")
         try expect(texts.contains("Signed out"), "and the row says so")
+        try expect(
+            texts.filter { $0 == "Sign in to Claude" }.count == 1,
+            "and the sign-in is pressed in one place")
+        try checkFirstRunStates(expect)
+    }
+
+    private static func checkFirstRunStates(_ expect: (Bool, String) throws -> Void) throws {
+        func texts(_ dialog: FirstRunDialog, _ name: String) throws -> [String] {
+            guard let state = FirstRunFixtures.state(named: name, platform: .linux) else {
+                throw SelfTestFailure("first run: no state \(name)")
+            }
+            dialog.applyForTesting(FirstRunPlan.make(state))
+            return dialog.renderedTexts()
+        }
+        let dialog = FirstRunDialog.forTesting(mode: .firstRun)
+        for name in FirstRunFixtures.names {
+            try expect(!(try texts(dialog, name)).isEmpty, "\(name) draws words")
+        }
+
+        var drawn = try texts(dialog, "link-offered")
+        try expect(drawn.contains("Use the link you copied"), "a copied link is offered")
+        try expect(
+            drawn.contains("Studio · studio.tail1234.ts.net:4098"), "by the machine's name and place")
+
+        drawn = try texts(dialog, "link-pasted")
+        try expect(drawn.contains("Connect to Studio"), "a link in play is connected to by name")
+        try expect(!drawn.contains("Use the link you copied"), "and is not offered again")
+
+        drawn = try texts(dialog, "tailscale-down")
+        try expect(drawn.contains(TailscaleReading.daemonDown.title), "Tailscale not running is the pill")
+        try expect(
+            drawn.contains(TailscaleReading.daemonDown.actionTitle ?? ""), "and its own remedy is a button")
+
+        drawn = try texts(dialog, "failed:refused")
+        try expect(
+            drawn.contains { $0.hasPrefix("Nothing is listening on ") && $0.contains("studio") },
+            "a failure names the machine")
+        try expect(drawn.contains("Try again"), "and offers the one tap that fixes it")
+
+        drawn = try texts(dialog, "failed:off-tailnet")
+        try expect(drawn.contains("Open Tailscale"), "a machine off the tailnet opens Tailscale")
+
+        let adding = FirstRunDialog.forTesting(mode: .addition)
+        drawn = try texts(adding, "machine-asking+add")
+        try expect(!drawn.contains("Try the demo"), "adding offers no demo")
+        try expect(!drawn.contains { $0.hasPrefix("Tailscale on this") }, "adding never claims Tailscale is missing")
+        try expect(drawn.contains("Not now"), "adding is dismissed with Not now")
+
+        try checkWelcome(expect)
+    }
+
+    private static func checkWelcome(_ expect: (Bool, String) throws -> Void) throws {
+        func shown(_ name: String) throws -> [String] {
+            guard let state = FirstRunFixtures.state(named: name, platform: .linux) else {
+                throw SelfTestFailure("first run: no state \(name)")
+            }
+            let view = ChatPane.welcomeView(EmptyWelcome.make(state)) { _ in }
+            var texts: [String] = []
+            FirstRunDialog.collect(from: view, into: &texts)
+            return texts
+        }
+        var drawn = try shown("machine-asking")
+        try expect(drawn.contains("Welcome to Tailscode"), "an empty pane draws the welcome")
+        try expect(
+            drawn.filter { ["Set up a machine", "Paste a link", "Try the demo"].contains($0) }
+                == ["Set up a machine", "Paste a link", "Try the demo"],
+            "with a machine first, then a link, then the demo")
+        drawn = try shown("tailscale-down")
+        try expect(
+            drawn.contains(TailscaleReading.daemonDown.actionTitle ?? ""),
+            "Tailscale down leads with Tailscale's own remedy")
+        drawn = try shown("signed-out")
+        try expect(
+            drawn.filter { $0 == "Sign in to Claude" }.count == 1,
+            "a signed-out Claude is the one thing offered")
     }
 }

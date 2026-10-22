@@ -11,6 +11,7 @@ import TailscodeCore
 /// server yet, and again — as a question, not a form — when a link arrives for another machine.
 final class FirstRunDialog: @unchecked Sendable {
     nonisolated(unsafe) private static var current: FirstRunDialog?
+    nonisolated(unsafe) static var onLanded: @Sendable (FirstRunLanding) -> Void = { _ in }
 
     static func presentIfNeeded(
         parent: UnsafeMutablePointer<GtkWidget>?, onSaved: @escaping @Sendable () -> Void
@@ -21,7 +22,32 @@ final class FirstRunDialog: @unchecked Sendable {
             guard await ServerDirectory.shared.profiles().isEmpty else { return }
             Gtk.onMain {
                 guard current == nil else { return }
-                begin(mode: .firstRun, parentHold: parentHold, link: nil, onSaved: onSaved)
+                begin(
+                    mode: .firstRun, parentHold: parentHold, link: nil, way: nil, onSaved: onSaved)
+            }
+        }
+    }
+
+    /// The checklist for whoever asks for a machine to be added: first run when no server exists,
+    /// its addition mode when one does, which has no Tailscale row to wrongly claim anything is
+    /// missing. A dialog already open is raised and moved to the way asked for.
+    static func present(
+        way: FirstRunPlan.Way.Kind?, parent: UnsafeMutablePointer<GtkWidget>?,
+        onSaved: @escaping @Sendable () -> Void
+    ) {
+        let parentHold = parent.map { Gtk.WeakWidget($0) }
+        Task {
+            await ServerDirectory.shared.reload()
+            let real = !EmptyWelcome.holdsNoRealServer(await ServerDirectory.shared.profiles())
+            Gtk.onMain {
+                if let existing = current {
+                    existing.raise()
+                    if let way { existing.chose(way) }
+                    return
+                }
+                begin(
+                    mode: real ? .addition : .firstRun, parentHold: parentHold, link: nil,
+                    way: way, onSaved: onSaved)
             }
         }
     }
@@ -49,7 +75,7 @@ final class FirstRunDialog: @unchecked Sendable {
                 }
                 begin(
                     mode: empty ? .firstRun : .addition, parentHold: parentHold, link: link,
-                    onSaved: onSaved)
+                    way: nil, onSaved: onSaved)
             }
         }
     }
@@ -67,11 +93,11 @@ final class FirstRunDialog: @unchecked Sendable {
     func renderedTexts() -> [String] {
         guard let window else { return [] }
         var texts: [String] = []
-        if let child = gtk_window_get_child(ptr(window)) { collect(from: child, into: &texts) }
+        if let child = gtk_window_get_child(ptr(window)) { Self.collect(from: child, into: &texts) }
         return texts
     }
 
-    private func collect(from widget: UnsafeMutablePointer<GtkWidget>, into texts: inout [String]) {
+    static func collect(from widget: UnsafeMutablePointer<GtkWidget>, into texts: inout [String]) {
         guard gtk_widget_get_visible(widget) != 0 else { return }
         let instance = UnsafeMutableRawPointer(widget).assumingMemoryBound(to: GTypeInstance.self)
         if g_type_check_instance_is_a(instance, gtk_label_get_type()) != 0,
@@ -82,10 +108,11 @@ final class FirstRunDialog: @unchecked Sendable {
             let raw = gtk_button_get_label(ptr(widget))
         {
             texts.append(String(cString: raw))
+            return
         }
         var child = gtk_widget_get_first_child(widget)
         while let current = child {
-            collect(from: current, into: &texts)
+            Self.collect(from: current, into: &texts)
             child = gtk_widget_get_next_sibling(current)
         }
     }
@@ -95,17 +122,43 @@ final class FirstRunDialog: @unchecked Sendable {
     }
 
     static func drive(_ verb: String, _ argument: String) {
-        current?.driven(verb, argument)
+        guard verb == "frstate" else {
+            current?.driven(verb, argument)
+            return
+        }
+        stage(argument)
+    }
+
+    /// `frstate=<name>`: one state of the checklist from `FirstRunFixtures`, drawn through the
+    /// ordinary plan and left alone — nothing is probed and the live plan no longer redraws it — so a
+    /// picture of "the machine refused" needs no machine.
+    private static func stage(_ name: String) {
+        guard let state = FirstRunFixtures.state(named: name, platform: .linux) else {
+            FileHandle.standardError.write(Data("first-run: no state \(name)\n".utf8))
+            return
+        }
+        if let existing = current, existing.mode != state.mode { existing.close() }
+        let dialog: FirstRunDialog
+        if let existing = current {
+            dialog = existing
+        } else {
+            dialog = FirstRunDialog(mode: state.mode, onSaved: {})
+            current = dialog
+            dialog.present(parent: nil, link: nil)
+        }
+        dialog.fixed = true
+        dialog.tailscale = state.tailscale
+        dialog.render(FirstRunPlan.make(state), fixture: true)
     }
 
     private static func begin(
         mode: FirstRunState.Mode, parentHold: Gtk.WeakWidget?, link: String?,
-        onSaved: @escaping @Sendable () -> Void
+        way: FirstRunPlan.Way.Kind?, onSaved: @escaping @Sendable () -> Void
     ) {
         let parent = parentHold?.widget
         let dialog = FirstRunDialog(mode: mode, onSaved: onSaved)
         current = dialog
-        dialog.present(parent: parent, link: link)
+        dialog.present(parent: parent, link: link, way: way)
     }
 
     private let flow: FirstRunFlow
@@ -145,7 +198,11 @@ final class FirstRunDialog: @unchecked Sendable {
     private let waysBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
     private let pasteBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
     private let pasteEntry = gtk_entry_new()!
+    private let offerBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
     private let offerButton = gtk_button_new_with_label("")!
+    private let offerDetail = FirstRunDialog.wrapped("", css: "row-detail")
+    private var landing: FirstRunLanding?
+    private var fixed = false
     private let pasteReading = FirstRunDialog.wrapped("", css: "row-detail")
     private let pasteMessage = FirstRunDialog.wrapped("", css: "row-detail")
     private let installBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
@@ -200,7 +257,9 @@ final class FirstRunDialog: @unchecked Sendable {
         if let window { gtk_window_present(ptr(window)) }
     }
 
-    private func present(parent: UnsafeMutablePointer<GtkWidget>?, link: String?) {
+    private func present(
+        parent: UnsafeMutablePointer<GtkWidget>?, link: String?, way: FirstRunPlan.Way.Kind? = nil
+    ) {
         build(parent: parent)
         guard let window else { return }
         streamTask = Task { [self] in
@@ -212,7 +271,11 @@ final class FirstRunDialog: @unchecked Sendable {
         render(FirstRunPlan.make(FirstRunState(platform: .linux, mode: mode)))
         gtk_window_present(ptr(window))
         readClipboard()
-        if let link { send { await $0.paste(link) } }
+        if let link {
+            send { await $0.paste(link) }
+        } else if let way {
+            chose(way)
+        }
     }
 
     private func build(parent: UnsafeMutablePointer<GtkWidget>?) {
@@ -254,6 +317,7 @@ final class FirstRunDialog: @unchecked Sendable {
         closed = true
         streamTask?.cancel()
         if Self.current === self { Self.current = nil }
+        if let landing { Self.onLanded(landing) }
     }
 
     private func close() {
@@ -341,10 +405,13 @@ final class FirstRunDialog: @unchecked Sendable {
     private func buildMachineSlots() {
         guard let machine = rows[.machine] else { return }
         for slot in [
-            waysBox, pasteBox, installBox, linkBox, statusBox, passwordBox, discoveryBox,
+            offerBox, waysBox, pasteBox, installBox, linkBox, statusBox, passwordBox, discoveryBox,
         ] {
             gtk_box_append(ptr(machine.body), slot)
         }
+        gtk_box_append(ptr(offerBox), offerButton)
+        gtk_box_append(ptr(offerBox), offerDetail)
+        gtk_widget_set_halign(offerButton, GTK_ALIGN_START)
 
         gtk_button_set_label(ptr(backButton), "")
         Gtk.addClass(backButton, "flat")
@@ -360,9 +427,6 @@ final class FirstRunDialog: @unchecked Sendable {
         gtk_entry_set_activates_default(ptr(pasteEntry), 0)
         gtk_widget_set_hexpand(pasteEntry, 1)
         gtk_box_append(ptr(pasteBox), pasteEntry)
-        gtk_box_append(ptr(pasteBox), offerButton)
-        Gtk.addClass(offerButton, "suggested-action")
-        gtk_widget_set_halign(offerButton, GTK_ALIGN_START)
         gtk_box_append(ptr(pasteBox), pasteReading)
         gtk_box_append(ptr(pasteBox), pasteMessage)
         Gtk.connect(UnsafeMutableRawPointer(pasteEntry), "changed") { [self] in
@@ -393,14 +457,16 @@ final class FirstRunDialog: @unchecked Sendable {
         panel.onFinished = { [weak self] in self?.scanFinished() }
         discovery = panel
         gtk_box_append(ptr(discoveryBox), panel.group)
-        for slot in [waysBox, pasteBox, installBox, linkBox, statusBox, passwordBox, discoveryBox, backButton]
-        {
+        for slot in [
+            offerBox, waysBox, pasteBox, installBox, linkBox, statusBox, passwordBox, discoveryBox,
+            backButton,
+        ] {
             gtk_widget_set_visible(slot, 0)
         }
     }
 
-    private func render(_ next: FirstRunPlan) {
-        guard !closed else { return }
+    private func render(_ next: FirstRunPlan, fixture: Bool = false) {
+        guard !closed, fixture || !fixed else { return }
         plan = next
         gtk_label_set_text(op(intro), mode == .firstRun ? next.intro : "")
         gtk_widget_set_visible(intro, mode == .firstRun ? 1 : 0)
@@ -417,7 +483,7 @@ final class FirstRunDialog: @unchecked Sendable {
             mainWindow?.raise()
             return
         }
-        if next.isFinished, !finishing {
+        if next.isFinished, !finishing, !fixed {
             finishing = true
             finish()
         }
@@ -521,9 +587,17 @@ final class FirstRunDialog: @unchecked Sendable {
         refill(installBox, with: install)
         refill(linkBox, with: link)
         refill(statusBox, with: status)
+        syncOffer(plan?.offer)
         syncPaste(paste)
         syncPassword(password)
         syncDiscovery(installing: installContext)
+    }
+
+    private func syncOffer(_ offer: FirstRunPlan.Offer?) {
+        gtk_widget_set_visible(offerBox, offer == nil ? 0 : 1)
+        guard let offer else { return }
+        gtk_button_set_label(ptr(offerButton), offer.title)
+        gtk_label_set_text(op(offerDetail), offer.detail)
     }
 
     private func refill(_ box: UnsafeMutablePointer<GtkWidget>, with blocks: [FirstRunPlan.Block]) {
@@ -672,11 +746,7 @@ final class FirstRunDialog: @unchecked Sendable {
     }
 
     private func appendSignIn(_ card: FirstRunPlan.SignInCard, to box: UnsafeMutablePointer<GtkWidget>) {
-        let button = Gtk.button(card.action, css: ["suggested-action"]) { [self] in
-            Gtk.onMain { [self] in presentSignIn() }
-        }
-        gtk_widget_set_halign(button, GTK_ALIGN_START)
-        gtk_box_append(ptr(box), button)
+        gtk_box_append(ptr(box), Gtk.label(card.title, css: "row-title", selectable: false))
     }
 
     private func presentSignIn() {
@@ -711,8 +781,6 @@ final class FirstRunDialog: @unchecked Sendable {
             gtk_editable_set_position(op(pasteEntry), -1)
             syncing = false
         }
-        gtk_widget_set_visible(offerButton, paste.offer == nil ? 0 : 1)
-        if let offer = paste.offer { gtk_button_set_label(ptr(offerButton), offer) }
         gtk_label_set_text(op(pasteReading), paste.reading ?? "")
         gtk_widget_set_visible(pasteReading, paste.reading == nil || paste.message != nil ? 0 : 1)
         let message = paste.message.map { "\($0.title)\n\($0.detail)" } ?? ""
@@ -814,6 +882,8 @@ final class FirstRunDialog: @unchecked Sendable {
         let flow = flow
         Task {
             let saved = await flow.saved
+            let landing = await flow.landing
+            Gtk.onMain { [self] in self.landing = landing }
             onSaved()
             await checkPermissions(saved?.profile)
         }
@@ -908,12 +978,7 @@ final class FirstRunDialog: @unchecked Sendable {
 
     private func performRemedy() {
         guard let reading = tailscale else { return }
-        switch reading.remedy {
-        case .install(let url): SignInDialog.openInBrowser(url)
-        case .signIn(let command), .start(let command): run(command)
-        case .grantHostAccess(let command): Gtk.copyToClipboard(command)
-        case .none: break
-        }
+        TailnetRemedyRunner.perform(reading, narrate: narrate)
     }
 
     private func appendRemedy(_ reading: TailscaleReading, to box: UnsafeMutablePointer<GtkWidget>) {
@@ -942,64 +1007,19 @@ final class FirstRunDialog: @unchecked Sendable {
         gtk_box_append(ptr(box), remedyOutput)
     }
 
-    /// A command that has to run on *this* machine is run from here, with its output on the same
-    /// screen, rather than handed over with "run it in a terminal" — which is the one thing the
-    /// first-run doctrine forbids and is also useless advice to somebody who has never opened one.
-    ///
-    /// `tailscale up` answers by printing a login URL and waiting, so the URL is watched for and
-    /// opened as it appears; anything needing root is raised through pkexec, which asks with the
-    /// desktop's own dialog. A command that cannot run says so and leaves the copyable line.
     private func run(_ command: String) {
-        let elevated = command.hasPrefix("sudo ")
-        let bare = elevated ? String(command.dropFirst(5)) : command
-        let usePolkit = elevated && FileManager.default.isExecutableFile(atPath: "/usr/bin/pkexec")
-        gtk_label_set_text(op(remedyOutput), Localized.text("Running %@…", bare))
-        gtk_widget_set_visible(remedyOutput, 1)
-
-        Task.detached { [self] in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            var arguments = bare.split(separator: " ").map(String.init)
-            if usePolkit { arguments.insert("pkexec", at: 0) }
-            if Packaging.isFlatpak { arguments.insert(contentsOf: ["flatpak-spawn", "--host"], at: 0) }
-            process.arguments = arguments
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
-            guard (try? process.run()) != nil else {
-                Gtk.onMain { [self] in
-                    guard !closed else { return }
-                    gtk_label_set_text(
-                        op(remedyOutput),
-                        Localized.text(
-                            "This machine would not run %@. Copy it and run it yourself, then this "
-                                + "step turns green on its own.", bare))
-                }
-                return
-            }
-            var seen = ""
-            while let chunk = try? pipe.fileHandleForReading.read(upToCount: 4096), !chunk.isEmpty {
-                seen += String(decoding: chunk, as: UTF8.self)
-                let text = seen
-                if let url = Self.loginURL(in: text) {
-                    Gtk.onMain { SignInDialog.openInBrowser(url) }
-                    seen = ""
-                }
-                Gtk.onMain { [self] in
-                    guard !closed else { return }
-                    gtk_label_set_text(op(remedyOutput), text.trimmingCharacters(in: .whitespacesAndNewlines))
-                }
-            }
-            process.waitUntilExit()
-        }
+        TailnetRemedyRunner.run(command, narrate: narrate)
     }
 
-    private static func loginURL(in text: String) -> String? {
-        for token in text.split(whereSeparator: { $0.isWhitespace })
-        where token.hasPrefix("https://login.tailscale.com/") {
-            return String(token)
+    /// What a remedy prints, shown under the Tailscale step for as long as the dialog is there.
+    private var narrate: @Sendable (String) -> Void {
+        { [self] text in
+            Gtk.onMain { [self] in
+                guard !closed else { return }
+                gtk_label_set_text(op(remedyOutput), text)
+                gtk_widget_set_visible(remedyOutput, 1)
+            }
         }
-        return nil
     }
 
     private func driven(_ verb: String, _ argument: String) {
@@ -1017,6 +1037,7 @@ final class FirstRunDialog: @unchecked Sendable {
         case "frhanded": send { await $0.handedOver() }
         case "frpassword": send { await $0.setPassword(argument) }
         case "frretry": send { await $0.retry() }
+        case "frlater": Gtk.onMain { [self] in laterPressed() }
         default: break
         }
     }

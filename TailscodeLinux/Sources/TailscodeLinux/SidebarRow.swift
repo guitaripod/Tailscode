@@ -165,7 +165,7 @@ enum SidebarRow {
     }
 
     static func empty(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
-        let label = Gtk.label(text, css: "dim", selectable: false)
+        let label = Gtk.label(text, css: "dim", wrap: true, selectable: false)
         Gtk.margins(label, top: 20, bottom: 20, leading: 12, trailing: 12)
         return label
     }

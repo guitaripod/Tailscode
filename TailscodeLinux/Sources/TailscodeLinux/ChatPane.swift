@@ -1838,7 +1838,7 @@ final class ChatPane: @unchecked Sendable {
                 remembered.count > limit ? Array(remembered.suffix(limit)) : remembered
             applyRows(windowed)
         } else if freshlyCreated {
-            showPlaceholder(Localized.text("Nothing here yet. Say something."))
+            showStarters()
             gtk_widget_grab_focus(entryView)
         } else {
             showPlaceholder(Localized.text("Connecting…"))
@@ -3051,6 +3051,91 @@ final class ChatPane: @unchecked Sendable {
             gtk_box_append(ptr(column), parts.button)
         }
         gtk_box_append(ptr(transcriptBox), column)
+    }
+
+    private static let welcomeKey = "welcome"
+    private var shownWelcome: EmptyWelcome?
+
+    /// The pane with no conversation and no server to hold one draws Core's welcome rather than a
+    /// blank page: the title, the sentence, the one step standing in the way and the buttons that
+    /// open the checklist. A pane that holds a chat or is asking which server keeps what it has.
+    func showWelcome(_ welcome: EmptyWelcome, onAction: @escaping @Sendable (EmptyWelcome.Intent) -> Void) {
+        guard sessionID == nil, chooser == nil, video == nil, page == nil, preview == nil else { return }
+        if currentPlaceholder == Self.welcomeKey, shownWelcome == welcome { return }
+        shownWelcome = welcome
+        currentPlaceholder = Self.welcomeKey
+        Gtk.removeChildren(of: transcriptBox)
+        forgetRowWidgets()
+        placeholderShown = true
+        pendingReveal = false
+        gtk_widget_set_opacity(transcriptBox, 1)
+        gtk_box_append(ptr(transcriptBox), Self.welcomeView(welcome, onAction: onAction))
+    }
+
+    static func welcomeView(
+        _ welcome: EmptyWelcome, onAction: @escaping @Sendable (EmptyWelcome.Intent) -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 12)
+        Gtk.addClass(column, "empty-chat")
+        gtk_widget_set_halign(column, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(column), Gtk.label(welcome.title, css: "empty-headline", selectable: false))
+        gtk_box_append(ptr(column), welcomeText(welcome.detail, css: "dim"))
+        gtk_box_append(ptr(column), welcomeStep(welcome.step, onAction: onAction))
+        gtk_box_append(ptr(column), welcomeButtons(welcome, onAction: onAction))
+        return column
+    }
+
+    func clearWelcome() {
+        guard currentPlaceholder == Self.welcomeKey else { return }
+        currentPlaceholder = nil
+        shownWelcome = nil
+        Gtk.removeChildren(of: transcriptBox)
+    }
+
+    var welcomeShown: Bool { currentPlaceholder == Self.welcomeKey }
+
+    private static func welcomeText(_ text: String, css: String) -> UnsafeMutablePointer<GtkWidget> {
+        let label = Gtk.label(text, css: css, wrap: true, selectable: false)
+        gtk_label_set_max_width_chars(op(label), 60)
+        return label
+    }
+
+    private static func welcomeStep(
+        _ step: EmptyWelcome.Step, onAction: @escaping @Sendable (EmptyWelcome.Intent) -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let card = Gtk.groupBox(
+            GTK_ORIENTATION_VERTICAL, spacing: 6, spoken: "\(step.title). \(step.detail)")
+        Gtk.addClass(card, "card")
+        Gtk.margins(card, 12)
+        gtk_box_append(ptr(card), Gtk.label(step.title, css: "row-title", selectable: false))
+        gtk_box_append(ptr(card), welcomeText(step.detail, css: "row-detail"))
+        if let fix = step.fix {
+            let button = welcomeButton(fix, css: ["flat"], onAction: onAction)
+            gtk_widget_set_halign(button, GTK_ALIGN_START)
+            gtk_box_append(ptr(card), button)
+        }
+        return card
+    }
+
+    private static func welcomeButtons(
+        _ welcome: EmptyWelcome, onAction: @escaping @Sendable (EmptyWelcome.Intent) -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(ptr(row), welcomeButton(welcome.primary, css: ["suggested-action"], onAction: onAction))
+        for action in welcome.secondary {
+            gtk_box_append(ptr(row), welcomeButton(action, css: ["flat"], onAction: onAction))
+        }
+        return row
+    }
+
+    private static func welcomeButton(
+        _ action: EmptyWelcome.Action, css: [String],
+        onAction: @escaping @Sendable (EmptyWelcome.Intent) -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let intent = action.intent
+        let button = Gtk.button(action.title, css: css) { Gtk.onMain { onAction(intent) } }
+        gtk_widget_set_tooltip_text(button, action.help)
+        return button
     }
 
     func showPlaceholder(_ text: String) {

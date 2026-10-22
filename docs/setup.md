@@ -214,7 +214,7 @@ What only a real device shows, and was therefore not seen:
   registered for both the direct and the Store build), the clipboard offer on window focus (macOS
   may ask permission to read it), and the sandboxed Store build's "cannot see it" Tailscale row.
 - **Linux:** the harness shows every state (`TAILSCODE_DRIVE` verbs `openlink`, `frpaste`,
-  `frchoose`, `frconfirm`, `frconnect`, `fragent`, `frhanded`; `TAILSCODE_FAKE_TAILNET=up|down` in
+  `frchoose`, `frconfirm`, `frconnect`, `fragent`, `frhanded`, `frlater`, `frstate=<fixture>`, `frwelcome=<fixture>`; `TAILSCODE_FAKE_TAILNET=up|down` in
   a debug build). A desktop's handler registration is what is not seen there: with the `.desktop`
   entry installed (`MimeType=x-scheme-handler/tailscode;`, `Exec=tailscode %u`), `xdg-open
   'tailscode://connect?…'` and `tailscode --connect '<link>'` must reach the window that is already

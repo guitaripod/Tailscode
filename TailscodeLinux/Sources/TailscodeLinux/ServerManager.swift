@@ -20,14 +20,11 @@ import TailscodeCore
 /// parse, the port that answered as something else and the password that was refused each read the
 /// same on this desk as on the phone, and each offers the one action that fixes it.
 final class ServerManager: @unchecked Sendable {
-    static let installCommand = BridgeInstall.installCommand
-
     private let onChanged: @Sendable () -> Void
     private var token: UInt = 0
     private var window: UnsafeMutablePointer<GtkWidget>?
     private var configuredGroup: UnsafeMutablePointer<GtkWidget>?
     private var addGroup: UnsafeMutablePointer<GtkWidget>?
-    private var discovery: DiscoveryPanel?
     private var configuredRows: [UnsafeMutablePointer<GtkWidget>] = []
     private var rows: [String: ServerRow] = [:]
 
@@ -67,15 +64,6 @@ final class ServerManager: @unchecked Sendable {
         let page = adw_preferences_page_new()!
         adw_preferences_window_add(ptr(window), ptr(page))
         configuredGroup = makeConfiguredGroup(on: page)
-        let discovery = DiscoveryPanel(
-            onAdd: { [weak self] suggestion in
-                Gtk.onMain { [weak self] in self?.adopt(suggestion) }
-            },
-            onChanged: { [weak self] in
-                Gtk.onMain { [weak self] in self?.toast(Localized.text("Install command copied")) }
-            })
-        self.discovery = discovery
-        adw_preferences_page_add(ptr(page), ptr(discovery.group))
         addGroup = makeAddGroup(on: page)
 
         token = Self.hold(self)
@@ -146,6 +134,20 @@ final class ServerManager: @unchecked Sendable {
         adw_preferences_group_set_description(
             ptr(group), Localized.text("Reading this machine's tailnet address…"))
         adw_preferences_page_add(ptr(page), ptr(group))
+
+        let addMachine = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+        Gtk.margins(addMachine, top: 6, bottom: 12)
+        let addButton = Gtk.button(ConnectLinkReading.addMachine + "…", css: ["pill"]) {
+            [weak self] in
+            self?.addMachine()
+        }
+        gtk_widget_set_halign(addButton, GTK_ALIGN_START)
+        gtk_widget_set_tooltip_text(addButton, ConnectLinkReading.addMachineDetail)
+        gtk_box_append(ptr(addMachine), addButton)
+        gtk_box_append(
+            ptr(addMachine),
+            Gtk.label(ConnectLinkReading.addMachineDetail, css: "dim", wrap: true, selectable: false))
+        adw_preferences_group_add(ptr(group), ptr(addMachine))
 
         let address = Self.entryRow(
             title: Localized.text("Tailnet address"),
@@ -239,28 +241,21 @@ final class ServerManager: @unchecked Sendable {
                     "\(profiles.count)"))
 
         guard !profiles.isEmpty else {
-            discovery?.setConfigured([])
             let row = adw_action_row_new()!
             adw_preferences_row_set_title(ptr(row), Localized.text("Nothing configured"))
             adw_preferences_row_set_use_markup(ptr(row), 0)
-            adw_action_row_set_subtitle(
-                ptr(row),
-                Localized.text(
-                    "Run the install command on the machine you code on, then paste its address below."
-                ))
+            adw_action_row_set_subtitle(ptr(row), ConnectLinkReading.addMachineDetail)
             adw_action_row_set_subtitle_lines(ptr(row), 0)
             adw_action_row_add_suffix(
                 ptr(row),
-                Self.inlineButton(Localized.text("Copy the install command")) { [weak self] in
-                    Gtk.copyToClipboard(Self.installCommand)
-                    self?.toast(Localized.text("Install command copied"))
+                Self.inlineButton(ConnectLinkReading.addMachine + "…") { [weak self] in
+                    self?.addMachine()
                 })
             adw_preferences_group_add(ptr(group), ptr(row))
             configuredRows.append(row)
             return
         }
 
-        discovery?.setConfigured(profiles)
         for profile in profiles {
             let row = makeRow(profile)
             if profile.id == expanding { adw_expander_row_set_expanded(ptr(row), 1) }
@@ -869,50 +864,6 @@ final class ServerManager: @unchecked Sendable {
     }
 
 
-    /// A machine the scan found, taken as it stands. Nothing is re-probed — the scanner already
-    /// got an answer out of that exact address — except when it wants a password, which the scan
-    /// cannot know, so the form is filled in and the person is asked for the one missing thing
-    /// rather than being handed a profile that will fail on its first turn.
-    private func adopt(_ suggestion: TailnetScanner.Suggestion) {
-        guard !suggestion.requiresAuth else {
-            if let addressRow {
-                gtk_editable_set_text(op(addressRow), suggestion.baseURL.absoluteString)
-            }
-            if let nameRow {
-                gtk_editable_set_text(op(nameRow), suggestion.recommendedProfileName)
-            }
-            if let agentRow {
-                adw_combo_row_set_selected(
-                    ptr(UnsafeMutableRawPointer(agentRow)),
-                    guint(Self.addFormBackends.firstIndex(of: suggestion.backend) ?? 0))
-            }
-            setStatus(
-                Localized.text("%@ wants a password", suggestion.recommendedProfileName),
-                detail: Localized.text(
-                    "It answered, so the address is right — type the password it was started with and probe."
-                ), tone: .warn)
-            if let passwordRow { gtk_widget_grab_focus(passwordRow) }
-            return
-        }
-        let profile = ConnectionProfile(
-            id: UUID().uuidString, name: suggestion.recommendedProfileName,
-            backend: suggestion.backend, baseURL: suggestion.baseURL,
-            username: ProbeSweep.username(for: suggestion.backend))
-        Task { [weak self] in
-            do {
-                try await ServerDirectory.shared.save(profile, password: nil)
-                self?.onChanged()
-                Gtk.onMain { [weak self] in
-                    self?.toast(Localized.text("Added %@", profile.name))
-                    self?.reload()
-                }
-            } catch {
-                let text = Localized.text("Could not save: %@", String(describing: error))
-                Gtk.onMain { [weak self] in self?.toast(text) }
-            }
-        }
-    }
-
     private func probeAndSave() {
         guard !probing, let addressRow, let nameRow, let passwordRow else { return }
         let raw = Dialogs.entryText(addressRow)
@@ -1167,9 +1118,9 @@ final class ServerManager: @unchecked Sendable {
             ]
         case .openTailscale:
             return [
-                Self.inlineButton(Localized.text("Copy `tailscale up`")) { [weak self] in
-                    Gtk.copyToClipboard("tailscale up")
-                    self?.toast(Localized.text("Copied — run it in a terminal."))
+                Self.inlineButton(diagnosis.actionTitle ?? Localized.text("Open Tailscale")) {
+                    [weak self] in
+                    self?.openTailscale()
                 }
             ]
         case .copyCommand(let command):
@@ -1182,6 +1133,48 @@ final class ServerManager: @unchecked Sendable {
             ]
         case .none, .openAppSettings, .revealPassword, .seePro:
             return []
+        }
+    }
+
+    /// The machine is added from the first-run checklist, which is where the link way, the install
+    /// command and the tailnet scan live; a machine saved there lands back in this list.
+    private func addMachine() {
+        FirstRunDialog.present(way: nil, parent: window) { [weak self] in
+            self?.onChanged()
+            Gtk.onMain { [weak self] in self?.reload() }
+        }
+    }
+
+    /// The remedy this machine's own Tailscale reading offers, run here with what it prints told in
+    /// a toast — never "run it in a terminal". A reading that has no remedy because Tailscale is
+    /// up (a refusal that names the tailnet) goes to the page where the account is chosen.
+    private func openTailscale() {
+        let latch = FirstSay()
+        Task.detached { [weak self] in
+            let reading = TailnetStatusLinux.read().reading
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                let handled = TailnetRemedyRunner.perform(reading) { text in
+                    guard latch.first() else { return }
+                    Gtk.onMain { self.toast(text) }
+                }
+                if !handled { SignInDialog.openInBrowser(Self.tailnetPage) }
+            }
+        }
+    }
+
+    private static let tailnetPage = "https://login.tailscale.com/admin/machines"
+
+    private final class FirstSay: @unchecked Sendable {
+        private let lock = NSLock()
+        private var said = false
+
+        func first() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !said else { return false }
+            said = true
+            return true
         }
     }
 
@@ -1375,7 +1368,6 @@ final class ServerManager: @unchecked Sendable {
         window = nil
         configuredGroup = nil
         addGroup = nil
-        discovery = nil
         configuredRows = []
         rows = [:]
         addressRow = nil
