@@ -196,7 +196,8 @@ public enum NeuralTurns {
         let first = messages[0]
         let last = messages[messages.count - 1]
         let outcome = readOutcome(
-            of: messages, steps: steps, answers: answers, running: running, awaiting: awaiting)
+            of: messages, hasStoppedStep: steps.contains { $0.status == .stopped }, running: running,
+            awaiting: awaiting)
         return NeuralTurn(
             id: first.id, steps: steps, answerPartIDs: answers, memberPartIDs: members,
             memberMessageIDs: Set(messages.map(\.id)),
@@ -225,13 +226,12 @@ public enum NeuralTurns {
             running: running, awaiting: awaiting)
     }
 
-    private static func hasWords(_ text: String) -> Bool {
+    static func hasWords(_ text: String) -> Bool {
         text.contains { !$0.isWhitespace }
     }
 
-    private static func readOutcome(
-        of messages: [ChatMessage], steps: [NeuralStep], answers: [String], running: Bool,
-        awaiting: NeuralAwaiting
+    static func readOutcome(
+        of messages: [ChatMessage], hasStoppedStep: Bool, running: Bool, awaiting: NeuralAwaiting
     ) -> NeuralOutcome {
         if running { return .running }
         let last = messages[messages.count - 1]
@@ -241,9 +241,7 @@ public enum NeuralTurns {
         {
             return .interrupted
         }
-        if haltedByHand.contains(last.finishReason?.lowercased() ?? "")
-            || steps.contains(where: { $0.status == .stopped })
-        {
+        if haltedByHand.contains(last.finishReason?.lowercased() ?? "") || hasStoppedStep {
             return .stopped
         }
         if messages.allSatisfy(\.isAnswerless) { return .answerless }
@@ -299,7 +297,7 @@ public enum NeuralTurns {
 
     /// Whether the client also draws this call as a card of its own: a subagent, a workflow, the
     /// task board, a question, or the manifest of a design board.
-    private static func isCard(
+    static func isCard(
         _ call: ToolCall, kind: ToolCallSummary.Kind, message: ChatMessage
     ) -> Bool {
         switch kind {

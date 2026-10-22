@@ -23,11 +23,30 @@ import Foundation
 /// really changed falls back to fingerprinting each turn (the old behaviour, bounded by
 /// `capacity`) and rebuilds the fast state from the result. Hold one cache per conversation.
 public final class NeuralTurnCache: @unchecked Sendable {
-    private struct Entry {
-        let fingerprint: Int
+    /// A turn the cache read from a group of messages, and what decides whether it is still the
+    /// turn those messages make: the fingerprint is found only when a later reading of the whole
+    /// conversation compares against it, because the first reading of a chat has nothing to
+    /// compare with.
+    private final class Entry {
+        let group: [ChatMessage]
         let awaitingKey: Int
         let running: Bool
-        let turn: NeuralTurn
+        let slot: NeuralTurnSlot
+        private var stamp: Int?
+
+        init(group: [ChatMessage], awaitingKey: Int, running: Bool, slot: NeuralTurnSlot) {
+            self.group = group
+            self.awaitingKey = awaitingKey
+            self.running = running
+            self.slot = slot
+        }
+
+        var fingerprint: Int {
+            if let stamp { return stamp }
+            let made = NeuralTurnCache.fingerprint(of: group)
+            stamp = made
+            return made
+        }
     }
 
     /// What the cache keeps between calls so the next one reads only what changed.
@@ -157,7 +176,8 @@ public final class NeuralTurnCache: @unchecked Sendable {
     private let lock = NSLock()
     private var entries: [String: Entry] = [:]
     private var fast: FastState?
-    private var partitions = 0
+    private let reads = NeuralTurnCounter()
+    private var generations = 0
     private var reuses = 0
     private var visits = 0
 
@@ -167,7 +187,7 @@ public final class NeuralTurnCache: @unchecked Sendable {
 
     /// How many turns were read from their messages over the cache's life: the test hook that
     /// proves a streamed token reads one turn and not the conversation.
-    public var turnPartitions: Int { locked { partitions } }
+    public var turnPartitions: Int { reads.value }
 
     /// How many turns were handed back from the cache.
     public var turnReuses: Int { locked { reuses } }
@@ -183,7 +203,7 @@ public final class NeuralTurnCache: @unchecked Sendable {
         locked {
             entries = [:]
             fast = nil
-            partitions = 0
+            reads.reset()
             reuses = 0
             visits = 0
         }
@@ -220,43 +240,46 @@ public final class NeuralTurnCache: @unchecked Sendable {
         }
     }
 
-    /// Reads every turn, keeping a turn whose fingerprint did not move, and sets up the fast state
-    /// for the next call when the conversation fits.
+    /// Reads the outline of every turn, keeping a turn whose fingerprint did not move, and sets up
+    /// the fast state for the next call when the conversation fits. A turn is read into steps
+    /// only when the list is indexed at it.
     private func rebuild(
         messages: [ChatMessage], running: Bool, awaiting: NeuralAwaiting, awaitingKey: Int
     ) -> NeuralTurnList {
         let (groups, starts, lastIndices) = Self.grouped(messages)
         var next: [String: Entry] = [:]
         next.reserveCapacity(min(groups.count, capacity))
-        var out: [NeuralTurn] = []
+        var out: [NeuralTurnSlot] = []
         out.reserveCapacity(groups.count)
         let last = groups.count - 1
         for (index, group) in groups.enumerated() {
             let isRunning = running && index == last
-            let stamp = Self.fingerprint(of: group)
-            visits += group.reduce(0) { $0 + $1.parts.count }
             let key = group[0].id
             let entry: Entry
-            if let held = entries[key], held.fingerprint == stamp,
-                held.awaitingKey == awaitingKey, held.running == isRunning
+            if let held = entries[key], held.awaitingKey == awaitingKey, held.running == isRunning,
+                held.fingerprint == Self.fingerprint(of: group)
             {
+                visits += group.reduce(0) { $0 + $1.parts.count }
                 entry = held
                 reuses += 1
             } else {
-                partitions += 1
                 visits += group.reduce(0) { $0 + $1.parts.count }
-                let read = NeuralTurns.partition(
-                    messages: group, running: isRunning, awaiting: awaiting)
-                guard let turn = read.first else { continue }
+                generations += 1
+                let slot = NeuralTurnSlot(
+                    outline: NeuralTurns.outline(
+                        messages: group, running: isRunning, awaiting: awaiting),
+                    generation: generations,
+                    source: NeuralTurnSlot.Source(
+                        messages: group, running: isRunning, awaiting: awaiting, counter: reads))
                 entry = Entry(
-                    fingerprint: stamp, awaitingKey: awaitingKey, running: isRunning, turn: turn)
+                    group: group, awaitingKey: awaitingKey, running: isRunning, slot: slot)
             }
-            out.append(entry.turn)
+            out.append(entry.slot)
             if groups.count - index <= capacity { next[key] = entry }
         }
         entries = next
-        let list = NeuralTurnList(out)
-        if !groups.isEmpty, groups.count <= capacity, out.count == groups.count {
+        let list = NeuralTurnList(slots: out)
+        if !groups.isEmpty, groups.count <= capacity {
             fast = FastState(
                 messages: messages, groupStarts: starts, lastIndices: lastIndices, turns: list,
                 running: running, awaitingKey: awaitingKey)
@@ -327,21 +350,21 @@ public final class NeuralTurnCache: @unchecked Sendable {
         if !current.isEmpty { tail.append((currentStart, current)) }
         guard !tail.isEmpty else { return nil }
 
-        var turns: [NeuralTurn] = []
+        var turns: [NeuralTurnSlot] = []
         var readings: [String: FastState.Cached] = [:]
         for (position, group) in tail.enumerated() {
             let isRunning = running && position == tail.count - 1
             let members = group.indices.map { messages[$0] }
             if position == 0, isRunning == state.running, group.indices == state.lastIndices,
                 group.indices.allSatisfy({ tailSame[$0 - tailStart] }),
-                let held = state.turns.last, held.id == members[0].id
+                state.turns.count > 0, state.turns.outline(at: state.turns.count - 1).id == members[0].id
             {
                 reuses += 1
-                turns.append(held)
+                turns.append(state.turns.slot(at: state.turns.count - 1))
                 for message in members { readings[message.id] = state.readings[message.id] }
                 continue
             }
-            partitions += 1
+            reads.noteRead()
             var parts: [NeuralTurns.MessageReading] = []
             parts.reserveCapacity(members.count)
             for (member, message) in members.enumerated() {
@@ -356,12 +379,16 @@ public final class NeuralTurnCache: @unchecked Sendable {
                     readings[message.id] = FastState.Cached(reading: reading)
                 }
             }
+            generations += 1
             turns.append(
-                NeuralTurns.assemble(members, readings: parts, running: isRunning, awaiting: awaiting))
+                NeuralTurnSlot(
+                    turn: NeuralTurns.assemble(
+                        members, readings: parts, running: isRunning, awaiting: awaiting),
+                    generation: generations))
         }
 
         let kept = state.turns.count - 1
-        state.turns = state.turns.replacingTail(keeping: kept, with: turns)
+        state.turns = state.turns.replacingTail(keeping: kept, slots: turns)
         state.groupStarts.removeLast()
         state.groupStarts.append(contentsOf: tail.map(\.start))
         let newTailStart = state.groupStarts[state.groupStarts.count - 1]
