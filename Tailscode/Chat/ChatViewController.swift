@@ -3736,6 +3736,7 @@ final class ChatViewController: UIViewController {
     /// How full the model's window is, always visible above the composer once the transcript can
     /// say — the same share, count and ring the desktop bands wear, one tap from the whole window.
     private func configureContextChip() {
+        contextChip.reserveIcon(symbols: ["cylinder.split.1x2"], minimum: 12)
         contextChip.accessibilityHint = String(localized: "Opens the range.")
         contextChip.addAction(
             UIAction { [weak self] _ in self?.presentRange() }, for: .touchUpInside)

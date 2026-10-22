@@ -45,6 +45,9 @@ final class ChatChip: UIControl {
     private var shownTone: ActivityTone = .quiet
     private var shownLive: ActivityIcon?
     private var labelCeiling = NSLayoutConstraint()
+    private var heldWidth = NSLayoutConstraint()
+    private var iconSlot: NSLayoutConstraint?
+    private(set) var needsMeasure = true
 
     init(kind: ChatChrome.Kind) {
         self.kind = kind
@@ -59,7 +62,45 @@ final class ChatChip: UIControl {
         set {
             guard label.text != newValue else { return }
             label.text = newValue
+            needsMeasure = true
         }
+    }
+
+    override var isHidden: Bool {
+        didSet { if oldValue, !isHidden { needsMeasure = true } }
+    }
+
+    /// The width this chip's words ask for with no minimum on it, which is what the row's slots
+    /// record: measured from the content stack so the held width it is given cannot feed back into
+    /// what it measures.
+    var naturalWidth: CGFloat {
+        needsMeasure = false
+        let fitted = content.systemLayoutSizeFitting(
+            UIView.layoutFittingCompressedSize, withHorizontalFittingPriority: .fittingSizeLevel,
+            verticalFittingPriority: .fittingSizeLevel)
+        return ceil(fitted.width) + CGFloat(metrics.padding) * 2
+    }
+
+    func setNeedsMeasure() { needsMeasure = true }
+
+    /// The least this chip is wide, so it keeps the room of the widest it has been.
+    func hold(_ width: CGFloat) {
+        guard heldWidth.constant != width else { return }
+        heldWidth.constant = width
+    }
+
+    /// Keeps the icon's room whether or not the picture in it is the widest, so a ring that gives
+    /// way to a symbol, or the other way round, leaves the words where they were.
+    func reserveIcon(symbols: [String], minimum: CGFloat) {
+        let configuration = UIImage.SymbolConfiguration(
+            pointSize: CGFloat(metrics.iconSize), weight: .semibold)
+        let widest = symbols.compactMap {
+            UIImage(systemName: $0, withConfiguration: configuration)?.size.width
+        }.max() ?? 0
+        iconSlot?.isActive = false
+        iconSlot = iconView.widthAnchor.constraint(equalToConstant: ceil(max(widest, minimum)))
+        iconSlot?.isActive = true
+        needsMeasure = true
     }
 
     /// The most of `reference`'s width the words may take before they truncate, for a chip whose
@@ -83,6 +124,7 @@ final class ChatChip: UIControl {
         shownTone = tone
         shownImage = nil
         shownLive = nil
+        needsMeasure = true
         badge.show(nil, spoken: nil)
         iconView.image = name.flatMap {
             UIImage(
@@ -99,6 +141,7 @@ final class ChatChip: UIControl {
         shownImage = image
         shownSymbol = nil
         shownLive = nil
+        needsMeasure = true
         badge.show(nil, spoken: nil)
         iconView.image = image
         iconView.isHidden = image == nil
@@ -111,6 +154,7 @@ final class ChatChip: UIControl {
         shownLive = icon
         shownSymbol = nil
         shownImage = nil
+        needsMeasure = true
         iconView.image = nil
         iconView.isHidden = true
         badge.show(icon, spoken: nil)
@@ -165,8 +209,9 @@ final class ChatChip: UIControl {
         addSubview(content)
 
         let height = heightAnchor.constraint(greaterThanOrEqualToConstant: CGFloat(metrics.height))
+        heldWidth = widthAnchor.constraint(greaterThanOrEqualToConstant: 0)
         NSLayoutConstraint.activate([
-            height,
+            height, heldWidth,
             content.leadingAnchor.constraint(
                 equalTo: leadingAnchor, constant: CGFloat(metrics.padding)),
             content.trailingAnchor.constraint(
@@ -217,6 +262,7 @@ final class ChatFactsRow: UIView {
     private weak var bleedHost: UIView?
     private var scrollLeading = NSLayoutConstraint()
     private var scrollTrailing = NSLayoutConstraint()
+    private var slots = StatusBandSlots()
 
     init(chips: [ChatChip]) {
         self.chips = chips
@@ -251,6 +297,21 @@ final class ChatFactsRow: UIView {
         ])
         isHidden = true
         accessibilityContainerType = .semanticGroup
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
+            (row: ChatFactsRow, _) in row.resetSlots()
+        }
+    }
+
+    /// A different type size is a different set of widths, so what was held at the old one is
+    /// forgotten and every chip is measured again. A new conversation is a new view controller and
+    /// so a new row, which is the other way the slots start over.
+    private func resetSlots() {
+        slots.reset()
+        chips.forEach {
+            $0.hold(0)
+            $0.setNeedsMeasure()
+        }
+        refresh()
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -296,7 +357,19 @@ final class ChatFactsRow: UIView {
     /// Whether any chip has something to say, and so whether the row takes room at all.
     var hasContent: Bool { chips.contains { !$0.isHidden } }
 
+    /// Each chip keeps the room of the widest it has been, as a minimum: the row scrolls, so a
+    /// chip that grows costs the ones after it a nudge once and never a reflow of the ones before.
+    private func holdWidths() {
+        let row = bounds.width > 0 ? Double(bounds.width) : nil
+        for (index, chip) in chips.enumerated() where !chip.isHidden && chip.needsMeasure {
+            let id = String(index)
+            slots.widen(id, to: Double(chip.naturalWidth), in: row)
+            chip.hold(CGFloat(slots.width(of: id, in: row)))
+        }
+    }
+
     func refresh() {
+        holdWidths()
         let show = hasContent
         guard isHidden == show else { return }
         isHidden = !show
