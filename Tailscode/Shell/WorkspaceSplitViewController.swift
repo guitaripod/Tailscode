@@ -339,18 +339,19 @@ final class WorkspaceSplitViewController: UISplitViewController {
     /// on it — the list is the way between conversations here, not a back button — and the chat
     /// already on screen is told it was asked for again rather than being rebuilt.
     func show(conversation chat: ChatViewController, animated: Bool) {
-        if detailNav.transitionCoordinator != nil {
-            DispatchQueue.main.async { [weak self] in
-                self?.show(conversation: chat, animated: animated)
-            }
-            return
-        }
-        if let open = detailNav.topViewController as? ChatViewController,
-            open.sessionID == chat.sessionID
+        let target = ChatTarget(contextID: chat.contextID, sessionID: chat.sessionID)
+        switch ChatNavigator.shared.admit(
+            target, on: detailNav,
+            retry: { [weak self] in self?.show(conversation: chat, animated: animated) })
         {
-            Theme.Haptics.tap()
-            open.announceIdentity()
+        case .hold:
             return
+        case .alreadyOnTop:
+            Theme.Haptics.tap()
+            (detailNav.topViewController as? ChatViewController)?.announceIdentity()
+            return
+        case .push:
+            break
         }
         let fromHome = detailNav.topViewController === home
         if fromHome {
@@ -736,8 +737,8 @@ extension UIViewController {
     func showConversation(_ chat: ChatViewController, animated: Bool = true) {
         if let workspace {
             workspace.show(conversation: chat, animated: animated)
-        } else {
-            navigationController?.pushViewController(chat, animated: animated)
+        } else if let navigationController {
+            ChatNavigator.shared.push(chat, on: navigationController, animated: animated)
         }
     }
 }

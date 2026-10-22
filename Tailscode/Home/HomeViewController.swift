@@ -1522,23 +1522,27 @@ final class HomeViewController: UIViewController {
         sending question: (send: QuickAskSend, attachments: [PromptAttachment])? = nil
     ) -> ChatViewModel? {
         guard let nav = navigationController else { return nil }
-        if let top = nav.topViewController as? ChatViewController, top.sessionID == entry.session.id
+        let target = ChatTarget(contextID: entry.profileID, sessionID: entry.session.id)
+        switch ChatNavigator.shared.admit(
+            target, on: nav,
+            retry: { [weak self] in self?.openChat(for: entry, seeding: choice, sending: question) })
         {
+        case .alreadyOnTop:
             AppLogger.session.info(
                 "openChat dedupe session=\(entry.session.id) title=\(entry.session.title)")
-            if let question {
-                top.deliver(question.send, attachments: question.attachments)
-            } else {
-                Theme.Haptics.tap()
-                top.announceIdentity()
+            if let top = nav.topViewController as? ChatViewController {
+                if let question {
+                    top.deliver(question.send, attachments: question.attachments)
+                } else {
+                    Theme.Haptics.tap()
+                    top.announceIdentity()
+                }
             }
             return nil
-        }
-        if nav.transitionCoordinator != nil {
-            DispatchQueue.main.async { [weak self] in
-                self?.openChat(for: entry, seeding: choice, sending: question)
-            }
+        case .hold:
             return nil
+        case .push:
+            break
         }
         guard let backend = viewModel.backend(for: entry) else { return nil }
         SessionSeenStore.markSeen(entry.session.id)

@@ -37,6 +37,10 @@ import UIKit
         private let cycles: Int
         private var observer: CFRunLoopObserver?
         private var turnStart: CFAbsoluteTime = 0
+        private var turnCPU: UInt64 = 0
+        private var longestCPU = 0.0
+        private var cpuTotal = 0.0
+        private var bigTurns: [Int] = []
         private var longest = 0.0
         private var slowTotal = 0.0
         private var slowCount = 0
@@ -125,20 +129,56 @@ import UIKit
         private func doublePush(
             backend: MockBackend, session: AgentSession, in stack: UINavigationController
         ) async {
-            AppLogger.performance.info("bench double start depth=\(stack.viewControllers.count)")
-            let make = {
+            let base = stack.viewControllers.count
+            AppLogger.performance.info("bench double start depth=\(base)")
+            let other = AgentSession(
+                id: "bench-other", agentType: .claudeCode, title: "Bench other conversation",
+                directory: "/Users/demo/dev/bench", createdAt: Date(), updatedAt: Date(),
+                model: "claude-fable-5")
+            let third = AgentSession(
+                id: "bench-third", agentType: .claudeCode, title: "Bench third conversation",
+                directory: "/Users/demo/dev/bench", createdAt: Date(), updatedAt: Date(),
+                model: "claude-fable-5")
+            let both = MockBackend(
+                agentType: .claudeCode,
+                scripts: [
+                    session.id: Self.script(turns: turns), other.id: Self.script(turns: 4),
+                    third.id: Self.script(turns: 4),
+                ],
+                sessions: [session, other, third])
+            let make = { (target: AgentSession) in
                 ChatViewController(
                     viewModel: ChatViewModel(
-                        backend: backend, session: session, contextID: DemoWorld.claudeProfile.id,
+                        backend: both, session: target, contextID: DemoWorld.claudeProfile.id,
                         serverName: "bench"))
             }
-            stack.pushViewController(make(), animated: true)
+            let unguarded = ProcessInfo.processInfo.environment["TAILSCODE_BENCH_NOGUARD"] != nil
+            let push = { (chat: ChatViewController) in
+                if unguarded {
+                    stack.pushViewController(chat, animated: true)
+                } else {
+                    ChatNavigator.shared.push(chat, on: stack, animated: true)
+                }
+            }
+
+            push(make(session))
             try? await Task.sleep(for: .milliseconds(80))
-            stack.pushViewController(make(), animated: true)
+            push(make(session))
             try? await Task.sleep(for: .seconds(2.5))
-            AppLogger.performance.info(
-                "bench double settled depth=\(stack.viewControllers.count) gesture[\(popGestureReading(of: stack))] transition=\(stack.transitionCoordinator != nil)"
-            )
+            report("same chat twice", expect: base + 1, stack: stack)
+
+            push(make(other))
+            try? await Task.sleep(for: .milliseconds(80))
+            push(make(session))
+            try? await Task.sleep(for: .seconds(2.5))
+            report("another chat during the push", expect: base + 3, stack: stack)
+
+            stack.popViewController(animated: true)
+            try? await Task.sleep(for: .milliseconds(80))
+            push(make(third))
+            try? await Task.sleep(for: .seconds(2.5))
+            report("a push during a pop", expect: base + 3, stack: stack)
+
             AppLogger.performance.info("bench swipe wait cycle=1")
             let started = CFAbsoluteTimeGetCurrent()
             let depth = stack.viewControllers.count
@@ -150,6 +190,13 @@ import UIKit
                 "bench double swipe depth=\(depth)->\(stack.viewControllers.count) after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000))ms gesture[\(popGestureReading(of: stack))]"
             )
             stack.popToRootViewController(animated: false)
+        }
+
+        private func report(_ name: String, expect depth: Int, stack: UINavigationController) {
+            let got = stack.viewControllers.count
+            AppLogger.performance.info(
+                "\(got == depth ? "NAV_GUARD_OK" : "NAV_GUARD_FAIL") \(name) depth=\(got) expected=\(depth) gesture[\(popGestureReading(of: stack))] transition=\(stack.transitionCoordinator != nil)"
+            )
         }
 
         private func trip(
@@ -216,10 +263,15 @@ import UIKit
             let now = CFAbsoluteTimeGetCurrent()
             if activity == .afterWaiting {
                 turnStart = now
+                turnCPU = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
                 return
             }
             guard turnStart > 0 else { return }
             let elapsed = (now - turnStart) * 1000
+            let cpu = Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - turnCPU) / 1_000_000
+            if cpu > 6 { bigTurns.append(Int(cpu)) }
+            longestCPU = max(longestCPU, cpu)
+            cpuTotal += cpu
             turnStart = 0
             longest = max(longest, elapsed)
             busyTotal += elapsed
@@ -245,12 +297,15 @@ import UIKit
             busyTotal = 0
             windowStart = CFAbsoluteTimeGetCurrent()
             longest = 0
+            longestCPU = 0
+            cpuTotal = 0
+            bigTurns = []
             slowTotal = 0
             slowCount = 0
         }
 
         private func snapshot() -> String {
-            "longest=\(Int(longest))ms slowTurns=\(slowCount) slowTotal=\(Int(slowTotal))ms busy=\(Int(busyTotal))/\(Int((CFAbsoluteTimeGetCurrent() - windowStart) * 1000))ms"
+            "cpuLongest=\(Int(longestCPU))ms cpuTotal=\(Int(cpuTotal))ms turns>6ms=\(bigTurns.map(String.init).joined(separator: "/")) longest=\(Int(longest))ms slowTurns=\(slowCount) slowTotal=\(Int(slowTotal))ms busy=\(Int(busyTotal))/\(Int((CFAbsoluteTimeGetCurrent() - windowStart) * 1000))ms"
         }
 
         private func stage(scenario: String?, chat: ChatViewController, tree: [WeakView]) async {
