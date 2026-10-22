@@ -59,6 +59,16 @@ read-only text that opens an account when it is acted on. At idle it has no phas
 "ready"); with nothing to say it is not drawn. The working phase is plain text — Stop is the
 button beside the composer, never a segment.
 
+A fact holds its place on every client (`StatusBandSlots`): it keeps the room of the widest it has
+been in this conversation (a minimum, never a maximum, capped at 45% of the band, started over for
+another conversation), the leading mark owns a slot as wide as the widest glyph in the vocabulary
+(`StatusBandSlots.leadingGlyphs`), and the context fact keeps its ring's room whether or not a ring
+is drawn. A clock, a share or a count changes its own words and nothing beside it moves; a chip that
+arrives or leaves (wall, cache, cost, branch, goal, attach, queued, agents) moves what follows it by
+its own width, once, and nothing reserves room for one. A frame of a pulse repaints and never
+changes a size. The band appears over 0.18 s (the Mac fades it, Linux slides it open; reduced motion
+and a window being resized get none), and the phone's facts row appears as it always has.
+
 ## Subagents (`SubagentPresence`)
 
 A server lists every agent a session ever started and keeps calling one active for up to half an
