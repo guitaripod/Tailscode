@@ -3,11 +3,29 @@ import CodingAgentKit
 import TailscodeCore
 
 /// A decoded picture crossing back from the decode task to the main actor, exactly once.
+///
+/// `image` is the picture at its own size, for the viewer that shows it pixel for pixel; `preview`
+/// is the same picture reduced to what a tile or a thumbnail can draw, decoded once, so a gallery
+/// of sixteen screenshots repaints from sixteen small bitmaps rather than scaling sixteen full ones
+/// on every draw.
 struct DecodedImage: @unchecked Sendable {
     let image: NSImage
+    let preview: NSImage
     let data: Data
     let pixelWidth: Int
     let pixelHeight: Int
+
+    init(image: NSImage, preview: NSImage? = nil, data: Data, pixelWidth: Int, pixelHeight: Int) {
+        self.image = image
+        self.preview = preview ?? image
+        self.data = data
+        self.pixelWidth = pixelWidth
+        self.pixelHeight = pixelHeight
+    }
+
+    /// The longest side a preview keeps, in pixels: twice the tallest tile the layout draws on a
+    /// retina display, so a preview is never upscaled.
+    static let previewPixels = 1200
 }
 
 /// The pictures the transcript has shown: decoded ones in memory keyed by row so a repaint is a
@@ -60,6 +78,20 @@ final class ImageStore {
         }
     }
 
+    /// The picture reduced to `DecodedImage.previewPixels` on its long side and decoded at once,
+    /// honouring its orientation; nil when the source will not make one.
+    nonisolated private static func preview(of source: CGImageSource) -> NSImage? {
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: DecodedImage.previewPixels,
+        ]
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else { return nil }
+        return NSImage(cgImage: thumbnail, size: .zero)
+    }
+
     /// The decode, off the main actor: a large PNG decoded on the UI loop is a visible freeze.
     nonisolated static func decode(_ data: Data) -> DecodedImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
@@ -67,7 +99,8 @@ final class ImageStore {
         else { return nil }
         let image = NSImage(cgImage: cgImage, size: .zero)
         return DecodedImage(
-            image: image, data: data, pixelWidth: cgImage.width, pixelHeight: cgImage.height)
+            image: image, preview: preview(of: source) ?? image, data: data,
+            pixelWidth: cgImage.width, pixelHeight: cgImage.height)
     }
 }
 

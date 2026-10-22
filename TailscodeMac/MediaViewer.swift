@@ -175,6 +175,31 @@ enum ImageViewer {
         let reference: FileReference
     }
 
+    /// Every picture of the conversation in reading order — a lone picture's row, then each tile
+    /// of a gallery under its own key — so a press on any tile starts the viewer on that picture
+    /// and the arrows page through the rest.
+    static func items(in rows: [TranscriptRow]) -> [Item] {
+        rows.flatMap { row -> [Item] in
+            let pictures: [(key: String, reference: FileReference)] = {
+                switch row.kind {
+                case .file(let reference, _, _): return [(row.key, reference)]
+                case .pictures(let group): return group.map { ($0.key, $0.reference) }
+                default: return []
+                }
+            }()
+            return pictures.compactMap { picture in
+                guard (picture.reference.mime ?? "").hasPrefix("image/") else { return nil }
+                let name =
+                    picture.reference.filename
+                    ?? picture.reference.path.map {
+                        URL(fileURLWithPath: $0, isDirectory: false).lastPathComponent
+                    }
+                    ?? "image"
+                return Item(key: picture.key, name: name, reference: picture.reference)
+            }
+        }
+    }
+
     /// One gallery at a time: opening a second picture points the one that is up at it.
     static func present(
         items: [Item], startKey: String, host: NSWindow?,

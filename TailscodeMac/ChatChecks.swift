@@ -411,7 +411,7 @@ enum ChatChecks {
     }
 
     /// The gallery as it is drawn, out of the view and into pixels: the tiles show the inks they
-    /// were handed, the corner darkens over the pictures it cannot draw and counts them, a press
+    /// were handed, a chip in the last tile's corner counts the pictures it cannot draw, a press
     /// lands on the picture under it rather than on the group's first, and a lone picture keeps its
     /// own shape instead of being cropped.
     private static func galleryPixels(_ expect: (Bool, String) throws -> Void) throws {
@@ -511,14 +511,71 @@ enum ChatChecks {
                 isInk(drawn, crowd[index].1),
                 "tile \(index) is the picture it was handed: \(String(describing: drawn))")
         }
-        if let last = placed.tiles.last {
-            let covered = ink(last.x + last.width * 0.16, last.y + last.height * 0.18)
-            if let want = crowd[last.index].1.usingColorSpace(.sRGB) {
+        if let last = placed.tiles.last, let words = PictureGalleryReading.badge(hidden: placed.hidden) {
+            let measured = (words as NSString).size(
+                withAttributes: [
+                    .font: NSFont.systemFont(
+                        ofSize: CGFloat(PictureGalleryLayout.chipFontSize), weight: .bold)
+                ]
+            ).width
+            let chip = PictureGalleryLayout.badge(on: last, textWidth: Double(measured))
+            let want = crowd[last.index].1.usingColorSpace(.sRGB)
+            let brightness = (want?.redComponent ?? 0) + (want?.greenComponent ?? 0) + (want?.blueComponent ?? 0)
+            let under = ink(chip.x + 3.5, chip.y + chip.height / 2)
+            try expect(
+                under.map { $0.r + $0.g + $0.b < brightness * 0.7 } ?? false,
+                "the count is a dark chip in the last tile's corner: \(String(describing: under))")
+            let clear = ink(last.x + last.width * 0.3, last.y + last.height * 0.3)
+            try expect(
+                isInk(clear, crowd[last.index].1),
+                "and the rest of that tile is still its picture: \(String(describing: clear))")
+        }
+        if let view = gallery as? PictureGalleryRowView.GalleryView, placed.tiles.count > 3 {
+            let first = placed.tiles[0]
+            let third = placed.tiles[2]
+            view.hover(over: NSPoint(x: third.x + 2, y: third.y + 2))
+            try expect(view.hoveredIndex == 2, "the pointer steps back the tile under it alone")
+            view.hover(over: NSPoint(x: first.x + 2, y: first.y + 2))
+            try expect(view.hoveredIndex == 0, "and moving to another tile moves the step with it")
+            view.hover(over: nil)
+            try expect(view.hoveredIndex == nil, "leaving the grid steps nothing back")
+            opened = nil
+            let elements = (view.accessibilityChildren() ?? []).compactMap { $0 as? NSAccessibilityElement }
+            try expect(
+                elements.count == placed.tiles.count,
+                "every tile drawn is an accessibility element: \(elements.count) of \(placed.tiles.count)")
+            if elements.count > 3 {
                 try expect(
-                    covered.map { $0.r + $0.g + $0.b < (want.redComponent + want.greenComponent + want.blueComponent) / 2 } ?? false,
-                    "the pictures the sheet cannot draw are counted under a scrim: \(String(describing: covered))")
+                    (elements[3].accessibilityLabel() ?? "").contains("s3.png"),
+                    "each element is named for its own picture: \(elements[3].accessibilityLabel() ?? "-")")
+                _ = elements[3].accessibilityPerformPress()
+                try expect(
+                    opened == crowd[3].0.key,
+                    "a VoiceOver press opens that tile's picture, not the first: \(opened ?? "-")")
             }
         }
+        let rows = [
+            TranscriptRow(key: "g1", kind: .pictures(crowd.prefix(3).map(\.0))),
+            TranscriptRow(
+                key: "f1",
+                kind: .file(
+                    FileReference(path: "/x/doc.pdf", mime: "application/pdf"), mine: false,
+                    messageID: "m")),
+            TranscriptRow(
+                key: "f2",
+                kind: .file(
+                    FileReference(path: "/x/one.png", mime: "image/png"), mine: false,
+                    messageID: "m")),
+            TranscriptRow(key: "g2", kind: .pictures(crowd.suffix(2).map(\.0))),
+        ]
+        let items = ImageViewer.items(in: rows)
+        try expect(
+            items.map(\.key) == crowd.prefix(3).map(\.0.key) + ["f2"] + crowd.suffix(2).map(\.0.key),
+            "the viewer's pictures are every tile of every gallery in reading order: \(items.map(\.key))")
+        try expect(
+            items.firstIndex { $0.key == crowd[2].0.key } == 2
+                && items.firstIndex { $0.key == crowd[25].0.key } == 5,
+            "a press on a tile starts the viewer at that tile's index")
 
         let wide = picture("wide.png", inks[0], pixels: NSSize(width: 200, height: 100))
         let lone = PictureGalleryRowView.make([wide.0], context: TranscriptContext())
@@ -528,6 +585,11 @@ enum ChatChecks {
         try expect(
             lone.intrinsicContentSize.height == loneSide,
             "a lone picture is one picture tall: \(lone.intrinsicContentSize.height)")
+        let loneTile = PictureGalleryLayout.grid(
+            count: 1, side: Double(loneSide), available: 420, shape: 2, maxWidth: 420).tiles[0]
+        try expect(
+            abs(loneTile.width / loneTile.height - 2) < 0.001,
+            "a lone 2:1 picture is a 2:1 tile, fitted whole rather than cropped")
     }
 
     private static func timing(_ expect: (Bool, String) throws -> Void) throws {

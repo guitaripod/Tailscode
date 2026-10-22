@@ -1075,6 +1075,9 @@ enum StudioCheck {
                 expect(
                     pressed(button, in: window),
                     "the \(button.verb.id) button answers a press at \(Int(size.width))×\(Int(size.height))")
+                expect(
+                    pressFires(button, in: window),
+                    "and a click on the \(button.verb.id) button fires its action at \(Int(size.width))×\(Int(size.height))")
             }
             expect(
                 clearOfTheDock(capsule, in: window),
@@ -1097,6 +1100,32 @@ enum StudioCheck {
         guard let root = window.contentView else { return false }
         let centre = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
         return root.hitTest(root.convert(centre, from: nil)) is StudioVerbButton
+    }
+
+    /// A real click on the view the window hit-tests at the button's centre, with the button's
+    /// action swapped for a counter: proof that the press lands on the button and that the button
+    /// then runs what it was given, which hit-testing alone never showed.
+    private static func pressFires(_ button: StudioVerbButton, in window: NSWindow) -> Bool {
+        guard let root = window.contentView else { return false }
+        let original = button.onPress
+        var fired = 0
+        button.onPress = { fired += 1 }
+        defer { button.onPress = original }
+        let centre = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
+        guard let target = root.hitTest(root.convert(centre, from: nil)) as? StudioVerbButton else {
+            return false
+        }
+        func event(_ type: NSEvent.EventType) -> NSEvent? {
+            NSEvent.mouseEvent(
+                with: type, location: centre, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+                pressure: 1)
+        }
+        guard let down = event(.leftMouseDown), let up = event(.leftMouseUp) else { return false }
+        target.mouseDown(with: down)
+        target.mouseUp(with: up)
+        return fired == 1
     }
 
     private static func first<T: NSView>(_ type: T.Type, in root: NSView?) -> T? {
