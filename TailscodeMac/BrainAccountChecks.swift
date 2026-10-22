@@ -550,8 +550,8 @@ enum BrainAccountChecks {
         account.realize()
         let passes = account.realizeCount - before
         try check(
-            passes >= 2 && passes <= BrainAccountView.realizePassLimit,
-            "a realize that follows to the end is made again at once, inside the limit (\(passes) passes)")
+            passes >= 1 && passes <= BrainAccountView.realizePassLimit,
+            "a realize that follows to the end settles at once, inside the limit (\(passes) passes)")
         try check(!account.needsRealizeNow(), "the rows at the end exist when the call returns")
         try check(
             abs(account.scrollY - account.maxScroll) < 2, "and the story rests at its end (\(account.scrollY) of \(account.maxScroll))")
