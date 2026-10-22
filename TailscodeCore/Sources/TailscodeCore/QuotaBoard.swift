@@ -104,15 +104,23 @@ public enum QuotaBoardStore {
 /// The board's arithmetic: which providers a reader can choose between, which of them are shown,
 /// in what order, and which window leads. Every client draws from these and decides nothing.
 public enum QuotaBoard {
-    /// A provider's identity on the board — the brand where the name has one, else the name
-    /// itself in lower case, so two servers spelling one house differently are one card and one
-    /// switch.
+    /// A provider's key on the board — the brand where the name has one, else the name itself in
+    /// lower case, so two servers spelling one house differently are one switch. The person's
+    /// choices (hidden, order) are about providers, so two accounts of one provider share them;
+    /// what a holding is, account included, is ``QuotaHolding/identity``.
     public static func key(providerName: String) -> String {
         ProviderBrand.slug(providerName) ?? providerName.lowercased()
     }
 
     public static func key(_ holding: QuotaHolding) -> String {
         key(providerName: holding.providerName)
+    }
+
+    /// The providers behind a list of holdings, once each and in the list's order: the keys a
+    /// card is moved among, where two accounts of one provider are one place in the person's order.
+    public static func keys(of holdings: [QuotaHolding]) -> [String] {
+        var seen: Set<String> = []
+        return holdings.map(key).filter { seen.insert($0).inserted }
     }
 
     /// The order the houses are listed in when the person has expressed none: the account
@@ -188,19 +196,26 @@ public enum QuotaBoard {
         switch preferences.arrangement {
         case .custom:
             let keys = customOrder(visible.map(key), preferences: preferences)
-            return visible.sorted { lhs, rhs in
-                (keys.firstIndex(of: key(lhs)) ?? .max) < (keys.firstIndex(of: key(rhs)) ?? .max)
-            }
+            return visible.enumerated().sorted { lhs, rhs in
+                let l = keys.firstIndex(of: key(lhs.element)) ?? .max
+                let r = keys.firstIndex(of: key(rhs.element)) ?? .max
+                return l == r ? lhs.offset < rhs.offset : l < r
+            }.map(\.element)
         case .tightestFirst:
             return visible.enumerated().sorted { lhs, rhs in
                 lhs.element.peak == rhs.element.peak
                     ? lhs.offset < rhs.offset : lhs.element.peak > rhs.element.peak
             }.map(\.element)
         case .byName:
-            return visible.sorted {
-                $0.providerName.localizedCaseInsensitiveCompare($1.providerName)
-                    == .orderedAscending
-            }
+            return visible.enumerated().sorted { lhs, rhs in
+                switch lhs.element.providerName.localizedCaseInsensitiveCompare(
+                    rhs.element.providerName)
+                {
+                case .orderedAscending: return true
+                case .orderedDescending: return false
+                case .orderedSame: return lhs.offset < rhs.offset
+                }
+            }.map(\.element)
         }
     }
 

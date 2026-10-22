@@ -96,8 +96,8 @@ public enum RangeWords {
     }
 
     public static func resets(_ gauge: UsageQuota.Gauge, now: Date) -> String {
-        if let line = QuotaSurface.windowLine(gauge, now: now) { return line }
         guard let resetsAt = gauge.resetsAt, resetsAt > now else { return "" }
+        if let line = QuotaSurface.windowLine(gauge, now: now) { return line }
         let remaining = QuotaSurface.countdown(to: resetsAt, now: now)
         return gauge.trustedReset
             ? Localized.text("resets in %@", remaining)
@@ -181,14 +181,14 @@ public struct PaceRow: Sendable, Equatable, Identifiable {
     }
 
     /// A quota window. With a pace the tone follows where the fill lands; without one it follows
-    /// the level, by the same ramp the bars have always worn.
+    /// the level, by the same ramp the bars have always worn. A window whose provider states its
+    /// start is drawn flat on every surface, so the pace is inferred only for one that does not.
     public static func window(
         provider: String, slug: String?, gauge: UsageQuota.Gauge, now: Date = Date(),
-        trail: QuotaTrail? = nil, dimmed: Bool = false, clock: RangeClock = .current,
-        projecting: Bool = true
+        trail: QuotaTrail? = nil, dimmed: Bool = false, clock: RangeClock = .current
     ) -> PaceRow {
         let pace =
-            projecting
+            gauge.startsAt == nil
             ? QuotaPace.read(
                 gauge, provider: provider, now: now, trail: trail, calendar: clock.calendar)
             : nil

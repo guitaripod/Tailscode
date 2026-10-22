@@ -53,8 +53,7 @@ enum UsageFormat {
         isBalance(gauge)
             ? PaceRow.balance(provider: quota.providerName, slug: slug, gauge: gauge, trail: trail)
             : PaceRow.window(
-                provider: quota.providerName, slug: slug, gauge: gauge, trail: trail,
-                projecting: gauge.startsAt == nil)
+                provider: quota.providerName, slug: slug, gauge: gauge, trail: trail)
     }
 
     /// The ink an amount wears: the register of the tank, with a quiet one left to the caller's

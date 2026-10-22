@@ -535,8 +535,7 @@ final class UsageViewController: UIViewController {
             isBalance
             ? PaceRow.balance(provider: quota.providerName, slug: slug, gauge: gauge, trail: trail)
             : PaceRow.window(
-                provider: quota.providerName, slug: slug, gauge: gauge, trail: trail,
-                projecting: gauge.startsAt == nil)
+                provider: quota.providerName, slug: slug, gauge: gauge, trail: trail)
         let percent: String
         if isBalance {
             percent =

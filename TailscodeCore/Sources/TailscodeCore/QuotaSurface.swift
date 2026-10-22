@@ -323,12 +323,14 @@ public enum QuotaSurface {
     }
 
     /// The two ends of a window a provider stated, in the reader's own clock: "17:54 → 22:54".
-    /// A window with only a reset has no line here, because half a range is not the provider's
-    /// account of the window. A date appears only when an end is not today.
+    /// A window with only a reset, or one whose reset the provider only estimates, has no line
+    /// here, because half a range, or a range with a guessed end, is not the provider's account of
+    /// the window. A date appears only when an end is not today.
     public static func windowLine(
         _ gauge: UsageQuota.Gauge, now: Date = Date(), calendar: Calendar = .current
     ) -> String? {
-        guard let startsAt = gauge.startsAt, let resetsAt = gauge.resetsAt else { return nil }
+        guard gauge.trustedReset, let startsAt = gauge.startsAt, let resetsAt = gauge.resetsAt
+        else { return nil }
         let start = clock(startsAt, now: now, calendar: calendar)
         let end = clock(resetsAt, now: now, calendar: calendar)
         return "\(start) → \(end)"
@@ -361,6 +363,7 @@ public enum QuotaSurface {
         case "key_expired": fact = Localized.text("Go key expired")
         case "no_account": fact = Localized.text("No Go account")
         case "no_subscription": fact = Localized.text("No Go subscription")
+        case "estimate_only": fact = Localized.text("No measured reading")
         case "unreachable": fact = Localized.text("opencode.ai unreachable")
         case "rate_limited": fact = Localized.text("opencode.ai rate limited")
         case "server_error": fact = Localized.text("opencode.ai server error")
@@ -379,7 +382,7 @@ public enum QuotaSurface {
     /// What a quota card's provenance badge says, one word on every client: an estimate names
     /// itself, a live reading names its source, and anything else is a cached snapshot.
     public static func badge(_ quota: UsageQuota) -> String {
-        if quota.source.lowercased().contains("estimated") { return Localized.text("EST") }
+        if !quota.isMeasured { return Localized.text("EST") }
         if quota.gauges.isEmpty, quota.error != nil { return Localized.text("Unavailable") }
         return quota.live ? Localized.text("LIVE") : Localized.text("CACHED")
     }

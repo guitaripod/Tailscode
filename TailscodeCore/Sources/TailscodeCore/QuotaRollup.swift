@@ -29,6 +29,14 @@ public struct QuotaHolding: Sendable, Equatable {
     }
 
     public var isShared: Bool { machines.count > 1 }
+
+    /// Who this holding is: its provider and, when the provider names one, its account. Two
+    /// accounts of one provider are two holdings, so anything that keys state to a holding — the
+    /// strip's lines, the widget's stored snapshot — keys it by this rather than by the provider.
+    public var identity: String {
+        QuotaRollup.identity(
+            providerName: quota.providerName, accountID: accountID ?? quota.accountID)
+    }
 }
 
 /// A limit belongs to the account, not to the machine that happened to be asked. Every server
@@ -49,6 +57,7 @@ public enum QuotaRollup {
         var folded: [String: UsageQuota] = [:]
         var machines: [String: [String]] = [:]
         var failures: [String: [String]] = [:]
+        var failureRanks: [String: Int] = [:]
         var accounts: [String: String] = [:]
         for (server, quota) in reports {
             let key = holdingKey(for: quota, knownAccounts: knownAccounts)
@@ -68,7 +77,13 @@ public enum QuotaRollup {
             }
             if quota.gauges.isEmpty, quota.error != nil {
                 var failed = failures[key] ?? []
-                if !server.isEmpty, !failed.contains(server) { failed.append(server) }
+                if !server.isEmpty {
+                    let rank = Self.rank(of: quota.errorCode)
+                    let leads = rank < (failureRanks[key] ?? Int.max)
+                    if leads { failureRanks[key] = rank }
+                    failed.removeAll { $0 == server }
+                    if leads { failed.insert(server, at: 0) } else { failed.append(server) }
+                }
                 failures[key] = failed
             } else {
                 var reporters = machines[key] ?? []
@@ -79,9 +94,11 @@ public enum QuotaRollup {
         return
             order
             .compactMap { key in
-                folded[key].map {
-                    QuotaHolding(
-                        quota: $0, machines: machines[key] ?? [],
+                folded[key].map { quota in
+                    var named = quota
+                    if named.accountID == nil { named.accountID = accounts[key] }
+                    return QuotaHolding(
+                        quota: named, machines: machines[key] ?? [],
                         failedMachines: failures[key] ?? [], accountID: accounts[key])
                 }
             }
@@ -101,12 +118,35 @@ public enum QuotaRollup {
     ) -> String {
         let family = family(of: quota)
         if let account = quota.accountID, !account.isEmpty {
-            return "\(family)\u{1F}\(account)"
+            return identity(providerName: quota.providerName, accountID: account)
         }
         if let only = knownAccounts[family], only.count == 1, let account = only.first {
-            return "\(family)\u{1F}\(account)"
+            return identity(providerName: quota.providerName, accountID: account)
         }
         return family
+    }
+
+    /// The one spelling of a holding's identity: the provider's brand (or its lower-cased name)
+    /// and, when the provider names one, the account.
+    public static func identity(providerName: String, accountID: String?) -> String {
+        let family = ProviderBrand.slug(providerName) ?? providerName.lowercased()
+        guard let accountID, !accountID.isEmpty else { return family }
+        return "\(family)\u{1F}\(accountID)"
+    }
+
+    /// How actionable a failure is, smallest first: a key that needs replacing or an account that
+    /// does not exist outranks a service that was merely out of reach, because only the first
+    /// kind is the same on every machine and has a button to press.
+    private static func rank(of code: String?) -> Int {
+        switch code {
+        case "key_expired": return 0
+        case "no_subscription": return 1
+        case "no_account": return 2
+        case "rate_limited": return 3
+        case "server_error": return 4
+        case "unreachable": return 5
+        default: return 6
+        }
     }
 
     /// The window across the whole account that is closest to its wall — the one that decides
@@ -152,8 +192,12 @@ public enum QuotaRollup {
             }
         }
         result.gauges = gauges
-        result.error = base.error ?? next.error
-        result.errorCode = base.errorCode ?? next.errorCode
+        if let error = next.error,
+            base.error == nil || rank(of: next.errorCode) < rank(of: base.errorCode)
+        {
+            result.error = error
+            result.errorCode = next.errorCode
+        }
         if result.accountID == nil { result.accountID = next.accountID }
 
         var details = base.details
@@ -171,14 +215,21 @@ public enum QuotaRollup {
     {
         var winner = next.fraction > base.fraction ? next : base
         let other = next.fraction > base.fraction ? base : next
+        var adoptedReset = false
         if other.trustedReset, !winner.trustedReset, let reset = other.resetsAt {
             winner.resetsAt = reset
             winner.trustedReset = true
+            adoptedReset = true
         } else if winner.resetsAt == nil, let reset = other.resetsAt {
             winner.resetsAt = reset
             winner.trustedReset = other.trustedReset
+            adoptedReset = true
         }
-        if winner.startsAt == nil { winner.startsAt = other.startsAt }
+        if adoptedReset {
+            winner.startsAt = other.startsAt
+        } else if winner.startsAt == nil, winner.resetsAt == other.resetsAt {
+            winner.startsAt = other.startsAt
+        }
         if winner.usedUSD == nil { winner.usedUSD = other.usedUSD }
         if winner.limitUSD == nil { winner.limitUSD = other.limitUSD }
         if winner.key == "rolling", other.key == "five_hour" { winner.key = "five_hour" }

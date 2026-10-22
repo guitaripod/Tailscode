@@ -44,12 +44,19 @@ public struct WidgetQuota: Sendable, Equatable {
     public var subtitle: String
     public var isLive: Bool
     public var gauges: [Gauge]
+    /// When this provider was last actually read. A provider whose last read failed keeps its old
+    /// numbers, and they are cached once they are older than ``QuotaFreshness/staleAfter`` even
+    /// while another provider's snapshot is minutes old.
+    public var readAt: Date?
 
-    public init(providerName: String, subtitle: String, isLive: Bool, gauges: [Gauge]) {
+    public init(
+        providerName: String, subtitle: String, isLive: Bool, gauges: [Gauge], readAt: Date? = nil
+    ) {
         self.providerName = providerName
         self.subtitle = subtitle
         self.isLive = isLive
         self.gauges = gauges
+        self.readAt = readAt
     }
 }
 
@@ -226,8 +233,6 @@ public struct WidgetGlance: Sendable, Equatable {
     public static let criticalFloor: Double = 0.85
     /// Past this a window is warm enough to be worth a colour.
     public static let warmFloor: Double = 0.6
-    /// A snapshot older than this is stale — the same floor the store has always used.
-    public static let staleAfter: TimeInterval = 300
 
     public static let emptyTitle = Localized.text("No usage data")
     public static let emptyDetail = Localized.text("Connect a server to see quotas")
@@ -237,12 +242,20 @@ public struct WidgetGlance: Sendable, Equatable {
         grouping: WidgetGrouping = .automatic, detail: WidgetDetail = .automatic,
         providerFilter: Set<String>? = nil
     ) -> WidgetGlance {
-        let kept = filter(quotas, by: providerFilter)
+        let kept = filter(quotas, by: providerFilter).map { quota -> WidgetQuota in
+            guard let readAt = quota.readAt,
+                QuotaFreshness.isStale(age: now.timeIntervalSince(readAt))
+            else { return quota }
+            var cached = quota
+            cached.isLive = false
+            return cached
+        }
         let providers = kept.map { provider(from: $0, now: now, detail: detail) }
             .filter { !$0.rows.isEmpty }
             .sorted { $0.peak > $1.peak }
-        let isStale = now.timeIntervalSince(updatedAt) > staleAfter
-        let freshness = freshness(providers, updatedAt: updatedAt, now: now, isStale: isStale)
+        let readAt = newestRead(of: kept) ?? updatedAt
+        let isStale = QuotaFreshness.isStale(age: now.timeIntervalSince(readAt))
+        let freshness = freshness(providers, updatedAt: readAt, now: now, isStale: isStale)
         let rows = ranked(providers, grouping: grouping)
         let hero = rows.first(where: { $0.kind == .window }) ?? rows.first
         return WidgetGlance(
@@ -496,6 +509,15 @@ public struct WidgetGlance: Sendable, Equatable {
             rows.sort(by: precedes)
             return rows + seconds.sorted(by: precedes)
         }
+    }
+
+    /// When the newest of the readings was taken, if every one of them says; the snapshot's own
+    /// clock moves whenever any provider is written, so it cannot speak for a provider whose last
+    /// read failed.
+    private static func newestRead(of quotas: [WidgetQuota]) -> Date? {
+        let reads = quotas.compactMap(\.readAt)
+        guard !quotas.isEmpty, reads.count == quotas.count else { return nil }
+        return reads.max()
     }
 
     private static func freshness(

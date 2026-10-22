@@ -48,8 +48,7 @@ struct QuotaPaceTests {
             resetsAt: now.addingTimeInterval(3 * hour), trustedReset: true,
             startsAt: now.addingTimeInterval(-2 * hour))
         let row = PaceRow.window(
-            provider: "opencode go", slug: "opencode", gauge: gauge, now: now,
-            projecting: false)
+            provider: "opencode go", slug: "opencode", gauge: gauge, now: now)
 
         #expect(row.tick == nil)
         #expect(row.tailEnd == nil)

@@ -71,8 +71,6 @@ public struct QuotaGlance: Sendable, Equatable {
 
     /// A window at or above this is warm enough to be worth a line of its own.
     public static let warmFloor: Double = 0.6
-    /// Past this, a reading is old enough that the strip says so even though it is all we have.
-    public static let staleAfter: TimeInterval = 600
     /// How many gauge lines one state may spend. Anything past it is counted in a notice rather
     /// than dropped, because a strip that silently truncates reads as the whole story.
     public static let maxWindows = 3
@@ -242,9 +240,9 @@ public struct QuotaGlance: Sendable, Equatable {
         board: QuotaBoardPreferences, reading: Reading
     ) -> [Line] {
         let blocked = Set(
-            walls.filter { QuotaBinding.scope(of: $0.1) == .account }.map { key($0.0) })
+            walls.filter { QuotaBinding.scope(of: $0.1) == .account }.map { $0.0.identity })
         let open = windows.filter {
-            !blocked.contains(key($0.0)) && $0.1.fraction < QuotaSurface.exhaustedFloor
+            !blocked.contains($0.0.identity) && $0.1.fraction < QuotaSurface.exhaustedFloor
         }
         let picks = tightestPerProvider(open, holdings: holdings, board: board, reading: reading)
         guard let roomiest = picks.min(by: { $0.1.fraction < $1.1.fraction }) else {
@@ -260,7 +258,7 @@ public struct QuotaGlance: Sendable, Equatable {
             ]
         }
         return picks.map { holding, gauge in
-            guard key(holding) == key(roomiest.0), gauge.label == roomiest.1.label else {
+            guard holding.identity == roomiest.0.identity, gauge.label == roomiest.1.label else {
                 return line(
                     for: holding, gauge, tone: tone(of: holding, gauge, reading: reading),
                     reading: reading)
@@ -290,15 +288,16 @@ public struct QuotaGlance: Sendable, Equatable {
         }
     }
 
-    /// One window per provider — the one closest to its wall — with the providers in the order the
-    /// board keeps them. Every provider on the board is answered for: a strip that lists only some
-    /// of them reads as the others having gone.
+    /// One window per holding — the one closest to its wall — with the holdings in the order the
+    /// board keeps them. Every provider on the board is answered for, and each of its accounts
+    /// with it: a strip that lists only some of them reads as the others having gone, and one that
+    /// takes the best window across two accounts names one account twice.
     private static func tightestPerProvider(
         _ windows: [(QuotaHolding, UsageQuota.Gauge)], holdings: [QuotaHolding],
         board: QuotaBoardPreferences, reading: Reading
     ) -> [(QuotaHolding, UsageQuota.Gauge)] {
         QuotaBoard.arrange(holdings, preferences: board).compactMap { holding in
-            windows.filter { key($0.0) == key(holding) }
+            windows.filter { $0.0.identity == holding.identity }
                 .max {
                     let a = reading.urgency($0.0, $0.1)
                     let b = reading.urgency($1.0, $1.1)
@@ -331,11 +330,11 @@ public struct QuotaGlance: Sendable, Equatable {
         }
         let age = now.timeIntervalSince(answeredAt)
         if holdings.contains(where: { $0.quota.live }) {
-            guard age >= staleAfter else { return nil }
+            guard QuotaFreshness.isStale(age: age) else { return nil }
             return Line(
                 kind: .notice, text: Localized.text("Last read %@ ago", ageWords(age)), tone: .warn)
         }
-        if holdings.allSatisfy({ $0.quota.source.lowercased().contains("estimated") }) {
+        if holdings.allSatisfy({ !$0.quota.isMeasured }) {
             return Line(kind: .notice, text: Localized.text("Estimated, not live"), tone: .quiet)
         }
         return Line(
@@ -402,10 +401,6 @@ public struct QuotaGlance: Sendable, Equatable {
 
     private static func soonest(_ gauge: UsageQuota.Gauge) -> TimeInterval {
         gauge.resetsAt?.timeIntervalSince1970 ?? .infinity
-    }
-
-    private static func key(_ holding: QuotaHolding) -> String {
-        holding.slug ?? holding.providerName.lowercased()
     }
 
     private static func clamped(_ fraction: Double) -> Double { min(max(fraction, 0), 1) }
