@@ -43,6 +43,7 @@ final class ChatPane: @unchecked Sendable {
     private let laneRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
     private let statusBand = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
     private var bandFrame: UnsafeMutablePointer<GtkWidget>?
+    private var bandReveal: UnsafeMutablePointer<GtkWidget>?
     let bandState = StatusBand.State()
     private var agents: [SubagentSummary] = []
     private var workflowRuns: [WorkflowRun] = []
@@ -497,7 +498,6 @@ final class ChatPane: @unchecked Sendable {
         Gtk.addClass(statusBand, "status-band")
         let bandFrame = gtk_overlay_new()!
         self.bandFrame = bandFrame
-        gtk_widget_set_visible(bandFrame, 0)
         gtk_overlay_set_child(op(bandFrame), Gtk.shrinkable(statusBand))
         let bandGauge = gtk_drawing_area_new()!
         gtk_widget_set_can_target(bandGauge, 0)
@@ -511,7 +511,11 @@ final class ChatPane: @unchecked Sendable {
                     width: self.bandFrame.map { gtk_widget_get_width($0) } ?? 0)
             }
         }
-        gtk_box_append(ptr(root), bandFrame)
+        let bandReveal = gtk_revealer_new()!
+        self.bandReveal = bandReveal
+        gtk_revealer_set_transition_type(op(bandReveal), GTK_REVEALER_TRANSITION_TYPE_SLIDE_DOWN)
+        gtk_revealer_set_child(op(bandReveal), bandFrame)
+        gtk_box_append(ptr(root), bandReveal)
         gtk_widget_set_visible(attachmentsBox, 0)
         Gtk.addClass(attachmentsBox, "attachments-row")
         Gtk.margins(attachmentsBox, top: 4)
@@ -1848,6 +1852,7 @@ final class ChatPane: @unchecked Sendable {
         compactingStartedAt = nil
         lastPillsSignature = ""
         lastStatusSignature = ""
+        bandState.resetSlots()
         lastNetworkFactsAt = nil
         lastGitFactsAt = nil
         catalogWatchTask?.cancel()
@@ -2070,6 +2075,7 @@ final class ChatPane: @unchecked Sendable {
         compactingStartedAt = nil
         lastPillsSignature = ""
         lastStatusSignature = ""
+        bandState.resetSlots()
         lastNetworkFactsAt = nil
         lastGitFactsAt = nil
         Gtk.removeChildren(of: pendingBox)
@@ -3900,6 +3906,16 @@ final class ChatPane: @unchecked Sendable {
         }
     }
 
+    /// The band takes its room by sliding open over the length of a glance, so the transcript above
+    /// it gives up a strip of height as a motion rather than a jump; a desk that asked for less
+    /// movement has it at once. A revealer that is mid-motion when the window is dragged larger just
+    /// finishes inside the new allocation, which is why no resize needs asking about here.
+    private func revealBand(_ shown: Bool) {
+        guard let bandReveal else { return }
+        gtk_revealer_set_transition_duration(op(bandReveal), RepeatingMotion.allowed ? 180 : 0)
+        gtk_revealer_set_reveal_child(op(bandReveal), shown ? 1 : 0)
+    }
+
     /// The band above the prompt box: what the turn is doing, which agents are out, how much of
     /// the context is spent, what the goal is — every fact clickable. Segment text is the gate —
     /// streaming fires many applies a second and the band already paints in place, so an identical
@@ -3934,7 +3950,7 @@ final class ChatPane: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.perform(bandAction: action) }
             }
             let silent = facts.segments.isEmpty && (bandNotice?.isEmpty ?? true)
-            if let bandFrame { gtk_widget_set_visible(bandFrame, silent ? 0 : 1) }
+            revealBand(!silent)
             StatusBand.fit(
                 statusBand, state: bandState, width: bandFrame.map { gtk_widget_get_width($0) } ?? 0)
         }

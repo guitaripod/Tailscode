@@ -187,6 +187,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkBandHoldsStill()
+            report("status band holds still: \(checks) claims hold — a fact keeps its place")
+        } catch {
+            report("status band holds still: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkChatChrome()
             report("chat chrome: \(checks) claims hold — one chip, one stop, a failed card, calm ink")
         } catch {
