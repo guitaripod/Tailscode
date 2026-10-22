@@ -90,6 +90,27 @@ enum RangeChecks {
                 (PaceWords.line(for: row, opened: false) != nil) == (row.news != nil),
                 "\(row.title): a line of words under a bar only when it is news")
         }
+        try checkWindowReadings(expect)
         return checks
+    }
+
+    /// A full spend window reads "Used up" beside its bar, and a window that states its start is
+    /// drawn flat, whichever surface asks.
+    private static func checkWindowReadings(_ expect: (Bool, String) throws -> Void) throws {
+        let full = UsageQuota.Gauge(
+            key: "monthly", label: "Monthly", fraction: 1, resetsAt: now.addingTimeInterval(hour),
+            trustedReset: true, usedUSD: 10, limitUSD: 10)
+        try expect(
+            UsageFormat.amount(for: full) == QuotaSurface.windowAmount(full),
+            "the usage board words a window through the one rule")
+        try expect(
+            QuotaSurface.windowAmount(full) == Localized.text("Used up"),
+            "a full spend window reads Used up, not $10 / $10")
+        let stated = UsageQuota.Gauge(
+            key: "five_hour", label: "5-hour", fraction: 0.5,
+            resetsAt: now.addingTimeInterval(3 * hour), trustedReset: true,
+            startsAt: now.addingTimeInterval(-2 * hour))
+        let row = PaceRow.window(provider: "opencode go", slug: "opencode", gauge: stated, now: now)
+        try expect(row.tick == nil && row.tailEnd == nil, "a stated window is drawn flat")
     }
 }

@@ -72,15 +72,11 @@ enum UsageFormat {
         gauge.usedUSD != nil && gauge.limitUSD == nil
     }
 
-    /// A spend window reads as money, a balance as the money itself, and everything else as the
-    /// percent already used — or "Used up" when the window is at the wall.
+    /// A balance reads as the money itself, and every other window as ``QuotaSurface/windowAmount``:
+    /// its money or its percent, or "Used up" when the window is at the wall.
     static func amount(for gauge: UsageQuota.Gauge) -> String {
-        if let used = gauge.usedUSD, let limit = gauge.limitUSD {
-            return QuotaSurface.spendAmount(used, limit, currency: gauge.currency)
-        }
         if isBalance(gauge) { return DeepSeekBalance.amount(for: gauge) }
-        let percent = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
-        return QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: percent)
+        return QuotaSurface.windowAmount(gauge)
     }
 
     /// The ink a balance's number wears: ordinary label ink, because money in hand is a fact
@@ -437,7 +433,7 @@ final class UsagePanelViewController: NSViewController {
 
         column.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let visible = QuotaBoard.arrange(holdings, preferences: preferences)
-        let keys = visible.map(QuotaBoard.key)
+        let keys = QuotaBoard.keys(of: visible)
         if holdings.isEmpty, offers.isEmpty {
             column.addArrangedSubview(
                 RowKit.label(
@@ -455,7 +451,8 @@ final class UsagePanelViewController: NSViewController {
             column.addArrangedSubview(heroCard(lead.holding, lead.gauge))
         }
         var cards: [NSView] = visible.enumerated().map { index, holding in
-            card(holding, position: index, of: keys)
+            card(
+                holding, position: keys.firstIndex(of: QuotaBoard.key(holding)) ?? index, of: keys)
         }
         for offer in offers where QuotaBoard.shows(offer, preferences: preferences) {
             cards.append(offerCard(offer))

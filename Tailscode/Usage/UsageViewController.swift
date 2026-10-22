@@ -41,6 +41,7 @@ final class UsageViewController: UIViewController {
     private var lastRefreshed: Date?
     private var analytics: UsageAnalytics?
     private var hasSeeded = false
+    private var held: [HeldReading] = []
     private var refreshing = false
     private var hasClaudeProfile = false
     private var hasOpencodeProfile = false
@@ -246,7 +247,11 @@ final class UsageViewController: UIViewController {
         let readings = await (deepseekReading, ollamaReading)
         guard !Task.isCancelled else { return }
 
-        if !fetched.isEmpty { reports = fetched }
+        if !fetched.isEmpty {
+            let now = Date()
+            reports = QuotaKeeping.carry(fetched, held: held, now: now)
+            held = QuotaKeeping.remember(fetched, into: held, now: now)
+        }
         if let reading = readings.0 {
             deepseek = Self.deepseekQuota(reading)
         } else if deepseek == nil {
@@ -281,8 +286,8 @@ final class UsageViewController: UIViewController {
     /// deadline fires, so a dead bridge cannot starve the reachable ones. A bridge answers with
     /// what its machine can read, and where the provider's own usage API is unreachable that
     /// includes a reading it worked out from a local database — not the account's number, and
-    /// indistinguishable from one once stored beside it — so the screen takes the measurement or
-    /// nothing.
+    /// indistinguishable from one once stored beside it — so the screen admits it only as a
+    /// provider with no measured reading.
     private func fetchReports(
         profiles: [ConnectionProfile], controller: ConnectionController, deadline: TimeInterval
     ) async -> [(String, UsageQuota)] {
@@ -300,10 +305,7 @@ final class UsageViewController: UIViewController {
                     if let extra = try? await backend.additionalUsageQuotas() {
                         fetched.append(contentsOf: extra)
                     }
-                    return (
-                        index, name,
-                        fetched.filter { !$0.source.lowercased().contains("estimated") }
-                    )
+                    return (index, name, QuotaReports.admitted(fetched))
                 }
             }
             group.addTask {
@@ -349,6 +351,7 @@ final class UsageViewController: UIViewController {
         guard !hasSeeded else { return }
         hasSeeded = true
         guard let entry = UsageWidgetStore.read() else { return }
+        held = UsageWidgetStore.heldReadings()
         var seeded: [(String, UsageQuota)] = []
         for provider in entry.providers where !provider.gauges.isEmpty {
             switch ProviderBrand.brand(provider.providerName) {
@@ -445,7 +448,7 @@ final class UsageViewController: UIViewController {
 
         let trail = RangeStore.trail
         let visible = QuotaBoard.arrange(holdings, preferences: preferences)
-        let keys = visible.map(QuotaBoard.key)
+        let keys = QuotaBoard.keys(of: visible)
         if let lead = QuotaBoard.lead(visible, preferences: preferences) {
             heroCard.isHidden = false
             heroCard.apply(
@@ -473,7 +476,8 @@ final class UsageViewController: UIViewController {
                 holding: holding, accent: Self.accent(for: key),
                 gauges: holding.gauges.map { Self.gaugeVM($0, in: holding.quota, trail: trail) })
             card.onMenu = { [weak self] in
-                self?.cardMenu(for: key, position: index, of: keys) ?? UIMenu()
+                self?.cardMenu(
+                    for: key, position: keys.firstIndex(of: key) ?? index, of: keys) ?? UIMenu()
             }
             cardsStack.addArrangedSubview(card)
         }
@@ -550,10 +554,8 @@ final class UsageViewController: UIViewController {
         let amount: String
         if isBalance {
             amount = percent
-        } else if let used = gauge.usedUSD, let limit = gauge.limitUSD {
-            amount = QuotaSurface.spendAmount(used, limit, currency: gauge.currency)
         } else {
-            amount = percent
+            amount = QuotaSurface.windowAmount(gauge)
         }
         return GaugeVM(
             name: UsageGaugeFormat.gaugeLabel(gauge.label), fraction: gauge.fraction,

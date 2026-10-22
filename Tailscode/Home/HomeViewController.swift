@@ -577,6 +577,9 @@ final class HomeViewController: UIViewController {
             self, selector: #selector(boardDidChange),
             name: QuotaBoardStore.didChange, object: nil)
         NotificationCenter.default.addObserver(
+            self, selector: #selector(boardDidChange),
+            name: ModelCatalogStore.didChange, object: nil)
+        NotificationCenter.default.addObserver(
             self, selector: #selector(sceneDidActivate(_:)),
             name: UIScene.didActivateNotification, object: nil)
         NotificationCenter.default.addObserver(
@@ -1073,7 +1076,9 @@ final class HomeViewController: UIViewController {
     /// answered in time, which must not blank a good card.
     private func loadQuotas() async {
         let fetched = await LiveQuotaFetcher.fetch(deadline: 10)
-        quotas = fetched
+        quotas = QuotaKeeping.carry(
+            fetched.map { ("", $0) }, held: UsageWidgetStore.heldReadings(), now: Date()
+        ).map(\.1)
         if let deepseek = UsageWidgetStore.cachedQuotas()
             .first(where: { $0.providerName == DeepSeekBalance.providerName })
         {
@@ -2786,7 +2791,9 @@ extension HomeViewController: HomeComposerBarDelegate {
                 || backend.capabilities.supportsReasoningEffort
         else { return nil }
         let choice = modelChoices[aim.memoryKey] ?? ModelChoice()
-        return ModelBadge.label(model: choice.model, effort: choice.effort)
+        return ModelBadge.label(
+            model: choice.model, effort: choice.effort,
+            catalog: ModelCatalog.cached(for: aim.profile.id))
     }
 
     private func updateModelChip(for aim: ComposerAim, label: String?) {
@@ -2802,7 +2809,9 @@ extension HomeViewController: HomeComposerBarDelegate {
                 modelWord: choice.model.map {
                     ModelBadge.word(for: $0, in: ModelCatalog.cached(for: aim.profile.id))
                 } ?? String(localized: "Auto"),
-                chip: ModelBadge.chip(selection: choice.model, effort: nil),
+                chip: ModelBadge.chip(
+                    selection: choice.model, effort: nil,
+                    catalog: ModelCatalog.cached(for: aim.profile.id)),
                 effort: ModelEffort.surviving(choice.effort, options: options), options: options,
                 choosesModel: backend.capabilities.supportsModelSelection),
             menu: modelMenu(for: aim, backend: backend))
@@ -3097,7 +3106,9 @@ extension HomeViewController: HomeComposerBarDelegate {
             modelName: choice.model.map {
                 ModelBadge.word(for: $0, in: ModelCatalog.cached(for: aim.profile.id))
             } ?? String(localized: "Auto"),
-            chip: ModelBadge.chip(selection: choice.model, effort: nil),
+            chip: ModelBadge.chip(
+                    selection: choice.model, effort: nil,
+                    catalog: ModelCatalog.cached(for: aim.profile.id)),
             options: dialOptions(for: aim), agentOptions: backend.reasoningEffortOptions,
             effort: choice.effort, contextTokens: nil,
             onEffort: { [weak self] level in self?.setComposeEffort(level, for: aim) })
@@ -4146,12 +4157,11 @@ extension HomeViewController: KeyActionHost {
             let options = dialOptions(for: aim)
             guard ModelEffort.isOffered(options: options) else { return false }
             let choice = modelChoices[aim.memoryKey] ?? ModelChoice()
-            let next = ModelDial.step(
-                ModelEffort.surviving(choice.effort, options: options),
-                by: action == .effortHotter ? 1 : -1, options: options)
-            setComposeEffort(next, for: aim)
+            let notch = ModelDial.notch(
+                from: choice.effort, by: action == .effortHotter ? 1 : -1, options: options)
+            setComposeEffort(notch.level, for: aim)
             Theme.Haptics.notch()
-            toast(ModelDial.stepped(to: next))
+            EffortSpeech.note(notch)
         case .modelDial:
             composerBar.dialPill.openRail()
         case .presetNext:

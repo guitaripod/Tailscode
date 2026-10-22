@@ -114,7 +114,7 @@
         }
 
         private var empty: UsageWidgetEntry {
-            UsageWidgetEntry(date: stored.date, providers: [], isStale: false)
+            UsageWidgetEntry(date: stored.date, providers: [])
         }
 
         var body: some View {

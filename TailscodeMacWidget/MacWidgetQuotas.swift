@@ -52,15 +52,13 @@ enum MacWidgetQuotas {
     }
 
     /// A machine that cannot reach its provider's own usage API answers with a figure it worked out
-    /// from a database on its own disk. It is not the account's number, and stored beside the
-    /// account's numbers it is indistinguishable from one — so the widget takes the measurement or
-    /// nothing at all.
+    /// from a database on its own disk. It is not the account's number, so it is admitted as a
+    /// provider with no measured reading, and a failed read comes through as the failure it is:
+    /// the writer then keeps the last good numbers rather than the widget losing them.
     private static func report(from backend: any CodingAgentBackend) async -> [UsageQuota] {
         var fetched: [UsageQuota] = []
         if let primary = (try? await backend.usageQuota()) ?? nil { fetched.append(primary) }
         fetched += (try? await backend.additionalUsageQuotas()) ?? []
-        return fetched.filter {
-            !$0.gauges.isEmpty && !$0.source.lowercased().contains("estimated")
-        }
+        return QuotaReports.admitted(fetched)
     }
 }

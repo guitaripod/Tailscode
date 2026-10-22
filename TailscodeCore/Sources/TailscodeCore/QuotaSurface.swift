@@ -354,6 +354,18 @@ public enum QuotaSurface {
         "\(QuotaGlance.money(used, currency)) / \(QuotaGlance.money(limit, currency))"
     }
 
+    /// The figure a window wears beside its bar, on every client and every surface: the state when
+    /// the window is at its wall — "$10 / $10" beside a full bar says nothing the bar does not,
+    /// where "Used up" says what happened — then a spend window as its money, then the percent.
+    public static func windowAmount(_ gauge: UsageQuota.Gauge) -> String {
+        if gauge.fraction >= exhaustedFloor { return Localized.text("Used up") }
+        if let used = gauge.usedUSD, let limit = gauge.limitUSD {
+            return spendAmount(used, limit, currency: gauge.currency)
+        }
+        let share = min(max(gauge.fraction, 0), 1)
+        return "\(Int((share * 100).rounded()))%"
+    }
+
     /// A short, actionable sentence for a provider that could not be read. The server's own
     /// sentence stays in ``UsageQuota/error`` for the detail surface; a glance and a card's first
     /// line get the fact and the machine, not a paragraph.

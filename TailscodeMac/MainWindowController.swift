@@ -62,6 +62,9 @@ final class MainWindowController: NSWindowController {
     /// controller nobody retains closes itself the moment the stack unwinds.
     private var gitDiffWindows: [GitDiffWindowController] = []
     private var lastQuotas: [(String, UsageQuota)] = []
+    /// The last good reading each machine gave for each account, served as cached while a poll
+    /// fails and for no longer than ``QuotaFreshness/keptFor``.
+    private var heldQuotas: [HeldReading] = []
     /// When the last poll actually answered — nil while the first one is still out, which is a
     /// state the strip says out loud rather than an empty footer.
     private var quotasAnsweredAt: Date?
@@ -1677,12 +1680,14 @@ final class MainWindowController: NSWindowController {
         if snapshot.isEmpty {
             if lastQuotas.isEmpty { quotasAnsweredAt = Date() }
         } else {
-            lastQuotas = snapshot
-            quotasAnsweredAt = Date()
+            let now = Date()
+            lastQuotas = QuotaKeeping.carry(snapshot, held: heldQuotas, now: now)
+            heldQuotas = QuotaKeeping.remember(snapshot, into: heldQuotas, now: now)
+            quotasAnsweredAt = now
             observeRange(snapshot)
+            publishWidgetSnapshot(snapshot)
         }
         sidebar.renderUsage(lastQuotas, answeredAt: quotasAnsweredAt)
-        publishWidgetSnapshot()
         return true
     }
 
@@ -1701,11 +1706,11 @@ final class MainWindowController: NSWindowController {
     /// leaves them where the widget extension can find them without this app running, and asks
     /// WidgetKit to redraw — a widget showing a figure from yesterday is the one lie this surface
     /// can tell, and an empty answer is left alone precisely so the stored one can age into CACHED
-    /// rather than into nothing.
-    private func publishWidgetSnapshot() {
+    /// rather than into nothing. Only what this poll actually read is written: a reading served
+    /// from the last good one must not be stamped as read now.
+    private func publishWidgetSnapshot(_ fresh: [(String, UsageQuota)]) {
         #if !TAILSCODE_MAS
-            guard !lastQuotas.isEmpty else { return }
-            let quotas = lastQuotas.map(\.1)
+            let quotas = QuotaRollup.account(from: fresh).map(\.quota)
             Self.widgetWrites.async { UsageWidgetStore.writeLive(quotas) }
         #endif
     }
@@ -1754,7 +1759,7 @@ final class MainWindowController: NSWindowController {
             var collected: [UsageQuota] = []
             if let quota = (try? await backend.usageQuota()) ?? nil { collected.append(quota) }
             collected += (try? await backend.additionalUsageQuotas()) ?? []
-            for quota in collected where !quota.source.lowercased().contains("estimated") {
+            for quota in QuotaReports.admitted(collected) {
                 quotas.append((profile.name, quota))
             }
         }

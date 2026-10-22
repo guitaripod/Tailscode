@@ -1927,9 +1927,10 @@ public enum SelfTest {
             guard condition else { throw SelfTestFailure("usage glance: \(label)") }
             checks += 1
         }
-        func quota(_ provider: String, _ windows: [(String, Double)], live: Bool = true)
-            -> UsageQuota
-        {
+        func quota(
+            _ provider: String, _ windows: [(String, Double)], live: Bool = true,
+            accountID: String? = nil
+        ) -> UsageQuota {
             UsageQuota(
                 providerName: provider, subtitle: "", source: "test", live: live,
                 gauges: windows.map {
@@ -1937,7 +1938,7 @@ public enum SelfTest {
                         key: $0.0.lowercased(), label: $0.0, fraction: $0.1,
                         resetsAt: now.addingTimeInterval(7_200), trustedReset: true)
                 },
-                details: [])
+                details: [], accountID: accountID)
         }
         func balance(_ total: Double, _ fraction: Double) -> UsageQuota {
             UsageQuota(
@@ -2046,6 +2047,25 @@ public enum SelfTest {
             QuotaGlance.make(from: [], answeredAt: now, now: now).isEmpty,
             "nothing reported is nothing shown")
         try expect(!quiet.tooltip.isEmpty, "the whole picture is one hover away")
+
+        let twoAccounts = glance([
+            ("arch", quota("Claude", [("Weekly", 0.2)], accountID: "a")),
+            ("mini", quota("Claude", [("Weekly", 0.7)], accountID: "b")),
+        ])
+        try expect(
+            twoAccounts.lines.filter { $0.kind == .window }.count == 2,
+            "two accounts of one provider are two lines on the strip")
+        let estimate = QuotaReports.admitted(
+            UsageQuota(
+                providerName: "opencode go", subtitle: "", source: "estimated", live: false,
+                gauges: [
+                    UsageQuota.Gauge(
+                        key: "weekly", label: "Weekly", fraction: 0.4, resetsAt: nil,
+                        trustedReset: false)
+                ], details: []))
+        try expect(
+            glance([("arch", estimate)]).lines.contains { $0.text.contains("No measured reading") },
+            "a provider with only an estimate stays as a line instead of vanishing")
         return checks
     }
 

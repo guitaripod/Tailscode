@@ -38,7 +38,7 @@ struct UsageTimelineProvider: AppIntentTimelineProvider {
         if !context.isPreview { await Self.refreshLiveQuotas() }
         let now = Date()
         guard let stored = UsageWidgetStore.read() else {
-            let empty = UsageWidgetEntry(date: now, providers: [], isStale: false)
+            let empty = UsageWidgetEntry(date: now, providers: [])
             return Timeline(
                 entries: [entry(from: empty, configuration: configuration, at: now)],
                 policy: .after(now.addingTimeInterval(900)))

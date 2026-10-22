@@ -146,11 +146,17 @@ struct QuotaKeepingTests {
         #expect(drawn.tick != nil)
     }
 
-    @Test("A full spend window reads Used up beside its bar")
+    @Test("A full spend window reads Used up beside its bar, a part-spent one reads as money")
     func fullWindowReadsUsedUp() {
-        #expect(
-            QuotaSurface.amountLabel(fraction: 1, percentText: "100%") == "Used up")
-        #expect(QuotaSurface.spendAmount(10, 10) == "$10.00 / $10.00")
+        func spend(_ fraction: Double, used: Double) -> UsageQuota.Gauge {
+            UsageQuota.Gauge(
+                key: "monthly", label: "Monthly", fraction: fraction, resetsAt: nil,
+                trustedReset: false, usedUSD: used, limitUSD: 10)
+        }
+        #expect(QuotaSurface.windowAmount(spend(1, used: 10)) == "Used up")
+        #expect(QuotaSurface.windowAmount(spend(0.4, used: 4)) == "$4.00 / $10.00")
+        #expect(QuotaSurface.windowAmount(gauge("Weekly", 0.42)) == "42%")
+        #expect(QuotaSurface.windowAmount(gauge("Weekly", 1.2)) == "Used up")
     }
 
     @Test("One predicate says whether a report is the account's own number")

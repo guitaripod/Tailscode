@@ -5,13 +5,20 @@ import WidgetKit
 
 extension UsageWidgetStore {
 
+    /// What a poll leaves in the snapshot. A measured reading replaces the one held for its
+    /// account; a read that failed, or came back as an estimate, leaves the last good numbers
+    /// where they are — the widget then wears them as cached — until they are too old to keep.
     static func writeLive(_ quotas: [UsageQuota], reload: Bool = true) {
-        for quota in quotas {
-            guard !quota.gauges.isEmpty else {
-                if quota.error != nil {
-                    removeProvider(named: quota.providerName, reload: reload)
-                }
+        let now = Date()
+        for quota in QuotaReports.admitted(quotas) {
+            let heldAt = held(providerName: quota.providerName, accountID: quota.accountID)?.readAt
+            switch QuotaKeeping.move(for: quota, heldAt: heldAt, now: now) {
+            case .keep: continue
+            case .drop:
+                removeProvider(
+                    providerName: quota.providerName, accountID: quota.accountID, reload: reload)
                 continue
+            case .write: break
             }
             let gauges = quota.gauges.prefix(storedGaugeLimit).map { gauge in
                 var caption = UsageGaugeFormat.resetCaption(
@@ -37,7 +44,8 @@ extension UsageWidgetStore {
                 gauges: Array(gauges),
                 source: quota.source,
                 accountID: quota.accountID,
-                schema: quota.schema)
+                schema: quota.schema,
+                readAt: now)
             upsertProvider(provider, reload: reload)
         }
     }
@@ -49,11 +57,13 @@ extension UsageWidgetStore {
     static func cachedQuotas() -> [UsageQuota] {
         guard let entry = read() else { return [] }
         return entry.providers.map { provider in
-            UsageQuota(
+            let readAt = provider.readAt ?? entry.date
+            return UsageQuota(
                 providerName: provider.providerName,
                 subtitle: provider.subtitle,
                 source: provider.source ?? "last snapshot",
-                live: provider.isLive,
+                live: provider.isLive
+                    && !QuotaFreshness.isStale(age: Date().timeIntervalSince(readAt)),
                 gauges: provider.gauges.map { gauge in
                     UsageQuota.Gauge(
                         key: gauge.label, label: gauge.label, fraction: gauge.fraction,
@@ -64,6 +74,15 @@ extension UsageWidgetStore {
                 details: [],
                 accountID: provider.accountID,
                 schema: provider.schema)
+        }
+    }
+
+    /// The last good readings, with when each was taken, for a screen to serve while a poll fails.
+    static func heldReadings() -> [HeldReading] {
+        guard let entry = read() else { return [] }
+        let quotas = cachedQuotas()
+        return zip(quotas, entry.providers).map { quota, provider in
+            HeldReading(server: "", quota: quota, readAt: provider.readAt ?? entry.date)
         }
     }
 
@@ -91,7 +110,8 @@ extension UsageWidgetEntry {
                         limitUSD: gauge.limitUSD,
                         currency: gauge.currency,
                         note: gauge.caption)
-                })
+                },
+                readAt: provider.readAt)
         }
     }
 

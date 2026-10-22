@@ -4,7 +4,6 @@ import WidgetKit
 struct UsageWidgetEntry: Codable, TimelineEntry {
     var date: Date
     var providers: [ProviderSnapshot]
-    var isStale: Bool
 
     var relevance: TimelineEntryRelevance? {
         let maxFrac = providers.flatMap(\.gauges).map(\.fraction).max() ?? 0
@@ -20,10 +19,15 @@ struct UsageWidgetEntry: Codable, TimelineEntry {
         var source: String? = nil
         var accountID: String? = nil
         var schema: Int? = nil
+        /// When this provider was last actually read. A failed read leaves the snapshot alone, so
+        /// the snapshot's own clock cannot speak for it; nil on a snapshot written before this
+        /// existed, which is then as old as the file.
+        var readAt: Date? = nil
 
         init(
             providerName: String, subtitle: String, isLive: Bool, gauges: [GaugeSnapshot],
-            source: String? = nil, accountID: String? = nil, schema: Int? = nil
+            source: String? = nil, accountID: String? = nil, schema: Int? = nil,
+            readAt: Date? = nil
         ) {
             self.providerName = providerName
             self.subtitle = subtitle
@@ -32,6 +36,16 @@ struct UsageWidgetEntry: Codable, TimelineEntry {
             self.source = source
             self.accountID = accountID
             self.schema = schema
+            self.readAt = readAt
+        }
+
+        /// Whether this snapshot is the account named: the same provider and, when both name an
+        /// account, the same account. A snapshot or a report that names none is the provider's
+        /// only one.
+        func covers(providerName other: String, accountID otherAccount: String?) -> Bool {
+            providerName == other
+                && ((accountID ?? "").isEmpty || (otherAccount ?? "").isEmpty
+                    || accountID == otherAccount)
         }
     }
 
@@ -79,9 +93,7 @@ enum UsageWidgetStore {
             let stored = try? JSONDecoder().decode(Storage.self, from: data),
             !stored.providers.isEmpty
         else { return nil }
-        let age = Date().timeIntervalSince(stored.updatedAt)
-        return UsageWidgetEntry(
-            date: stored.updatedAt, providers: stored.providers, isStale: age > 300)
+        return UsageWidgetEntry(date: stored.updatedAt, providers: stored.providers)
     }
 
     static func previewEntry() -> UsageWidgetEntry {
@@ -125,8 +137,7 @@ enum UsageWidgetStore {
                             caption: "Topped up $100.00 · granted $4.32", resetsAt: nil,
                             usedUSD: 104.32, limitUSD: nil)
                     ]),
-            ],
-            isStale: false)
+            ])
     }
 
     private static func previewGauge(
@@ -162,7 +173,9 @@ enum UsageWidgetStore {
             if let data = UserDefaults(suiteName: suiteName)?.data(forKey: providersKey),
                 let stored = try? JSONDecoder().decode(Storage.self, from: data)
             {
-                providers = stored.providers.filter { $0.providerName != provider.providerName }
+                providers = stored.providers.filter {
+                    !$0.covers(providerName: provider.providerName, accountID: provider.accountID)
+                }
             }
             providers.append(provider)
             let storage = Storage(providers: providers, updatedAt: Date())
@@ -192,6 +205,38 @@ enum UsageWidgetStore {
                     provider.providerName.lowercased().contains("opencode")
                     && provider.schema == nil
                 return !fromEstimate && !oldOpenCode
+            }
+            guard remaining.count != stored.providers.count else { return }
+            let storage = Storage(providers: remaining, updatedAt: stored.updatedAt)
+            guard let encoded = try? JSONEncoder().encode(storage) else { return }
+            UserDefaults(suiteName: suiteName)?.set(encoded, forKey: providersKey)
+            removed = true
+        }
+        if removed, reload { WidgetCenter.shared.reloadTimelines(ofKind: kind) }
+    }
+
+    /// The stored snapshot of an account and when it was read.
+    static func held(
+        providerName: String, accountID: String?
+    ) -> (snapshot: UsageWidgetEntry.ProviderSnapshot, readAt: Date)? {
+        guard let data = UserDefaults(suiteName: suiteName)?.data(forKey: providersKey),
+            let stored = try? JSONDecoder().decode(Storage.self, from: data),
+            let snapshot = stored.providers.first(where: {
+                $0.covers(providerName: providerName, accountID: accountID)
+            })
+        else { return nil }
+        return (snapshot, snapshot.readAt ?? stored.updatedAt)
+    }
+
+    /// Drops the stored snapshot of an account, once it is too old to keep.
+    static func removeProvider(providerName: String, accountID: String?, reload: Bool = true) {
+        var removed = false
+        withProvidersLock {
+            guard let data = UserDefaults(suiteName: suiteName)?.data(forKey: providersKey),
+                let stored = try? JSONDecoder().decode(Storage.self, from: data)
+            else { return }
+            let remaining = stored.providers.filter {
+                !$0.covers(providerName: providerName, accountID: accountID)
             }
             guard remaining.count != stored.providers.count else { return }
             let storage = Storage(providers: remaining, updatedAt: stored.updatedAt)

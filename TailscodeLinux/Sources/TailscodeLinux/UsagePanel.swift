@@ -169,7 +169,7 @@ final class UsagePanel: @unchecked Sendable {
 
         Gtk.removeChildren(of: column)
         let visible = QuotaBoard.arrange(holdings, preferences: preferences)
-        let keys = visible.map(QuotaBoard.key)
+        let keys = QuotaBoard.keys(of: visible)
         if holdings.isEmpty, offers.isEmpty {
             gtk_box_append(
                 ptr(column),
@@ -189,7 +189,8 @@ final class UsagePanel: @unchecked Sendable {
             gtk_box_append(ptr(column), hero(quota: lead.holding.quota, gauge: lead.gauge))
         }
         var cards: [UnsafeMutablePointer<GtkWidget>] = visible.enumerated().map { index, holding in
-            card(holding, position: index, of: keys)
+            card(
+                holding, position: keys.firstIndex(of: QuotaBoard.key(holding)) ?? index, of: keys)
         }
         for offer in offers where QuotaBoard.shows(offer, preferences: preferences) {
             if let invitation = offerCard(offer) { cards.append(invitation) }
@@ -518,17 +519,13 @@ final class UsagePanel: @unchecked Sendable {
         return "\(quota.details[0].key) \(quota.details[0].value) · \(quota.details[1].key) \(quota.details[1].value)"
     }
 
-    /// A spend window reads as the API's used and ceiling; a balance as the money itself; a
-    /// time-only window as the percent already used.
+    /// A balance reads as the money itself, and every other window as ``QuotaSurface/windowAmount``:
+    /// its money or its percent, or "Used up" when the window is at the wall.
     private static func amount(for gauge: UsageQuota.Gauge) -> String {
         if QuotaBoard.isBalance(gauge) {
             return DeepSeekBalance.amount(for: gauge)
         }
-        if let used = gauge.usedUSD, let limit = gauge.limitUSD {
-            return QuotaSurface.spendAmount(used, limit, currency: gauge.currency)
-        }
-        let percent = "\(Int((min(max(gauge.fraction, 0), 1) * 100).rounded()))%"
-        return QuotaSurface.amountLabel(fraction: gauge.fraction, percentText: percent)
+        return QuotaSurface.windowAmount(gauge)
     }
 
     private static func openConsole() {
