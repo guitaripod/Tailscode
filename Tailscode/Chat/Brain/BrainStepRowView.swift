@@ -20,6 +20,10 @@ final class BrainStepRowView: UIControl {
         var query = ""
         var input: ChatInput = .touch
         var total = 0
+        /// A phone's compact list: a note is one line like every other row, and the type may grow
+        /// with `scale`, Core's text scale, because the row does.
+        var compact = false
+        var scale: CGFloat = 1
     }
 
     var onClick: ((String, Bool) -> Void)?
@@ -63,7 +67,8 @@ final class BrainStepRowView: UIControl {
         let changed = row != new || context.isCursor != newContext.isCursor
             || context.isHovered != newContext.isHovered || context.query != newContext.query
             || context.previous?.group != newContext.previous?.group
-            || context.next?.group != newContext.next?.group
+            || context.next?.group != newContext.next?.group || context.compact != newContext.compact
+            || context.scale != newContext.scale
         row = new
         context = newContext
         accessibilityLabel = spoken(new)
@@ -163,7 +168,7 @@ final class BrainStepRowView: UIControl {
     }
 
     private func markText(_ row: NeuralStepList.Row) -> (text: NSAttributedString, symbol: String?, tone: UIColor)? {
-        let font = BrainFonts.rowStatus
+        let font = BrainFonts.rowStatus(scale: context.scale)
         func make(_ words: String, _ ink: UIColor) -> NSAttributedString {
             NSAttributedString(string: words, attributes: [.font: font, .foregroundColor: ink])
         }
@@ -224,15 +229,18 @@ final class BrainStepRowView: UIControl {
         }
         drawBracket(cg, row: row, color: dim)
 
-        let said = row.isSaid
+        let said = row.isSaid && !context.compact
+        let singleNote = row.isSaid && context.compact
         let band: CGFloat = said ? (context.input == .touch ? 30 : 28) : height
         let mid = band / 2
         if said {
             drawQuote(cg, at: CGPoint(x: Self.glyphX, y: (context.input == .touch ? 17 : 15)), color: accent)
+        } else if singleNote {
+            drawQuote(cg, at: CGPoint(x: Self.glyphX, y: mid), color: accent)
         } else {
             drawGlyph(cg, row.zone.shape, at: CGPoint(x: Self.glyphX, y: mid), color: zoneInk)
         }
-        let numberFont = BrainFonts.rowNumber
+        let numberFont = BrainFonts.rowNumber(scale: context.scale)
         let number = NSAttributedString(
             string: "\(row.number)", attributes: [.font: numberFont, .foregroundColor: dim])
         let numberSize = number.size()
@@ -243,7 +251,7 @@ final class BrainStepRowView: UIControl {
         let limit = width - (showsCopy ? 74 : markRoom + 4) - 6
         if !showsCopy { drawMark(cg, row: row, right: width - 10, mid: band / 2) }
         if row.kind == .tool {
-            let titleFont = BrainFonts.rowTitle
+            let titleFont = BrainFonts.rowTitle(scale: context.scale)
             let title = NSAttributedString(
                 string: row.title,
                 attributes: [
@@ -259,21 +267,29 @@ final class BrainStepRowView: UIControl {
             let room = max(0, limit - argumentX)
             let characters = max(0, Int(room / BrainFonts.argumentCharacterWidth))
             let shown = row.argument(fittingChars: characters)
-            let argument = highlighted(shown, font: BrainFonts.rowArgument, ink: dim)
+            let argument = highlighted(shown, font: BrainFonts.rowArgument(scale: context.scale), ink: dim)
             let argumentSize = argument.size()
             argument.draw(
                 in: CGRect(
                     x: argumentX, y: (height - argumentSize.height) / 2, width: room + 2,
                     height: argumentSize.height))
+        } else if singleNote {
+            let text = highlighted(
+                row.lines.joined(separator: " "), font: BrainFonts.rowSaid(scale: context.scale), ink: ink)
+            let size = text.size()
+            text.draw(
+                in: CGRect(
+                    x: Self.titleX, y: (height - size.height) / 2, width: max(0, limit - Self.titleX),
+                    height: size.height))
         } else if said {
             let text = NSAttributedString(
                 string: row.lines.joined(separator: " "),
-                attributes: [.font: BrainFonts.rowSaid, .foregroundColor: ink])
+                attributes: [.font: BrainFonts.rowSaid(scale: context.scale), .foregroundColor: ink])
             text.draw(
                 with: CGRect(x: Self.titleX, y: 4, width: max(0, limit - Self.titleX), height: height - 6),
                 options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
         } else {
-            let text = highlighted(row.argument, font: BrainFonts.rowNote, ink: dim)
+            let text = highlighted(row.argument, font: BrainFonts.rowNote(scale: context.scale), ink: dim)
             let size = text.size()
             text.draw(
                 in: CGRect(

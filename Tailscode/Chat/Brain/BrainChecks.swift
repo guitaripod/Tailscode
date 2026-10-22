@@ -69,6 +69,7 @@
             runKeys(long)
             runAccount(long, build: build)
             runMetrics(long)
+            runPhoneMetrics()
             runMove(long)
             runWords(all)
             runEffort()
@@ -251,6 +252,16 @@
                 let kinds = NeuralStageMetrics.footerParts(width: 374).map(\.kind)
                 return kinds.contains(.rows) && kinds.contains(.share) && !kinds.contains(.close)
             }())
+        }
+
+        private static func runPhoneMetrics() {
+            for width in [320.0, 375, 402, 430, 744] {
+                let metrics = NeuralStageMetrics.make(
+                    width: width - 16, density: .compact, input: .touch, phone: true)
+                check("a \(Int(width)) pt phone opens compact", metrics.isPhone && metrics.rowHeight <= 400, "\(metrics.rowHeight)")
+                check("a \(Int(width)) pt phone's head is 152 at most", metrics.stage.height <= 160, "\(metrics.stage.height)")
+                check("a \(Int(width)) pt phone's card stays 84", metrics.cardHeight == 84)
+            }
         }
 
         private static func runMove(_ model: NeuralBrainModel) {
@@ -509,8 +520,12 @@
                     verb: verb, value: value, store: store, collection: collection, toggle: toggle,
                     rows: { _ in }, share: { _ in }, refresh: {})
             }
+            func accountHost() -> UIView {
+                collection.visibleCells.compactMap { $0 as? NeuralBrainCell }
+                    .compactMap { $0.brainRow.openView?.builtAccount }.first ?? collection
+            }
             func visibleReader() -> BrainDiffReaderView? {
-                collection.visibleCells.lazy.compactMap { reader(in: $0) }.first
+                reader(in: accountHost())
             }
             guard let id = store.latestTurnID, let model = store.model(for: id),
                 let index = model.steps.firstIndex(where: { $0.call?.call.name == "Write" })
@@ -520,6 +535,12 @@
             }
             if !store.isOpen(id) { toggle(id) }
             await wait(1.8)
+            let phone = collection.visibleCells.compactMap { $0 as? NeuralBrainCell }
+                .contains { $0.brainRow.openView?.metrics.isPhone == true }
+            if phone {
+                walk("sheet", "")
+                await wait(1.2)
+            }
             walk("click", String(index + 1))
             await wait(0.8)
             check("a card that is open and unread has no reader", visibleReader() == nil)
@@ -554,6 +575,276 @@
             check("moving the cursor closes it", visibleReader() == nil)
             let failed = results.filter { !$0.passed }.count
             AppLogger.ui.info("brain-check reader screen done pass=\(results.count - failed) fail=\(failed)")
+        }
+
+        private struct Sample {
+            let mean: Double
+            let p95: Double
+            let max: Double
+        }
+
+        private static func time(_ count: Int, _ body: () -> Void) -> Sample {
+            var all: [Double] = []
+            for _ in 0..<count {
+                let start = CACurrentMediaTime()
+                body()
+                all.append((CACurrentMediaTime() - start) * 1000)
+            }
+            all.sort()
+            return Sample(
+                mean: all.reduce(0, +) / Double(max(all.count, 1)),
+                p95: all[min(all.count - 1, Int(Double(all.count) * 0.95))], max: all.last ?? 0)
+        }
+
+        private static func report(_ name: String, _ sample: Sample, _ extra: String = "") {
+            AppLogger.ui.info(
+                "brain-perf \(name) mean=\(String(format: "%.3f", sample.mean))ms p95=\(String(format: "%.3f", sample.p95))ms max=\(String(format: "%.3f", sample.max))ms \(extra)")
+        }
+
+        /// The longest the main thread went between two frames while it ran, and how many gaps
+        /// were longer than 25 ms: what a person feels as a hitch.
+        @MainActor
+        private final class GapMeter: NSObject {
+            private var link: CADisplayLink?
+            private var last: CFTimeInterval = 0
+            private(set) var longest = 0.0
+            private(set) var hitches = 0
+            private(set) var frames = 0
+
+            func start() {
+                last = 0
+                longest = 0
+                hitches = 0
+                frames = 0
+                link?.invalidate()
+                let made = CADisplayLink(target: self, selector: #selector(step(_:)))
+                made.add(to: .main, forMode: .common)
+                link = made
+            }
+
+            @objc private func step(_ display: CADisplayLink) {
+                let now = display.timestamp
+                if last > 0 {
+                    let gap = (now - last) * 1000
+                    longest = max(longest, gap)
+                    if gap > 25 { hitches += 1 }
+                    frames += 1
+                }
+                last = now
+            }
+
+            func stop() {
+                link?.invalidate()
+                link = nil
+            }
+        }
+
+        static var isPerf: Bool {
+            ProcessInfo.processInfo.environment["TAILSCODE_NEURAL_PERF"] != nil
+        }
+
+        /// What the main thread pays for a running turn's Megatron: a conversation state arriving
+        /// (a token), the one-second clock, and what stays alive once the chat has left the window.
+        /// Needs `TAILSCODE_NEURAL_STATE=shell` and a long turn (`TAILSCODE_NEURAL_LARGE=174`).
+        static func runPerf(
+            collection: UICollectionView, store: BrainStore, toggle: @escaping (String) -> Void
+        ) async {
+            guard let id = store.latestTurnID else { return }
+            func cell() -> NeuralBrainCell? {
+                collection.visibleCells.compactMap { $0 as? NeuralBrainCell }
+                    .first { $0.brainRow.turnID == id }
+            }
+            func wait(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
+            let streamed = (0..<40).flatMap {
+                NeuralDemo.largeTurn(steps: 24, prefix: "p\($0)-", origin: 1_792_000_000 + Double($0) * 4000)
+            }
+            let probe = BrainStore()
+            let neutral: (NeuralTurn, Bool) -> NeuralBrainContext = { _, _ in NeuralBrainContext() }
+            report("prepare cold 40 turns", time(1) {
+                _ = probe.prepare(messages: streamed, running: true, awaiting: .none, context: neutral)
+            })
+            var growing = streamed
+            var counter = 0
+            report("prepare per token 40 turns", time(300) {
+                counter += 1
+                if let message = growing.indices.last(where: { index in
+                    growing[index].parts.contains { if case .text = $0.kind { return true } else { return false } }
+                }), let part = growing[message].parts.indices.last(where: { if case .text = growing[message].parts[$0].kind { return true } else { return false } }),
+                    case .text(let words) = growing[message].parts[part].kind
+                {
+                    growing[message].parts[part].kind = .text(words + "x")
+                }
+                _ = probe.prepare(messages: growing, running: true, awaiting: .none, context: neutral)
+            })
+            var partitioned: [NeuralTurn] = []
+            report("partition 40 turns", time(1) {
+                partitioned = NeuralTurns.partition(messages: streamed, running: true)
+            })
+            report("models of 40 turns", time(1) {
+                for turn in partitioned { _ = NeuralBrainModel(turn: turn, context: NeuralBrainContext()) }
+            })
+            report("search text of 40 turns", time(1) {
+                for turn in partitioned { _ = BrainStore.searchText(of: turn) }
+            })
+            let heavy: [ChatMessage] = streamed.map { message in
+                var copy = message
+                for index in copy.parts.indices {
+                    if case .tool(var call) = copy.parts[index].kind {
+                        call.output = String(repeating: "a line of tool output that a build prints\n", count: 500)
+                        copy.parts[index].kind = .tool(call)
+                    }
+                }
+                return copy
+            }
+            let heavyProbe = BrainStore()
+            report("prepare cold 40 turns 20 KB outputs", time(1) {
+                _ = heavyProbe.prepare(messages: heavy, running: true, awaiting: .none, context: neutral)
+            })
+            var heavyGrowing = heavy
+            report("prepare per token 40 turns 20 KB outputs", time(200) {
+                if let message = heavyGrowing.indices.last(where: { index in
+                    heavyGrowing[index].parts.contains { if case .text = $0.kind { return true } else { return false } }
+                }), let part = heavyGrowing[message].parts.indices.last(where: { if case .text = heavyGrowing[message].parts[$0].kind { return true } else { return false } }),
+                    case .text(let words) = heavyGrowing[message].parts[part].kind
+                {
+                    heavyGrowing[message].parts[part].kind = .text(words + "x")
+                }
+                _ = heavyProbe.prepare(messages: heavyGrowing, running: true, awaiting: .none, context: neutral)
+            })
+            await wait(1.5)
+            guard let closed = cell() else {
+                AppLogger.ui.info("brain-perf the latest brain is not on screen")
+                return
+            }
+            report("closed-live token", time(300) { closed.refreshLive(); closed.layoutIfNeeded() })
+            let meter = GapMeter()
+            meter.start()
+            let tap = time(1) { toggle(id); collection.layoutIfNeeded() }
+            await wait(2)
+            meter.stop()
+            report("open tap", tap, "frames=\(meter.frames) longestGap=\(String(format: "%.1f", meter.longest))ms hitches=\(meter.hitches)")
+            guard let open = cell(), open.brainRow.openView != nil else {
+                AppLogger.ui.info("brain-perf the brain did not open")
+                return
+            }
+            report("open-live token", time(300) { open.refreshLive(); open.layoutIfNeeded() })
+            report("open-live second", time(100) { open.brainRow.openView?.tick(); open.layoutIfNeeded() })
+            let before = BrainLiveClock.shared.ticks
+            let held = BrainLiveClock.shared.registered
+            let headRunning = open.brainRow.openView?.stage.head.isClockRunning ?? false
+            let context = NeuralMetalContext.shared?.retainCount ?? -1
+            let parent = collection.superview
+            collection.removeFromSuperview()
+            await wait(3.5)
+            AppLogger.ui.info(
+                "brain-perf away registered=\(BrainLiveClock.shared.registered)/\(held) ticks=\(BrainLiveClock.shared.ticks - before) running=\(BrainLiveClock.shared.isRunning) headClock=\(headRunning)->\(open.brainRow.openView?.stage.head.isClockRunning ?? false) displayLink=\(open.brainRow.ownsDisplayLink) metalHolds=\(context)->\(NeuralMetalContext.shared?.retainCount ?? -1)")
+            if let parent { parent.addSubview(collection) }
+            await wait(1)
+            AppLogger.ui.info(
+                "brain-perf back registered=\(BrainLiveClock.shared.registered) running=\(BrainLiveClock.shared.isRunning)")
+            toggle(id)
+            await wait(1.2)
+            let second = time(1) { toggle(id); collection.layoutIfNeeded() }
+            await wait(1.5)
+            report("reopen tap", second)
+            AppLogger.ui.info("brain-perf done")
+        }
+
+        private static func verticalScrollers(in view: UIView) -> [UIScrollView] {
+            var found: [UIScrollView] = []
+            func walk(_ node: UIView) {
+                if let scroll = node as? UIScrollView, scroll.isScrollEnabled, !node.isHidden,
+                    scroll.contentSize.height > scroll.bounds.height + 1,
+                    scroll.bounds.height > 0
+                {
+                    found.append(scroll)
+                }
+                for child in node.subviews { walk(child) }
+            }
+            walk(view)
+            return found
+        }
+
+        /// A phone's open Megatron on screen: short and fixed, nothing in it scrolls, a long list
+        /// says how many more and a short one opens in place, the cursor row stays on the stage,
+        /// and the account opens in a sheet and not in the page.
+        static func runPhoneScreen(
+            collection: UICollectionView, store: BrainStore, toggle: @escaping (String) -> Void
+        ) async {
+            guard let id = store.latestTurnID else { return }
+            func cell() -> NeuralBrainCell? {
+                collection.visibleCells.compactMap { $0 as? NeuralBrainCell }
+                    .first { $0.brainRow.turnID == id }
+            }
+            func wait(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
+            guard let width = cell()?.brainRow.bounds.width, width > 0, width < 500 else {
+                AppLogger.ui.info("brain-check phone screen skipped: the row is not a phone's")
+                return
+            }
+            if !store.isOpen(id) { toggle(id) }
+            await wait(1.8)
+            guard let row = cell()?.brainRow, let open = row.openView, let model = store.model(for: id) else {
+                check("the phone's brain opened", false)
+                return
+            }
+            let viewport = collection.bounds.height
+            let phone = NeuralStageMetrics.make(width: Double(width), density: ChatDensitySetting.current, input: .touch, phone: true)
+            check("the open row is the compact height", abs(Double(row.bounds.height) - phone.rowHeight) < 1.5, "\(row.bounds.height) vs \(phone.rowHeight)")
+            check("the open row is at most 400 and a half of a viewport", row.bounds.height <= 400 && row.bounds.height <= viewport * 0.6, "\(row.bounds.height) of \(viewport)")
+            check("nothing in the open Megatron scrolls vertically", verticalScrollers(in: open).isEmpty, "\(verticalScrollers(in: open).map { "\(type(of: $0))" })")
+            check("the account is not built, let alone in the page", open.builtAccount == nil)
+            let total = model.stepList.visibleCount
+            if total > NeuralStageMetrics.phoneRowSlots {
+                check("a long list ends in how many more", open.compactList.linkTitles.contains(NeuralReading.moreSteps(total - (open.compactList.itemCount - 1))), "\(open.compactList.linkTitles)")
+                check("the list draws its slots and no more", open.compactList.itemCount == NeuralStageMetrics.phoneRowSlots, "\(open.compactList.itemCount)")
+            }
+            let target = model.steps[min(13, model.steps.count - 1)].id
+            let number = model.steps.firstIndex { $0.id == target }.map { $0 + 1 } ?? 1
+            open.walk(verb: "click", value: String(number))
+            await wait(0.6)
+            check("the step on the cursor is on the stage", open.compactList.visibleRowIDs.contains(target), "\(open.compactList.visibleRowIDs) vs \(target)")
+            open.walk(verb: "key", value: "esc")
+            await wait(0.3)
+            let before = row.bounds.height
+            open.walk(verb: "search", value: "ff")
+            await wait(0.4)
+            let narrowed = store.model(for: id)?.stepList.visibleCount ?? 0
+            if narrowed > NeuralStageMetrics.phoneRowSlots, NeuralStageMetrics.phoneExpandsInPlace(visibleCount: narrowed) {
+                open.walk(verb: "more", value: "")
+                await wait(0.6)
+                let grown = cell()?.brainRow.bounds.height ?? 0
+                let expected = Double(NeuralStageMetrics.phoneExpandedSlots(visibleCount: narrowed) - NeuralStageMetrics.phoneRowSlots) * 32
+                check("a short list opens in place by its own rows", abs(Double(grown - before) - expected) < 2, "\(grown - before) vs \(expected)")
+                check("an opened list still holds no scroller", verticalScrollers(in: open).isEmpty)
+                open.walk(verb: "less", value: "")
+                await wait(0.6)
+                check("showing fewer gives the height back", abs((cell()?.brainRow.bounds.height ?? 0) - before) < 2)
+            } else {
+                check("the filter left a list that opens in place", false, "\(narrowed)")
+            }
+            open.walk(verb: "key", value: "esc")
+            await wait(0.3)
+            open.walk(verb: "sheet", value: "")
+            await wait(1.2)
+            check("the account opens in a sheet", open.builtAccount?.superview != nil && open.builtAccount?.window != nil)
+            check("the row did not grow for the sheet", abs((cell()?.brainRow.bounds.height ?? 0) - before) < 2)
+            open.walk(verb: "dismiss", value: "")
+            await wait(0.6)
+            check("the sheet lets the account go", open.builtAccount?.superview == nil)
+            check("a settled stage holds no swipe recogniser", !open.stage.holdsSwipe)
+            check(
+                "a swipe may not start within a thumb of either screen edge",
+                !BrainStageView.swipeMayStart(atX: 12, windowWidth: 402)
+                    && !BrainStageView.swipeMayStart(atX: 390, windowWidth: 402)
+                    && BrainStageView.swipeMayStart(atX: 120, windowWidth: 402))
+            open.walk(verb: "dive", value: "shell")
+            await wait(0.9)
+            check("a dive holds the swipe that leaves it", open.stage.holdsSwipe)
+            open.walk(verb: "key", value: "esc")
+            await wait(0.9)
+            check("leaving the dive lets the swipe go", !open.stage.holdsSwipe)
+            let failed = results.filter { !$0.passed }.count
+            AppLogger.ui.info("brain-check phone screen done pass=\(results.count - failed) fail=\(failed)")
         }
 
         /// Opens and closes the latest brain in the list on screen and reads what the move cost,
@@ -604,6 +895,7 @@
             check(
                 "the textures are let go after the pictures",
                 (NeuralMetalContext.shared?.retainCount ?? 0) == 0, "\(NeuralMetalContext.shared?.retainCount ?? -1)")
+            await runPhoneScreen(collection: collection, store: store, toggle: toggle)
             let total = results.filter { !$0.passed }.count
             AppLogger.ui.info("brain-check screen done pass=\(results.count - total) fail=\(total)")
         }

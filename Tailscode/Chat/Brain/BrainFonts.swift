@@ -19,6 +19,15 @@ enum BrainFonts {
     static var rowNote: UIFont { capped(.thought, maximum: 15) }
     static var rowSaid: UIFont { capped(.panelDetail, maximum: 15) }
 
+    /// The row faces for a phone's compact list, whose rows grow with `scale` (Core's text scale),
+    /// so the ceiling a row can hold grows with them.
+    static func rowTitle(scale: CGFloat) -> UIFont { capped(.rowTitleStrong, maximum: 15 * scale) }
+    static func rowArgument(scale: CGFloat) -> UIFont { capped(.rowDetail, maximum: 14 * scale) }
+    static func rowNumber(scale: CGFloat) -> UIFont { capped(.rowStamp, maximum: 13 * scale) }
+    static func rowStatus(scale: CGFloat) -> UIFont { capped(.rowMeta, maximum: 13 * scale) }
+    static func rowNote(scale: CGFloat) -> UIFont { capped(.thought, maximum: 15 * scale) }
+    static func rowSaid(scale: CGFloat) -> UIFont { capped(.panelDetail, maximum: 15 * scale) }
+
     /// The width of one character of the argument's face, for cutting a path to a width.
     static var argumentCharacterWidth: CGFloat {
         ("0" as NSString).size(withAttributes: [.font: rowArgument]).width

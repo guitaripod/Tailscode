@@ -48,6 +48,9 @@ final class BrainRowView: UIView {
     private var linkTarget: BrainMoveTarget?
     private var pendingOpen: PendingOpen?
     private var currentHeight: CGFloat = 0
+    private var lastTextScale: CGFloat = 1
+    private var cardIsStale = false
+    private var wasAsking = false
     private var openedByMove = false
     private var wasConfigured = false
     private var liveRegistered = false
@@ -146,7 +149,13 @@ final class BrainRowView: UIView {
         case .closed:
             card.refresh(model: model)
         case .open:
-            card.refresh(model: model)
+            let asking = model.stepList.pendingAskID != nil
+            if asking != wasAsking {
+                wasAsking = asking
+                card.refresh(model: model)
+            } else {
+                cardIsStale = true
+            }
             openView?.conversationChanged()
         case .moving:
             card.refresh(model: model)
@@ -159,13 +168,36 @@ final class BrainRowView: UIView {
     }
 
     private func makeMetrics(width: CGFloat, model: NeuralBrainModel) -> NeuralStageMetrics {
-        NeuralStageMetrics.make(
+        let expanded = store?.interaction(for: model.turn.id).listExpanded ?? false
+        return NeuralStageMetrics.make(
             width: Double(width), density: ChatDensitySetting.current, input: .touch,
-            zonesWithSteps: max(model.stepList.zoneChips.count, 1), viewportHeight: Double(viewport))
+            zonesWithSteps: max(model.stepList.zoneChips.count, 1), rows: BrainOpenView.compactSlots(model: model, expanded: expanded),
+            viewportHeight: Double(viewport), phone: true, textScale: Double(Self.textScale(for: traitCollection)))
+    }
+
+    /// How much larger than the design's the reader's type is, for a phone's rows and bar.
+    private static func textScale(for traits: UITraitCollection) -> CGFloat {
+        min(
+            max(UIFontMetrics(forTextStyle: .body).scaledValue(for: 1, compatibleWith: traits), 1),
+            CGFloat(NeuralStageMetrics.phoneMaxTextScale))
+    }
+
+    /// The open stage's list wants another number of rows than it was laid out for: lay it out
+    /// again, move the transcript's row to its new height, and draw the rows.
+    private func slotsChanged() {
+        guard phase == .open, let store, let model = store.model(for: turnID) else { return }
+        metrics = makeMetrics(width: bounds.width, model: model)
+        cardMetrics = makeCardMetrics(model: model)
+        openView?.apply(metrics: metrics!, viewport: viewport)
+        currentHeight = openView?.openHeight ?? currentHeight
+        onHeightChange?()
+        setNeedsLayout()
+        openView?.refreshAll()
     }
 
     private func resetState() {
         finishNow(open: false)
+        openView?.dismissReader()
         openView?.removeFromSuperview()
         openView = nil
         phase = .closed
@@ -182,6 +214,7 @@ final class BrainRowView: UIView {
         transition = nil
         pendingOpen = nil
         pendingTicket += 1
+        openView?.dismissReader()
         openView?.removeFromSuperview()
         openView = nil
         phase = .closed
@@ -213,7 +246,11 @@ final class BrainRowView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         guard bounds.width > 0, let store, let row, let model = store.model(for: row.turnID) else { return }
-        if metrics?.width != Double(bounds.width) || cardMetrics?.width != Double(cardWidth) {
+        let scale = Self.textScale(for: traitCollection)
+        if metrics?.width != Double(bounds.width) || cardMetrics?.width != Double(cardWidth)
+            || scale != lastTextScale
+        {
+            lastTextScale = scale
             metrics = makeMetrics(width: bounds.width, model: model)
             cardMetrics = makeCardMetrics(model: model)
             card.configure(model: model, row: row, memory: store.memory(for: row.turnID), metrics: cardMetrics!)
@@ -275,6 +312,7 @@ final class BrainRowView: UIView {
         if let openView { return openView }
         let made = BrainOpenView(metrics: metrics)
         made.attach(store: store, turnID: turnID, actions: actions!)
+        made.onSlotsChange = { [weak self] in self?.slotsChanged() }
         made.apply(metrics: metrics, viewport: viewport)
         insertSubview(made, belowSubview: card)
         made.frame = CGRect(x: 0, y: 0, width: bounds.width, height: made.openHeight)
@@ -304,6 +342,8 @@ final class BrainRowView: UIView {
 
     /// Takes the card with no move and lets the open parts go.
     private func showClosed() {
+        refreshStaleCard()
+        openView?.dismissReader()
         openView?.removeFromSuperview()
         openView = nil
         phase = .closed
@@ -385,7 +425,16 @@ final class BrainRowView: UIView {
         startClock()
     }
 
+    /// The card is not drawn while the brain is open, so it is not kept current for every token
+    /// either: it reads the model again as it comes back.
+    private func refreshStaleCard() {
+        guard cardIsStale, let model = store?.model(for: turnID) else { return }
+        cardIsStale = false
+        card.refresh(model: model)
+    }
+
     private func startClosing() {
+        refreshStaleCard()
         guard openView != nil, let move = makeTransition(direction: .close) else {
             showClosed()
             return
@@ -509,6 +558,7 @@ final class BrainRowView: UIView {
             link = nil
             if phase == .moving { finishNow(open: transition?.direction.isOpening ?? false) }
             openView?.stage.setSuspended(true)
+            updateClock()
         } else {
             openView?.stage.setSuspended(false)
             updateClock()

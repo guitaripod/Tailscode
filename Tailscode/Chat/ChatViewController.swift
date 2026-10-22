@@ -2730,6 +2730,13 @@ final class ChatViewController: UIViewController {
                 staged.messages = NeuralDemo.writing(prefix: "w-")
                 return staged
             }
+            if let turns = environment["TAILSCODE_NEURAL_TURNS"].flatMap(Int.init), turns > 0 {
+                var staged = state
+                staged.messages = (0..<turns).flatMap {
+                    NeuralDemo.largeTurn(steps: 24, prefix: "t\($0)-", origin: 1_792_000_000 + Double($0) * 4000)
+                }
+                return staged
+            }
             guard let value = environment["TAILSCODE_NEURAL_LARGE"],
                 let steps = Int(value), steps > 0
             else { return state }
@@ -3666,9 +3673,16 @@ final class ChatViewController: UIViewController {
 
         /// Runs `TAILSCODE_NEURAL_CHECK`'s claims against this conversation's brains.
         private func startBrainChecks() {
-            guard BrainChecks.isEnabled else { return }
+            guard BrainChecks.isEnabled || BrainChecks.isPerf else { return }
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(2))
+                if BrainChecks.isPerf {
+                    guard let self else { return }
+                    await BrainChecks.runPerf(
+                        collection: self.collectionView, store: self.brain.store,
+                        toggle: { [weak self] id in self?.toggleBrain(id) })
+                    return
+                }
                 BrainChecks.runModel()
                 guard let self else { return }
                 if ProcessInfo.processInfo.environment["TAILSCODE_NEURAL_DEMO"] == "write" {

@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import QuartzCore
 import TailscodeCore
+import UIKit
 
 /// The head drawn once for a look and a size, as an image every card that wears it shares.
 ///
@@ -116,14 +117,18 @@ enum BrainPictures {
             for item in waiting { finish(item.key, nil) }
             return
         }
-        while let item = waiting.first {
-            let key = item.key
-            let pair = renderer.snapshot(
-                frame: key.frame, table: key.table, time: 0, width: key.width, height: key.height)
-            guard let pair, let image = compose(pair) else {
-                finish(key, nil)
-                continue
-            }
+        guard let item = waiting.first else {
+            scheduleRelease()
+            return
+        }
+        let key = item.key
+        let started = CACurrentMediaTime()
+        let pair = renderer.snapshot(
+            frame: key.frame, table: key.table, time: 0, width: key.width, height: key.height)
+        let rendered = CACurrentMediaTime()
+        if let pair, let image = compose(pair) {
+            AppLogger.performance.info(
+                "brain picture \(key.width)x\(key.height) gpu=\(Int((rendered - started) * 1000)) ms compose=\(Int((CACurrentMediaTime() - rendered) * 1000)) ms waiting=\(waiting.count - 1)")
             renders += 1
             let made = BrainPicture(
                 image: image, designWidth: CGFloat(key.width) / item.scale,
@@ -137,8 +142,23 @@ enum BrainPictures {
                 entries.removeLast(entries.count - capacity)
             }
             finish(key, made)
+        } else {
+            finish(key, nil)
         }
-        scheduleRelease()
+        drainNext()
+    }
+
+    /// One picture is made per turn of the run loop: a conversation whose cards wear many looks
+    /// asks for all of them in the frame its screen opens, and each is a GPU wait the main thread
+    /// would otherwise sit through back to back.
+    private static func drainNext() {
+        guard !waiting.isEmpty else {
+            scheduleRelease()
+            return
+        }
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated { drain(ready: true) }
+        }
     }
 
     private static func finish(_ key: Key, _ picture: BrainPicture?) {
@@ -160,6 +180,7 @@ enum BrainPictures {
     static func prewarm() {
         guard !warmed, BrainStore.isActive, NeuralMetalContext.shared?.isSupported == true else { return }
         warmed = true
+        warmAttributedStrings()
         hold()
         NeuralMetalContext.shared?.prepare { _ in
             if waiting.isEmpty { scheduleRelease() }
@@ -167,6 +188,17 @@ enum BrainPictures {
     }
 
     private static var warmed = false
+
+    /// The first `AttributedString` made from an `NSAttributedString` in a process loads UIKit's
+    /// attribute scope, which is 13 ms on the main thread of a simulator and is what the first open
+    /// Megatron's step bar would otherwise pay; made here once, off the main thread, it is not.
+    private static func warmAttributedStrings() {
+        DispatchQueue.global(qos: .utility).async {
+            let text = NSAttributedString(
+                string: " ", attributes: [.font: UIFont.systemFont(ofSize: 12), .foregroundColor: UIColor.label])
+            _ = AttributedString(text)
+        }
+    }
 
     /// Lets go of the textures a few seconds after the last picture, which is long enough for the
     /// next card to share the same load and for an open to find them resident.

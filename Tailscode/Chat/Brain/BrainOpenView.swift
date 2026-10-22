@@ -28,9 +28,33 @@ final class BrainOpenView: UIView, BrainBrowsing {
     let stage = BrainStageView()
     private let stageBand = UIView()
     let chips = BrainFilterBar()
-    let list = BrainStepListView()
+    private var madeList: BrainStepListView?
+
+    /// The step list of the desktop layouts, made when one needs it. A phone's open Megatron lists
+    /// its steps in `compactList` and never builds this one.
+    var list: BrainStepListView {
+        if let madeList { return madeList }
+        let made = BrainStepListView()
+        made.host = self
+        madeList = made
+        insertSubview(made, belowSubview: compactList)
+        return made
+    }
     let accordionHeader = BrainListHeader()
-    private(set) var account: BrainAccountView!
+    let compactList = BrainCompactListView()
+    private var madeAccount: BrainAccountView?
+
+    /// The account, made when something first needs it: a phone's open Megatron never builds one
+    /// until its sheet is asked for, because a collection view and its cells are what an open
+    /// row costs the main thread most.
+    var builtAccount: BrainAccountView? { madeAccount }
+
+    var account: BrainAccountView {
+        if let madeAccount { return madeAccount }
+        let made = BrainAccountView(env: env)
+        madeAccount = made
+        return made
+    }
     let footer = BrainFooterView()
     private let hairline = CALayer()
     private let leaderLine = CAShapeLayer()
@@ -55,6 +79,12 @@ final class BrainOpenView: UIView, BrainBrowsing {
     private var announced: String?
     private var legend: BrainLegendViewController?
     private var promptMemo: String?
+    private var reader: BrainReaderViewController?
+    private var reportingSlots = false
+
+    /// The list wants a different number of rows than the row was laid out for: the row makes its
+    /// metrics again.
+    var onSlotsChange: (() -> Void)?
 
     /// How tall the open row is for a width: the metrics' height plus what a narrow brain's account
     /// takes beyond the list it replaces.
@@ -68,7 +98,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
         addSubview(stageBand)
         addSubview(stage)
         addSubview(chips)
-        addSubview(list)
+        addSubview(compactList)
         addSubview(accordionHeader)
         stage.layer.addSublayer(stageLights)
         stage.layer.addSublayer(sweepLayer)
@@ -99,8 +129,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
         let placeholder = NeuralBrainModel(turn: NeuralTurn(id: "-", steps: [], outcome: .settled))
         env = BrainAccountEnv(
             model: placeholder, interaction: BrainInteraction(), metrics: initial)
-        account = BrainAccountView(env: env)
-        addSubview(account)
+        if !initial.isPhone { addSubview(account) }
         addSubview(footer)
         wire()
         isAccessibilityElement = false
@@ -111,8 +140,16 @@ final class BrainOpenView: UIView, BrainBrowsing {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     private func wire() {
-        list.host = self
+        compactList.host = self
+        compactList.onSelect = { [weak self] id in self?.selectFromCompactList(id) }
+        compactList.onMore = { [weak self] in self?.openMore() }
+        compactList.onLess = { [weak self] in self?.setListExpanded(false) }
+        compactList.onAsk = { [weak self] in
+            guard let self else { return }
+            self.actions?.goToAsk(self.turnID)
+        }
         accordionHeader.host = self
+        accordionHeader.onCount = { [weak self] in self?.presentReader(focus: nil) }
         accordionHeader.showsFailed = false
         stage.perform = { [weak self] action in self?.stageAction(action) }
         stage.onChange = { [weak self] model, time in self?.footerRead(model: model, time: time) }
@@ -147,7 +184,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
         }
         env.chooseStep = { [weak self] id, double in
             guard let self else { return }
-            self.account.suppressRevealOnce(id)
+            self.madeAccount?.suppressRevealOnce(id)
             self.browse(.click(id, double: double))
         }
         env.hoverStep = { [weak self] id in self?.hoverFromList(id) }
@@ -252,8 +289,8 @@ final class BrainOpenView: UIView, BrainBrowsing {
         for effect in effects {
             switch effect {
             case .scrollTo(let id):
-                list.reveal(id, animated: true)
-                account.reveal(step: id)
+                if !metrics.isPhone { list.reveal(id, animated: true) }
+                if accountIsHosted { account.reveal(step: id) }
             case .copySubject(let id):
                 if let step = model.step(id: id) { copy(NeuralBrowse.subjectText(of: step)) }
             case .copyOutput(let id):
@@ -261,16 +298,20 @@ final class BrainOpenView: UIView, BrainBrowsing {
             case .copyMarkdown(let id):
                 if let step = model.step(id: id) { copy(NeuralBrowse.markdown(of: step)) }
             case .focusReadout:
-                if let id = model.pinnedStep { account.reveal(step: id) }
+                if metrics.isPhone {
+                    presentReader(focus: model.pinnedStep)
+                } else if let id = model.pinnedStep {
+                    account.reveal(step: id)
+                }
             case .focusList:
-                list.endSearch()
+                madeList?.endSearch()
                 accordionHeader.endSearch()
                 _ = becomeFirstResponder()
             case .focusSearch:
                 if metrics.arrangement == .split { list.focusSearch() } else { accordionHeader.focusSearch() }
             case .expandOutputToggle:
                 env.outputExpanded = model.browseState.outputExpanded
-                account.restyle()
+                madeAccount?.restyle()
             case .showLegend: showLegend()
             case .hideLegend: hideLegend()
             case .collapseBrain: actions?.toggle(turnID)
@@ -312,23 +353,86 @@ final class BrainOpenView: UIView, BrainBrowsing {
             self.list.redraw()
         } else {
             accordionHeader.configure(list: list, searchOpen: model.browseState.searchOpen)
+            if metrics.isPhone { refreshCompactList(model: model, list: list) }
         }
         stage.refresh()
         stage.setRing(currentRing(model))
         stage.setDimmed(list.hiddenIDs)
         accessibilityLabel = Localized.text("%1$@, %2$@", Localized.text("Megatron"), model.spoken)
-        let filterKey = "\(list.filter.zones.map(\.rawValue).sorted())|\(list.filter.failedOnly)|\(list.filter.query)|\(list.visibleCount)"
-        if fromBrowse, filterKey == lastFilterKey {
-            account.restyle()
-        } else {
-            lastFilterKey = filterKey
-            account.refresh(prompt: store.promptText(for: turnID), answer: store.answerText(for: turnID))
+        if accountIsHosted {
+            let filterKey = "\(list.filter.zones.map(\.rawValue).sorted())|\(list.filter.failedOnly)|\(list.filter.query)|\(list.visibleCount)"
+            if fromBrowse, filterKey == lastFilterKey {
+                madeAccount?.restyle()
+            } else {
+                lastFilterKey = filterKey
+                account.refresh(prompt: store.promptText(for: turnID), answer: store.answerText(for: turnID))
+            }
         }
         footerRead(model: model, time: CACurrentMediaTime())
         updateLeader(animated: true)
         let drained = store.mutateReturning(turnID) { $0.drainBrowseEffects() }
         if !drained.isEmpty { apply(drained) }
-        if model.turn.outcome == .running, list.isFollowing { account.scrollToEnd(animated: false) }
+        if accountIsHosted, model.turn.outcome == .running, list.isFollowing { account.scrollToEnd(animated: false) }
+    }
+
+    /// Whether the account is on screen to be kept current: always beside the head of a wide
+    /// layout and in a phone's sheet, never on a phone with the sheet shut.
+    private var accountIsHosted: Bool { !metrics.isPhone || reader != nil }
+
+    /// The rows the phone's list draws for this model, and the row made again when their number
+    /// is not the one it was laid out for.
+    private func refreshCompactList(model: NeuralBrainModel, list: NeuralStepList) {
+        let items = BrainCompactListView.items(
+            for: list, expanded: listIsExpanded(list), slots: NeuralStageMetrics.phoneRowSlots)
+        compactList.show(
+            items: items, cursor: model.pinnedStep, hovered: model.browseState.hovered,
+            query: list.filter.query, total: list.total)
+        guard items.count != max(metrics.rowsShown, 1), !reportingSlots else { return }
+        reportingSlots = true
+        onSlotsChange?()
+        reportingSlots = false
+    }
+
+    private func listIsExpanded(_ list: NeuralStepList) -> Bool {
+        guard store?.interaction(for: turnID).listExpanded == true else { return false }
+        return list.visibleCount > NeuralStageMetrics.phoneRowSlots
+            && NeuralStageMetrics.phoneExpandsInPlace(visibleCount: list.visibleCount)
+    }
+
+    /// How many rows the compact list draws for a model: what the row lays itself out for.
+    static func compactSlots(model: NeuralBrainModel, expanded: Bool) -> Int {
+        let list = model.stepList
+        let grown = expanded && list.visibleCount > NeuralStageMetrics.phoneRowSlots
+            && NeuralStageMetrics.phoneExpandsInPlace(visibleCount: list.visibleCount)
+        return max(
+            BrainCompactListView.items(
+                for: list, expanded: grown, slots: NeuralStageMetrics.phoneRowSlots
+            ).count, 1)
+    }
+
+    private func setListExpanded(_ value: Bool) {
+        store?.interaction(for: turnID).listExpanded = value
+        Theme.Haptics.selection()
+        refreshAll(fromBrowse: true)
+    }
+
+    /// "N more steps": a short list opens where it stands, a long one in the sheet.
+    private func openMore() {
+        guard let model = browseModel else { return }
+        if NeuralStageMetrics.phoneExpandsInPlace(visibleCount: model.stepList.visibleCount) {
+            setListExpanded(true)
+        } else {
+            presentReader(focus: model.pinnedStep)
+        }
+    }
+
+    /// A press on a step selects it; a press on the one selected opens the account at it.
+    private func selectFromCompactList(_ id: String) {
+        if browseModel?.pinnedStep == id {
+            presentReader(focus: id)
+        } else {
+            browse(.click(id, double: false))
+        }
     }
 
     /// The conversation moved without the row changing: the model is read again and the account
@@ -338,7 +442,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
     }
 
     func tick() {
-        account.tick()
+        if accountIsHosted { account.tick() }
         refreshAll(fromBrowse: true)
     }
 
@@ -364,7 +468,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
         guard id != followedReplayStep else { return }
         followedReplayStep = id
         Theme.Haptics.step()
-        account.suppressRevealOnce(id)
+        madeAccount?.suppressRevealOnce(id)
         browse(.click(id, double: false))
     }
 
@@ -423,7 +527,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
         } else {
             env.interaction.expandedText.insert(id)
         }
-        account.restyle()
+        madeAccount?.restyle()
     }
 
     private func toggleWork(_ id: String) {
@@ -432,19 +536,19 @@ final class BrainOpenView: UIView, BrainBrowsing {
         } else {
             env.interaction.unfolded.insert(id)
         }
-        account.restyle()
+        madeAccount?.restyle()
     }
 
     private func moreRows(_ id: String) {
         let current = env.interaction.rowCaps[id] ?? 40
         env.interaction.rowCaps[id] = min(current + 40, 400)
-        account.restyle()
+        madeAccount?.restyle()
     }
 
     private func setOutputExpanded(_ expanded: Bool) {
         store?.mutate(turnID) { $0.setBrowseOutputExpanded(expanded) }
         env.outputExpanded = expanded
-        account.restyle()
+        madeAccount?.restyle()
     }
 
     private func diveChanged(_ zone: NeuralZone?) {
@@ -471,8 +575,17 @@ final class BrainOpenView: UIView, BrainBrowsing {
         metrics = new
         extra = Self.narrowExtra(metrics: new, viewport: viewport)
         env.metrics = new
-        list.configure(metrics: new)
-        account.configure(metrics: new)
+        if !new.isPhone { list.configure(metrics: new) }
+        compactList.configure(metrics: new)
+        if new.isPhone {
+            accordionHeader.setLeading(chips)
+            if reader == nil { madeAccount?.removeFromSuperview() }
+        } else {
+            accordionHeader.setLeading(nil)
+            if chips.superview !== self { insertSubview(chips, aboveSubview: stage) }
+            if account.superview !== self { insertSubview(account, belowSubview: footer) }
+            account.configure(metrics: new)
+        }
         footer.configure(metrics: new, running: browseModel?.turn.outcome == .running, showsRows: store?.showsRows(turnID) ?? false)
         setNeedsLayout()
     }
@@ -480,7 +593,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
     /// How much taller a narrow brain is than the list it replaces: its account is as tall as the
     /// window allows, 62 percent of what the reader sees between 340 and 640.
     static func narrowExtra(metrics: NeuralStageMetrics, viewport: CGFloat) -> CGFloat {
-        guard metrics.arrangement == .accordion else { return 0 }
+        guard metrics.arrangement == .accordion, !metrics.isPhone else { return 0 }
         let wanted = min(max((viewport * 0.62).rounded(), 340), 640)
         return max(0, wanted - CGFloat(metrics.list.height))
     }
@@ -496,9 +609,17 @@ final class BrainOpenView: UIView, BrainBrowsing {
         stageBand.frame = split ? stage.frame : CGRect(x: 0, y: stage.frame.minY, width: bounds.width, height: stage.frame.height)
         stageBand.backgroundColor = stage.backgroundColor
         stageLights.layout(in: stage.bounds)
-        chips.frame = rect(metrics.filterChips ?? .zero)
+        if !metrics.isPhone { chips.frame = rect(metrics.filterChips ?? .zero) }
         let listRect = rect(metrics.list)
-        if split {
+        if metrics.isPhone {
+            madeList?.isHidden = true
+            compactList.isHidden = false
+            accordionHeader.isHidden = false
+            accordionHeader.frame = rect(metrics.listHeader)
+            compactList.frame = rect(metrics.listRows)
+            hairline.isHidden = true
+        } else if split {
+            compactList.isHidden = true
             list.isHidden = false
             accordionHeader.isHidden = true
             list.frame = listRect
@@ -506,7 +627,8 @@ final class BrainOpenView: UIView, BrainBrowsing {
             hairline.isHidden = false
             hairline.frame = CGRect(x: CGFloat(metrics.readout.x), y: 0, width: 1, height: CGFloat(metrics.brainHeight))
         } else {
-            list.isHidden = true
+            compactList.isHidden = true
+            madeList?.isHidden = true
             accordionHeader.isHidden = false
             accordionHeader.frame = rect(metrics.listHeader)
             let top = CGFloat(metrics.listHeader.maxY)
@@ -582,6 +704,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
 
     override var accessibilityElements: [Any]? {
         get {
+            if metrics.isPhone { return [stage, accordionHeader, compactList, footer] }
             var parts: [Any] = [stage, chips]
             parts.append(metrics.arrangement == .split ? list : accordionHeader)
             parts.append(account as UIView)
@@ -667,6 +790,43 @@ final class BrainOpenView: UIView, BrainBrowsing {
         }
     }
 
+    /// Opens the account in a sheet over the transcript, at a step when there is one. The phone's
+    /// open Megatron holds no scroller of its own: this is where a long account is read.
+    func presentReader(focus: String?) {
+        guard metrics.isPhone, reader == nil, let controller = nearestViewController(),
+            controller.presentedViewController == nil
+        else { return }
+        let sheet = BrainReaderViewController(account: account, focus: focus ?? browseModel?.pinnedStep)
+        sheet.onLayout = { [weak self] width in self?.configureReader(width: width) }
+        sheet.onDismiss = { [weak self] in self?.readerDismissed() }
+        reader = sheet
+        controller.present(sheet, animated: true)
+    }
+
+    /// The account is set for the sheet's own width, which is its page rather than the row's.
+    private func configureReader(width: Double) {
+        guard let store else { return }
+        let sheetMetrics = NeuralStageMetrics.make(
+            width: min(width, NeuralStageMetrics.splitBreakpoint - 1), density: metrics.density,
+            input: .touch, zonesWithSteps: max(browseModel?.stepList.zoneChips.count ?? 6, 1))
+        account.configure(metrics: sheetMetrics)
+        lastFilterKey = ""
+        account.refresh(prompt: store.promptText(for: turnID), answer: store.answerText(for: turnID))
+    }
+
+    private func readerDismissed() {
+        reader = nil
+        madeAccount?.removeFromSuperview()
+    }
+
+    /// The sheet goes with the row that opened it: a turn closed, a cell reused.
+    func dismissReader() {
+        guard let reader else { return }
+        self.reader = nil
+        reader.dismiss(animated: false)
+        madeAccount?.removeFromSuperview()
+    }
+
     private func showLegend() {
         guard legend == nil, let controller = nearestViewController() else { return }
         let page = BrainLegendViewController()
@@ -724,12 +884,13 @@ final class BrainOpenView: UIView, BrainBrowsing {
                 width: stage.bounds.width * 0.4, height: stage.bounds.height))
         stage.field.setReveal(model: browseModel, frame: frame)
         chips.alpha = CGFloat(frame.panelAlpha)
-        list.header.alpha = CGFloat(frame.listHeaderAlpha)
+        madeList?.header.alpha = CGFloat(frame.listHeaderAlpha)
         accordionHeader.alpha = CGFloat(frame.listHeaderAlpha)
-        list.setReveal(frame.listRows)
+        madeList?.setReveal(frame.listRows)
+        compactList.setReveal(frame.listRows)
         let offset = CGPoint(x: frame.readoutOffset.x, y: frame.readoutOffset.y)
-        account.alpha = CGFloat(frame.readoutAlpha)
-        account.transform = CGAffineTransform(translationX: offset.x, y: offset.y)
+        madeAccount?.alpha = CGFloat(frame.readoutAlpha)
+        madeAccount?.transform = CGAffineTransform(translationX: offset.x, y: offset.y)
         hairline.opacity = Float(frame.readoutAlpha)
         footer.alpha = CGFloat(frame.footerAlpha)
         for part in [leaderLine, leaderDot, leaderTab] as [CALayer] { part.isHidden = true }
@@ -744,11 +905,12 @@ final class BrainOpenView: UIView, BrainBrowsing {
         sweepLayer.opacity = 0
         stage.field.clearReveal()
         chips.alpha = 1
-        list.header.alpha = 1
+        madeList?.header.alpha = 1
         accordionHeader.alpha = 1
-        list.setReveal(nil)
-        account.alpha = 1
-        account.transform = .identity
+        madeList?.setReveal(nil)
+        compactList.setReveal(nil)
+        madeAccount?.alpha = 1
+        madeAccount?.transform = .identity
         hairline.opacity = 1
         footer.alpha = 1
         setNeedsLayout()
@@ -775,8 +937,9 @@ final class BrainOpenView: UIView, BrainBrowsing {
     /// The first content of the account arriving after the move: a 90 ms cross-fade.
     func fadeInContent() {
         guard !UIAccessibility.isReduceMotionEnabled else { return }
+        guard let account = madeAccount else { return }
         account.alpha = 0
-        UIView.animate(withDuration: NeuralTransition.contentFadeDuration) { self.account.alpha = 1 }
+        UIView.animate(withDuration: NeuralTransition.contentFadeDuration) { account.alpha = 1 }
     }
 }
 
@@ -903,6 +1066,10 @@ final class BrainLegendViewController: UIViewController, UIPopoverPresentationCo
             case "unfold": account.walkUnfold(Int(value) ?? 1)
             case "reader": account.walkReader(offset: value)
             case "legend": browse(.key(.character("?")))
+            case "more": openMore()
+            case "less": setListExpanded(false)
+            case "sheet": presentReader(focus: step(value))
+            case "dismiss": dismissReader()
             case "dump":
                 func walk(_ view: UIView, _ depth: Int) {
                     let pad = String(repeating: " ", count: depth)

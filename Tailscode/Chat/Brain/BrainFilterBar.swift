@@ -6,7 +6,7 @@ import UIKit
 /// filter on or off and a long press shows only that zone. In a narrow row the failed toggle is the
 /// last chip; beside the head it lives in the list's header.
 @MainActor
-final class BrainFilterBar: UIView {
+final class BrainFilterBar: UIView, UIScrollViewDelegate {
     var onZone: ((NeuralZone, Bool) -> Void)?
     var onFailed: (() -> Void)?
 
@@ -15,12 +15,18 @@ final class BrainFilterBar: UIView {
     private let failed = BrainFailedChip()
     private var signature = ""
     private var includesFailed = false
+    private let fade = CAGradientLayer()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         scroll.showsHorizontalScrollIndicator = false
         scroll.alwaysBounceHorizontal = false
         scroll.clipsToBounds = false
+        scroll.delegate = self
+        clipsToBounds = true
+        fade.startPoint = CGPoint(x: 0, y: 0.5)
+        fade.endPoint = CGPoint(x: 1, y: 0.5)
+        fade.colors = [UIColor.white.cgColor, UIColor.white.cgColor, UIColor.clear.cgColor]
         addSubview(scroll)
         failed.onTap = { [weak self] in self?.onFailed?() }
         scroll.addSubview(failed)
@@ -89,6 +95,26 @@ final class BrainFilterBar: UIView {
         }
         scroll.contentSize = CGSize(width: max(x, bounds.width), height: bounds.height)
         scroll.isScrollEnabled = x > bounds.width + 1
+        updateFade()
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) { updateFade() }
+
+    /// The chips run past the bar's right edge: the last of them fades out until the row has been
+    /// scrolled to its end, so a cut chip reads as more to come rather than as a mistake.
+    private func updateFade() {
+        let more = scroll.isScrollEnabled
+            && scroll.contentOffset.x + bounds.width < scroll.contentSize.width - 1
+        guard more, bounds.width > 0 else {
+            layer.mask = nil
+            return
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        fade.frame = bounds
+        fade.locations = [0, NSNumber(value: max(0, 1 - 22 / Double(bounds.width))), 1]
+        layer.mask = fade
+        CATransaction.commit()
     }
 }
 

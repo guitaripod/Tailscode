@@ -305,9 +305,15 @@ final class BrainNodeField {
 
     func resetFired() { lastFired = 0 }
 
-    /// The design-space rectangle of a zone's label, grown so a finger can find it.
+    /// The design-space rectangle of a zone's label, grown so a finger can find it: never less
+    /// than a finger's width and height on the screen, however small the head is drawn.
     func labelHit(at point: CGPoint) -> NeuralZone? {
-        for (zone, rect) in zoneLabelRects where rect.contains(point) { return zone }
+        let finger = BrainCanvas.hit / max(scale, 0.01)
+        for (zone, rect) in zoneLabelRects {
+            let grown = rect.insetBy(
+                dx: -max(0, (finger - rect.width) / 2), dy: -max(0, (finger - rect.height) / 2))
+            if grown.contains(point) { return zone }
+        }
         return nil
     }
 
@@ -360,8 +366,9 @@ final class BrainNodeField {
 
     private var zonesInUse: Set<NeuralZone> = []
 
-    /// Labels read at six or seven points on a phone, however small the head is drawn.
-    private var labelFontSize: CGFloat { max(9, 7 / max(scale, 0.01)) }
+    /// Labels read at six or seven points on a phone, however small the head is drawn, but never
+    /// larger than the well under them can carry: a head of 208 points draws them smaller.
+    private var labelFontSize: CGFloat { max(9, min(7 / max(scale, 0.01), 15)) }
 
     private func applyWells(_ model: NeuralBrainModel) {
         var used = Set<NeuralZone>()

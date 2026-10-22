@@ -301,9 +301,11 @@ final class BrainCardView: UIView {
             third.attributedText?.string ?? nowLabel.attributedText?.string ?? "", isLive)
         isAccessibilityElement = false
         press.isAccessibilityElement = true
-        press.accessibilityLabel = isLive ? liveSpoken(card, reading: reading) : card.spoken
+        press.accessibilityLabel = Localized.text(
+            "%1$@, %2$@", Localized.text("Megatron"),
+            isLive ? liveSpoken(card, reading: reading) : card.spoken)
         press.accessibilityValue = row.isOpen ? Localized.text("Expanded") : Localized.text("Collapsed")
-        press.accessibilityHint = Localized.text("Double tap to open the head")
+        press.accessibilityHint = Localized.text("Double tap to open Megatron")
         press.accessibilityCustomActions = actions(card: card, model: model)
         setNeedsLayout()
     }

@@ -54,6 +54,7 @@ final class BrainStageView: UIView {
     nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
     private var parked = false
     private var lastDesignScale: CGFloat = 0
+    private let backSwipe = UISwipeGestureRecognizer()
 
     /// What the stage asks of the brain it belongs to.
     var perform: ((NeuralBrowse.Action) -> Void)?
@@ -201,6 +202,7 @@ final class BrainStageView: UIView {
         dive = nil
         diveScale = 1
         divedZone = nil
+        backSwipe.isEnabled = false
         head.transform = .identity
         lastTap = nil
         elements = []
@@ -218,6 +220,7 @@ final class BrainStageView: UIView {
     }
 
     func setDimmed(_ ids: Set<String>) {
+        guard field.dimmed != ids else { return }
         field.dimmed = ids
         guard let model = store?.model(for: turnID) else { return }
         field.refresh(model: model, time: CACurrentMediaTime(), reduceMotion: reduceMotion)
@@ -251,6 +254,7 @@ final class BrainStageView: UIView {
 
     func dive(to zone: NeuralZone) {
         guard store?.model(for: turnID) != nil else { return }
+        backSwipe.isEnabled = true
         divedZone = zone
         onDive?(zone)
         animateDive(to: zone == .say ? 3.4 : 2.6)
@@ -292,6 +296,7 @@ final class BrainStageView: UIView {
         if diveScale <= 1.0001 {
             diveScale = 1
             divedZone = nil
+            backSwipe.isEnabled = false
             head.transform = .identity
         }
         refresh()
@@ -319,9 +324,11 @@ final class BrainStageView: UIView {
     private func installGestures() {
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
         let hover = UIHoverGestureRecognizer(target: self, action: #selector(hovered(_:)))
-        let back = UISwipeGestureRecognizer(target: self, action: #selector(swipedBack))
-        back.direction = .right
-        for recognizer in [tap, hover, back] { pad.addGestureRecognizer(recognizer) }
+        backSwipe.addTarget(self, action: #selector(swipedBack))
+        backSwipe.direction = .right
+        backSwipe.delegate = self
+        backSwipe.isEnabled = false
+        for recognizer in [tap, hover, backSwipe] { pad.addGestureRecognizer(recognizer) }
         pad.addInteraction(UIContextMenuInteraction(delegate: self))
     }
 
@@ -341,14 +348,16 @@ final class BrainStageView: UIView {
         guard gesture.state == .ended, let model = store?.model(for: turnID) else { return }
         let location = gesture.location(in: pad)
         let point = designPoint(location)
-        if divedZone == nil, let zone = field.labelHit(at: CGPoint(x: point.x, y: point.y)),
+        let node = model.hit(at: point, slop: slop)
+        if node == nil, divedZone == nil,
+            let zone = field.labelHit(at: CGPoint(x: point.x, y: point.y)),
             model.steps.contains(where: { $0.zone == zone })
         {
             Theme.Haptics.selection()
             dive(to: zone)
             return
         }
-        guard let id = model.hit(at: point, slop: slop) else {
+        guard let id = node else {
             if model.pinnedStep != nil { perform?(.key(.escape)) }
             return
         }
@@ -479,6 +488,27 @@ final class BrainStageView: UIView {
             }
         }
     #endif
+}
+
+extension BrainStageView: UIGestureRecognizerDelegate {
+    /// The swipe that leaves a dive is the stage's only while a dive is open, and never within a
+    /// thumb of either screen edge: that strip belongs to the navigation controller's interactive
+    /// pop, which a recogniser of ours must neither delay nor win against.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard gestureRecognizer === backSwipe, divedZone != nil else { return false }
+        guard let window else { return true }
+        return Self.swipeMayStart(atX: touch.location(in: window).x, windowWidth: window.bounds.width)
+    }
+
+    private static let systemEdge: CGFloat = 40
+
+    /// Whether a swipe starting at `x` of a window `windowWidth` wide is the stage's to take.
+    static func swipeMayStart(atX x: CGFloat, windowWidth: CGFloat) -> Bool {
+        min(x, windowWidth - x) > systemEdge
+    }
+
+    /// Whether the stage holds a swipe recogniser at all right now: only while a dive is open.
+    var holdsSwipe: Bool { backSwipe.isEnabled }
 }
 
 extension BrainStageView: UIContextMenuInteractionDelegate {

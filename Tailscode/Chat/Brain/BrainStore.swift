@@ -518,6 +518,8 @@ final class BrainInteraction {
     var planExpanded: Bool?
     var openedAt: CFTimeInterval = 0
     var replayOnOpen = false
+    /// A phone's step list was opened where it stands, past its first few rows.
+    var listExpanded = false
     /// A zone the card's chip asked to open the brain diving into.
     var pendingDive: NeuralZone?
 }

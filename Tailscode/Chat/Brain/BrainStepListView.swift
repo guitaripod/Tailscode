@@ -19,13 +19,19 @@ protocol BrainBrowsing: AnyObject {
 final class BrainListHeader: UIView, UITextFieldDelegate {
     weak var host: BrainBrowsing?
     var showsFailed = true
+    /// A phone's single bar: the zone chips take the room the search and the count leave, and the
+    /// count opens the account.
+    var onCount: (() -> Void)?
 
     private let searchButton = UIButton(type: .system)
     private let field = UITextField()
     private let count = UILabel()
     private let failed = BrainFailedChip()
     private let rule = UIView()
+    private let countButton = UIControl()
+    private let cancel = UIButton(type: .system)
     private var searchOpen = false
+    private var leading: UIView?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -69,11 +75,45 @@ final class BrainListHeader: UIView, UITextFieldDelegate {
         count.textAlignment = .right
         failed.onTap = { [weak self] in self?.host?.browse(.failedToggle) }
         rule.backgroundColor = Theme.Color.separator
-        for view in [rule, searchButton, field, failed, count] { addSubview(view) }
+        for view in [rule, searchButton, field, failed, count, countButton, cancel] { addSubview(view) }
+        countButton.isHidden = true
+        cancel.isHidden = true
+        var cancelConfig = UIButton.Configuration.plain()
+        cancelConfig.attributedTitle = AttributedString(
+            NSAttributedString(
+                string: Localized.text("Cancel"),
+                attributes: Theme.Ramp.attributes(.control, color: Theme.Color.accent)))
+        cancelConfig.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8)
+        cancel.configuration = cancelConfig
+        cancel.addAction(UIAction { [weak self] _ in self?.host?.browse(.key(.escape)) }, for: .touchUpInside)
+        countButton.addAction(UIAction { [weak self] _ in self?.onCount?() }, for: .touchUpInside)
+        countButton.isAccessibilityElement = true
+        countButton.accessibilityTraits = .button
         isAccessibilityElement = false
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// Puts a phone's zone chips in the bar, to the left of the search and the count, and makes the
+    /// search an icon and the count a way into the account. Nil gives the bar back to the desktop's
+    /// layout.
+    func setLeading(_ view: UIView?) {
+        guard view !== leading else { return }
+        leading?.removeFromSuperview()
+        leading = view
+        if let view { insertSubview(view, belowSubview: searchButton) }
+        var config = searchButton.configuration ?? .plain()
+        config.attributedTitle = view == nil
+            ? AttributedString(
+                NSAttributedString(
+                    string: Localized.text("Search"),
+                    attributes: Theme.Ramp.attributes(.control, color: Theme.Color.secondaryLabel)))
+            : nil
+        config.imagePadding = view == nil ? 6 : 0
+        searchButton.configuration = config
+        countButton.isHidden = view == nil
+        setNeedsLayout()
+    }
 
     func configure(list: NeuralStepList, searchOpen open: Bool) {
         searchOpen = open
@@ -83,19 +123,25 @@ final class BrainListHeader: UIView, UITextFieldDelegate {
         field.layer.borderColor = BrainCanvas.rule.resolvedColor(with: traitCollection).cgColor
         field.backgroundColor = Theme.Color.background
         let filtered = list.filter.isActive
+        let countWords = leading == nil ? list.countLabel : list.countLabel + " \u{203A}"
         count.attributedText = NSAttributedString(
-            string: list.countLabel,
+            string: countWords,
             attributes: Theme.Ramp.attributes(
                 .rowStamp, color: filtered ? Theme.Color.accent : Theme.Color.secondaryLabel,
                 alignment: .right))
+        countButton.accessibilityLabel = list.countLabel
+        countButton.accessibilityHint = NeuralReading.readAccountLabel
+        count.isHidden = open && leading != nil
         failed.isHidden = !(showsFailed && list.offersFailedFilter)
         failed.configure(count: list.failedCount, isOn: list.filter.failedOnly)
         setNeedsLayout()
     }
 
     func focusSearch() {
+        searchOpen = true
         searchButton.isHidden = true
         field.isHidden = false
+        layoutIfNeeded()
         field.becomeFirstResponder()
     }
 
@@ -118,8 +164,45 @@ final class BrainListHeader: UIView, UITextFieldDelegate {
         return true
     }
 
+    private func layoutBar() {
+        rule.frame = CGRect(x: 0, y: bounds.height - 1 / UIScreen.main.scale, width: bounds.width, height: 1 / UIScreen.main.scale)
+        let countSize = count.attributedText?.size() ?? .zero
+        let countWidth = ceil(countSize.width) + 2
+        count.frame = CGRect(
+            x: bounds.width - countWidth - 8, y: (bounds.height - countSize.height) / 2,
+            width: countWidth, height: ceil(countSize.height))
+        countButton.frame = CGRect(
+            x: count.frame.minX - 10, y: 0, width: countWidth + 20 + 8, height: bounds.height)
+        failed.isHidden = true
+        let reach = max(TouchSlop.hit, searchButton.sizeThatFits(CGSize(width: 60, height: 30)).width)
+        cancel.isHidden = !searchOpen
+        countButton.isHidden = searchOpen
+        if searchOpen {
+            searchButton.frame = .zero
+            leading?.isHidden = true
+            let cancelSize = cancel.sizeThatFits(CGSize(width: 120, height: TouchSlop.hit))
+            cancel.frame = CGRect(
+                x: bounds.width - cancelSize.width - 4, y: (bounds.height - TouchSlop.hit) / 2,
+                width: cancelSize.width, height: TouchSlop.hit)
+            field.frame = CGRect(
+                x: 8, y: (bounds.height - 30) / 2, width: max(80, cancel.frame.minX - 12), height: 30)
+            return
+        }
+        field.frame = .zero
+        leading?.isHidden = false
+        searchButton.frame = CGRect(
+            x: count.frame.minX - 10 - reach, y: (bounds.height - TouchSlop.hit) / 2, width: reach,
+            height: TouchSlop.hit)
+        leading?.frame = CGRect(
+            x: 0, y: 0, width: max(0, searchButton.frame.minX - 4), height: bounds.height)
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
+        if leading != nil {
+            layoutBar()
+            return
+        }
         rule.frame = CGRect(x: 0, y: bounds.height - 1 / UIScreen.main.scale, width: bounds.width, height: 1 / UIScreen.main.scale)
         let countSize = count.attributedText?.size() ?? .zero
         let countWidth = ceil(countSize.width) + 2
