@@ -82,7 +82,9 @@ final class MacSummon {
 
     /// Installed once for the life of the process. Carbon delivers to an application-wide target,
     /// so a handler per registration would fan one press into as many summons as the chord has
-    /// been changed.
+    /// been changed. The press is handed to the main actor as a job rather than asserted onto it:
+    /// Carbon calls back from outside any Swift job, and asking the runtime whether this thread is
+    /// the main executor faults there on macOS 27.
     private func installHandler() {
         guard !installed else { return }
         installed = true
@@ -91,7 +93,7 @@ final class MacSummon {
         InstallEventHandler(
             GetApplicationEventTarget(),
             { _, _, _ -> OSStatus in
-                MainThread.call { MacSummon.shared.fire() }
+                Task { @MainActor in MacSummon.shared.fire() }
                 return noErr
             }, 1, &kind, nil, nil)
     }
