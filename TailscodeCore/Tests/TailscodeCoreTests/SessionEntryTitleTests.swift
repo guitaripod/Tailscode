@@ -6,12 +6,16 @@ import Testing
 
 @Suite struct SessionEntryTitleTests {
     private func entry(
-        _ title: String, id: String = "s1", profile: String = "p1", directory: String? = "/work"
+        _ title: String, id: String = "s1", profile: String = "p1", directory: String? = "/work",
+        model: String? = nil, provider: String? = nil, effort: String? = nil
     ) -> SessionEntry {
         var session = AgentSession(
             id: id, agentType: .openCode, title: title,
             createdAt: Date(timeIntervalSince1970: 1), updatedAt: Date(timeIntervalSince1970: 2))
         session.directory = directory
+        session.model = model
+        session.modelProviderID = provider
+        session.reasoningEffort = effort
         return SessionEntry(
             profileID: profile, profileName: "studio", host: "studio", backendType: .openCode,
             session: session)
@@ -55,10 +59,8 @@ import Testing
 
     @Test func aListingMovesTheModelAndLevelAndStillRefusesAPlaceholderTitle() {
         let opened = entry("Fix login")
-        var listed = entry(AgentSession.untitledTitle)
-        listed.session.model = "gpt-5.6"
-        listed.session.modelProviderID = "openai"
-        listed.session.reasoningEffort = "high"
+        let listed = entry(
+            AgentSession.untitledTitle, model: "gpt-5.6", provider: "openai", effort: "high")
         let adopted = opened.adoptingListing(from: listed)
         #expect(adopted?.session.title == "Fix login")
         #expect(adopted?.session.model == "gpt-5.6")
