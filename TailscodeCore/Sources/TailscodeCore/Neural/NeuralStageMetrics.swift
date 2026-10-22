@@ -224,6 +224,34 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     public static let hintMinWidth = 520.0
     public static let rowsMin = 8
     public static let rowsMax = 14
+
+    /// The phone's compact open stage. The head is `phoneHeadWidth` wide (152 tall), the zone
+    /// chips and the search share one `phoneBarHeight` bar, the step list is `phoneRowSlots` rows of
+    /// `phoneRowHeight` (a "more steps" row is one of them), and the footer is `phoneFooterHeight`.
+    /// Nothing in it scrolls and nothing in it grows with the viewport.
+    public static let phoneHeadWidth = 208.0
+    public static let phoneBarHeight = 40.0
+    public static let phoneRowHeight = 32.0
+    public static let phoneRowSlots = 5
+    public static let phoneFooterHeight = 36.0
+    public static let phoneFooterGap = 4.0
+    public static let phoneRegionGap = 4.0
+    /// The most the largest type scale grows a phone row, bar and footer.
+    public static let phoneMaxTextScale = 1.5
+    /// A list of at most this many visible steps expands in place under its "more steps" row; a
+    /// longer one opens the account in a sheet, where reading forty rows is a screen of its own.
+    public static let phoneInPlaceMax = 12
+
+    /// Whether a list of `visibleCount` steps that does not fit the phone's slots expands in
+    /// place, rather than opening in a sheet.
+    public static func phoneExpandsInPlace(visibleCount: Int) -> Bool {
+        visibleCount <= phoneInPlaceMax
+    }
+
+    /// How many slots an expanded phone list takes: every step and a row to collapse it again.
+    public static func phoneExpandedSlots(visibleCount: Int) -> Int {
+        max(visibleCount + 1, phoneRowSlots)
+    }
     /// An accordion's expanded row: its content is at most this tall, inside a 3 pt zone edge.
     public static let accordionContentMaxHeight = 340.0
     public static let accordionContentInset = 16.0
@@ -279,6 +307,9 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     public let brainHeight: Double
     /// The height of the open row: the brain, the gap and the footer.
     public let rowHeight: Double
+    /// Whether this is the phone's compact open stage: no scroller in it, one bar for the zone
+    /// chips and the search, a list of `rowsShown` slots, and the account in a sheet.
+    public let isPhone: Bool
     /// The height of the collapsed row.
     public var cardHeight: Double { card.height }
     /// What one unit of the head's design space is in points on the head.
@@ -452,13 +483,22 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     ///     viewport rule when `viewportHeight` is given.
     ///   - cardMinHeight: the height the card's own words need where the type is larger than the
     ///     design's; the card is never shorter than its density says and grows to this.
+    ///   - phone: a touch row under the split breakpoint takes the compact open stage (see
+    ///     `phoneHeadWidth`); `rows` then counts slots and `viewportHeight` is ignored.
+    ///   - textScale: how much larger than the design's the reader's type is, one or more; the
+    ///     compact stage's rows, bar and footer grow with it up to `phoneMaxTextScale`.
     public static func make(
         width rawWidth: Double, density: ChatDensity, input: ChatInput = .pointer,
         zonesWithSteps: Int = NeuralZone.allCases.count, rows: Int? = nil,
-        viewportHeight: Double? = nil, cardMinHeight: Double = 0
+        viewportHeight: Double? = nil, cardMinHeight: Double = 0, phone: Bool = false,
+        textScale: Double = 1
     ) -> NeuralStageMetrics {
         let width = max(rawWidth, 0)
         let card = makeCard(width: width, density: density, minHeight: cardMinHeight)
+        if phone, input == .touch, width < splitBreakpoint {
+            return makePhone(
+                width: width, density: density, card: card, rows: rows, textScale: textScale)
+        }
         let rowHeight = listRowHeight(input: input)
         let footerHeight: Double = density == .compact ? 30 : 36
         let footerGap: Double = density == .compact ? 6 : 8
@@ -529,13 +569,41 @@ public struct NeuralStageMetrics: Sendable, Equatable {
             filterChips: chips, list: list, listHeader: header, listRows: rowsRect, listHint: hint,
             listRowHeight: rowHeight, rowsShown: shown, readout: readout, accountLayout: layout,
             account: region, story: storyRect, detail: detailRect, footer: footer,
-            brainHeight: brain, rowHeight: footer.maxY)
+            brainHeight: brain, rowHeight: footer.maxY, isPhone: false)
+    }
+
+    private static func makePhone(
+        width: Double, density: ChatDensity, card: Card, rows: Int?, textScale: Double
+    ) -> NeuralStageMetrics {
+        let scale = min(max(textScale, 1), phoneMaxTextScale)
+        let rowHeight = (phoneRowHeight * scale).rounded()
+        let barHeight = (phoneBarHeight * scale).rounded()
+        let footerHeight = (phoneFooterHeight * scale).rounded()
+        let slots = max(rows ?? phoneRowSlots, 1)
+        let headWidth = min(phoneHeadWidth, width)
+        let head = NeuralRect(
+            x: max((width - headWidth) / 2, 0), y: 0, width: headWidth, height: headWidth * aspect)
+        let bar = NeuralRect(
+            x: 0, y: head.maxY + phoneRegionGap, width: width, height: barHeight)
+        let rowsRect = NeuralRect(
+            x: 0, y: bar.maxY, width: width, height: Double(slots) * rowHeight)
+        let list = NeuralRect(x: 0, y: bar.y, width: width, height: barHeight + rowsRect.height)
+        let footer = NeuralRect(
+            x: 0, y: list.maxY + phoneFooterGap, width: width, height: footerHeight)
+        return NeuralStageMetrics(
+            width: width, density: density, input: .touch, arrangement: .accordion,
+            filterStyle: .chips, readoutType: .regular, card: card, stage: head, stageHover: head,
+            column: NeuralRect(x: 0, y: 0, width: width, height: list.maxY), filterPanel: nil,
+            filterChips: bar, list: list, listHeader: bar, listRows: rowsRect, listHint: nil,
+            listRowHeight: rowHeight, rowsShown: slots, readout: .zero, accountLayout: .single,
+            account: rowsRect, story: rowsRect, detail: nil, footer: footer,
+            brainHeight: list.maxY, rowHeight: footer.maxY, isPhone: true)
     }
 
     /// The row height while an accordion row is expanded to its content's largest; a split row is
     /// the same height either way.
     public var pinnedRowHeight: Double {
-        arrangement == .split ? rowHeight : rowHeight + accordionContentMaxHeight
+        arrangement == .split || isPhone ? rowHeight : rowHeight + accordionContentMaxHeight
     }
 
     private static func makeCard(width: Double, density: ChatDensity, minHeight: Double) -> Card {

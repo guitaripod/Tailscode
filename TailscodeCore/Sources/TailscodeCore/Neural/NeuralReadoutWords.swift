@@ -29,6 +29,23 @@ extension NeuralReading {
         count == 1 ? Localized.text("1 more line") : Localized.text("%lld more lines", count)
     }
 
+    /// "N more steps" under the first steps of a phone's list; the whole list or its sheet opens
+    /// from it.
+    public static func moreSteps(_ count: Int) -> String {
+        count == 1 ? Localized.text("1 more step") : Localized.text("%lld more steps", count)
+    }
+
+    /// "N earlier steps" above the last steps of a phone's list.
+    public static func earlierSteps(_ count: Int) -> String {
+        count == 1 ? Localized.text("1 earlier step") : Localized.text("%lld earlier steps", count)
+    }
+
+    /// What closes a phone's list that was opened in place.
+    public static var showFewerSteps: String { Localized.text("Show fewer steps") }
+
+    /// What opens the account of a long list in a sheet.
+    public static var readAccountLabel: String { Localized.text("Read the whole account") }
+
     /// "retried at 11".
     public static func retriedAt(_ number: Int) -> String {
         Localized.text("retried at %@", String(number))
