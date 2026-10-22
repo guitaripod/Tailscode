@@ -161,7 +161,7 @@ enum AnalyticsCardRenderer {
                     text, at: CGPoint(x: pad, y: y), width: contentWidth,
                     size: AnalyticsShare.Card.footSize, weight: .regular,
                     color: nsColor(card.palette.textDim), lines: lines)
-            case .spacer:
+            case .spacer, .stats:
                 break
             }
             y += AnalyticsShare.Card.height(block)

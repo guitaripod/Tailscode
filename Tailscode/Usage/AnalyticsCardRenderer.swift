@@ -155,7 +155,7 @@ enum AnalyticsCardRenderer {
                     text, at: CGPoint(x: pad, y: y), width: contentWidth,
                     size: AnalyticsShare.Card.footSize * scale, weight: .regular,
                     color: color(card.palette.textDim), lines: lines, ctx: ctx)
-            case .spacer:
+            case .spacer, .stats:
                 break
             }
             y += AnalyticsShare.Card.height(block) * scale
