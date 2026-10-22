@@ -197,7 +197,7 @@ public struct AnalyticsShare: Sendable, Equatable {
         public static let dailyBarWidth: Double = 18
         public static let weekdayHeight: Double = 56
         public static let meterTrackHeight: Double = 10
-        public static let meterTrackOffset: Double = 30
+        public static let meterTrackOffset: Double = 32
         public static let corner: Double = 36
         public static let innerCorner: Double = 20
 
