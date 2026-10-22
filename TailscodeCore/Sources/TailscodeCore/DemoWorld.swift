@@ -342,6 +342,75 @@ public enum DemoWorld {
                 streakDays: 9))
     }
 
+    /// What a homelab's llama.cpp server did over thirty days, in the shape an opencode server can
+    /// afford to report: the money, the tokens by tier, the model and the project of each session
+    /// record and nothing about the turns inside. Two codenamed models on the owner's own GPU, so
+    /// the demo shows the section that exists for them. Deterministic, like the hosted ledger.
+    public static func demoLocalAnalytics(now: Date = Date()) -> UsageAnalyticsReport {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone.current
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let today = calendar.startOfDay(for: now)
+        let window = 30
+        var seed: UInt64 = 0xB017
+        func noise() -> Double {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return Double((seed >> 33) & 0xFFFF) / 65_535
+        }
+
+        var daily: [UsageAnalyticsReport.Day] = []
+        var tokens = UsageAnalyticsReport.Tokens()
+        var sessions = 0
+        for offset in (0..<window).reversed() {
+            guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else {
+                continue
+            }
+            let weekday = calendar.component(.weekday, from: date)
+            let weekend = weekday == 1 || weekday == 7
+            if noise() < (weekend ? 0.3 : 0.08) { continue }
+            let heat = (weekend ? 0.6 : 1.0) * (0.3 + noise())
+            let day = UsageAnalyticsReport.Day(
+                day: formatter.string(from: date), costUSD: 0,
+                tokens: UsageAnalyticsReport.Tokens(
+                    input: Int(330_000 * heat), output: Int(55_000 * heat)),
+                sessions: 1 + Int(2.4 * heat))
+            daily.append(day)
+            sessions += day.sessions
+            tokens = UsageAnalyticsReport.Tokens(
+                input: tokens.input + day.tokens.input, output: tokens.output + day.tokens.output)
+        }
+        func share(_ part: Double) -> UsageAnalyticsReport.Tokens {
+            UsageAnalyticsReport.Tokens(
+                input: Int(Double(tokens.input) * part), output: Int(Double(tokens.output) * part))
+        }
+        return UsageAnalyticsReport(
+            since: calendar.date(byAdding: .day, value: -(window - 1), to: today) ?? today,
+            generatedAt: now, days: window,
+            totals: UsageAnalyticsReport.Totals(
+                costUSD: 0, tokens: tokens, sessions: sessions, activeDays: daily.count),
+            daily: daily,
+            models: [
+                SessionSpendReport.ModelShare(
+                    model: "llama-server/qwen3-coder-30b-a3b", turns: 0, tokens: share(0.64),
+                    costUSD: 0),
+                SessionSpendReport.ModelShare(
+                    model: "llama-server/qwen3.6-27b", turns: 0, tokens: share(0.36), costUSD: 0),
+            ],
+            projects: [
+                UsageAnalyticsReport.Project(
+                    directory: "/home/demo/dev/acme-api", name: "acme-api",
+                    sessions: sessions * 6 / 10, tokens: share(0.6)),
+                UsageAnalyticsReport.Project(
+                    directory: "/home/demo/dev/acme-web", name: "acme-web",
+                    sessions: sessions * 4 / 10, tokens: share(0.4)),
+            ],
+            coverage: .sessionTotals)
+    }
+
     public static let openCode: MockBackend = MockBackend(
         agentType: .openCode,
         scripts: [
@@ -384,6 +453,12 @@ public enum DemoWorld {
             ModelInfo(
                 id: "glm-5.3-flash", name: "GLM-5.3 Flash", providerID: "opencode-go",
                 variants: ["low", "high"]),
+            ModelInfo(
+                id: "qwen3-coder-30b-a3b", name: "Bolt", providerID: "llama-server",
+                contextWindow: 262_144),
+            ModelInfo(
+                id: "qwen3.6-27b", name: "Pennyroyal", providerID: "llama-server",
+                contextWindow: 131_072),
         ],
         defaultModelID: "claude-sonnet-5",
         health: ServerHealth(healthy: true, version: "0.9.4"),
@@ -391,10 +466,11 @@ public enum DemoWorld {
             supportsFileBrowsing: true, supportsDiffs: true, supportsPermissions: true,
             supportsMultipleSessions: true, supportsModelSelection: true, supportsAttachments: true,
             supportsReasoningEffort: true, supportsClearing: false, supportsForking: false,
-            supportsAbort: true, supportsSessionUsage: true, supportsQuestions: true,
-            supportsRenaming: true, supportsSubagents: false, supportsCommands: true,
-            supportsRevert: true),
+            supportsAbort: true, supportsSessionUsage: true, supportsUsageAnalytics: true,
+            supportsQuestions: true, supportsRenaming: true, supportsSubagents: false,
+            supportsCommands: true, supportsRevert: true),
         sessionUsage: AgentUsage(costUSD: 0.42, tokens: 18_431),
+        analytics: demoLocalAnalytics(),
         fileTree: [
             ".": [
                 FileNode(path: "/home/demo/dev", name: "dev", isDirectory: true),

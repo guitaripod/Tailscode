@@ -339,12 +339,7 @@ public struct UsageAnalytics: Sendable, Equatable {
         let localWorkTokens = localRows.reduce(0) { $0 + $1.tokens.fresh }
         let localLed = Self.isLocalLed(localTokens: localWorkTokens, allTokens: allWork)
         self.isLocalLed = localLed
-        // Money is the yardstick wherever any was spent and the work did not mostly run for
-        // free. An account whose models all run on a machine the person owns has no money to
-        // scale by, and a chart of zeroes would say the month never happened; one that did most
-        // of its work there and paid a little for the rest is about the work, with the bill a
-        // line beneath. Either way it is measured in the work itself.
-        let priced = totals.costUSD > 0 && !localLed
+        let priced = Self.measuresMoney(costUSD: totals.costUSD, localLed: localLed)
         let tokenYardstickWithBill = totals.costUSD > 0 && localLed
         let dayTokens = localLed ? dayFresh : dayTotals
         let work: (SessionSpendReport.Tokens) -> Int = { localLed ? $0.fresh : $0.total }
@@ -1363,6 +1358,15 @@ public struct UsageAnalytics: Sendable, Equatable {
         contextWindows(from: profileIDs.flatMap(ModelCatalogStore.cached))
     }
 
+    /// Makes sure the names exist to be read. A catalog is remembered whenever a chat or a chooser
+    /// asked a server for it, so a device that has only ever opened the month has none, and the
+    /// models would wear their ids. A server that has just answered the ledger can be asked once
+    /// more; one whose catalog is already remembered is left alone.
+    public static func rememberModels(profileID: String, backend: any CodingAgentBackend) async {
+        guard ModelCatalogStore.cached(profileID).isEmpty else { return }
+        await ModelCatalogStore.refresh(profileID: profileID, backend: backend)
+    }
+
     private static func catalogTable<Value: Equatable>(
         _ catalog: [ModelInfo], _ value: (ModelInfo) -> Value?
     ) -> [String: Value] {
@@ -1379,6 +1383,15 @@ public struct UsageAnalytics: Sendable, Equatable {
             table[id] = known
         }
         return table
+    }
+
+    /// Money is the yardstick wherever any was spent and the work did not mostly run for free. An
+    /// account whose models all run on a machine the person owns has no money to scale by, and a
+    /// chart of zeroes would say the month never happened; one that did most of its work there
+    /// and paid a little for the rest is about the work, with the bill a line beneath. Either way
+    /// it is measured in the work itself.
+    private static func measuresMoney(costUSD: Double, localLed: Bool) -> Bool {
+        costUSD > 0 && !localLed
     }
 
     /// Whether the work mostly ran on the person's own hardware. Compared as tokens rather than
@@ -1475,7 +1488,7 @@ public struct UsageAnalytics: Sendable, Equatable {
         var points = Int((share * 100).rounded())
         if !led { points = min(points, 49) }
         if !everything { points = min(points, 99) }
-        return points == 0 ? Localized.text("<1%") : "\(points)%"
+        return points == 0 ? "<1%" : "\(points)%"
     }
 
     private static func localWork(
