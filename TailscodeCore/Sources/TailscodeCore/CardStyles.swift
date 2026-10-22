@@ -117,7 +117,7 @@ public struct CardStyle: Sendable, Equatable, Identifiable {
     public static func published(_ palette: AnalyticsShare.Palette) -> AnalyticsShare.Palette {
         func readable(_ hex: String, ratio: Double) -> String {
             var out = hex
-            for ground in [palette.canvas, palette.canvasEnd] {
+            for ground in [palette.canvas, palette.canvasEnd, palette.raised] {
                 out = Contrast.adjusted(out, on: ground, ratio: ratio) ?? out
             }
             return out
@@ -140,6 +140,25 @@ public enum CardStyleSelection {
 
     public static var current: CardStyle {
         CardStyle.named(UserDefaults.standard.string(forKey: storageKey))
+    }
+
+    /// The look a format wears until a person picks one, and a stored pick always wins. A poster
+    /// is judged on a dark timeline, where the app's own theme may be anything from System's
+    /// plain white to a pale palette; it opens in Aurora, whose teal canvas falling into violet
+    /// is the one that sets itself apart from a feed's grey and keeps its mint accent well over
+    /// three to one on both ends of the fall and on the tiles (`ShareLayoutTests` measures it).
+    /// The full-length column keeps what it always did, the app's own look.
+    public static func defaultStyle(for format: ShareFormat) -> CardStyle {
+        format == .long ? .app : .aurora
+    }
+
+    public static func current(
+        for format: ShareFormat, defaults: UserDefaults = .standard
+    ) -> CardStyle {
+        guard let stored = defaults.string(forKey: storageKey),
+            let style = CardStyle.all.first(where: { $0.id == stored })
+        else { return defaultStyle(for: format) }
+        return style
     }
 
     public static func set(_ style: CardStyle) {

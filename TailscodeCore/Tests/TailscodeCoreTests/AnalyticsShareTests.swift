@@ -102,6 +102,19 @@ struct AnalyticsShareTests {
         #expect(AnalyticsShare.Card.width == 1080)
     }
 
+    @Test("The full-length card is block for block what it was before it had formats")
+    func fullLengthIsUnchanged() throws {
+        let share = AnalyticsShare(try analytics(), now: now, calendar: calendar)
+        let print = ShareTestSupport.fingerprint(share.card.blocks)
+        #expect(print.count == 53)
+        #expect(print.hash == 4_891_288_030_003_155_216)
+        #expect(abs(share.card.height - 1576.6) < 0.01)
+        let legacy = AnalyticsShare.Card(analytics: try analytics())
+        #expect(legacy.blocks == share.card.blocks)
+        #expect(legacy.panels.count == 1)
+        #expect(legacy.panels[0].rect == AnalyticsShare.Rect(0, 0, 1080, legacy.height))
+    }
+
     @Test("Plain text and markdown carry the same facts and the estimate foot")
     func wordsCarryTheFacts() throws {
         let analytics = try analytics()
@@ -139,6 +152,7 @@ struct AnalyticsShareTests {
             case .rule: return "rule"
             case .foot: return "foot"
             case .spacer: return "spacer"
+            case .stats: return "stats"
             }
         }
         #expect(kinds.contains("brand"))

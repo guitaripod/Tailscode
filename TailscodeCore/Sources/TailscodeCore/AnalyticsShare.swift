@@ -9,9 +9,13 @@ public struct AnalyticsShare: Sendable, Equatable {
     public let filename: String
     public let plainText: String
     public let markdown: String
+    /// The full-length column with every module it has always carried: what a client that has
+    /// not learned formats yet paints. ``card(_:palette:)`` makes the picture for a choice.
     public let card: Card
+    public let analytics: UsageAnalytics
 
     public init(_ analytics: UsageAnalytics, now: Date = Date(), calendar: Calendar = .current) {
+        self.analytics = analytics
         self.subject = "\(analytics.window.surfaceTitle) · \(analytics.headline)"
         self.filename = Self.filename(
             window: analytics.window, money: analytics.headline, now: now, calendar: calendar)
@@ -90,6 +94,23 @@ public struct AnalyticsShare: Sendable, Equatable {
             info: "#9ccfd8", warn: "#f6c177", special: "#c4a7e7", onAccent: "#191724")
     }
 
+    public typealias Rect = NeuralShare.Rect
+
+    /// What the card can still say once its own sections have spoken: it already shows the
+    /// models, the tools and the records, so a line that repeats one of them is a line the
+    /// reader has just read. Caching is told from the hit rate rather than the brag, because
+    /// the card has no tier chart to carry it, unless the tokens module is on the card and
+    /// carries it itself.
+    static func standouts(
+        _ analytics: UsageAnalytics, drawn: Set<UsageAnalytics.Insight.Topic> = [.cache],
+        includesCache: Bool = true
+    ) -> [String] {
+        var lines: [String] = []
+        if includesCache, let cache = analytics.cacheLine { lines.append(cache) }
+        lines.append(contentsOf: analytics.findings.filter { !drawn.contains($0.topic) }.map(\.text))
+        return lines
+    }
+
     public enum TrendTone: Sendable, Equatable {
         case up
         case down
@@ -100,6 +121,9 @@ public struct AnalyticsShare: Sendable, Equatable {
         public let share: Double
         public let isToday: Bool
         public let isEmpty: Bool
+        /// The tallest bar, which a tile paints in the accent: the one thing in a chart the eye
+        /// is meant to land on. The full-length column marks today instead and leaves this false.
+        public var isPeak: Bool = false
     }
 
     public struct MeterBar: Sendable, Equatable {
@@ -132,6 +156,12 @@ public struct AnalyticsShare: Sendable, Equatable {
         public let trailing: String
     }
 
+    /// One big number with the word for what it counts, laid out two across.
+    public struct Stat: Sendable, Equatable {
+        public let value: String
+        public let label: String
+    }
+
     public enum Block: Sendable, Equatable {
         case brand(String)
         case kicker(String)
@@ -148,9 +178,17 @@ public struct AnalyticsShare: Sendable, Equatable {
         case rule
         case foot(String)
         case spacer(Double)
+        case stats([Stat])
     }
 
     /// Logical points at 1×. Clients multiply by a scale factor (2 or 3) when rasterising.
+    ///
+    /// A card is a canvas holding panels. Each panel is a rectangle with its own flow of blocks,
+    /// laid out in the panel's own content width; the full-length format is one panel as wide as
+    /// the canvas, which is the picture the card was before it had formats. A painter walks
+    /// `panels` in order, fills and clips each one, and stacks its blocks from the top of the
+    /// panel's content rectangle at the heights the `height(_:in:)` functions give; nothing in a
+    /// painter decides where a line goes.
     public struct Card: Sendable, Equatable {
         public static let width: Double = 1080
         public static let pad: Double = 56
@@ -159,27 +197,123 @@ public struct AnalyticsShare: Sendable, Equatable {
         public static let dailyBarWidth: Double = 18
         public static let weekdayHeight: Double = 56
         public static let meterTrackHeight: Double = 10
+        public static let meterTrackOffset: Double = 30
         public static let corner: Double = 36
         public static let innerCorner: Double = 20
 
-        public let palette: Palette
-        public let blocks: [Block]
-        public let height: Double
+        /// The type and spacing a panel's blocks are measured in: how wide their column is, how
+        /// much every size is magnified, how tall the charts and the number are. The full-length
+        /// column's is ``long``; a tile of a poster has its own, chosen so its text is as large
+        /// as the tile allows.
+        public struct Metrics: Sendable, Equatable {
+            public var contentWidth: Double
+            public var scale: Double
+            public var heroSize: Double
+            public var dailyHeight: Double
+            public var weekdayHeight: Double
 
-        public init(analytics: UsageAnalytics, palette: Palette = .shareDefault) {
+            public init(
+                contentWidth: Double, scale: Double = 1, heroSize: Double = Card.heroSize,
+                dailyHeight: Double = Card.dailyHeight,
+                weekdayHeight: Double = Card.weekdayHeight
+            ) {
+                self.contentWidth = contentWidth
+                self.scale = scale
+                self.heroSize = heroSize
+                self.dailyHeight = dailyHeight
+                self.weekdayHeight = weekdayHeight
+            }
+
+            public static let long = Metrics(contentWidth: Card.contentWidth)
+        }
+
+        /// A rectangle of the canvas and what is stacked in it.
+        public struct Panel: Sendable, Equatable {
+            public enum Surface: Sendable, Equatable {
+                case bare
+                case raised
+            }
+
+            public let module: ShareModule
+            public let rect: Rect
+            public let surface: Surface
+            public let corner: Double
+            public let inset: Double
+            public let metrics: Metrics
+            public let blocks: [Block]
+
+            /// Where the blocks go: the rectangle less its inset. A painter clips to `rect`'s
+            /// rounded shape and starts stacking at this rectangle's top-left.
+            public var content: Rect {
+                Rect(
+                    rect.x + inset, rect.y + inset, max(0, rect.width - inset * 2),
+                    max(0, rect.height - inset * 2))
+            }
+
+            public var contentHeight: Double { Card.contentHeight(blocks, in: metrics) }
+
+            public var fits: Bool { contentHeight <= content.height + 0.5 }
+        }
+
+        /// The one line at the foot of a poster: where the numbers came from on the left, what
+        /// they are on the right. The left wraps to `leftLines` lines and ends in an ellipsis
+        /// rather than run under the right.
+        public struct Footer: Sendable, Equatable {
+            public let rect: Rect
+            public let left: String
+            public let right: String
+            public let size: Double
+            public let leftLines: Int
+        }
+
+        public let palette: Palette
+        public let format: ShareFormat
+        public let canvasWidth: Double
+        public let height: Double
+        public let panels: [Panel]
+        public let footer: Footer?
+        public let fit: ShareFit?
+
+        /// Every block of every panel, in painting order; for the full-length column, its blocks.
+        public var blocks: [Block] { panels.flatMap(\.blocks) }
+
+        init(
+            palette: Palette, format: ShareFormat, canvasWidth: Double, height: Double,
+            panels: [Panel], footer: Footer?, fit: ShareFit?
+        ) {
             self.palette = palette
-            let built = Self.blocks(for: analytics)
-            self.blocks = built
-            self.height = Self.measure(built)
+            self.format = format
+            self.canvasWidth = canvasWidth
+            self.height = height
+            self.panels = panels
+            self.footer = footer
+            self.fit = fit
+        }
+
+        /// The full-length column with the modules it has always had.
+        public init(analytics: UsageAnalytics, palette: Palette = .shareDefault) {
+            let built = Self.longBlocks(for: analytics, modules: Set(ShareFormat.long.curated))
+            self.init(blocks: built, palette: palette, height: Self.measure(built))
         }
 
         public init(blocks: [Block], palette: Palette, height: Double) {
-            self.blocks = blocks
-            self.palette = palette
-            self.height = height
+            let panel = Panel(
+                module: .hero, rect: Rect(0, 0, Self.width, height), surface: .bare, corner: 0,
+                inset: Self.pad, metrics: .long, blocks: blocks)
+            self.init(
+                palette: palette, format: .long, canvasWidth: Self.width, height: height,
+                panels: [panel], footer: nil, fit: nil)
         }
 
-        private static func blocks(for analytics: UsageAnalytics) -> [Block] {
+        public func with(palette: Palette) -> Card {
+            Card(
+                palette: palette, format: format, canvasWidth: canvasWidth, height: height,
+                panels: panels, footer: footer, fit: fit)
+        }
+
+        static func longBlocks(
+            for analytics: UsageAnalytics, modules: Set<ShareModule>
+        ) -> [Block] {
             var out: [Block] = [
                 .brand("TAILSCODE"),
                 .spacer(6),
@@ -190,24 +324,17 @@ public struct AnalyticsShare: Sendable, Equatable {
                 .dim(analytics.windowLabel),
                 .spacer(6),
                 .body(analytics.perDayLine),
-                .spacer(4),
-                .dim(analytics.activityLine),
             ]
+            if modules.contains(.activity) {
+                out.append(.spacer(4))
+                out.append(.dim(analytics.activityLine))
+            }
             if let delta = analytics.deltaLine {
                 out.append(.spacer(10))
-                out.append(
-                    .trend(
-                        delta,
-                        {
-                            switch analytics.trend {
-                            case .up: return .up
-                            case .down: return .down
-                            case .flat: return .flat
-                            }
-                        }()))
+                out.append(.trend(delta, tone(analytics.trend)))
             }
             var drawnRecords = analytics.records
-            if analytics.days.contains(where: { $0.share > 0 }),
+            if modules.contains(.daily), analytics.days.contains(where: { $0.share > 0 }),
                 let first = analytics.days.first, let last = analytics.days.last
             {
                 out.append(.spacer(28))
@@ -233,7 +360,7 @@ public struct AnalyticsShare: Sendable, Equatable {
                     out.append(.dim(caption))
                 }
             }
-            if analytics.weekdays.contains(where: { $0.share > 0 }) {
+            if modules.contains(.week), analytics.weekdays.contains(where: { $0.share > 0 }) {
                 out.append(.spacer(28))
                 out.append(.section(Localized.text("The week")))
                 out.append(.spacer(14))
@@ -250,53 +377,67 @@ public struct AnalyticsShare: Sendable, Equatable {
                 }
             }
             var drawnTopics: Set<UsageAnalytics.Insight.Topic> = [.cache]
-            if !analytics.providers.isEmpty {
+            if modules.contains(.providers), !analytics.providers.isEmpty {
                 out.append(
                     contentsOf: meterSection(
                         Localized.text("Providers"), analytics.providers.prefix(meterLimit)))
             }
-            if !analytics.models.isEmpty {
+            if modules.contains(.models), !analytics.models.isEmpty {
                 out.append(contentsOf: meterSection(
                     Localized.text("Models"), analytics.models.prefix(meterLimit)))
                 drawnTopics.insert(.model)
             }
-            if !analytics.projects.isEmpty {
+            if modules.contains(.projects), !analytics.projects.isEmpty {
                 out.append(contentsOf: meterSection(
                     Localized.text("Projects"), analytics.projects.prefix(meterLimit)))
             }
-            if !analytics.tools.isEmpty {
+            if modules.contains(.tools), !analytics.tools.isEmpty {
                 out.append(contentsOf: meterSection(
                     Localized.text("Tools"), analytics.tools.prefix(meterLimit)))
                 drawnTopics.insert(.tool)
             }
-            let records = drawnRecords.prefix(recordLimit)
-            if !records.isEmpty {
+            let tokensDrawn = modules.contains(.tokens) && analytics.tiers.contains { $0.tokens > 0 }
+            if tokensDrawn {
                 out.append(.spacer(28))
-                out.append(.section(Localized.text("Records")))
-                for record in records {
+                out.append(.section(Localized.text("Tokens")))
+                for tier in tierMeters(analytics) {
                     out.append(.spacer(12))
-                    out.append(
-                        .record(
-                            RecordLine(
-                                glyph: record.glyph, title: record.title, value: record.value,
-                                detail: record.detail)))
-                    if record.id == "streak" { drawnTopics.insert(.streak) }
-                    if record.id == "subagents" { drawnTopics.insert(.subagents) }
+                    out.append(.meter(tier))
+                }
+                if let cache = analytics.cacheLine {
+                    out.append(.spacer(10))
+                    out.append(.dim(cache))
                 }
             }
-            let standouts = standouts(analytics, drawn: drawnTopics)
-            if !standouts.isEmpty {
-                out.append(.spacer(28))
-                out.append(.section(Localized.text("What stands out")))
-                for line in standouts {
-                    out.append(.spacer(10))
-                    out.append(.insight(line))
+            if modules.contains(.records) {
+                let records = drawnRecords.prefix(recordLimit)
+                if !records.isEmpty {
+                    out.append(.spacer(28))
+                    out.append(.section(Localized.text("Records")))
+                    for record in records {
+                        out.append(.spacer(12))
+                        out.append(.record(recordLine(record)))
+                        if record.id == "streak" { drawnTopics.insert(.streak) }
+                        if record.id == "subagents" { drawnTopics.insert(.subagents) }
+                    }
+                }
+            }
+            if modules.contains(.insights) {
+                let lines = AnalyticsShare.standouts(
+                    analytics, drawn: drawnTopics, includesCache: !tokensDrawn)
+                if !lines.isEmpty {
+                    out.append(.spacer(28))
+                    out.append(.section(Localized.text("What stands out")))
+                    for line in lines.prefix(3) {
+                        out.append(.spacer(10))
+                        out.append(.insight(line))
+                    }
                 }
             }
             out.append(.spacer(28))
             out.append(.rule)
             out.append(.spacer(16))
-            if let modelsLine = analytics.modelsLine(shown: meterLimit) {
+            if modules.contains(.models), let modelsLine = analytics.modelsLine(shown: meterLimit) {
                 out.append(.foot(modelsLine))
                 out.append(.spacer(8))
             }
@@ -317,22 +458,42 @@ public struct AnalyticsShare: Sendable, Equatable {
             return out
         }
 
+        static func tone(_ trend: UsageAnalytics.Trend) -> TrendTone {
+            switch trend {
+            case .up: return .up
+            case .down: return .down
+            case .flat: return .flat
+            }
+        }
+
+        static func recordLine(_ record: UsageAnalytics.Record) -> RecordLine {
+            RecordLine(
+                glyph: record.glyph, title: record.title, value: record.value,
+                detail: record.detail)
+        }
+
+        /// The four token tiers as meter rows: the bar is each tier's share of what the window
+        /// cost (of its tokens in an account that cost nothing), the trailing value is the money
+        /// it came to or, with no money, the tokens themselves.
+        static func tierMeters(_ analytics: UsageAnalytics) -> [MeterBar] {
+            let tiers = analytics.tiers.filter { $0.tokens > 0 }
+            let priced = tiers.contains { $0.costUSD > 0 }
+            let weights = tiers.map { priced ? $0.costUSD : Double($0.tokens) }
+            let peak = weights.max() ?? 0
+            let prefix = analytics.totalMoney.hasPrefix("~") ? "~" : ""
+            return tiers.enumerated().map { index, tier in
+                MeterBar(
+                    label: tier.label,
+                    detail: priced ? StatusFacts.tokens(tier.tokens) : "",
+                    money: priced
+                        ? prefix + SessionSpend.money(tier.costUSD)
+                        : StatusFacts.tokens(tier.tokens),
+                    share: peak > 0 ? weights[index] / peak : 0, hot: index == 0)
+            }
+        }
+
         public static let meterLimit = 4
         public static let recordLimit = 6
-
-        /// What the card can still say once its own sections have spoken: it already shows the
-        /// models, the tools and the records, so a line that repeats one of them is a line the
-        /// reader has just read. Caching is told from the hit rate rather than the brag, because
-        /// the card has no tier chart to carry it.
-        private static func standouts(
-            _ analytics: UsageAnalytics, drawn: Set<UsageAnalytics.Insight.Topic>
-        ) -> [String] {
-            var lines: [String] = []
-            if let cache = analytics.cacheLine { lines.append(cache) }
-            lines.append(
-                contentsOf: analytics.findings.filter { !drawn.contains($0.topic) }.map(\.text))
-            return Array(lines.prefix(3))
-        }
 
         private static func meterSection<S: Sequence>(
             _ title: String, _ meters: S
@@ -356,20 +517,33 @@ public struct AnalyticsShare: Sendable, Equatable {
             blocks.reduce(pad) { $0 + height($1) } + pad
         }
 
+        /// The height of a stack of blocks in a panel's own metrics, with no padding.
+        public static func contentHeight(_ blocks: [Block], in metrics: Metrics) -> Double {
+            blocks.reduce(0) { $0 + height($1, in: metrics) }
+        }
+
         public static func height(_ block: Block) -> Double {
+            height(block, in: .long)
+        }
+
+        public static func height(_ block: Block, in metrics: Metrics) -> Double {
+            let scale = metrics.scale
             switch block {
-            case .brand: return 22
-            case .kicker: return 28
-            case .hero: return 88
+            case .brand: return 22 * scale
+            case .kicker: return 28 * scale
+            case .hero: return metrics.heroSize * 88 / 84
             case .body, .dim, .trend, .insight, .foot:
-                return lineHeight(fontSize(block), lines: lines(block))
-            case .daily: return dailyHeight + axisHeight
-            case .weekday: return weekdayHeight + axisHeight
-            case .section: return 26
-            case .meter: return 44
-            case .record: return 48
+                return lineHeight(fontSize(block, in: metrics), lines: lines(block, in: metrics))
+            case .daily: return metrics.dailyHeight + axisHeight * scale
+            case .weekday: return metrics.weekdayHeight + axisHeight * scale
+            case .section: return 26 * scale
+            case .meter: return 44 * scale
+            case .record: return 48 * scale
             case .rule: return 1
             case .spacer(let gap): return gap
+            case .stats(let stats):
+                let rows = Double((stats.count + statColumns - 1) / statColumns)
+                return rows * statRowHeight(scale) - statRowGap * scale
             }
         }
 
@@ -382,33 +556,66 @@ public struct AnalyticsShare: Sendable, Equatable {
         /// left out and what each door of the account actually did, and a fact cut off at
         /// "Aliba…" is a fact the card did not tell.
         public static func lines(_ block: Block) -> Int {
+            lines(block, in: .long)
+        }
+
+        public static func lines(_ block: Block, in metrics: Metrics) -> Int {
             let (text, maximum): (String, Int) = {
                 switch block {
-                case .body(let text), .dim(let text): return (text, 2)
+                case .body(let text), .dim(let text): return (text, maximumLines(block))
                 case .trend(let text, _): return (text, 1)
-                case .insight(let text): return (insightPrefix + text, 3)
-                case .foot(let text): return (text, 4)
+                case .insight(let text): return (insightPrefix + text, maximumLines(block))
+                case .foot(let text): return (text, maximumLines(block))
                 default: return ("", 1)
                 }
             }()
-            let capacity = contentWidth / (fontSize(block) * glyphWidth)
+            let capacity = metrics.contentWidth / (fontSize(block, in: metrics) * glyphWidth)
             let needed = Int((Double(text.count) / capacity).rounded(.up))
             return min(max(1, needed), maximum)
         }
 
-        public static func fontSize(_ block: Block) -> Double {
+        /// The most lines a text block is ever set on; a client truncates the last one.
+        public static func maximumLines(_ block: Block) -> Int {
             switch block {
-            case .brand: return brandSize
-            case .kicker: return kickerSize
-            case .hero: return heroSize
-            case .body, .trend, .insight: return bodySize
-            case .dim: return dimSize
-            case .section: return sectionSize
-            case .meter: return meterSize
-            case .record: return recordSize
-            case .foot: return footSize
+            case .body, .dim: return 2
+            case .insight: return 3
+            case .foot: return 4
+            default: return 1
+            }
+        }
+
+        public static func fontSize(_ block: Block) -> Double {
+            fontSize(block, in: .long)
+        }
+
+        public static func fontSize(_ block: Block, in metrics: Metrics) -> Double {
+            let scale = metrics.scale
+            switch block {
+            case .brand: return brandSize * scale
+            case .kicker: return kickerSize * scale
+            case .hero: return metrics.heroSize
+            case .body, .trend, .insight: return bodySize * scale
+            case .dim: return dimSize * scale
+            case .section: return sectionSize * scale
+            case .meter: return meterSize * scale
+            case .record: return recordSize * scale
+            case .foot: return footSize * scale
+            case .stats: return statValueSize * scale
             case .daily, .weekday, .rule, .spacer: return 0
             }
+        }
+
+        /// The width of a bar in a chart and the gap after it. The full-length column's thirty
+        /// bars keep their eighteen points; a narrow tile narrows them rather than letting the
+        /// last ones run past its edge.
+        public static func barGeometry(count: Int, in metrics: Metrics) -> (width: Double, gap: Double) {
+            guard count > 0 else { return (0, 0) }
+            let wanted = dailyBarWidth * metrics.scale
+            let minimumGap = max(2, 3 * metrics.scale)
+            let room = (metrics.contentWidth - minimumGap * Double(count - 1)) / Double(count)
+            let width = max(2, min(wanted, room))
+            let gap = count > 1 ? max(1, (metrics.contentWidth - width * Double(count)) / Double(count - 1)) : 0
+            return (width, gap)
         }
 
         public static let insightPrefix = "✦  "
@@ -430,6 +637,15 @@ public struct AnalyticsShare: Sendable, Equatable {
         public static let meterSize: Double = 24
         public static let recordSize: Double = 24
         public static let footSize: Double = 20
+        public static let statValueSize: Double = 44
+        public static let statLabelSize: Double = 20
+        public static let statColumns = 2
+        public static let statRowGap: Double = 14
+
+        /// The pitch of one row of stats: the number, the word under it and the gap.
+        public static func statRowHeight(_ scale: Double) -> Double {
+            (statValueSize * 1.15 + statLabelSize * 1.35 + statRowGap) * scale
+        }
 
         public static func lineHeight(_ size: Double, lines: Int) -> Double {
             size * 1.28 * Double(lines)
