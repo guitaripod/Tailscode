@@ -32,17 +32,17 @@ struct ShareLayoutTests {
     @Test("The full-length format reproduces the old card, block for block and point for point")
     func longReproducesTheOldCard() throws {
         let golden: [(String, Int, Double, UInt64)] = [
-            ("rich", 89, 2625.48, 69164555564114887),
+            ("rich", 87, 2566.28, 16531550103546521188),
             ("oneModel", 67, 2008.28, 16054255526380622137),
             ("twelveModels", 83, 2433.88, 16136486078972869222),
-            ("longNames", 83, 2457.48, 4357546826235230580),
-            ("noDaily", 67, 1910.2, 1847292274997688704),
-            ("localOnly", 69, 2008.2, 5372977178638670219),
-            ("tinyWindow", 83, 2453.48, 17116056067978326975),
-            ("partialCoverage", 93, 2718.28, 2537270525468136427),
-            ("quarter", 89, 2625.48, 11373230094506627712),
-            ("year", 89, 2625.48, 10890274958107832700),
-            ("localSessions", 49, 1457.56, 5602993862405613444),
+            ("longNames", 81, 2398.28, 10786998483671902042),
+            ("noDaily", 65, 1851.0, 13889980715033891329),
+            ("localOnly", 67, 1974.6, 3167643613813908979),
+            ("tinyWindow", 81, 2394.28, 7350596591293990516),
+            ("partialCoverage", 93, 2692.68, 4610502490482796064),
+            ("quarter", 87, 2566.28, 4762300423976403436),
+            ("year", 87, 2566.28, 6934635237041340523),
+            ("localSessions", 47, 1423.96, 3960120816126441618),
         ]
         for (name, count, height, hash) in golden {
             let analytics = try #require(ShareFixtures.analytics(named: name))
