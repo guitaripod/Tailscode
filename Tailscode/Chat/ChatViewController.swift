@@ -1865,10 +1865,17 @@ final class ChatViewController: UIViewController {
         present(UINavigationController(rootViewController: signIn), animated: true)
     }
 
+    #if DEBUG
+        private(set) var providedItems: [Int] = []
+    #endif
+
     private func configureDataSource() {
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             [weak self] collectionView, indexPath, id in
             guard let self else { return Self.blankCell(collectionView, indexPath) }
+            #if DEBUG
+                self.providedItems.append(indexPath.item)
+            #endif
             let cell = self.makeCell(collectionView, indexPath, id)
             (cell as? RowGapCell)?.gapAbove = self.gapAbove(at: indexPath)
             return cell
@@ -4036,11 +4043,24 @@ final class ChatViewController: UIViewController {
     /// refreshed snapshot churn, then fades in once, already scrolled to the
     /// bottom. The fallback timer reveals chats with nothing to show yet —
     /// a spinner while history is still loading, the empty state otherwise.
+    /// A transcript opens on its end, and a first layout at the top of a long one makes a screenful
+    /// of rows nobody will see, only to throw them away when the page moves to the end. The layout
+    /// already knows how tall the page is before it makes a single row, so the page is put on its
+    /// end first and that one pass makes the rows that are looked at.
+    private func parkOnEndBeforeFirstLayout() {
+        guard collectionView.bounds.height > 0 else { return }
+        let inset = collectionView.adjustedContentInset
+        let content = collectionView.collectionViewLayout.collectionViewContentSize.height
+        let end = content + inset.bottom - collectionView.bounds.height
+        collectionView.contentOffset.y = max(-inset.top, end)
+    }
+
     private func revealTranscript() {
         guard !hasRevealed else { return }
         hasRevealed = true
         settleUntil = CACurrentMediaTime() + 4
         revealFallback?.cancel()
+        parkOnEndBeforeFirstLayout()
         collectionView.layoutIfNeeded()
         scrollToBottom(animated: false)
         let hasRows =

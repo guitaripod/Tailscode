@@ -40,6 +40,8 @@ import UIKit
         private var longest = 0.0
         private var slowTotal = 0.0
         private var slowCount = 0
+        private var busyTotal = 0.0
+        private var windowStart = CFAbsoluteTimeGetCurrent()
 
         private struct WeakView {
             weak var view: UIView?
@@ -94,6 +96,11 @@ import UIKit
             let backend = MockBackend(
                 agentType: .claudeCode, scripts: [session.id: script], sessions: [session])
             var leakedViews = 0
+            if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "double" {
+                await doublePush(backend: backend, session: session, in: stack)
+                AppLogger.performance.info("bench open done turns=\(turns) cycles=\(cycles)")
+                return
+            }
             for cycle in 1...cycles {
                 let trip = await trip(cycle: cycle, backend: backend, session: session, in: stack)
                 try? await Task.sleep(for: .seconds(1.5))
@@ -115,6 +122,36 @@ import UIKit
             let chat: WeakChat
         }
 
+        private func doublePush(
+            backend: MockBackend, session: AgentSession, in stack: UINavigationController
+        ) async {
+            AppLogger.performance.info("bench double start depth=\(stack.viewControllers.count)")
+            let make = {
+                ChatViewController(
+                    viewModel: ChatViewModel(
+                        backend: backend, session: session, contextID: DemoWorld.claudeProfile.id,
+                        serverName: "bench"))
+            }
+            stack.pushViewController(make(), animated: true)
+            try? await Task.sleep(for: .milliseconds(80))
+            stack.pushViewController(make(), animated: true)
+            try? await Task.sleep(for: .seconds(2.5))
+            AppLogger.performance.info(
+                "bench double settled depth=\(stack.viewControllers.count) gesture[\(popGestureReading(of: stack))] transition=\(stack.transitionCoordinator != nil)"
+            )
+            AppLogger.performance.info("bench swipe wait cycle=1")
+            let started = CFAbsoluteTimeGetCurrent()
+            let depth = stack.viewControllers.count
+            for _ in 0..<500 {
+                try? await Task.sleep(for: .milliseconds(10))
+                if stack.viewControllers.count < depth, stack.transitionCoordinator == nil { break }
+            }
+            AppLogger.performance.info(
+                "bench double swipe depth=\(depth)->\(stack.viewControllers.count) after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000))ms gesture[\(popGestureReading(of: stack))]"
+            )
+            stack.popToRootViewController(animated: false)
+        }
+
         private func trip(
             cycle: Int, backend: MockBackend, session: AgentSession, in stack: UINavigationController
         ) async -> Trip {
@@ -126,10 +163,17 @@ import UIKit
             stack.pushViewController(chat, animated: true)
             await untilAppeared(chat, in: stack)
             let pushed = snapshot()
+            AppLogger.performance.info(
+                "bench cells provided=\(chat.providedItems.count) items=\(chat.providedItems.prefix(40).map(String.init).joined(separator: ","))")
             reset()
-            try? await Task.sleep(for: .seconds(2))
+            let settle = ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SETTLE"].flatMap(Double.init) ?? 2
+            try? await Task.sleep(for: .seconds(settle))
             let settled = snapshot()
             let tree = census(of: chat.view)
+            let endGap = tree.compactMap { $0.view as? UICollectionView }.first.map {
+                Int($0.contentSize.height + $0.adjustedContentInset.bottom - $0.bounds.height - $0.contentOffset.y)
+            }
+            AppLogger.performance.info("bench end gap=\(endGap.map(String.init) ?? "-")pt")
             await stage(scenario: ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"], chat: chat, tree: tree)
             let rootAddress = String(describing: Unmanaged.passUnretained(chat.view).toOpaque())
             let collection = tree.compactMap { $0.view as? UICollectionView }.first
@@ -146,9 +190,14 @@ import UIKit
                 await untilGone(chat, in: stack)
             }
             let popped = snapshot()
+            var brainViews: [String: Int] = [:]
+            for item in tree where item.name.contains("Brain") || item.name.contains("Neural") {
+                brainViews[item.name, default: 0] += 1
+            }
+            let heads = brainViews.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
             return Trip(
                 report:
-                    "push[\(pushed)] settled[\(settled)] pop[\(popped)] gesture[\(gesture)] swipe[\(swiped)]",
+                    "push[\(pushed)] settled[\(settled)] pop[\(popped)] gesture[\(gesture)] swipe[\(swiped)] brain[\(heads)]",
                 tree: tree, chat: WeakChat(value: chat))
         }
 
@@ -173,6 +222,7 @@ import UIKit
             let elapsed = (now - turnStart) * 1000
             turnStart = 0
             longest = max(longest, elapsed)
+            busyTotal += elapsed
             if elapsed > 17 {
                 slowTotal += elapsed
                 slowCount += 1
@@ -192,13 +242,15 @@ import UIKit
         }
 
         private func reset() {
+            busyTotal = 0
+            windowStart = CFAbsoluteTimeGetCurrent()
             longest = 0
             slowTotal = 0
             slowCount = 0
         }
 
         private func snapshot() -> String {
-            "longest=\(Int(longest))ms slowTurns=\(slowCount) slowTotal=\(Int(slowTotal))ms"
+            "longest=\(Int(longest))ms slowTurns=\(slowCount) slowTotal=\(Int(slowTotal))ms busy=\(Int(busyTotal))/\(Int((CFAbsoluteTimeGetCurrent() - windowStart) * 1000))ms"
         }
 
         private func stage(scenario: String?, chat: ChatViewController, tree: [WeakView]) async {
@@ -258,6 +310,22 @@ import UIKit
             let messages = ChatRebuildBench.conversation(turns: turns, growing: "Done.")
             let steps = messages.map {
                 MockScriptStep(.messageUpserted($0, replaceParts: true), delay: .milliseconds(0))
+            }
+            if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "tokens",
+                let last = messages.last
+            {
+                var growing = steps
+                for index in 1...300 {
+                    var grown = last
+                    grown.parts = [
+                        MessagePart(
+                            id: "a", kind: .text(String(repeating: "streaming word ", count: index)))
+                    ]
+                    growing.append(
+                        MockScriptStep(
+                            .messageUpserted(grown, replaceParts: true), delay: .milliseconds(30)))
+                }
+                return growing + [MockScriptStep(.status(.idle), delay: .milliseconds(0))]
             }
             if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "stream" {
                 return steps + [
