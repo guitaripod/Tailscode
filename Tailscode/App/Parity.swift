@@ -105,11 +105,7 @@ enum ParityManifest {
         case .stopTurn: return .implemented("composerDidTapStop")
         case .statusBand: return .implemented("StatusFacts.from")
         case .usagePanel: return .implemented("UsageViewController")
-        case .usageAnalytics:
-            return .partial(
-                "AnalyticsCardRenderer",
-                missing:
-                    "the share card is still the full-length column: the iOS share sheet has no format picker, module chips, Copy caption or picture description yet — Core's AnalyticsShare.card(_:) and docs/usage-share.md carry the contract, and the Linux client already draws every format")
+        case .usageAnalytics: return .implemented("ShareSelectionStore.save")
         case .deepseekBalance: return .implemented("DeepSeekBalance")
         case .ollamaCloudUsage: return .implemented("OllamaUsage")
         case .sessionSpend: return .implemented("SpendViewController")

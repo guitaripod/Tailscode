@@ -99,6 +99,12 @@ final class AppCoordinator: NSObject {
                     failures.isEmpty
                         ? "PREVIEW_SELFTEST_OK" : "PREVIEW_SELFTEST_FAIL " + failures.joined(separator: "; "))
             }
+            if ShareCardChecks.isEnabled {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2))
+                    await ShareCardChecks.run()
+                }
+            }
             if CommandLine.arguments.contains("--preview") || CommandLine.arguments.contains("--preview-live") {
                 openPreviewForDebug()
             }
@@ -108,6 +114,9 @@ final class AppCoordinator: NSObject {
             }
             if CommandLine.arguments.contains("--analytics") || duoScreen == "analytics" {
                 openAnalyticsForDebug()
+            }
+            if let fixture = ProcessInfo.processInfo.environment["TAILSCODE_SHARE_SCREEN"] {
+                openShareForDebug(fixture: fixture)
             }
             if CommandLine.arguments.contains("--video") || duoScreen == "forgesweep" {
                 openVideoForDebug(staging: nil)
@@ -228,6 +237,15 @@ final class AppCoordinator: NSObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
                 self?.home?.navigationController?.pushViewController(
                     AnalyticsViewController(analytics: nil), animated: false)
+            }
+        }
+
+        private func openShareForDebug(fixture: String) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                guard let analytics = ShareFixtures.analytics(named: fixture),
+                    let presenter = self?.home?.navigationController ?? self?.home
+                else { return }
+                ShareCardViewController.present(analytics, from: presenter)
             }
         }
 
