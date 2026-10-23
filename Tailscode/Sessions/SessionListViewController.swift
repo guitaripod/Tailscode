@@ -968,8 +968,10 @@ final class SessionListViewController: UIViewController {
             self, selector: #selector(pinDidChange),
             name: SessionPinStore.didChange, object: nil)
         NotificationCenter.default.addObserver(
-            self, selector: #selector(activityDidChange),
-            name: ModelCatalogStore.didChange, object: nil)
+            forName: ModelCatalogStore.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.activityDidChange() }
+        }
         NotificationCenter.default.addObserver(
             self, selector: #selector(activityDidChange),
             name: SessionSeenStore.didSync, object: nil)

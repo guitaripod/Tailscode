@@ -577,8 +577,10 @@ final class HomeViewController: UIViewController {
             self, selector: #selector(boardDidChange),
             name: QuotaBoardStore.didChange, object: nil)
         NotificationCenter.default.addObserver(
-            self, selector: #selector(boardDidChange),
-            name: ModelCatalogStore.didChange, object: nil)
+            forName: ModelCatalogStore.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.boardDidChange() }
+        }
         NotificationCenter.default.addObserver(
             self, selector: #selector(sceneDidActivate(_:)),
             name: UIScene.didActivateNotification, object: nil)
