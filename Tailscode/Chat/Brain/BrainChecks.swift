@@ -66,6 +66,7 @@
             runLiveAndSettle(all)
             runList(long)
             runIncremental()
+            runLazy()
             runKeys(long)
             runAccount(long, build: build)
             runMetrics(long)
@@ -162,6 +163,43 @@
             }
             check("the incremental store reads the same turns as a fresh one", identical)
             check("the incremental layout carries the same rows as a fresh one", layoutsEqual)
+        }
+
+        private static func runLazy() {
+            let messages = (0..<40).flatMap {
+                NeuralDemo.largeTurn(steps: 24, prefix: "z\($0)-", origin: 1_792_000_000 + Double($0) * 4000)
+            }
+            let store = BrainStore()
+            let layout = store.prepare(messages: messages, running: false, awaiting: .none) { latest in contextFor(latest) }
+            check("opening a chat makes the newest turn's model and no other", store.count == 40 && store.realisedCount == 1, "\(store.count) brains \(store.realisedCount) models")
+            let ids = (1...40).compactMap { store.turnID(atBrain: $0) }
+            let rows = ids.compactMap { id in layout.turn(startingAt: id)?.row }
+            check("every brain is placed from its outline", ids.count == 40 && rows.count == 40 && ids.allSatisfy { store.anchorID(of: $0) != nil })
+            let older = ids[10]
+            let before = layout.turn(startingAt: older)?.row.stamp
+            let middle = ids[20]
+            let matched = store.stepMatching("swift build", in: middle)
+            check("Find lands on a step of a turn nobody has looked at", matched != nil && store.realisedCount == 1, "\(String(describing: matched)) \(store.realisedCount)")
+            let made = store.model(for: older)
+            check("asking for a model makes that one", made != nil && store.realisedCount == 2, "\(store.realisedCount)")
+            let again = store.prepare(messages: messages, running: false, awaiting: .none) { latest in contextFor(latest) }
+            check("making a model leaves its row as it was", again.turn(startingAt: older)?.row.stamp == before)
+            let eager = BrainStore()
+            _ = eager.prepare(messages: messages, running: false, awaiting: .none) { latest in contextFor(latest) }
+            for id in ids { _ = eager.model(for: id) }
+            let settled = eager.prepare(messages: messages, running: false, awaiting: .none) { latest in contextFor(latest) }
+            check(
+                "a store that made every model has the rows of one that made none",
+                ids.allSatisfy { settled.turn(startingAt: $0)?.row.stamp == again.turn(startingAt: $0)?.row.stamp })
+            check(
+                "the models made later are the models made at once",
+                ids.allSatisfy { store.model(for: $0)?.turn == eager.model(for: $0)?.turn })
+            var slices = 0
+            while !store.indexSearch(budget: 0.000_01) { slices += 1 }
+            check("Find's index is read in more than one slice", slices > 1, "\(slices)")
+            check(
+                "the index is the search text of every brain",
+                ids.allSatisfy { store.indexedSearchText(for: $0) == BrainStore.searchText(of: eager.model(for: $0)?.turn ?? NeuralTurn(id: "")) })
         }
 
         private static func runList(_ model: NeuralBrainModel) {
