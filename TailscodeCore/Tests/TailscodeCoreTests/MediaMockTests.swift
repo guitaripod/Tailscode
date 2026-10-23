@@ -5,7 +5,7 @@ import Testing
 
 /// The doctor against `scripts/mock-comfyui.py` over a real socket: the same HTTP the clients
 /// speak, in each state the mock can be put in. Skipped where there is no python3 with Pillow.
-@Suite("Media doctor against the mock", .enabled(if: MockComfy.available))
+@Suite("Media doctor against the mock", .serialized, .enabled(if: MockComfy.available))
 struct MediaMockTests {
     private func examine(_ environment: [String: String], wait: TimeInterval = 0) async throws -> MediaVerdict {
         try await MockComfy.run(environment) { endpoint in
@@ -67,7 +67,7 @@ struct MediaMockTests {
 
     @Test("A proxy that accepts while the process loads is starting, then ready")
     func slowStart() async throws {
-        try await MockComfy.run(["MOCK_START_DELAY": "6"]) { endpoint in
+        try await MockComfy.run(["MOCK_START_DELAY": "10"]) { endpoint in
             let early = MediaVerdict(
                 endpoint: endpoint, report: await MediaDoctor(transport: .live).examine(endpoint))
             #expect(early.comfy == .starting)
