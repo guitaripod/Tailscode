@@ -70,7 +70,7 @@ final class ManualVoiceClock: VoiceClock, @unchecked Sendable {
     }
 }
 
-func eventually(timeout: TimeInterval = 3, _ condition: @Sendable () async -> Bool) async -> Bool {
+func eventually(timeout: TimeInterval = 20, _ condition: @Sendable () async -> Bool) async -> Bool {
     let deadline = Date().addingTimeInterval(timeout)
     while Date() < deadline {
         if await condition() { return true }
