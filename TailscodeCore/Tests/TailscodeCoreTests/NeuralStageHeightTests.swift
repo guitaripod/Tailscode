@@ -165,15 +165,26 @@ struct NeuralWordmarkTests {
         #expect(!M.cardShowsWordmark(width: 400, headlineEnd: 299, headlineRight: 380, wordmarkWidth: 70))
     }
 
-    @Test("the open stage's wordmark is a box in the corner of every row from 300 points, on every layout")
+    @Test("the open stage's wordmark is a box in the row's top left corner where the head leaves it clear")
     func stage() {
-        for width in [300.0, 320, 388, 520, 700, 900, 1280] {
+        let box = NeuralRect(x: 8, y: 8, width: 76, height: 14)
+        for width in [388.0, 402, 430, 520, 700, 859] {
             let metrics = M.make(width: width, density: .comfortable, input: .touch, phone: true)
-            let box = metrics.stageWordmark
-            #expect(box == NeuralRect(x: 10, y: 8, width: 104, height: 14))
-            #expect(box!.maxY <= metrics.stage.maxY)
-            #expect(box!.maxX <= metrics.width)
+            #expect(metrics.stageWordmark == box, "\(width)")
+            #expect(box.maxX + M.stageWordmarkGap <= metrics.stage.x)
         }
-        #expect(M.make(width: 299, density: .comfortable).stageWordmark == nil)
+        for width in [320.0, 340, 374, 380] {
+            let metrics = M.make(width: width, density: .comfortable, input: .touch, phone: true)
+            #expect(metrics.stageWordmark == nil, "\(width)")
+        }
+        for width in [860.0, 1000, 1280, 1600] {
+            let metrics = M.make(width: width, density: .comfortable)
+            #expect(metrics.stageWordmark == box && metrics.stage.width >= M.stageWordmarkOverHeadMinWidth)
+        }
+        for width in [520.0, 600, 859] {
+            let metrics = M.make(width: width, density: .comfortable)
+            #expect(metrics.stageWordmark == box, "\(width)")
+        }
+        #expect(M.make(width: 340, density: .comfortable).stageWordmark == nil)
     }
 }

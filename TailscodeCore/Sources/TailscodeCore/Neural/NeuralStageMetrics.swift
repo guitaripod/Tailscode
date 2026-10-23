@@ -256,12 +256,15 @@ public struct NeuralStageMetrics: Sendable, Equatable {
             && headlineEnd + cardWordmarkGap + wordmarkWidth <= headlineRight
     }
 
-    /// The open stage's wordmark stands in the row's top left corner, where the head leaves the
-    /// canvas empty (beside it on a phone and in an accordion, over its outline's corner in a
-    /// split), left-aligned in a box this wide and tall, and only in a row this wide.
-    public static let stageWordmarkMinWidth = 300.0
-    public static let stageWordmarkInset = (x: 10.0, y: 8.0)
-    public static let stageWordmarkSize = (width: 104.0, height: 14.0)
+    /// The open stage's wordmark stands in the row's top left corner, left-aligned in a box this
+    /// big, where it costs no height. It is shown only where the corner is clear of the head: beside
+    /// it (the head starts further right than the box and a gap), or over a head so wide that its
+    /// outline leaves the corner empty (a split's column, from `stageWordmarkOverHeadMinWidth`). A
+    /// narrow row with a head that fills it has none.
+    public static let stageWordmarkInset = (x: 8.0, y: 8.0)
+    public static let stageWordmarkSize = (width: 76.0, height: 14.0)
+    public static let stageWordmarkGap = 4.0
+    public static let stageWordmarkOverHeadMinWidth = 320.0
 
     /// The phone's compact open stage. The head is `phoneHeadWidth` wide (152 tall), the zone
     /// chips and the search share one `phoneBarHeight` bar, the step list is `phoneRowSlots` rows of
@@ -353,12 +356,15 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     /// Whether this is the phone's compact open stage: no scroller in it, one bar for the zone
     /// chips and the search, a list of `rowsShown` slots, and the account in a sheet.
     public let isPhone: Bool
-    /// The box of the open stage's wordmark in the row's coordinates; nil in a row too narrow for it.
+    /// The box of the open stage's wordmark in the row's coordinates; nil where the row's corner is
+    /// not clear of the head.
     public var stageWordmark: NeuralRect? {
-        guard width >= Self.stageWordmarkMinWidth else { return nil }
-        return NeuralRect(
+        let box = NeuralRect(
             x: Self.stageWordmarkInset.x, y: Self.stageWordmarkInset.y,
             width: Self.stageWordmarkSize.width, height: Self.stageWordmarkSize.height)
+        let besideHead = stage.x >= box.maxX + Self.stageWordmarkGap
+        let overWideHead = stage.width >= Self.stageWordmarkOverHeadMinWidth
+        return besideHead || overWideHead ? box : nil
     }
 
     /// How much taller an accordion's open row is than the list it replaces with the account.
