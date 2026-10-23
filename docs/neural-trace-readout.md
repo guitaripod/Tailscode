@@ -19,7 +19,7 @@ Right, three lines:
 
 Hover: the picture's lights rise 15 %, the card lifts its hairline to the tone, the pointer is a hand. Narrow rows (under 460 px) drop the zone strip first, then the digest, use the Compact picture, and move Replay and Rows under the headline; the picture, headline, Replay and Rows stay.
 
-A running turn has no card: the latest turn is open (section 2) and becomes a card when the next turn starts or the person closes it.
+A running turn has a live card: nothing opens by itself, and the person opens the turn they want to watch.
 
 ## 2. The open brain: stage left, readout right
 
@@ -85,7 +85,7 @@ Rules: the traveller is one surface (the settled interior and front from the com
 3. **Reading a step.** Move over a node: the readout switches in 90 ms, the leader line draws, the related nodes' wires light. Move the pointer toward the readout: the line stays, the content stays; select text, press Copy, scroll the output, press "Show all". Move away: 400 ms later the digest returns (Now when live).
 4. **Pinning.** Click a node (or Enter when focused): the pin mark appears, the readout stops following the pointer; another click on the same node, Esc or a click on empty stage unpins. Clicking a relation chip pins the related step.
 5. **Keyboard.** The stage takes focus on Tab; Left/Right and Up/Down walk steps in order and by zone, Return pins, Esc clears, `c` copies the subject (command or path), `o` expands the output, Tab moves from the stage to the readout's buttons then the footer. The readout is a labelled region; every change is announced by `NeuralReading.announcement`.
-6. **Watching live.** The latest turn is open while it runs; the readout says Now, with the output tail streaming; nothing ever steals the pointer or the scroll. When the turn ends the head settles (eye takes the family colour), the readout cross-fades to the Digest and stays open until the next turn begins or the person closes it.
+6. **Watching live.** Once the person opens the running turn, the readout says Now, with the output tail streaming; nothing ever steals the pointer or the scroll. When the turn ends the head settles (eye takes the family colour), the readout cross-fades to the Digest and stays open until the person closes it or opens another.
 7. **Waiting on the person.** A waiting node knocks (the heartbeat), the readout shows the ask in the attention tone and a "Go to approval" button; the node is also announced.
 8. **Dive.** Zone name or zone chip on the card: the head dives, the readout shows the Zone list, a row in it pins that step on the stage. Esc surfaces.
 9. **Replay.** Replay on the card or the footer: opening (if closed) then the playhead; the readout is the Replay log; scrubbing the timeline strip or the footer scrubber moves the same playhead.

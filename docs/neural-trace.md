@@ -5,7 +5,7 @@ A turn's thinking and working, drawn as one mecha head instead of a stack of "N 
 ## What the person sees
 
 - **A settled turn is one line**: the status dot becomes a 28 pt head glyph whose zones glow by how many steps they ran, then the count, the duration and `+N −M`. A turn costs one line where it used to cost a run line per burst of tools plus a paragraph per note.
-- **The live turn, and the latest one, open the brain** under the question, on the empty page the answer will stream onto. Nodes fire in order, the zone doing the work breathes, signals ripple out along the fibres from it, and the latest note the agent wrote replaces itself on one line under the brain.
+- **A person opens the brain** (nothing opens by itself, the live turn included: its card is alive) under the question, on the empty page the answer will stream onto. Nodes fire in order, the zone doing the work breathes, signals ripple out along the fibres from it, and the latest note the agent wrote replaces itself on one line under the brain.
 - **Hover a node** for its card (tool, argument, outcome, the first lines of output, which message, what it shares a file or command with); the other zones dim and its wires light. Touch: tap, with the same card docked under the brain. Every node is also a row in a step list (the screen reader and touch path), and `Rows` lists every step.
 - **Dive**: a zone's name dives into it. Chassis, glass and interior move at different rates, so the head flies past and the galaxies fill the screen. A `Task` node dives into the subagent: the same head, one level down, with the subagent's own steps and a breadcrumb back (`esc`).
 
