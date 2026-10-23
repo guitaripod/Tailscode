@@ -591,6 +591,14 @@ public enum QueueReading {
         row.holder == .unsent ? "arrow.up.circle.dotted" : SendQueueReading.symbol
     }
 
+    /// The whole visible line of a waiting row, so three clients cannot drift on what it says. A
+    /// message the device holds behind a send that failed wears the held mark instead.
+    public static func rowLine(_ row: QueueRow, held: Bool = false) -> String {
+        held
+            ? "\(SendQueueReading.heldGlyph) \(SendQueueReading.heldBadge) · \(row.title)"
+            : "\(glyph(row)) \(row.title)"
+    }
+
     /// What the row says under the words: where the message is held, and what to do about it.
     public static func hint(_ row: QueueRow) -> String {
         switch (row.holder, row.canEdit) {
