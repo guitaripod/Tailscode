@@ -18,19 +18,29 @@ public final class NeuralTurnSlot: @unchecked Sendable {
     public let outline: NeuralTurnOutline
     /// A number that is the same for as long as the turn is the same turn.
     public let generation: Int
+    /// The messages the turn is read from, and the message of the person's that began it, so a
+    /// client can find the turn's words and the question it answered without the conversation.
+    public let messages: [ChatMessage]
+    public let asked: ChatMessage?
     private var held: NeuralTurn?
     private var source: Source?
 
-    init(outline: NeuralTurnOutline, generation: Int, source: Source) {
+    init(outline: NeuralTurnOutline, generation: Int, asked: ChatMessage?, source: Source) {
         self.outline = outline
         self.generation = generation
+        messages = source.messages
+        self.asked = asked
         self.source = source
     }
 
     /// A slot for a turn already read.
-    public init(turn: NeuralTurn, generation: Int) {
+    public init(
+        turn: NeuralTurn, generation: Int, messages: [ChatMessage] = [], asked: ChatMessage? = nil
+    ) {
         outline = turn.outline
         self.generation = generation
+        self.messages = messages
+        self.asked = asked
         held = turn
     }
 

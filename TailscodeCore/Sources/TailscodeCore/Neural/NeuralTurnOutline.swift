@@ -59,17 +59,26 @@ public struct NeuralTurnOutline: Sendable, Hashable {
 extension NeuralTurn {
     /// The part this turn's brain row goes before: its first member step, or its first step when
     /// every step is one the client also draws as a card.
-    public var anchor: String? { anchorStep?.id }
+    public var anchor: String? { anchorIndex.map { steps[$0].id } }
 
-    private var anchorStep: NeuralStep? {
-        steps.first { memberPartIDs.contains($0.id) } ?? steps.first
+    private var anchorIndex: Int? {
+        steps.indices.first { memberPartIDs.contains(steps[$0].id) } ?? steps.indices.first
+    }
+
+    private var boardPartIDs: [String] {
+        var found: [String] = []
+        for index in steps.indices where steps[index].isCard && TaskBoard.isBoardCall(steps[index].title) {
+            found.append(steps[index].id)
+        }
+        return found
     }
 
     public var outline: NeuralTurnOutline {
-        NeuralTurnOutline(
-            id: id, stepCount: steps.count, anchor: anchor, anchorMessageID: anchorStep?.messageID,
-            answerPartIDs: answerPartIDs,
-            boardPartIDs: steps.filter { $0.isCard && TaskBoard.isBoardCall($0.title) }.map(\.id),
+        let anchored = anchorIndex
+        return NeuralTurnOutline(
+            id: id, stepCount: steps.count, anchor: anchored.map { steps[$0].id },
+            anchorMessageID: anchored.map { steps[$0].messageID },
+            answerPartIDs: answerPartIDs, boardPartIDs: boardPartIDs,
             memberPartIDs: memberPartIDs, memberMessageIDs: memberMessageIDs, outcome: outcome,
             startedAt: startedAt, endedAt: endedAt, modelID: modelID, effort: effort)
     }

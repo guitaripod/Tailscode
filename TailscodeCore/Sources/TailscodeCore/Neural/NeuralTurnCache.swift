@@ -269,6 +269,7 @@ public final class NeuralTurnCache: @unchecked Sendable {
                     outline: NeuralTurns.outline(
                         messages: group, running: isRunning, awaiting: awaiting),
                     generation: generations,
+                    asked: Self.asked(before: starts[index], in: messages),
                     source: NeuralTurnSlot.Source(
                         messages: group, running: isRunning, awaiting: awaiting, counter: reads))
                 entry = Entry(
@@ -384,7 +385,8 @@ public final class NeuralTurnCache: @unchecked Sendable {
                 NeuralTurnSlot(
                     turn: NeuralTurns.assemble(
                         members, readings: parts, running: isRunning, awaiting: awaiting),
-                    generation: generations))
+                    generation: generations, messages: members,
+                    asked: Self.asked(before: group.start, in: messages)))
         }
 
         let kept = state.turns.count - 1
@@ -416,6 +418,17 @@ public final class NeuralTurnCache: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return body()
+    }
+
+    /// The message of the person's that began the turn whose first message is at `start`: the last
+    /// user message before it.
+    static func asked(before start: Int, in messages: [ChatMessage]) -> ChatMessage? {
+        var index = min(start, messages.count) - 1
+        while index >= 0 {
+            if messages[index].role == .user { return messages[index] }
+            index -= 1
+        }
+        return nil
     }
 
     /// The runs of assistant messages between user messages, the way the partition splits them:

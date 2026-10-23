@@ -220,6 +220,25 @@ struct NeuralTurnOutlineTests {
         #expect(list.array == NeuralTurns.partition(messages: messages, running: true))
     }
 
+    @Test("a slot knows its messages and the question that began the turn, read cold or streamed")
+    func slotsCarryTheirQuestion() {
+        var messages = TurnBenchFixtures.conversation(turns: 30) + TurnBenchFixtures.settledTail()
+        messages.append(TurnBenchFixtures.streaming("w"))
+        let cache = NeuralTurnCache()
+        var list = cache.partitionList(messages: messages, running: true)
+        for index in 0..<30 {
+            let slot = list.slot(at: index)
+            #expect(slot.asked?.id == "u\(index)" && slot.messages.map(\.id) == ["a\(index)"])
+        }
+        for token in TurnBenchFixtures.tokens(5) {
+            messages[messages.count - 1] = token
+            list = cache.partitionList(messages: messages, running: true, stablePrefix: messages.count - 4)
+            let tail = list.slot(at: list.count - 1)
+            #expect(tail.asked?.id == "ulast" && tail.messages.last?.id == "live")
+        }
+        #expect(list.slot(at: 7).asked?.id == "u7")
+    }
+
     @Test("a message changed deep in a long conversation changes only its turn's generation")
     func changedMiddle() {
         var messages = TurnBenchFixtures.conversation(turns: 100)

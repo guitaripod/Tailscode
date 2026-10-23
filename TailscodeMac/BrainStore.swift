@@ -67,15 +67,17 @@ final class BrainStore {
         var revision: Int
     }
 
-    /// A turn as the transcript places it, and what is made of it once somebody looks.
-    private struct Placed {
-        struct Made {
-            var turn: NeuralTurn
-            var model: NeuralBrainModel
-            var answer: String
-            var prompt: String?
-        }
+    /// What is made of a turn once somebody looks at it.
+    private struct Made {
+        var turn: NeuralTurn
+        var model: NeuralBrainModel
+        var answer: String
+        var prompt: String?
+    }
 
+    /// A turn as the transcript places it. Kept apart from what is made of it, so reading a turn's
+    /// placement copies no model.
+    private struct Placed {
         var slot: NeuralTurnSlot
         var context: NeuralBrainContext
         var anchor: String?
@@ -84,14 +86,11 @@ final class BrainStore {
         var messageIDs: Set<String>
         var boardKeys: Set<String>
         var revision: Int
-        var made: Made?
-
-        var outline: NeuralTurnOutline { slot.outline }
     }
 
     private let cache = NeuralTurnCache()
     private var placed: [String: Placed] = [:]
-    private var heldMessages: [ChatMessage] = []
+    private var built: [String: Made] = [:]
     private var turnIDs: [String] = []
     private(set) var order: [String] = []
     private var messageTurn: [String: String] = [:]
@@ -202,8 +201,11 @@ final class BrainStore {
             counter += 1
             adopt(
                 ids: kept.held.prefixIDs + [tail.id], keptOrder: kept.held.prefixBrainOrder,
-                fresh: [NeuralTurnSlot(turn: tail, generation: counter)], running: running,
-                messages: messages)
+                fresh: [
+                    NeuralTurnSlot(
+                        turn: tail, generation: counter, messages: kept.tailAssistants,
+                        asked: messages[kept.held.messages.count])
+                ], running: running, messages: messages)
             return
         }
         readWhole(messages: messages, running: running, awaiting: awaiting)
@@ -366,7 +368,6 @@ final class BrainStore {
         ids: [String], keptOrder: [String]?, fresh: [NeuralTurnSlot], running: Bool,
         messages: [ChatMessage]
     ) {
-        heldMessages = messages
         let before = (latestTurnID, openTurnID)
         latestTurnID = ids.last
         turnIDs = ids
@@ -379,31 +380,29 @@ final class BrainStore {
             let id = slot.outline.id
             ordered.append(id)
             let context = id == latestTurnID ? liveContext : chatContext
-            if var held = placed[id] {
+            if let held = placed[id] {
                 let sameTurn =
-                    held.slot === slot || (held.made.map { $0.turn == slot.turn } ?? false)
+                    held.slot === slot || (built[id].map { $0.turn == slot.turn } ?? false)
                 if sameTurn, held.context == context {
-                    held.slot = slot
-                    placed[id] = held
+                    placed[id]!.slot = slot
                     continue
                 }
                 if id != latestTurnID { bumpShape() }
                 forget(held)
-                held.slot = slot
-                held.context = context
-                place(&held)
-                if var made = held.made {
-                    made.turn = slot.turn
-                    made.model.update(turn: made.turn, context: context)
-                    made.answer = Self.answerText(of: made.turn, in: messages)
-                    held.made = made
+                placed[id]!.slot = slot
+                placed[id]!.context = context
+                place(&placed[id]!)
+                if built[id] != nil {
+                    let turn = slot.turn
+                    built[id]!.model.update(turn: turn, context: context)
+                    built[id]!.turn = turn
+                    built[id]!.answer = Self.answerText(of: turn, in: slot.messages)
                 }
-                placed[id] = held
-                remember(held, id: id)
+                remember(placed[id]!, id: id)
             } else {
                 var held = Placed(
                     slot: slot, context: context, anchor: nil, anchorMessageID: nil, members: [],
-                    messageIDs: [], boardKeys: [], revision: 0, made: nil)
+                    messageIDs: [], boardKeys: [], revision: 0)
                 place(&held)
                 if id != latestTurnID { bumpShape() }
                 placed[id] = held
@@ -431,16 +430,15 @@ final class BrainStore {
 
     /// The steps, model, answer and prompt of a turn, made now if nothing has asked for them.
     @discardableResult
-    private func made(_ turnID: String) -> Placed.Made? {
-        guard var held = placed[turnID] else { return nil }
-        if let made = held.made { return made }
+    private func made(_ turnID: String) -> Made? {
+        if let made = built[turnID] { return made }
+        guard let held = placed[turnID] else { return nil }
         let turn = held.slot.turn
-        let made = Placed.Made(
+        let made = Made(
             turn: turn, model: NeuralBrainModel(turn: turn, context: held.context),
-            answer: Self.answerText(of: turn, in: heldMessages),
-            prompt: Self.prompt(before: turn, in: heldMessages))
-        held.made = made
-        placed[turnID] = held
+            answer: Self.answerText(of: turn, in: held.slot.messages),
+            prompt: Self.prompt(asked: held.slot.asked))
+        built[turnID] = made
         return made
     }
 
@@ -460,9 +458,8 @@ final class BrainStore {
             return changed
         }
         placed[id]!.context = context
-        if var made = placed[id]!.made {
-            made.model.update(turn: made.turn, context: context)
-            placed[id]!.made = made
+        if let turn = built[id]?.turn {
+            built[id]!.model.update(turn: turn, context: context)
         }
         changed = true
         return changed
@@ -478,9 +475,8 @@ final class BrainStore {
         var changed = false
         for id in placed.keys where id != latestTurnID && placed[id]!.context != shared {
             placed[id]!.context = shared
-            if var made = placed[id]!.made {
-                made.model.update(turn: made.turn, context: shared)
-                placed[id]!.made = made
+            if let turn = built[id]?.turn {
+                built[id]!.model.update(turn: turn, context: shared)
             }
             changed = true
         }
@@ -514,7 +510,7 @@ final class BrainStore {
         restateTimer = nil
         guard !placed.isEmpty || !order.isEmpty else { return }
         placed = [:]
-        heldMessages = []
+        built = [:]
         order = []
         messageTurn = [:]
         boardOwner = [:]
@@ -538,10 +534,13 @@ final class BrainStore {
         _ turnID: String, _ body: (inout NeuralBrainModel) -> Value
     ) -> Value? {
         guard made(turnID) != nil else { return nil }
-        return body(&placed[turnID]!.made!.model)
+        return body(&built[turnID]!.model)
     }
 
-    func model(_ turnID: String) -> NeuralBrainModel? { made(turnID)?.model }
+    func model(_ turnID: String) -> NeuralBrainModel? {
+        if let model = built[turnID]?.model { return model }
+        return made(turnID)?.model
+    }
 
     func isOpen(_ turnID: String) -> Bool { openTurnID == turnID }
 
@@ -796,13 +795,13 @@ final class BrainStore {
             guard !keep.contains(oldest), let held = placed[oldest] else { continue }
             forget(held)
             placed[oldest] = nil
+            built[oldest] = nil
         }
     }
 
     /// The words of the message that began a turn: the question the poster quotes.
-    private static func prompt(before turn: NeuralTurn, in messages: [ChatMessage]) -> String? {
-        guard let first = messages.firstIndex(where: { $0.id == turn.id }) else { return nil }
-        guard let asked = messages[..<first].last(where: { $0.role == .user }) else { return nil }
+    private static func prompt(asked: ChatMessage?) -> String? {
+        guard let asked else { return nil }
         let words = asked.text.trimmingCharacters(in: .whitespacesAndNewlines)
         return words.isEmpty ? nil : words
     }
