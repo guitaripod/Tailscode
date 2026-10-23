@@ -33,12 +33,12 @@ final class BrainTurnMeter {
         let woke = CFRunLoopObserverCreateWithHandler(
             kCFAllocatorDefault, CFRunLoopActivity.afterWaiting.rawValue, true, CFIndex.min
         ) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.begin() }
+            MainThread.call { self?.begin() }
         }
         let slept = CFRunLoopObserverCreateWithHandler(
             kCFAllocatorDefault, CFRunLoopActivity.beforeWaiting.rawValue, true, CFIndex.max
         ) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.end() }
+            MainThread.call { self?.end() }
         }
         for observer in [woke, slept].compactMap({ $0 }) {
             CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)

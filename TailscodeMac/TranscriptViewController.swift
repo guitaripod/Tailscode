@@ -3073,7 +3073,7 @@ final class TranscriptViewController: NSViewController {
                 band.animator().alphaValue = shown ? 1 : 0
             },
             completionHandler: { [weak self, weak band] in
-                MainActor.assumeIsolated {
+                MainThread.call {
                     guard let self, let band, self.bandFade == generation else { return }
                     band.isHidden = !shown
                     band.alphaValue = 1
