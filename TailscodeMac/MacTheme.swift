@@ -273,12 +273,37 @@ enum MacTheme {
             font(role, in: TypeArea(role: role))
         }
 
+        private struct FontKey: Hashable {
+            let role: TypeRole
+            let area: TypeArea
+            let scale: Double
+        }
+
+        nonisolated(unsafe) private static var fonts: [FontKey: NSFont] = [:]
+        private static let fontsLock = NSLock()
+
         /// A role set at the size of an area that is not its own axis's: the shell under the
         /// conversation is monospace like the code above it and is sized by nothing but itself.
+        /// Making a font from a descriptor costs far more than anything a row does with it, and a
+        /// row asks for the same few again on every pass, so each is made once for the scale it
+        /// is set at.
         static func font(_ role: TypeRole, in area: TypeArea) -> NSFont {
+            let scale = Double(UIScale.factor(for: area))
+            let key = FontKey(role: role, area: area, scale: scale)
+            fontsLock.lock()
+            let held = fonts[key]
+            fontsLock.unlock()
+            if let held { return held }
+            let made = makeFont(role, scale: scale)
+            fontsLock.lock()
+            fonts[key] = made
+            fontsLock.unlock()
+            return made
+        }
+
+        private static func makeFont(_ role: TypeRole, scale: Double) -> NSFont {
             let spec = Typography.spec(role)
-            let size = CGFloat(
-                spec.size(base: base(spec.axis), scale: Double(UIScale.factor(for: area))))
+            let size = CGFloat(spec.size(base: base(spec.axis), scale: scale))
             let weight = weight(spec.weight)
             let face: NSFont =
                 switch spec.family {
