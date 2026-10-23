@@ -111,12 +111,27 @@ final class HairlineAttachment: NSTextAttachment {
     }
 }
 
+/// A bubble that places its words by frame when asked to, so a row that measures itself is not also
+/// solved for by the constraint engine.
+private final class BubbleView: UIView {
+    var placedContent: UIView?
+    var contentInsets: UIEdgeInsets = .zero
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let placedContent else { return }
+        let target = bounds.inset(by: contentInsets)
+        if placedContent.frame != target { placedContent.frame = target }
+    }
+}
+
 final class TextBubbleCell: UICollectionViewCell {
     static let reuseID = "TextBubbleCell"
     weak var linkDelegate: TextBubbleCellDelegate?
 
-    private let bubble = UIView()
-    private let textView = UITextView()
+    private let bubble = BubbleView()
+    private let textView = MeasuredTextView()
+    private var measuresItself = false
     private var leadingPin: NSLayoutConstraint!
     private var trailingPin: NSLayoutConstraint!
     private var textInsetLeading: NSLayoutConstraint!
@@ -127,8 +142,15 @@ final class TextBubbleCell: UICollectionViewCell {
     private var bubbleTop: NSLayoutConstraint!
     private var textTop: NSLayoutConstraint!
     private var textBottom: NSLayoutConstraint!
+    private var heightPin: NSLayoutConstraint!
+    private var placesItsWords = false
     private lazy var aurora = AuroraTextPainter(textView: textView, host: bubble)
     private var cascadeBase: (revision: Int, reasoning: Bool, text: NSAttributedString)?
+    /// Whether the text view already wears the answer's font, ink and link style. Each of those is
+    /// an edit to the whole text storage and a re-layout of the words in it, and a live answer is
+    /// configured on every arrival, so a reconfigure of the same kind of row leaves them be.
+    private var wearsAnswerStyle = false
+    private var fit: CGSize?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -138,15 +160,19 @@ final class TextBubbleCell: UICollectionViewCell {
         textView.isEditable = false
         textView.isScrollEnabled = false
         textView.isSelectable = true
-        textView.dataDetectorTypes = [.link]
         textView.backgroundColor = .clear
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
+        textView.textContainer.heightTracksTextView = false
         textView.translatesAutoresizingMaskIntoConstraints = false
         textView.adjustsFontForContentSizeCategory = true
         textView.delegate = self
         contentView.addSubview(bubble)
         bubble.addSubview(textView)
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
+            (cell: TextBubbleCell, _) in
+            cell.contentChanged()
+        }
 
         leadingPin = bubble.leadingAnchor.constraint(
             equalTo: contentView.leadingAnchor, constant: Theme.Spacing.l)
@@ -161,6 +187,8 @@ final class TextBubbleCell: UICollectionViewCell {
         bubbleTop = bubble.topAnchor.constraint(equalTo: contentView.topAnchor)
         textTop = textView.topAnchor.constraint(equalTo: bubble.topAnchor)
         textBottom = textView.bottomAnchor.constraint(equalTo: bubble.bottomAnchor)
+        heightPin = bubble.heightAnchor.constraint(equalToConstant: 0)
+        heightPin.priority = .defaultHigh
 
         NSLayoutConstraint.activate([
             bubbleTop,
@@ -178,7 +206,11 @@ final class TextBubbleCell: UICollectionViewCell {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     var gapAbove: CGFloat = 0 {
-        didSet { bubbleTop.constant = gapAbove }
+        didSet {
+            guard gapAbove != oldValue else { return }
+            bubbleTop.constant = gapAbove
+            contentChanged()
+        }
     }
 
     /// The air inside the bubble above and below its words. Only a prompt has a plate, so only a
@@ -186,6 +218,36 @@ final class TextBubbleCell: UICollectionViewCell {
     private func padText(_ points: CGFloat) {
         textTop.constant = points
         textBottom.constant = -points
+        syncPlacedInsets()
+    }
+
+    /// Hands the words to the frame: the text view leaves the constraint engine, which re-measured
+    /// the whole text for its baseline on every arrival, and the bubble places it inside the insets
+    /// the constraints would have, at a height the row has already measured.
+    private func placeWords() {
+        guard !placesItsWords else { return }
+        placesItsWords = true
+        NSLayoutConstraint.deactivate([textInsetLeading, textInsetTrailing, textTop, textBottom])
+        textView.translatesAutoresizingMaskIntoConstraints = true
+        bubble.placedContent = textView
+        heightPin.isActive = true
+        syncPlacedInsets()
+    }
+
+    private func constrainWords() {
+        guard placesItsWords else { return }
+        placesItsWords = false
+        heightPin.isActive = false
+        bubble.placedContent = nil
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([textInsetLeading, textInsetTrailing, textTop, textBottom])
+    }
+
+    private func syncPlacedInsets() {
+        bubble.contentInsets = UIEdgeInsets(
+            top: textTop.constant, left: textInsetLeading.constant,
+            bottom: -textBottom.constant, right: -textInsetTrailing.constant)
+        bubble.setNeedsLayout()
     }
 
     override func prepareForReuse() {
@@ -200,6 +262,10 @@ final class TextBubbleCell: UICollectionViewCell {
         accessibilityTraits = []
         accessibilityCustomActions = nil
         textView.textAlignment = .natural
+        wearsAnswerStyle = false
+        measuresItself = false
+        textView.measuredHeight = nil
+        contentChanged()
         timestampLeading?.isActive = false
         timestampTrailing?.isActive = false
         aurora.release()
@@ -211,6 +277,123 @@ final class TextBubbleCell: UICollectionViewCell {
         aurora.revalidate()
     }
 
+    #if DEBUG
+        nonisolated(unsafe) static var fitCount = 0
+        nonisolated(unsafe) static var verifiedFits = 0
+        private static let verifiesMeasure =
+            ProcessInfo.processInfo.environment["TAILSCODE_VERIFY_TEXTFIT"] != nil
+    #endif
+
+    /// The list asks every visible cell for its size again whenever anything in it changes, and a
+    /// text view answers by laying its words out twice. A row whose words, style and width are what
+    /// they were when it last answered says the same height without being measured again; whatever
+    /// can change either (`contentChanged()`) takes the answer back.
+    override func preferredLayoutAttributesFitting(
+        _ layoutAttributes: UICollectionViewLayoutAttributes
+    ) -> UICollectionViewLayoutAttributes {
+        if let fit, fit.width == layoutAttributes.size.width,
+            let copy = layoutAttributes.copy() as? UICollectionViewLayoutAttributes
+        {
+            copy.size = fit
+            return copy
+        }
+        #if DEBUG
+            Self.fitCount += 1
+        #endif
+        let height = measuresItself ? measuredHeight(cellWidth: layoutAttributes.size.width) : nil
+        textView.measuredHeight = height
+        guard let height, let sized = layoutAttributes.copy() as? UICollectionViewLayoutAttributes
+        else {
+            constrainWords()
+            let measured = super.preferredLayoutAttributesFitting(layoutAttributes)
+            fit = measured.size
+            return measured
+        }
+        let bubbleHeight = textTop.constant + height - textBottom.constant
+        heightPin.constant = bubbleHeight
+        sized.size.height = bubbleTop.constant + bubbleHeight
+        #if DEBUG
+            if Self.verifiesMeasure {
+                constrainWords()
+                textView.measuredHeight = nil
+                let reference = super.preferredLayoutAttributesFitting(layoutAttributes)
+                textView.measuredHeight = height
+                placeWords()
+                if abs(reference.size.height - sized.size.height) > 0.5 {
+                    AppLogger.performance.info(
+                        "TEXTFIT_MISMATCH ours=\(sized.size.height) uikit=\(reference.size.height) width=\(layoutAttributes.size.width) chars=\(textView.textStorage.length)")
+                } else {
+                    Self.verifiedFits += 1
+                }
+            }
+        #endif
+        fit = sized.size
+        return sized
+    }
+
+    /// How tall the words are at the width this row gives them, laid out once and kept: the container
+    /// is only resized when the width is not the one it already has, so the next arrival of a growing
+    /// answer lays out what was added and nothing before it. The width is the row's less what the
+    /// pins and the bubble's padding take, read from the constraints that take it.
+    private func measuredHeight(cellWidth: CGFloat) -> CGFloat? {
+        let width =
+            cellWidth - leadingPin.constant + trailingPin.constant - textInsetLeading.constant
+            + textInsetTrailing.constant
+        guard width > 1 else { return nil }
+        let container = textView.textContainer
+        let target = CGSize(width: width, height: .greatestFiniteMagnitude)
+        if container.size != target { container.size = target }
+        container.heightTracksTextView = false
+        let manager = textView.layoutManager
+        manager.ensureLayout(for: container)
+        let scale = traitCollection.displayScale
+        guard scale > 0 else { return nil }
+        return ceil(manager.usedRect(for: container).height * scale) / scale
+    }
+
+    private func contentChanged() {
+        fit = nil
+    }
+
+    /// Writes `text` into the view as an edit rather than a replacement. Replacing the storage
+    /// invalidates every glyph already laid out, and an answer that grows by a word on every
+    /// arrival was therefore laid out from its first letter again each time; an edit from the first
+    /// place the new text differs lays out the words that changed and what follows them.
+    private func adopt(_ text: NSAttributedString) {
+        let held = textView.textStorage
+        let keep = Self.sharedLength(held, text)
+        guard keep > 0 else {
+            textView.attributedText = text
+            return
+        }
+        guard keep < held.length || keep < text.length else { return }
+        held.beginEditing()
+        held.replaceCharacters(
+            in: NSRange(location: keep, length: held.length - keep),
+            with: text.attributedSubstring(
+                from: NSRange(location: keep, length: text.length - keep)))
+        held.endEditing()
+    }
+
+    /// How many leading UTF-16 units two attributed strings agree on, in characters and in every
+    /// attribute they carry.
+    private static func sharedLength(_ held: NSAttributedString, _ text: NSAttributedString) -> Int {
+        let characters = (held.string as NSString).commonPrefix(with: text.string, options: []).utf16.count
+        var verified = 0
+        while verified < characters {
+            var heldRun = NSRange(location: 0, length: 0)
+            var textRun = NSRange(location: 0, length: 0)
+            let limit = NSRange(location: verified, length: characters - verified)
+            let heldAttributes = held.attributes(
+                at: verified, longestEffectiveRange: &heldRun, in: limit)
+            let textAttributes = text.attributes(
+                at: verified, longestEffectiveRange: &textRun, in: limit)
+            guard (heldAttributes as NSDictionary).isEqual(to: textAttributes) else { break }
+            verified = min(heldRun.upperBound, textRun.upperBound)
+        }
+        return verified
+    }
+
     /// The answer bubble hugs its text tighter than the other rows: the surface is
     /// the point, so the chrome around the words shrinks to the tokens above.
     private func applyHorizontalInsets(outer: CGFloat, inner: CGFloat) {
@@ -218,6 +401,7 @@ final class TextBubbleCell: UICollectionViewCell {
         trailingPin.constant = -outer
         textInsetLeading.constant = inner
         textInsetTrailing.constant = -inner
+        syncPlacedInsets()
     }
 
     /// A message waiting for its turn: the words in a lighter ink on a plain plate with an outline,
@@ -248,6 +432,8 @@ final class TextBubbleCell: UICollectionViewCell {
         cascade: CascadeTail? = nil
     ) {
         let isUser = role == .user
+        contentChanged()
+        measuresItself = false
 
         padText(isUser && !timestamp ? CGFloat(Theme.Chat.metrics.promptBubblePadding) : 0)
         aurora.release()
@@ -259,6 +445,8 @@ final class TextBubbleCell: UICollectionViewCell {
             inner: isUser || timestamp ? Theme.Spacing.m : Theme.Spacing.s)
 
         if timestamp {
+            wearsAnswerStyle = false
+            constrainWords()
             bubble.backgroundColor = .clear
             textView.textColor = Theme.Color.tertiaryLabel
             textView.font = Theme.Ramp.font(.rowStamp)
@@ -279,9 +467,16 @@ final class TextBubbleCell: UICollectionViewCell {
         maxWidth.isActive = isUser
         leadingPin.isActive = !isUser
         trailingPin.isActive = true
-        textView.textAlignment = .natural
+        measuresItself = !isUser
+        if measuresItself { placeWords() } else { constrainWords() }
+        if textView.textAlignment != .natural { textView.textAlignment = .natural }
+        let detectsLinks = cascade == nil
+        if (textView.dataDetectorTypes == [.link]) != detectsLinks {
+            textView.dataDetectorTypes = detectsLinks ? [.link] : []
+        }
 
         if reasoning {
+            wearsAnswerStyle = false
             bubble.backgroundColor = .clear
             textView.textColor = Theme.Color.secondaryLabel
             textView.font = Theme.Ramp.font(.thought)
@@ -291,8 +486,7 @@ final class TextBubbleCell: UICollectionViewCell {
                     attributes: Theme.Ramp.attributes(
                         .thought, color: Theme.Color.secondaryLabel))
                 if !paintAurora(string, cascade: cascade, reasoning: true) {
-                    textView.attributedText = cascade.paint(
-                        string, settled: Theme.Color.secondaryLabel)
+                    adopt(cascade.paint(string, settled: Theme.Color.secondaryLabel))
                     cascadeBase = (cascade.textRevision, true, string)
                 }
             } else {
@@ -303,6 +497,7 @@ final class TextBubbleCell: UICollectionViewCell {
                 .underlineStyle: NSUnderlineStyle.single.rawValue,
             ]
         } else if isUser {
+            wearsAnswerStyle = false
             bubble.backgroundColor = Theme.Color.userBubble
             textView.textColor = Theme.Color.onAccent
             textView.font = Theme.Ramp.font(.prompt)
@@ -312,19 +507,23 @@ final class TextBubbleCell: UICollectionViewCell {
             textView.linkTextAttributes = [.foregroundColor: Theme.Color.onAccent]
         } else {
             bubble.backgroundColor = .clear
-            textView.textColor = Theme.Color.label
-            textView.font = Theme.Ramp.font(.answer)
+            if !wearsAnswerStyle {
+                textView.textColor = Theme.Color.label
+                textView.font = Theme.Ramp.font(.answer)
+            }
             let rendered = Self.rendered(text, color: Theme.Color.label)
             let drawn = cascade.map { paintAurora(rendered, cascade: $0, reasoning: false) } ?? false
             if !drawn {
-                textView.attributedText =
-                    cascade.map { $0.paint(rendered, settled: Theme.Color.label) } ?? rendered
+                adopt(cascade.map { $0.paint(rendered, settled: Theme.Color.label) } ?? rendered)
                 if let cascade { cascadeBase = (cascade.textRevision, false, rendered) }
             }
-            textView.linkTextAttributes = [
-                .foregroundColor: Theme.Color.accent,
-                .underlineStyle: NSUnderlineStyle.single.rawValue,
-            ]
+            if !wearsAnswerStyle {
+                textView.linkTextAttributes = [
+                    .foregroundColor: Theme.Color.accent,
+                    .underlineStyle: NSUnderlineStyle.single.rawValue,
+                ]
+                wearsAnswerStyle = true
+            }
         }
     }
 
@@ -340,18 +539,21 @@ final class TextBubbleCell: UICollectionViewCell {
             !aurora.isLit, cascade.aurora == nil,
             textView.textStorage.length == held.text.length
         {
-            cascade.repaint(
-                textView.textStorage, base: held.text,
-                settled: reasoning ? Theme.Color.secondaryLabel : Theme.Color.label)
+            textView.paintingColours {
+                cascade.repaint(
+                    textView.textStorage, base: held.text,
+                    settled: reasoning ? Theme.Color.secondaryLabel : Theme.Color.label)
+            }
             return
         }
+        contentChanged()
         if reasoning {
             let string = NSAttributedString(
                 string: text,
                 attributes: Theme.Ramp.attributes(.thought, color: Theme.Color.secondaryLabel))
             if paintAurora(string, cascade: cascade, reasoning: true) { return }
             aurora.release()
-            textView.attributedText = cascade.paint(string, settled: Theme.Color.secondaryLabel)
+            adopt(cascade.paint(string, settled: Theme.Color.secondaryLabel))
             cascadeBase = (cascade.textRevision, true, string)
             return
         }
@@ -361,9 +563,11 @@ final class TextBubbleCell: UICollectionViewCell {
         if textView.textStorage.length == rendered.length,
             textView.textStorage.string == rendered.string
         {
-            cascade.repaint(textView.textStorage, base: rendered, settled: Theme.Color.label)
+            textView.paintingColours {
+                cascade.repaint(textView.textStorage, base: rendered, settled: Theme.Color.label)
+            }
         } else {
-            textView.attributedText = cascade.paint(rendered, settled: Theme.Color.label)
+            adopt(cascade.paint(rendered, settled: Theme.Color.label))
         }
         cascadeBase = (cascade.textRevision, false, rendered)
     }
@@ -401,6 +605,10 @@ final class TextBubbleCell: UICollectionViewCell {
         cache.countLimit = 200
         return cache
     }()
+
+    static func relieveRenderCache() {
+        renderCache.removeAllObjects()
+    }
 
     static func rendered(_ text: String, color: UIColor) -> NSAttributedString {
         let key = "\(text)#\(color.description)" as NSString
@@ -1186,6 +1394,10 @@ final class CodeBlockCell: UICollectionViewCell {
         cache.countLimit = 60
         return cache
     }()
+
+    static func relieveHighlightCache() {
+        highlightCache.removeAllObjects()
+    }
 
     /// The shared lexer's tokens, painted in this theme's colours. Nothing about which run is a
     /// keyword is decided here — that answer is Core's, and the Linux and Mac clients ask it the

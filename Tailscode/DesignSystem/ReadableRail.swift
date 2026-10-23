@@ -55,13 +55,19 @@ extension UICollectionViewCompositionalLayout {
         configurationForSection configuration: @escaping (Int) -> UICollectionLayoutListConfiguration
     ) -> UICollectionViewCompositionalLayout {
         UICollectionViewCompositionalLayout { index, environment in
-            let section = NSCollectionLayoutSection.list(
-                using: configuration(index), layoutEnvironment: environment)
-            if environment.traitCollection.horizontalSizeClass == .regular {
-                section.contentInsetsReference = .readableContent
-            }
-            return section
+            Self.readableSection(using: configuration(index), environment: environment)
         }
+    }
+
+    static func readableSection(
+        using config: UICollectionLayoutListConfiguration,
+        environment: NSCollectionLayoutEnvironment
+    ) -> NSCollectionLayoutSection {
+        let section = NSCollectionLayoutSection.list(using: config, layoutEnvironment: environment)
+        if environment.traitCollection.horizontalSizeClass == .regular {
+            section.contentInsetsReference = .readableContent
+        }
+        return section
     }
 }
 

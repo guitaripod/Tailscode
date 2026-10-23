@@ -9,6 +9,11 @@ import UIKit
 /// two facts only UIKit knows: which chat is on top, and whether a transition is running. A request
 /// that has to wait is held and retried from the transition's own completion, never from a run-loop
 /// hop that spins until the animation is over.
+///
+/// An animated push is also split into turns of its own. Making a chat, laying out its chrome and
+/// pushing it onto the stack are each most of a frame, and done in one the screen's edge is not
+/// answered for as long as all three take; so the chat is made by whoever asks, its view is built and
+/// laid out one turn later, and the push follows in the turn after that.
 @MainActor
 final class ChatNavigator {
     static let shared = ChatNavigator()
@@ -16,6 +21,7 @@ final class ChatNavigator {
     private var guardrail = ChatNavigationGuard()
     private var retry: (() -> Void)?
     private weak var holdingStack: UINavigationController?
+    private var staged: ChatTarget?
 
     private init() {}
 
@@ -25,16 +31,14 @@ final class ChatNavigator {
         _ target: ChatTarget, on stack: UINavigationController, retry: @escaping () -> Void
     ) -> ChatNavigationGuard.Verdict {
         let verdict = guardrail.request(
-            target, top: Self.target(of: stack.topViewController),
-            transitioning: stack.transitionCoordinator != nil)
+            target, top: staged ?? Self.target(of: stack.topViewController),
+            transitioning: staged != nil || stack.transitionCoordinator != nil)
         AppLogger.session.info(
             "chat push \(verdict) session=\(target.sessionID) top=\(Self.target(of: stack.topViewController)?.sessionID ?? "-") transitioning=\(stack.transitionCoordinator != nil)")
         switch verdict {
         case .hold:
             self.retry = retry
             holdingStack = stack
-            AppLogger.session.info(
-                "chat push held behind a transition session=\(target.sessionID)")
             stack.transitionCoordinator?.animate(alongsideTransition: nil) { [weak self] _ in
                 self?.transitionEnded()
             }
@@ -53,12 +57,41 @@ final class ChatNavigator {
             })
         {
         case .push:
-            stack.pushViewController(chat, animated: animated)
+            if animated, !chat.isViewLoaded {
+                stage(chat, target: target, on: stack)
+            } else {
+                stack.pushViewController(chat, animated: animated)
+            }
         case .alreadyOnTop:
             Theme.Haptics.tap()
             (stack.topViewController as? ChatViewController)?.announceIdentity()
         case .hold:
             break
+        }
+    }
+
+    private func stage(
+        _ chat: ChatViewController, target: ChatTarget, on stack: UINavigationController
+    ) {
+        staged = target
+        RunLoopTurn.next { [weak self, weak stack] in
+            guard let stack else {
+                self?.staged = nil
+                return
+            }
+            chat.layOutBeforePush(in: stack.view.bounds)
+            RunLoopTurn.next { [weak self, weak stack] in
+                self?.staged = nil
+                guard let self, let stack else { return }
+                stack.pushViewController(chat, animated: true)
+                guard let coordinator = stack.transitionCoordinator else {
+                    self.transitionEnded()
+                    return
+                }
+                coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+                    self?.transitionEnded()
+                }
+            }
         }
     }
 

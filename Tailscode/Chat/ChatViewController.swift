@@ -27,11 +27,22 @@ final class ChatViewController: UIViewController {
     /// How many compaction seams the transcript carries, counted when it was last built so a
     /// redraw of the docked rows does not walk it again.
     private var seamCount = 0
-    private var renderedIDOrder: [String] = []
+    private var renderedIDOrder: [String] = [] {
+        didSet { renderedOrderIndex = nil }
+    }
+    private var renderedOrderIndex: [String: Int]?
+    /// The rows the data source holds right now, which are every row of the transcript except
+    /// while a long one is still being opened from its end.
+    private var appliedIDs: [String] = []
+    private var opening: TranscriptOpening?
+    private var openingStage: TranscriptOpening.Stage?
+    private var openingStageStart: CFTimeInterval = 0
+    private var openingScheduled = false
     /// The air each row was last given above it, so a row whose neighbour changed — a rail
     /// arriving between it and the paragraph before it — is drawn again with its new gap even
     /// though nothing about the row itself moved.
     private var appliedGaps: [String: CGFloat] = [:]
+    private var appliedGapMetrics: ChatMetrics?
     /// Which link rails the reader has opened, remembered by the rail's identity so a rebuild
     /// per streamed word does not fold one under their finger.
     private var railExpansion = TranscriptExpansion()
@@ -507,6 +518,14 @@ final class ChatViewController: UIViewController {
         refreshSpend()
         refreshGit()
         startRangeClock()
+    }
+
+    /// Builds the view and lays its chrome out at the size the stack will give it, in a turn before
+    /// the push that shows it, so that the push finds the constraints already solved.
+    func layOutBeforePush(in bounds: CGRect) {
+        loadViewIfNeeded()
+        view.frame = bounds
+        view.layoutIfNeeded()
     }
 
     private var announcedIdentity = false
@@ -1099,7 +1118,7 @@ final class ChatViewController: UIViewController {
         var config = UICollectionLayoutListConfiguration.themed(.plain)
         config.showsSeparators = false
         config.backgroundColor = .clear
-        let layout = UICollectionViewCompositionalLayout.readableList(using: config)
+        let layout = TranscriptLayout(config: config)
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.backgroundColor = Theme.Color.background
         collectionView.keyboardDismissMode = .interactive
@@ -1867,6 +1886,8 @@ final class ChatViewController: UIViewController {
 
     #if DEBUG
         private(set) var providedItems: [Int] = []
+
+        var isOpenedForBench: Bool { hasRevealed && opening == nil }
     #endif
 
     private func configureDataSource() {
@@ -1877,7 +1898,7 @@ final class ChatViewController: UIViewController {
                 self.providedItems.append(indexPath.item)
             #endif
             let cell = self.makeCell(collectionView, indexPath, id)
-            (cell as? RowGapCell)?.gapAbove = self.gapAbove(at: indexPath)
+            (cell as? RowGapCell)?.gapAbove = self.gapAbove(forID: id)
             return cell
         }
     }
@@ -2230,6 +2251,21 @@ final class ChatViewController: UIViewController {
         snapshot.reconfigureItems([settled])
         dataSource.apply(snapshot, animatingDifferences: false)
         settledCascadeRows.remove(settled)
+    }
+
+    /// The words of the row being written changed and nothing else did: the cell on screen is given
+    /// them and asked to be measured again, and the list is not told at all. Telling the list is a
+    /// snapshot of every row, a diff, a batch update and a look at every cell on screen, to reach one
+    /// paragraph; and none of it can change which cell shows which row, because the order did not move.
+    private func rewriteLiveTextInPlace(_ id: String) -> Bool {
+        guard let path = dataSource.indexPath(for: id),
+            let bubble = collectionView.cellForItem(at: path) as? TextBubbleCell,
+            let row = rowsByID[id], row.role != .user, case .text(let text) = row.content,
+            let tail = cascade.tail(for: id, traits: traitCollection)
+        else { return false }
+        bubble.applyCascade(tail, text: text, reasoning: false)
+        bubble.contentView.invalidateIntrinsicContentSize()
+        return true
     }
 
     /// Whether the turn writing the live row is over, which is not the same question as whether the
@@ -2616,13 +2652,57 @@ final class ChatViewController: UIViewController {
     }
 
     /// The server's account of the conversation moved, so every row is built from it again.
+    ///
+    /// The first account a screen gets is not drawn where it arrives: that is the turn the push
+    /// itself is in, and a push, a build of every row and a first layout are three jobs that each
+    /// take their own turn of the run loop, so a finger on the screen's edge is answered between them.
     private func render(_ state: ConversationState) {
         lastRenderedState = state
-        compose(state, rebuild: rebuildTranscript(state))
+        guard hasPainted || state.messages.isEmpty else {
+            queueFirstPaint(state)
+            return
+        }
+        paint(state, rebuilt: rebuildTranscript(state))
+    }
+
+    private var hasPainted = false
+    private func paint(_ state: ConversationState, rebuilt: TranscriptRebuild) {
+        hasPainted = hasPainted || !state.messages.isEmpty
+        compose(state, rebuild: rebuilt)
         refreshBrainCells()
         noteOpened(state)
         keepRead(state)
         callController.conversationChanged()
+    }
+
+    private enum FirstPaint {
+        case waiting(ConversationState)
+        case built(ConversationState, TranscriptRebuild)
+    }
+
+    private var firstPaint: FirstPaint?
+
+    private func queueFirstPaint(_ state: ConversationState) {
+        let idle = firstPaint == nil
+        firstPaint = .waiting(state)
+        if idle { scheduleFirstPaint() }
+    }
+
+    private func scheduleFirstPaint() {
+        RunLoopTurn.next { [weak self] in self?.advanceFirstPaint() }
+    }
+
+    private func advanceFirstPaint() {
+        switch firstPaint {
+        case .waiting(let state)?:
+            firstPaint = .built(state, rebuildTranscript(state))
+            scheduleFirstPaint()
+        case .built(let state, let rebuilt)?:
+            firstPaint = nil
+            paint(state, rebuilt: rebuilt)
+        case nil:
+            break
+        }
     }
 
     private var lastReadMarkAt: CFTimeInterval = 0
@@ -2852,8 +2932,9 @@ final class ChatViewController: UIViewController {
         Self.logPendingPhantom(state: state, viewModel: viewModel)
         var seenIDs = Set<String>()
         let uniqueIDs = ids.filter { seenIDs.insert($0).inserted }
-        renderedIDOrder = uniqueIDs
-        let idSet = Set(uniqueIDs)
+        let orderUnchanged = renderedIDOrder == uniqueIDs
+        if !orderUnchanged { renderedIDOrder = uniqueIDs }
+        let idSet = orderUnchanged && !lastRenderedIDs.isEmpty ? lastRenderedIDs : Set(uniqueIDs)
         let previouslyRendered = lastRenderedIDs
         let entranceEligible = hasRevealed && !userScrolledUp
         let entranceBubbles =
@@ -2897,9 +2978,10 @@ final class ChatViewController: UIViewController {
                 "fresh canvas wanted: rows=\(freshSend.count) revealed=\(hasRevealed) session=\(viewModel.session.id)"
             )
         }
-        var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
-        snapshot.appendSections([.main])
-        snapshot.appendItems(uniqueIDs, toSection: .main)
+        let shownIDs = idsToShow(from: uniqueIDs)
+        let shownSet = shownIDs.count == uniqueIDs.count ? idSet : Set(shownIDs)
+        let listUnchanged = appliedIDs == shownIDs
+        appliedIDs = shownIDs
 
         var changed: [String] = []
         if let rebuild {
@@ -2964,19 +3046,40 @@ final class ChatViewController: UIViewController {
         }
         let animated = animateNextRender && hasRevealed
         animateNextRender = false
-        let gapTable = gaps(for: uniqueIDs)
         var marked = Set(changed)
-        for id in uniqueIDs {
-            guard let before = appliedGaps[id], before != gapTable[id], marked.insert(id).inserted
-            else { continue }
-            changed.append(id)
+        let metrics = Theme.Chat.metrics
+        if orderUnchanged, !appliedGaps.isEmpty, appliedGapMetrics == metrics {
+            for id in Array(changed) {
+                guard let index = orderIndex(of: id) else { continue }
+                for target in [index, index + 1] where uniqueIDs.indices.contains(target) {
+                    let key = uniqueIDs[target]
+                    let gap = gap(before: target, in: uniqueIDs, metrics: metrics)
+                    guard appliedGaps[key] != gap else { continue }
+                    appliedGaps[key] = gap
+                    if marked.insert(key).inserted { changed.append(key) }
+                }
+            }
+        } else {
+            let gapTable = gaps(for: uniqueIDs, metrics: metrics)
+            for id in uniqueIDs {
+                guard let before = appliedGaps[id], before != gapTable[id], marked.insert(id).inserted
+                else { continue }
+                changed.append(id)
+            }
+            appliedGaps = gapTable
+            appliedGapMetrics = metrics
         }
-        appliedGaps = gapTable
-        let reconfigurable = changed.filter { idSet.contains($0) }
-        if !reconfigurable.isEmpty { snapshot.reconfigureItems(reconfigurable) }
+        let reconfigurable = changed.filter { shownSet.contains($0) }
+        func snapshotToApply() -> NSDiffableDataSourceSnapshot<Section, String> {
+            var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
+            snapshot.appendSections([.main])
+            snapshot.appendItems(shownIDs, toSection: .main)
+            if !reconfigurable.isEmpty { snapshot.reconfigureItems(reconfigurable) }
+            return snapshot
+        }
         let risingSend = !canvasIntent.isEmpty && !Self.freshSendRows(among: entranceBubbles).isEmpty
         if risingSend {
-            dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
+            dataSource.apply(snapshotToApply(), animatingDifferences: false) { [weak self] in
                 guard let self else { return }
                 if handOffEmptyState { self.animateEmptyStateHandoff() }
                 let riders = (entranceBubbles + (entranceThinking ? ["thinking"] : [])).compactMap {
@@ -2988,7 +3091,7 @@ final class ChatViewController: UIViewController {
                 self.settleFreshCanvas(fading: riders)
             }
         } else if !entranceBubbles.isEmpty || entranceThinking {
-            dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
+            dataSource.apply(snapshotToApply(), animatingDifferences: false) { [weak self] in
                 guard let self else { return }
                 self.updateTranscriptInsets()
                 self.settleFreshCanvas(fading: [])
@@ -3000,16 +3103,34 @@ final class ChatViewController: UIViewController {
                     bubbleIDs: entranceBubbles, includeThinking: entranceThinking)
             }
         } else {
-            dataSource.apply(snapshot, animatingDifferences: animated) { [weak self] in
+            let finishApply: () -> Void = { [weak self] in
                 guard let self else { return }
                 self.updateTranscriptInsets()
                 self.pinFreshCanvas()
-                if !self.hasRevealed && !self.orderedIDs.isEmpty { self.revealTranscript() }
+                if let opening = self.opening, !opening.isDone {
+                    if self.openingStage == nil {
+                        self.finishFirstOpeningStage()
+                    } else {
+                        self.scheduleOpeningStage()
+                    }
+                } else if !self.hasRevealed && !self.orderedIDs.isEmpty {
+                    self.revealTranscript()
+                }
                 self.settleFreshCanvas(fading: [])
                 if self.canvasPromptIDs.isEmpty, nearBottom, !self.userScrolledUp,
                     !self.isFingerDown
                 {
                     self.scrollToBottom(animated: animated)
+                }
+            }
+            if listUnchanged, hasRevealed, opening == nil, !animated,
+                reconfigurable.isEmpty || reconfigurable.allSatisfy(rewriteLiveTextInPlace)
+            {
+                finishApply()
+            } else {
+                openingStageStart = CACurrentMediaTime()
+                dataSource.apply(snapshotToApply(), animatingDifferences: animated) {
+                    finishApply()
                 }
             }
         }
@@ -3896,6 +4017,10 @@ final class ChatViewController: UIViewController {
     }
 
     private var shownContext: (fill: ContextFill, words: String?, tone: ContextFill.Tone)?
+    /// The ring the context chip wears, by the whole percent it shows: the fill moves with every
+    /// token, and a ring drawn again for a change a twelve-point circle cannot show was most of
+    /// what updating the chip cost.
+    private var shownRing: (percent: Int, ink: UIColor)?
 
     private func updateContextChip(range: RangeGlance?) {
         defer { factsRow.refresh(); syncFactsScrim() }
@@ -3921,9 +4046,15 @@ final class ChatViewController: UIViewController {
         }
         contextChip.text = words ?? contextFill.badge
         if let fraction = contextFill.fraction {
-            contextChip.setImage(
-                ContextRing.image(fraction: fraction, ink: ink, diameter: 12, stroke: 2))
+            let percent = Int((min(max(fraction, 0), 1) * 100).rounded())
+            if shownRing?.percent != percent || shownRing?.ink != ink {
+                shownRing = (percent, ink)
+                contextChip.setImage(
+                    ContextRing.image(
+                        fraction: Double(percent) / 100, ink: ink, diameter: 12, stroke: 2))
+            }
         } else {
+            shownRing = nil
             contextChip.setSymbol("cylinder.split.1x2")
         }
         contextChip.accessibilityLabel =
@@ -4070,6 +4201,118 @@ final class ChatViewController: UIViewController {
         collectionView.contentOffset.y = max(-inset.top, end)
     }
 
+    /// The rows to hand the data source for a transcript of `ids`. A long one that has nothing on
+    /// screen yet is shown from its end, a few rows at a time (`TranscriptOpening`), so the first
+    /// layout makes the cells that are looked at and nothing else; once the window is whole this is
+    /// the transcript itself.
+    private func idsToShow(from ids: [String]) -> [String] {
+        if opening == nil, appliedIDs.isEmpty, ids.count > TranscriptOpening.firstStage {
+            opening = TranscriptOpening(total: ids.count)
+            openingStage = nil
+        } else if var current = opening {
+            current.retotal(ids.count)
+            opening = current.isDone ? nil : current
+        }
+        guard let opening else { return ids }
+        return Array(ids.suffix(opening.shown))
+    }
+
+    private func scheduleOpeningStage() {
+        guard !openingScheduled else { return }
+        openingScheduled = true
+        RunLoopTurn.next { [weak self] in self?.advanceOpening() }
+    }
+
+    /// The first rows are in the data source and their cells are not made yet: make them, say
+    /// what that cost, and carry on from the end.
+    private func finishFirstOpeningStage() {
+        guard let opening else { return }
+        let covered = layOutOpeningWindow()
+        openingStage = TranscriptOpening.Stage(
+            rows: opening.shown,
+            milliseconds: (CACurrentMediaTime() - openingStageStart) * 1000, covered: covered)
+        if !hasRevealed, covered { revealTranscript() }
+        scheduleOpeningStage()
+    }
+
+    /// One more slice of rows above the ones already shown, sized by what the last slice cost.
+    private func advanceOpening() {
+        openingScheduled = false
+        guard var current = opening, isViewLoaded else { return }
+        let started = CACurrentMediaTime()
+        guard let rows = current.next(after: openingStage) else {
+            opening = nil
+            openingStage = nil
+            return
+        }
+        opening = current
+        let following = !hasRevealed || (!userScrolledUp && !isFingerDown && canvasPromptIDs.isEmpty)
+        let anchor = following ? nil : visibleAnchor()
+        var snapshot = NSDiffableDataSourceSnapshot<Section, String>()
+        snapshot.appendSections([.main])
+        let shown = Array(renderedIDOrder.suffix(current.shown))
+        snapshot.appendItems(shown, toSection: .main)
+        appliedIDs = shown
+        if let layout = collectionView.collectionViewLayout as? TranscriptLayout, following {
+            layout.holdingEnd(of: collectionView.contentSize.height) {
+                dataSource.apply(snapshot, animatingDifferences: false)
+            }
+        } else {
+            dataSource.apply(snapshot, animatingDifferences: false)
+        }
+        let covered = layOutOpeningWindow(anchor: anchor)
+        openingStage = TranscriptOpening.Stage(
+            rows: rows, milliseconds: (CACurrentMediaTime() - started) * 1000, covered: covered)
+        if !hasRevealed, covered || current.isDone { revealTranscript() }
+        if current.isDone {
+            opening = nil
+            openingStage = nil
+        } else {
+            scheduleOpeningStage()
+        }
+    }
+
+    /// Puts the window on its end, makes the cells it shows, and says whether they fill the page: a
+    /// transcript shorter than the page is held against the composer by a top inset, so the page is
+    /// full exactly when no such inset is needed.
+    @discardableResult
+    private func layOutOpeningWindow(anchor: (id: String, offset: CGFloat)? = nil) -> Bool {
+        if let anchor {
+            collectionView.layoutIfNeeded()
+            restoreVisibleAnchor(anchor)
+        } else {
+            parkOnEndBeforeFirstLayout()
+            collectionView.layoutIfNeeded()
+            updateTranscriptInsets()
+            carryEnd()
+            collectionView.layoutIfNeeded()
+        }
+        updateTranscriptInsets()
+        let bannerInset: CGFloat = banner.isHidden ? 0 : banner.bounds.height
+        return collectionView.contentInset.top - bannerInset < 0.5
+    }
+
+    /// The row at the top of the page and how far down the window it starts, so rows added above it
+    /// by a slice of the opening leave a reader who has scrolled looking at the same words.
+    private func visibleAnchor() -> (id: String, offset: CGFloat)? {
+        let top = collectionView.contentOffset.y + collectionView.adjustedContentInset.top
+        let first = collectionView.indexPathsForVisibleItems.sorted().first { path in
+            (collectionView.layoutAttributesForItem(at: path)?.frame.maxY ?? 0) > top
+        }
+        guard let first, let id = dataSource.itemIdentifier(for: first),
+            let frame = collectionView.layoutAttributesForItem(at: first)?.frame
+        else { return nil }
+        return (id, frame.minY - top)
+    }
+
+    private func restoreVisibleAnchor(_ anchor: (id: String, offset: CGFloat)) {
+        guard let path = dataSource.indexPath(for: anchor.id),
+            let frame = collectionView.layoutAttributesForItem(at: path)?.frame
+        else { return }
+        let inset = collectionView.adjustedContentInset
+        collectionView.contentOffset.y = frame.minY - anchor.offset - inset.top
+    }
+
     private func revealTranscript() {
         guard !hasRevealed else { return }
         hasRevealed = true
@@ -4078,6 +4321,8 @@ final class ChatViewController: UIViewController {
         parkOnEndBeforeFirstLayout()
         collectionView.layoutIfNeeded()
         scrollToBottom(animated: false)
+        AppLogger.performance.info(
+            "journey revealed session=\(viewModel.session.id) ms=\(FirstAnswerClock.milliseconds(since: openedAt)) rows=\(appliedIDs.count)/\(orderedIDs.count)")
         let hasRows =
             !orderedIDs.isEmpty || !viewModel.pendingSends.isEmpty || !viewModel.queued.isEmpty
         updatePlaceholders(hasRows: hasRows, for: viewModel.state)
@@ -4336,18 +4581,30 @@ final class ChatViewController: UIViewController {
     /// The air above the row at a place in the list, which is the whole of the transcript's
     /// vertical rhythm: each row is classified, the metrics answer for the pair, and nothing else
     /// picks a number.
-    private func gapAbove(at indexPath: IndexPath) -> CGFloat {
-        gap(before: indexPath.item, in: renderedIDOrder)
+    private func gapAbove(forID id: String) -> CGFloat {
+        guard let index = orderIndex(of: id) else { return 0 }
+        return gap(before: index, in: renderedIDOrder)
     }
 
-    private func gap(before index: Int, in order: [String]) -> CGFloat {
+    private func orderIndex(of id: String) -> Int? {
+        if let table = renderedOrderIndex { return table[id] }
+        var table: [String: Int] = [:]
+        table.reserveCapacity(renderedIDOrder.count)
+        for (index, key) in renderedIDOrder.enumerated() { table[key] = index }
+        renderedOrderIndex = table
+        return table[id]
+    }
+
+    private func gap(
+        before index: Int, in order: [String], metrics: ChatMetrics = Theme.Chat.metrics
+    ) -> CGFloat {
         guard order.indices.contains(index) else { return 0 }
         let id = order[index]
         let previous = index > 0 ? order[index - 1] : nil
         return ChatSpacing.gap(
             from: previous.map(rowClass(ofID:)), to: rowClass(ofID: id),
             sameSend: previous.map { sharesSend($0, id) } ?? false,
-            metrics: Theme.Chat.metrics,
+            metrics: metrics,
             previousIsStamp: previous.map(isStamp(_:)) ?? false, nextIsStamp: isStamp(id))
     }
 
@@ -4356,10 +4613,12 @@ final class ChatViewController: UIViewController {
         return false
     }
 
-    private func gaps(for order: [String]) -> [String: CGFloat] {
+    private func gaps(for order: [String], metrics: ChatMetrics) -> [String: CGFloat] {
         var table: [String: CGFloat] = [:]
         table.reserveCapacity(order.count)
-        for index in order.indices { table[order[index]] = gap(before: index, in: order) }
+        for index in order.indices {
+            table[order[index]] = gap(before: index, in: order, metrics: metrics)
+        }
         return table
     }
 

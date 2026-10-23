@@ -29,6 +29,7 @@ enum ChatRowBuilder {
                 }
             }
         }
+        let claimsAnything = !agents.byToolUse.isEmpty || !runs.isEmpty
         let statsEnabled = ResponseStatsSetting.isEnabled
         let board = TaskBoard.fold(boardCalls)
         let boardCallID = board.isEmpty ? nil : Self.boardAnchor(boardCalls)
@@ -56,12 +57,14 @@ enum ChatRowBuilder {
                 promptID: lastPrompt?.id, promptAt: lastPrompt?.createdAt,
                 stats: statsEnabled, brainStamp: brain?.row.stamp,
                 brainShowsRows: brain?.row.showsRows ?? false,
-                brainAnchor: brain.map { turn in message.parts.contains { "\(message.id):\($0.id)" == turn.anchor } }
-                    ?? false)
+                brainAnchor: brain.map { turn in
+                    guard let anchor = turn.anchor, anchor.hasPrefix(message.id) else { return false }
+                    return message.parts.contains { "\(message.id):\($0.id)" == anchor }
+                } ?? false)
             let settled = !message.isStreaming && message.id != writing
             if settled, let cached = memo?.rows(
                 forMessage: message, context: context,
-                isClaimed: { agents.byToolUse[$0] != nil || runs[$0] != nil })
+                isClaimed: { claimsAnything && (agents.byToolUse[$0] != nil || runs[$0] != nil) })
             {
                 rows.append(contentsOf: cached)
                 continue
@@ -119,7 +122,7 @@ enum ChatRowBuilder {
                     steps.append(.reasoning(text))
                 case .tool(let call):
                     toolIDs.append(call.id)
-                    if call.summaryKind == .workflow { plain = false }
+                    if ToolKinds.kind(of: call) == .workflow { plain = false }
                     if var card = agents.byToolUse[call.id] {
                         plain = false
                         flushActivity()
@@ -163,7 +166,7 @@ enum ChatRowBuilder {
                         continue
                     }
                     steps.append(.tool(call))
-                    if call.summaryKind == .workflow, !pendingUnattached.isEmpty {
+                    if ToolKinds.kind(of: call) == .workflow, !pendingUnattached.isEmpty {
                         flushActivity()
                         rows.append(
                             contentsOf: Self.agentRows(
