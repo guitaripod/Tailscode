@@ -37,7 +37,9 @@ public final class NeuralTurnSlot: @unchecked Sendable {
     public init(
         turn: NeuralTurn, generation: Int, messages: [ChatMessage] = [], asked: ChatMessage? = nil
     ) {
-        outline = turn.outline
+        outline =
+            messages.isEmpty
+            ? turn.outline : NeuralTurns.outline(messages: messages, outcome: turn.outcome)
         self.generation = generation
         self.messages = messages
         self.asked = asked

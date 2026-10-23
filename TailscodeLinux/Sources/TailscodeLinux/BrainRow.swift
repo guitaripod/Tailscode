@@ -56,17 +56,10 @@ enum BrainAwaiting {
 /// did not change are carried over, so a streamed token costs the turn that is being written and a
 /// pass over the turns' values, never a walk over the conversation's parts.
 struct BrainPass {
-    struct Record {
-        var outline: NeuralTurnOutline
-        var anchor: String?
-        var members: Set<String>
-        var messages: Set<String>
-    }
-
     var turnIDs: [String] = []
     var rows: [String: BrainRow] = [:]
     var anchors: [String: String] = [:]
-    var members: [String: Set<String>] = [:]
+    var outlines: [String: NeuralTurnOutline] = [:]
     var messageTurns: [String: String] = [:]
     var emitted: Set<String> = []
 
@@ -88,7 +81,7 @@ struct BrainPass {
                 emitted.insert(owner)
                 out.append(TranscriptRow(key: NeuralOpenPolicy.rowID(turnID: owner), kind: .brain(brain)))
             }
-            if let part, let owner = messageTurns[message.id], members[owner]?.contains(part) == true,
+            if let part, let owner = messageTurns[message.id], outlines[owner]?.consumes(part) == true,
                 self.rows[owner]?.showRows == false
             {
                 droppedLast = true
@@ -121,9 +114,8 @@ struct BrainPass {
 /// was, so only a turn that changed has its parts and anchor read again.
 final class BrainLedger: @unchecked Sendable {
     private let cache = NeuralTurnCache()
-    private var records: [String: BrainPass.Record] = [:]
     private var anchors: [String: String] = [:]
-    private var members: [String: Set<String>] = [:]
+    private var outlines: [String: NeuralTurnOutline] = [:]
     private var messageTurns: [String: String] = [:]
     private(set) var policy: NeuralOpenPolicy?
 
@@ -134,9 +126,8 @@ final class BrainLedger: @unchecked Sendable {
 
     func reset() {
         cache.reset()
-        records = [:]
         anchors = [:]
-        members = [:]
+        outlines = [:]
         messageTurns = [:]
         policy = nil
     }
@@ -147,7 +138,7 @@ final class BrainLedger: @unchecked Sendable {
         settings: BrainBuildSettings
     ) -> BrainPass? {
         guard settings.style == .brain else {
-            if !records.isEmpty { reset() }
+            if !outlines.isEmpty { reset() }
             return nil
         }
         let list = cache.partitionList(messages: messages, running: running, awaiting: awaiting)
@@ -162,21 +153,17 @@ final class BrainLedger: @unchecked Sendable {
         for slot in slots {
             let outline = slot.outline
             alive.insert(outline.id)
-            if let held = records[outline.id], held.outline == outline { continue }
+            if outlines[outline.id] == outline { continue }
             remove(outline.id)
-            let record = BrainPass.Record(
-                outline: outline, anchor: outline.anchor, members: outline.memberPartIDs,
-                messages: outline.memberMessageIDs)
-            records[outline.id] = record
+            outlines[outline.id] = outline
             if let anchor = outline.anchor { anchors[anchor] = outline.id }
-            members[outline.id] = record.members
-            for message in record.messages { messageTurns[message] = outline.id }
+            for message in outline.messageIDs { messageTurns[message] = outline.id }
         }
-        for stale in records.keys where !alive.contains(stale) { remove(stale) }
+        for stale in outlines.keys where !alive.contains(stale) { remove(stale) }
         var pass = BrainPass()
         pass.turnIDs = slots.map { $0.outline.id }
         pass.anchors = anchors
-        pass.members = members
+        pass.outlines = outlines
         pass.messageTurns = messageTurns
         for slot in slots {
             let outline = slot.outline
@@ -206,10 +193,9 @@ final class BrainLedger: @unchecked Sendable {
     }
 
     private func remove(_ turnID: String) {
-        guard let record = records.removeValue(forKey: turnID) else { return }
-        if let anchor = record.anchor, anchors[anchor] == turnID { anchors[anchor] = nil }
-        members[turnID] = nil
-        for message in record.messages where messageTurns[message] == turnID {
+        guard let outline = outlines.removeValue(forKey: turnID) else { return }
+        if let anchor = outline.anchor, anchors[anchor] == turnID { anchors[anchor] = nil }
+        for message in outline.messageIDs where messageTurns[message] == turnID {
             messageTurns[message] = nil
         }
     }

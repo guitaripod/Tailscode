@@ -4,11 +4,13 @@ import Foundation
 /// What a client needs to place a turn's brain among its rows, read without building a single step:
 /// whether the turn is a brain, the part its row goes before, the parts the row consumes, how it
 /// ended. A transcript asks this of every turn when a chat opens, so it is one pass over the
-/// parts that classifies them and builds no detail line, output excerpt or diff tally; the steps
-/// (`NeuralTurn.steps`) are read only for a turn somebody looks at.
+/// parts that classifies them and builds no detail line, output excerpt or diff tally, and names
+/// only the few parts the brain leaves to the client; the steps (`NeuralTurn.steps`) are read only
+/// for a turn somebody looks at.
 ///
-/// For every conversation `NeuralTurns.outline(messages:running:awaiting:)` equals the outline of
-/// the turn `NeuralTurns.partition` reads from the same messages.
+/// For every conversation `NeuralTurns.outline(messages:running:awaiting:)` agrees with the turn
+/// `NeuralTurns.partition` reads from the same messages on everything they share, and
+/// `consumes(_:)` answers `memberPartIDs.contains` for every part of the turn.
 public struct NeuralTurnOutline: Sendable, Hashable {
     /// The id of the turn's first assistant message.
     public let id: String
@@ -23,8 +25,13 @@ public struct NeuralTurnOutline: Sendable, Hashable {
     /// The calls the task board is built from; the board card keeps the last and the others are
     /// nodes of the brain.
     public let boardPartIDs: [String]
-    public let memberPartIDs: Set<String>
-    public let memberMessageIDs: Set<String>
+    /// The parts of the turn's messages the brain does not consume and the client keeps its own
+    /// rows for: the answer, the cards, and a file handed back after the answer.
+    public let keptPartIDs: Set<String>
+    /// The turn's messages, in order.
+    public let messageIDs: [String]
+    /// How many parts the turn's messages hold.
+    public let partCount: Int
     public let outcome: NeuralOutcome
     public let startedAt: Date?
     public let endedAt: Date?
@@ -33,9 +40,9 @@ public struct NeuralTurnOutline: Sendable, Hashable {
 
     public init(
         id: String, stepCount: Int, anchor: String?, anchorMessageID: String?,
-        answerPartIDs: [String], boardPartIDs: [String], memberPartIDs: Set<String>,
-        memberMessageIDs: Set<String>, outcome: NeuralOutcome, startedAt: Date?, endedAt: Date?,
-        modelID: String?, effort: String?
+        answerPartIDs: [String], boardPartIDs: [String], keptPartIDs: Set<String>,
+        messageIDs: [String], partCount: Int, outcome: NeuralOutcome, startedAt: Date?,
+        endedAt: Date?, modelID: String?, effort: String?
     ) {
         self.id = id
         self.stepCount = stepCount
@@ -43,8 +50,9 @@ public struct NeuralTurnOutline: Sendable, Hashable {
         self.anchorMessageID = anchorMessageID
         self.answerPartIDs = answerPartIDs
         self.boardPartIDs = boardPartIDs
-        self.memberPartIDs = memberPartIDs
-        self.memberMessageIDs = memberMessageIDs
+        self.keptPartIDs = keptPartIDs
+        self.messageIDs = messageIDs
+        self.partCount = partCount
         self.outcome = outcome
         self.startedAt = startedAt
         self.endedAt = endedAt
@@ -54,6 +62,11 @@ public struct NeuralTurnOutline: Sendable, Hashable {
 
     /// A turn with at least one step is a brain.
     public var isBrain: Bool { stepCount > 0 }
+
+    /// Whether the brain consumes the part `partID` (`"messageID:partID"`), so the client builds no
+    /// row of its own for it. Only a part of this turn's own messages may be asked about: every
+    /// part of those messages is consumed except the ones the client keeps.
+    public func consumes(_ partID: String) -> Bool { !keptPartIDs.contains(partID) }
 }
 
 extension NeuralTurn {
@@ -67,20 +80,33 @@ extension NeuralTurn {
 
     private var boardPartIDs: [String] {
         var found: [String] = []
-        for index in steps.indices where steps[index].isCard && TaskBoard.isBoardCall(steps[index].title) {
+        for index in steps.indices
+        where steps[index].isCard && TaskBoard.isBoardCall(steps[index].title) {
             found.append(steps[index].id)
         }
         return found
     }
 
-    public var outline: NeuralTurnOutline {
+    private var cardPartIDs: [String] {
+        var found: [String] = []
+        for index in steps.indices where steps[index].isCard { found.append(steps[index].id) }
+        return found
+    }
+
+    /// The outline of a turn read without its messages, for a turn made by hand. Where the messages
+    /// are held `NeuralTurns.outline(messages:outcome:)` knows the parts the turn does not name:
+    /// this one keeps the answer and the cards, and a file handed back after the answer is not
+    /// among them.
+    var outline: NeuralTurnOutline {
         let anchored = anchorIndex
         return NeuralTurnOutline(
             id: id, stepCount: steps.count, anchor: anchored.map { steps[$0].id },
             anchorMessageID: anchored.map { steps[$0].messageID },
             answerPartIDs: answerPartIDs, boardPartIDs: boardPartIDs,
-            memberPartIDs: memberPartIDs, memberMessageIDs: memberMessageIDs, outcome: outcome,
-            startedAt: startedAt, endedAt: endedAt, modelID: modelID, effort: effort)
+            keptPartIDs: Set(answerPartIDs + cardPartIDs), messageIDs: Array(memberMessageIDs),
+            partCount: memberPartIDs.count + answerPartIDs.count + cardPartIDs.count,
+            outcome: outcome, startedAt: startedAt, endedAt: endedAt, modelID: modelID,
+            effort: effort)
     }
 }
 
@@ -94,8 +120,23 @@ extension NeuralTurns {
     public static func outline(
         messages: [ChatMessage], running: Bool, awaiting: NeuralAwaiting = .none
     ) -> NeuralTurnOutline {
+        outline(messages: messages) { stopped in
+            readOutcome(
+                of: messages, hasStoppedStep: stopped, running: running, awaiting: awaiting)
+        }
+    }
+
+    /// The outline of messages whose turn has been read already and so knows how it ended.
+    static func outline(messages: [ChatMessage], outcome: NeuralOutcome) -> NeuralTurnOutline {
+        outline(messages: messages) { _ in outcome }
+    }
+
+    private static func outline(
+        messages: [ChatMessage], outcome decide: (_ hasStoppedStep: Bool) -> NeuralOutcome
+    ) -> NeuralTurnOutline {
         var classes: [Class] = []
-        classes.reserveCapacity(messages.reduce(0) { $0 + $1.parts.count })
+        let partCount = messages.reduce(0) { $0 + $1.parts.count }
+        classes.reserveCapacity(partCount)
         var lastStep = -1
         var stopped = false
         for message in messages {
@@ -124,63 +165,73 @@ extension NeuralTurns {
         var firstMember: (id: String, message: String)?
         var answers: [String] = []
         var boards: [String] = []
+        var kept = Set<String>()
         var lastAnswer = -1
         var position = 0
         for message in messages {
             for part in message.parts {
                 defer { position += 1 }
                 let found = classes[position]
-                let isStep: Bool
                 switch found {
-                case .step, .card: isStep = true
-                case .words: isStep = position < lastStep
-                case .other, .file: isStep = false
-                }
-                if isStep {
+                case .step, .card:
                     stepCount += 1
-                    if found == .card, case .tool(let call) = part.kind, TaskBoard.isBoardCall(call.name) {
-                        boards.append(partID(message, part))
+                    if found == .card {
+                        let id = partID(message, part)
+                        kept.insert(id)
+                        if case .tool(let call) = part.kind, TaskBoard.isBoardCall(call.name) {
+                            boards.append(id)
+                        }
                     }
-                    if firstStep == nil || (firstMember == nil && found != .card) {
-                        let made = (id: partID(message, part), message: message.id)
-                        if firstStep == nil { firstStep = made }
-                        if found != .card, firstMember == nil { firstMember = made }
+                    noteStep(found == .card, message, part, &firstStep, &firstMember)
+                case .words:
+                    if position < lastStep {
+                        stepCount += 1
+                        noteStep(false, message, part, &firstStep, &firstMember)
+                    } else {
+                        let id = partID(message, part)
+                        answers.append(id)
+                        kept.insert(id)
+                        lastAnswer = position
                     }
-                } else if found == .words {
-                    answers.append(partID(message, part))
-                    lastAnswer = position
+                case .other, .file:
+                    break
                 }
             }
         }
-
-        var members = Set<String>()
-        members.reserveCapacity(classes.count)
-        position = 0
-        for message in messages {
-            for part in message.parts {
-                defer { position += 1 }
-                switch classes[position] {
-                case .card: continue
-                case .words: if position > lastStep { continue }
-                case .file: if position > lastAnswer, lastAnswer >= 0 { continue }
-                case .step, .other: break
+        if lastAnswer >= 0 {
+            position = 0
+            for message in messages {
+                for part in message.parts {
+                    defer { position += 1 }
+                    if classes[position] == .file, position > lastAnswer {
+                        kept.insert(partID(message, part))
+                    }
                 }
-                members.insert(partID(message, part))
             }
         }
 
         let first = messages[0]
         let last = messages[messages.count - 1]
-        let outcome = readOutcome(
-            of: messages, hasStoppedStep: stopped, running: running, awaiting: awaiting)
+        let outcome = decide(stopped)
         return NeuralTurnOutline(
             id: first.id, stepCount: stepCount, anchor: (firstMember ?? firstStep)?.id,
             anchorMessageID: (firstMember ?? firstStep)?.message, answerPartIDs: answers,
-            boardPartIDs: boards, memberPartIDs: members,
-            memberMessageIDs: Set(messages.map(\.id)), outcome: outcome,
-            startedAt: first.createdAt, endedAt: outcome == .running ? nil : last.completedAt,
+            boardPartIDs: boards, keptPartIDs: kept, messageIDs: messages.map(\.id),
+            partCount: partCount, outcome: outcome, startedAt: first.createdAt,
+            endedAt: outcome == .running ? nil : last.completedAt,
             modelID: messages.reversed().lazy.compactMap(\.modelID).first,
             effort: messages.reversed().lazy.compactMap(\.reasoningEffort).first)
+    }
+
+    private static func noteStep(
+        _ isCard: Bool, _ message: ChatMessage, _ part: MessagePart,
+        _ firstStep: inout (id: String, message: String)?,
+        _ firstMember: inout (id: String, message: String)?
+    ) {
+        guard firstStep == nil || (firstMember == nil && !isCard) else { return }
+        let made = (id: partID(message, part), message: message.id)
+        if firstStep == nil { firstStep = made }
+        if !isCard, firstMember == nil { firstMember = made }
     }
 
     @inline(__always)

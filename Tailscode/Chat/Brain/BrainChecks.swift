@@ -713,6 +713,14 @@
                 report("open cold \(turns) turns, one older model", time(1) {
                     _ = cold.model(for: cold.turnID(atBrain: max(1, turns / 2)) ?? "")
                 })
+                var streamed = conversation
+                var words = 0
+                report("open cold \(turns) turns, then a token", time(200) {
+                    words += 1
+                    let last = streamed.count - 1
+                    streamed[last].parts[streamed[last].parts.count - 1].kind = .text(String(repeating: "word ", count: words))
+                    _ = cold.prepare(messages: streamed, running: true, awaiting: .none, context: neutral)
+                })
             }
             for turns in [40, 300] {
                 let conversation = (0..<turns).flatMap {

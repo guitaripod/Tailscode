@@ -82,10 +82,9 @@ final class BrainStore {
         var context: NeuralBrainContext
         var anchor: String?
         var anchorMessageID: String?
-        var members: Set<String>
-        var messageIDs: Set<String>
-        var boardKeys: Set<String>
         var revision: Int
+
+        var outline: NeuralTurnOutline { slot.outline }
     }
 
     private let cache = NeuralTurnCache()
@@ -401,8 +400,7 @@ final class BrainStore {
                 remember(placed[id]!, id: id)
             } else {
                 var held = Placed(
-                    slot: slot, context: context, anchor: nil, anchorMessageID: nil, members: [],
-                    messageIDs: [], boardKeys: [], revision: 0)
+                    slot: slot, context: context, anchor: nil, anchorMessageID: nil, revision: 0)
                 place(&held)
                 if id != latestTurnID { bumpShape() }
                 placed[id] = held
@@ -423,9 +421,6 @@ final class BrainStore {
         let outline = held.slot.outline
         held.anchor = outline.anchor
         held.anchorMessageID = outline.anchorMessageID
-        held.members = outline.memberPartIDs
-        held.messageIDs = outline.memberMessageIDs
-        held.boardKeys = Set(outline.boardPartIDs)
     }
 
     /// The steps, model, answer and prompt of a turn, made now if nothing has asked for them.
@@ -523,8 +518,8 @@ final class BrainStore {
         guard let held = placed[turnID], let made = made(turnID) else { return nil }
         return Entry(
             turn: made.turn, model: made.model, context: held.context, anchor: held.anchor,
-            anchorMessageID: held.anchorMessageID, messageIDs: held.messageIDs,
-            boardKeys: held.boardKeys, answer: made.answer, prompt: made.prompt,
+            anchorMessageID: held.anchorMessageID, messageIDs: Set(held.outline.messageIDs),
+            boardKeys: Set(held.outline.boardPartIDs), answer: made.answer, prompt: made.prompt,
             revision: held.revision)
     }
 
@@ -719,7 +714,7 @@ final class BrainStore {
                 if let brain = self.row(forTurn: turnID) { shaped.append(brain) }
                 placed = true
             }
-            if !listsRows, let part, held.members.contains(keys[part]) { continue }
+            if !listsRows, let part, held.outline.consumes(keys[part]) { continue }
             shaped.append(row)
         }
         if !placed, let brain = self.row(forTurn: turnID) { shaped.append(brain) }
@@ -777,14 +772,16 @@ final class BrainStore {
     }
 
     private func remember(_ held: Placed, id: String) {
-        for message in held.messageIDs { messageTurn[message] = id }
-        for key in held.boardKeys { boardOwner[key] = id }
+        for message in held.outline.messageIDs { messageTurn[message] = id }
+        for key in held.outline.boardPartIDs { boardOwner[key] = id }
     }
 
     private func forget(_ held: Placed) {
-        let id = held.slot.outline.id
-        for message in held.messageIDs where messageTurn[message] == id { messageTurn[message] = nil }
-        for key in held.boardKeys where boardOwner[key] == id { boardOwner[key] = nil }
+        let id = held.outline.id
+        for message in held.outline.messageIDs where messageTurn[message] == id {
+            messageTurn[message] = nil
+        }
+        for key in held.outline.boardPartIDs where boardOwner[key] == id { boardOwner[key] = nil }
     }
 
     private func evict() {

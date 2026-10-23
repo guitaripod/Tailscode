@@ -93,6 +93,30 @@ enum OutlineFixtures {
     }
 }
 
+enum OutlineAgreement {
+    static func agrees(_ outline: NeuralTurnOutline, with turn: NeuralTurn, group: [ChatMessage]) -> Bool {
+        let anchored = turn.steps.first { turn.memberPartIDs.contains($0.id) } ?? turn.steps.first
+        guard outline.id == turn.id, outline.stepCount == turn.steps.count,
+            outline.anchor == anchored?.id, outline.anchorMessageID == anchored?.messageID,
+            outline.answerPartIDs == turn.answerPartIDs,
+            outline.boardPartIDs
+                == turn.steps.filter { $0.isCard && TaskBoard.isBoardCall($0.title) }.map(\.id),
+            outline.outcome == turn.outcome, outline.startedAt == turn.startedAt,
+            outline.endedAt == turn.endedAt, outline.modelID == turn.modelID,
+            outline.effort == turn.effort, outline.messageIDs == group.map(\.id),
+            Set(outline.messageIDs) == turn.memberMessageIDs,
+            outline.partCount == group.reduce(0, { $0 + $1.parts.count })
+        else { return false }
+        for message in group {
+            for part in message.parts {
+                let id = "\(message.id):\(part.id)"
+                if outline.consumes(id) != turn.memberPartIDs.contains(id) { return false }
+            }
+        }
+        return true
+    }
+}
+
 @Suite("Neural turn outline: the placement of a brain without reading its steps")
 struct NeuralTurnOutlineTests {
     private func turnGroups(_ messages: [ChatMessage]) -> [[ChatMessage]] {
@@ -107,8 +131,9 @@ struct NeuralTurnOutlineTests {
                 for awaiting in [NeuralAwaiting.none, NeuralAwaiting(approvals: ["x"])] {
                     let turn = NeuralTurns.partition(messages: group, running: running, awaiting: awaiting)[0]
                     #expect(
-                        NeuralTurns.outline(messages: group, running: running, awaiting: awaiting)
-                            == turn.outline)
+                        OutlineAgreement.agrees(
+                            NeuralTurns.outline(messages: group, running: running, awaiting: awaiting),
+                            with: turn, group: group))
                 }
             }
         }
@@ -129,7 +154,9 @@ struct NeuralTurnOutlineTests {
                         messages: group, running: running, awaiting: awaiting)[0]
                     let outline = NeuralTurns.outline(
                         messages: group, running: running, awaiting: awaiting)
-                    #expect(outline == turn.outline, "seed \(seed) running \(running)")
+                    #expect(
+                        OutlineAgreement.agrees(outline, with: turn, group: group),
+                        "seed \(seed) running \(running)")
                     if outline.isBrain { brains += 1 }
                     if turn.steps.contains(where: \.isCard) { cards += 1 }
                 }
@@ -147,7 +174,7 @@ struct NeuralTurnOutlineTests {
         ]
         let outline = NeuralTurns.outline(messages: group, running: false)
         #expect(!outline.isBrain && outline.stepCount == 0 && outline.anchor == nil)
-        #expect(outline.answerPartIDs == ["m1:p0", "m2:p0"])
+        #expect(outline.answerPartIDs == ["m1:p0", "m2:p0"] && !outline.consumes("m1:p0"))
     }
 
     @Test("the anchor is the first member step and falls back to the first step when all are cards")
@@ -155,12 +182,12 @@ struct NeuralTurnOutlineTests {
         let task = NeuralTurnFixtures.task("sub", out: ["done"])
         let cards = [NeuralTurnFixtures.message(1, [task, .text("Answer.")])]
         let onlyCards = NeuralTurns.outline(messages: cards, running: false)
-        #expect(onlyCards.isBrain && onlyCards.anchor == "m1:p0" && !onlyCards.memberPartIDs.contains("m1:p0"))
+        #expect(onlyCards.isBrain && onlyCards.anchor == "m1:p0" && !onlyCards.consumes("m1:p0"))
         let mixed = [
             NeuralTurnFixtures.message(1, [task, NeuralTurnFixtures.bash("make"), .text("Answer.")])
         ]
         let outline = NeuralTurns.outline(messages: mixed, running: false)
-        #expect(outline.anchor == "m1:p1" && outline.memberPartIDs == ["m1:p1"])
+        #expect(outline.anchor == "m1:p1" && outline.consumes("m1:p1") && !outline.consumes("m1:p0"))
     }
 
     @Test("a streamed list's outlines read no step, and indexing a turn reads that turn alone")
@@ -191,7 +218,10 @@ struct NeuralTurnOutlineTests {
                 let eager = NeuralTurns.partition(messages: messages, running: running)
                 #expect(list.count == eager.count)
                 for index in eager.indices {
-                    #expect(list.outline(at: index) == eager[index].outline)
+                    #expect(
+                        OutlineAgreement.agrees(
+                            list.outline(at: index), with: eager[index],
+                            group: turnGroups(messages)[index]))
                     #expect(list[index] == eager[index])
                 }
             }

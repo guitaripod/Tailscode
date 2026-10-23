@@ -26,7 +26,7 @@ struct BrainLayout {
         let id: String
         let anchor: String?
         let anchorMessageID: String?
-        let members: Set<String>
+        let outline: NeuralTurnOutline
         let row: BrainRow
     }
 
@@ -56,7 +56,7 @@ struct BrainLayout {
     func turn(startingAt messageID: String) -> Turn? { table.turns[messageID] }
 
     func hides(_ partID: String, in turn: Turn) -> Bool {
-        !turn.row.showsRows && turn.members.contains(partID)
+        !turn.row.showsRows && turn.outline.consumes(partID)
     }
 }
 
@@ -464,7 +464,7 @@ final class BrainStore {
         table.set(
             BrainLayout.Turn(
                 id: id, anchor: entry.anchor, anchorMessageID: outline.anchorMessageID,
-                members: outline.memberPartIDs, row: entry.row))
+                outline: outline, row: entry.row))
     }
 
     /// The words of a turn's final answer, for the chips that point at the steps behind them.
