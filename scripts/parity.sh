@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CORE=TailscodeCore/Sources/TailscodeCore/Parity.swift
+REGISTRY=(TailscodeCore/Sources/TailscodeCore/CapabilityRegistry+*.swift)
 GATING=scripts/lib/gating.awk
 COLUMNS=(iOS linux mac macStore)
 
@@ -89,7 +90,7 @@ caps=($(awk '/^public enum AppCapability/,/^}/' "$CORE" | sed -n 's/^ *case \([A
 [[ ${#caps[@]} -gt 0 ]] || { echo "parity: could not parse AppCapability cases from $CORE" >&2; exit 1; }
 
 for cap in "${caps[@]}"; do
-  grep -q "id: \.$cap," "$CORE" || errors+=("registry: no CapabilityDefinition for .$cap in $CORE")
+  grep -q "id: \.$cap," "$CORE" "${REGISTRY[@]}" || errors+=("registry: no CapabilityDefinition for .$cap in $CORE")
 done
 
 work=$(mktemp -d)
