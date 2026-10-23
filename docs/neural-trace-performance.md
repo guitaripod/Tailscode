@@ -176,3 +176,40 @@ Not done: the iOS data-source diff is not tail-only, a single 90-message turn co
 | nothing arriving, open | 0.9 / 0.0 / 0.0 ms of each second | 0.8 / 0.1 / 0.0 |
 
 The scroll handoff asks Core once per event (a few reads of the scroller's geometry), so it costs nothing a wheel can feel; the account's 0.4-1.4 ms an event is its realize, unchanged. `--bench brain-open[=rounds]` repeats the open and close for `sample`; on the loaded machine the main thread's own time was spread over string and Unicode-property work in the account and list builds with no single hot spot.
+
+## Opening a long chat (2026-10-23)
+
+Opening a chat used to read every turn into steps and make a `NeuralBrainModel` for each, on the main thread, in one go: about 0.35 ms a turn on the phone's simulator, so a 300-turn chat paid 36 ms inside the push and the first back swipe. It now places each brain from its **outline** and reads a turn's steps, makes its model, answer and prompt only when something looks at it.
+
+- `NeuralTurnOutline` (Core, `NeuralTurns.outline(messages:running:awaiting:)`) is one pass over a turn's parts that classifies them and builds no detail line, output excerpt or diff tally: whether the turn is a brain (`stepCount`), the part its row goes before (`anchor`, `anchorMessageID`), the few parts the client keeps its own rows for (`keptPartIDs`, so `consumes(_:)` is a set lookup and no set of every part is built), the task-board calls, the answer, how it ended. A test holds it to the turn `NeuralTurns.partition` reads for every demo conversation and for 4,000 random turns, part by part.
+- `NeuralTurnCache.partitionList` returns a `NeuralTurnList` whose elements are `NeuralTurnSlot`s: the outline now, the `NeuralTurn` the first time the list is indexed at it (`isRead(at:)` says whether), and a `generation` that is the same for as long as the turn is the same turn. A streamed token still replaces only the tail slot; every earlier slot, read or not, is shared.
+- iOS `BrainStore` stamps a settled turn's row from its generation, outcome and face inputs and never from its model, so reading a model for the first time leaves the row exactly as it was and no cell is reconfigured by being looked at. The newest turn and a running one keep their model-derived stamp and are made at once, because the chat's status, haptics and Live Activity read them. Find reads `searchText(for:)` (made once per generation) and, while the bar is open and the chat is seen, a `BrainSearchWarmer` reads the rest in slices of 2 ms, newest first; a keystroke before it is done searches what is read, and the search runs again when it finishes. The Mac does the same in `TranscriptViewController` (`startFindIndex`). Linux reads a turn when its row's widget is made.
+- Classifying a tool name (`ToolCall.summaryKind`) costs 2 us for a name the table knows and 8 for one it does not, and a transcript asks it of every step it holds; `ToolKindMemo` (`ToolCall.cachedKind`) answers it once per name. That alone took the eager partition of a light turn from 33 to 11 us.
+
+What a cold open pays for Megatron, the same conversations before and after (Release; Core on the i7-14700K, the phone on the iOS 26.5 simulator built `-O` on an M-series Mac under load, median of three runs; the Mac and Linux are their own Release builds):
+
+| | before | after |
+|---|---|---|
+| Core, partition + models + rows, 40 / 300 / 1,500 turns of one thought and four tools | 5.8 / 27.6 / 136 ms | outlines 0.08 / 0.61 / 3.1 ms |
+| Core, the same with 24-step turns, 40 / 300 / 1,500 | 27 / 207 / 1,104 ms | outlines 0.62 / 4.7 / 26 ms |
+| iOS `BrainStore.prepare`, 40 / 300 / 1,500 turns | 2.2 / 15.5 / 76.7 ms | 0.14 / 0.66 / 2.85 ms |
+| iOS `prepare`, 24-step turns, 40 / 300 turns | 15.0 / 111 ms | 0.81 / 3.7 ms |
+| iOS, 40 turns of 24 steps and 20 KB outputs | 25.6 ms | 1.5 ms |
+| iOS, the model of a turn nobody had looked at, made when its card is configured | 0.006 ms (it existed) | 0.06 ms (one turn), 0.12 at 1,500 |
+| iOS, the open bench (`TAILSCODE_BENCH_OPEN`), Megatron's share of one open: all passes / longest pass, 40 turns | 2.6 / 2.3 ms | 1.8 / 0.4 ms |
+| the same, 300 turns | 36.1 / 30.7 ms | 5.1 / 1.5 ms |
+| the same, 1,500 turns | 94.9 / 81.5 ms | 12.3 / 3.4 ms |
+| iOS, a streamed token on 40 turns of 24 steps, brain preparation | 0.101 ms | 0.105 ms |
+| iOS, the same with 20 KB outputs | 0.139 ms | 0.144 ms |
+| iOS, a process after 30 open and pop cycles of a 300-turn chat | 56 MB, every view released | 55 MB, every view released |
+| Mac `--bench brain-cold`, 40 / 300 / 1,500 turns of 14 messages | 13.3 / 139.7 / 1,731.8 ms | 0.53 / 2.1 / 10.3 ms |
+| Mac `--bench brain-stream`, the first whole read in a run at 600 / 2,400 turns | 344 / 3,567-3,714 ms | 5 / 19-21 ms |
+| Mac, a streamed token as a card, the brain's own mean, 600 / 2,400 turns | 0.38-0.40 / 0.45 ms | 0.42-0.53 / 0.41 ms (the machine was loaded; the median is 0.02 / 0.01 ms in both) |
+| Linux, the brain ledger's first pass, 40 / 300 / 1,500 turns of 14 messages | 6.7 / 52.9 / 264.6 ms | 0.5-0.9 / 3.5-3.9 / 20.5-23.5 ms |
+
+The iOS open bench's longest single main-thread turn at push (110-150 ms at 40 to 300 turns, 227-237 ms at 1,500) is not Megatron's: the Lines style measures the same (134-137 ms at 40 turns, 91 at 300), and it is the chat's own build, the row builder and UIKit's layout of the first screen. What Megatron added to it was a pass of 2.3 ms at 40 turns, 30.7 at 300 and 81.5 at 1,500; it is now 0.4, 1.5 and 3.4.
+
+The cost that is left grows with the conversation, about 1.9 us a turn of one thought and four tools on the phone and about 12 us a 24-step turn on the desktop, because every turn is still placed when a chat opens: the row builder walks every message and asks the layout about each, and a turn has to be placed for it to be asked. The pass is therefore under 2 ms up to about 700 short turns or 150 long ones on the phone and passes it linearly beyond that. Placing turns on demand, as the builder reaches them, would make it independent of the length once the builder itself walks a window of the conversation instead of all of it; the store's loops over `turnIDs` and the table are the next cost after the outlines.
+
+`NeuralColdOpenBenchTests` (`NEURAL_COLD_BENCH=1`, release) prints the Core figures; the in-app probe is `TAILSCODE_NEURAL_PERF=1` with `TAILSCODE_NEURAL_STATE=shell TAILSCODE_NEURAL_LARGE=174` ("open cold N turns", "then a token"); `TAILSCODE_BENCH_OPEN` also logs `bench brain prepare` and `bench brain realise` lines for the store's own passes. On the Mac `TailscodeMac --bench brain-cold[=40,300,1500]`, on Linux the `efficiency` brain group of the selftest (`TAILSCODE_BRAIN_GROUP=efficiency`) prints "brain ledger: a cold pass".
+
