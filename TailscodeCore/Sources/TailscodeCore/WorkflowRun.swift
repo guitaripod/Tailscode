@@ -515,7 +515,7 @@ public enum WorkflowRunAssembly {
     public static func launches(in messages: [ChatMessage]) -> [Launch] {
         messages.flatMap { message in
             message.parts.compactMap { part -> Launch? in
-                guard case .tool(let call) = part.kind, call.summaryKind == .workflow else {
+                guard case .tool(let call) = part.kind, ToolKinds.kind(of: call) == .workflow else {
                     return nil
                 }
                 return Launch(call: call, at: message.createdAt)
