@@ -21,7 +21,7 @@ extension PreferencesWindow {
 
     @objc func manageServers() { actions.manageServers() }
 
-    @objc private func editTailnetToken() {
+    @objc func editTailnetToken() {
         guard let window else { return }
         TailnetTokenSheet.present(on: window) { [weak self] in
             DispatchQueue.main.async { self?.install(selecting: nil) }
@@ -30,7 +30,7 @@ extension PreferencesWindow {
 
     @objc func openUpdates() { actions.openUpdates() }
 
-    @objc private func openPro() { actions.openPro() }
+    @objc func openPro() { actions.openPro() }
 
     @objc func showCheatsheet() { actions.showCheatsheet() }
 
