@@ -479,7 +479,7 @@ public struct NeuralAccount: Sendable, Equatable {
     ) -> [Clause] {
         func key(_ index: Int) -> String {
             guard let call = steps[index].call?.call else { return "t:" + titles[index].text }
-            switch call.summaryKind {
+            switch call.cachedKind {
             case .fileRead: return "read"
             case .fileEdit: return "edit"
             case .fileWrite: return "write"
@@ -561,7 +561,7 @@ public struct NeuralAccount: Sendable, Equatable {
         let approval = step.status == .waitingApproval
         var subject = NeuralReadoutBuilder.subject(of: step)
         var options: [String] = []
-        if let call = step.call?.call, call.summaryKind == .question,
+        if let call = step.call?.call, call.cachedKind == .question,
             let request = QuestionRequest(toolCall: call, sessionID: ""),
             let question = request.questions.first
         {

@@ -83,7 +83,7 @@ public enum LiveActivityDetail: String, Sendable, CaseIterable {
             guard let tool, !tool.isEmpty else {
                 return LiveActivityFace(symbol: "wrench.and.screwdriver", tone: .live)
             }
-            let kind = ToolCall(id: "", name: tool, status: .running).summaryKind
+            let kind = ToolKindMemo.kind(ofToolNamed: tool)
             return LiveActivityFace(symbol: ActivityKind.symbol(forTool: kind), tone: .live)
         case .compacting: return LiveActivityFace(ActivityKind.compacting.icon)
         case .question: return LiveActivityFace(ActivityKind.needsAnswer.icon)

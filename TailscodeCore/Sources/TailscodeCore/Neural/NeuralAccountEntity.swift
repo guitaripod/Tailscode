@@ -365,7 +365,7 @@ extension NeuralAccount {
         for (index, step) in steps.enumerated() {
             guard let call = step.call?.call, let input = call.input else { continue }
             let name = call.name.lowercased()
-            guard call.summaryKind == .taskTracking || planTools.contains(name) else { continue }
+            guard call.cachedKind == .taskTracking || planTools.contains(name) else { continue }
             if name == "taskcreate" {
                 guard let subject = input["subject"]?.stringValue, !subject.isEmpty else { continue }
                 items.append(
@@ -474,7 +474,7 @@ extension NeuralAccount {
         }
         var changedWords: String?
         if changes.isEmpty {
-            let reads = steps.filter { $0.call?.call.summaryKind == .fileRead }.count
+            let reads = steps.filter { $0.call?.call.cachedKind == .fileRead }.count
             let onlyLooked = !steps.isEmpty && steps.allSatisfy { $0.zone == .sense || $0.zone == .think || $0.zone == .say }
             changedWords = onlyLooked && reads > 0
                 ? (reads == 1

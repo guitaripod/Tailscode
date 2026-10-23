@@ -31,7 +31,7 @@ public enum ToolDiff {
     public static func tally(_ calls: [ToolCall]) -> (added: Int, removed: Int) {
         var added = 0
         var removed = 0
-        for call in calls where call.summaryKind == .fileEdit || call.summaryKind == .fileWrite {
+        for call in calls where call.cachedKind == .fileEdit || call.cachedKind == .fileWrite {
             guard let stats = call.summary.diffStats else { continue }
             added += stats.added
             removed += stats.removed

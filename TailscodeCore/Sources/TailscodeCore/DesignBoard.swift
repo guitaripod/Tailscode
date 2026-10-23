@@ -328,7 +328,7 @@ public enum DesignReading {
     }
 
     private static func source(of call: ToolCall) -> DesignSource? {
-        switch call.summaryKind {
+        switch call.cachedKind {
         case .fileWrite, .fileEdit:
             guard let path = writtenPath(of: call), DesignPaths.isManifest(path) else { return nil }
             return .board(directory: DesignPaths.directory(ofManifest: path))

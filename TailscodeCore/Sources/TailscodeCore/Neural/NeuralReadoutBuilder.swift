@@ -118,7 +118,7 @@ struct NeuralReadoutBuilder {
         if NeuralReading.isThought(step) { return .thought }
         if NeuralReading.isNote(step) { return .note }
         if let call = step.call?.call {
-            switch call.summaryKind {
+            switch call.cachedKind {
             case .shell: return .command
             case .fileRead, .fileEdit, .fileWrite: return .path
             case .fileSearch, .webSearch: return .pattern

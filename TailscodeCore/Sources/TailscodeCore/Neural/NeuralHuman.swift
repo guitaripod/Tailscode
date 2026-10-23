@@ -273,8 +273,8 @@ public enum NeuralHuman {
     }
 
     private static func kind(of step: NeuralStep) -> ToolCallSummary.Kind {
-        if let call = step.call?.call { return call.summaryKind }
-        return ToolCall(id: "", name: step.title, status: .completed).summaryKind
+        if let call = step.call?.call { return call.cachedKind }
+        return ToolKindMemo.kind(ofToolNamed: step.title)
     }
 
     private static func field(_ call: ToolCall?, _ keys: [String]) -> String? {

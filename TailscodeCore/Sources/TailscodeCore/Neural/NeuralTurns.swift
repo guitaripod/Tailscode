@@ -252,7 +252,7 @@ public enum NeuralTurns {
         _ call: ToolCall, part: MessagePart, id: String, index: Int, group: Int,
         message: ChatMessage, awaiting: NeuralAwaiting
     ) -> NeuralStep {
-        let kind = call.summaryKind
+        let kind = call.cachedKind
         let (status, mark) = readStatus(of: call, part: part, id: id, awaiting: awaiting)
         var step = NeuralStep(
             id: id, index: index, zone: NeuralZone.zone(for: kind), status: status, group: group,

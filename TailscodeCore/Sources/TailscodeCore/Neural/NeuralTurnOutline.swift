@@ -17,6 +17,8 @@ public struct NeuralTurnOutline: Sendable, Hashable {
     /// The part id (`"messageID:partID"`) the turn's brain row goes before: the first step that is
     /// a member, or the first step where every step is a card the client also draws itself.
     public let anchor: String?
+    /// The message that holds the anchor part.
+    public let anchorMessageID: String?
     public let answerPartIDs: [String]
     public let memberPartIDs: Set<String>
     public let memberMessageIDs: Set<String>
@@ -27,13 +29,15 @@ public struct NeuralTurnOutline: Sendable, Hashable {
     public let effort: String?
 
     public init(
-        id: String, stepCount: Int, anchor: String?, answerPartIDs: [String],
-        memberPartIDs: Set<String>, memberMessageIDs: Set<String>, outcome: NeuralOutcome,
-        startedAt: Date?, endedAt: Date?, modelID: String?, effort: String?
+        id: String, stepCount: Int, anchor: String?, anchorMessageID: String?,
+        answerPartIDs: [String], memberPartIDs: Set<String>, memberMessageIDs: Set<String>,
+        outcome: NeuralOutcome, startedAt: Date?, endedAt: Date?, modelID: String?,
+        effort: String?
     ) {
         self.id = id
         self.stepCount = stepCount
         self.anchor = anchor
+        self.anchorMessageID = anchorMessageID
         self.answerPartIDs = answerPartIDs
         self.memberPartIDs = memberPartIDs
         self.memberMessageIDs = memberMessageIDs
@@ -51,13 +55,16 @@ public struct NeuralTurnOutline: Sendable, Hashable {
 extension NeuralTurn {
     /// The part this turn's brain row goes before: its first member step, or its first step when
     /// every step is one the client also draws as a card.
-    public var anchor: String? {
-        steps.first { memberPartIDs.contains($0.id) }?.id ?? steps.first?.id
+    public var anchor: String? { anchorStep?.id }
+
+    private var anchorStep: NeuralStep? {
+        steps.first { memberPartIDs.contains($0.id) } ?? steps.first
     }
 
     public var outline: NeuralTurnOutline {
         NeuralTurnOutline(
-            id: id, stepCount: steps.count, anchor: anchor, answerPartIDs: answerPartIDs,
+            id: id, stepCount: steps.count, anchor: anchor, anchorMessageID: anchorStep?.messageID,
+            answerPartIDs: answerPartIDs,
             memberPartIDs: memberPartIDs, memberMessageIDs: memberMessageIDs, outcome: outcome,
             startedAt: startedAt, endedAt: endedAt, modelID: modelID, effort: effort)
     }
@@ -85,7 +92,7 @@ extension NeuralTurns {
                     found = hasWords(words) ? .step : .other
                 case .tool(let call):
                     if call.status == .stopped { stopped = true }
-                    found = isCard(call, kind: call.summaryKind, message: message) ? .card : .step
+                    found = isCard(call, kind: call.cachedKind, message: message) ? .card : .step
                 case .text(let words):
                     found = hasWords(words) ? .words : .other
                 case .file:
@@ -99,8 +106,8 @@ extension NeuralTurns {
         }
 
         var stepCount = 0
-        var firstStep: String?
-        var firstMember: String?
+        var firstStep: (id: String, message: String)?
+        var firstMember: (id: String, message: String)?
         var answers: [String] = []
         var lastAnswer = -1
         var position = 0
@@ -117,9 +124,9 @@ extension NeuralTurns {
                 if isStep {
                     stepCount += 1
                     if firstStep == nil || (firstMember == nil && found != .card) {
-                        let id = partID(message, part)
-                        if firstStep == nil { firstStep = id }
-                        if found != .card, firstMember == nil { firstMember = id }
+                        let made = (id: partID(message, part), message: message.id)
+                        if firstStep == nil { firstStep = made }
+                        if found != .card, firstMember == nil { firstMember = made }
                     }
                 } else if found == .words {
                     answers.append(partID(message, part))
@@ -149,8 +156,8 @@ extension NeuralTurns {
         let outcome = readOutcome(
             of: messages, hasStoppedStep: stopped, running: running, awaiting: awaiting)
         return NeuralTurnOutline(
-            id: first.id, stepCount: stepCount, anchor: firstMember ?? firstStep,
-            answerPartIDs: answers, memberPartIDs: members,
+            id: first.id, stepCount: stepCount, anchor: (firstMember ?? firstStep)?.id,
+            anchorMessageID: (firstMember ?? firstStep)?.message, answerPartIDs: answers, memberPartIDs: members,
             memberMessageIDs: Set(messages.map(\.id)), outcome: outcome,
             startedAt: first.createdAt, endedAt: outcome == .running ? nil : last.completedAt,
             modelID: messages.reversed().lazy.compactMap(\.modelID).first,
