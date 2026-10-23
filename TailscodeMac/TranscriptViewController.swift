@@ -201,7 +201,7 @@ final class TranscriptViewController: NSViewController {
     var repairKey: String?
     private(set) var lastFullRows: [TranscriptRow] = []
     private var windowLimit = 400
-    private var rowTailMessages = 300
+    var rowTailMessages = 300
     var placeholderShown = true
     private var currentPlaceholder: String?
     private var pendingReveal = false
@@ -1816,7 +1816,8 @@ final class TranscriptViewController: NSViewController {
         let tail = rowTailMessages
         let messages =
             state.messages.count > tail ? Array(state.messages.suffix(tail)) : state.messages
-        apply(state: state, rows: buildRows(messages, state: state))
+        let built = buildRows(messages, state: state)
+        showRows(state: state, rows: built)
     }
 
     @objc private func activityStyleChanged() {
@@ -1862,6 +1863,7 @@ final class TranscriptViewController: NSViewController {
         rowBuilder.brains = brains
         context.brains = brains
         brains.onChange = { [weak self] in self?.rebuildRows() }
+        brains.defersRebuild = true
         calls.onFaceChanged = { [weak self] in
             guard let self, let facts = self.lastFacts else { return }
             self.noteBrainContext(facts)
@@ -1892,6 +1894,7 @@ final class TranscriptViewController: NSViewController {
         context.revealRow = { [weak self] row in
             DispatchQueue.main.async { [weak self] in self?.revealDisclosure(row) }
         }
+        context.revealAhead = { [weak self] row, height in self?.revealAhead(of: row, height: height) }
         context.requestImage = { [weak self] reference, key in
             self?.noteImageWanted(reference, key: key)
         }
@@ -2594,21 +2597,42 @@ final class TranscriptViewController: NSViewController {
             updateStatus()
         }
         onState?(state)
+        let turnOpen = state.status == .running
+        let turnEnded = context.turnOpen && !turnOpen
+        context.turnOpen = turnOpen
+        pending.reconcile(userMessages: state.messages.count { $0.role == .user })
+        armResumeForWalledTurn(state)
+        armRetryWake(state.retry, now: Date())
+        if state.revert == nil, revertOperation != .restoring { revertComposerFill = nil }
+        showRows(state: state, rows: rows)
+        if turnEnded { replaceRows(where: \.hasOpenWork) }
+        renderPendingCards(state)
+        composer.noteState(state)
+        transcriptFill = ContextFill.read(
+            messages: state.messages, sessionModel: entry?.session.model,
+            sessionProvider: entry?.session.modelProviderID, catalog: composer.catalog)
+
+        updateStatus()
+        refreshWorkflowRuns()
+        updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
+        handoff.observe(state, sendsInFlight: pending.hasInFlight)
+        drainQueue()
+        calls.conversationChanged()
+    }
+
+    /// The transcript drawn from these rows: remembered for the next visit, docked with what this
+    /// device holds, windowed to the rows shown, and handed to the diff. Everything `apply` does
+    /// about the state around the rows is left to it, so a choice that only changes the rows (a
+    /// Megatron opened or closed, its old rows listed) costs the rows and not the conversation.
+    private func showRows(state: ConversationState, rows: [TranscriptRow]) {
         var confirmed = rows
         if rows.last?.key.hasPrefix("echo:") == true {
             confirmed.removeAll { $0.key.hasPrefix("echo:") }
         }
         lastFullRows = confirmed
-        let turnOpen = state.status == .running
-        let turnEnded = context.turnOpen && !turnOpen
-        context.turnOpen = turnOpen
         if let entry {
             rememberRows(confirmed, for: SessionPinStore.key(entry.profileID, entry.session.id))
         }
-        pending.reconcile(userMessages: state.messages.count { $0.role == .user })
-        armResumeForWalledTurn(state)
-        armRetryWake(state.retry, now: Date())
-        if state.revert == nil, revertOperation != .restoring { revertComposerFill = nil }
         let shown = docked(echoed(confirmed), state: state)
         let limit = rowLimit
         let windowed = shown.count > limit ? Array(shown.suffix(limit)) : shown
@@ -2629,18 +2653,6 @@ final class TranscriptViewController: NSViewController {
             settleStreamedTail(in: windowed)
             paintCascade()
         }
-        if turnEnded { replaceRows(where: \.hasOpenWork) }
-        renderPendingCards(state)
-        composer.noteState(state)
-        transcriptFill = ContextFill.read(
-            messages: state.messages, sessionModel: entry?.session.model,
-            sessionProvider: entry?.session.modelProviderID, catalog: composer.catalog)
-        updateStatus()
-        refreshWorkflowRuns()
-        updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
-        handoff.observe(state, sendsInFlight: pending.hasInFlight)
-        drainQueue()
-        calls.conversationChanged()
     }
 
     /// What the transcript draws: the rows the server has confirmed, plus the prompt this device is
@@ -4943,6 +4955,40 @@ final class TranscriptViewController: NSViewController {
         guard row.window != nil, row.isDescendant(of: canvas) else { return }
         view.layoutSubtreeIfNeeded()
         let frame = row.convert(row.bounds, to: canvas)
+        scrollToShow(frame)
+    }
+
+    /// The same scroll for a row that has begun to open: the page is moved at once, so the window
+    /// holds all of what the move reveals while it comes in, and the render server eases the page
+    /// from where it was over the length of the move. The row keeps the frame it will rest at, so
+    /// the page knows how far it has to go before the move has grown the row to it.
+    private func revealAhead(of row: NSView, height: CGFloat) {
+        guard row.window != nil, row.isDescendant(of: canvas) else { return }
+        var frame = row.convert(row.bounds, to: canvas)
+        frame.size.height = height
+        let clip = scrollView.contentView
+        let margin: CGFloat = 8
+        let visibleTop = clip.bounds.origin.y + scrollView.contentInsets.top
+        let visibleBottom =
+            clip.bounds.origin.y + clip.bounds.height - scrollView.contentInsets.bottom
+        let delta = min(
+            frame.maxY + margin - visibleBottom, frame.minY - margin - visibleTop)
+        guard delta > 0 else { return }
+        let from = clip.bounds.origin.y
+        isAutoScrolling = true
+        adjustScroll { $0 + delta }
+        isAutoScrolling = false
+        let to = clip.bounds.origin.y
+        guard let layer = clip.layer, to != from, ActivityPulse.motionAllowed else { return }
+        let ease = CABasicAnimation(keyPath: "bounds.origin.y")
+        ease.fromValue = from
+        ease.toValue = to
+        ease.duration = NeuralTransition.openDuration
+        ease.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(ease, forKey: "reveal.ahead")
+    }
+
+    private func scrollToShow(_ frame: CGRect) {
         let clip = scrollView.contentView
         let margin: CGFloat = 8
         let visibleTop = clip.bounds.origin.y + scrollView.contentInsets.top

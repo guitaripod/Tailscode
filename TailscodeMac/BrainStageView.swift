@@ -148,6 +148,16 @@ final class BrainStageView: NSView, BrainKeyTaker {
     private var currentDive = NeuralDive.none
     private var diveProgress: Double = 0
 
+    /// Whether the nodes, wires and names are made: a stage that is opening shows its head first and
+    /// is given these a frame later, because they are most of what laying it out costs.
+    var drawsOverlay = true
+
+    func beginOverlay() {
+        drawsOverlay = true
+        needsLayout = true
+        refresh(force: true)
+    }
+
     /// A model to draw instead of the host's, for a picture that must not show a hover, a cursor
     /// or a replay: the poster of a turn.
     var fixedModel: NeuralBrainModel?
@@ -338,7 +348,7 @@ final class BrainStageView: NSView, BrainKeyTaker {
             model: model, palette: inks.palette, reduceMotion: reduceMotion, dive: currentDive,
             animationBudget: budget())
         let scale = head.designScale
-        guard scale > 0 else { return }
+        guard scale > 0, drawsOverlay else { return }
         let key = inkKey(inks)
         let structural = model.revision != lastRevision || scale != lastScale || key != lastInks
         if structural {
@@ -350,7 +360,7 @@ final class BrainStageView: NSView, BrainKeyTaker {
         updateDynamic(
             model: model, inks: inks, scale: scale, time: CACurrentMediaTime(),
             force: structural || force)
-        updateAccessibility(model: model)
+        if reveal == nil { updateAccessibility(model: model) }
     }
 
     /// The clock: moves the dive, and during a replay the nodes and wires, in the frame the head

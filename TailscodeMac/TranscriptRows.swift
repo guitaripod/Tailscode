@@ -39,6 +39,10 @@ final class TranscriptContext {
     /// Called with a just-opened disclosure row: the transcript scrolls the minimum needed to
     /// show the opened body, never past the point where the clicked header would leave the top.
     var revealRow: ((NSView) -> Void)?
+    /// Called on the first frame of a brain's opening move with the row and the height it will
+    /// rest at: the transcript begins to scroll to where the whole of it can be seen, so what the
+    /// move reveals is drawn as the parts come in and not all at once when the move lands.
+    var revealAhead: ((NSView, CGFloat) -> Void)?
     var requestImage: ((FileReference, String) -> Void)?
     /// Whether a picture's bytes arrived and would not decode, so its row settles as a filename.
     var isImageRefused: ((String) -> Bool)?
@@ -185,6 +189,17 @@ final class TranscriptRowBuilder {
 
     private var cache: [String: Entry] = [:]
     private var prefix: Prefix?
+    private var lastMessages: [ChatMessage] = []
+
+    /// Whether this is the array the last rebuild was handed, not one equal to it: an array that
+    /// shares storage with another is the same messages without looking at one of them, which is
+    /// what a rebuild for a choice the person made (a brain opened) is.
+    private func isLastMessages(_ messages: [ChatMessage]) -> Bool {
+        messages.count == lastMessages.count
+            && messages.withUnsafeBufferPointer { now in
+                lastMessages.withUnsafeBufferPointer { before in now.baseAddress == before.baseAddress }
+            }
+    }
     private var builtWithEmbeds = LinkEmbedsSetting.isEnabled
     private var builtWithDensity = ChatDensitySetting.current
 
@@ -232,7 +247,9 @@ final class TranscriptRowBuilder {
             prefix = nil
         }
         let brains = brains.flatMap { $0.isActive ? $0 : nil }
-        let verified = prefixHolds(messages, turnOpen: turnOpen)
+        let same = isLastMessages(messages)
+        lastMessages = messages
+        let verified = prefixHolds(messages, turnOpen: turnOpen, same: same)
         if let brains {
             brains.read(
                 messages: messages, running: turnOpen, awaiting: awaiting, mayDefer: verified)
@@ -361,10 +378,11 @@ final class TranscriptRowBuilder {
     /// newest question where the prefix ends, and every message above it the message it was. One
     /// comparison per rebuild, made before the brain reads, so that a change far up the page is
     /// never waited on.
-    private func prefixHolds(_ messages: [ChatMessage], turnOpen: Bool) -> Bool {
+    private func prefixHolds(_ messages: [ChatMessage], turnOpen: Bool, same: Bool = false) -> Bool {
         guard let held = prefix, held.turnOpen == turnOpen, messages.count > held.messages.count,
             messages[held.messages.count].role == .user
         else { return false }
+        if same { return true }
         for index in held.messages.indices where held.messages[index] != messages[index] {
             return false
         }

@@ -128,7 +128,7 @@ enum BrainAccountChecks {
             return
         }
         let m = row.currentMetrics
-        let frame = account.frame
+        let frame = row.slide?.frame ?? account.frame
         try check(
             abs(frame.width - m.readout.width) < 0.6 && abs(frame.minX - m.readout.x) < 0.6,
             "the account stands where Core puts the readout (\(frame) for \(m.readout))")

@@ -17,7 +17,7 @@ import TailscodeCore
 /// which is also what lets go of the process's textures; a pane that parks, a window that closes
 /// and an app that has been away for a while do the same.
 @MainActor
-final class BrainRowView: NSView, BrainSurfaceHost {
+final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
     enum Phase: Equatable {
         case closed
         case open
@@ -37,13 +37,18 @@ final class BrainRowView: NSView, BrainSurfaceHost {
     private(set) var chips: BrainFilterChips?
     private(set) var list: BrainListView?
     private(set) var account: BrainAccountView?
+    private(set) var slide: BrainCarrierView?
+    var moveMask: CALayer?
     private(set) var footer: BrainFooterView?
     private(set) var phase = Phase.closed
     var mover: BrainMover?
+    var schedule: NeuralOpenSchedule?
+    var moveContent: BrainCardView.Content?
+    var movedFrames = 0
     var parkReasons = Set<String>()
     var startReplayOnOpen = false
     var legend: NSPopover?
-    private var metricsMemo: (key: String, value: NeuralStageMetrics)?
+    private var metricsMemo: (key: MetricsKey, value: NeuralStageMetrics)?
     private var lastWidth: CGFloat = 0
     private var pictureRequested = ""
     var hoverApplied: String??
@@ -218,15 +223,34 @@ final class BrainRowView: NSView, BrainSurfaceHost {
     func stagePressed() { dismissLegend() }
 
 
+    private struct MetricsKey: Equatable {
+        let width: Double
+        let density: ChatDensity
+        let zones: Int
+        let bucket: Int
+    }
+
+    private var zonesMemo: (revision: Int, count: Int)?
+
+    /// How many zones have steps, which sets the stage's height. The chips are read from the
+    /// model once for each of its revisions, not once for each time a part asks where it goes.
+    private var zonesWithSteps: Int {
+        let model = model
+        if let memo = zonesMemo, memo.revision == model.revision { return memo.count }
+        let count = model.browseState.list.zoneChips.count
+        zonesMemo = (model.revision, count)
+        return count
+    }
+
     func metrics(forWidth width: Double) -> NeuralStageMetrics {
-        let zones = model.browseState.list.zoneChips.count
+        let zones = zonesWithSteps
         let viewport = store?.viewportHeight?().map { Double($0) }
-        let bucket = Int((viewport ?? 0) / 8)
-        let memoKey = "\(width)|\(density)|\(zones)|\(bucket)"
-        if let memo = metricsMemo, memo.key == memoKey { return memo.value }
+        let key = MetricsKey(
+            width: width, density: density, zones: zones, bucket: Int((viewport ?? 0) / 8))
+        if let memo = metricsMemo, memo.key == key { return memo.value }
         let made = NeuralStageMetrics.make(
             width: width, density: density, zonesWithSteps: max(zones, 1), viewportHeight: viewport)
-        metricsMemo = (memoKey, made)
+        metricsMemo = (key, made)
         return made
     }
 
@@ -252,7 +276,7 @@ final class BrainRowView: NSView, BrainSurfaceHost {
         switch phase {
         case .closed: return CGFloat(m.card.height)
         case .open: return CGFloat((m.rowHeight + narrowExtra(m)).rounded())
-        case .moving: return CGFloat(mover?.rowHeight ?? m.rowHeight)
+        case .moving: return CGFloat(max(m.card.height, m.rowHeight + narrowExtra(m)).rounded())
         }
     }
 
@@ -341,11 +365,15 @@ final class BrainRowView: NSView, BrainSurfaceHost {
             list?.isHidden = false
             list?.frame = rect(m.list)
         }
-        var base =
+        let rest =
             narrow
             ? NeuralRect(x: 0, y: m.list.y, width: m.width, height: narrowAccountHeight(m)) : m.readout
-        if let moved { base = narrow ? base.offsetBy(dx: moved.x, dy: moved.y) : moved }
-        account?.frame = rect(base)
+        var target = rest
+        if let moved { target = narrow ? rest.offsetBy(dx: moved.x, dy: moved.y) : moved }
+        slide?.frame = rect(rest)
+        account?.frame = CGRect(origin: .zero, size: rect(rest).size)
+        slide?.setTravel(
+            CGAffineTransform(translationX: CGFloat(target.x - rest.x), y: CGFloat(target.y - rest.y)))
     }
 
     private func placeLeader(_ m: NeuralStageMetrics) {
@@ -380,6 +408,25 @@ final class BrainRowView: NSView, BrainSurfaceHost {
 
     private var restateStamp: RestateStamp?
 
+    /// Notes that every part was brought to the model as it stands, so the end of a move, which
+    /// would bring them all to it again, finds nothing to do unless the model moved meanwhile.
+    func markRestated() {
+        guard let entry = store?.entry(turnID) else { return }
+        restateStamp = RestateStamp(
+            entry: entry.revision, model: entry.model.revision, context: entry.context)
+    }
+
+    /// The account of the turn read on another thread while the press is still being answered: the
+    /// model keeps what it reads, so the frame that makes the account finds it ready.
+    private func prefetchAccount() {
+        let model = model
+        let answer = answerText
+        let prompt = promptText
+        Task.detached(priority: .userInitiated) {
+            _ = model.account(answer: answer.isEmpty ? nil : answer, prompt: prompt)
+        }
+    }
+
     /// Brings every part to the model when anything it says changed. A token that lengthens a note
     /// the brain has not read again changes nothing the card or the open parts say, so it costs the
     /// comparison; the second's tick restates with `force`.
@@ -410,8 +457,9 @@ final class BrainRowView: NSView, BrainSurfaceHost {
             if next.isOpen { open(animated: true) } else { close(animated: true) }
         } else if old.showsRows != next.showsRows {
             footer?.sync(now: BrainClock.now)
+            syncCard()
         }
-        refreshAll()
+        refresh()
     }
 
     func refreshAll() {
@@ -540,10 +588,14 @@ final class BrainRowView: NSView, BrainSurfaceHost {
             return
         }
         guard phase == .closed, stageMayOpen else { return }
-        makeParts()
         let swapped = store?.consumeSwap(turnID) ?? false
-        let canAnimate = animated && canMove
-        if canAnimate { startMove(opening: true, swapped: swapped) } else { showStage() }
+        if animated && canMove {
+            schedule = NeuralOpenSchedule()
+            prefetchAccount()
+            startMove(opening: true, swapped: swapped)
+        } else {
+            showStage()
+        }
     }
 
     func close(animated: Bool) {
@@ -561,23 +613,84 @@ final class BrainRowView: NSView, BrainSurfaceHost {
             && isVisible
     }
 
-    /// Builds the parts of the open brain, without showing them.
+    /// Builds every part of the open brain, without showing them.
     func makeParts() {
+        var rest = schedule ?? NeuralOpenSchedule()
+        schedule = nil
+        for part in rest.remaining() { build(part) }
+    }
+
+    /// Builds the parts the schedule says are due on this tick of the opening move.
+    func buildDueParts(frame: Int, progress: Double) {
+        guard var held = schedule else { return }
+        let due = held.due(frame: frame, progress: progress)
+        schedule = held.isComplete ? nil : held
+        for part in due { build(part, paced: true) }
+    }
+
+    /// Builds the parts the opening move has not reached yet, for a move that ends first.
+    func completeParts() {
+        guard var held = schedule else { return }
+        schedule = nil
+        for part in held.remaining() { build(part) }
+    }
+
+    private func build(_ part: NeuralOpenPart, paced: Bool = false) {
+        switch part {
+        case .head: buildHead()
+        case .steps: buildSteps()
+        case .nodes: stage?.beginOverlay()
+        case .account: buildAccount(paced: paced)
+        case .story: account?.refresh(immediate: true)
+        case .footer: buildFooter()
+        }
+    }
+
+    /// How many of the account's items are made on one frame of the move that opens it.
+    private static let itemsPerFrame = 3
+
+    private func buildHead() {
         guard stage == nil else { return }
         let made = BrainStageView(turnID: turnID, host: self)
         made.onActivity = { [weak self] in self?.stageActivity() }
         made.onDive = { [weak self] zone in self?.diveChanged(zone) }
         made.head.onReady = { [weak self] in self?.needsLayout = true }
+        made.drawsOverlay = false
         carrier.addSubview(made)
         stage = made
+        if !parkReasons.isEmpty { made.park() }
+        made.refresh(force: true)
+    }
+
+    private func buildSteps() {
+        guard list == nil else { return }
+        let m = currentMetrics
         let chipView = BrainFilterChips(host: self)
         let listView = BrainListView(host: self)
-        let accountView = BrainAccountView(host: self)
-        let footerView = BrainFooterView(host: self)
-        for view in [chipView, listView, accountView, footerView] as [NSView] { addSubview(view) }
+        addSubview(chipView)
+        addSubview(listView)
         chips = chipView
         list = listView
+        chipView.configure(metrics: m)
+        listView.configure(metrics: m)
+        syncBrowse()
+    }
+
+    private func buildAccount(paced: Bool) {
+        guard account == nil else { return }
+        let accountView = BrainAccountView(host: self)
+        if paced { accountView.makeCap = Self.itemsPerFrame }
+        let carrier = BrainCarrierView()
+        carrier.addSubview(accountView)
+        addSubview(carrier)
+        slide = carrier
         account = accountView
+    }
+
+    private func buildFooter() {
+        guard footer == nil else { return }
+        let footerView = BrainFooterView(host: self)
+        addSubview(footerView)
         footer = footerView
         footerView.onReplay = { [weak self] in self?.toggleReplay() }
         footerView.onScrub = { [weak self] fraction in self?.scrub(to: fraction) }
@@ -587,26 +700,43 @@ final class BrainRowView: NSView, BrainSurfaceHost {
         footerView.onClose = { [weak self] in self?.collapseBrain() }
         footerView.onChipHover = { [weak self] token in self?.pointAt(token: token, hold: false) }
         footerView.onChipPress = { [weak self] token in self?.pointAt(token: token, hold: true) }
-        if !parkReasons.isEmpty { made.park() }
-        let m = currentMetrics
-        chipView.configure(metrics: m)
-        listView.configure(metrics: m)
-        syncBrowse()
-        stage?.refresh(force: true)
         footerView.sync(now: BrainClock.now)
-        accountView.refresh(immediate: true)
+    }
+
+    private var graveyard: [NSView] = []
+    private var burialScheduled = false
+
+    /// Lets the views go one to a turn: the account's items and the head's layers cost a few
+    /// milliseconds each to take down, and a move that ends by taking all of them down in the turn
+    /// it ends in dropped a frame at its last step. They are hidden at once and taken out later.
+    private func bury(_ views: [NSView]) {
+        for view in views { view.isHidden = true }
+        graveyard += views
+        scheduleBurial()
+    }
+
+    private func scheduleBurial() {
+        guard !burialScheduled, !graveyard.isEmpty else { return }
+        burialScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.012) { [weak self] in
+            guard let self else { return }
+            self.burialScheduled = false
+            if !self.graveyard.isEmpty { self.graveyard.removeFirst().removeFromSuperview() }
+            self.scheduleBurial()
+        }
     }
 
     func dropParts() {
+        schedule = nil
         guard stage != nil else { return }
         returnFocusFromBrain()
         dismissLegend()
-        stage?.removeFromSuperview()
-        for view in [chips, list, account, footer] as [NSView?] { view?.removeFromSuperview() }
+        bury([slide, list, chips, footer, stage].compactMap { $0 as NSView? })
         stage = nil
         chips = nil
         list = nil
         account = nil
+        slide = nil
         footer = nil
         hoverApplied = nil
         pendingHover = nil
@@ -879,6 +1009,7 @@ final class MacBrainIdle {
     func fallIdle() {
         timer = nil
         isIdle = true
+        BrainCardPictures.shared.dropAll()
         for row in BrainRowView.live { row.setParked(true, reason: "idle") }
     }
 

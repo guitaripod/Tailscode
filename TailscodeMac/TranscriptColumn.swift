@@ -1,6 +1,19 @@
 import AppKit
 import TailscodeCore
 
+/// A row that is moving without changing its frame: it keeps the frame it will rest at, and the
+/// column lays out the rows below it, and the page, from the height it has reached.
+///
+/// A view whose frame changes invalidates every view under it, and an AppKit view that is
+/// invalidated draws again, so a row that grew a few points on each frame of its move made the
+/// page and everything the row holds draw again on each of them. A row that holds its frame and
+/// shows itself through a mask costs a mask; the rows below it, which do move, cost what they hold.
+@MainActor
+protocol RowMotion: AnyObject {
+    /// The height the rows below are laid out from while the row moves, or nil at rest.
+    var motionHeight: CGFloat? { get }
+}
+
 /// The transcript's rows, placed by hand rather than by a stack view.
 ///
 /// A stack view is one system of constraints: every row's top hangs off the bottom of the row
@@ -79,6 +92,12 @@ final class TranscriptColumn: NSView {
         needsLayout = true
     }
 
+    /// A row that moves inside a frame it keeps has gone further, and the rows under it follow.
+    func rowMoved() {
+        guard !placing else { return }
+        needsLayout = true
+    }
+
     /// A row that changed height by itself — words arriving, a body opening, a picture decoding —
     /// moves every row under it, which only the column can do.
     fileprivate func rowResized() {
@@ -102,6 +121,7 @@ final class TranscriptColumn: NSView {
         let width = bounds.width
         let scale = window?.backingScaleFactor ?? 2
         var y: CGFloat = 0
+        var slack: CGFloat = 0
         var previous: RowHost?
         var line = PictureLine()
         for row in arrangedSubviews {
@@ -134,11 +154,13 @@ final class TranscriptColumn: NSView {
                 frame = NSRect(x: 0, y: y, width: width, height: height)
             }
             if host.frame != frame { host.frame = frame }
-            y += height
+            let reached = (row as? RowMotion)?.motionHeight.map { min(height, ($0 * scale).rounded(.up) / scale) }
+            y += reached ?? height
+            slack += height - (reached ?? height)
             previous = host
         }
-        guard contentHeight != y else { return }
-        contentHeight = y
+        guard contentHeight != y + slack else { return }
+        contentHeight = y + slack
         invalidateIntrinsicContentSize()
     }
 

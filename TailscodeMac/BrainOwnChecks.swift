@@ -200,11 +200,11 @@ enum BrainOwnChecks {
             if m.arrangement == .split {
                 try expect(
                     view.list?.isHidden == false && abs((view.list?.frame.width ?? 0) - CGFloat(m.list.width)) < 1
-                        && abs((view.account?.frame.minX ?? 0) - CGFloat(m.readout.x)) < 1,
+                        && abs((view.slide?.frame.minX ?? 0) - CGFloat(m.readout.x)) < 1,
                     "the list sits under the head and the account beside it at \(Int(width))")
             } else {
                 try expect(
-                    view.list?.isHidden == true && abs((view.account?.frame.width ?? 0) - CGFloat(m.width)) < 1,
+                    view.list?.isHidden == true && abs((view.slide?.frame.width ?? 0) - CGFloat(m.width)) < 1,
                     "in an accordion the account is the list at \(Int(width))")
             }
             let parts = NeuralStageMetrics.footerParts(width: Double(view.bounds.width)).map(\.kind)

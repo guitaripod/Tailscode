@@ -62,6 +62,51 @@ final class BrainMover {
 }
 
 extension BrainRowView {
+    var motionHeight: CGFloat? {
+        phase == .moving ? mover.map { CGFloat($0.rowHeight) } : nil
+    }
+
+    /// The row keeps the frame it will rest at for the whole of its move and shows itself through
+    /// a mask that grows or shrinks with Core's height, so nothing above it or inside it changes
+    /// size on any frame of the move: the page asks to be drawn again when a view's frame changes
+    /// and a move that resized the row on each frame drew it all again on each of them.
+    private func beginMotion() {
+        let mask = CALayer()
+        mask.backgroundColor = NSColor.black.cgColor
+        moveMask = mask
+        layer?.mask = mask
+        invalidateIntrinsicContentSize()
+        needsLayout = true
+        syncMotion()
+    }
+
+    func syncMotion() {
+        guard let mover, let mask = moveMask else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        mask.frame = CGRect(x: 0, y: 0, width: bounds.width, height: CGFloat(mover.rowHeight))
+        CATransaction.commit()
+        enclosingColumn?.rowMoved()
+    }
+
+    private func endMotion() {
+        guard moveMask != nil else { return }
+        layer?.mask = nil
+        moveMask = nil
+        invalidateIntrinsicContentSize()
+        needsLayout = true
+        enclosingColumn?.rowMoved()
+    }
+
+    private var enclosingColumn: TranscriptColumn? {
+        var view = superview
+        while let held = view {
+            if let column = held as? TranscriptColumn { return column }
+            view = held.superview
+        }
+        return nil
+    }
+
     /// Begins the card becoming the stage, or the stage the card. The parts of the open brain are
     /// built already; the move only places them.
     func startMove(opening: Bool, swapped: Bool) {
@@ -76,12 +121,13 @@ extension BrainRowView {
         let now = BrainClock.now
         let made = BrainMover(transition: transition, now: now, metricsWidth: m.width)
         mover = made
+        moveContent = moveCardContent(for: m)
         movesRun += 1
         maxFrameGap = 0
         setPhase(.moving)
         list?.configure(metrics: m)
         chips?.configure(metrics: m)
-        footer?.sync(now: now)
+        if opening { footer?.sync(now: now) }
         leader.clear()
         stage?.alphaValue = 1
         let clock = BrainClock(view: self) { [weak self] time in self?.moveTick(time) }
@@ -93,8 +139,8 @@ extension BrainRowView {
             return
         }
         applyMoveFrame(m)
-        invalidateIntrinsicContentSize()
-        needsLayout = true
+        markRestated()
+        beginMotion()
     }
 
     func reverseMove() {
@@ -102,17 +148,21 @@ extension BrainRowView {
         let now = BrainClock.now
         mover.reverse(at: now)
         applyMoveFrame(currentMetrics)
-        invalidateIntrinsicContentSize()
-        needsLayout = true
+        syncMotion()
     }
 
     private func moveTick(_ time: Double) {
         guard let mover else { return }
         let done = mover.step(at: time)
+        if mover.isOpening {
+            movedFrames += 1
+            if movedFrames == 1 { context?.revealAhead?(self, restingHeight) }
+            buildDueParts(frame: movedFrames, progress: mover.progress(at: time))
+            account?.continueRealize()
+        }
         maxFrameGap = max(maxFrameGap, mover.maxGap)
         applyMoveFrame(currentMetrics)
-        invalidateIntrinsicContentSize()
-        needsLayout = true
+        syncMotion()
         if done { finishMove(snapOpen: mover.isOpening) }
     }
 
@@ -121,6 +171,13 @@ extension BrainRowView {
         held.clock?.stop()
         maxFrameGap = max(maxFrameGap, held.maxGap)
         mover = nil
+        moveContent = nil
+        movedFrames = 0
+        endMotion()
+        if opening {
+            completeParts()
+            account?.finishRealize()
+        }
         stage?.reveal = nil
         list?.setReveal(rows: nil, headerAlpha: 1)
         account?.setBodyAlpha(1)
@@ -134,7 +191,7 @@ extension BrainRowView {
             relayout()
             leader.clear()
             updateLeader()
-            refreshAll()
+            refresh()
             applyPendingDive()
             let fromFind = store?.pendingFind[turnID] != nil
             applyPendingFind()
@@ -145,6 +202,7 @@ extension BrainRowView {
             hideStage()
         }
         invalidateIntrinsicContentSize()
+        store?.moveLanded()
     }
 
     /// Puts every part where the move's frame says: the card's words and surface fading, the head
@@ -164,7 +222,7 @@ extension BrainRowView {
         picture.setCornerRadius(CGFloat(8 * (1 - f.progress)), designScale: travelScale)
         picture.container.isHidden = false
         picture.container.opacity = Float(f.travellerAlpha)
-        let content = cardInputForMove
+        let content = moveContent ?? moveCardContent(for: m)
         if let content {
             let lift = opening ? 1 - f.zoneLift : f.cardLightsAlpha
             let ringLift = opening ? pow(max(0, 1 - f.zoneLift * 1.6), 3) : lift
@@ -191,13 +249,13 @@ extension BrainRowView {
         footer?.alphaValue = CGFloat(f.footerAlpha)
     }
 
-    private var cardInputForMove: BrainCardView.Content? {
+    private func moveCardContent(for m: NeuralStageMetrics) -> BrainCardView.Content? {
         guard let entry = store?.entry(turnID) else { return nil }
         let model = entry.model
         return BrainCardView.Content(
             card: model.brainCard(now: Date()), showsRows: row.showsRows, isReplaying: false,
-            canReplay: false, inks: inks, density: density, width: currentMetrics.width,
-            geometry: currentMetrics.card, face: model.face, reduceMotion: reduceMotion)
+            canReplay: false, inks: inks, density: density, width: m.width,
+            geometry: m.card, face: model.face, reduceMotion: reduceMotion)
     }
 }
 
@@ -221,14 +279,14 @@ extension BrainRowView {
                 live: live)
             if let reversedFrom { transition = transition.reversed(from: reversedFrom) }
             mover = BrainMover(transition: transition, now: BrainClock.now, metricsWidth: m.width)
+            moveContent = moveCardContent(for: m)
             setPhase(.moving)
             leader.clear()
         }
         guard let held = mover else { return }
         held.hold(at: u)
         applyMoveFrame(currentMetrics)
-        invalidateIntrinsicContentSize()
-        needsLayout = true
+        if moveMask == nil { beginMotion() } else { syncMotion() }
         layoutSubtreeIfNeeded()
     }
 }

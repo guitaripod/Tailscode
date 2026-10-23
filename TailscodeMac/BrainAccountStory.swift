@@ -234,6 +234,21 @@ extension BrainAccountView {
         return want != Set(cells.keys)
     }
 
+    /// The next few items of a story that is being made a few at a time: asked once on each frame
+    /// of the move that opens it, and finished in full when the move lands.
+    func continueRealize() {
+        guard pendingRealize else { return }
+        pendingRealize = false
+        needsLayout = true
+    }
+
+    func finishRealize() {
+        makeCap = nil
+        guard pendingRealize || needsRealizeNow() else { return }
+        pendingRealize = false
+        needsLayout = true
+    }
+
     func scheduleRealize() {
         guard !realizeScheduled else { return }
         realizeScheduled = true
@@ -283,6 +298,8 @@ extension BrainAccountView {
         let range = wanted()
         let want = Set(range.map { entries[$0].id })
         for id in Array(cells.keys) where !want.contains(id) || entryIndex[id] == nil { drop(id) }
+        var made = 0
+        var capped = false
         for index in range {
             let entry = entries[index]
             let key = cellKey(entry)
@@ -290,14 +307,20 @@ extension BrainAccountView {
                 if held.key == key, !held.stale { continue }
                 drop(entry.id)
             }
+            if let cap = makeCap, made >= cap {
+                capped = true
+                break
+            }
             make(entry, key: key)
+            made += 1
         }
+        pendingRealize = capped
         syncHeights()
         clampScroll()
         placeCells()
         if model.turn.outcome == .running, model.stepList.isFollowing, pendingReveal == nil { setScrollRaw(maxScroll) }
         let again = wanted()
-        if Set(again.map { entries[$0].id }) != Set(cells.keys) { scheduleRealize() }
+        if !capped, Set(again.map { entries[$0].id }) != Set(cells.keys) { scheduleRealize() }
         for cell in cells.values { cell.visibleChanged(documentVisible) }
         isAnimating = scrollAnimating || !arrivals.isEmpty
     }

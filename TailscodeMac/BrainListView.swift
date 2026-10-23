@@ -210,14 +210,48 @@ final class BrainListView: NSView, BrainKeyTaker {
     }
 
     func setReveal(rows reveal: NeuralRowReveal?, headerAlpha alpha: Double) {
-        let changed = reveal != revealRows || alpha != headerAlpha
+        let previous = revealRows
+        let changed = reveal != previous || alpha != headerAlpha
         revealRows = reveal
         headerAlpha = alpha
         header.alphaValue = CGFloat(alpha)
         guard changed else { return }
-        rows.needsDisplay = true
+        guard let reveal, reveal.count > 0, previous == nil || previous?.count == reveal.count else {
+            if reveal != nil || previous.map({ !isSettled($0) }) ?? true { rows.needsDisplay = true }
+            return
+        }
+        redrawRows(from: previous, to: reveal)
     }
 
+    private func isSettled(_ reveal: NeuralRowReveal) -> Bool {
+        (0..<reveal.count).allSatisfy { reveal.progress($0) >= 1 }
+    }
+
+    /// The rows a move's frame changed, and only those: a row that has come in all the way, or has
+    /// not begun, looks as it did a frame ago and is not drawn again. Before the first frame the
+    /// rows are as the list shows them at rest.
+    private func redrawRows(from old: NeuralRowReveal?, to new: NeuralRowReveal) {
+        let list = snapshot.list
+        guard list.visibleCount > 0 else { return }
+        let first = firstVisiblePosition
+        let last = min(list.visibleCount, first + visibleRowCount)
+        guard first < last else { return }
+        func look(_ reveal: NeuralRowReveal?, _ index: Int) -> (alpha: Double, offset: Double) {
+            guard let reveal else { return (1, 0) }
+            let at = min(index, reveal.count - 1)
+            return (reveal.alpha(at), index < reveal.count ? reveal.offset(index) : 0)
+        }
+        for position in first..<last {
+            let index = max(0, position - first)
+            let before = look(old, index)
+            let after = look(new, index)
+            guard before != after, let row = list.row(atVisible: position) else { continue }
+            let top = CGFloat(list.offset(ofVisible: position))
+            let reach = CGFloat(NeuralRowReveal.travel)
+            rows.setNeedsDisplay(
+                CGRect(x: 0, y: top - reach, width: rows.bounds.width, height: CGFloat(row.height()) + 2 * reach))
+        }
+    }
 
     private func userScrolled() {
         if programmatic > 0 { cancelAnimation() }

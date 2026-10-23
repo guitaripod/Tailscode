@@ -77,6 +77,8 @@ final class BrainAccountView: NSView, BrainKeyTaker {
     var realizeScheduled = false
     var realizing = false
     var realizeAgain = false
+    var makeCap: Int?
+    var pendingRealize = false
     var lastRefresh = 0.0
     var refreshPending = false
     var workStamps: [String: Int] = [:]

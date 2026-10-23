@@ -128,9 +128,61 @@ final class BrainStore {
 
     private func bumpShape() { shapeEpoch &+= 1 }
 
+    private var lastMessageID: String?
+    private var lastRead: (messages: [ChatMessage], running: Bool, awaiting: NeuralAwaiting)?
+
+    /// Whether these are the messages the last reading was made from, found without looking at one
+    /// of them: an array that shares storage with the last one is the same conversation, and a
+    /// rebuild for a choice the person made hands the store exactly that.
+    private func isLastRead(_ messages: [ChatMessage], running: Bool, awaiting: NeuralAwaiting) -> Bool {
+        guard tailTimer == nil, let last = lastRead, last.running == running, last.awaiting == awaiting,
+            last.messages.count == messages.count
+        else { return false }
+        return messages.withUnsafeBufferPointer { now in
+            last.messages.withUnsafeBufferPointer { before in now.baseAddress == before.baseAddress }
+        }
+    }
+
+    /// The brain of a turn that is still being written is the only one drawn from the newest
+    /// question on, which the transcript builds afresh on every arrival, so a choice about it
+    /// leaves every row above the question as the builder holds them. A choice about any other
+    /// turn moves the shape epoch and the rows above are built again.
+    private func bumpShape(forTurns turns: [String]) {
+        let newest = turns.allSatisfy { id in
+            guard id == latestTurnID, let last = lastMessageID, let held = placed[id] else {
+                return false
+            }
+            return held.outline.messageIDs.contains(last)
+        }
+        if !newest { bumpShape() }
+    }
+
     /// Asked to rebuild the rows after a choice the person made: a brain opened or closed, the old
     /// rows listed or put away.
     var onChange: (() -> Void)?
+
+    /// Whether the rows are rebuilt on the turn after a brain is opened or closed instead of on the
+    /// press itself. The press starts the move of the brains it names, which is all the person is
+    /// waiting for; the rebuild walks the conversation and restates every row, and a press that
+    /// also did that took two or three frames before the first picture moved.
+    var defersRebuild = false
+
+    /// Whether the rows are owed a rebuild for a press that was answered by moving the brains it
+    /// named: made when the move lands, or after `rebuildFallback` if nothing was moving.
+    private var rebuildPending = false
+    static let rebuildFallback = 0.5
+
+    /// A brain's move landed: the rows are rebuilt now, a turn on from the one the move ended in.
+    func moveLanded() {
+        guard rebuildPending else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in self?.flushRebuild() }
+    }
+
+    private func flushRebuild() {
+        guard rebuildPending else { return }
+        rebuildPending = false
+        onChange?()
+    }
 
     /// A zone a card's chip asked to open the brain diving into, by turn.
     var pendingDive: [String: NeuralZone] = [:]
@@ -181,6 +233,9 @@ final class BrainStore {
             return
         }
         isRunning = running
+        lastMessageID = messages.last?.id
+        if isLastRead(messages, running: running, awaiting: awaiting) { return }
+        lastRead = (messages, running, awaiting)
         if running, mayDefer, deferTailRead(messages: messages, awaiting: awaiting) { return }
         if let kept = settledPrefix(for: messages, awaiting: awaiting) {
             let stamp = Self.structure(of: kept.tailAssistants)
@@ -498,6 +553,7 @@ final class BrainStore {
 
     func clear() {
         bumpShape()
+        lastRead = nil
         settled = nil
         tailStamp = nil
         tailTimer?.invalidate()
@@ -567,8 +623,21 @@ final class BrainStore {
         openTurnID = NeuralOpenPolicy(
             turnIDs: turnIDs, isRunning: isRunning, choices: choices
         ).openTurnID
-        bumpShape()
-        onChange?()
+        bumpShape(forTurns: [turnID] + swapping.filter { $0 != turnID })
+        if defersRebuild {
+            if let closing = before.openTurnID, closing != openTurnID {
+                view(forTurn: closing)?.close(animated: true)
+            }
+            if let opening = openTurnID, opening != before.openTurnID {
+                view(forTurn: opening)?.open(animated: true)
+            }
+            rebuildPending = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.rebuildFallback) { [weak self] in
+                self?.flushRebuild()
+            }
+        } else {
+            onChange?()
+        }
     }
 
     /// Opens or closes one turn's brain when it is not already so; the person's choice either way.
@@ -622,7 +691,7 @@ final class BrainStore {
     /// Rows puts the steps' old rows inline under that turn's brain, and puts them away again.
     func toggleRows(_ turnID: String) {
         if rowsShown.contains(turnID) { rowsShown.remove(turnID) } else { rowsShown.insert(turnID) }
-        bumpShape()
+        bumpShape(forTurns: [turnID])
         onChange?()
     }
 
@@ -825,6 +894,7 @@ final class BrainStore {
             placed[oldest] = nil
             built[oldest] = nil
             searchCache[oldest] = nil
+            lastRead = nil
         }
     }
 
