@@ -5,8 +5,10 @@ import TailscodeCore
 /// The guard on what opening and closing a Megatron costs the main thread: no turn of the run loop
 /// longer than a ceiling, measured in the thread's own CPU time through the real pane
 /// (`BrainPaneBench`) in a child process of this binary, where AppKit runs on the real main
-/// thread and the display ticks the move. The ceiling is generous, a little under what the open
-/// cost before it was spread over frames, so it fails on a regression and not on a noisy host.
+/// thread and the display ticks the move. The selftest is a Debug build, which runs these turns
+/// about twice as long as the Release figures in `docs/neural-trace-performance.md`, so the ceiling
+/// is set between a Debug close (23 to 28 ms at 174 steps) and what an open cost before it was
+/// spread over frames (43 to 55 ms): it fails on a regression and not on a noisy host.
 /// The check says why it did not run, and does not fail, when the host is too loaded for CPU time
 /// to mean anything or when the display did not tick the move.
 @MainActor
@@ -16,8 +18,8 @@ enum BrainOpenChecks {
     /// The longest a single run loop turn of an open or a close may take, in milliseconds: the
     /// median of the longest turns of several opens, which a noisy second does not move, and the
     /// worst of them, which only a real stall reaches.
-    static let ceiling = 22.0
-    static let worstCeiling = 45.0
+    static let ceiling = 32.0
+    static let worstCeiling = 60.0
     /// Load average per core above which the host is too busy for the figures to be read.
     static let busyLoadPerCore = 4.0
 
