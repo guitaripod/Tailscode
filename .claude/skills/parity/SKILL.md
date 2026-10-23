@@ -10,7 +10,7 @@ One product, three clients: **Tailscode** (iOS UIKit), **TailscodeLinux** (GTK4)
 `TailscodeCore/Sources/TailscodeCore/Parity.swift`:
 
 - `AppCapability` — every user-facing capability, one enum case.
-- `CapabilityRegistry.all` — the toolkit-free spec for each capability. Ports are judged
+- `CapabilityRegistry.all` (its table in `CapabilityRegistry+*.swift` beside `Parity.swift`) — the toolkit-free spec for each capability. Ports are judged
   against the spec, not against another platform's widgets.
 - Each client answers every case in its own `Parity.swift` manifest
   (`Tailscode/App/`, `TailscodeLinux/Sources/TailscodeLinux/`, `TailscodeMac/`) with
