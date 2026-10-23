@@ -5,7 +5,7 @@ import TailscodeCore
 /// themes are Core's palettes; under System they are the platform's own (amber is `systemOrange`,
 /// red `systemRed`), because `BrainInks` already makes that palette.
 @MainActor
-struct AccountPaint {
+struct AccountPaint: Equatable {
     let inks: BrainInks
 
     init(_ inks: BrainInks) { self.inks = inks }
@@ -505,14 +505,14 @@ final class AccountButton: NSView, BrainKeyTaker {
         case relation(retry: Bool)
     }
 
-    var style: Style { didSet { restyle() } }
-    var title: String { didSet { restyle() } }
-    var emphasis: String? { didSet { restyle() } }
-    var paint: AccountPaint { didSet { needsDisplay = true } }
+    var style: Style { didSet { if style != oldValue { restyle() } } }
+    var title: String { didSet { if title != oldValue { restyle() } } }
+    var emphasis: String? { didSet { if emphasis != oldValue { restyle() } } }
+    var paint: AccountPaint { didSet { if paint != oldValue { needsDisplay = true } } }
     var onTap: (() -> Void)?
     var onHover: ((Bool) -> Void)?
     var tone: NSColor?
-    var isLit = false { didSet { needsDisplay = true } }
+    var isLit = false { didSet { if isLit != oldValue { needsDisplay = true } } }
     weak var host: BrainSurfaceHost?
     var keyboardEngaged = false
     private(set) var hovered = false
@@ -708,13 +708,13 @@ final class AccountButton: NSView, BrainKeyTaker {
 /// the word when it has one.
 @MainActor
 final class AccountPill: NSView {
-    var word = "" { didSet { restyle() } }
-    var color = NSColor.secondaryLabelColor { didSet { needsDisplay = true } }
-    var verdict: NeuralVerdict.Step? { didSet { restyle() } }
-    var height: CGFloat = 18 { didSet { restyle() } }
-    var role: TypeRole = .badge { didSet { restyle() } }
+    var word = "" { didSet { if word != oldValue { restyle() } } }
+    var color = NSColor.secondaryLabelColor { didSet { if color != oldValue { needsDisplay = true } } }
+    var verdict: NeuralVerdict.Step? { didSet { if verdict != oldValue { restyle() } } }
+    var height: CGFloat = 18 { didSet { if height != oldValue { restyle() } } }
+    var role: TypeRole = .badge { didSet { if role != oldValue { restyle() } } }
     /// The mark's room is kept but nothing is drawn in it: a pulse is laid over it instead.
-    var hidesGlyph = false { didSet { needsDisplay = true } }
+    var hidesGlyph = false { didSet { if hidesGlyph != oldValue { needsDisplay = true } } }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)

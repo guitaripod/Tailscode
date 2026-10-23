@@ -355,8 +355,8 @@ final class AccountNarrowBar: NSView, NSTextFieldDelegate {
 /// The key hints under a wide account, and when the turn began at its right.
 @MainActor
 final class AccountFooterStrip: NSView {
-    var paint: AccountPaint { didSet { needsDisplay = true } }
-    var began: String? { didSet { needsDisplay = true } }
+    var paint: AccountPaint { didSet { if paint != oldValue { needsDisplay = true } } }
+    var began: String? { didSet { if began != oldValue { needsDisplay = true } } }
     var padLeft: CGFloat = 20
 
     init(paint: AccountPaint) {

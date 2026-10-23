@@ -23,7 +23,7 @@ class BrainPillButton: NSView {
     }
     var isOn = false { didSet { if isOn != oldValue { needsDisplay = true } } }
     var isDashed = false { didSet { if isDashed != oldValue { needsDisplay = true } } }
-    var inks: BrainInks? { didSet { needsDisplay = true } }
+    var inks: BrainInks? { didSet { if inks != oldValue { needsDisplay = true } } }
     var onTap: (() -> Void)?
     var onHover: ((Bool) -> Void)?
     var role: TypeRole = .control { didSet { invalidateIntrinsicContentSize() } }
@@ -266,11 +266,16 @@ final class BrainScrubber: NSView {
         }
     }
     var ticks: [(fraction: Double, failed: Bool)] = [] {
-        didSet { needsDisplay = true }
+        didSet {
+            guard ticks.count != oldValue.count
+                || zip(ticks, oldValue).contains(where: { $0.fraction != $1.fraction || $0.failed != $1.failed })
+            else { return }
+            needsDisplay = true
+        }
     }
     var onScrub: ((Double) -> Void)?
     var onEnd: (() -> Void)?
-    var inks: BrainInks? { didSet { needsDisplay = true } }
+    var inks: BrainInks? { didSet { if inks != oldValue { needsDisplay = true } } }
     private var dragging = false
 
     override init(frame frameRect: NSRect) {

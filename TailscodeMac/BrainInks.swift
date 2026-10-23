@@ -84,7 +84,7 @@ enum MacBrainPalette {
 /// stands on the page (the glyph, the chips, the scrubber) wears the palette's own corrected
 /// colours (`page`).
 @MainActor
-struct BrainInks {
+struct BrainInks: Equatable {
     let palette: Palette
     let isDark: Bool
 

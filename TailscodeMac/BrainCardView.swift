@@ -45,6 +45,58 @@ private struct CardLayout {
 /// A running turn's card keeps the settled card's size and says what is happening in the reader's
 /// words: the verdict, the counts, and a NOW line. When the turn ends the card settles in one 400 ms
 /// move that Core times (`NeuralCardSettle`); the view only reads it.
+/// The pictures of cards at rest: the few that were drawn last, so that a page asking every card
+/// to draw again finds them done. A picture is a card's width by its height at the screen's
+/// scale, a megabyte or two, so what is held is bounded in bytes, and let go of when the app has
+/// been away.
+@MainActor
+final class BrainCardPictures {
+    static let shared = BrainCardPictures()
+    static let budget = 48 * 1_048_576
+
+    private var bytes = 0
+
+    private var held: [ObjectIdentifier: (key: Int, image: CGImage)] = [:]
+    private var order: [ObjectIdentifier] = []
+
+    func picture(for id: ObjectIdentifier, key: Int) -> CGImage? {
+        guard let entry = held[id], entry.key == key else { return nil }
+        touch(id)
+        return entry.image
+    }
+
+    func keep(_ image: CGImage, for id: ObjectIdentifier, key: Int) {
+        if let old = held[id] { bytes -= Self.size(of: old.image) }
+        held[id] = (key, image)
+        bytes += Self.size(of: image)
+        touch(id)
+        while bytes > Self.budget, order.count > 1 {
+            let oldest = order.removeFirst()
+            if let gone = held.removeValue(forKey: oldest) { bytes -= Self.size(of: gone.image) }
+        }
+    }
+
+    func forget(_ id: ObjectIdentifier) {
+        if let gone = held.removeValue(forKey: id) { bytes -= Self.size(of: gone.image) }
+        order.removeAll { $0 == id }
+    }
+
+    func dropAll() {
+        held = [:]
+        order = []
+        bytes = 0
+    }
+
+    private static func size(of image: CGImage) -> Int { image.bytesPerRow * image.height }
+
+    var count: Int { held.count }
+
+    private func touch(_ id: ObjectIdentifier) {
+        order.removeAll { $0 == id }
+        order.append(id)
+    }
+}
+
 @MainActor
 final class BrainCardView: NSView {
     struct Content {
@@ -385,9 +437,77 @@ final class BrainCardView: NSView {
     }
 
 
+    /// Everything the card draws that is not already in its words, for the picture of it at rest:
+    /// the pointer, the focus, the size, the scale of type and the face the window wears.
+    private var restKey: Int? {
+        guard let content, presentation == .rest, content.card.live == nil, !isSettling else { return nil }
+        var hasher = Hasher()
+        hasher.combine(layout.signature)
+        hasher.combine(bounds.size.width)
+        hasher.combine(bounds.size.height)
+        hasher.combine(hovered)
+        hasher.combine(focused)
+        hasher.combine(hoverTarget.map { "\($0)" })
+        hasher.combine(pressed.map { "\($0)" })
+        hasher.combine(pressesCard)
+        hasher.combine(window?.backingScaleFactor ?? 2)
+        hasher.combine(effectiveAppearance.name.rawValue)
+        hasher.combine("\(content.card.edge)\(content.card.edgeTone)\(content.face)")
+        for area in TypeArea.allCases { hasher.combine(MacTheme.UIScale.factor(for: area)) }
+        return hasher.finalize()
+    }
+
+    /// A card at rest is drawn once for the state it is in and then put down from that picture.
+    /// AppKit asks every view in the page to draw again whenever one row's frame changes, which a
+    /// Megatron opening or closing does, and a card's words are most of what the page draws.
     override func draw(_ dirtyRect: NSRect) {
-        guard let content else { return }
+        guard let content, let cg = NSGraphicsContext.current?.cgContext else { return }
         if layout.signature != signature(of: content) { layout = buildLayout(content) }
+        guard let key = restKey else {
+            paint(dirtyRect)
+            return
+        }
+        let id = ObjectIdentifier(self)
+        let image = BrainCardPictures.shared.picture(for: id, key: key) ?? makeRestPicture(key: key, id: id)
+        guard let image else {
+            paint(dirtyRect)
+            return
+        }
+        cg.saveGState()
+        cg.translateBy(x: 0, y: bounds.height)
+        cg.scaleBy(x: 1, y: -1)
+        cg.draw(image, in: bounds)
+        cg.restoreGState()
+    }
+
+    private func makeRestPicture(key: Int, id: ObjectIdentifier) -> CGImage? {
+        let scale = window?.backingScaleFactor ?? 2
+        let size = bounds.size
+        guard size.width > 1, size.height > 1,
+            let context = CGContext(
+                data: nil, width: Int((size.width * scale).rounded(.up)),
+                height: Int((size.height * scale).rounded(.up)), bitsPerComponent: 8,
+                bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.scaleBy(x: scale, y: scale)
+        context.translateBy(x: 0, y: size.height)
+        context.scaleBy(x: 1, y: -1)
+        let previous = NSGraphicsContext.current
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+        effectiveAppearance.performAsCurrentDrawingAppearance { paint(NSRect(origin: .zero, size: size)) }
+        NSGraphicsContext.current = previous
+        guard let image = context.makeImage() else { return nil }
+        BrainCardPictures.shared.keep(image, for: id, key: key)
+        return image
+    }
+
+    isolated deinit {
+        BrainCardPictures.shared.forget(ObjectIdentifier(self))
+    }
+
+    private func paint(_ dirtyRect: NSRect) {
+        guard let content else { return }
         let inks = content.inks
         let metrics = content.geometry
         let card = content.card
