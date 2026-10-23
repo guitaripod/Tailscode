@@ -223,6 +223,7 @@ extension FailedTurnCell: RowGapCell {}
 extension InterruptedTurnCell: RowGapCell {}
 extension ProviderRetryCell: RowGapCell {}
 extension RevertBannerCell: RowGapCell {}
+extension QueuePausedCell: RowGapCell {}
 extension CompactionCell: RowGapCell {}
 extension TranscriptNoteCell: RowGapCell {}
 extension LinkRailCell: RowGapCell {}

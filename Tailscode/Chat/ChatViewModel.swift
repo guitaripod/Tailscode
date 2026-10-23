@@ -71,7 +71,7 @@ final class ChatViewModel {
         self.conversation = AgentConversation(
             backend: backend, sessionID: session.id, cache: AppCache.sessionCache)
         self.serverName = serverName
-        self.queue = SendQueueStore.queue(profileID: contextID, sessionID: session.id)
+        self.queue = ConversationQueue(profileID: contextID, sessionID: session.id)
     }
 
     let serverName: String
@@ -450,11 +450,10 @@ final class ChatViewModel {
         if isBusy {
             AppLogger.chat.info(
                 "command queued session=\(session.id) name=\(command.name) queue=\(queue.count + 1)")
-            queue.append(
+            hold(
                 QueuedSend(
                     text: command.invocation(arguments: arguments), model: model, effort: effort,
                     kind: .command(name: command.name, arguments: arguments ?? "")))
-            onPending?()
             return
         }
         runNow(command, arguments: arguments, model: model, effort: effort)
@@ -565,6 +564,7 @@ final class ChatViewModel {
                     title: self.alertTitle,
                     presence: self.presence(for: state),
                     keepAlive: self)
+                self.handOverQueue()
                 if state.status != .running { self.flushQueue() }
                 self.syncLiveActivity(with: state)
                 if state.status != .unknown, !self.isBusy, !awaiting, !self.isBound,
@@ -944,23 +944,39 @@ final class ChatViewModel {
     /// The messages written while a turn was running. Held here rather than handed to the server
     /// precisely so they can still be changed: the next thing you type is the thing you most often
     /// want to reword once you have read another paragraph of the answer.
-    private(set) var queue = SendQueue() {
-        didSet {
-            guard queue != oldValue, !adoptingStoredQueue else { return }
-            SendQueueStore.save(queue, profileID: contextID, sessionID: session.id)
-        }
-    }
+    let queue: ConversationQueue
     private var lastSent: QueuedSend?
-    private var adoptingStoredQueue = false
 
-    /// Reads the queue back from the store after an atomic take. Another view model on this
-    /// conversation — the one a launch wakes for a held queue, a pane on the iPad — may have sent
-    /// the head already, and this copy would otherwise send it a second time or keep drawing it
-    /// as waiting. What the store holds is not written back to it.
-    private func adoptStoredQueue() {
-        adoptingStoredQueue = true
-        queue = SendQueueStore.queue(profileID: contextID, sessionID: session.id)
-        adoptingStoredQueue = false
+    /// How this conversation's backend takes a queued message, read each time because a bridge
+    /// says whether it keeps a queue only after the first request to it.
+    var queueRouting: QueueRouting {
+        QueueRouting(capabilities: backend.capabilities, profileID: contextID)
+    }
+
+    /// The whole queue as it is drawn: what the server holds for every client of the
+    /// conversation, then what this device still holds.
+    var queueDisplay: QueueDisplay { queue.display(state, routing: queueRouting) }
+
+    /// Writes a message behind a running turn. Where the server keeps the queue it is handed over
+    /// at once, under its own id; elsewhere, or while the server cannot be reached, it waits here.
+    private func hold(_ send: QueuedSend) {
+        queue.append(send)
+        onPending?()
+        handOverQueue()
+    }
+
+    /// Hands the server every message this device holds for it. Asked on every state, so a
+    /// message written offline goes the moment the server answers and one left in the store by a
+    /// version that held everything locally goes on the first connection.
+    private func handOverQueue() {
+        let routing = queueRouting
+        guard queue.holdsServerBound(routing: routing) else { return }
+        let queue = queue
+        let conversation = conversation
+        Task { [weak self] in
+            let changed = await queue.flush(through: conversation, routing: routing)
+            if changed { self?.onPending?() }
+        }
     }
 
     /// A copy of the queue that another view model on this conversation has already sent from
@@ -970,43 +986,59 @@ final class ChatViewModel {
     /// because this runs on every state and a picture's bytes are not worth reading each time.
     private func dropQueueSentElsewhere() {
         guard !queue.isEmpty else { return }
-        let stored = SendQueueStore.queue(profileID: contextID, sessionID: session.id)
-        guard stored.items.map(\.id) != queue.items.map(\.id) else { return }
+        let held = queue.local.items.map(\.id)
+        guard queue.adopt() else { return }
         AppLogger.chat.info(
-            "queue adopted from store session=\(session.id) held=\(queue.count) stored=\(stored.count)")
-        adoptStoredQueue()
+            "queue adopted from store session=\(session.id) held=\(held.count) stored=\(queue.count)")
         onPending?()
     }
 
-    var queued: [QueuedSend] { queue.items }
+    var queued: [QueueRow] { queueDisplay.rows }
 
-    @discardableResult
-    func removeQueued(id: UUID) -> QueuedSend? {
-        let removed = queue.remove(id: id)
-        if removed != nil { onPending?() }
-        return removed
-    }
-
-    /// The last thing written, taken back into the composer — what ↑ from an empty box means.
-    @discardableResult
-    func takeBackLastQueued() -> QueuedSend? {
-        let taken = queue.takeLast()
-        if taken != nil { onPending?() }
-        return taken
-    }
-
-    /// Rewrites a waiting message in place, keeping its turn in the order.
-    func replaceQueued(id: UUID, text: String, attachments: [PromptAttachment]) {
-        guard queue.replace(id: id, text: text, attachments: attachments) else { return }
+    /// Takes a message out of the queue, wherever it is held. One the server had already started
+    /// is said to be sent, and its row goes either way.
+    func removeQueued(_ row: QueueRow) {
+        queue.cancel(row, through: conversation) { [weak self] outcome in
+            Task { @MainActor in self?.report(outcome) }
+        }
         onPending?()
+    }
+
+    /// Rewrites a waiting message in place, keeping its turn in the order. `ifStarted` runs when
+    /// the server had already started the message, so the words that were being written can be
+    /// handed back instead of being lost.
+    func replaceQueued(
+        _ row: QueueRow, text: String, attachments: [PromptAttachment],
+        ifStarted: @escaping @MainActor () -> Void
+    ) {
+        queue.edit(row, text: text, attachments: attachments, through: conversation) {
+            [weak self] outcome in
+            Task { @MainActor in
+                if outcome == .alreadyStarted { ifStarted() }
+                self?.report(outcome)
+            }
+        }
+        onPending?()
+    }
+
+    /// Lifts the pause a Stop left on the server's queue.
+    func resumeQueue() {
+        Task { [weak self] in
+            guard let self else { return }
+            report(await queue.resume(through: conversation))
+        }
+    }
+
+    private func report(_ outcome: QueueOutcome) {
+        onPending?()
+        if let message = outcome.message { onError?(message) }
     }
 
     private func flushQueue() {
-        guard !isBusy, !queue.isEmpty, !queueHeldAfterFailure,
+        guard !isBusy, queue.holdsDeviceHead(routing: queueRouting), !queueHeldAfterFailure,
             SendQueueDrain.mayDrain(state)
         else { return }
-        let next = SendQueueStore.takeFirst(profileID: contextID, sessionID: session.id)
-        adoptStoredQueue()
+        let next = queue.takeDeviceHead(routing: queueRouting)
         guard let next else {
             onPending?()
             return
@@ -1064,11 +1096,11 @@ final class ChatViewModel {
             releaseResume(for: send.id)
             changed = true
         }
-        if queueHeldAfterFailure, let baseline = heldBaseline, let head = queue.items.first,
+        if queueHeldAfterFailure, let baseline = heldBaseline, let head = queue.local.items.first,
             !head.isCommand,
             SendArrival.arrived(head.text, baselineUserCount: baseline, userTexts: userTexts)
         {
-            _ = queue.takeFirst()
+            queue.removeFirst()
             heldBaseline = nil
             if queue.isEmpty {
                 queueHeldAfterFailure = false
@@ -1104,8 +1136,7 @@ final class ChatViewModel {
         let text = send.text
         guard !isBusy else {
             pending.remove(id: id)
-            queue.append(QueuedSend(text: text, attachments: attachments))
-            onPending?()
+            hold(QueuedSend(text: text, attachments: attachments))
             return
         }
         deliver(
@@ -1170,9 +1201,7 @@ final class ChatViewModel {
         if isBusy {
             AppLogger.chat.info(
                 "send queued session=\(session.id) queue=\(queue.count + 1)")
-            queue.append(
-                QueuedSend(text: text, model: model, effort: effort, attachments: attachments))
-            onPending?()
+            hold(QueuedSend(text: text, model: model, effort: effort, attachments: attachments))
             return
         }
         deliver(text, model: model, effort: effort, attachments: attachments)

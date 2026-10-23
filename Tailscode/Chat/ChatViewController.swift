@@ -78,6 +78,7 @@ final class ChatViewController: UIViewController {
     /// same way an interrupted-turn press is: the banner has no identity of its own to carry it.
     private var lastRestoringRevert = false
     private static let revertRowID = "revert"
+    private static let queuePausedRowID = "queue-paused"
     /// The standing revert's own boundary message, so the composer is refilled exactly once per
     /// revert rather than on every unrelated render while one stands.
     private var lastRevertMessageID: String?
@@ -548,8 +549,8 @@ final class ChatViewController: UIViewController {
         let palette = commandPalette.isHidden ? [] : paletteKeyCommands()
         var takeBack: [UIKeyCommand] = []
         if commandPalette.isHidden,
-            SendQueueReading.upArrowTakesBack(
-                composerText: composer.currentText, queue: viewModel.queue)
+            QueueReading.upArrowOpensLast(
+                composerText: composer.currentText, display: viewModel.queueDisplay)
         {
             let command = UIKeyCommand(
                 input: UIKeyCommand.inputUpArrow, modifierFlags: [],
@@ -1191,6 +1192,8 @@ final class ChatViewController: UIViewController {
             RevertBannerCell.self, forCellWithReuseIdentifier: RevertBannerCell.reuseID)
         collectionView.register(
             FailedTurnCell.self, forCellWithReuseIdentifier: FailedTurnCell.reuseID)
+        collectionView.register(
+            QueuePausedCell.self, forCellWithReuseIdentifier: QueuePausedCell.reuseID)
 
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(collectionView)
@@ -1915,34 +1918,47 @@ final class ChatViewController: UIViewController {
     private func makeCell(
         _ collectionView: UICollectionView, _ indexPath: IndexPath, _ id: String
     ) -> UICollectionViewCell {
-        if id.hasPrefix("queued:"),
-            let message = self.viewModel.queued.first(where: { "queued:\($0.id.uuidString)" == id })
-        {
+        let display = self.viewModel.queueDisplay
+        if id.hasPrefix("queued:"), let message = display.row(key: id) {
             let cell = collectionView.dequeueReusableCell(
                 withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
             let held = self.viewModel.queueHold != nil
-                && self.viewModel.queued.first?.id == message.id
-            let position = (self.viewModel.queued.firstIndex { $0.id == message.id } ?? 0) + 1
-            let edit = UIAccessibilityCustomAction(name: String(localized: "Edit")) {
-                [weak self] _ in
-                self?.editQueued(message)
-                return true
+                && message.holder == .device
+                && display.rows.first { $0.holder == .device }?.id == message.id
+            let position = (display.rows.firstIndex { $0.id == message.id } ?? 0) + 1
+            var actions: [UIAccessibilityCustomAction] = []
+            if message.canEdit {
+                actions.append(
+                    UIAccessibilityCustomAction(name: String(localized: "Edit")) {
+                        [weak self] _ in
+                        self?.editQueued(message)
+                        return true
+                    })
             }
-            let remove = UIAccessibilityCustomAction(name: String(localized: "Remove from queue")) {
-                [weak self] _ in
-                Theme.Haptics.warning()
-                _ = self?.viewModel.removeQueued(id: message.id)
-                return true
-            }
+            actions.append(
+                UIAccessibilityCustomAction(name: String(localized: "Remove from queue")) {
+                    [weak self] _ in
+                    Theme.Haptics.warning()
+                    self?.viewModel.removeQueued(message)
+                    return true
+                })
             cell.configureQueued(
-                text: SendQueueReading.rowLine(message, held: held),
+                text: QueueReading.rowLine(message, held: held),
                 editing: self.editingQueued == message.id,
-                spoken: SendQueueReading.spoken(
-                    message, position: position, of: self.viewModel.queued.count),
+                spoken: QueueReading.spoken(message, position: position, of: display.count),
                 hint: held
                     ? SendQueueReading.heldHint(reason: self.viewModel.queueHold)
-                    : SendQueueReading.hint,
-                actions: [edit, remove])
+                    : QueueReading.hint(message),
+                actions: actions)
+            return cell
+        }
+        if id == Self.queuePausedRowID, display.paused {
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: QueuePausedCell.reuseID, for: indexPath) as! QueuePausedCell
+            cell.configure(count: display.count) { [weak self] in
+                Theme.Haptics.tap()
+                self?.viewModel.resumeQueue()
+            }
             return cell
         }
         if id == "thinking" {
@@ -2914,7 +2930,9 @@ final class ChatViewController: UIViewController {
             }
         }
         ids.append(contentsOf: pendingIDs)
-        for message in viewModel.queued { ids.append("queued:\(message.id.uuidString)") }
+        let queueDisplay = viewModel.queueDisplay
+        for message in queueDisplay.rows { ids.append(message.key) }
+        if queueDisplay.paused { ids.append(Self.queuePausedRowID) }
         revertBanner = RevertReading.read(state.revert, setAside: state.revertedMessages)
         fillComposerAfterRevert(state)
         if revertBanner != nil { ids.append(Self.revertRowID) }
@@ -3003,7 +3021,7 @@ final class ChatViewController: UIViewController {
         // sent becomes not-sent, and a queue renumbers itself when one of its messages goes. Only
         // rows that were already on screen are repainted; the ones this pass is adding arrive
         // drawn.
-        for id in pendingIDs + viewModel.queued.map({ "queued:\($0.id.uuidString)" })
+        for id in pendingIDs + queueDisplay.rows.map(\.key) + [Self.queuePausedRowID]
         where lastRenderedIDs.contains(id) && !changed.contains(id) {
             changed.append(id)
         }
@@ -4720,13 +4738,14 @@ final class ChatViewController: UIViewController {
     /// of the queue, which is not editing — it is deleting and re-adding, and it silently reorders
     /// what somebody wrote. So the composer remembers which entry it holds and the send puts it
     /// back where it was.
-    private var editingQueued: UUID?
+    private var editingQueued: String?
 
     /// Puts a waiting message in the composer to be rewritten. The entry stays in the queue and
     /// keeps its place; only sending replaces it.
-    private func editQueued(_ send: QueuedSend) {
-        guard !send.isCommand else { return }
-        editingQueued = send.id
+    private func editQueued(_ row: QueueRow) {
+        guard row.canEdit else { return }
+        let send = row.editable
+        editingQueued = row.id
         composer.isEditingQueued = true
         composer.setDraft(send.text)
         composer.becomeFirstResponder()
@@ -4743,10 +4762,10 @@ final class ChatViewController: UIViewController {
     /// Only from an empty box: in a half-typed paragraph that key is moving the caret, and taking
     /// it would be the worse bug.
     @objc private func takeBackLastQueued() {
+        let display = viewModel.queueDisplay
         guard
-            SendQueueReading.upArrowTakesBack(
-                composerText: composer.currentText, queue: viewModel.queue),
-            let last = viewModel.queued.last
+            QueueReading.upArrowOpensLast(composerText: composer.currentText, display: display),
+            let last = display.last
         else { return }
         editQueued(last)
     }
@@ -4754,14 +4773,32 @@ final class ChatViewController: UIViewController {
     private func finishQueuedEdit(_ text: String) -> Bool {
         guard let id = editingQueued else { return false }
         editingQueued = nil
+        let row = viewModel.queueDisplay.row(id: id)
         composer.isEditingQueued = false
         let attachments = pendingAttachments
         pendingAttachments = []
         composer.showsAttach = canAttachAnything
         updateAttachmentStrip()
-        viewModel.replaceQueued(id: id, text: text, attachments: attachments)
+        guard let row else {
+            giveBackEditedWords(text, attachments: attachments)
+            viewModel.onError?(QueueReading.alreadySent)
+            return true
+        }
+        viewModel.replaceQueued(row, text: text, attachments: attachments) { [weak self] in
+            self?.giveBackEditedWords(text, attachments: attachments)
+        }
         DraftStore.clear(draftScope)
         return true
+    }
+
+    /// The words of a message the server started while it was being rewritten go back into the
+    /// box, because the rewrite can no longer land and losing them would be the worse outcome.
+    private func giveBackEditedWords(_ text: String, attachments: [PromptAttachment]) {
+        composer.setDraft(text)
+        guard !attachments.isEmpty else { return }
+        pendingAttachments = attachments
+        composer.showsAttach = canAttachAnything
+        updateAttachmentStrip()
     }
 
     /// A model that takes no images can still take files — the agent opens those
@@ -7024,8 +7061,7 @@ extension ChatViewController: UICollectionViewDelegate {
             workspace?.inspector.show(TableInspectorViewController(table: table))
             return
         }
-        guard let message = viewModel.queued.first(where: { "queued:\($0.id.uuidString)" == id })
-        else { return }
+        guard let message = viewModel.queueDisplay.row(key: id) else { return }
         editQueued(message)
     }
 
@@ -7044,26 +7080,28 @@ extension ChatViewController: UICollectionViewDelegate {
         guard let indexPath = indexPaths.first,
             let id = dataSource.itemIdentifier(for: indexPath)
         else { return nil }
-        if id.hasPrefix("queued:"),
-            let message = viewModel.queued.first(where: { "queued:\($0.id.uuidString)" == id })
-        {
+        if id.hasPrefix("queued:"), let message = viewModel.queueDisplay.row(key: id) {
             return UIContextMenuConfiguration(identifier: id as NSString, previewProvider: nil) {
                 [weak self] _ in
-                UIMenu(children: [
-                    UIAction(
-                        title: String(localized: "Edit"), image: UIImage(systemName: "pencil")
-                    ) { _ in
-                        self?.editQueued(message)
-                    },
+                var actions: [UIAction] = []
+                if message.canEdit {
+                    actions.append(
+                        UIAction(
+                            title: String(localized: "Edit"), image: UIImage(systemName: "pencil")
+                        ) { _ in
+                            self?.editQueued(message)
+                        })
+                }
+                actions.append(
                     UIAction(
                         title: String(localized: "Remove from queue"),
                         image: UIImage(systemName: "trash"),
                         attributes: .destructive
                     ) { _ in
                         Theme.Haptics.warning()
-                        _ = self?.viewModel.removeQueued(id: message.id)
-                    },
-                ])
+                        self?.viewModel.removeQueued(message)
+                    })
+                return UIMenu(children: actions)
             }
         }
         guard let text = messageText(for: id), !text.isEmpty else { return nil }
