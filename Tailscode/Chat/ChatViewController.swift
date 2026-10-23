@@ -500,6 +500,7 @@ final class ChatViewController: UIViewController {
             "chat appeared session=\(viewModel.session.id) title=\(viewModel.displayTitle)")
         AppActivityController.shared.shown(viewModel.session.id, in: self)
         isChangingColumns = false
+        if findVisible, !brainSearch.isWarm { brainSearch.start() }
         if carriesEndThroughMove {
             carriesEndThroughMove = false
             settleUntil = CACurrentMediaTime() + 4
@@ -616,6 +617,7 @@ final class ChatViewController: UIViewController {
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         AppActivityController.shared.hidden(self)
+        brainSearch.cancel()
         rangeClock?.cancel()
         rangeClock = nil
         cascade.release()
@@ -1538,10 +1540,12 @@ final class ChatViewController: UIViewController {
         findBar.isHidden = false
         view.bringSubviewToFront(findBar)
         findField.becomeFirstResponder()
+        brainSearch.start()
         runFind(retarget: true)
     }
 
     private func closeFind() {
+        brainSearch.cancel()
         findVisible = false
         findBar.isHidden = true
         findField.resignFirstResponder()
@@ -1552,8 +1556,11 @@ final class ChatViewController: UIViewController {
 
     private func runFind(retarget: Bool) {
         let previousID = findMatches.indices.contains(findCursor) ? findMatches[findCursor] : nil
+        let store = brain.store
+        let warm = brainSearch.isWarm
         findMatches = ChatFind.matchingIDs(
-            needle: findField.text ?? "", orderedIDs: orderedIDs, rowsByID: rowsByID)
+            needle: findField.text ?? "", orderedIDs: orderedIDs, rowsByID: rowsByID,
+            brain: { warm ? store.searchText(for: $0) : store.indexedSearchText(for: $0) })
         findCursor = ChatFind.cursor(
             matches: findMatches, previousID: previousID, previousCursor: findCursor,
             retarget: retarget)
@@ -2794,6 +2801,9 @@ final class ChatViewController: UIViewController {
 
     private let segmentMemo = SegmentRowMemo()
     private let brain = ChatBrainController()
+    private lazy var brainSearch = BrainSearchWarmer(
+        store: brain.store, isVisible: { [weak self] in self?.view.window != nil },
+        finished: { [weak self] in self?.runFind(retarget: false) })
 
     /// Where every tool call stood when the transcript was last built, so a call that has just
     /// completed is told from one that was already done without keeping a second copy of every row.

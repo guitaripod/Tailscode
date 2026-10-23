@@ -148,9 +148,9 @@
                         messages.append(contentsOf: more)
                         tailCount = more.count
                     }
-                    let layout = grown.prepare(messages: messages, running: true, awaiting: .none) { _, latest in contextFor(latest) }
+                    let layout = grown.prepare(messages: messages, running: true, awaiting: .none) { latest in contextFor(latest) }
                     let fresh = BrainStore()
-                    let reference = fresh.prepare(messages: messages, running: true, awaiting: .none) { _, latest in contextFor(latest) }
+                    let reference = fresh.prepare(messages: messages, running: true, awaiting: .none) { latest in contextFor(latest) }
                     identical = identical && incrementalMatches(grown, fresh, count: index + 1)
                     for number in 1...(index + 1) {
                         guard let id = fresh.turnID(atBrain: number) else { continue }
@@ -405,7 +405,7 @@
                 "\(high.map(\.effort))")
             let store = BrainStore()
             func latestFace(_ effort: String?) -> NeuralFace? {
-                _ = store.prepare(messages: messages, running: false, awaiting: .none) { _, _ in
+                _ = store.prepare(messages: messages, running: false, awaiting: .none) { _ in
                     NeuralBrainContext(effortOptions: options, effort: effort)
                 }
                 return store.turnID(atBrain: 2).flatMap { store.model(for: $0)?.face }
@@ -659,10 +659,32 @@
                 NeuralDemo.largeTurn(steps: 24, prefix: "p\($0)-", origin: 1_792_000_000 + Double($0) * 4000)
             }
             let probe = BrainStore()
-            let neutral: (NeuralTurn, Bool) -> NeuralBrainContext = { _, _ in NeuralBrainContext() }
+            let neutral: (Bool) -> NeuralBrainContext = { _ in NeuralBrainContext() }
             report("prepare cold 40 turns", time(1) {
                 _ = probe.prepare(messages: streamed, running: true, awaiting: .none, context: neutral)
             })
+            for turns in [40, 300, 1500] {
+                let conversation = ChatRebuildBench.conversation(turns: turns, growing: "done")
+                let cold = BrainStore()
+                report("open cold \(turns) turns", time(1) {
+                    _ = cold.prepare(messages: conversation, running: false, awaiting: .none, context: neutral)
+                })
+                report("open cold \(turns) turns, newest model", time(1) {
+                    _ = cold.model(for: cold.latestTurnID ?? "")
+                })
+                report("open cold \(turns) turns, one older model", time(1) {
+                    _ = cold.model(for: cold.turnID(atBrain: max(1, turns / 2)) ?? "")
+                })
+            }
+            for turns in [40, 300] {
+                let conversation = (0..<turns).flatMap {
+                    NeuralDemo.largeTurn(steps: 24, prefix: "h\($0)-", origin: 1_792_000_000 + Double($0) * 4000)
+                }
+                let cold = BrainStore()
+                report("open cold \(turns) heavy turns", time(1) {
+                    _ = cold.prepare(messages: conversation, running: false, awaiting: .none, context: neutral)
+                })
+            }
             var growing = streamed
             var counter = 0
             report("prepare per token 40 turns", time(300) {

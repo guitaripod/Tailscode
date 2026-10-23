@@ -52,7 +52,7 @@ final class ChatBrainController {
         let activity = BrainDebug.forcedActivity ?? facts.activity
         let layout = store.prepare(
             messages: reading.messages, running: reading.running, awaiting: reading.awaiting
-        ) { _, isLatest in
+        ) { isLatest in
             guard isLatest else {
                 return NeuralBrainContext(
                     providerID: providerID, effortOptions: effortOptions, effort: effort)

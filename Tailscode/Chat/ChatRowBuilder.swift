@@ -57,10 +57,7 @@ enum ChatRowBuilder {
                 promptID: lastPrompt?.id, promptAt: lastPrompt?.createdAt,
                 stats: statsEnabled, brainStamp: brain?.row.stamp,
                 brainShowsRows: brain?.row.showsRows ?? false,
-                brainAnchor: brain.map { turn in
-                    guard let anchor = turn.anchor, anchor.hasPrefix(message.id) else { return false }
-                    return message.parts.contains { "\(message.id):\($0.id)" == anchor }
-                } ?? false)
+                brainAnchor: brain.map { $0.anchorMessageID == message.id } ?? false)
             let settled = !message.isStreaming && message.id != writing
             if settled, let cached = memo?.rows(
                 forMessage: message, context: context,

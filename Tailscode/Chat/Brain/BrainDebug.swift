@@ -16,7 +16,22 @@ enum BrainDebug {
 
     #if DEBUG
         @MainActor private static var rebase: TimeInterval?
+        @MainActor private static var noted = 0
     #endif
+
+    /// With `TAILSCODE_BENCH_OPEN` set, says what a pass of the store or the making of a model
+    /// cost the main thread, so the open bench can tell Megatron's share of an open from the rest.
+    @MainActor static func note(
+        _ what: String, since began: CFTimeInterval, detail: @autoclosure () -> String = ""
+    ) {
+        #if DEBUG
+            guard environment["TAILSCODE_BENCH_OPEN"] != nil, noted < 600 else { return }
+            noted += 1
+            let spent = (CACurrentMediaTime() - began) * 1000
+            AppLogger.performance.info(
+                "bench brain \(what) ms=\(String(format: "%.2f", spent)) \(detail())")
+        #endif
+    }
 
     /// The time the brain reads ages against. A debug launch that forces a live state shifts it so
     /// the demo's running turn began about a minute ago rather than days ago, and it keeps ticking;
@@ -101,7 +116,7 @@ enum BrainDebug {
         #if DEBUG
             switch environment["TAILSCODE_NEURAL_OPEN"] {
             case "0": return ""
-            case "first": return turns.first { NeuralOpenPolicy.isBrain(turn: $0) }?.id
+            case "first": return turns.indices.lazy.map { turns.outline(at: $0) }.first { $0.isBrain }?.id
             case "1": return policy.latest
             default: return nil
             }

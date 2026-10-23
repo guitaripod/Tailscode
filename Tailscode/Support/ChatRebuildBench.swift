@@ -87,7 +87,7 @@ import TailscodeCore
             var previous = conversation(turns: turns, growing: "")
             var retained: [[ChatMessage]] = []
             _ = cache.partitionList(messages: previous, running: true)
-            _ = store.prepare(messages: previous, running: true, awaiting: .none) { _, _ in .none }
+            _ = store.prepare(messages: previous, running: true, awaiting: .none) { _ in .none }
             _ = ChatRowBuilder.makeRows(from: previous, agents: agents, turnOpen: true, memo: memo)
             for pass in 0..<iterations {
                 let messages = conversation(turns: turns, growing: String(repeating: "word ", count: pass + 1))
@@ -124,7 +124,7 @@ import TailscodeCore
                 prepare += milliseconds {
                     _ = store.prepare(
                         messages: messages, running: true, awaiting: .none
-                    ) { _, _ in .none }
+                    ) { _ in .none }
                 }
                 brainCold += milliseconds {
                     _ = NeuralTurns.partition(messages: messages, running: true)

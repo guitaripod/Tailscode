@@ -15,7 +15,6 @@ struct BrainRow: Hashable {
     let isOpen: Bool
     let isLatest: Bool
     let showsRows: Bool
-    let search: String
 }
 
 /// What the row builder reads of the brains: for each turn that is one, where its row goes and
@@ -26,6 +25,7 @@ struct BrainLayout {
     struct Turn {
         let id: String
         let anchor: String?
+        let anchorMessageID: String?
         let members: Set<String>
         let row: BrainRow
     }
@@ -69,10 +69,17 @@ struct BrainLayout {
 /// every token, so this does only what a change requires: the partition is read through
 /// `NeuralTurnCache`, a model is touched only when its turn or its context is not what it held,
 /// and a turn's row, anchor and search text are made once per change.
+///
+/// Opening a chat pays for the outline of each turn and nothing more: where its row goes, which
+/// parts it consumes and a stamp that says whether it changed. A turn's steps are read and its
+/// model made the first time something asks for the model (a card being configured, Find landing,
+/// a share), except for the newest turn and a running one, which are made at once because the
+/// chat's status, its haptics and its Live Activity read them. A turn that nobody looks at never
+/// costs more than its outline.
 @MainActor
 final class BrainStore {
     private struct Held {
-        var turn: NeuralTurn
+        var generation: Int
         var context: NeuralBrainContext
         var row: BrainRow
         var anchor: String?
@@ -82,6 +89,7 @@ final class BrainStore {
     }
 
     private let cache = NeuralTurnCache(capacity: 4096)
+    private var turns = NeuralTurnList()
     private var held: [String: Held] = [:]
     private var models: [String: NeuralBrainModel] = [:]
     private var choices: [String: Bool] = [:]
@@ -97,9 +105,11 @@ final class BrainStore {
     private var running = false
     private var messages: [ChatMessage] = []
     private var answerCache: [String: (key: Int, text: String)] = [:]
+    private var searchCache: [String: (generation: Int, text: String)] = [:]
     private var memories: [String: BrainLiveMemory] = [:]
     private var promptCache: [String: String] = [:]
     private var interactions: [String: BrainInteraction] = [:]
+    private var contextFor: ((_ isLatest: Bool) -> NeuralBrainContext)?
 
     /// Whether the brain is drawn at all: the person's style, and a machine that can draw it.
     static var isActive: Bool {
@@ -108,7 +118,14 @@ final class BrainStore {
 
     var count: Int { held.count }
 
-    func model(for turnID: String) -> NeuralBrainModel? { models[turnID] }
+    /// How many turns have a model made, which is the turns somebody looked at and the live one.
+    var realisedCount: Int { models.count }
+
+    /// The model of a turn, made now if nothing has asked for it yet.
+    func model(for turnID: String) -> NeuralBrainModel? {
+        if let made = models[turnID] { return made }
+        return realise(turnID)
+    }
 
     func isOpen(_ turnID: String) -> Bool { held[turnID]?.open ?? false }
 
@@ -136,11 +153,19 @@ final class BrainStore {
 
     var latestTurnID: String? { turnIDs.last }
 
+    /// The turn read into steps, which reads them now if nothing has.
+    private func turn(for turnID: String) -> NeuralTurn? {
+        guard held[turnID] != nil, let index = turnIndex[turnID], index < turns.count,
+            turns.outline(at: index).id == turnID
+        else { return nil }
+        return turns[index]
+    }
+
     /// The first step of a turn whose name, argument, words or output holds `needle`: where Find
     /// lands inside a brain.
     func stepMatching(_ needle: String, in turnID: String) -> String? {
         let key = needle.trimmingCharacters(in: .whitespaces)
-        guard !key.isEmpty, let turn = held[turnID]?.turn else { return nil }
+        guard !key.isEmpty, let turn = turn(for: turnID) else { return nil }
         func has(_ text: String) -> Bool {
             !text.isEmpty && text.range(of: key, options: .caseInsensitive) != nil
         }
@@ -148,6 +173,45 @@ final class BrainStore {
             has(step.title) || has(step.detail) || has(step.text)
                 || step.outputLines.contains(where: has)
         }?.id
+    }
+
+    /// What in-conversation find reads of a brain: every step's name, argument and words, and the
+    /// first lines of what it printed. Made once for a turn as it stands, and only for a turn Find
+    /// has asked about.
+    func searchText(for turnID: String) -> String {
+        guard let index = turnIndex[turnID], index < turns.count,
+            turns.outline(at: index).id == turnID
+        else { return "" }
+        let generation = turns.generation(at: index)
+        if let hit = searchCache[turnID], hit.generation == generation { return hit.text }
+        let text = Self.searchText(of: turns[index])
+        searchCache[turnID] = (generation, text)
+        return text
+    }
+
+    /// The search text of a turn if Find has read it already, and nothing otherwise: what a
+    /// keystroke reads while the sliced pass that reads the rest is still running.
+    func indexedSearchText(for turnID: String) -> String {
+        guard let index = turnIndex[turnID], index < turns.count,
+            let hit = searchCache[turnID], hit.generation == turns.generation(at: index)
+        else { return "" }
+        return hit.text
+    }
+
+    /// Reads the search text of brains Find has not read, newest first, until `budget` seconds are
+    /// spent, and returns whether every brain has been read.
+    func indexSearch(budget: TimeInterval, clock: () -> CFTimeInterval = CACurrentMediaTime) -> Bool {
+        let deadline = clock() + budget
+        var index = turns.count - 1
+        while index >= 0 {
+            let outline = turns.outline(at: index)
+            if outline.isBrain, searchCache[outline.id]?.generation != turns.generation(at: index) {
+                if clock() >= deadline { return false }
+                _ = searchText(for: outline.id)
+            }
+            index -= 1
+        }
+        return true
     }
 
     /// The part a turn's brain row goes before, for a check that compares two stores.
@@ -173,16 +237,18 @@ final class BrainStore {
     /// Lets a cell change a model in place: a pin, a hover, a replay. The row's value is not
     /// touched, because nothing a row diffs by moved.
     func mutate(_ turnID: String, _ change: (inout NeuralBrainModel) -> Void) {
-        guard var model = models[turnID] else { return }
-        change(&model)
-        models[turnID] = model
+        guard var made = model(for: turnID) else { return }
+        change(&made)
+        models[turnID] = made
     }
 
     /// Reads a value out of a model that a change is also made to, in one go.
     func mutateReturning<T>(_ turnID: String, _ change: (inout NeuralBrainModel) -> T) -> T {
-        var model = models[turnID] ?? NeuralBrainModel(turn: NeuralTurn(id: "-", steps: [], outcome: .settled))
-        let value = change(&model)
-        if models[turnID] != nil { models[turnID] = model }
+        var made =
+            model(for: turnID)
+            ?? NeuralBrainModel(turn: NeuralTurn(id: "-", steps: [], outcome: .settled))
+        let value = change(&made)
+        if models[turnID] != nil { models[turnID] = made }
         return value
     }
 
@@ -216,6 +282,7 @@ final class BrainStore {
 
     func forgetEverything() {
         cache.reset()
+        turns = NeuralTurnList()
         held = [:]
         models = [:]
         choices = [:]
@@ -229,9 +296,11 @@ final class BrainStore {
         table.removeAll()
         messages = []
         answerCache = [:]
+        searchCache = [:]
         memories = [:]
         interactions = [:]
         promptCache = [:]
+        contextFor = nil
     }
 
     /// Reads the conversation into brains and returns what the builder needs. `context` answers
@@ -239,15 +308,21 @@ final class BrainStore {
     /// answered. Style and device are decided by the caller through `isActive`.
     func prepare(
         messages all: [ChatMessage], running isRunning: Bool, awaiting: NeuralAwaiting,
-        context: (_ turn: NeuralTurn, _ isLatest: Bool) -> NeuralBrainContext
+        context: @escaping (_ isLatest: Bool) -> NeuralBrainContext
     ) -> BrainLayout {
+        let began = CACurrentMediaTime()
+        defer {
+            BrainDebug.note("prepare", since: began, detail: "turns=\(turns.count) realised=\(models.count)")
+        }
         passes += 1
+        contextFor = context
         let overriding = BrainDebug.overridesOpen
         let verifying = passes % Self.verifyEvery == 0
         let prefix = verifying ? 0 : stablePrefix(of: all)
         let list = cache.partitionList(
             messages: all, running: isRunning, awaiting: awaiting, stablePrefix: prefix)
-        let base = list.first.map { context($0, false) } ?? NeuralBrainContext()
+        turns = list
+        let base = list.isEmpty ? NeuralBrainContext() : context(false)
         let next = Shape(running: isRunning, awaiting: awaiting, base: base)
         let sameShape = shape == next
         shape = next
@@ -256,7 +331,9 @@ final class BrainStore {
         if sameShape, !overriding, prefix > 0 {
             from = min(untouchedTurns(prefix: prefix), previousCount - 1, list.count - 1)
             from = max(0, from)
-            if from > 0, from <= turnIDs.count, list[from - 1].id != turnIDs[from - 1] { from = 0 }
+            if from > 0, from <= turnIDs.count, list.outline(at: from - 1).id != turnIDs[from - 1] {
+                from = 0
+            }
         }
         messages = all
         running = isRunning
@@ -265,7 +342,7 @@ final class BrainStore {
         turnStarts.removeSubrange(min(from, turnStarts.count)...)
         var cursor = from > 0 ? (turnStarts.last ?? 0) : 0
         for index in from..<list.count {
-            let id = list[index].id
+            let id = list.outline(at: index).id
             turnIDs.append(id)
             turnIndex[id] = index
             var found = cursor
@@ -274,13 +351,13 @@ final class BrainStore {
             turnStarts.append(found)
         }
         var tail = Set<String>()
-        for index in from..<list.count { tail.insert(list[index].id) }
+        for index in from..<list.count { tail.insert(list.outline(at: index).id) }
         for id in oldTail where !tail.contains(id) {
             purge(id)
             turnIndex[id] = nil
         }
 
-        let latest = list.last?.id
+        let latest = list.isEmpty ? nil : list.outline(at: list.count - 1).id
         let open = resolveOpen(override: overriding ? BrainDebug.openOverride(
             policy: NeuralOpenPolicy(turnIDs: turnIDs, latest: latest, isRunning: isRunning, choices: choices),
             turns: list) : nil)
@@ -290,11 +367,13 @@ final class BrainStore {
             currentOpen = open
         }
         for index in from..<list.count {
-            visit(list[index], isLatest: list[index].id == latest, open: open, context: context)
+            visit(index, in: list, isLatest: index == list.count - 1, open: open, context: context)
         }
         for id in dirty {
-            guard let index = turnIndex[id], index < from, index < list.count, list[index].id == id else { continue }
-            visit(list[index], isLatest: id == latest, open: open, context: context)
+            guard let index = turnIndex[id], index < from, index < list.count,
+                list.outline(at: index).id == id
+            else { continue }
+            visit(index, in: list, isLatest: id == latest, open: open, context: context)
         }
         dirty.removeAll()
         return BrainLayout(table: table)
@@ -342,6 +421,7 @@ final class BrainStore {
         held[id] = nil
         models[id] = nil
         answerCache[id] = nil
+        searchCache[id] = nil
         memories[id] = nil
         interactions[id] = nil
         promptCache[id] = nil
@@ -349,28 +429,47 @@ final class BrainStore {
         table.remove(id)
     }
 
+    /// Whether a turn's model must exist now: the newest turn and a running one are read by the
+    /// chat's status, its haptics and its Live Activity whether or not a card is on screen.
+    private func isLive(_ outline: NeuralTurnOutline, latest: Bool) -> Bool {
+        latest || outline.outcome == .running
+    }
+
     private func visit(
-        _ turn: NeuralTurn, isLatest: Bool, open openID: String?,
-        context: (_ turn: NeuralTurn, _ isLatest: Bool) -> NeuralBrainContext
+        _ index: Int, in list: NeuralTurnList, isLatest: Bool, open openID: String?,
+        context: (_ isLatest: Bool) -> NeuralBrainContext
     ) {
-        guard NeuralOpenPolicy.isBrain(turn: turn) else {
-            if held[turn.id] != nil { purge(turn.id) }
+        let outline = list.outline(at: index)
+        guard outline.isBrain else {
+            if held[outline.id] != nil { purge(outline.id) }
             return
         }
-        BrainDebug.adopt(turn)
-        let entry = refresh(
-            turn, context: context(turn, isLatest), open: turn.id == openID, latest: isLatest)
-        if isLatest || turn.outcome == .running || memories[turn.id] == nil, let model = models[turn.id] {
-            memory(for: turn.id).note(model: model)
+        let id = outline.id
+        let live = isLive(outline, latest: isLatest)
+        let entry: Held
+        if live || models[id] != nil {
+            let turn = list[index]
+            if isLatest { BrainDebug.adopt(turn) }
+            entry = refresh(
+                turn, outline: outline, generation: list.generation(at: index),
+                context: context(isLatest), open: id == openID, latest: isLatest)
+        } else {
+            entry = place(
+                outline, generation: list.generation(at: index), context: context(isLatest),
+                open: id == openID, latest: isLatest)
+        }
+        if live || memories[id] == nil, let model = models[id] {
+            memory(for: id).note(model: model)
         }
         table.set(
             BrainLayout.Turn(
-                id: turn.id, anchor: entry.anchor, members: turn.memberPartIDs, row: entry.row))
+                id: id, anchor: entry.anchor, anchorMessageID: outline.anchorMessageID,
+                members: outline.memberPartIDs, row: entry.row))
     }
 
     /// The words of a turn's final answer, for the chips that point at the steps behind them.
     func answerText(for turnID: String) -> String {
-        guard let turn = held[turnID]?.turn, !turn.answerPartIDs.isEmpty else { return "" }
+        guard let turn = turn(for: turnID), !turn.answerPartIDs.isEmpty else { return "" }
         let key = turn.answerPartIDs.hashValue
         if let hit = answerCache[turnID], hit.key == key { return hit.text }
         let wanted = Set(turn.answerPartIDs)
@@ -389,63 +488,129 @@ final class BrainStore {
         return text
     }
 
+    /// Makes the model of a turn nobody has asked for yet, against the context its row was last
+    /// stamped with.
+    private func realise(_ turnID: String) -> NeuralBrainModel? {
+        let began = CACurrentMediaTime()
+        defer { BrainDebug.note("realise", since: began, detail: "steps=\(models[turnID]?.steps.count ?? 0)") }
+        guard let entry = held[turnID], let turn = turn(for: turnID) else { return nil }
+        let made = NeuralBrainModel(turn: turn, context: entry.context)
+        models[turnID] = made
+        if memories[turnID] == nil { memory(for: turnID).note(model: made) }
+        return made
+    }
+
+    /// A turn whose model exists: brought to the turn and context as they now stand, and its row
+    /// stamped from the model when the turn is live and from its outline when it is not.
     private func refresh(
-        _ turn: NeuralTurn, context: NeuralBrainContext, open: Bool, latest: Bool
+        _ turn: NeuralTurn, outline: NeuralTurnOutline, generation: Int,
+        context: NeuralBrainContext, open: Bool, latest: Bool
     ) -> Held {
         let rows = listing.contains(turn.id)
-        if var entry = held[turn.id], var model = models[turn.id] {
-            let changed = entry.turn != turn || entry.context != context
+        var model: NeuralBrainModel
+        if let made = models[turn.id] {
+            model = made
+        } else {
+            model = NeuralBrainModel(turn: turn, context: context)
+            models[turn.id] = model
+        }
+        if var entry = held[turn.id] {
+            let changed = entry.generation != generation || entry.context != context
             if changed {
                 model.update(turn: turn, context: context)
                 models[turn.id] = model
             }
             guard changed || entry.open != open || entry.showsRows != rows || entry.latest != latest
             else { return entry }
-            entry.turn = turn
+            entry.generation = generation
             entry.context = context
             entry.open = open
             entry.showsRows = rows
             entry.latest = latest
-            entry.row = Self.row(for: turn, model: model, open: open, latest: latest, rows: rows)
-            if changed { entry.anchor = Self.anchor(of: turn) }
+            entry.row = Self.row(
+                outline, generation: generation, context: context, open: open, latest: latest,
+                rows: rows, model: model)
+            if changed { entry.anchor = outline.anchor }
             held[turn.id] = entry
             return entry
         }
-        let model = NeuralBrainModel(turn: turn, context: context)
-        models[turn.id] = model
         let entry = Held(
-            turn: turn, context: context,
-            row: Self.row(for: turn, model: model, open: open, latest: latest, rows: rows),
-            anchor: Self.anchor(of: turn), open: open, showsRows: rows, latest: latest)
+            generation: generation, context: context,
+            row: Self.row(
+                outline, generation: generation, context: context, open: open, latest: latest,
+                rows: rows, model: model),
+            anchor: outline.anchor, open: open, showsRows: rows, latest: latest)
         held[turn.id] = entry
         return entry
     }
 
-    /// The part a turn's brain row goes before: its first member part, or its first step when
-    /// every step is one the client also draws as a card.
-    private static func anchor(of turn: NeuralTurn) -> String? {
-        turn.steps.first { turn.memberPartIDs.contains($0.id) }?.id ?? turn.steps.first?.id
+    /// A turn nobody has looked at: only its outline, its context and its place in the chat.
+    private func place(
+        _ outline: NeuralTurnOutline, generation: Int, context: NeuralBrainContext, open: Bool,
+        latest: Bool
+    ) -> Held {
+        let rows = listing.contains(outline.id)
+        if var entry = held[outline.id] {
+            guard entry.generation != generation || entry.context != context || entry.open != open
+                || entry.showsRows != rows || entry.latest != latest
+            else { return entry }
+            entry.generation = generation
+            entry.context = context
+            entry.open = open
+            entry.showsRows = rows
+            entry.latest = latest
+            entry.anchor = outline.anchor
+            entry.row = Self.row(
+                outline, generation: generation, context: context, open: open, latest: latest,
+                rows: rows, model: nil)
+            held[outline.id] = entry
+            return entry
+        }
+        let entry = Held(
+            generation: generation, context: context,
+            row: Self.row(
+                outline, generation: generation, context: context, open: open, latest: latest,
+                rows: rows, model: nil),
+            anchor: outline.anchor, open: open, showsRows: rows, latest: latest)
+        held[outline.id] = entry
+        return entry
     }
 
+    /// The row a transcript diffs by. A live turn is told from its previous self by what its model
+    /// shows (the layout revision, the state, the face, the meters); any other turn by which turn
+    /// it is and the context it is drawn against, because a settled turn cannot change without the
+    /// conversation handing back a different turn, and a different turn has a different
+    /// generation. The two are never mixed for one turn, so reading a model for the first time
+    /// leaves its row as it was.
     private static func row(
-        for turn: NeuralTurn, model: NeuralBrainModel, open: Bool, latest: Bool, rows: Bool
+        _ outline: NeuralTurnOutline, generation: Int, context: NeuralBrainContext, open: Bool,
+        latest: Bool, rows: Bool, model: NeuralBrainModel?
     ) -> BrainRow {
         var hasher = Hasher()
-        hasher.combine(model.revision)
-        hasher.combine(turn.outcome)
-        hasher.combine(model.state.label)
-        hasher.combine(model.face)
-        hasher.combine(model.meters)
-        hasher.combine(model.context.activity?.spoken)
+        if latest || outline.outcome == .running, let model {
+            hasher.combine(model.revision)
+            hasher.combine(model.turn.outcome)
+            hasher.combine(model.state.label)
+            hasher.combine(model.face)
+            hasher.combine(model.meters)
+            hasher.combine(model.context.activity?.spoken)
+        } else {
+            hasher.combine(generation)
+            hasher.combine(outline.outcome)
+            hasher.combine(outline.modelID)
+            hasher.combine(outline.effort)
+            hasher.combine(context.providerID)
+            hasher.combine(context.effortOptions)
+            hasher.combine(context.effort)
+            hasher.combine(context.face)
+        }
         hasher.combine(open)
         hasher.combine(latest)
         return BrainRow(
-            turnID: turn.id, stamp: hasher.finalize(), isOpen: open, isLatest: latest,
-            showsRows: rows, search: searchText(of: turn))
+            turnID: outline.id, stamp: hasher.finalize(), isOpen: open, isLatest: latest,
+            showsRows: rows)
     }
 
-    /// What in-conversation find reads of a brain: every step's name, argument and words, and the
-    /// first lines of what it printed.
     static func searchText(of turn: NeuralTurn) -> String {
         var parts: [String] = []
         parts.reserveCapacity(turn.steps.count * 2)

@@ -7,7 +7,7 @@ import TailscodeCore
 enum ChatFind {
     /// The same fields the desktop transcripts index: prose, code, tool names and their output,
     /// file names, subagent titles, seams and errors.
-    static func searchText(for row: ChatRow) -> String {
+    static func searchText(for row: ChatRow, brain: (String) -> String = { _ in "" }) -> String {
         switch row.content {
         case .text(let text):
             return text
@@ -25,8 +25,8 @@ enum ChatFind {
                     return "\(call.name) \(call.title ?? "") \(call.output?.prefix(4000) ?? "")"
                 }
             }.joined(separator: " ")
-        case .brain(let brain):
-            return brain.search
+        case .brain(let brainRow):
+            return brain(brainRow.turnID)
         case .subagent(let card):
             return "\(card.agentType ?? "") \(card.title)"
         case .workflow(let run):
@@ -61,13 +61,14 @@ enum ChatFind {
 
     /// One match per row that contains the needle, in transcript order. Empty needle matches nothing.
     static func matchingIDs(
-        needle: String, orderedIDs: [String], rowsByID: [String: ChatRow]
+        needle: String, orderedIDs: [String], rowsByID: [String: ChatRow],
+        brain: (String) -> String = { _ in "" }
     ) -> [String] {
         let key = needle.trimmingCharacters(in: .whitespaces).lowercased()
         guard !key.isEmpty else { return [] }
         return orderedIDs.filter { id in
             guard let row = rowsByID[id] else { return false }
-            return searchText(for: row).lowercased().contains(key)
+            return searchText(for: row, brain: brain).lowercased().contains(key)
         }
     }
 
