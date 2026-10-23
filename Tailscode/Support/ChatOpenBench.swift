@@ -22,6 +22,12 @@ import UIKit
         private static var running: ChatOpenBench?
 
         static func runIfRequested(in window: UIWindow) {
+            if let session = ProcessInfo.processInfo.environment["TAILSCODE_BENCH_LIVE"] {
+                let bench = ChatOpenBench(window: window, turns: 0, cycles: 0)
+                running = bench
+                Task { await bench.watchLive(sessionID: session) }
+                return
+            }
             guard let value = ProcessInfo.processInfo.environment["TAILSCODE_BENCH_OPEN"] else {
                 return
             }
@@ -103,6 +109,38 @@ import UIKit
 
         private var stack: UINavigationController? {
             (window.rootViewController as? WorkspaceSplitViewController)?.tourStack
+        }
+
+        /// Opens a conversation of the connected server the way a tap on its row does and probes
+        /// the transcript for the rest of the run: what a return to a big chat costs against a real
+        /// machine, with its real stream and real reconnects.
+        private func watchLive(sessionID: String) async {
+            try? await Task.sleep(for: .seconds(6))
+            watchRunLoop()
+            guard let stack, let home = stack.viewControllers.first as? HomeViewController else {
+                AppLogger.performance.info("bench live: no home")
+                return
+            }
+            home.openSession(withID: sessionID)
+            var chat: ChatViewController?
+            for _ in 0..<600 {
+                try? await Task.sleep(for: .milliseconds(100))
+                if let top = stack.topViewController as? ChatViewController, top.isOpenedForBench {
+                    chat = top
+                    break
+                }
+            }
+            guard let chat else {
+                AppLogger.performance.info("bench live: chat never opened")
+                return
+            }
+            let collection = census(of: chat.view).compactMap { $0.view as? UICollectionView }.first
+            if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_OPENBRAIN"] != nil {
+                chat.openLatestBrainForBench()
+            }
+            reset()
+            await probeResume(chat: nil, collection: collection, in: chat.view.window)
+            AppLogger.performance.info("bench open done live")
         }
 
         private func run() async {
@@ -313,6 +351,17 @@ import UIKit
             AppLogger.performance.info(
                 "bench addresses cycle=\(cycle) root=\(rootAddress) collection=\(collectionAddress ?? "-")")
             let gesture = popGestureReading(of: stack)
+            if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "resume" {
+                if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_OPENBRAIN"] != nil {
+                    chat.openLatestBrainForBench()
+                    try? await Task.sleep(for: .seconds(1))
+                }
+                if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_KEYBOARD"] != nil {
+                    tree.compactMap { $0.view as? UITextView }.last?.becomeFirstResponder()
+                    try? await Task.sleep(for: .seconds(1))
+                }
+                await probeResume(chat: chat, collection: collection, in: chat.view.window)
+            }
             reset()
             let swiped = await awaitSwipe(cycle: cycle, chat: chat, in: stack)
             if stack.topViewController === chat {
@@ -352,6 +401,10 @@ import UIKit
             guard turnStart > 0 else { return }
             let elapsed = (now - turnStart) * 1000
             let cpu = Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - turnCPU) / 1_000_000
+            if elapsed > 100 {
+                AppLogger.performance.info(
+                    "bench long turn t=\(Int(Date().timeIntervalSince1970 * 1000)) wall=\(Int(elapsed))ms cpu=\(Int(cpu))ms app=\(UIApplication.shared.applicationState.rawValue)")
+            }
             if cpu > 6 { bigTurns.append(Int(cpu)) }
             longestCPU = max(longestCPU, cpu)
             cpuTotal += cpu
@@ -419,6 +472,94 @@ import UIKit
             return "stayed"
         }
 
+        /// Writes what the transcript's scroll view and every recogniser around it say, whenever any
+        /// of it changes, for as long as `TAILSCODE_BENCH_PROBE` seconds (default 60): the reading
+        /// to put beside a real swipe sent to the app after it came back from the background.
+        private func probeResume(
+            chat: ChatViewController?, collection: UICollectionView?, in window: UIWindow?
+        ) async {
+            guard let collection else { return }
+            let seconds = ProcessInfo.processInfo.environment["TAILSCODE_BENCH_PROBE"].flatMap(Double.init) ?? 60
+            var last = ""
+            let deadline = CFAbsoluteTimeGetCurrent() + seconds
+            AppLogger.performance.info(
+                "bench resume probe start footprintMB=\(footprintMegabytes()) rows=\(Int(collection.contentSize.height))pt")
+            var lastCPU = processCPUSeconds()
+            var lastCPUAt = CFAbsoluteTimeGetCurrent()
+            let flag = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("warn")
+            while CFAbsoluteTimeGetCurrent() < deadline {
+                if FileManager.default.fileExists(atPath: flag.path) {
+                    try? FileManager.default.removeItem(at: flag)
+                    NotificationCenter.default.post(
+                        name: UIApplication.didReceiveMemoryWarningNotification,
+                        object: UIApplication.shared)
+                    AppLogger.performance.info(
+                        "bench resume memory warning posted footprintMB=\(footprintMegabytes())")
+                }
+                let snap = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("snap")
+                if FileManager.default.fileExists(atPath: snap.path) {
+                    try? FileManager.default.removeItem(at: snap)
+                    AppLogger.performance.info("bench resume turns[\(snapshot())]")
+                    reset()
+                }
+                let refetch = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("refetch")
+                if FileManager.default.fileExists(atPath: refetch.path), let chat {
+                    try? FileManager.default.removeItem(at: refetch)
+                    let fresh =
+                        Self.transcriptMessages()
+                        ?? ChatRebuildBench.conversation(turns: turns, growing: "Done.")
+                    let before = footprintMegabytes()
+                    let spent = chat.renderRefetchedCopyForBench(fresh)
+                    AppLogger.performance.info(
+                        "bench resume refetched \(fresh.count) messages rendered in \(Int(spent)) ms footprintMB \(before)->\(footprintMegabytes())")
+                }
+                if CFAbsoluteTimeGetCurrent() - lastCPUAt >= 1 {
+                    let now = processCPUSeconds()
+                    let wall = CFAbsoluteTimeGetCurrent() - lastCPUAt
+                    AppLogger.performance.info(
+                        "bench resume cpu=\(Int((now - lastCPU) / wall * 100))% app=\(UIApplication.shared.applicationState.rawValue) footprintMB=\(footprintMegabytes())")
+                    lastCPU = now
+                    lastCPUAt = CFAbsoluteTimeGetCurrent()
+                }
+                let reading = resumeReading(of: collection, in: window)
+                if reading != last || !reading.contains("tracking=false dragging=false decelerating=false") {
+                    last = reading
+                    AppLogger.performance.info("bench resume t=\(Int(Date().timeIntervalSince1970 * 1000)) \(reading)")
+                }
+                try? await Task.sleep(for: .milliseconds(40))
+            }
+            AppLogger.performance.info(
+                "bench resume probe end lastText=\(chat?.lastTextLengthForBench ?? -2)")
+        }
+
+        private func processCPUSeconds() -> Double {
+            var usage = rusage()
+            getrusage(RUSAGE_SELF, &usage)
+            let user = Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1e6
+            let system = Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1e6
+            return user + system
+        }
+
+        private func resumeReading(of collection: UICollectionView, in window: UIWindow?) -> String {
+            let state: String
+            switch UIApplication.shared.applicationState {
+            case .active: state = "active"
+            case .inactive: state = "inactive"
+            default: state = "background"
+            }
+            var busy: [String] = []
+            var view: UIView? = collection
+            while let current = view {
+                for recognizer in current.gestureRecognizers ?? [] where recognizer.state != .possible {
+                    busy.append("\(type(of: recognizer))@\(type(of: current))=\(recognizer.state.rawValue)")
+                }
+                view = current.superview
+            }
+            let pan = collection.panGestureRecognizer
+            return
+                "app=\(state) y=\(Int(collection.contentOffset.y)) tracking=\(collection.isTracking) dragging=\(collection.isDragging) decelerating=\(collection.isDecelerating) pan=\(pan.state.rawValue) panEnabled=\(pan.isEnabled) scrollEnabled=\(collection.isScrollEnabled) interaction=\(collection.isUserInteractionEnabled) busy[\(busy.joined(separator: ","))] size=\(Int(collection.contentSize.height)) inset=\(Int(collection.contentInset.top))/\(Int(collection.contentInset.bottom))"
+        }
+
         private func untilOpened(_ chat: ChatViewController) async {
             for _ in 0..<600 {
                 try? await Task.sleep(for: .milliseconds(5))
@@ -465,12 +606,23 @@ import UIKit
             return paragraphs.joined(separator: "\n\n")
         }
 
+        /// A cached transcript from a real conversation, named by `TAILSCODE_BENCH_TRANSCRIPT`, in
+        /// place of the generated one: the size of a chat somebody actually has.
+        private static func transcriptMessages() -> [ChatMessage]? {
+            guard let path = ProcessInfo.processInfo.environment["TAILSCODE_BENCH_TRANSCRIPT"],
+                let data = try? Data(contentsOf: URL(fileURLWithPath: path))
+            else { return nil }
+            return try? JSONDecoder().decode([ChatMessage].self, from: data)
+        }
+
         private static func script(turns: Int) -> [MockScriptStep] {
-            let messages = ChatRebuildBench.conversation(turns: turns, growing: "Done.")
+            let messages =
+                transcriptMessages() ?? ChatRebuildBench.conversation(turns: turns, growing: "Done.")
             let steps = messages.map {
                 MockScriptStep(.messageUpserted($0, replaceParts: true), delay: .milliseconds(0))
             }
-            if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "tokens",
+            if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "tokens"
+                || ProcessInfo.processInfo.environment["TAILSCODE_BENCH_GROW"] != nil,
                 let last = messages.last
             {
                 var growing = steps
@@ -485,7 +637,9 @@ import UIKit
                 }
                 return growing + [MockScriptStep(.status(.idle), delay: .milliseconds(0))]
             }
-            if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "stream" {
+            if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "stream"
+                || ProcessInfo.processInfo.environment["TAILSCODE_BENCH_STREAM"] != nil
+            {
                 return steps + [
                     MockScriptStep(.status(.running), delay: .milliseconds(0)),
                     MockScriptStep(.status(.running), delay: .seconds(600)),

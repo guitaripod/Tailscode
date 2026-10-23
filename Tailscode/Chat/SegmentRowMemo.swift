@@ -38,16 +38,29 @@ final class SegmentRowMemo {
         let brainAnchor: Bool
     }
 
-    private struct MessageEntry {
+    private final class MessageEntry {
         let message: ChatMessage
         let context: MessageContext
         let toolIDs: [String]
         let rows: [ChatRow]
+        var lastUsed: Int
+
+        init(
+            message: ChatMessage, context: MessageContext, toolIDs: [String], rows: [ChatRow],
+            lastUsed: Int
+        ) {
+            self.message = message
+            self.context = context
+            self.toolIDs = toolIDs
+            self.rows = rows
+            self.lastUsed = lastUsed
+        }
     }
 
     private var entries: [String: Entry] = [:]
     private var messageEntries: [String: MessageEntry] = [:]
-    private var keptMessages: [String: MessageEntry] = [:]
+    private var build = 0
+    private var touched = 0
     private(set) var messageHits = 0
     private(set) var messageBuilds = 0
     private var kept: [String: Entry] = [:]
@@ -62,11 +75,14 @@ final class SegmentRowMemo {
     func rows(
         forMessage message: ChatMessage, context: MessageContext, isClaimed: (String) -> Bool
     ) -> [ChatRow]? {
-        guard let hit = messageEntries[message.id] ?? keptMessages[message.id],
+        guard let hit = messageEntries[message.id],
             hit.context == context, hit.message == message,
             !hit.toolIDs.contains(where: isClaimed)
         else { return nil }
-        keptMessages[message.id] = hit
+        if hit.lastUsed != build {
+            hit.lastUsed = build
+            touched += 1
+        }
         messageHits += 1
         return hit.rows
     }
@@ -76,8 +92,9 @@ final class SegmentRowMemo {
         message: ChatMessage, context: MessageContext, toolIDs: [String], rows: [ChatRow]
     ) {
         messageBuilds += 1
-        keptMessages[message.id] = MessageEntry(
-            message: message, context: context, toolIDs: toolIDs, rows: rows)
+        if messageEntries[message.id]?.lastUsed != build { touched += 1 }
+        messageEntries[message.id] = MessageEntry(
+            message: message, context: context, toolIDs: toolIDs, rows: rows, lastUsed: build)
     }
 
     func rows(
@@ -111,9 +128,16 @@ final class SegmentRowMemo {
 
     /// Ends one build. A part this build never asked about has left the conversation (or the
     /// window being drawn), so it is dropped instead of being carried for the life of the chat.
+    /// A message's rows are marked where they stand rather than moved into a new table, so a build
+    /// that finds every message settled writes nothing but a counter; the table is swept of what
+    /// no build has asked for only once those have grown to half again its live size.
     func sweep() {
-        messageEntries = keptMessages
-        keptMessages = [:]
+        if messageEntries.count > touched + max(64, touched / 2) {
+            let current = build
+            messageEntries = messageEntries.filter { $0.value.lastUsed == current }
+        }
+        build += 1
+        touched = 0
         entries = kept
         kept = [:]
         links = keptLinks

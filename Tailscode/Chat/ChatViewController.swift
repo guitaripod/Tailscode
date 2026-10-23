@@ -1898,6 +1898,29 @@ final class ChatViewController: UIViewController {
         private(set) var providedItems: [Int] = []
 
         var isOpenedForBench: Bool { hasRevealed && opening == nil }
+
+        func renderRefetchedCopyForBench(_ messages: [ChatMessage]) -> Double {
+            var state = lastRenderedState ?? viewModel.state
+            state.messages = messages
+            let started = CACurrentMediaTime()
+            render(state)
+            return (CACurrentMediaTime() - started) * 1000
+        }
+
+        var lastTextLengthForBench: Int {
+            for id in orderedIDs.reversed() {
+                if case .text(let words)? = rowsByID[id]?.content { return words.count }
+            }
+            return -1
+        }
+
+        func openLatestBrainForBench() {
+            guard let turnID = viewModel.state.messages.last(where: { $0.role == .assistant })?.id,
+                !brain.store.isOpen(turnID)
+            else { return }
+            brain.store.toggle(turnID)
+            render(lastRenderedState ?? viewModel.state)
+        }
     #endif
 
     private func configureDataSource() {
@@ -2574,7 +2597,7 @@ final class ChatViewController: UIViewController {
     private func bind() {
         cascade.onFrame = { [weak self] moved in self?.repaintCascade(revealMoved: moved) }
         cascade.onStalled = { [weak self] in self?.giveUpCascade() }
-        viewModel.onState = { [weak self] state in self?.render(state) }
+        viewModel.onState = { [weak self] state in self?.offer(state) }
         viewModel.onSignInStateChanged = { [weak self] in
             guard let self else { return }
             self.updateBanner(for: self.viewModel.state)
@@ -2672,6 +2695,41 @@ final class ChatViewController: UIViewController {
                 != brainEffort
         else { return }
         render(state)
+    }
+
+    private var pacer = RenderPacer()
+    private var heldRender: DispatchWorkItem?
+
+    /// A state the stream emitted. Drawing the transcript costs what the conversation weighs, so
+    /// words that only got longer wait their turn when drawing is taking more than its share of
+    /// the thread, and the newest state is drawn when the wait is over; everything else is drawn
+    /// at once.
+    private func offer(_ state: ConversationState) {
+        var growth = lastRenderedState.map { RenderPacer.isGrowth(from: $0, to: state) } ?? false
+        #if DEBUG
+            if ProcessInfo.processInfo.environment["TAILSCODE_NO_PACER"] != nil { growth = false }
+        #endif
+        switch pacer.offer(at: CACurrentMediaTime(), isGrowth: growth) {
+        case .now:
+            heldRender?.cancel()
+            heldRender = nil
+            drawTimed(state)
+        case .after(let wait):
+            guard heldRender == nil else { return }
+            let item = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.heldRender = nil
+                self.drawTimed(self.viewModel.state)
+            }
+            heldRender = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: item)
+        }
+    }
+
+    private func drawTimed(_ state: ConversationState) {
+        let started = CACurrentMediaTime()
+        render(state)
+        pacer.drew(from: started, to: CACurrentMediaTime())
     }
 
     /// The server's account of the conversation moved, so every row is built from it again.
@@ -2909,6 +2967,19 @@ final class ChatViewController: UIViewController {
         return TranscriptRebuild(previous: previous, rows: rows, facts: facts)
     }
 
+    /// The transcript's own rows are unique by construction, so the rows added to them are the only
+    /// ones that need asking: hashing every identity of a conversation on every token was most of
+    /// what composing a long one cost.
+    private static func appendingUnique(
+        _ extras: ArraySlice<String>, to ids: [String], known: [String: ChatRow]
+    ) -> [String] {
+        guard !extras.isEmpty else { return ids }
+        var seen = Set<String>()
+        var unique = ids
+        for id in extras where known[id] == nil && seen.insert(id).inserted { unique.append(id) }
+        return unique
+    }
+
     private func compose(_ state: ConversationState, rebuild: TranscriptRebuild?) {
         let previousPermissionID = pendingPermission?.id
         let previousQuestionID = pendingQuestion?.id
@@ -2958,8 +3029,8 @@ final class ChatViewController: UIViewController {
         if let pendingQuestion { ids.append("question:\(pendingQuestion.id)") }
         if let pendingPermission { ids.append("permission:\(pendingPermission.id)") }
         Self.logPendingPhantom(state: state, viewModel: viewModel)
-        var seenIDs = Set<String>()
-        let uniqueIDs = ids.filter { seenIDs.insert($0).inserted }
+        let uniqueIDs = Self.appendingUnique(
+            ids.dropFirst(orderedIDs.count), to: orderedIDs, known: rowsByID)
         let orderUnchanged = renderedIDOrder == uniqueIDs
         if !orderUnchanged { renderedIDOrder = uniqueIDs }
         let idSet = orderUnchanged && !lastRenderedIDs.isEmpty ? lastRenderedIDs : Set(uniqueIDs)
