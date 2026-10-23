@@ -96,6 +96,21 @@ struct NeuralColdOpenBenchTests {
                     hashed ^= (turn.steps.first { turn.memberPartIDs.contains($0.id) }?.id ?? "").utf8.count
                 }
             }
+            let lazyCache = NeuralTurnCache(capacity: 4096)
+            var placed = 0
+            var newest = 0.0
+            let lazy = ColdOpenFixtures.milliseconds {
+                let list = lazyCache.partitionList(messages: messages, running: false)
+                for index in 0..<list.count where list.outline(at: index).isBrain {
+                    placed += list.outline(at: index).keptPartIDs.count
+                }
+                newest = ColdOpenFixtures.milliseconds {
+                    _ = NeuralBrainModel(turn: list[list.count - 1], context: .none)
+                }
+            }
+            print(
+                "NEURAL-COLD-BENCH \(name) turns=\(turns) placed from outlines=\(String(format: "%.2f", lazy))ms of which the newest turn's steps and model=\(String(format: "%.2f", newest))ms sink=\(placed & 1)"
+            )
             print(
                 "NEURAL-COLD-BENCH \(name) turns=\(turns) brains=\(brains) partition=\(String(format: "%.2f", partition))ms models=\(String(format: "%.2f", models))ms rows=\(String(format: "%.2f", rows))ms total=\(String(format: "%.2f", partition + models + rows))ms sink=\(hashed & 1)"
             )
@@ -115,7 +130,7 @@ struct NeuralColdOpenBenchTests {
     }
 
     @Test(
-        "release microbenchmark: what a cold open of N turns costs before any laziness",
+        "release microbenchmark: what a cold open of N turns costs read whole, and placed from outlines",
         .enabled(if: ProcessInfo.processInfo.environment["NEURAL_COLD_BENCH"] != nil))
     func baseline() {
         shape("light", ColdOpenFixtures.conversation)
