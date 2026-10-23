@@ -160,8 +160,23 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     public static let readoutShare = 0.5
     public static let readoutMin = 360.0
     public static let readoutMax = 640.0
-    /// The open brain is never shorter than this, and the readout with it.
+    /// The open brain is never shorter than this, and the readout with it, unless the pane it is
+    /// open in is too short for it (`openHeightShare`).
     public static let readoutMinHeight = 460.0
+    /// A desktop's open row is at most this share of the pane's visible height, so a short window
+    /// is never swallowed by it. The step list and the readout absorb the difference.
+    public static let openHeightShare = 0.72
+    /// The fewest rows the list gives up to that cap. The head, the chips, the list's header, four
+    /// rows, its hint and the footer are the floor under which the row stops following the pane:
+    /// a pane shorter than the floor sees the row taller than the share but never taller than
+    /// itself, to the one row a list cannot do without.
+    public static let rowsFloor = 4
+    /// The narrow open row's account is this share of the pane, between these.
+    public static let narrowAccountShare = 0.62
+    public static let narrowAccountMin = 340.0
+    public static let narrowAccountMax = 640.0
+    /// What a client that knows nothing of its pane assumes it to be.
+    public static let assumedViewportHeight = 700.0
     /// A readout narrower than this shows five lines of output instead of eight.
     public static let readoutNarrowWidth = 480.0
     public static let outputLinesWide = 8
@@ -224,6 +239,29 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     public static let hintMinWidth = 520.0
     public static let rowsMin = 8
     public static let rowsMax = 14
+
+    /// The wordmark `NeuralReading.wordmark` on a card sits at the right end of the headline's line,
+    /// left of Replay and Rows where they share it, and only when the headline's own words leave it
+    /// this much air; a card narrower than `cardWordmarkMinWidth` has none. It costs no height.
+    public static let cardWordmarkMinWidth = 360.0
+    public static let cardWordmarkGap = 12.0
+
+    /// Whether a card of `width` has room for its wordmark: the headline ends at `headlineEnd`,
+    /// the line's free edge is `headlineRight`, and the wordmark is `wordmarkWidth` wide, all in
+    /// the card's own points.
+    public static func cardShowsWordmark(
+        width: Double, headlineEnd: Double, headlineRight: Double, wordmarkWidth: Double
+    ) -> Bool {
+        width >= cardWordmarkMinWidth
+            && headlineEnd + cardWordmarkGap + wordmarkWidth <= headlineRight
+    }
+
+    /// The open stage's wordmark stands in the row's top left corner, where the head leaves the
+    /// canvas empty (beside it on a phone and in an accordion, over its outline's corner in a
+    /// split), left-aligned in a box this wide and tall, and only in a row this wide.
+    public static let stageWordmarkMinWidth = 300.0
+    public static let stageWordmarkInset = (x: 10.0, y: 8.0)
+    public static let stageWordmarkSize = (width: 104.0, height: 14.0)
 
     /// The phone's compact open stage. The head is `phoneHeadWidth` wide (152 tall), the zone
     /// chips and the search share one `phoneBarHeight` bar, the step list is `phoneRowSlots` rows of
@@ -307,9 +345,28 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     public let brainHeight: Double
     /// The height of the open row: the brain, the gap and the footer.
     public let rowHeight: Double
+    /// How tall an accordion's account is: the step list's place under the head, taken by the
+    /// account, which is as tall as the pane allows (a share of the pane between 340 and 640,
+    /// held under `openHeightShare` of it) and never shorter than the list. Zero in a split and on
+    /// the phone.
+    public let narrowAccountHeight: Double
     /// Whether this is the phone's compact open stage: no scroller in it, one bar for the zone
     /// chips and the search, a list of `rowsShown` slots, and the account in a sheet.
     public let isPhone: Bool
+    /// The box of the open stage's wordmark in the row's coordinates; nil in a row too narrow for it.
+    public var stageWordmark: NeuralRect? {
+        guard width >= Self.stageWordmarkMinWidth else { return nil }
+        return NeuralRect(
+            x: Self.stageWordmarkInset.x, y: Self.stageWordmarkInset.y,
+            width: Self.stageWordmarkSize.width, height: Self.stageWordmarkSize.height)
+    }
+
+    /// How much taller an accordion's open row is than the list it replaces with the account.
+    public var narrowExtra: Double { max(0, narrowAccountHeight - list.height) }
+
+    /// The height the open row takes in the transcript: the metrics' row and what an accordion's
+    /// account adds to it.
+    public var openHeight: Double { rowHeight + narrowExtra }
     /// The height of the collapsed row.
     public var cardHeight: Double { card.height }
     /// What one unit of the head's design space is in points on the head.
@@ -466,6 +523,24 @@ public struct NeuralStageMetrics: Sendable, Equatable {
         }
     }
 
+    /// The tallest an open row may be in a pane of this height: `openHeightShare` of it.
+    public static func openHeightLimit(viewportHeight height: Double) -> Double {
+        max(height, 0) * openHeightShare
+    }
+
+    /// How tall an accordion's account is in a pane of `viewportHeight` (nil: `assumedViewportHeight`
+    /// and no cap), given what stands above it and below it, and the list it replaces.
+    static func narrowAccountHeight(
+        viewportHeight: Double?, above: Double, below: Double, list: Double
+    ) -> Double {
+        let wanted = min(
+            max(((viewportHeight ?? assumedViewportHeight) * narrowAccountShare).rounded(),
+                narrowAccountMin), narrowAccountMax)
+        guard let viewportHeight else { return wanted }
+        let room = openHeightLimit(viewportHeight: viewportHeight) - above - below
+        return max(list, min(wanted, room))
+    }
+
     /// How many list rows a viewport of this height asks for: the rule
     /// `clamp(floor((height x 0.55 - head - 80) / row), 8, 14)`.
     public static func rows(
@@ -481,6 +556,9 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     ///     chips rather than a panel.
     ///   - rows: the number of list rows to show; by default 8, or 9 from a 1200 row, or the
     ///     viewport rule when `viewportHeight` is given.
+    ///   - viewportHeight: the pane's visible height. A desktop's open row stays under
+    ///     `openHeightShare` of it (the list gives rows up to `rowsFloor`, the readout its
+    ///     `readoutMinHeight`, an accordion's account its share), and a phone ignores it.
     ///   - cardMinHeight: the height the card's own words need where the type is larger than the
     ///     design's; the card is never shorter than its density says and grows to this.
     ///   - phone: a touch row under the split breakpoint takes the compact open stage (see
@@ -514,6 +592,14 @@ public struct NeuralStageMetrics: Sendable, Equatable {
         if !split {
             shown = min(shown, Int((listMaxHeight(input: input) / rowHeight).rounded(.down)))
         }
+        let hintHeight = hintShown ? listHintHeight : 0
+        let belowRows = listFootPadding + hintHeight + footerGap + footerHeight
+        if rows == nil, let viewportHeight {
+            shown = rowsFitting(
+                shown, viewportHeight: viewportHeight,
+                above: headHeight + gap + chipsBlock + listHeaderHeight, below: belowRows,
+                rowHeight: rowHeight)
+        }
         shown = max(shown, 1)
 
         let columnWidth: Double
@@ -536,14 +622,17 @@ public struct NeuralStageMetrics: Sendable, Equatable {
         let header = NeuralRect(x: 0, y: cursor, width: listWidth, height: listHeaderHeight)
         let rowsRect = NeuralRect(
             x: 0, y: header.maxY, width: listWidth, height: Double(shown) * rowHeight)
-        let hintHeight = hintShown ? listHintHeight : 0
         let blockHeight = listHeaderHeight + rowsRect.height + listFootPadding + hintHeight
         let list = NeuralRect(x: 0, y: cursor, width: listWidth, height: blockHeight)
         let hint = hintShown
             ? NeuralRect(
                 x: 0, y: rowsRect.maxY + listFootPadding, width: listWidth, height: listHintHeight)
             : nil
-        let brain = split ? max(list.maxY, readoutMinHeight) : list.maxY
+        let readoutFloor =
+            viewportHeight.map {
+                min(readoutMinHeight, max(openHeightLimit(viewportHeight: $0) - footerGap - footerHeight, 0))
+            } ?? readoutMinHeight
+        let brain = split ? max(list.maxY, readoutFloor) : list.maxY
         let footer = NeuralRect(
             x: 0, y: brain + footerGap, width: width, height: footerHeight)
         let readout = split
@@ -569,7 +658,27 @@ public struct NeuralStageMetrics: Sendable, Equatable {
             filterChips: chips, list: list, listHeader: header, listRows: rowsRect, listHint: hint,
             listRowHeight: rowHeight, rowsShown: shown, readout: readout, accountLayout: layout,
             account: region, story: storyRect, detail: detailRect, footer: footer,
-            brainHeight: brain, rowHeight: footer.maxY, isPhone: false)
+            brainHeight: brain, rowHeight: footer.maxY,
+            narrowAccountHeight: split
+                ? 0
+                : narrowAccountHeight(
+                    viewportHeight: viewportHeight, above: list.y, below: footerGap + footerHeight,
+                    list: list.height),
+            isPhone: false)
+    }
+
+    /// How many of `wanted` rows a list may have in a pane of `viewportHeight`: as many as keep the
+    /// open row under `openHeightShare` of it, never fewer than `rowsFloor`, and fewer than that
+    /// only as far as it takes for the row to fit the pane itself.
+    private static func rowsFitting(
+        _ wanted: Int, viewportHeight: Double, above: Double, below: Double, rowHeight: Double
+    ) -> Int {
+        func fit(_ limit: Double) -> Int {
+            Int(((limit - above - below) / rowHeight).rounded(.down))
+        }
+        let capped = min(wanted, fit(openHeightLimit(viewportHeight: viewportHeight)))
+        if capped >= rowsFloor { return capped }
+        return min(rowsFloor, max(fit(viewportHeight), 1))
     }
 
     private static func makePhone(
@@ -597,7 +706,7 @@ public struct NeuralStageMetrics: Sendable, Equatable {
             filterChips: bar, list: list, listHeader: bar, listRows: rowsRect, listHint: nil,
             listRowHeight: rowHeight, rowsShown: slots, readout: .zero, accountLayout: .single,
             account: rowsRect, story: rowsRect, detail: nil, footer: footer,
-            brainHeight: list.maxY, rowHeight: footer.maxY, isPhone: true)
+            brainHeight: list.maxY, rowHeight: footer.maxY, narrowAccountHeight: 0, isPhone: true)
     }
 
     /// The row height while an accordion row is expanded to its content's largest; a split row is

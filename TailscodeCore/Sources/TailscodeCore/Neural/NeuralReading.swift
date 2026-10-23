@@ -174,6 +174,9 @@ public enum NeuralReading {
     public static var replayLabel: String { Localized.text("Replay") }
     public static var scrubLabel: String { Localized.text("Scrub through the turn") }
     public static var rowsLabel: String { Localized.text("Rows") }
+    /// Megatron's name as the small label on its card and its open stage: tracked capitals, in the
+    /// ink of the chips' words, so the name a person picks in Settings is the name they see.
+    public static var wordmark: String { Localized.text("Megatron").uppercased() }
     public static var stageLabel: String { named(Localized.text("Everything the agent did before answering")) }
 
     /// Words a screen reader says about Megatron, led by its name so the part that is read is
