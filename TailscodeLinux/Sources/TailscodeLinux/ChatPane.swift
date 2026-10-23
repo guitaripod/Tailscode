@@ -65,12 +65,7 @@ final class ChatPane: @unchecked Sendable {
     /// Prompts written while a turn was running, held here rather than handed to the server so
     /// they can still be reworded, reordered or taken back — which is the whole point of them
     /// being a queue and not a send.
-    private var queue = SendQueue() {
-        didSet {
-            guard !adoptingQueue, queue != oldValue, let entry else { return }
-            SendQueueStore.save(queue, profileID: entry.profileID, sessionID: entry.session.id)
-        }
-    }
+    private var queue: ConversationQueue?
     /// Messages a spent provider window stopped, and the moment each goes again. The policy and
     /// every word are Core's; this owns the one clock that fires them and the ledger's copy on
     /// disk, so a window that opens after the app was closed is still explained rather than lost.
@@ -84,7 +79,7 @@ final class ChatPane: @unchecked Sendable {
     /// Which waiting message the composer is rewriting. A message taken back and sent again would
     /// land at the end of the queue, which is not editing but deleting and re-adding, and it
     /// silently reorders what somebody wrote.
-    private var editingQueued: UUID?
+    private var editingQueued: String?
     private var pendingFirstMessage:
         (sessionID: String, send: QuickAskSend, attachments: [PendingAttachment])?
     private var notice: String?
@@ -298,8 +293,6 @@ final class ChatPane: @unchecked Sendable {
     /// Whether the window's focus is on this pane. Only the focused pane runs the reveal.
     private(set) var isFocusedPane = true
     private var drainPriority: DrainPriority = .focused
-    /// Set while the queue is re-read from the store, which already holds what it says.
-    private var adoptingQueue = false
     private var agentStreamTask: Task<Void, Never>?
     private var agentStreamSessionID: String?
     private var tickerTask: Task<Void, Never>?
@@ -1067,6 +1060,9 @@ final class ChatPane: @unchecked Sendable {
         context.editQueued = { [weak self] id in
             Gtk.onMain { [weak self] in self?.editQueued(id) }
         }
+        context.resumeQueue = { [weak self] in
+            Gtk.onMain { [weak self] in self?.resumeQueue() }
+        }
         context.pendingAct = { [weak self] id, act in
             Gtk.onMain { [weak self] in self?.actOnPending(id, act) }
         }
@@ -1219,7 +1215,7 @@ final class ChatPane: @unchecked Sendable {
     var kindOverride: PaneKind?
 
     /// Messages this device is holding for the conversation, for a glance's footer.
-    var queuedCount: Int { queue.count }
+    var queuedCount: Int { queueDisplay.count }
 
     /// Lets go of the transcript's row widgets while the pane is parked, keeping the rows' memo so
     /// the next lease refills the tail through the ordinary first fill. A demoted pane keeps them
@@ -1775,7 +1771,7 @@ final class ChatPane: @unchecked Sendable {
         syncBrainSettings()
         call.chatChanged()
         editingQueued = nil
-        queue = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
+        queue = ConversationQueue(profileID: entry.profileID, sessionID: entry.session.id)
         conversation = nil
         backend = nil
         lastState = nil
@@ -2325,11 +2321,14 @@ final class ChatPane: @unchecked Sendable {
         }
         dockRetry(&rows, state: state)
         // What has been written and not sent sits at the very end, in the order it will go.
-        for (index, waiting) in queue.items.enumerated() {
+        let waiting = queueDisplay
+        for (index, row) in waiting.rows.enumerated() {
             rows.append(
                 TranscriptRow(
-                    key: "queued:\(waiting.id.uuidString)",
-                    kind: .queuedSend(waiting, position: index + 1, of: queue.count)))
+                    key: row.key, kind: .queuedSend(row, position: index + 1, of: waiting.count)))
+        }
+        if waiting.paused {
+            rows.append(TranscriptRow(key: "queue-paused", kind: .queuePaused(count: waiting.count)))
         }
         lastFullRows = rows
         noteDoubledRows(rows)
@@ -2461,30 +2460,70 @@ final class ChatPane: @unchecked Sendable {
     /// edge service, once per conversation however many panes show it, and the head is taken from
     /// the store atomically, so no other pane, watch or process can send the same message.
     func drainHeldQueue(_ state: ConversationState) {
-        guard let entry,
+        handOverQueue()
+        guard let queue, let conversation, !draining,
             SendQueueDrain.mayDrain(state, editing: editingQueued != nil, handoff: handoff),
-            let conversation, !draining
+            queue.holdsDeviceHead(routing: queueRouting)
         else { return }
         draining = true
         defer { draining = false }
-        let next = SendQueueStore.takeFirst(profileID: entry.profileID, sessionID: entry.session.id)
-        adoptStoredQueue()
-        guard let next else { return }
+        guard let next = queue.takeDeviceHead(routing: queueRouting) else { return }
         deliver(next, through: conversation)
     }
 
     /// Re-reads this conversation's queue from the store, after something else took from it or put
     /// back into it, and redraws the waiting rows.
     func reloadQueue() {
-        adoptStoredQueue()
+        queue?.adopt()
         if let state = lastState { apply(state: state, rows: lastFullRows) }
     }
 
-    private func adoptStoredQueue() {
-        guard let entry else { return }
-        adoptingQueue = true
-        queue = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
-        adoptingQueue = false
+    /// How this conversation's backend takes a queued message, read each time because a bridge
+    /// says whether it keeps a queue only after the first request to it.
+    private var queueRouting: QueueRouting {
+        guard let backend, let entry else { return .device }
+        return QueueRouting(capabilities: backend.capabilities, profileID: entry.profileID)
+    }
+
+    /// The whole queue as it is drawn: what the server holds for every client of the
+    /// conversation, then what this device still holds.
+    private var queueDisplay: QueueDisplay {
+        queue?.display(lastState, routing: queueRouting) ?? .empty
+    }
+
+    /// Writes a message behind a running turn. Where the server keeps the queue it is handed over
+    /// at once, under its own id; elsewhere, or while the server cannot be reached, it waits here.
+    private func hold(_ send: QueuedSend) {
+        queue?.append(send)
+        handOverQueue()
+    }
+
+    /// Hands the server every message this device holds for it. Asked on every state, so a
+    /// message written offline goes the moment the server answers and one left in the store by a
+    /// version that held everything locally goes on the first connection.
+    func handOverQueue() {
+        guard let queue, let conversation else { return }
+        let routing = queueRouting
+        guard queue.holdsServerBound(routing: routing) else { return }
+        Task { [weak self] in
+            let changed = await queue.flush(through: conversation, routing: routing)
+            if changed { Gtk.onMain { [weak self] in self?.redrawPending() } }
+        }
+    }
+
+    /// Reports what became of a press on a queued row; a message the server had already started
+    /// is said to be sent, and its row is gone either way.
+    private func report(_ outcome: QueueOutcome) {
+        redrawPending()
+        if let message = outcome.message { setNotice(message) }
+    }
+
+    private func resumeQueue() {
+        guard let queue, let conversation else { return }
+        Task { [weak self] in
+            let outcome = await queue.resume(through: conversation)
+            Gtk.onMain { [weak self] in self?.report(outcome) }
+        }
     }
 
     /// Guards the drain against re-entering itself: `drainQueue` runs at the end of `apply`, and
@@ -2534,9 +2573,9 @@ final class ChatPane: @unchecked Sendable {
 
     private func enqueueOrRun(_ send: QueuedSend, through conversation: AgentConversation) {
         guard lastState?.status != .running, lastState?.compaction?.isRunning != true,
-            queue.isEmpty, !handoff.isOpen
+            queueDisplay.isEmpty, !handoff.isOpen
         else {
-            queue.append(send)
+            hold(send)
             if let state = lastState { apply(state: state, rows: lastFullRows) }
             scrollToBottom()
             return
@@ -2887,8 +2926,9 @@ final class ChatPane: @unchecked Sendable {
 
     /// Opens a waiting message for rewriting. It keeps its place in the queue; only sending
     /// replaces it.
-    private func editQueued(_ id: UUID) {
-        guard let waiting = queue.item(id: id), !waiting.isCommand else { return }
+    private func editQueued(_ id: String) {
+        guard let row = queueDisplay.row(id: id), row.canEdit else { return }
+        let waiting = row.editable
         let pending = composerText().trimmingCharacters(in: .whitespacesAndNewlines)
         guard pending.isEmpty else {
             setNotice(Localized.text("Send or clear what is in the composer first."))
@@ -2911,10 +2951,10 @@ final class ChatPane: @unchecked Sendable {
     /// ↑ in an empty composer takes back the last thing written — the one being reconsidered.
     /// Only from an empty box: in a half-typed paragraph that key is moving the caret.
     func takeBackLastQueued() -> Bool {
+        let display = queueDisplay
         guard
-            SendQueueReading.upArrowTakesBack(
-                composerText: composerText(), queue: queue),
-            let last = queue.items.last
+            QueueReading.upArrowOpensLast(composerText: composerText(), display: display),
+            let last = display.last
         else { return false }
         editQueued(last.id)
         return true
@@ -2932,7 +2972,8 @@ final class ChatPane: @unchecked Sendable {
     /// Whether a row is one this device docks at the end rather than one the server reported.
     private static func dockedKey(_ key: String) -> Bool {
         key.hasPrefix("echo:") || key.hasPrefix("pending:") || key.hasPrefix("queued:")
-            || key.hasPrefix("interrupted") || key.hasPrefix("revert:") || key.hasPrefix("retry")
+            || key == "queue-paused" || key.hasPrefix("interrupted") || key.hasPrefix("revert:")
+            || key.hasPrefix("retry")
     }
 
     /// An empty pane asks which server rather than captioning itself. The chooser owns the
@@ -3930,7 +3971,7 @@ final class ChatPane: @unchecked Sendable {
             context: contextFill?.rewindowed(
                 model: activeModelID, providerID: activeSelection?.providerID, catalog: models),
             quotas: quotas,
-            queued: queue.count, spend: spend, git: git, model: activeModelID,
+            queued: queueDisplay.count, spend: spend, git: git, model: activeModelID,
             selection: activeSelection, trail: RangeStore.trail)
         RangePanel.transcriptChanged()
         if identityActivity != facts.activity {
@@ -5611,7 +5652,19 @@ final class ChatPane: @unchecked Sendable {
             if let draftScope { DraftStore.clear(draftScope) }
             attachments = []
             renderAttachments()
-            _ = queue.replace(id: id, text: text, attachments: outgoing.map(\.prompt))
+            if let queue, let row = queueDisplay.row(id: id) {
+                queue.edit(
+                    row, text: text, attachments: outgoing.map(\.prompt), through: conversation
+                ) { [weak self] outcome in
+                    Gtk.onMain { [weak self] in
+                        if outcome == .alreadyStarted { self?.addWordsToComposer(text, announcing: false) }
+                        self?.report(outcome)
+                    }
+                }
+            } else {
+                addWordsToComposer(text, announcing: false)
+                setNotice(QueueReading.alreadySent)
+            }
             if let state = lastState { apply(state: state, rows: lastFullRows) }
             return
         }
@@ -5625,7 +5678,7 @@ final class ChatPane: @unchecked Sendable {
         // A prompt written while a turn runs is held here, not handed over: a message you can
         // still change is worth more than a message one place further along.
         guard lastState?.status != .running, lastState?.compaction?.isRunning != true else {
-            queue.append(send)
+            hold(send)
             if let state = lastState { apply(state: state, rows: lastFullRows) }
             scrollToBottom()
             return

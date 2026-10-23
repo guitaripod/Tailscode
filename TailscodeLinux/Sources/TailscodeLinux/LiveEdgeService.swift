@@ -20,9 +20,15 @@ final class LiveEdgeService: LiveEdges, @unchecked Sendable {
         var handoff = TurnHandoff()
         var sending = false
         var drainAsked = false
+        var lastAsked = Date.distantPast
+        var queue: ConversationQueue?
         var presence: SessionPresence = .running(nil)
         var watched = false
     }
+
+    /// How often a conversation with something held is asked about while its turn runs, so a
+    /// message waiting for the server goes when the server answers and not only when the turn ends.
+    private static let handOverInterval: TimeInterval = 1
 
     private let lock = NSLock()
     private var records: [LiveKey: Record] = [:]
@@ -76,11 +82,14 @@ final class LiveEdgeService: LiveEdges, @unchecked Sendable {
         let changed = reading != record.presence
         record.presence = reading
         var askDrain = false
+        let now = Date()
         if !record.drainAsked, !record.sending,
-            SendQueueDrain.mayDrain(state, handoff: record.handoff),
-            !SendQueueStore.queue(profileID: key.profileID, sessionID: key.sessionID).isEmpty
+            !SendQueueStore.queue(profileID: key.profileID, sessionID: key.sessionID).isEmpty,
+            SendQueueDrain.mayDrain(state, handoff: record.handoff)
+                || now.timeIntervalSince(record.lastAsked) > Self.handOverInterval
         {
             record.drainAsked = true
+            record.lastAsked = now
             askDrain = true
         }
         let watched = record.watched
@@ -120,22 +129,51 @@ final class LiveEdgeService: LiveEdges, @unchecked Sendable {
             || !SendQueueStore.queue(profileID: key.profileID, sessionID: key.sessionID).isEmpty
     }
 
-    /// Sends the queue's head for a conversation no pane is showing, taken atomically from the
-    /// store so no other surface or process can send the same message. A send that fails goes back
-    /// to the head of the queue and the handoff it opened ends.
-    func drainInBackground(_ key: LiveKey, after state: ConversationState) {
-        guard let next = SendQueueStore.takeFirst(profileID: key.profileID, sessionID: key.sessionID)
-        else { return }
+    /// The queue this process keeps for a conversation no pane is showing.
+    private func heldQueue(_ key: LiveKey) -> ConversationQueue {
         lock.lock()
-        records[key, default: Record()].handoff.begin(after: state)
+        defer { lock.unlock() }
+        if let held = records[key]?.queue { return held }
+        let made = ConversationQueue(profileID: key.profileID, sessionID: key.sessionID)
+        records[key, default: Record()].queue = made
+        return made
+    }
+
+    /// What a conversation no pane is showing owes its queue. Whatever the server keeps the queue
+    /// for is handed over, and the head the device drains itself is taken atomically from the
+    /// store so no other surface or process can send the same message. A send that fails goes
+    /// back to the head of the queue and the handoff it opened ends.
+    func drainInBackground(_ key: LiveKey, after state: ConversationState) {
+        lock.lock()
+        let busy = records[key]?.sending ?? false
         records[key, default: Record()].sending = true
         lock.unlock()
+        guard !busy else { return }
         let hub = self.hub
         Task { [weak self] in
+            guard let self else { return }
+            guard let conversation = await hub?.conversation(for: key),
+                let backend = await ServerDirectory.shared.backend(forProfileID: key.profileID)
+            else {
+                self.endedPass(key)
+                return
+            }
+            let routing = QueueRouting(capabilities: backend.capabilities, profileID: key.profileID)
+            let queue = self.heldQueue(key)
+            queue.adopt()
+            if queue.holdsServerBound(routing: routing),
+                await queue.flush(through: conversation, routing: routing)
+            {
+                Gtk.onMain { [weak self] in self?.window?.liveQueueChanged(key) }
+            }
+            guard SendQueueDrain.mayDrain(state, handoff: self.handoff(of: key)),
+                let next = queue.takeDeviceHead(routing: routing)
+            else {
+                self.endedPass(key)
+                return
+            }
+            self.openHandoff(key, after: state)
             do {
-                guard let conversation = await hub?.conversation(for: key) else {
-                    throw CancellationError()
-                }
                 switch next.kind {
                 case .prompt:
                     try await conversation.send(
@@ -147,11 +185,30 @@ final class LiveEdgeService: LiveEdges, @unchecked Sendable {
                         arguments: arguments.isEmpty ? nil : arguments, model: next.model,
                         reasoningEffort: next.effort)
                 }
-                self?.finishedBackgroundSend(key, failed: nil)
+                self.finishedBackgroundSend(key, failed: nil)
             } catch {
-                self?.finishedBackgroundSend(key, failed: next)
+                self.finishedBackgroundSend(key, failed: next)
             }
         }
+    }
+
+    private func handoff(of key: LiveKey) -> TurnHandoff {
+        lock.lock()
+        defer { lock.unlock() }
+        return records[key]?.handoff ?? TurnHandoff()
+    }
+
+    private func openHandoff(_ key: LiveKey, after state: ConversationState) {
+        lock.lock()
+        records[key, default: Record()].handoff.begin(after: state)
+        lock.unlock()
+    }
+
+    /// A pass that sent nothing: the conversation may be asked about again.
+    private func endedPass(_ key: LiveKey) {
+        lock.lock()
+        records[key, default: Record()].sending = false
+        lock.unlock()
     }
 
     private func finishedBackgroundSend(_ key: LiveKey, failed: QueuedSend?) {
@@ -160,9 +217,9 @@ final class LiveEdgeService: LiveEdges, @unchecked Sendable {
         if failed != nil { records[key, default: Record()].handoff.end() }
         lock.unlock()
         if let failed {
-            var held = SendQueueStore.queue(profileID: key.profileID, sessionID: key.sessionID)
-            held.requeueAtHead(failed)
-            SendQueueStore.save(held, profileID: key.profileID, sessionID: key.sessionID)
+            SendQueueStore.update(profileID: key.profileID, sessionID: key.sessionID) {
+                $0.requeueAtHead(failed)
+            }
         }
         Gtk.onMain { [weak self] in self?.window?.liveQueueChanged(key) }
         hub?.reevaluate(key)

@@ -78,7 +78,9 @@ final class TranscriptContext: @unchecked Sendable {
     var requestDesignBoard: (@Sendable (String) -> Void)?
     /// A message still waiting behind the running turn, opened for rewriting. It is the one row in
     /// a transcript that has not happened yet, so it is the one row a press means something on.
-    var editQueued: (@Sendable (UUID) -> Void)?
+    var editQueued: (@Sendable (String) -> Void)?
+    /// Lifts the pause a Stop left on the queue, which is the queue's and not any one message's.
+    var resumeQueue: (@Sendable () -> Void)?
     var pendingAct: (@Sendable (UUID, PendingSend.Act) -> Void)?
     /// A message being held for a provider's window: sent into it now anyway, opened for
     /// rewriting, or let out of the wait. The pane owns all three because only it knows what the
@@ -364,7 +366,9 @@ struct TranscriptRow: Hashable {
         /// What the answer above it took, drawn only where the reader asked for it.
         case responseStats(ResponseStats)
         /// Written, not sent: a prompt waiting behind the turn that is running.
-        case queuedSend(QueuedSend, position: Int, of: Int)
+        case queuedSend(QueueRow, position: Int, of: Int)
+        /// The queue a Stop paused, with something in it: nothing goes until it is resumed.
+        case queuePaused(count: Int)
         case pendingSend(PendingSend, ResumePlan?)
         /// Not ``interruption``, which is the escape key: this is the machine stopping mid-answer.
         case interruptedTurn(InterruptedTurn)
@@ -855,8 +859,10 @@ struct TranscriptRow: Hashable {
             return members.map { Self.searchText(for: $0.call) }.joined(separator: " ")
         case .responseStats(let stats):
             return stats.spoken
-        case .queuedSend(let send, _, _):
-            return SendQueueReading.rowTitle(send)
+        case .queuedSend(let row, _, _):
+            return row.title
+        case .queuePaused(let count):
+            return QueueReading.pausedLine(count: count)
         case .pendingSend(let send, let plan):
             guard let plan else { return PendingSendReading.spoken(send, now: Date()) }
             return ResumeReading.spoken(plan, words: send.text)
@@ -936,8 +942,10 @@ struct TranscriptRow: Hashable {
             return SubagentRowView.makeGroup(members, key: key, context: context)
         case .responseStats(let stats):
             return Self.responseStats(stats)
-        case .queuedSend(let send, let position, let total):
-            return Self.queuedSend(send, position: position, of: total, context: context)
+        case .queuedSend(let row, let position, let total):
+            return Self.queuedSend(row, position: position, of: total, context: context)
+        case .queuePaused(let count):
+            return Self.queuePaused(count: count, context: context)
         case .pendingSend(let send, let plan):
             return Self.pendingSend(send, plan: plan, context: context)
         case .interruptedTurn(let turn):
@@ -1303,7 +1311,7 @@ struct TranscriptRow: Hashable {
     /// accent rule, same words — but dimmed, marked, and pressable, because it is the one row in
     /// the transcript that is still the reader's to change. Nothing about it may read as sent.
     private static func queuedSend(
-        _ send: QueuedSend, position: Int, of total: Int, context: TranscriptContext
+        _ queued: QueueRow, position: Int, of total: Int, context: TranscriptContext
     ) -> UnsafeMutablePointer<GtkWidget> {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
         let rule = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
@@ -1313,19 +1321,19 @@ struct TranscriptRow: Hashable {
 
         let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         let label = Gtk.label(
-            "\(SendQueueReading.glyph) \(SendQueueReading.rowTitle(send))", css: "prompt-text",
+            "\(QueueReading.glyph(queued)) \(queued.title)", css: "prompt-text",
             wrap: true)
         gtk_label_set_xalign(op(label), 0)
         gtk_widget_set_hexpand(label, 1)
         gtk_box_append(ptr(lines), label)
         gtk_box_append(
-            ptr(lines), Gtk.label(SendQueueReading.hint, css: "queued-hint", selectable: false))
+            ptr(lines), Gtk.label(QueueReading.hint(queued), css: "queued-hint", selectable: false))
         gtk_widget_set_hexpand(lines, 1)
 
         gtk_box_append(ptr(row), rule)
         gtk_box_append(ptr(row), lines)
 
-        guard !send.isCommand else {
+        guard queued.canEdit else {
             Gtk.addClass(row, "queued-row")
             return row
         }
@@ -1334,13 +1342,43 @@ struct TranscriptRow: Hashable {
         Gtk.addClass(button, "queued-row")
         gtk_button_set_child(ptr(button), row)
         gtk_widget_set_hexpand(button, 1)
-        gtk_widget_set_tooltip_text(button, SendQueueReading.spoken(send, position: position, of: total))
+        gtk_widget_set_tooltip_text(button, QueueReading.spoken(queued, position: position, of: total))
         tailscode_set_accessible_label(
-            button, SendQueueReading.spoken(send, position: position, of: total))
+            button, QueueReading.spoken(queued, position: position, of: total))
         let edit = context.editQueued
-        let id = send.id
+        let id = queued.id
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { edit?(id) }
         return button
+    }
+
+    /// The note under a queue a Stop paused, with the one press that lets it go on: the pause is
+    /// the queue's, so Resume is drawn once beneath all of its messages.
+    private static func queuePaused(
+        count: Int, context: TranscriptContext
+    ) -> UnsafeMutablePointer<GtkWidget> {
+        let line = QueueReading.pausedLine(count: count)
+        let card = Gtk.groupBox(
+            GTK_ORIENTATION_VERTICAL, spacing: 6, spoken: "\(line). \(QueueReading.pausedHint)")
+        Gtk.addClass(card, "card")
+
+        let heading = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        gtk_box_append(
+            ptr(heading), Gtk.label(SendQueueReading.heldGlyph, css: "row-note", selectable: false))
+        let title = Gtk.label(line, css: "card-title", wrap: true, selectable: false)
+        gtk_widget_set_hexpand(title, 1)
+        gtk_widget_set_halign(title, GTK_ALIGN_START)
+        gtk_box_append(ptr(heading), title)
+        gtk_box_append(ptr(card), heading)
+
+        let detail = Gtk.label(QueueReading.pausedHint, css: "tool-detail", wrap: true, selectable: false)
+        gtk_widget_set_halign(detail, GTK_ALIGN_START)
+        gtk_box_append(ptr(card), detail)
+
+        let resume = context.resumeQueue
+        let button = Gtk.button(QueueReading.resume, css: ["flat", "seam-read"]) { resume?() }
+        gtk_widget_set_halign(button, GTK_ALIGN_START)
+        gtk_box_append(ptr(card), button)
+        return card
     }
 
     /// A message on its way out: the words drawn as the prompt they will become, with a line
