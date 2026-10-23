@@ -134,7 +134,7 @@ final class BrainRowView: UIView {
             let opening = transition?.direction.isOpening ?? false
             if opening != wantsOpen { reverse() }
         case (.open, true):
-            openView?.apply(metrics: metrics!, viewport: viewport)
+            openView?.apply(metrics: metrics!)
             openView?.refreshAll()
         case (.closed, false):
             break
@@ -192,7 +192,7 @@ final class BrainRowView: UIView {
         guard phase == .open, let store, let model = store.model(for: turnID) else { return }
         metrics = makeMetrics(width: bounds.width, model: model)
         cardMetrics = makeCardMetrics(model: model)
-        openView?.apply(metrics: metrics!, viewport: viewport)
+        openView?.apply(metrics: metrics!)
         currentHeight = openView?.openHeight ?? currentHeight
         onHeightChange?()
         setNeedsLayout()
@@ -241,7 +241,7 @@ final class BrainRowView: UIView {
         case .closed:
             return card.requiredHeight(width: max(width - 2 * cardInset, 0))
         case .open:
-            return CGFloat(m.rowHeight) + BrainOpenView.narrowExtra(metrics: m, viewport: viewport)
+            return CGFloat(m.openHeight)
         case .moving:
             return currentHeight
         }
@@ -259,7 +259,7 @@ final class BrainRowView: UIView {
             cardMetrics = makeCardMetrics(model: model)
             card.configure(model: model, row: row, memory: store.memory(for: row.turnID), metrics: cardMetrics!)
             if phase == .open || phase == .moving {
-                openView?.apply(metrics: metrics!, viewport: viewport)
+                openView?.apply(metrics: metrics!)
                 openView?.refreshAll()
             }
             if phase == .moving { finishNow(open: transition?.direction.isOpening ?? false) }
@@ -317,7 +317,7 @@ final class BrainRowView: UIView {
         let made = BrainOpenView(metrics: metrics)
         made.attach(store: store, turnID: turnID, actions: actions!)
         made.onSlotsChange = { [weak self] in self?.slotsChanged() }
-        made.apply(metrics: metrics, viewport: viewport)
+        made.apply(metrics: metrics)
         insertSubview(made, belowSubview: card)
         made.frame = CGRect(x: 0, y: 0, width: bounds.width, height: made.openHeight)
         made.refreshAll()
@@ -380,7 +380,7 @@ final class BrainRowView: UIView {
 
     private func makeTransition(direction: NeuralTransition.Direction) -> NeuralTransition? {
         guard let metrics, let model = store?.model(for: turnID) else { return nil }
-        let extra = BrainOpenView.narrowExtra(metrics: metrics, viewport: viewport)
+        let extra = CGFloat(metrics.narrowExtra)
         let (cardGeometry, stageGeometry) = geometries(metrics: metrics, extra: extra)
         let opening = direction.isOpening
         return NeuralTransition(

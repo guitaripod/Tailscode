@@ -27,6 +27,7 @@ struct BrainActions {
 final class BrainOpenView: UIView, BrainBrowsing {
     let stage = BrainStageView()
     private let stageBand = UIView()
+    private let wordmark = UILabel()
     let chips = BrainFilterBar()
     private var madeList: BrainStepListView?
 
@@ -93,10 +94,15 @@ final class BrainOpenView: UIView, BrainBrowsing {
     init(metrics initial: NeuralStageMetrics) {
         metrics = initial
         super.init(frame: .zero)
-        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: BrainOpenView, _) in view.traitsChanged() }
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self, UITraitPreferredContentSizeCategory.self]) { (view: BrainOpenView, _) in view.traitsChanged() }
         clipsToBounds = true
         addSubview(stageBand)
         addSubview(stage)
+        wordmark.isAccessibilityElement = false
+        wordmark.isUserInteractionEnabled = false
+        wordmark.lineBreakMode = .byClipping
+        styleWordmark()
+        addSubview(wordmark)
         addSubview(chips)
         addSubview(compactList)
         addSubview(accordionHeader)
@@ -571,9 +577,9 @@ final class BrainOpenView: UIView, BrainBrowsing {
     }
 
     /// Lays every part out for the metrics of this width.
-    func apply(metrics new: NeuralStageMetrics, viewport: CGFloat) {
+    func apply(metrics new: NeuralStageMetrics) {
         metrics = new
-        extra = Self.narrowExtra(metrics: new, viewport: viewport)
+        extra = CGFloat(new.narrowExtra)
         env.metrics = new
         if !new.isPhone { list.configure(metrics: new) }
         compactList.configure(metrics: new)
@@ -590,14 +596,6 @@ final class BrainOpenView: UIView, BrainBrowsing {
         setNeedsLayout()
     }
 
-    /// How much taller a narrow brain is than the list it replaces: its account is as tall as the
-    /// window allows, 62 percent of what the reader sees between 340 and 640.
-    static func narrowExtra(metrics: NeuralStageMetrics, viewport: CGFloat) -> CGFloat {
-        guard metrics.arrangement == .accordion, !metrics.isPhone else { return 0 }
-        let wanted = min(max((viewport * 0.62).rounded(), 340), 640)
-        return max(0, wanted - CGFloat(metrics.list.height))
-    }
-
     private func rect(_ value: NeuralRect) -> CGRect {
         CGRect(x: value.x, y: value.y, width: value.width, height: value.height)
     }
@@ -609,6 +607,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
         stageBand.frame = split ? stage.frame : CGRect(x: 0, y: stage.frame.minY, width: bounds.width, height: stage.frame.height)
         stageBand.backgroundColor = stage.backgroundColor
         stageLights.layout(in: stage.bounds)
+        placeWordmark()
         if !metrics.isPhone { chips.frame = rect(metrics.filterChips ?? .zero) }
         let listRect = rect(metrics.list)
         if metrics.isPhone {
@@ -646,7 +645,29 @@ final class BrainOpenView: UIView, BrainBrowsing {
         updateLeader(animated: false)
     }
 
+    /// The name the open stage wears in the row's corner, nil where it wears none.
+    var wordmarkText: String? { wordmark.isHidden ? nil : wordmark.attributedText?.string }
+
+    private func styleWordmark() {
+        wordmark.attributedText = NSAttributedString(
+            string: NeuralReading.wordmark,
+            attributes: Theme.Ramp.attributes(.sectionLabel, color: Theme.Color.secondaryLabel))
+    }
+
+    /// Megatron's name in the row's top left corner where Core's metrics say the corner is clear of
+    /// the head, as wide as its words.
+    private func placeWordmark() {
+        guard let box = metrics.stageWordmark else {
+            wordmark.isHidden = true
+            return
+        }
+        wordmark.isHidden = false
+        let size = wordmark.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat(box.height)))
+        wordmark.frame = CGRect(x: box.x, y: box.y, width: ceil(size.width), height: ceil(size.height))
+    }
+
     private func traitsChanged() {
+        styleWordmark()
         setNeedsLayout()
         updateLeader(animated: false)
     }
@@ -869,6 +890,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
             height: frame.traveller.height)
         let scale = stageRect.width > 0 ? traveller.width / stageRect.width : 1
         stage.alpha = CGFloat(frame.travellerAlpha)
+        wordmark.alpha = stage.alpha
         stageBand.alpha = 0
         stage.layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         stage.transform = CGAffineTransform(
@@ -899,6 +921,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
     func finishMove() {
         isMoving = false
         stage.alpha = 1
+        wordmark.alpha = 1
         UIView.animate(withDuration: 0.15) { self.stageBand.alpha = 1 }
         stage.transform = .identity
         stageLights.opacity = 0

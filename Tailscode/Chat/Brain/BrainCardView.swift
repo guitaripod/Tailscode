@@ -42,6 +42,8 @@ final class BrainCardView: UIView {
     private let nowTrailing = UILabel()
     private let quoteLabel = UILabel()
     private let third = UILabel()
+    private let wordmark = UILabel()
+    var wordmarkShown: Bool { !wordmark.isHidden }
     private let chipHost = UIView()
     private var chips: [BrainZoneChip] = []
     private let replay = CardButton()
@@ -97,6 +99,9 @@ final class BrainCardView: UIView {
             textGroup.addSubview(label)
         }
         nowTrailing.textAlignment = .right
+        wordmark.isUserInteractionEnabled = false
+        wordmark.lineBreakMode = .byClipping
+        textGroup.addSubview(wordmark)
         chipHost.clipsToBounds = true
         textGroup.addSubview(chipHost)
         for button in [replay, rows, open] { textGroup.addSubview(button) }
@@ -407,6 +412,9 @@ final class BrainCardView: UIView {
                 NSAttributedString(
                     string: piece.text, attributes: Theme.Ramp.attributes(.rowMeta, color: ink)))
         }
+        wordmark.attributedText = NSAttributedString(
+            string: NeuralReading.wordmark,
+            attributes: Theme.Ramp.attributes(.sectionLabel, color: Theme.Color.secondaryLabel))
         wideHeadline = NSMutableAttributedString(attributedString: main)
         if tail.length > 0 {
             wideHeadline.append(NSAttributedString(string: "   "))
@@ -783,6 +791,7 @@ final class BrainCardView: UIView {
         var rows: CGRect
         var open: CGRect
         var narrow: Bool
+        var wordmark = CGRect.zero
     }
 
     /// What the card needs in height at this width: the metrics' height, or more when the reader's
@@ -951,7 +960,39 @@ final class BrainCardView: UIView {
             layout.replay = frames.replay
             if live { layout.open = frames.second } else { layout.rows = frames.second }
         }
+        layout.wordmark = wordmarkFrame(
+            layout, width: width, right: narrow ? textX + textWidth : layout.headline.maxX, live: live)
         return layout
+    }
+
+    /// Where Megatron's name goes: the right end of the headline's line, on the headline's own
+    /// baseline, when Core's rule says the headline's words leave it room; zero when they do not.
+    /// A label of the card like the others, so it is drawn with them and costs no pass of its own.
+    private func wordmarkFrame(_ layout: Layout, width: CGFloat, right: CGFloat, live: Bool) -> CGRect {
+        guard let text = wordmark.attributedText else { return .zero }
+        func extent(_ words: NSAttributedString?) -> CGFloat { ceil(words?.size().width ?? 0) }
+        let line = live && layout.narrow ? layout.liveHeadline : layout.headline
+        let lead: UIFont
+        var end = line.minX
+        if live {
+            lead = Theme.Ramp.font(.cardTitle)
+            end += extent(liveHeadline.attributedText)
+            if !layout.narrow { end += 10 + extent(liveCounts.attributedText) }
+            else if isCompact { end += 8 + extent(liveCounts.attributedText) }
+        } else {
+            lead = Theme.Ramp.font(.metricLarge)
+            end += extent(layout.narrow ? narrowMain : wideHeadline)
+        }
+        let face = Theme.Ramp.font(.sectionLabel)
+        let size = CGSize(width: ceil(text.size().width) + 2, height: face.lineHeight)
+        guard NeuralStageMetrics.cardShowsWordmark(
+            width: Double(width), headlineEnd: Double(end), headlineRight: Double(right),
+            wordmarkWidth: Double(size.width))
+        else { return .zero }
+        let baseline = line.midY + (lead.ascender + lead.descender) / 2
+        return CGRect(
+            x: right - size.width, y: baseline - face.ascender,
+            width: size.width, height: size.height)
     }
 
     override func layoutSubviews() {
@@ -1044,6 +1085,8 @@ final class BrainCardView: UIView {
         replay.frame = layout.replay
         rows.frame = layout.rows
         open.frame = layout.open
+        wordmark.frame = layout.wordmark
+        wordmark.isHidden = layout.wordmark == .zero
     }
 
     override func sizeThatFits(_ size: CGSize) -> CGSize {

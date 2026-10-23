@@ -299,6 +299,7 @@
                 check("a \(Int(width)) pt phone opens compact", metrics.isPhone && metrics.rowHeight <= 400, "\(metrics.rowHeight)")
                 check("a \(Int(width)) pt phone's head is 152 at most", metrics.stage.height <= 160, "\(metrics.stage.height)")
                 check("a \(Int(width)) pt phone's card stays 84", metrics.cardHeight == 84)
+                check("a \(Int(width)) pt phone's stage names Megatron only where its corner is clear of the head", (metrics.stageWordmark != nil) == (width - 16 >= 386), "\(metrics.stage.x)")
             }
         }
 
@@ -872,6 +873,7 @@
             check("the open row is the compact height", abs(Double(row.bounds.height) - phone.rowHeight) < 1.5, "\(row.bounds.height) vs \(phone.rowHeight)")
             check("the open row is at most 400 and a half of a viewport", row.bounds.height <= 400 && row.bounds.height <= viewport * 0.6, "\(row.bounds.height) of \(viewport)")
             check("nothing in the open Megatron scrolls vertically", verticalScrollers(in: open).isEmpty, "\(verticalScrollers(in: open).map { "\(type(of: $0))" })")
+            check("the open stage wears Megatron's name where Core clears its corner", (open.wordmarkText == NeuralReading.wordmark) == (phone.stageWordmark != nil), open.wordmarkText ?? "none")
             check("the account is not built, let alone in the page", open.builtAccount == nil)
             let total = model.stepList.visibleCount
             if total > NeuralStageMetrics.phoneRowSlots {
@@ -946,6 +948,9 @@
                 return
             }
             check("a settled card owns no display link and no clock", !row.ownsDisplayLink && BrainLiveClock.shared.registered == 0)
+            if row.bounds.width >= NeuralStageMetrics.cardWordmarkMinWidth {
+                check("a card wears Megatron's name when its headline leaves room", row.card.wordmarkShown)
+            }
             toggle(id)
             await wait(1.6)
             let openRow = cell()?.brainRow
