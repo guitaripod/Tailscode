@@ -61,7 +61,7 @@ Expected: ≈ 840 pt, one screen on a 6.1″ phone at default type size.
 
 ## Built, and what building changed
 
-Files: `Tailscode/Usage/UsageCards.swift` (new — every card), `UsageViewController.swift` (composition, navigation title, board menu), `RingGaugeView.swift`; widgets in `TailscodeWidget/UsageWidgetViews.swift` and `UsageWidget.swift`; Core `QuotaSurface.Pressure` (the four words and their two thresholds, shared by the ring colour, the bar colour and the pill) and `WidgetGlance.headline`/`heroIsWalled`. Six new strings in all eleven languages.
+Files: `Tailscode/Usage/` (`BoardBar`, `HeroCard`, `ProviderCard`, `MoreProvidersCard`, `CountingFooter`, `MonthCard`, shared types in `UsageCards.swift`), `UsageViewController.swift` (composition, navigation title, board menu), `RingGaugeView.swift`; widgets in `TailscodeWidget/UsageWidgetViews.swift` and `UsageWidget.swift`; Core `QuotaSurface.Pressure` (the four words and their two thresholds, shared by the ring colour, the bar colour and the pill) and `WidgetGlance.headline`/`heroIsWalled`. Six new strings in all eleven languages.
 
 Looking at the real build, as the mocks had done before it, overturned five things:
 
