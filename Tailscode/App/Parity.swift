@@ -94,6 +94,7 @@ enum ParityManifest {
         case .attachments: return .implemented("pendingAttachments")
         case .drafts: return .implemented("draftScope")
         case .sendQueue: return .implemented("editQueued")
+        case .sharedQueue: return .implemented("QueuePausedCell")
         case .modelEffortPicker: return .implemented("dialMenuElements")
         case .modelEffortDial: return .implemented("EffortRailPresenter")
         case .modelPresets: return .implemented("ModelPresetStore")
