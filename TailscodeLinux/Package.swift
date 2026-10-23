@@ -156,8 +156,9 @@ enum Kit {
     /// before the prompt goes out, and a session the server has not titled yet is not mistaken
     /// for one called by its id. 0.43.0 holds a message queued behind a running turn on the
     /// server, so every client of the conversation shows the same queue and can edit, cancel and
-    /// resume it.
-    static let version = Version(0, 43, 0)
+    /// resume it. 0.44.0 reads the end of a held conversation ahead of the whole of it, so coming
+    /// back to a long chat shows what the agent said while the phone was away after one small read.
+    static let version = Version(0, 44, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
