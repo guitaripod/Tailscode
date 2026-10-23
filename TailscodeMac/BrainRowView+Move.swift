@@ -239,6 +239,7 @@ extension BrainRowView {
             stage.alphaValue = CGFloat(stage.head.isReady ? max(f.zoneLift, 0.0) : 0)
             stage.reveal = BrainReveal(nodes: f.nodes, wireDraw: f.wireDraw, tieDraw: f.tieDraw)
         }
+        placeWordmark(m, alpha: stage?.alphaValue ?? 0)
         chips?.alphaValue = CGFloat(f.panelAlpha)
         list?.alphaValue = 1
         list?.setReveal(rows: f.listRows, headerAlpha: f.listHeaderAlpha)

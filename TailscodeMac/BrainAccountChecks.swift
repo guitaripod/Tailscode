@@ -171,7 +171,7 @@ enum BrainAccountChecks {
         try check(!account.narrowBar.isHidden, "a narrow account carries the list's search and count")
         try check(account.footerStrip.isHidden, "a narrow account drops the key hints")
         try check(abs(account.frame.width - narrow.width) < 0.6, "the narrow account fills the row's width")
-        try check(abs(account.frame.height - row.narrowAccountHeight(narrow)) < 0.6, "the narrow account is as tall as the window allows")
+        try check(abs(account.frame.height - narrow.narrowAccountHeight) < 0.6, "the narrow account is as tall as the window allows")
         try check(account.header.frame.height > 40, "a narrow header wraps onto rows (\(account.header.frame.height))")
         try check(account.detail == nil, "a narrow account has no detail column")
         try check(account.scroll.frame.minY >= account.narrowBar.frame.maxY - 0.6, "the story sits under the narrow bar")

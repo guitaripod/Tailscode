@@ -33,6 +33,8 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
     let picture = BrainPictureLayer()
     let carrier = BrainCarrierView()
     let leader = BrainLeaderLayer()
+    private let wordmark = BrainWordmarkView()
+    private var wordmarkKey = 0
     private(set) var stage: BrainStageView?
     private(set) var chips: BrainFilterChips?
     private(set) var list: BrainListView?
@@ -102,6 +104,7 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
         addSubview(carrier)
         carrier.layer?.addSublayer(picture.container)
         layer?.addSublayer(leader.layer)
+        addSubview(wordmark)
         card.onOpen = { [weak self] in self?.store?.toggleOpen(self?.turnID ?? "") }
         card.onReplay = { [weak self] in self?.toggleReplay() }
         card.onRows = { [weak self] in self?.toggleRows() }
@@ -246,7 +249,7 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
         let zones = zonesWithSteps
         let viewport = store?.viewportHeight?().map { Double($0) }
         let key = MetricsKey(
-            width: width, density: density, zones: zones, bucket: Int((viewport ?? 0) / 8))
+            width: width, density: density, zones: zones, bucket: Int(viewport ?? 0))
         if let memo = metricsMemo, memo.key == key { return memo.value }
         let made = NeuralStageMetrics.make(
             width: width, density: density, zonesWithSteps: max(zones, 1), viewportHeight: viewport)
@@ -259,24 +262,12 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
         return metrics(forWidth: width)
     }
 
-    /// The account of a narrow brain is as tall as the window allows, not as tall as eight rows:
-    /// 62 percent of what the reader sees, between 340 and 640.
-    func narrowAccountHeight(_ m: NeuralStageMetrics) -> Double {
-        let viewport = Double(store?.viewportHeight?() ?? 700)
-        return min(max((viewport * 0.62).rounded(), 340), 640)
-    }
-
-    func narrowExtra(_ m: NeuralStageMetrics) -> Double {
-        guard m.arrangement == .accordion else { return 0 }
-        return max(0, narrowAccountHeight(m) - m.list.height)
-    }
-
     var restingHeight: CGFloat {
         let m = currentMetrics
         switch phase {
         case .closed: return CGFloat(m.card.height)
-        case .open: return CGFloat((m.rowHeight + narrowExtra(m)).rounded())
-        case .moving: return CGFloat(max(m.card.height, m.rowHeight + narrowExtra(m)).rounded())
+        case .open: return CGFloat(m.openHeight.rounded())
+        case .moving: return CGFloat(max(m.card.height, m.openHeight).rounded())
         }
     }
 
@@ -340,6 +331,36 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
             card: cardInput?.card ?? model.brainCard(now: Date()), inks: inks, hovered: card.hovered,
             lift: 1, liveZone: liveZone, liveMotion: liveMotion)
         stage?.isHidden = true
+        placeWordmark(m, alpha: 0)
+    }
+
+    /// The name the open stage wears in the row's corner, nil where it wears none.
+    var wordmarkText: String? {
+        wordmark.isHidden ? nil : wordmark.words?.string
+    }
+
+    /// Megatron's name in the row's top left corner where Core's metrics say the corner is clear of
+    /// the head, at the stage's own opacity: one small view of the row standing over the head,
+    /// made with its words once per look and only moved after that.
+    func placeWordmark(_ m: NeuralStageMetrics, alpha: CGFloat) {
+        guard alpha > 0.01, let box = m.stageWordmark else {
+            if !wordmark.isHidden { wordmark.isHidden = true }
+            return
+        }
+        let font = MacTheme.Ramp.font(.sectionLabel)
+        var hasher = Hasher()
+        hasher.combine(effectiveAppearance.name.rawValue)
+        hasher.combine(font.pointSize)
+        let key = hasher.finalize()
+        if key != wordmarkKey {
+            wordmarkKey = key
+            wordmark.words = NSAttributedString(
+                string: NeuralReading.wordmark,
+                attributes: MacTheme.Ramp.attributes(.sectionLabel, color: inks.textDim))
+        }
+        wordmark.isHidden = false
+        wordmark.alphaValue = alpha
+        wordmark.frame = rect(box)
     }
 
     private var cardInput: BrainCardView.Content?
@@ -348,10 +369,11 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
         card.isHidden = true
         picture.container.opacity = stage?.head.isReady == true ? 0 : 1
         picture.container.isHidden = stage == nil
-        let extra = narrowExtra(m)
+        let extra = m.narrowExtra
         stage?.isHidden = false
         stage?.frame = stageRect
         footer?.frame = rect(m.footer).offsetBy(dx: 0, dy: extra)
+        placeWordmark(m, alpha: stage == nil ? 0 : 1)
         placeBrowse(m, readout: nil)
         placeLeader(m)
     }
@@ -367,7 +389,7 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
         }
         let rest =
             narrow
-            ? NeuralRect(x: 0, y: m.list.y, width: m.width, height: narrowAccountHeight(m)) : m.readout
+            ? NeuralRect(x: 0, y: m.list.y, width: m.width, height: m.narrowAccountHeight) : m.readout
         var target = rest
         if let moved { target = narrow ? rest.offsetBy(dx: moved.x, dy: moved.y) : moved }
         slide?.frame = rect(rest)
@@ -492,6 +514,7 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
     }
 
     private func rethemed() {
+        wordmarkKey = 0
         BrainPictures.forgetAll()
         pictureRequested = ""
         syncCard()
@@ -657,6 +680,7 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
         made.head.onReady = { [weak self] in self?.needsLayout = true }
         made.drawsOverlay = false
         carrier.addSubview(made)
+        addSubview(wordmark, positioned: .above, relativeTo: nil)
         stage = made
         if !parkReasons.isEmpty { made.park() }
         made.refresh(force: true)
@@ -954,6 +978,44 @@ final class BrainCarrierView: NSView {
     func setTravel(_ transform: CGAffineTransform) {
         guard let layer else { return }
         layer.sublayerTransform = CATransform3DMakeAffineTransform(transform)
+    }
+}
+
+/// Megatron's name over the open row's corner: a view of its own so that it stands above the head,
+/// which fills that corner in a split, with the one text layer that draws it.
+@MainActor
+final class BrainWordmarkView: NSView {
+    private let text = CATextLayer()
+
+    var words: NSAttributedString? {
+        didSet {
+            text.string = words
+            text.contentsScale = window?.backingScaleFactor ?? 2
+        }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        text.alignmentMode = .left
+        text.isWrapped = false
+        layer?.addSublayer(text)
+        setAccessibilityElement(false)
+        isHidden = true
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    nonisolated override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        text.frame = bounds
+        CATransaction.commit()
     }
 }
 

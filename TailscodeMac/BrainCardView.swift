@@ -29,6 +29,8 @@ private struct CardLayout {
     var headlineRight: CGFloat = 0
     var showsThird = true
     var chipsTop: CGFloat = 0
+    var wordmark = NSAttributedString()
+    var wordmarkSize = CGSize.zero
     var signature = ""
 }
 
@@ -126,6 +128,7 @@ final class BrainCardView: NSView {
     private var layout = CardLayout()
     private(set) var hovered = false
     private(set) var focused = false
+    private(set) var wordmarkDrawn = false
     private var hoverTarget: CardTarget.Kind?
     private var pressed: CardTarget.Kind?
     private var pressesCard = false
@@ -390,6 +393,11 @@ final class BrainCardView: NSView {
             buttonsLeft = showsReplay ? replay.minX : rows.minX
         }
         out.headlineRight = narrow ? textRight : buttonsLeft - 10
+        out.wordmark = NSAttributedString(
+            string: NeuralReading.wordmark,
+            attributes: MacTheme.Ramp.attributes(.sectionLabel, color: inks.textDim))
+        let wordmarkSize = out.wordmark.size()
+        out.wordmarkSize = CGSize(width: ceil(wordmarkSize.width), height: ceil(wordmarkSize.height))
 
         let centerY: CGFloat = compact ? 20 : 29
         out.headlineCenterY = centerY
@@ -550,6 +558,7 @@ final class BrainCardView: NSView {
     }
 
     private func drawText(_ content: Content, cg: CGContext) {
+        wordmarkDrawn = false
         let inks = content.inks
         let card = content.card
         let narrow = content.geometry.layout == .narrow
@@ -657,6 +666,7 @@ final class BrainCardView: NSView {
         if let duration = card.headline.piece(.duration) {
             draw(duration.text, font: fonts.duration, color: inks.textDim)
         }
+        drawWordmark(lineEnd: x, baseline: baseline, width: content.width)
         if content.geometry.layout == .narrow {
             x = layout.textLeft
             baseline = layout.clauseCenterY + rise
@@ -725,6 +735,8 @@ final class BrainCardView: NSView {
         (word as NSString).draw(
             at: CGPoint(x: x, y: baseline - wordSize.height / 2), withAttributes: wordAttributes)
         x += ceil(wordSize.width) + 12
+        var lineEnd = x
+        defer { drawWordmark(lineEnd: lineEnd, baseline: baseline, width: content.width) }
         let counts = reading.counts
         let countAttributes: [NSAttributedString.Key: Any] = [.font: mono, .foregroundColor: inks.textDim]
         var countsX = x
@@ -741,7 +753,21 @@ final class BrainCardView: NSView {
             let size = (drawn as NSString).size(withAttributes: countAttributes)
             (drawn as NSString).draw(
                 at: CGPoint(x: countsX, y: countsY - size.height / 2), withAttributes: countAttributes)
+            if !narrow { lineEnd = countsX + ceil(size.width) + 8 }
         }
+    }
+
+    /// Megatron's name at the right end of the headline's line, when Core's rule says the headline
+    /// leaves it room. It is part of the card's one pass, in the chips' own label voice.
+    private func drawWordmark(lineEnd: CGFloat, baseline: CGFloat, width: Double) {
+        guard NeuralStageMetrics.cardShowsWordmark(
+            width: width, headlineEnd: Double(lineEnd), headlineRight: Double(layout.headlineRight),
+            wordmarkWidth: Double(layout.wordmarkSize.width))
+        else { return }
+        let size = layout.wordmarkSize
+        wordmarkDrawn = true
+        layout.wordmark.draw(
+            at: CGPoint(x: layout.headlineRight - size.width, y: baseline - size.height / 2))
     }
 
     private func drawLiveGlyph(_ glyph: NeuralLiveCard.Glyph, at center: CGPoint, size: CGFloat, tone: NSColor) {

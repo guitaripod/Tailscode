@@ -9,7 +9,7 @@ enum BrainOwnChecks {
 
     static func run(_ expect: Expect) throws {
         let checks = [
-            cards, liveCard, picture, layouts, moves, reduced, keys, leader, replyAndAsk, clocks,
+            cards, liveCard, picture, layouts, shortPane, wordmark, moves, reduced, keys, leader, replyAndAsk, clocks,
             lifetime, accessibility, streaming,
         ]
         for check in checks { try check(expect) }
@@ -154,6 +154,58 @@ enum BrainOwnChecks {
             "a settled card registers no tick")
     }
 
+    private static func shortPane(_ expect: Expect) throws {
+        for (width, pane) in [(1300.0, 640.0), (1000.0, 700.0), (700.0, 600.0), (1300.0, 1400.0)] {
+            let fixture = fixture(width: CGFloat(width))
+            defer { fixture.tearDown() }
+            fixture.store.viewportHeight = { CGFloat(pane) }
+            guard let view = fixture.open(1) else {
+                try expect(false, "a brain opens at \(Int(width)) in a pane \(Int(pane)) tall")
+                continue
+            }
+            fixture.root.layoutSubtreeIfNeeded()
+            let m = view.currentMetrics
+            let least = NeuralStageMetrics.make(
+                width: width, density: m.density, rows: NeuralStageMetrics.rowsFloor, viewportHeight: 0
+            ).openHeight
+            let bound = max(least, pane * NeuralStageMetrics.openHeightShare)
+            try expect(
+                abs(view.frame.height - CGFloat(m.openHeight)) < 1 && view.frame.height <= CGFloat(bound) + 1,
+                "at \(Int(width)) in a pane \(Int(pane)) tall the open row is Core's \(Int(m.openHeight)), within \(Int(bound)) (\(Int(view.frame.height)))")
+            if m.arrangement == .split {
+                try expect(
+                    abs((view.slide?.frame.height ?? 0) - CGFloat(m.brainHeight)) < 1,
+                    "the account follows the metrics' height, not a floor of its own, at \(Int(width)) in \(Int(pane))")
+            }
+        }
+    }
+
+    private static func wordmark(_ expect: Expect) throws {
+        let fixture = fixture(width: 1300)
+        defer { fixture.tearDown() }
+        guard let card = fixture.view(1)?.card else {
+            try expect(false, "a card to look at")
+            return
+        }
+        let image = card.bitmapImageRepForCachingDisplay(in: card.bounds)
+        if let image { card.cacheDisplay(in: card.bounds, to: image) }
+        try expect(card.wordmarkDrawn, "a wide card wears Megatron's name in its headline's line")
+        fixture.resize(to: 340)
+        let narrow = fixture.view(1)!.card
+        let again = narrow.bitmapImageRepForCachingDisplay(in: narrow.bounds)
+        if let again { narrow.cacheDisplay(in: narrow.bounds, to: again) }
+        try expect(!narrow.wordmarkDrawn, "a card under \(Int(NeuralStageMetrics.cardWordmarkMinWidth)) points wears none")
+        fixture.resize(to: 1300)
+        guard let open = fixture.open(1) else {
+            try expect(false, "a brain opens to look at its stage")
+            return
+        }
+        fixture.root.layoutSubtreeIfNeeded()
+        try expect(
+            open.wordmarkText == NeuralReading.wordmark,
+            "the open stage wears Core's name in the row's corner (\(open.wordmarkText ?? "none"))")
+    }
+
     private static func picture(_ expect: Expect) throws {
         let fixture = fixture()
         defer { fixture.tearDown() }
@@ -192,7 +244,7 @@ enum BrainOwnChecks {
                 abs(stage.width - CGFloat(m.stage.width)) < 1 && abs(stage.height - CGFloat(m.stage.height)) < 1
                     && abs(stage.height - stage.width * CGFloat(NeuralStageMetrics.aspect)) < 1.5,
                 "the stage is Core's rectangle and the head's own shape at \(Int(width))")
-            let expected = CGFloat(m.rowHeight + view.narrowExtra(m))
+            let expected = CGFloat(m.openHeight)
             try expect(
                 abs(view.frame.height - expected) < 1,
                 "the open row is Core's height at \(Int(width)): \(view.frame.height) against \(expected)")
