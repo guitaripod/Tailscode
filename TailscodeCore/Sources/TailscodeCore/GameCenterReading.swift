@@ -9,6 +9,8 @@ import Foundation
 /// account, so the line beside it is a state, not a failure — and like every other state in this
 /// app the words are Core's, so both Apple clients say the same thing.
 public enum GameCenterReading: Sendable, Equatable {
+    /// The person has not turned Game Center on, which is how every install begins.
+    case off
     /// Nobody is signed in on this device. The commonest case by far, and not a problem.
     case signedOut
     /// Signed in, but this build cannot ask — the entitlement is not in it.
@@ -37,6 +39,9 @@ public enum GameCenterReading: Sendable, Equatable {
     /// One sentence, and never a rule or an error code: what is true, and what would change it.
     public var line: String {
         switch self {
+        case .off:
+            return Localized.text(
+                "Game Center is off, so nothing is reported to Apple — the trophies below are counted on this device either way.")
         case .signedOut:
             return Localized.text(
                 "Not signed in to Game Center, so nothing is reported to Apple — the trophies below are counted on this device either way.")

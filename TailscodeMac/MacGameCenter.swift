@@ -4,8 +4,11 @@ import TailscodeCore
 
 /// Apple's Game Center behind the Mac's trophy case — the same contract as the phone's
 /// coordinator: Core scores the merge (`TrophyRoom` riding `UsageAnalytics`), this object only
-/// carries it out. Sign-in is lazy and never a wall; a dev build signed ad-hoc cannot
-/// authenticate at all, and that becomes a stated line on the card rather than a hidden card.
+/// carries it out. Nothing authenticates until the person turns Game Center on
+/// (`GameCenterConsent`), and a sign-in GameKit offers when nobody just asked for one turns it
+/// back off rather than raise Apple's banner again. Sign-in is never a wall; a dev build signed
+/// ad-hoc cannot authenticate at all, and that becomes a stated line on the card rather than a
+/// hidden card.
 @MainActor
 final class MacGameCenter: NSObject {
     static let shared = MacGameCenter()
@@ -13,23 +16,32 @@ final class MacGameCenter: NSObject {
     static let standingChanged = Notification.Name("tailscode.gamecenter.standing")
 
     enum Standing {
+        case off
         case unknown
         case ready
         case needsSignIn
         case unavailable(GameCenterReading)
     }
 
-    private(set) var standing: Standing = .unknown
+    private(set) var standing: Standing
     private var signInSheet: NSViewController?
+    private weak var presenter: NSWindow?
+    private var requested = false
     private var latest: UsageAnalytics?
     private var started = false
+    private let consent = GameCenterConsent.shared
+
+    private override init() {
+        standing = GameCenterConsent.shared.isOn ? .unknown : .off
+        super.init()
+    }
 
     private static let reportedKey = "tailscode.gamecenter.reported"
     private static let scoresKey = "tailscode.gamecenter.scores"
-    private static let playerKey = "tailscode.gamecenter.player"
+    private static let playerKey = GameCenterConsent.reportedPlayerKey
 
     func start() {
-        guard !started else { return }
+        guard consent.isOn, !started else { return }
         #if DEBUG
             guard !LiveShot.holdsBack("Game Center") else { return }
         #endif
@@ -53,6 +65,8 @@ final class MacGameCenter: NSObject {
 
     func openDashboard(from window: NSWindow?) {
         switch standing {
+        case .off:
+            connect(from: window)
         case .ready:
             let dashboard = GKGameCenterViewController(state: .achievements)
             dashboard.gameCenterDelegate = self
@@ -68,11 +82,43 @@ final class MacGameCenter: NSObject {
         }
     }
 
+    /// The person asked for Game Center, so the sign-in Apple hands over next is theirs to see:
+    /// it is presented on `window` the moment it arrives.
+    private func connect(from window: NSWindow?) {
+        consent.turnOn()
+        presenter = window
+        requested = true
+        standing = .unknown
+        start()
+        NotificationCenter.default.post(name: Self.standingChanged, object: nil)
+    }
+
+    /// Takes Game Center back out of the app: nothing authenticates on the next launch and
+    /// nothing more is reported.
+    func turnOff() {
+        consent.turnOff()
+        GKLocalPlayer.local.authenticateHandler = nil
+        presenter = nil
+        requested = false
+        signInSheet = nil
+        started = false
+        standing = .off
+        NotificationCenter.default.post(name: Self.standingChanged, object: nil)
+    }
+
     var actionTitle: String? {
         switch standing {
+        case .off: return Localized.text("Connect Game Center")
         case .ready: return Localized.text("Game Center")
         case .needsSignIn: return Localized.text("Sign in to Game Center")
         case .unknown, .unavailable: return nil
+        }
+    }
+
+    var turnOffTitle: String? {
+        switch standing {
+        case .ready, .needsSignIn, .unavailable: return Localized.text("Turn off Game Center")
+        case .off, .unknown: return nil
         }
     }
 
@@ -86,15 +132,25 @@ final class MacGameCenter: NSObject {
             domain: error.domain, code: error.code, description: error.localizedDescription)
     }
 
-    var unavailableLine: String? {
-        guard case .unavailable(let reading) = standing else { return nil }
-        return reading.line
+    var statusLine: String? {
+        switch standing {
+        case .off: return GameCenterReading.off.line
+        case .unavailable(let reading): return reading.line
+        case .unknown, .ready, .needsSignIn: return nil
+        }
     }
 
     private func authenticated(viewController: NSViewController?, error: Error?) {
+        let wasRequested = requested
+        requested = false
         if let viewController {
+            guard wasRequested else {
+                turnOff()
+                return
+            }
             signInSheet = viewController
             standing = .needsSignIn
+            presenter?.contentViewController?.presentAsSheet(viewController)
         } else if GKLocalPlayer.local.isAuthenticated {
             signInSheet = nil
             standing = .ready

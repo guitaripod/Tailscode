@@ -594,22 +594,34 @@ final class AnalyticsWindowController: NSWindowController {
                     label: trophy.title, detail: trophy.progressLine, money: nil,
                     share: trophy.percent / 100, hot: false))
         }
+        var buttons: [NSView] = []
         if let title = MacGameCenter.shared.actionTitle {
-            let open = RowKit.ActionButton(title: title) { [weak self] in
-                MacGameCenter.shared.openDashboard(from: self?.window)
-            }
-            open.bezelStyle = .rounded
-            open.controlSize = .small
-            let row = NSStackView(views: [open, RowKit.spacer()])
+            buttons.append(
+                gameCenterButton(title) { [weak self] in
+                    MacGameCenter.shared.openDashboard(from: self?.window)
+                })
+        }
+        if let title = MacGameCenter.shared.turnOffTitle {
+            buttons.append(gameCenterButton(title) { MacGameCenter.shared.turnOff() })
+        }
+        if !buttons.isEmpty {
+            let row = NSStackView(views: buttons + [RowKit.spacer()])
             row.orientation = .horizontal
             views.append(row)
         }
-        if let line = MacGameCenter.shared.unavailableLine {
+        if let line = MacGameCenter.shared.statusLine {
             views.append(
                 RowKit.wrapping(
                     line, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel))
         }
         return card(views: views)
+    }
+
+    private func gameCenterButton(_ title: String, action: @escaping () -> Void) -> NSView {
+        let button = RowKit.ActionButton(title: title, action: action)
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        return button
     }
 
     private func earnedStrip(_ earned: [Trophy]) -> NSView {

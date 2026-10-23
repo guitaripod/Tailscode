@@ -591,9 +591,13 @@ final class AnalyticsViewController: UIViewController {
                     fraction: trophy.percent / 100, hot: index == 0))
         }
         if let title = GameCenterCoordinator.shared.actionTitle {
-            views.append(dashboardButton(title))
+            views.append(dashboardButton(title, action: #selector(openGameCenter)))
         }
-        if let line = GameCenterCoordinator.shared.unavailableLine {
+        if let title = GameCenterCoordinator.shared.turnOffTitle {
+            views.append(
+                dashboardButton(title, action: #selector(turnOffGameCenter), quiet: true))
+        }
+        if let line = GameCenterCoordinator.shared.statusLine {
             views.append(label(line, role: .panelFootnote, color: Theme.Color.tertiaryLabel))
         }
         return card(views)
@@ -625,7 +629,7 @@ final class AnalyticsViewController: UIViewController {
         return row
     }
 
-    private func dashboardButton(_ title: String) -> UIView {
+    private func dashboardButton(_ title: String, action: Selector, quiet: Bool = false) -> UIView {
         var configuration = UIButton.Configuration.plain()
         configuration.title = title
         configuration.image = UIImage(systemName: "chevron.right")
@@ -634,15 +638,19 @@ final class AnalyticsViewController: UIViewController {
         configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
             pointSize: 12, weight: .semibold)
         configuration.contentInsets = .zero
-        configuration.baseForegroundColor = Theme.Color.accent
+        configuration.baseForegroundColor = quiet ? Theme.Color.secondaryLabel : Theme.Color.accent
         let button = UIButton(configuration: configuration)
         button.contentHorizontalAlignment = .leading
-        button.addTarget(self, action: #selector(openGameCenter), for: .touchUpInside)
+        button.addTarget(self, action: action, for: .touchUpInside)
         return button
     }
 
     @objc private func openGameCenter() {
         GameCenterCoordinator.shared.openDashboard(from: self)
+    }
+
+    @objc private func turnOffGameCenter() {
+        GameCenterCoordinator.shared.turnOff()
     }
 
     @objc private func gameCenterStandingChanged() {

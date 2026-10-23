@@ -4,10 +4,15 @@ import UIKit
 
 /// Apple's Game Center behind the trophy case. The catalog, the percentages and every word are
 /// Core's (`TrophyRoom` riding `UsageAnalytics`); this coordinator only carries them out — it
-/// signs in lazily, reports changed percentages whenever an analytics haul lands, submits the
-/// window's scores to the leaderboards, and opens Apple's own dashboard. Reporting is
-/// deduplicated per player so a pull-to-refresh costs no requests, and nothing here is ever a
-/// wall: with no account the trophy case still renders whole from Core.
+/// signs in only for a person who turned Game Center on (`GameCenterConsent`), reports changed
+/// percentages whenever an analytics haul lands, submits the window's scores to the
+/// leaderboards, and opens Apple's own dashboard. Reporting is deduplicated per player so a
+/// pull-to-refresh costs no requests, and nothing here is ever a wall: with no account the
+/// trophy case still renders whole from Core.
+///
+/// Authenticating is what makes iOS raise its "Sign in to Game Center" banner over whatever is on
+/// screen, so it never happens for a person who did not ask, and a sign-in that GameKit offers
+/// when nobody just asked for one turns Game Center back off instead of raising the banner again.
 @MainActor
 final class GameCenterCoordinator: NSObject {
     static let shared = GameCenterCoordinator()
@@ -15,17 +20,26 @@ final class GameCenterCoordinator: NSObject {
     static let standingChanged = Notification.Name("tailscode.gamecenter.standing")
 
     enum Standing {
+        case off
         case unknown
         case ready
         case needsSignIn
         case unavailable(GameCenterReading)
     }
 
-    private(set) var standing: Standing = .unknown
+    private(set) var standing: Standing
     private var signInSheet: UIViewController?
+    private weak var presenter: UIViewController?
+    private var requested = false
     private var latest: UsageAnalytics?
     private var started = false
     private var waiting = false
+    private let consent = GameCenterConsent.shared
+
+    private override init() {
+        standing = GameCenterConsent.shared.isOn ? .unknown : .off
+        super.init()
+    }
 
     /// How long after the app is first in front or first behind the user the sign-in waits, so the
     /// first frames of the first screen are never drawn beside Game Center's own start-up.
@@ -33,9 +47,10 @@ final class GameCenterCoordinator: NSObject {
 
     private static let reportedKey = "tailscode.gamecenter.reported"
     private static let scoresKey = "tailscode.gamecenter.scores"
-    private static let playerKey = "tailscode.gamecenter.player"
+    private static let playerKey = GameCenterConsent.reportedPlayerKey
 
-    /// Starts Game Center once the first screen has been drawn rather than inside launch.
+    /// Starts Game Center once the first screen has been drawn rather than inside launch, and only
+    /// for a person who has it on.
     ///
     /// Authenticating spends the launch's main-thread budget on an account the first screen does
     /// not need, and nothing here is a wall. Waits for the app's first activation, then a moment
@@ -43,7 +58,7 @@ final class GameCenterCoordinator: NSObject {
     /// starts on the next turn, and one sent to the background before it was ever active starts
     /// then. Whichever of those comes first runs `start()`, which runs once.
     func startWhenIdle() {
-        guard !started, !waiting else { return }
+        guard consent.isOn, !started, !waiting else { return }
         waiting = true
         if UIApplication.shared.applicationState == .background {
             DispatchQueue.main.async { MainActor.assumeIsolated { self.start() } }
@@ -67,7 +82,7 @@ final class GameCenterCoordinator: NSObject {
     }
 
     func start() {
-        guard !started else { return }
+        guard consent.isOn, !started else { return }
         started = true
         GKLocalPlayer.local.authenticateHandler = { viewController, error in
             Task { @MainActor in
@@ -87,10 +102,12 @@ final class GameCenterCoordinator: NSObject {
     }
 
     /// The one gesture the surface offers: the dashboard when signed in, the sign-in sheet when
-    /// Apple handed one over, and nothing when Game Center itself said no — the card already
-    /// carries the reason in words.
+    /// Apple handed one over, turning Game Center on when it is off, and nothing when Game Center
+    /// itself said no — the card already carries the reason in words.
     func openDashboard(from presenter: UIViewController) {
         switch standing {
+        case .off:
+            connect(from: presenter)
         case .ready:
             let dashboard = GKGameCenterViewController(state: .achievements)
             dashboard.gameCenterDelegate = self
@@ -104,11 +121,45 @@ final class GameCenterCoordinator: NSObject {
         }
     }
 
+    /// The person asked for Game Center, so the sign-in Apple hands over next is theirs to see:
+    /// it is presented on `presenter` the moment it arrives.
+    private func connect(from presenter: UIViewController) {
+        consent.turnOn()
+        self.presenter = presenter
+        requested = true
+        standing = .unknown
+        start()
+        NotificationCenter.default.post(name: Self.standingChanged, object: nil)
+    }
+
+    /// Takes Game Center back out of the app: nothing authenticates on the next launch and
+    /// nothing more is reported.
+    func turnOff() {
+        consent.turnOff()
+        GKLocalPlayer.local.authenticateHandler = nil
+        presenter = nil
+        requested = false
+        signInSheet = nil
+        started = false
+        waiting = false
+        standing = .off
+        AppLogger.session.info("gamecenter: turned off")
+        NotificationCenter.default.post(name: Self.standingChanged, object: nil)
+    }
+
     var actionTitle: String? {
         switch standing {
+        case .off: return String(localized: "Connect Game Center")
         case .ready: return String(localized: "Game Center")
         case .needsSignIn: return String(localized: "Sign in to Game Center")
         case .unknown, .unavailable: return nil
+        }
+    }
+
+    var turnOffTitle: String? {
+        switch standing {
+        case .ready, .needsSignIn, .unavailable: return String(localized: "Turn off Game Center")
+        case .off, .unknown: return nil
         }
     }
 
@@ -122,15 +173,25 @@ final class GameCenterCoordinator: NSObject {
             domain: error.domain, code: error.code, description: error.localizedDescription)
     }
 
-    var unavailableLine: String? {
-        guard case .unavailable(let reading) = standing else { return nil }
-        return reading.line
+    var statusLine: String? {
+        switch standing {
+        case .off: return GameCenterReading.off.line
+        case .unavailable(let reading): return reading.line
+        case .unknown, .ready, .needsSignIn: return nil
+        }
     }
 
     private func authenticated(viewController: UIViewController?, error: Error?) {
+        let wasRequested = requested
+        requested = false
         if let viewController {
+            guard wasRequested else {
+                withdrawUnasked()
+                return
+            }
             signInSheet = viewController
             standing = .needsSignIn
+            presenter?.present(viewController, animated: true)
         } else if GKLocalPlayer.local.isAuthenticated {
             signInSheet = nil
             standing = .ready
@@ -144,6 +205,13 @@ final class GameCenterCoordinator: NSObject {
         }
         AppLogger.session.info("gamecenter: standing \(String(describing: self.standing))")
         NotificationCenter.default.post(name: Self.standingChanged, object: nil)
+    }
+
+    /// GameKit offered a sign-in nobody just asked for — the banner is on its way or already up —
+    /// so Game Center goes back to off and does not ask again on the next launch or return.
+    private func withdrawUnasked() {
+        AppLogger.session.info("gamecenter: sign-in offered unasked, turning off")
+        turnOff()
     }
 
     /// Game Center keeps the best value it has ever been told, so the only mistake possible is
