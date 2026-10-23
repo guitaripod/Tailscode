@@ -20,28 +20,28 @@ import TailscodeCore
 /// parse, the port that answered as something else and the password that was refused each read the
 /// same on this desk as on the phone, and each offers the one action that fixes it.
 final class ServerManager: @unchecked Sendable {
-    private let onChanged: @Sendable () -> Void
-    private var token: UInt = 0
-    private var window: UnsafeMutablePointer<GtkWidget>?
-    private var configuredGroup: UnsafeMutablePointer<GtkWidget>?
-    private var addGroup: UnsafeMutablePointer<GtkWidget>?
-    private var configuredRows: [UnsafeMutablePointer<GtkWidget>] = []
-    private var rows: [String: ServerRow] = [:]
+    let onChanged: @Sendable () -> Void
+    var token: UInt = 0
+    var window: UnsafeMutablePointer<GtkWidget>?
+    var configuredGroup: UnsafeMutablePointer<GtkWidget>?
+    var addGroup: UnsafeMutablePointer<GtkWidget>?
+    var configuredRows: [UnsafeMutablePointer<GtkWidget>] = []
+    var rows: [String: ServerRow] = [:]
 
-    private var addressRow: UnsafeMutablePointer<GtkWidget>?
-    private var nameRow: UnsafeMutablePointer<GtkWidget>?
-    private var passwordRow: UnsafeMutablePointer<GtkWidget>?
-    private var agentRow: UnsafeMutablePointer<GtkWidget>?
-    private var probeButton: UnsafeMutablePointer<GtkWidget>?
-    private var statusRow: UnsafeMutablePointer<GtkWidget>?
-    private var statusActions: UnsafeMutablePointer<GtkWidget>?
-    private var probing = false
+    var addressRow: UnsafeMutablePointer<GtkWidget>?
+    var nameRow: UnsafeMutablePointer<GtkWidget>?
+    var passwordRow: UnsafeMutablePointer<GtkWidget>?
+    var agentRow: UnsafeMutablePointer<GtkWidget>?
+    var probeButton: UnsafeMutablePointer<GtkWidget>?
+    var statusRow: UnsafeMutablePointer<GtkWidget>?
+    var statusActions: UnsafeMutablePointer<GtkWidget>?
+    var probing = false
     /// The row a save came from, re-opened when the list redraws — an edit applied inside an
     /// expander should leave the reader where they were, not collapsed back to the top.
-    private var expandAfterReload: String?
-    private var profiles: [ConnectionProfile] = []
-    private var observingUpdates = false
-    private var expandAll = false
+    var expandAfterReload: String?
+    var profiles: [ConnectionProfile] = []
+    var observingUpdates = false
+    var expandAll = false
 
     init(onChanged: @escaping @Sendable () -> Void) {
         self.onChanged = onChanged
@@ -85,7 +85,7 @@ final class ServerManager: @unchecked Sendable {
         for row in configuredRows where !profiles.isEmpty { adw_expander_row_set_expanded(ptr(row), 1) }
     }
 
-    private func observeUpdates() {
+    func observeUpdates() {
         guard !observingUpdates else { return }
         observingUpdates = true
         for name in [UpdateLedger.didChange, UpdateDriver.didChange] {
@@ -96,7 +96,7 @@ final class ServerManager: @unchecked Sendable {
         }
     }
 
-    private func refreshSoftwareCards() {
+    func refreshSoftwareCards() {
         guard window != nil else { return }
         let rollup = UpdateLedger.rollup()
         let snapshot = UpdateWatch.driver.snapshot
@@ -117,1123 +117,7 @@ final class ServerManager: @unchecked Sendable {
         }
     }
 
-    private func makeConfiguredGroup(on page: UnsafeMutablePointer<GtkWidget>)
-        -> UnsafeMutablePointer<GtkWidget>
-    {
-        let group = adw_preferences_group_new()!
-        adw_preferences_group_set_title(ptr(group), Localized.text("Configured"))
-        adw_preferences_page_add(ptr(page), ptr(group))
-        return group
-    }
-
-    private func makeAddGroup(on page: UnsafeMutablePointer<GtkWidget>)
-        -> UnsafeMutablePointer<GtkWidget>
-    {
-        let group = adw_preferences_group_new()!
-        adw_preferences_group_set_title(ptr(group), Localized.text("Add a server"))
-        adw_preferences_group_set_description(
-            ptr(group), Localized.text("Reading this machine's tailnet address…"))
-        adw_preferences_page_add(ptr(page), ptr(group))
-
-        let addMachine = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
-        Gtk.margins(addMachine, top: 6, bottom: 12)
-        let addButton = Gtk.button(ConnectLinkReading.addMachine + "…", css: ["pill"]) {
-            [weak self] in
-            self?.addMachine()
-        }
-        gtk_widget_set_halign(addButton, GTK_ALIGN_START)
-        gtk_widget_set_tooltip_text(addButton, ConnectLinkReading.addMachineDetail)
-        gtk_box_append(ptr(addMachine), addButton)
-        gtk_box_append(
-            ptr(addMachine),
-            Gtk.label(ConnectLinkReading.addMachineDetail, css: "dim", wrap: true, selectable: false))
-        adw_preferences_group_add(ptr(group), ptr(addMachine))
-
-        let address = Self.entryRow(
-            title: Localized.text("Tailnet address"),
-            tooltip: Localized.text("100.x.y.z, name.tailnet.ts.net, host:port — or a whole line pasted out of the server's terminal"))
-        addressRow = address
-        adw_preferences_group_add(ptr(group), ptr(address))
-
-        let name = Self.entryRow(title: Localized.text("Name (optional)"), tooltip: nil)
-        nameRow = name
-        adw_preferences_group_add(ptr(group), ptr(name))
-
-        let password = Self.passwordRow(title: Localized.text("Password"))
-        gtk_widget_set_tooltip_text(password, ServerPasswordRule.summary)
-        passwordRow = password
-        adw_preferences_group_add(ptr(group), ptr(password))
-        let passwordHint = Gtk.label(ServerPasswordRule.summary, css: "dim", wrap: true, selectable: false)
-        gtk_widget_set_margin_top(passwordHint, 6)
-        gtk_widget_set_margin_start(passwordHint, 12)
-        gtk_widget_set_margin_end(passwordHint, 12)
-        adw_preferences_group_add(ptr(group), ptr(passwordHint))
-
-        for row in [address, name, password] {
-            Gtk.connect(UnsafeMutableRawPointer(row), "entry-activated") { [weak self] in
-                self?.probeAndSave()
-            }
-        }
-
-        let agent = adw_combo_row_new()!
-        adw_preferences_row_set_title(ptr(agent), Localized.text("Agent"))
-        adw_preferences_row_set_use_markup(ptr(agent), 0)
-        adw_action_row_set_subtitle(
-            ptr(agent),
-            Localized.text("Every port is tried anyway when you don't name one."))
-        let model = gtk_string_list_new(nil)!
-        gtk_string_list_append(model, "claude-bridge · 4098")
-        gtk_string_list_append(model, "opencode · 4096")
-        gtk_string_list_append(model, "oh-my-pi · 4099")
-        adw_combo_row_set_model(
-            ptr(UnsafeMutableRawPointer(agent)),
-            OpaquePointer(UnsafeMutableRawPointer(model)))
-        adw_combo_row_set_selected(ptr(UnsafeMutableRawPointer(agent)), 0)
-        agentRow = agent
-        adw_preferences_group_add(ptr(group), ptr(agent))
-
-        let (status, statusActions) = Self.factRow(title: "")
-        gtk_widget_set_visible(status, 0)
-        statusRow = status
-        self.statusActions = statusActions
-        adw_preferences_group_add(ptr(group), ptr(status))
-
-        let buttons = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_widget_set_halign(buttons, GTK_ALIGN_END)
-        Gtk.margins(buttons, top: 6)
-        let probe = Gtk.button(
-            Localized.text("Probe and save"), css: ["suggested-action", "pill"]
-        ) { [weak self] in
-            self?.probeAndSave()
-        }
-        probeButton = probe
-        gtk_box_append(ptr(buttons), probe)
-        adw_preferences_group_add(ptr(group), ptr(buttons))
-        return group
-    }
-
-
-    private func reload() {
-        Task { [weak self] in
-            let profiles = await ServerDirectory.shared.profiles()
-            Gtk.onMain { [weak self] in self?.render(profiles) }
-        }
-    }
-
-    private func render(_ profiles: [ConnectionProfile]) {
-        guard let group = configuredGroup else { return }
-        for row in configuredRows { adw_preferences_group_remove(ptr(group), ptr(row)) }
-        configuredRows = []
-        for slots in rows.values { slots.capabilities?.stop() }
-        rows = [:]
-        self.profiles = profiles
-
-        let expanding = expandAfterReload
-        expandAfterReload = nil
-        defer {
-            if expandAll { for row in configuredRows where !profiles.isEmpty { adw_expander_row_set_expanded(ptr(row), 1) } }
-        }
-        adw_preferences_group_set_description(
-            ptr(group),
-            profiles.isEmpty
-                ? Localized.text("No machines yet. Add the one running your agent below.")
-                : Localized.text("%@ machines. Open one to check it, update it, or change it.",
-                    "\(profiles.count)"))
-
-        guard !profiles.isEmpty else {
-            let row = adw_action_row_new()!
-            adw_preferences_row_set_title(ptr(row), Localized.text("Nothing configured"))
-            adw_preferences_row_set_use_markup(ptr(row), 0)
-            adw_action_row_set_subtitle(ptr(row), ConnectLinkReading.addMachineDetail)
-            adw_action_row_set_subtitle_lines(ptr(row), 0)
-            adw_action_row_add_suffix(
-                ptr(row),
-                Self.inlineButton(ConnectLinkReading.addMachine + "…") { [weak self] in
-                    self?.addMachine()
-                })
-            adw_preferences_group_add(ptr(group), ptr(row))
-            configuredRows.append(row)
-            return
-        }
-
-        for profile in profiles {
-            let row = makeRow(profile)
-            if profile.id == expanding { adw_expander_row_set_expanded(ptr(row), 1) }
-            adw_preferences_group_add(ptr(group), ptr(row))
-            configuredRows.append(row)
-        }
-        refreshSoftwareCards()
-    }
-
-    private func makeRow(_ profile: ConnectionProfile) -> UnsafeMutablePointer<GtkWidget> {
-        let slots = ServerRow()
-        rows[profile.id] = slots
-
-        let row = adw_expander_row_new()!
-        adw_preferences_row_set_title(ptr(row), profile.name)
-        adw_preferences_row_set_use_markup(ptr(row), 0)
-        adw_expander_row_set_subtitle(
-            ptr(row), "\(ServerLabel.agent(profile.backend)) · \(ServerLabel.address(profile))")
-
-        let glyph = Gtk.label("○", css: "glyph-pending", selectable: false)
-        gtk_widget_set_valign(glyph, GTK_ALIGN_CENTER)
-        slots.glyph = glyph
-        adw_expander_row_add_prefix(ptr(row), glyph)
-
-        let refresh = gtk_button_new_from_icon_name("view-refresh-symbolic")!
-        Gtk.addClass(refresh, "flat")
-        gtk_widget_set_valign(refresh, GTK_ALIGN_CENTER)
-        gtk_widget_set_tooltip_text(refresh, Localized.text("Ask this machine again"))
-        let refreshID = profile.id
-        Gtk.connect(UnsafeMutableRawPointer(refresh), "clicked") { [weak self] in
-            self?.recheck(refreshID)
-        }
-        adw_expander_row_add_suffix(ptr(row), refresh)
-
-        let (health, healthActions) = Self.factRow(title: Localized.text("Connection"))
-        slots.health = health
-        slots.healthActions = healthActions
-        adw_expander_row_add_row(ptr(row), health)
-
-        let capabilities = SetupCapabilitiesRows(
-            profileURL: profile.baseURL, profileID: profile.id, parent: { [weak self] in self?.window })
-        slots.capabilities = capabilities
-        adw_expander_row_add_row(ptr(row), capabilities.row)
-        capabilities.start()
-
-        let isDemo = profile.id.hasPrefix(DemoWorld.profilePrefix)
-        let isEnvironment = profile.id == "environment"
-
-        if !isDemo {
-            let cardView = UpdateCardView(style: .embedded)
-            slots.softwareCard = cardView
-            let wrapper = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-            Gtk.margins(wrapper, top: 10, bottom: 10, leading: 12, trailing: 12)
-            gtk_box_append(ptr(wrapper), cardView.widget)
-            let cardRow = adw_preferences_row_new()!
-            gtk_list_box_row_set_child(ptr(cardRow), wrapper)
-            gtk_list_box_row_set_activatable(ptr(cardRow), 0)
-            gtk_list_box_row_set_selectable(ptr(cardRow), 0)
-            adw_expander_row_add_row(ptr(row), cardRow)
-
-            let id = profile.id
-            cardView.onAction = { [weak self] action in
-                guard let self,
-                    let reading = UpdateLedger.rollup().readings.first(where: {
-                        $0.component == .server(profileID: id)
-                    })
-                else { return }
-                UpdatePress.perform(action, for: reading, parent: self.window) { [weak self] text in
-                    Gtk.onMain { [weak self] in self?.toast(text) }
-                }
-            }
-            cardView.onAutomation = { [weak self, weak cardView] enabled in
-                guard let self, let cardView,
-                    let reading = UpdateLedger.rollup().readings.first(where: {
-                        $0.component == .server(profileID: id)
-                    })
-                else { return }
-                UpdatePress.setAutomation(
-                    enabled, for: reading,
-                    restore: { [weak cardView] in cardView?.restoreAutomation() },
-                    toast: { [weak self] text in Gtk.onMain { [weak self] in self?.toast(text) } })
-            }
-
-            let updatesRow = adw_action_row_new()!
-            adw_preferences_row_set_use_markup(ptr(updatesRow), 0)
-            adw_preferences_row_set_title(ptr(updatesRow), Localized.text("All software updates"))
-            adw_action_row_set_subtitle(
-                ptr(updatesRow),
-                Localized.text("This app and every server, and what each one is running"))
-            adw_action_row_set_subtitle_lines(ptr(updatesRow), 0)
-            gtk_list_box_row_set_activatable(ptr(updatesRow), 1)
-            let chevron = Gtk.label("›", css: "dim", selectable: false)
-            gtk_widget_set_valign(chevron, GTK_ALIGN_CENTER)
-            adw_action_row_add_suffix(ptr(updatesRow), chevron)
-            Gtk.connect(UnsafeMutableRawPointer(updatesRow), "activated") { [weak self] in
-                Gtk.onMain { [weak self] in
-                    guard let self, let window = self.window else { return }
-                    UpdatePanel.present(parent: window)
-                }
-            }
-            adw_expander_row_add_row(ptr(row), updatesRow)
-        }
-
-        if profile.backend == .claudeCode && !isDemo {
-            let (account, accountActions) = Self.factRow(title: Localized.text("Claude account"))
-            slots.account = account
-            slots.accountActions = accountActions
-            adw_expander_row_add_row(ptr(row), account)
-
-            let permissionsBox = MachinePermissionsBox(local: false)
-            slots.permissionsBox = permissionsBox
-            permissionsBox.onRequest = { [weak self] kind in
-                self?.requestPermission(kind, profileID: profile.id)
-            }
-            let wrapper = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-            Gtk.margins(wrapper, top: 10, bottom: 10, leading: 12, trailing: 12)
-            gtk_box_append(ptr(wrapper), permissionsBox.widget)
-            gtk_widget_set_visible(wrapper, 0)
-            let permissionsRow = adw_preferences_row_new()!
-            gtk_list_box_row_set_child(ptr(permissionsRow), wrapper)
-            gtk_list_box_row_set_activatable(ptr(permissionsRow), 0)
-            gtk_list_box_row_set_selectable(ptr(permissionsRow), 0)
-            slots.permissionsWrapper = wrapper
-            adw_expander_row_add_row(ptr(row), permissionsRow)
-        }
-
-        if isDemo || isEnvironment {
-            let note = adw_action_row_new()!
-            adw_preferences_row_set_use_markup(ptr(note), 0)
-            adw_preferences_row_set_title(
-                ptr(note),
-                isDemo ? Localized.text("Demo world") : Localized.text("Set by the environment"))
-            adw_action_row_set_subtitle(
-                ptr(note),
-                isDemo
-                    ? Localized.text("Nothing here reaches a machine. Leave it to add a real one.")
-                    : Localized.text(
-                        "TAILSCODE_HOST defines this one, so it can't be edited or removed here."))
-            adw_action_row_set_subtitle_lines(ptr(note), 0)
-            adw_expander_row_add_row(ptr(row), note)
-        } else {
-            let address = Self.entryRow(title: Localized.text("Address"), tooltip: nil)
-            gtk_editable_set_text(op(address), Self.editableAddress(profile))
-            adw_entry_row_set_show_apply_button(ptr(address), 1)
-            slots.address = address
-            let id = profile.id
-            Gtk.connect(UnsafeMutableRawPointer(address), "apply") { [weak self] in
-                self?.applyAddress(id)
-            }
-            adw_expander_row_add_row(ptr(row), address)
-
-            let name = Self.entryRow(title: Localized.text("Name"), tooltip: nil)
-            gtk_editable_set_text(op(name), profile.name)
-            adw_entry_row_set_show_apply_button(ptr(name), 1)
-            slots.name = name
-            Gtk.connect(UnsafeMutableRawPointer(name), "apply") { [weak self] in
-                self?.applyName(id)
-            }
-            adw_expander_row_add_row(ptr(row), name)
-
-            let password = Self.passwordRow(title: Localized.text("Password"))
-            gtk_widget_set_tooltip_text(
-                password,
-                Localized.text(
-                    "A stored password is never shown. Type a new one to replace it, or apply an empty field to connect without one."
-                ))
-            adw_entry_row_set_show_apply_button(ptr(password), 1)
-            slots.password = password
-            Gtk.connect(UnsafeMutableRawPointer(password), "apply") { [weak self] in
-                self?.applyPassword(id)
-            }
-            adw_expander_row_add_row(ptr(row), password)
-        }
-
-        if ServerRestart.isOffered(profile.backend) && !isDemo {
-            let restart = adw_action_row_new()!
-            adw_preferences_row_set_use_markup(ptr(restart), 0)
-            adw_preferences_row_set_title(ptr(restart), ServerRestart.title)
-            adw_action_row_set_subtitle(ptr(restart), ServerRestart.detail)
-            adw_action_row_set_subtitle_lines(ptr(restart), 0)
-            let id = profile.id
-            let name = profile.name
-            adw_action_row_add_suffix(
-                ptr(restart),
-                Self.inlineButton(ServerRestart.action, css: []) { [weak self] in
-                    self?.confirmRestart(id: id, name: name)
-                })
-            adw_expander_row_add_row(ptr(row), restart)
-        }
-
-        if !isDemo {
-            let delegateRow = adw_action_row_new()!
-            adw_preferences_row_set_use_markup(ptr(delegateRow), 0)
-            adw_preferences_row_set_title(ptr(delegateRow), DelegateEntryPoint.serverRowTitle)
-            adw_action_row_set_subtitle(ptr(delegateRow), DelegateEntryPoint.subtitle)
-            adw_action_row_set_subtitle_lines(ptr(delegateRow), 0)
-            gtk_list_box_row_set_activatable(ptr(delegateRow), 1)
-            let chevron = Gtk.label("›", css: "dim", selectable: false)
-            gtk_widget_set_valign(chevron, GTK_ALIGN_CENTER)
-            adw_action_row_add_suffix(ptr(delegateRow), chevron)
-            let delegateHost = profile.baseURL.host ?? profile.name
-            Gtk.connect(UnsafeMutableRawPointer(delegateRow), "activated") { [weak self] in
-                Gtk.onMain { [weak self] in
-                    guard let self, let window = self.window else { return }
-                    DelegateWindow.present(parent: window, host: delegateHost)
-                }
-            }
-            adw_expander_row_add_row(ptr(row), delegateRow)
-        }
-
-        if !isDemo, let previewHost = profile.baseURL.host {
-            let previews = PreviewHostRow(host: previewHost)
-            slots.previewHost = previews
-            previews.add(to: row)
-        }
-
-        if !isEnvironment {
-            let remove = adw_action_row_new()!
-            adw_preferences_row_set_use_markup(ptr(remove), 0)
-            adw_preferences_row_set_title(
-                ptr(remove),
-                isDemo ? Localized.text("Leave the demo") : Localized.text("Remove this server"))
-            adw_action_row_set_subtitle(
-                ptr(remove),
-                Localized.text("Conversations stay on the machine — only this app forgets it."))
-            adw_action_row_set_subtitle_lines(ptr(remove), 0)
-            let id = profile.id
-            let name = profile.name
-            adw_action_row_add_suffix(
-                ptr(remove),
-                Self.inlineButton(Localized.text("Remove"), css: ["destructive-action"]) {
-                    [weak self] in
-                    self?.confirmRemove(id: id, name: name)
-                })
-            adw_expander_row_add_row(ptr(row), remove)
-        }
-
-        checkHealth(profile)
-        if !isDemo { UpdateWatch.recheck(.server(profileID: profile.id)) }
-        if profile.backend == .claudeCode && !isDemo {
-            checkAccount(profile)
-            checkPermissions(profile)
-        }
-        return row
-    }
-
-
-    /// A configured server's own probe, run with the password it was saved with. It answers the
-    /// two questions the row asks — is anything there, and what is it — and when the answer is no,
-    /// it is the same named diagnosis the add form gives, with the same one action that fixes it.
-    private func checkHealth(_ profile: ConnectionProfile) {
-        guard let slots = rows[profile.id] else { return }
-        if profile.id.hasPrefix(DemoWorld.profilePrefix) {
-            setFact(
-                slots.health, slots.healthActions,
-                Localized.text("A scripted world on this machine — nothing to reach."),
-                tone: .quiet, actions: [], title: Localized.text("Connection"))
-            setGlyph(slots, "◍", css: "glyph-pending")
-            return
-        }
-        setFact(
-            slots.health, slots.healthActions, Localized.text("Checking…"), tone: .quiet,
-            actions: [], title: Localized.text("Connection"))
-        setGlyph(slots, "○", css: "glyph-pending")
-        let id = profile.id
-        Task { [weak self] in
-            let tailnet = await Self.tailnet.address()
-            let password = await ServerDirectory.shared.password(for: profile)
-            let address = HostAddress(url: profile.baseURL, portWasInferred: false)
-            let found = await Self.within(15) {
-                await ProbeSweep.best(
-                    address: address, password: password, preferring: profile.backend,
-                    retryUnreachable: false)
-            }
-            guard let verdict = found else {
-                Gtk.onMain { [weak self] in
-                    guard let self, let slots = self.rows[id] else { return }
-                    self.setFact(
-                        slots.health, slots.healthActions,
-                        Localized.text(
-                            "Fifteen seconds and nothing came back — asleep, or busy with a turn."),
-                        tone: .bad, actions: [], title: Localized.text("No answer in time"))
-                    self.setGlyph(slots, "✕", css: "glyph-error")
-                }
-                return
-            }
-            if case .ok(let agent, _) = verdict.outcome {
-                let mismatched = agent != profile.backend
-                let answering = mismatched
-                    ? Localized.text(
-                        "Answering as %@, but this profile is saved as %@ — remove it and add it again.",
-                        ServerLabel.agent(agent), ServerLabel.agent(profile.backend))
-                    : Localized.text(
-                        "Answering · %@ on %@", ServerLabel.agent(agent), address.displayHost)
-                let access = mismatched ? nil : await Self.access(of: profile)
-                let text = access.map { answering + "\n" + $0 } ?? answering
-                Gtk.onMain { [weak self] in
-                    guard let self, let slots = self.rows[id] else { return }
-                    self.setFact(
-                        slots.health, slots.healthActions, text, tone: mismatched ? .warn : .good,
-                        actions: [], title: Localized.text("Connection"))
-                    self.setGlyph(slots, "●", css: mismatched ? "glyph-needs" : "glyph-done")
-                }
-                return
-            }
-            let diagnosis = await Self.diagnose(
-                outcome: verdict.outcome, address: address, tailnetAddress: tailnet,
-                sentPassword: password?.isEmpty == false)
-            Gtk.onMain { [weak self] in
-                guard let self, let slots = self.rows[id] else { return }
-                guard let diagnosis else {
-                    self.setFact(
-                        slots.health, slots.healthActions,
-                        Localized.text("Nothing came back from %@.", address.displayHost),
-                        tone: .bad, actions: [], title: Localized.text("No answer"))
-                    self.setGlyph(slots, "✕", css: "glyph-error")
-                    return
-                }
-                self.setFact(
-                    slots.health, slots.healthActions, diagnosis.detail, tone: .bad,
-                    actions: self.buttons(for: diagnosis, profileID: id),
-                    title: diagnosis.title)
-                self.setGlyph(slots, "✕", css: "glyph-error")
-            }
-        }
-    }
-
-    /// Which account this server's Claude answers as — or the warning that it answers as nobody,
-    /// with the one button that fixes it from here rather than a sentence about a terminal.
-    private func checkAccount(_ profile: ConnectionProfile) {
-        guard let slots = rows[profile.id] else { return }
-        setFact(
-            slots.account, slots.accountActions, Localized.text("Asking…"), tone: .quiet,
-            actions: [])
-        let id = profile.id
-        Task { [weak self] in
-            guard
-                let backend = await ServerDirectory.shared.backend(for: profile)
-                    as? any AuthenticatingBackend
-            else { return }
-            guard let auth = await Self.within(15, { try? await backend.authStatus() }) else {
-                Gtk.onMain { [weak self] in
-                    guard let self, let slots = self.rows[id] else { return }
-                    self.setFact(
-                        slots.account, slots.accountActions,
-                        Localized.text("The server didn't say."), tone: .quiet, actions: [])
-                }
-                return
-            }
-            Gtk.onMain { [weak self] in
-                self?.renderAccount(auth, profile: profile, backend: backend)
-            }
-        }
-    }
-
-    private func renderAccount(
-        _ auth: ServerAuth, profile: ConnectionProfile, backend: any AuthenticatingBackend
-    ) {
-        guard let slots = rows[profile.id] else { return }
-        guard !auth.loggedIn else {
-            var line = auth.accountLabel ?? Localized.text("Signed in")
-            if let subscription = auth.subscription, !subscription.isEmpty {
-                line += " · \(subscription)"
-            }
-            setFact(slots.account, slots.accountActions, line, tone: .good, actions: [])
-            return
-        }
-        setFact(
-            slots.account, slots.accountActions,
-            Localized.text("Signed out — every turn will refuse until it signs in."), tone: .bad,
-            actions: [
-                Self.inlineButton(Localized.text("Sign in"), css: ["suggested-action"]) {
-                    [weak self] in
-                    guard let self, let window = self.window else { return }
-                    SignInDialog.present(
-                        parent: window, serverName: profile.name, backend: backend
-                    ) { [weak self] in
-                        Gtk.onMain { [weak self] in self?.checkAccount(profile) }
-                    }
-                }
-            ])
-    }
-
-    /// Whether the Mac this server runs on has given its agents Full Disk Access — read without
-    /// ever raising a prompt, so a Linux desktop across the room can watch the checklist without
-    /// waking anything on the Mac.
-    private func checkPermissions(_ profile: ConnectionProfile) {
-        let id = profile.id
-        Task { [weak self] in
-            guard
-                let backend = await ServerDirectory.shared.backend(for: profile)
-                    as? any PermissionReportingBackend
-            else { return }
-            guard
-                let permissions = await Self.within(15, { try? await backend.machinePermissions() })
-            else { return }
-            Gtk.onMain { [weak self] in self?.renderPermissions(permissions, profileID: id) }
-        }
-    }
-
-    private func renderPermissions(_ permissions: MachinePermissions, profileID: String) {
-        guard let slots = rows[profileID], let wrapper = slots.permissionsWrapper,
-            let box = slots.permissionsBox
-        else { return }
-        guard MachinePermissionReading.isShown(permissions) else {
-            gtk_widget_set_visible(wrapper, 0)
-            return
-        }
-        box.apply(permissions)
-        gtk_widget_set_visible(wrapper, 1)
-        schedulePermissionPoll(profileID: profileID, waiting: MachinePermissionReading.isWaiting(permissions))
-    }
-
-    /// The press: asks the Mac to open its own System Settings pane, then reads the grant back —
-    /// the switch itself is always the person's, on whichever screen they are holding.
-    private func requestPermission(_ kind: MachinePermissions.Grant.Kind, profileID: String) {
-        guard let profile = profiles.first(where: { $0.id == profileID }) else { return }
-        Task { [weak self] in
-            guard
-                let backend = await ServerDirectory.shared.backend(for: profile)
-                    as? any PermissionReportingBackend
-            else { return }
-            guard
-                let permissions = await Self.within(
-                    15, { try? await backend.requestMachinePermission(kind) })
-            else {
-                Gtk.onMain { [weak self] in self?.rows[profileID]?.permissionsBox?.showRequestFailed() }
-                return
-            }
-            Gtk.onMain { [weak self] in self?.renderPermissions(permissions, profileID: profileID) }
-        }
-    }
-
-    /// The steps stay on screen until the switch is noticed, so this asks again every
-    /// `MachinePermissionReading.pollInterval` while it is waiting on one — and stops the moment
-    /// the row is gone, rather than polling a window nobody has open.
-    private func schedulePermissionPoll(profileID: String, waiting: Bool) {
-        guard waiting, let slots = rows[profileID], !slots.permissionPollPending else { return }
-        slots.permissionPollPending = true
-        Gtk.after(Gtk.milliseconds(MachinePermissionReading.pollInterval)) { [weak self] in
-            self?.rows[profileID]?.permissionPollPending = false
-            guard let self, self.window != nil, self.rows[profileID] != nil,
-                let profile = self.profiles.first(where: { $0.id == profileID })
-            else { return }
-            self.checkPermissions(profile)
-        }
-    }
-
-
-    private func applyAddress(_ id: String) {
-        guard let profile = profiles.first(where: { $0.id == id }),
-            let slots = rows[id], let field = slots.address
-        else { return }
-        let raw = Dialogs.entryText(field)
-        let reading = HostAddress.read(raw, defaultPort: HostAddress.port(for: profile.backend))
-        guard case .address(let address) = reading else {
-            gtk_editable_set_text(op(field), Self.editableAddress(profile))
-            toast(Self.explain(reading, raw: raw))
-            return
-        }
-        guard address.url != profile.baseURL else { return }
-        save(
-            ConnectionProfile(
-                id: profile.id, name: profile.name, backend: profile.backend,
-                baseURL: address.url, username: profile.username),
-            keepingPasswordOf: profile,
-            toast: Localized.text("%@ now points at %@", profile.name, address.displayHost))
-    }
-
-    private func applyName(_ id: String) {
-        guard let profile = profiles.first(where: { $0.id == id }),
-            let slots = rows[id], let field = slots.name
-        else { return }
-        let name = Dialogs.entryText(field)
-        guard !name.isEmpty else {
-            gtk_editable_set_text(op(field), profile.name)
-            return
-        }
-        guard name != profile.name else { return }
-        save(
-            ConnectionProfile(
-                id: profile.id, name: name, backend: profile.backend, baseURL: profile.baseURL,
-                username: profile.username),
-            keepingPasswordOf: profile,
-            toast: Localized.text("Renamed to %@", name))
-    }
-
-    private func applyPassword(_ id: String) {
-        guard let profile = profiles.first(where: { $0.id == id }),
-            let slots = rows[id], let field = slots.password
-        else { return }
-        let password = Self.secretText(field)
-        expandAfterReload = profile.id
-        Task { [weak self] in
-            do {
-                try await ServerDirectory.shared.save(
-                    profile, password: password.isEmpty ? nil : password)
-                self?.onChanged()
-                Gtk.onMain { [weak self] in
-                    self?.toast(
-                        password.isEmpty
-                            ? Localized.text("%@ will connect without a password.", profile.name)
-                            : Localized.text("New password saved for %@.", profile.name))
-                    self?.reload()
-                }
-            } catch {
-                let text = Localized.text("Could not save: %@", String(describing: error))
-                Gtk.onMain { [weak self] in self?.toast(text) }
-            }
-        }
-    }
-
-    private func save(
-        _ profile: ConnectionProfile, keepingPasswordOf previous: ConnectionProfile, toast: String
-    ) {
-        expandAfterReload = profile.id
-        Task { [weak self] in
-            let password = await ServerDirectory.shared.password(for: previous)
-            do {
-                try await ServerDirectory.shared.save(profile, password: password)
-                self?.onChanged()
-                Gtk.onMain { [weak self] in
-                    self?.toast(toast)
-                    self?.reload()
-                }
-            } catch {
-                let text = Localized.text("Could not save: %@", String(describing: error))
-                Gtk.onMain { [weak self] in self?.toast(text) }
-            }
-        }
-    }
-
-    /// The press states its cost first, then hands the ask over and stops: the connection it went
-    /// over dies with the process it restarted, so the reconnect every pane already watches is what
-    /// says the machine is back. A machine set up by hand refuses the restart, and the refusal is
-    /// the offer: the setup that makes it restartable is one press, not a terminal instruction.
-    private func confirmRestart(id: String, name: String) {
-        guard let window else { return }
-        Dialogs.confirm(
-            title: ServerRestart.confirmTitle(name),
-            body: ServerRestart.confirmBody(workingTurns: 0),
-            confirmLabel: ServerRestart.action, parent: window
-        ) { [weak self] in
-            Task { [weak self] in
-                guard let profile = await ServerDirectory.shared.profiles().first(where: { $0.id == id }),
-                    let restartable = await ServerDirectory.shared.backend(for: profile)
-                        as? any RestartableBackend
-                else { return }
-                do {
-                    try await restartable.restart()
-                    Gtk.onMain { [weak self] in
-                        self?.toast(Localized.text("%@ is restarting.", name))
-                    }
-                } catch {
-                    self?.offerSetup(name: name, backend: restartable)
-                }
-            }
-        }
-    }
-
-    private func offerSetup(name: String, backend: any CodingAgentBackend) {
-        guard let window else { return }
-        guard let settable = backend as? any ServeManagerBackend else {
-            Gtk.onMain { [weak self] in
-                self?.toast(ServerRestart.refused(name))
-            }
-            return
-        }
-        Dialogs.confirm(
-            title: ServerRestart.setupTitle,
-            body: ServerRestart.setupDetail,
-            confirmLabel: ServerRestart.setupAction, parent: window
-        ) { [weak self] in
-            Task { [weak self] in
-                do {
-                    try await settable.installServeManager()
-                    Gtk.onMain { [weak self] in
-                        self?.toast(Localized.text("%@ is restarting with its new setup.", name))
-                    }
-                } catch {
-                    Gtk.onMain { [weak self] in
-                        self?.toast(ServerRestart.setupFailedDetail)
-                    }
-                }
-            }
-        }
-    }
-
-    private func confirmRemove(id: String, name: String) {
-        guard let window else { return }
-        Dialogs.confirm(
-            title: Localized.text("Remove %@?", name),
-            body: Localized.text(
-                "The saved address and password go away. Conversations stay on the server."),
-            confirmLabel: Localized.text("Remove"), parent: window
-        ) { [weak self] in
-            Task { [weak self] in
-                await ServerDirectory.shared.delete(id: id)
-                self?.onChanged()
-                Gtk.onMain { [weak self] in
-                    self?.toast(Localized.text("%@ removed.", name))
-                    self?.reload()
-                }
-            }
-        }
-    }
-
-
-    private func probeAndSave() {
-        guard !probing, let addressRow, let nameRow, let passwordRow else { return }
-        let raw = Dialogs.entryText(addressRow)
-        let label = Dialogs.entryText(nameRow)
-        var password = Self.secretText(passwordRow)
-        if password.isEmpty, let pasted = BridgeInstall.password(in: raw) {
-            password = pasted
-            gtk_editable_set_text(op(passwordRow), pasted)
-        }
-        let backend: AgentType = selectedBackend
-
-        guard !raw.isEmpty else {
-            setStatus(
-                Localized.text("Nothing typed yet"),
-                detail: Localized.text(
-                    "Paste the machine's tailnet address — 100.x.y.z, a MagicDNS name, or the whole line the server printed when it started."
-                ), tone: .warn)
-            return
-        }
-        let reading = HostAddress.read(raw, defaultPort: HostAddress.port(for: backend))
-        guard case .address(let address) = reading else {
-            setStatus(
-                Localized.text("That doesn't read as an address"),
-                detail: Self.explain(reading, raw: raw), tone: .bad)
-            return
-        }
-
-        let secret = password.isEmpty ? nil : password
-        setProbing(true)
-        setStatus(
-            Localized.text("Probing %@…", address.displayHost),
-            detail: Localized.text("Trying every port worth trying before saving anything."))
-        Task { [weak self] in
-            let tailnet = await Self.tailnet.address()
-            let found = await Self.within(25) {
-                await ProbeSweep.best(
-                    address: address, password: secret, preferring: backend)
-            }
-            guard let verdict = found else {
-                Gtk.onMain { [weak self] in
-                    guard let self else { return }
-                    self.setProbing(false)
-                    self.setStatus(
-                        Localized.text("%@ did not answer in time", address.displayHost),
-                        detail: Localized.text(
-                            "Twenty-five seconds and nothing came back. The machine may be asleep, or the agent may be busy with a turn — try again in a moment."
-                        ), tone: .bad,
-                        actions: [
-                            Self.inlineButton(Localized.text("Try again")) { [weak self] in
-                                self?.probeAndSave()
-                            }
-                        ])
-                }
-                return
-            }
-            if case .ok(let agent, _) = verdict.outcome {
-                let profile = ConnectionProfile(
-                    id: UUID().uuidString,
-                    name: label.isEmpty ? address.displayHost : label,
-                    backend: agent,
-                    baseURL: verdict.url,
-                    username: ProbeSweep.username(for: agent))
-                do {
-                    try await ServerDirectory.shared.save(profile, password: secret)
-                    self?.onChanged()
-                    Gtk.onMain { [weak self] in
-                        guard let self else { return }
-                        self.setProbing(false)
-                        self.clearAddForm()
-                        self.setStatus("")
-                        self.toast(
-                            Localized.text(
-                                "Saved %@ — %@ answered.", profile.name,
-                                ServerLabel.agent(agent)))
-                        self.reload()
-                    }
-                } catch {
-                    let text = Localized.text("Could not save: %@", String(describing: error))
-                    Gtk.onMain { [weak self] in
-                        self?.setProbing(false)
-                        self?.setStatus(
-                            Localized.text("%@ answered, but it could not be saved", address.displayHost),
-                            detail: text, tone: .bad)
-                    }
-                }
-                return
-            }
-            let diagnosis = await Self.diagnose(
-                outcome: verdict.outcome, address: address, tailnetAddress: tailnet,
-                sentPassword: secret != nil)
-            Gtk.onMain { [weak self] in
-                guard let self else { return }
-                self.setProbing(false)
-                guard let diagnosis else {
-                    self.setStatus(
-                        Localized.text("No answer from %@", address.displayHost), tone: .bad)
-                    return
-                }
-                self.setStatus(
-                    diagnosis.title, detail: diagnosis.detail, tone: .bad,
-                    actions: self.buttons(for: diagnosis, profileID: nil))
-            }
-        }
-    }
-
-    private static let addFormBackends: [AgentType] = [.claudeCode, .openCode, .omp]
-
-    private var selectedBackend: AgentType {
-        guard let agentRow else { return .claudeCode }
-        let index = adw_combo_row_get_selected(ptr(UnsafeMutableRawPointer(agentRow)))
-        return Self.addFormBackends[Int(index)]
-    }
-
-    private func clearAddForm() {
-        if let addressRow { gtk_editable_set_text(op(addressRow), "") }
-        if let nameRow { gtk_editable_set_text(op(nameRow), "") }
-        if let passwordRow { gtk_editable_set_text(op(passwordRow), "") }
-    }
-
-    private func setProbing(_ value: Bool) {
-        probing = value
-        guard let probeButton else { return }
-        gtk_widget_set_sensitive(probeButton, value ? 0 : 1)
-        gtk_button_set_label(
-            ptr(probeButton),
-            value ? Localized.text("Probing…") : Localized.text("Probe and save"))
-    }
-
-    /// What the add form is doing, or what it found, as a row of the same shape every server fact
-    /// wears here — headline, sentence, and the one button worth pressing about it.
-    private func setStatus(
-        _ headline: String, detail: String = "", tone: Tone = .quiet,
-        actions: [UnsafeMutablePointer<GtkWidget>] = []
-    ) {
-        guard let statusRow else { return }
-        adw_preferences_row_set_title(ptr(statusRow), headline)
-        setFact(statusRow, statusActions, detail, tone: tone, actions: actions)
-        gtk_widget_set_visible(statusRow, headline.isEmpty ? 0 : 1)
-    }
-
-    private static func explain(_ reading: HostAddress.Reading, raw: String) -> String {
-        switch reading {
-        case .empty:
-            return Localized.text("Type the server's tailnet address first.")
-        case .bindAll:
-            return Localized.text(
-                "0.0.0.0 is what a server binds to, never where it lives — use the machine's 100.x tailnet address."
-            )
-        case .unsupportedScheme(let scheme):
-            return Localized.text("%@:// is not something this app can speak.", scheme)
-        case .invalid, .address:
-            return Localized.text("“%@” does not read as an address.", raw)
-        }
-    }
-
-
-
-    /// Nothing on this screen may wait forever. A machine that is merely busy answers late, and a
-    /// bridge in the middle of a turn may not answer at all until it finishes — so every ask is
-    /// raced against a deadline and reports that it gave up, rather than leaving a row reading
-    /// "checking…" for as long as the window is open.
-    private static func within<T: Sendable>(
-        _ seconds: Int, _ work: @escaping @Sendable () async -> T?
-    ) async -> T? {
-        await withTaskGroup(of: T?.self) { group in
-            group.addTask { await work() }
-            group.addTask {
-                try? await Task.sleep(for: .seconds(seconds))
-                return nil
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first
-        }
-    }
-
-    /// The named cause of a failed probe, and the one action worth offering for it. Takes this
-    /// machine's tailnet address rather than reading the property, because it runs off the main
-    /// context and the window that holds that reading lives on it.
-    /// What let this machine in, in the server's own words — the reason a row that never asked
-    /// for a password is not an unprotected one. Nil for a server that does not say.
-    private static func access(of profile: ConnectionProfile) async -> String? {
-        guard let backend = await ServerDirectory.shared.backend(for: profile) else { return nil }
-        let health = await within(10) { try? await backend.health() }
-        return ServerAccessReading.line(health?.access)
-    }
-
-    private static func diagnose(
-        outcome: ConnectionProbe.Outcome, address: HostAddress, tailnetAddress: String?,
-        sentPassword: Bool
-    ) async -> ConnectDiagnosis? {
-        var reachability: PortReachability.Verdict?
-        if let host = address.url.host, let port = address.url.port {
-            reachability = await PortReachability.check(host: host, port: UInt16(port))
-        }
-        return ConnectDiagnosis.make(
-            outcome: outcome, address: address, tailnetAddress: tailnetAddress,
-            alternatePort: otherAgentPort(for: address.url),
-            sentPassword: sentPassword, reachability: reachability,
-            deviceName: Localized.text("This machine"))
-    }
-
-    /// The same address on the other agent's port — the single most likely correction when
-    /// something answered but not as the agent this profile expects.
-    private static func otherAgentPort(for url: URL) -> URL? {
-        guard let port = url.port else { return nil }
-        let alternate: Int
-        switch port {
-        case HostAddress.openCodePort: alternate = HostAddress.claudeCodePort
-        case HostAddress.claudeCodePort: alternate = HostAddress.ompPort
-        case HostAddress.ompPort: alternate = HostAddress.openCodePort
-        default: return nil
-        }
-        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
-            return nil
-        }
-        components.port = alternate
-        return components.url
-    }
-
-    /// Everything a row can find out, asked again — the refresh button in its header, and what a
-    /// failed probe's "try again" lands on.
-    private func recheck(_ profileID: String) {
-        guard let profile = profiles.first(where: { $0.id == profileID }) else { return }
-        checkHealth(profile)
-        if !profile.id.hasPrefix(DemoWorld.profilePrefix) {
-            UpdateWatch.recheck(.server(profileID: profile.id))
-        }
-        if profile.backend == .claudeCode, !profile.id.hasPrefix(DemoWorld.profilePrefix) {
-            checkAccount(profile)
-            checkPermissions(profile)
-        }
-    }
-
-    private func buttons(for diagnosis: ConnectDiagnosis, profileID: String?)
-        -> [UnsafeMutablePointer<GtkWidget>]
-    {
-        switch diagnosis.fix {
-        case .retry:
-            return [
-                Self.inlineButton(diagnosis.actionTitle ?? Localized.text("Try again")) {
-                    [weak self] in
-                    self?.retry(profileID: profileID)
-                }
-            ]
-        case .retryOtherPort(let url), .usePlainHTTP(let url):
-            return [
-                Self.inlineButton(diagnosis.actionTitle ?? Localized.text("Try again")) {
-                    [weak self] in
-                    self?.retry(profileID: profileID, at: url)
-                }
-            ]
-        case .openTailscale:
-            return [
-                Self.inlineButton(diagnosis.actionTitle ?? Localized.text("Open Tailscale")) {
-                    [weak self] in
-                    self?.openTailscale()
-                }
-            ]
-        case .copyCommand(let command):
-            return [
-                Self.inlineButton(diagnosis.actionTitle ?? Localized.text("Copy")) {
-                    [weak self] in
-                    Gtk.copyToClipboard(command)
-                    self?.toast(Localized.text("Copied — run it in a terminal."))
-                }
-            ]
-        case .none, .openAppSettings, .revealPassword, .seePro:
-            return []
-        }
-    }
-
-    /// The machine is added from the first-run checklist, which is where the link way, the install
-    /// command and the tailnet scan live; a machine saved there lands back in this list.
-    private func addMachine() {
-        FirstRunDialog.present(way: nil, parent: window) { [weak self] in
-            self?.onChanged()
-            Gtk.onMain { [weak self] in self?.reload() }
-        }
-    }
-
-    /// The remedy this machine's own Tailscale reading offers, run here with what it prints told in
-    /// a toast — never "run it in a terminal". A reading that has no remedy because Tailscale is
-    /// up (a refusal that names the tailnet) goes to the page where the account is chosen.
-    private func openTailscale() {
-        let latch = FirstSay()
-        Task.detached { [weak self] in
-            let reading = TailnetStatusLinux.read().reading
-            Gtk.onMain { [weak self] in
-                guard let self else { return }
-                let handled = TailnetRemedyRunner.perform(reading) { text in
-                    guard latch.first() else { return }
-                    Gtk.onMain { self.toast(text) }
-                }
-                if !handled { SignInDialog.openInBrowser(Self.tailnetPage) }
-            }
-        }
-    }
-
-    private static let tailnetPage = "https://login.tailscale.com/admin/machines"
-
-    private final class FirstSay: @unchecked Sendable {
-        private let lock = NSLock()
-        private var said = false
-
-        func first() -> Bool {
-            lock.lock()
-            defer { lock.unlock() }
-            guard !said else { return false }
-            said = true
-            return true
-        }
-    }
-
-    private func retry(profileID: String?, at url: URL? = nil) {
-        guard let profileID else {
-            if let url, let addressRow {
-                gtk_editable_set_text(op(addressRow), url.absoluteString)
-            }
-            probeAndSave()
-            return
-        }
-        guard let profile = profiles.first(where: { $0.id == profileID }) else { return }
-        guard let url else {
-            recheck(profile.id)
-            return
-        }
-        save(
-            ConnectionProfile(
-                id: profile.id, name: profile.name, backend: profile.backend, baseURL: url,
-                username: profile.username),
-            keepingPasswordOf: profile,
-            toast: Localized.text("%@ now points at %@", profile.name, url.absoluteString))
-    }
-
-
-    private func readTailnetAddress() {
-        Task { [weak self] in
-            let address = await Self.tailnet.address()
-            Gtk.onMain { [weak self] in
-                guard let group = self?.addGroup else { return }
-                adw_preferences_group_set_description(
-                    ptr(group),
-                    address.map { Localized.text("This machine is %@ on your tailnet.", $0) }
-                        ?? Localized.text(
-                            "Tailscale isn't reporting an address here — nothing will answer until it is connected."
-                        ))
-            }
-        }
-    }
-
-    /// One reading of this machine's tailnet address, shared by every probe on the screen.
-    /// `ConnectDiagnosis` reads a missing address as "this machine isn't on your tailnet", which
-    /// is the wrong sentence to put under a server that is merely on the wrong port — so a probe
-    /// waits for the reading rather than racing it and inheriting the nil.
-    private actor Tailnet {
-        private var reading: Task<String?, Never>?
-
-        func address() async -> String? {
-            if let reading { return await reading.value }
-            let made = Task.detached { TailnetStatusLinux.read().address }
-            reading = made
-            return await made.value
-        }
-    }
-
-    private static let tailnet = Tailnet()
-
-
-    private enum Tone {
+    enum Tone {
         case good, warn, bad, quiet
 
         var css: String? {
@@ -1246,18 +130,18 @@ final class ServerManager: @unchecked Sendable {
         }
     }
 
-    private static let glyphTones = [
+    static let glyphTones = [
         "glyph-done", "glyph-error", "glyph-pending", "glyph-needs",
     ]
-    private static let factTones = ["fact-good", "fact-warn", "fact-bad", "row-detail", "glyph-error"]
+    static let factTones = ["fact-good", "fact-warn", "fact-bad", "row-detail", "glyph-error"]
 
-    private func setGlyph(_ slots: ServerRow, _ text: String, css: String) {
+    func setGlyph(_ slots: ServerRow, _ text: String, css: String) {
         guard let glyph = slots.glyph else { return }
         gtk_label_set_text(op(glyph), text)
         Gtk.setTone(glyph, css, from: Self.glyphTones)
     }
 
-    private func setFact(
+    func setFact(
         _ row: UnsafeMutablePointer<GtkWidget>?, _ actionBox: UnsafeMutablePointer<GtkWidget>?,
         _ text: String, tone: Tone, actions: [UnsafeMutablePointer<GtkWidget>],
         title: String? = nil
@@ -1275,7 +159,7 @@ final class ServerManager: @unchecked Sendable {
     /// A row that states one fact about a server and carries whatever buttons that fact earns.
     /// The subtitle is where the sentence goes — it wraps to as many lines as it needs, because a
     /// named diagnosis is a paragraph and truncating it would put the app back to "unreachable".
-    private static func factRow(title: String)
+    static func factRow(title: String)
         -> (UnsafeMutablePointer<GtkWidget>, UnsafeMutablePointer<GtkWidget>)
     {
         let row = adw_action_row_new()!
@@ -1293,7 +177,7 @@ final class ServerManager: @unchecked Sendable {
     /// What an address field puts in front of someone who wants to change it: `host:port` when the
     /// scheme is the ordinary one, and the whole URL when it isn't — a field that hid an `https`
     /// would silently downgrade the server the moment it was applied.
-    private static func editableAddress(_ profile: ConnectionProfile) -> String {
+    static func editableAddress(_ profile: ConnectionProfile) -> String {
         guard profile.baseURL.scheme == "http" else {
             var text = profile.baseURL.absoluteString
             while text.hasSuffix("/") { text.removeLast() }
@@ -1302,7 +186,7 @@ final class ServerManager: @unchecked Sendable {
         return ServerLabel.address(profile)
     }
 
-    private static func entryRow(title: String, tooltip: String?)
+    static func entryRow(title: String, tooltip: String?)
         -> UnsafeMutablePointer<GtkWidget>
     {
         let row = adw_entry_row_new()!
@@ -1314,19 +198,19 @@ final class ServerManager: @unchecked Sendable {
 
     /// A password is taken exactly as typed. Every other field here is trimmed, because a stray
     /// space in an address is a typo — in a secret it is a character the server is expecting.
-    private static func secretText(_ row: UnsafeMutablePointer<GtkWidget>) -> String {
+    static func secretText(_ row: UnsafeMutablePointer<GtkWidget>) -> String {
         guard let raw = gtk_editable_get_text(op(row)) else { return "" }
         return String(cString: raw)
     }
 
-    private static func passwordRow(title: String) -> UnsafeMutablePointer<GtkWidget> {
+    static func passwordRow(title: String) -> UnsafeMutablePointer<GtkWidget> {
         let row = adw_password_entry_row_new()!
         adw_preferences_row_set_use_markup(ptr(row), 0)
         adw_preferences_row_set_title(ptr(row), title)
         return row
     }
 
-    private static func inlineButton(
+    static func inlineButton(
         _ title: String, css: [String] = ["flat"], onClick: @escaping @Sendable () -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let button = Gtk.button(title, css: css, onClick: onClick)
@@ -1334,27 +218,26 @@ final class ServerManager: @unchecked Sendable {
         return button
     }
 
-    private func toast(_ text: String) {
+    func toast(_ text: String) {
         guard let window, let toast = adw_toast_new(text) else { return }
         adw_preferences_window_add_toast(ptr(window), toast)
     }
 
-
-    private final class Registry: @unchecked Sendable {
+    final class Registry: @unchecked Sendable {
         var managers: [UInt: ServerManager] = [:]
         var next: UInt = 1
     }
 
-    private static let registry = Registry()
+    static let registry = Registry()
 
-    private static func hold(_ manager: ServerManager) -> UInt {
+    static func hold(_ manager: ServerManager) -> UInt {
         let token = registry.next
         registry.next += 1
         registry.managers[token] = manager
         return token
     }
 
-    private static func release(_ token: UInt) {
+    static func release(_ token: UInt) {
         registry.managers[token]?.forgetWidgets()
         registry.managers[token] = nil
     }
@@ -1363,7 +246,7 @@ final class ServerManager: @unchecked Sendable {
     /// — the app holds one so a second ask raises rather than rebuilds — and a probe still in
     /// flight will come back to write into a row. Nothing may be touched again, and a reopened
     /// window must build a fresh set rather than take back the group it used to remove rows from.
-    private func forgetWidgets() {
+    func forgetWidgets() {
         for slots in rows.values { slots.capabilities?.stop() }
         window = nil
         configuredGroup = nil
@@ -1384,7 +267,7 @@ final class ServerManager: @unchecked Sendable {
 
 /// The widgets one configured server's expander owns, so a probe that finishes a second later can
 /// write into exactly its own row rather than rebuilding the list under whoever is reading it.
-private final class ServerRow {
+final class ServerRow {
     var glyph: UnsafeMutablePointer<GtkWidget>?
     var health: UnsafeMutablePointer<GtkWidget>?
     var healthActions: UnsafeMutablePointer<GtkWidget>?
