@@ -6,7 +6,7 @@ import TailscodeCore
 /// it is kept while this value changes (a step arriving, a tool ending, a theme), so the value is
 /// what the diff compares and the widget restates itself from it.
 struct BrainRow: Hashable {
-    let turn: NeuralTurn
+    let slot: NeuralTurnSlot
     var open: Bool
     var showRows: Bool
     /// The words of the turn's answer once it has settled, which the provenance chips are read from.
@@ -16,10 +16,19 @@ struct BrainRow: Hashable {
     /// has settled and is the one open.
     var prompt: String?
 
-    var id: String { turn.id }
+    var id: String { slot.outline.id }
+
+    /// The turn read into steps, which reads them the first time a view asks.
+    var turn: NeuralTurn { slot.turn }
 
     func hash(into hasher: inout Hasher) {
-        hasher.combine(turn.id)
+        hasher.combine(id)
+    }
+
+    static func == (left: BrainRow, right: BrainRow) -> Bool {
+        left.open == right.open && left.showRows == right.showRows && left.answer == right.answer
+            && left.look == right.look && left.prompt == right.prompt
+            && (left.slot === right.slot || left.slot.turn == right.slot.turn)
     }
 }
 
@@ -48,16 +57,16 @@ enum BrainAwaiting {
 /// pass over the turns' values, never a walk over the conversation's parts.
 struct BrainPass {
     struct Record {
-        var turn: NeuralTurn
+        var outline: NeuralTurnOutline
         var anchor: String?
         var members: Set<String>
         var messages: Set<String>
     }
 
-    var turns: [NeuralTurn] = []
+    var turnIDs: [String] = []
     var rows: [String: BrainRow] = [:]
     var anchors: [String: String] = [:]
-    var skip: [String: String] = [:]
+    var members: [String: Set<String>] = [:]
     var messageTurns: [String: String] = [:]
     var emitted: Set<String> = []
 
@@ -79,7 +88,9 @@ struct BrainPass {
                 emitted.insert(owner)
                 out.append(TranscriptRow(key: NeuralOpenPolicy.rowID(turnID: owner), kind: .brain(brain)))
             }
-            if let part, let owner = skip[part], self.rows[owner]?.showRows == false {
+            if let part, let owner = messageTurns[message.id], members[owner]?.contains(part) == true,
+                self.rows[owner]?.showRows == false
+            {
                 droppedLast = true
                 continue
             }
@@ -112,7 +123,7 @@ final class BrainLedger: @unchecked Sendable {
     private let cache = NeuralTurnCache()
     private var records: [String: BrainPass.Record] = [:]
     private var anchors: [String: String] = [:]
-    private var skip: [String: String] = [:]
+    private var members: [String: Set<String>] = [:]
     private var messageTurns: [String: String] = [:]
     private(set) var policy: NeuralOpenPolicy?
 
@@ -125,7 +136,7 @@ final class BrainLedger: @unchecked Sendable {
         cache.reset()
         records = [:]
         anchors = [:]
-        skip = [:]
+        members = [:]
         messageTurns = [:]
         policy = nil
     }
@@ -139,43 +150,43 @@ final class BrainLedger: @unchecked Sendable {
             if !records.isEmpty { reset() }
             return nil
         }
-        let turns = Self.droppingLeadingPartial(
-            cache.partition(messages: messages, running: running, awaiting: awaiting)
-                .filter(NeuralOpenPolicy.isBrain(turn:)),
+        let list = cache.partitionList(messages: messages, running: running, awaiting: awaiting)
+        let slots = Self.droppingLeadingPartial(
+            (0..<list.count).map { list.slot(at: $0) }.filter { $0.outline.isBrain },
             messages: messages)
         let policy = NeuralOpenPolicy(
-            turnIDs: turns.map(\.id), isRunning: running, choices: settings.choices)
+            turnIDs: slots.map { $0.outline.id }, isRunning: running, choices: settings.choices)
         self.policy = policy
         let openID = policy.openTurnID
         var alive = Set<String>()
-        for turn in turns {
-            alive.insert(turn.id)
-            if records[turn.id]?.turn == turn { continue }
-            remove(turn.id)
-            let plan = NeuralRowPlan(turns: [turn])
-            let anchor = plan.anchors.keys.first
+        for slot in slots {
+            let outline = slot.outline
+            alive.insert(outline.id)
+            if let held = records[outline.id], held.outline == outline { continue }
+            remove(outline.id)
             let record = BrainPass.Record(
-                turn: turn, anchor: anchor, members: plan.skip,
-                messages: turn.memberMessageIDs.isEmpty
-                    ? Set(turn.steps.map(\.messageID)) : turn.memberMessageIDs)
-            records[turn.id] = record
-            if let anchor { anchors[anchor] = turn.id }
-            for part in record.members { skip[part] = turn.id }
-            for message in record.messages { messageTurns[message] = turn.id }
+                outline: outline, anchor: outline.anchor, members: outline.memberPartIDs,
+                messages: outline.memberMessageIDs)
+            records[outline.id] = record
+            if let anchor = outline.anchor { anchors[anchor] = outline.id }
+            members[outline.id] = record.members
+            for message in record.messages { messageTurns[message] = outline.id }
         }
         for stale in records.keys where !alive.contains(stale) { remove(stale) }
         var pass = BrainPass()
-        pass.turns = turns
+        pass.turnIDs = slots.map { $0.outline.id }
         pass.anchors = anchors
-        pass.skip = skip
+        pass.members = members
         pass.messageTurns = messageTurns
-        for turn in turns {
-            let isOpen = turn.id == openID
-            pass.rows[turn.id] = BrainRow(
-                turn: turn, open: isOpen, showRows: settings.rowsShown.contains(turn.id),
-                answer: isOpen && turn.outcome != .running ? Self.answer(of: turn, in: messages) : "",
+        for slot in slots {
+            let outline = slot.outline
+            let isOpen = outline.id == openID
+            pass.rows[outline.id] = BrainRow(
+                slot: slot, open: isOpen, showRows: settings.rowsShown.contains(outline.id),
+                answer: isOpen && outline.outcome != .running
+                    ? Self.answer(of: outline, in: messages) : "",
                 look: settings.look,
-                prompt: isOpen ? Self.prompt(before: turn, in: messages) : nil)
+                prompt: isOpen ? Self.prompt(before: outline.id, in: messages) : nil)
         }
         return pass
     }
@@ -185,9 +196,11 @@ final class BrainLedger: @unchecked Sendable {
     /// which destroyed and rebuilt its row at the top on every arrival. The leading partial turn
     /// keeps today's rows instead; every turn after it begins at a message the person wrote and
     /// has an id that stays.
-    static func droppingLeadingPartial(_ turns: [NeuralTurn], messages: [ChatMessage]) -> [NeuralTurn] {
+    static func droppingLeadingPartial(
+        _ turns: [NeuralTurnSlot], messages: [ChatMessage]
+    ) -> [NeuralTurnSlot] {
         guard let first = messages.first, first.role != .user, let lead = turns.first,
-            lead.id == first.id
+            lead.outline.id == first.id
         else { return turns }
         return Array(turns.dropFirst())
     }
@@ -195,15 +208,15 @@ final class BrainLedger: @unchecked Sendable {
     private func remove(_ turnID: String) {
         guard let record = records.removeValue(forKey: turnID) else { return }
         if let anchor = record.anchor, anchors[anchor] == turnID { anchors[anchor] = nil }
-        for part in record.members where skip[part] == turnID { skip[part] = nil }
+        members[turnID] = nil
         for message in record.messages where messageTurns[message] == turnID {
             messageTurns[message] = nil
         }
     }
 
     /// The words of the user message that began a turn: what the poster quotes.
-    private static func prompt(before turn: NeuralTurn, in messages: [ChatMessage]) -> String? {
-        guard let first = messages.lastIndex(where: { $0.id == turn.id }),
+    private static func prompt(before turnID: String, in messages: [ChatMessage]) -> String? {
+        guard let first = messages.lastIndex(where: { $0.id == turnID }),
             let asked = messages[..<first].last(where: { $0.role == .user })
         else { return nil }
         let words = asked.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -211,7 +224,7 @@ final class BrainLedger: @unchecked Sendable {
     }
 
     /// The text of the parts a turn ended on, in order.
-    private static func answer(of turn: NeuralTurn, in messages: [ChatMessage]) -> String {
+    private static func answer(of turn: NeuralTurnOutline, in messages: [ChatMessage]) -> String {
         guard !turn.answerPartIDs.isEmpty else { return "" }
         var words: [String] = []
         for id in turn.answerPartIDs {

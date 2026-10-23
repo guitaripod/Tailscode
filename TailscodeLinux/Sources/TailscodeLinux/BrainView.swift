@@ -131,8 +131,8 @@ final class BrainView: @unchecked Sendable {
         self.row = row
         self.context = context
         host = context.brains
-        turnID = row.turn.id
-        let brainContext = context.brains?.context(for: row.turn.id) ?? .none
+        turnID = row.id
+        let brainContext = context.brains?.context(for: row.id) ?? .none
         model = NeuralBrainModel(turn: row.turn, context: brainContext)
         inks = BrainInks(palette: MatrixTheme.palette, face: model.face)
         let holder = RowHost()
@@ -505,7 +505,7 @@ final class BrainView: @unchecked Sendable {
         let old = row
         row = next
         refreshContextInto()
-        if old.look != next.look || old.turn.modelID != next.turn.modelID {
+        if old.look != next.look || old.slot.outline.modelID != next.slot.outline.modelID {
             inks = BrainInks(palette: MatrixTheme.palette, face: model.face)
             stage?.retheme()
             card.retheme()

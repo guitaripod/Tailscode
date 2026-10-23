@@ -770,7 +770,7 @@ extension SelfTest {
         var turn = dangling.view.row.turn
         turn.steps = steps
         var held = dangling.view.row
-        held = BrainRow(turn: turn, open: true, showRows: false, answer: held.answer, look: held.look, prompt: held.prompt)
+        held = BrainRow(slot: NeuralTurnSlot(turn: turn, generation: 0), open: true, showRows: false, answer: held.answer, look: held.look, prompt: held.prompt)
         dangling.view.restate(held)
         _ = brainPump(0.6)
         try expect(
@@ -780,7 +780,7 @@ extension SelfTest {
         var running = held
         var liveTurn = turn
         liveTurn.outcome = .running
-        running = BrainRow(turn: liveTurn, open: true, showRows: false, answer: "", look: held.look, prompt: nil)
+        running = BrainRow(slot: NeuralTurnSlot(turn: liveTurn, generation: 0), open: true, showRows: false, answer: "", look: held.look, prompt: nil)
         dangling.view.restate(running)
         dangling.view.viewportMoved()
         _ = brainPump(0.5)
@@ -801,8 +801,20 @@ extension SelfTest {
             messages: Array(messages.dropFirst(2)), running: false, awaiting: NeuralAwaiting(approvals: [], answers: [], interrupted: []),
             settings: BrainBuildSettings(style: .brain, choices: [:], rowsShown: [], look: "x"))
         try expect(
-            pass?.turns.map(\.id) == ["b-m1"] && slid?.turns.map(\.id) == ["b-m1"],
-            "a window that starts inside a turn keeps that turn's rows and gives the later turns ids that stay as it slides (\(pass?.turns.map(\.id) ?? []))")
+            pass?.turnIDs == ["b-m1"] && slid?.turnIDs == ["b-m1"],
+            "a window that starts inside a turn keeps that turn's rows and gives the later turns ids that stay as it slides (\(pass?.turnIDs ?? []))")
+        for turns in [40, 300, 1500] {
+            let long = (0..<turns).flatMap {
+                NeuralDemo.buildFix(prefix: "h\($0)-", origin: 1_700_000_000 + Double($0) * 600)
+            }
+            let began = DispatchTime.now().uptimeNanoseconds
+            let cold = BrainLedger().pass(
+                messages: long, running: false, awaiting: .none,
+                settings: BrainBuildSettings(style: .brain, choices: [:], rowsShown: [], look: "x"))
+            let spent = Double(DispatchTime.now().uptimeNanoseconds - began) / 1_000_000
+            print(String(format: "brain ledger: a cold pass over %d turns (%d messages) takes %.2f ms", turns, long.count, spent))
+            try expect(cold?.turnIDs.count == turns, "the cold pass places every turn")
+        }
         bed.close()
         BrainCompositors.dropIdle(olderThan: 0)
     }
