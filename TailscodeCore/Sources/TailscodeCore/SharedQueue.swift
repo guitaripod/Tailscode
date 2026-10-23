@@ -604,21 +604,21 @@ public enum QueueReading {
         switch (row.holder, row.canEdit) {
         case (.server, true):
             return Localized.text(
-                "Waiting on the server for this turn, where every device sees it — click to edit, or press ↑ in an empty composer"
+                "Waiting on the server for this turn, where every device sees it. Click to edit, or press ↑ in an empty composer"
             )
         case (.server, false):
             return Localized.text("Waiting on the server for this turn, where every device sees it")
         case (.unsent, true):
             return Localized.text(
-                "Not sent yet — it goes to the server when it answers. Click to edit")
+                "Not sent yet. It goes to the server when it answers. Click to edit")
         case (.unsent, false):
-            return Localized.text("Not sent yet — it goes to the server when it answers")
+            return Localized.text("Not sent yet. It goes to the server when it answers")
         case (.device, true):
             return Localized.text(
-                "Held on this device — it goes when this turn ends. Click to edit, or press ↑ in an empty composer"
+                "Held on this device. It goes when this turn ends. Click to edit, or press ↑ in an empty composer"
             )
         case (.device, false):
-            return Localized.text("Held on this device — it goes when this turn ends")
+            return Localized.text("Held on this device. It goes when this turn ends")
         }
     }
 
