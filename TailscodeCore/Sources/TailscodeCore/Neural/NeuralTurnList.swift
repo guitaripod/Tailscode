@@ -5,7 +5,7 @@ import Foundation
 /// Opening a chat needs only the outline of every turn (is it a brain, where does its row go,
 /// what does it consume), and the steps of the few turns that are looked at; a turn that nobody
 /// looks at is never read into steps.
-final class NeuralTurnSlot: @unchecked Sendable {
+public final class NeuralTurnSlot: @unchecked Sendable {
     struct Source {
         let messages: [ChatMessage]
         let running: Bool
@@ -15,8 +15,9 @@ final class NeuralTurnSlot: @unchecked Sendable {
 
     private static let lock = NSLock()
 
-    let outline: NeuralTurnOutline
-    let generation: Int
+    public let outline: NeuralTurnOutline
+    /// A number that is the same for as long as the turn is the same turn.
+    public let generation: Int
     private var held: NeuralTurn?
     private var source: Source?
 
@@ -26,17 +27,18 @@ final class NeuralTurnSlot: @unchecked Sendable {
         self.source = source
     }
 
-    init(turn: NeuralTurn, generation: Int) {
+    /// A slot for a turn already read.
+    public init(turn: NeuralTurn, generation: Int) {
         outline = turn.outline
         self.generation = generation
         held = turn
     }
 
-    var isRealised: Bool { Self.lock.withLock { held != nil } }
+    /// Whether the turn has been read into steps.
+    public var isRead: Bool { Self.lock.withLock { held != nil } }
 
-    var messages: [ChatMessage]? { Self.lock.withLock { source?.messages } }
-
-    var turn: NeuralTurn {
+    /// The turn read into steps, which reads them now if nothing has.
+    public var turn: NeuralTurn {
         Self.lock.lock()
         defer { Self.lock.unlock() }
         if let held { return held }
@@ -102,7 +104,7 @@ public struct NeuralTurnList: RandomAccessCollection, Sendable, Equatable {
 
     public subscript(position: Int) -> NeuralTurn { slot(at: position).turn }
 
-    func slot(at position: Int) -> NeuralTurnSlot {
+    public func slot(at position: Int) -> NeuralTurnSlot {
         chunks[position / Self.chunkSize][position % Self.chunkSize]
     }
 
@@ -115,7 +117,7 @@ public struct NeuralTurnList: RandomAccessCollection, Sendable, Equatable {
     public func generation(at position: Int) -> Int { slot(at: position).generation }
 
     /// Whether the turn at `position` has been read into steps.
-    public func isRead(at position: Int) -> Bool { slot(at: position).isRealised }
+    public func isRead(at position: Int) -> Bool { slot(at: position).isRead }
 
     /// Every turn as one array: a copy of the whole list, for a caller that needs one.
     public var array: [NeuralTurn] {

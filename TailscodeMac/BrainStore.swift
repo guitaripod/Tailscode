@@ -39,15 +39,19 @@ enum MacBrain {
     static var isEnabled: Bool { NeuralRowPlan.isEnabled(style: style) && isAvailable }
 }
 
-/// The brain's state for one pane: the turns the conversation holds read into steps, a model for
-/// each turn that is a brain, which of them is open and which list their old rows.
+/// The brain's state for one pane: the outline of every turn the conversation holds, the steps and
+/// the model of each turn that somebody looked at, which of them is open and which list their old
+/// rows.
 ///
 /// The transcript is rebuilt on every streamed token, so nothing here may cost the size of the
 /// conversation. `NeuralTurnCache` reads again only the turn whose messages changed, a turn is
-/// compared with the one held for it (arrays share their storage, so an unchanged turn compares
-/// in a pointer test), and only a turn that really changed updates its model and takes a new
-/// revision. The messages a turn's rows come from are found through a dictionary kept in step
-/// with the turns, never by walking them.
+/// told from the one held for it by its generation, and only a turn that really changed updates its
+/// model and takes a new revision. The messages a turn's rows come from are found through a
+/// dictionary kept in step with the turns, never by walking them.
+///
+/// A turn is placed from its outline alone, which is all a transcript needs to shape its rows; its
+/// steps are read and its model, answer and prompt are made when a view, the share or Find asks for
+/// the entry, except for the newest turn, which is made at once.
 @MainActor
 final class BrainStore {
     struct Entry {
@@ -63,8 +67,32 @@ final class BrainStore {
         var revision: Int
     }
 
+    /// A turn as the transcript places it, and what is made of it once somebody looks.
+    private struct Placed {
+        struct Made {
+            var turn: NeuralTurn
+            var model: NeuralBrainModel
+            var answer: String
+            var prompt: String?
+        }
+
+        var slot: NeuralTurnSlot
+        var context: NeuralBrainContext
+        var anchor: String?
+        var anchorMessageID: String?
+        var members: Set<String>
+        var messageIDs: Set<String>
+        var boardKeys: Set<String>
+        var revision: Int
+        var made: Made?
+
+        var outline: NeuralTurnOutline { slot.outline }
+    }
+
     private let cache = NeuralTurnCache()
-    private(set) var entries: [String: Entry] = [:]
+    private var placed: [String: Placed] = [:]
+    private var heldMessages: [ChatMessage] = []
+    private var turnIDs: [String] = []
     private(set) var order: [String] = []
     private var messageTurn: [String: String] = [:]
     private var boardOwner: [String: String] = [:]
@@ -75,7 +103,6 @@ final class BrainStore {
     private(set) var rowsShown: Set<String> = []
     private(set) var openTurnID: String?
     private(set) var latestTurnID: String?
-    private var turnIDs: [String] = []
     private(set) var liveContext = NeuralBrainContext.none
     private(set) var chatContext = NeuralBrainContext.none
     private(set) var isRunning = false
@@ -172,9 +199,11 @@ final class BrainStore {
             else {
                 return readWhole(messages: messages, running: running, awaiting: awaiting)
             }
+            counter += 1
             adopt(
-                turns: kept.held.prefixTurns + [tail], keptOrder: kept.held.prefixBrainOrder,
-                fresh: [tail], running: running, messages: messages)
+                ids: kept.held.prefixIDs + [tail.id], keptOrder: kept.held.prefixBrainOrder,
+                fresh: [NeuralTurnSlot(turn: tail, generation: counter)], running: running,
+                messages: messages)
             return
         }
         readWhole(messages: messages, running: running, awaiting: awaiting)
@@ -208,12 +237,13 @@ final class BrainStore {
         let begun = CACurrentMediaTime()
         wholeReads += 1
         defer { wholeCost += CACurrentMediaTime() - begun }
-        let turns = cache.partitionList(
+        let list = cache.partitionList(
             messages: messages, running: running, awaiting: awaiting,
-            stablePrefix: verifiedPrefix(of: messages)
-        ).array
-        adopt(turns: turns, keptOrder: nil, fresh: turns, running: running, messages: messages)
-        remember(prefixOf: messages, turns: turns, awaiting: awaiting)
+            stablePrefix: verifiedPrefix(of: messages))
+        let slots = (0..<list.count).map { list.slot(at: $0) }
+        let ids = slots.map { $0.outline.id }
+        adopt(ids: ids, keptOrder: nil, fresh: slots, running: running, messages: messages)
+        remember(prefixOf: messages, ids: ids, awaiting: awaiting)
         tailStamp = nil
     }
 
@@ -277,7 +307,7 @@ final class BrainStore {
     private struct SettledPrefix {
         let messages: [ChatMessage]
         let ids: Set<String>
-        let prefixTurns: [NeuralTurn]
+        let prefixIDs: [String]
         let prefixBrainOrder: [String]
         let awaiting: NeuralAwaiting
     }
@@ -311,67 +341,107 @@ final class BrainStore {
         return held.messages.count
     }
 
-    private func remember(prefixOf messages: [ChatMessage], turns: [NeuralTurn], awaiting: NeuralAwaiting) {
+    private func remember(prefixOf messages: [ChatMessage], ids: [String], awaiting: NeuralAwaiting) {
         guard let cut = messages.lastIndex(where: { $0.role == .user }), cut > 0,
-            let last = turns.last,
-            messages[cut...].contains(where: { $0.role == .assistant && $0.id == last.id })
+            let last = ids.last,
+            messages[cut...].contains(where: { $0.role == .assistant && $0.id == last })
         else {
             settled = nil
             return
         }
-        var ids = Set<String>()
-        ids.reserveCapacity(cut)
-        for message in messages[..<cut] { ids.insert(message.id) }
+        var messageIDs = Set<String>()
+        messageIDs.reserveCapacity(cut)
+        for message in messages[..<cut] { messageIDs.insert(message.id) }
         let prefix = Array(messages[..<cut])
         settled = SettledPrefix(
-            messages: prefix, ids: ids, prefixTurns: Array(turns.dropLast()),
-            prefixBrainOrder: order.last == last.id ? Array(order.dropLast()) : order,
+            messages: prefix, ids: messageIDs, prefixIDs: Array(ids.dropLast()),
+            prefixBrainOrder: order.last == last ? Array(order.dropLast()) : order,
             awaiting: awaiting)
     }
 
     /// Brings the entries to the turns just read. `keptOrder` is the brains above the newest turn
-    /// when only that one was read, and `fresh` the turns whose entries need looking at.
+    /// when only that one was read, and `fresh` the turns whose entries need looking at. A turn is
+    /// placed from its outline; its steps are not read here, except for the newest turn's.
     private func adopt(
-        turns: [NeuralTurn], keptOrder: [String]?, fresh: [NeuralTurn], running: Bool,
+        ids: [String], keptOrder: [String]?, fresh: [NeuralTurnSlot], running: Bool,
         messages: [ChatMessage]
     ) {
+        heldMessages = messages
         let before = (latestTurnID, openTurnID)
-        latestTurnID = turns.last?.id
-        turnIDs = turns.map(\.id)
+        latestTurnID = ids.last
+        turnIDs = ids
         openTurnID = NeuralOpenPolicy(
             turnIDs: turnIDs, isRunning: running, choices: choices
         ).openTurnID
         if before.0 != latestTurnID || before.1 != openTurnID { bumpShape() }
         var ordered: [String] = keptOrder ?? []
-        for turn in fresh where NeuralOpenPolicy.isBrain(turn: turn) {
-            ordered.append(turn.id)
-            let context = turn.id == latestTurnID ? liveContext : chatContext
-            if entries[turn.id] != nil {
-                guard entries[turn.id]!.turn != turn || entries[turn.id]!.context != context else {
+        for slot in fresh where slot.outline.isBrain {
+            let id = slot.outline.id
+            ordered.append(id)
+            let context = id == latestTurnID ? liveContext : chatContext
+            if var held = placed[id] {
+                let sameTurn =
+                    held.slot === slot || (held.made.map { $0.turn == slot.turn } ?? false)
+                if sameTurn, held.context == context {
+                    held.slot = slot
+                    placed[id] = held
                     continue
                 }
-                if turn.id != latestTurnID { bumpShape() }
-                forget(entries[turn.id]!)
-                entries[turn.id]!.model.update(turn: turn, context: context)
-                entries[turn.id]!.turn = turn
-                entries[turn.id]!.context = context
-                finish(&entries[turn.id]!, messages: messages)
-                remember(entries[turn.id]!, id: turn.id)
+                if id != latestTurnID { bumpShape() }
+                forget(held)
+                held.slot = slot
+                held.context = context
+                place(&held)
+                if var made = held.made {
+                    made.turn = slot.turn
+                    made.model.update(turn: made.turn, context: context)
+                    made.answer = Self.answerText(of: made.turn, in: messages)
+                    held.made = made
+                }
+                placed[id] = held
+                remember(held, id: id)
             } else {
-                var made = Entry(
-                    turn: turn, model: NeuralBrainModel(turn: turn, context: context),
-                    context: context, anchor: nil, anchorMessageID: nil, messageIDs: [],
-                    boardKeys: [], answer: "", prompt: Self.prompt(before: turn, in: messages),
-                    revision: 0)
-                finish(&made, messages: messages)
-                if turn.id != latestTurnID { bumpShape() }
-                entries[turn.id] = made
-                remember(made, id: turn.id)
-                arrival.append(turn.id)
+                var held = Placed(
+                    slot: slot, context: context, anchor: nil, anchorMessageID: nil, members: [],
+                    messageIDs: [], boardKeys: [], revision: 0, made: nil)
+                place(&held)
+                if id != latestTurnID { bumpShape() }
+                placed[id] = held
+                remember(held, id: id)
+                arrival.append(id)
             }
+            if id == latestTurnID { _ = made(id) }
         }
         order = ordered
         if arrival.count > Self.capacity { evict() }
+    }
+
+    /// What the transcript needs of a turn from its outline: where its row goes, which parts it
+    /// consumes, which messages and board calls belong to it, and a new revision.
+    private func place(_ held: inout Placed) {
+        counter += 1
+        held.revision = counter
+        let outline = held.slot.outline
+        held.anchor = outline.anchor
+        held.anchorMessageID = outline.anchorMessageID
+        held.members = outline.memberPartIDs
+        held.messageIDs = outline.memberMessageIDs
+        held.boardKeys = Set(outline.boardPartIDs)
+    }
+
+    /// The steps, model, answer and prompt of a turn, made now if nothing has asked for them.
+    @discardableResult
+    private func made(_ turnID: String) -> Placed.Made? {
+        guard var held = placed[turnID] else { return nil }
+        if let made = held.made { return made }
+        let turn = held.slot.turn
+        let made = Placed.Made(
+            turn: turn, model: NeuralBrainModel(turn: turn, context: held.context),
+            answer: Self.answerText(of: turn, in: heldMessages),
+            prompt: Self.prompt(before: turn, in: heldMessages))
+        held.made = made
+        placed[turnID] = held
+        return made
     }
 
     /// Holds the live turn's context: what the machine is doing, how full the window is, whether a
@@ -386,12 +456,14 @@ final class BrainStore {
         guard context != liveContext else { return changed }
         contextChanges += 1
         liveContext = context
-        guard let id = latestTurnID, entries[id] != nil, entries[id]!.context != context else {
+        guard let id = latestTurnID, placed[id] != nil, placed[id]!.context != context else {
             return changed
         }
-        let turn = entries[id]!.turn
-        entries[id]!.model.update(turn: turn, context: context)
-        entries[id]!.context = context
+        placed[id]!.context = context
+        if var made = placed[id]!.made {
+            made.model.update(turn: made.turn, context: context)
+            placed[id]!.made = made
+        }
         changed = true
         return changed
     }
@@ -404,10 +476,12 @@ final class BrainStore {
         guard shared != chatContext else { return false }
         chatContext = shared
         var changed = false
-        for id in entries.keys where id != latestTurnID && entries[id]!.context != shared {
-            let turn = entries[id]!.turn
-            entries[id]!.model.update(turn: turn, context: shared)
-            entries[id]!.context = shared
+        for id in placed.keys where id != latestTurnID && placed[id]!.context != shared {
+            placed[id]!.context = shared
+            if var made = placed[id]!.made {
+                made.model.update(turn: made.turn, context: shared)
+                placed[id]!.made = made
+            }
             changed = true
         }
         if changed { bumpShape() }
@@ -438,8 +512,9 @@ final class BrainStore {
         tailTimer = nil
         restateTimer?.invalidate()
         restateTimer = nil
-        guard !entries.isEmpty || !order.isEmpty else { return }
-        entries = [:]
+        guard !placed.isEmpty || !order.isEmpty else { return }
+        placed = [:]
+        heldMessages = []
         order = []
         messageTurn = [:]
         boardOwner = [:]
@@ -448,23 +523,30 @@ final class BrainStore {
         latestTurnID = nil
     }
 
-    func entry(_ turnID: String) -> Entry? { entries[turnID] }
+    func entry(_ turnID: String) -> Entry? {
+        guard let held = placed[turnID], let made = made(turnID) else { return nil }
+        return Entry(
+            turn: made.turn, model: made.model, context: held.context, anchor: held.anchor,
+            anchorMessageID: held.anchorMessageID, messageIDs: held.messageIDs,
+            boardKeys: held.boardKeys, answer: made.answer, prompt: made.prompt,
+            revision: held.revision)
+    }
 
     /// Changes one model in place and returns what the change answered. A hover, a pin, a replay.
     @discardableResult
     func withModel<Value>(
         _ turnID: String, _ body: (inout NeuralBrainModel) -> Value
     ) -> Value? {
-        guard entries[turnID] != nil else { return nil }
-        return body(&entries[turnID]!.model)
+        guard made(turnID) != nil else { return nil }
+        return body(&placed[turnID]!.made!.model)
     }
 
-    func model(_ turnID: String) -> NeuralBrainModel? { entries[turnID]?.model }
+    func model(_ turnID: String) -> NeuralBrainModel? { made(turnID)?.model }
 
     func isOpen(_ turnID: String) -> Bool { openTurnID == turnID }
 
     func row(forTurn turnID: String) -> TranscriptRow? {
-        guard let held = entries[turnID] else { return nil }
+        guard let held = placed[turnID] else { return nil }
         return TranscriptRow(
             key: NeuralOpenPolicy.rowID(turnID: turnID),
             kind: .brain(
@@ -498,7 +580,7 @@ final class BrainStore {
     /// Find landed on this turn's brain: it opens, and the cursor goes to the first step that holds
     /// the words, which the account then shows with the match.
     func landFind(turnID: String, needle: String) {
-        guard entries[turnID] != nil, !needle.isEmpty else { return }
+        guard placed[turnID] != nil, !needle.isEmpty else { return }
         pendingFind[turnID] = needle
         if isOpen(turnID) {
             view(forTurn: turnID)?.applyPendingFind()
@@ -510,7 +592,7 @@ final class BrainStore {
     /// The first step of a turn whose words hold `needle`, in the order the steps ran.
     func stepHolding(_ needle: String, turnID: String) -> String? {
         let lowered = needle.lowercased()
-        return entries[turnID]?.turn.steps.first { step in
+        return made(turnID)?.turn.steps.first { step in
             [step.title, step.detail, step.text, step.outputLines.joined(separator: " ")]
                 .contains { $0.lowercased().contains(lowered) }
         }?.id
@@ -531,7 +613,7 @@ final class BrainStore {
 
     /// The message and part the turn's answer starts in, for the account's answer item.
     func answerTarget(turnID: String) -> (messageID: String, part: String)? {
-        guard let first = entries[turnID]?.turn.answerPartIDs.first,
+        guard let first = placed[turnID]?.slot.outline.answerPartIDs.first,
             let colon = first.firstIndex(of: ":")
         else { return nil }
         return (String(first[..<colon]), first)
@@ -550,7 +632,7 @@ final class BrainStore {
 
     /// The words find reads in a brain: every step's tool, argument, thought and printed lines.
     func searchText(turnID: String) -> String {
-        guard let held = entries[turnID] else { return "" }
+        guard let held = made(turnID) else { return "" }
         return held.turn.steps.map { step in
             [step.title, step.detail, step.text, step.outputLines.joined(separator: " ")]
                 .filter { !$0.isEmpty }.joined(separator: " ")
@@ -608,7 +690,7 @@ final class BrainStore {
     /// One number that changes when the way a message's rows are shaped changes: the turn it is in
     /// moved, or the person asked for its old rows.
     func stamp(forMessage messageID: String) -> Int? {
-        guard let turnID = messageTurn[messageID], let held = entries[turnID] else { return nil }
+        guard let turnID = messageTurn[messageID], let held = placed[turnID] else { return nil }
         var hasher = Hasher()
         hasher.combine(turnID)
         hasher.combine(held.revision)
@@ -623,7 +705,7 @@ final class BrainStore {
     func shape(_ rows: [TranscriptRow], of message: ChatMessage) -> [TranscriptRow] {
         let begun = CACurrentMediaTime()
         defer { spent += CACurrentMediaTime() - begun }
-        guard let turnID = messageTurn[message.id], let held = entries[turnID] else { return rows }
+        guard let turnID = messageTurn[message.id], let held = placed[turnID] else { return rows }
         let listsRows = rowsShown.contains(turnID)
         let needsBrain = held.anchorMessageID == message.id
         guard needsBrain || !listsRows else { return rows }
@@ -638,7 +720,7 @@ final class BrainStore {
                 if let brain = self.row(forTurn: turnID) { shaped.append(brain) }
                 placed = true
             }
-            if !listsRows, let part, held.turn.memberPartIDs.contains(keys[part]) { continue }
+            if !listsRows, let part, held.members.contains(keys[part]) { continue }
             shaped.append(row)
         }
         if !placed, let brain = self.row(forTurn: turnID) { shaped.append(brain) }
@@ -695,33 +777,15 @@ final class BrainStore {
         return awaiting
     }
 
-    private func finish(_ held: inout Entry, messages: [ChatMessage]) {
-        counter += 1
-        held.revision = counter
-        let turn = held.turn
-        held.anchor =
-            turn.steps.first(where: { turn.memberPartIDs.contains($0.id) })?.id ?? turn.steps.first?.id
-        held.anchorMessageID = held.anchor.flatMap { id in
-            turn.steps.first(where: { $0.id == id })?.messageID
-        }
-        held.messageIDs =
-            turn.memberMessageIDs.isEmpty ? Set(turn.steps.map(\.messageID)) : turn.memberMessageIDs
-        held.boardKeys = Set(
-            turn.steps.filter { $0.isCard && $0.zone == .think && TaskBoard.isBoardCall($0.title) }
-                .map(\.id))
-        held.answer = Self.answerText(of: turn, in: messages)
-    }
-
-    private func remember(_ held: Entry, id: String) {
+    private func remember(_ held: Placed, id: String) {
         for message in held.messageIDs { messageTurn[message] = id }
         for key in held.boardKeys { boardOwner[key] = id }
     }
 
-    private func forget(_ held: Entry) {
-        for message in held.messageIDs where messageTurn[message] == held.turn.id {
-            messageTurn[message] = nil
-        }
-        for key in held.boardKeys where boardOwner[key] == held.turn.id { boardOwner[key] = nil }
+    private func forget(_ held: Placed) {
+        let id = held.slot.outline.id
+        for message in held.messageIDs where messageTurn[message] == id { messageTurn[message] = nil }
+        for key in held.boardKeys where boardOwner[key] == id { boardOwner[key] = nil }
     }
 
     private func evict() {
@@ -729,9 +793,9 @@ final class BrainStore {
         bumpShape()
         while arrival.count > Self.capacity {
             let oldest = arrival.removeFirst()
-            guard !keep.contains(oldest), let held = entries[oldest] else { continue }
+            guard !keep.contains(oldest), let held = placed[oldest] else { continue }
             forget(held)
-            entries[oldest] = nil
+            placed[oldest] = nil
         }
     }
 
@@ -746,7 +810,7 @@ final class BrainStore {
     /// The model of a turn as a picture should show it: at rest, with nothing hovered, pinned,
     /// pointed at or replaying.
     func restingModel(_ turnID: String) -> NeuralBrainModel? {
-        guard var model = entries[turnID]?.model else { return nil }
+        guard var model = made(turnID)?.model else { return nil }
         model.stopReplay()
         model.clearSelection()
         model.setProvenance(token: nil)

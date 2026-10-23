@@ -33,6 +33,12 @@ enum TranscriptBench {
             BrainStreamBench.run(sizes: sizes, only: only, tokens: count ?? (only == nil ? nil : 600))
             exit(0)
         }
+        if let spec = paths.first, spec.hasPrefix("brain-cold") {
+            let sizes = spec.split(separator: "=").dropFirst().first
+                .map { $0.split(separator: ",").compactMap { Int($0) } } ?? [40, 300, 1500]
+            if MacBrain.isAvailable { BrainColdBench.run(sizes: sizes) }
+            exit(0)
+        }
         if paths.first == "brain" {
             if MacBrain.isEnabled { BrainBench.run() }
             exit(0)

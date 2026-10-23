@@ -20,6 +20,9 @@ public struct NeuralTurnOutline: Sendable, Hashable {
     /// The message that holds the anchor part.
     public let anchorMessageID: String?
     public let answerPartIDs: [String]
+    /// The calls the task board is built from; the board card keeps the last and the others are
+    /// nodes of the brain.
+    public let boardPartIDs: [String]
     public let memberPartIDs: Set<String>
     public let memberMessageIDs: Set<String>
     public let outcome: NeuralOutcome
@@ -30,15 +33,16 @@ public struct NeuralTurnOutline: Sendable, Hashable {
 
     public init(
         id: String, stepCount: Int, anchor: String?, anchorMessageID: String?,
-        answerPartIDs: [String], memberPartIDs: Set<String>, memberMessageIDs: Set<String>,
-        outcome: NeuralOutcome, startedAt: Date?, endedAt: Date?, modelID: String?,
-        effort: String?
+        answerPartIDs: [String], boardPartIDs: [String], memberPartIDs: Set<String>,
+        memberMessageIDs: Set<String>, outcome: NeuralOutcome, startedAt: Date?, endedAt: Date?,
+        modelID: String?, effort: String?
     ) {
         self.id = id
         self.stepCount = stepCount
         self.anchor = anchor
         self.anchorMessageID = anchorMessageID
         self.answerPartIDs = answerPartIDs
+        self.boardPartIDs = boardPartIDs
         self.memberPartIDs = memberPartIDs
         self.memberMessageIDs = memberMessageIDs
         self.outcome = outcome
@@ -65,6 +69,7 @@ extension NeuralTurn {
         NeuralTurnOutline(
             id: id, stepCount: steps.count, anchor: anchor, anchorMessageID: anchorStep?.messageID,
             answerPartIDs: answerPartIDs,
+            boardPartIDs: steps.filter { $0.isCard && TaskBoard.isBoardCall($0.title) }.map(\.id),
             memberPartIDs: memberPartIDs, memberMessageIDs: memberMessageIDs, outcome: outcome,
             startedAt: startedAt, endedAt: endedAt, modelID: modelID, effort: effort)
     }
@@ -109,6 +114,7 @@ extension NeuralTurns {
         var firstStep: (id: String, message: String)?
         var firstMember: (id: String, message: String)?
         var answers: [String] = []
+        var boards: [String] = []
         var lastAnswer = -1
         var position = 0
         for message in messages {
@@ -123,6 +129,9 @@ extension NeuralTurns {
                 }
                 if isStep {
                     stepCount += 1
+                    if found == .card, case .tool(let call) = part.kind, TaskBoard.isBoardCall(call.name) {
+                        boards.append(partID(message, part))
+                    }
                     if firstStep == nil || (firstMember == nil && found != .card) {
                         let made = (id: partID(message, part), message: message.id)
                         if firstStep == nil { firstStep = made }
@@ -157,7 +166,8 @@ extension NeuralTurns {
             of: messages, hasStoppedStep: stopped, running: running, awaiting: awaiting)
         return NeuralTurnOutline(
             id: first.id, stepCount: stepCount, anchor: (firstMember ?? firstStep)?.id,
-            anchorMessageID: (firstMember ?? firstStep)?.message, answerPartIDs: answers, memberPartIDs: members,
+            anchorMessageID: (firstMember ?? firstStep)?.message, answerPartIDs: answers,
+            boardPartIDs: boards, memberPartIDs: members,
             memberMessageIDs: Set(messages.map(\.id)), outcome: outcome,
             startedAt: first.createdAt, endedAt: outcome == .running ? nil : last.completedAt,
             modelID: messages.reversed().lazy.compactMap(\.modelID).first,
