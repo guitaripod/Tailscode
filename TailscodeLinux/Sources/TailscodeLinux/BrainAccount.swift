@@ -628,6 +628,26 @@ final class BrainAccount: @unchecked Sendable {
         return want != Set(cells.keys)
     }
 
+    /// How many items one frame of the move that opens the account may make, and whether it left
+    /// some for the next.
+    var makeCap: Int?
+    private var pendingRealize = false
+
+    /// The next few items of a story that is being made a few at a time.
+    func continueRealize() {
+        guard pendingRealize else { return }
+        pendingRealize = false
+        realize()
+    }
+
+    /// Every item the story still wants, when the move that was making them a few at a time ends.
+    func finishRealize() {
+        makeCap = nil
+        guard pendingRealize else { return }
+        pendingRealize = false
+        realize()
+    }
+
     func scheduleRealize() {
         guard !realizeScheduled, !disposed else { return }
         realizeScheduled = true
@@ -648,6 +668,8 @@ final class BrainAccount: @unchecked Sendable {
         let range = wanted()
         let want = Set(range.map { entries[$0].id })
         for id in Array(cells.keys) where !want.contains(id) || entryIndex[id] == nil { drop(id) }
+        var made = 0
+        var capped = false
         for index in range {
             let entry = entries[index]
             let key = cellKey(entry)
@@ -655,12 +677,18 @@ final class BrainAccount: @unchecked Sendable {
                 if held.key == key, !held.stale { continue }
                 drop(entry.id)
             }
+            if let cap = makeCap, made >= cap {
+                capped = true
+                break
+            }
             make(entry, key: key)
+            made += 1
         }
+        pendingRealize = capped
         syncHeights()
         clampScroll()
         let again = wanted()
-        if Set(again.map { entries[$0].id }) != Set(cells.keys) { scheduleRealize() }
+        if !capped, Set(again.map { entries[$0].id }) != Set(cells.keys) { scheduleRealize() }
         tailscode_brain_row_invalidate(story)
         tailscode_brain_row_invalidate(root)
     }

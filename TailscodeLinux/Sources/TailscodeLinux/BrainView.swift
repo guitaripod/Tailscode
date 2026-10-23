@@ -63,6 +63,8 @@ final class BrainView: @unchecked Sendable {
 
     var moveState: BrainMove?
     var pendingOpen: PendingOpen?
+    private var openSchedule: NeuralOpenSchedule?
+    private var movedFrames = 0
     var revealOverride: BrainMove.Reveal?
 
     var readoutTicket = 0
@@ -654,7 +656,10 @@ final class BrainView: @unchecked Sendable {
             showStage()
             return
         }
-        makeParts()
+        makeHead()
+        openSchedule = NeuralOpenSchedule()
+        movedFrames = 0
+        prefetchAccount()
         pendingOpen = PendingOpen(started: BrainClock.now, swapped: swapped)
         stage?.ensureRenderer()
         startOpeningIfReady()
@@ -692,11 +697,20 @@ final class BrainView: @unchecked Sendable {
     /// Builds the stage, readout and footer without showing them: what a move needs in hand.
     func makeParts() {
         guard stage == nil else { return }
-        let listPart = BrainList(owner: self)
-        self.list = listPart
+        makeHead()
+        makeList()
+        makeAccount()
+        fillAccount()
+    }
+
+    /// What the card turns into first: the head, the chips, the readout and the footer. The list
+    /// and the account are made on the frames of the move that follows, one to a frame, because
+    /// building them with the rest was one turn of ten to twenty-five milliseconds before the
+    /// first picture moved.
+    private func makeHead() {
+        guard stage == nil else { return }
         let filterPart = BrainFilters(owner: self)
         filters = filterPart
-        for part in listPart.widgets { tailscode_brain_row_add(widget, part) }
         tailscode_brain_row_add(widget, filterPart.canvas)
         let made = BrainStage(owner: self)
         made.drawing = BrainBudget.stageAllowed
@@ -704,9 +718,6 @@ final class BrainView: @unchecked Sendable {
         for part in made.widgets { tailscode_brain_row_add(widget, part) }
         let readout = BrainReadout(owner: self)
         self.readout = readout
-        let accountPart = BrainAccount(owner: self)
-        account = accountPart
-        tailscode_brain_row_add(widget, accountPart.root)
         let clip = gtk_fixed_new()!
         gtk_widget_set_overflow(clip, GTK_OVERFLOW_HIDDEN)
         gtk_fixed_put(ptr(clip), readout.widget, 0, 0)
@@ -722,12 +733,84 @@ final class BrainView: @unchecked Sendable {
             scaleFactor: max(1, Int(gtk_widget_get_scale_factor(widget))))
         footer.configure(width: m.width, running: model.turn.outcome == .running)
         footer.rebuildChips(width: m.width)
-        accountPart.proseProbe = BrainAccount.probe()
-        accountPart.refresh(immediate: true)
         if isSuspended { made.suspend() }
     }
 
+    private func makeList() {
+        guard list == nil, stage != nil else { return }
+        let listPart = BrainList(owner: self)
+        list = listPart
+        for part in listPart.widgets { tailscode_brain_row_add(widget, part) }
+        raiseOverlays()
+    }
+
+    private func makeAccount(paced: Bool = false) {
+        guard account == nil, stage != nil else { return }
+        let accountPart = BrainAccount(owner: self)
+        if paced { accountPart.makeCap = 3 }
+        account = accountPart
+        tailscode_brain_row_add(widget, accountPart.root)
+        raiseOverlays()
+    }
+
+    private func fillAccount() {
+        guard let accountPart = account else { return }
+        accountPart.proseProbe = BrainAccount.probe()
+        accountPart.refresh(immediate: true)
+    }
+
+    /// The readout's clip, the footer and the move's canvases stand over the account and the list
+    /// whichever of them was made last.
+    private func raiseOverlays() {
+        for part in [readoutClip, footer?.widget, moveCanvas, edgeCanvas] {
+            if let part { tailscode_brain_row_raise(widget, part) }
+        }
+    }
+
+    /// The account of the turn read on another thread while the press is still being answered:
+    /// the model keeps what it reads, so the frame that makes the account finds it ready.
+    private func prefetchAccount() {
+        let held = model
+        let answer = row.answer
+        let prompt = row.prompt
+        DispatchQueue.global(qos: .userInitiated).async {
+            _ = held.account(answer: answer.isEmpty ? nil : answer, prompt: prompt)
+        }
+    }
+
+    /// The parts the schedule says are due on this frame of the opening move.
+    func buildDueParts(at time: Double) {
+        guard var held = openSchedule, let move = moveState, move.opening else { return }
+        movedFrames += 1
+        let duration = max(move.transition.duration * BrainMove.timeScale, 0.001)
+        let due = held.due(frame: movedFrames, progress: (time - move.start) / duration)
+        openSchedule = held.isComplete ? nil : held
+        build(due, paced: true)
+        account?.continueRealize()
+    }
+
+    /// Whatever the move did not reach before it ended.
+    func completeParts() {
+        if var held = openSchedule {
+            openSchedule = nil
+            build(held.remaining())
+        }
+        account?.finishRealize()
+    }
+
+    private func build(_ parts: [NeuralOpenPart], paced: Bool = false) {
+        for part in parts {
+            switch part {
+            case .steps: makeList()
+            case .account: makeAccount(paced: paced)
+            case .story: fillAccount()
+            case .head, .nodes, .footer: break
+            }
+        }
+    }
+
     private func dropParts() {
+        openSchedule = nil
         guard let held = stage else { return }
         stage = nil
         held.releaseSurfaces()

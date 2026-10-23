@@ -145,6 +145,7 @@ extension BrainView {
             finishMove(snapTo: move.opening)
             return
         }
+        buildDueParts(at: time)
         move.advance(to: max(0, u), clock: time)
         applyMove(at: time)
     }
@@ -178,6 +179,7 @@ extension BrainView {
     /// any move, which is why nothing is redrawn to match.
     func finishMove(snapTo opening: Bool) {
         guard let move = moveState else { return }
+        if opening { completeParts() }
         host?.anchor?()
         moveState = nil
         revealOverride = nil
