@@ -90,6 +90,7 @@ final class BrainStore {
     private let cache = NeuralTurnCache()
     private var placed: [String: Placed] = [:]
     private var built: [String: Made] = [:]
+    private var searchCache: [String: (slot: NeuralTurnSlot, text: String)] = [:]
     private var turnIDs: [String] = []
     private(set) var order: [String] = []
     private var messageTurn: [String: String] = [:]
@@ -506,6 +507,7 @@ final class BrainStore {
         guard !placed.isEmpty || !order.isEmpty else { return }
         placed = [:]
         built = [:]
+        searchCache = [:]
         order = []
         messageTurn = [:]
         boardOwner = [:]
@@ -625,12 +627,37 @@ final class BrainStore {
     func ownsMessage(_ messageID: String) -> Bool { messageTurn[messageID] != nil }
 
     /// The words find reads in a brain: every step's tool, argument, thought and printed lines.
+    /// Made once for a turn as it stands, from its steps alone, and only for a turn find asks about.
     func searchText(turnID: String) -> String {
-        guard let held = made(turnID) else { return "" }
-        return held.turn.steps.map { step in
+        guard let held = placed[turnID] else { return "" }
+        if let hit = searchCache[turnID], hit.slot === held.slot { return hit.text }
+        let text = held.slot.turn.steps.map { step in
             [step.title, step.detail, step.text, step.outputLines.joined(separator: " ")]
                 .filter { !$0.isEmpty }.joined(separator: " ")
         }.joined(separator: " ")
+        searchCache[turnID] = (held.slot, text)
+        return text
+    }
+
+    /// The words of a turn if find has read them already, and nothing otherwise: what a keystroke
+    /// reads while the sliced pass that reads the rest is still running.
+    func indexedSearchText(turnID: String) -> String {
+        guard let held = placed[turnID], let hit = searchCache[turnID], hit.slot === held.slot
+        else { return "" }
+        return hit.text
+    }
+
+    /// Reads the words of brains find has not read, newest first, until `budget` seconds are spent,
+    /// and returns whether every brain has been read.
+    func indexSearch(budget: TimeInterval) -> Bool {
+        let deadline = CACurrentMediaTime() + budget
+        for id in order.reversed() {
+            guard let held = placed[id] else { continue }
+            if let hit = searchCache[id], hit.slot === held.slot { continue }
+            if CACurrentMediaTime() >= deadline { return false }
+            _ = searchText(turnID: id)
+        }
+        return true
     }
 
     /// Brings every view up to the models, for a change the rows cannot carry: the machine's
@@ -793,6 +820,7 @@ final class BrainStore {
             forget(held)
             placed[oldest] = nil
             built[oldest] = nil
+            searchCache[oldest] = nil
         }
     }
 

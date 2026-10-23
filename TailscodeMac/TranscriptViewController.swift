@@ -117,6 +117,8 @@ final class TranscriptViewController: NSViewController {
     /// Everything this pane started that has to stop when it stops being alive: the lease, the
     /// drain slot, every clock and observer. Shutting the pane down and parking it both end it.
     let lifetime = PaneLifetime()
+    private var findIndexed = true
+    private var findIndexToken = 0
     private var lifetimeArmed = false
     private var scrollObserved = false
     /// Hidden from the reader — zoomed away, or the window not visible — so it owns no stream and
@@ -1409,6 +1411,7 @@ final class TranscriptViewController: NSViewController {
         attachLive()
         startResumeClock()
         refreshTurnFacts()
+        if !findBar.isHidden, !findIndexed { startFindIndex() }
     }
 
     /// What a selftest reads to prove a parked or closed pane owns nothing.
@@ -1576,9 +1579,11 @@ final class TranscriptViewController: NSViewController {
             findBar.isHidden = false
             identityBesideFind?.isActive = true
             findBar.focusField()
+            startFindIndex()
             runFind(retarget: false)
         } else {
             guard !findBar.isHidden else { return }
+            findIndexToken += 1
             findBar.isHidden = true
             identityBesideFind?.isActive = false
             findBar.clear()
@@ -4964,8 +4969,35 @@ final class TranscriptViewController: NSViewController {
     /// What find reads in a row: its words, and for a brain the titles, arguments, thoughts and
     /// output lines of the steps it draws, which are the words a person saw in the old rows.
     private func searchText(of row: TranscriptRow) -> String {
-        if case .brain(let brain) = row.kind { return brains.searchText(turnID: brain.turnID) }
+        if case .brain(let brain) = row.kind {
+            return findIndexed
+                ? brains.searchText(turnID: brain.turnID)
+                : brains.indexedSearchText(turnID: brain.turnID)
+        }
         return row.searchText
+    }
+
+    /// Reads the words of the brains for find in slices of two milliseconds, newest first, while the
+    /// bar is open and the pane can be seen, and searches again once every brain has been read, so
+    /// the first keystroke never pays for the whole conversation.
+    private func startFindIndex() {
+        findIndexed = false
+        findIndexToken += 1
+        sliceFindIndex(findIndexToken)
+    }
+
+    private func sliceFindIndex(_ token: Int) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, token == self.findIndexToken, !self.isParked, !self.findBar.isHidden,
+                self.view.window != nil
+            else { return }
+            if self.brains.indexSearch(budget: 0.002) {
+                self.findIndexed = true
+                self.runFind(retarget: false)
+            } else {
+                self.sliceFindIndex(token)
+            }
+        }
     }
 
     private func runFind(retarget: Bool) {
