@@ -62,6 +62,26 @@ import UIKit
             return found
         }
 
+        private func chromeCensus(of root: UIView) -> String {
+            var views = 0
+            var constraints = 0
+            var byName: [String: Int] = [:]
+            var pending = [root]
+            while let next = pending.popLast() {
+                views += 1
+                constraints += next.constraints.count
+                byName[String(describing: type(of: next)), default: 0] += 1
+                if next is UICollectionView {
+                    pending.append(contentsOf: next.subviews.filter { !($0 is UICollectionViewCell) })
+                } else {
+                    pending.append(contentsOf: next.subviews)
+                }
+            }
+            let top = byName.sorted { $0.value > $1.value }.prefix(10)
+                .map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+            return "views=\(views) constraints=\(constraints) \(top)"
+        }
+
         private func survivors(of census: [WeakView], chat: WeakChat) -> String {
             let alive = census.filter { $0.view != nil }
             var byName: [String: Int] = [:]
@@ -100,19 +120,62 @@ import UIKit
             let backend = MockBackend(
                 agentType: .claudeCode, scripts: [session.id: script], sessions: [session])
             var leakedViews = 0
+            if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "plainpush" {
+                let root = UIViewController()
+                root.view.backgroundColor = .systemBackground
+                root.title = "Root"
+                let plain = UINavigationController(rootViewController: root)
+                plain.navigationBar.prefersLargeTitles = true
+                window.rootViewController?.present(plain, animated: false)
+                try? await Task.sleep(for: .seconds(1))
+                for cycle in 1...cycles {
+                    let empty = UIViewController()
+                    empty.view.backgroundColor = .systemBackground
+                    empty.title = "Pushed"
+                    reset()
+                    plain.pushViewController(empty, animated: true)
+                    try? await Task.sleep(for: .seconds(1))
+                    AppLogger.performance.info("bench plainpush cycle=\(cycle) \(snapshot())")
+                    plain.popViewController(animated: false)
+                    try? await Task.sleep(for: .seconds(0.5))
+                }
+                AppLogger.performance.info("bench open done turns=\(turns) cycles=\(cycles)")
+                return
+            }
+            if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "emptypush" {
+                for cycle in 1...cycles {
+                    let empty = UIViewController()
+                    empty.view.backgroundColor = .systemBackground
+                    reset()
+                    stack.pushViewController(empty, animated: true)
+                    try? await Task.sleep(for: .seconds(1))
+                    AppLogger.performance.info("bench emptypush cycle=\(cycle) \(snapshot())")
+                    stack.popViewController(animated: false)
+                    try? await Task.sleep(for: .seconds(0.5))
+                }
+                AppLogger.performance.info("bench open done turns=\(turns) cycles=\(cycles)")
+                return
+            }
             if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "double" {
                 await doublePush(backend: backend, session: session, in: stack)
                 AppLogger.performance.info("bench open done turns=\(turns) cycles=\(cycles)")
                 return
             }
+            let rest = ProcessInfo.processInfo.environment["TAILSCODE_BENCH_REST"].flatMap(Double.init) ?? 1
             for cycle in 1...cycles {
                 let trip = await trip(cycle: cycle, backend: backend, session: session, in: stack)
-                try? await Task.sleep(for: .seconds(1.5))
+                try? await Task.sleep(for: .seconds(1.5 * rest))
                 let left = survivors(of: trip.tree, chat: trip.chat)
                 leakedViews = max(leakedViews, trip.tree.filter { $0.view != nil }.count)
                 AppLogger.performance.info("bench open cycle=\(cycle) turns=\(turns) \(trip.report) afterPop[\(left)] footprintMB=\(footprintMegabytes())")
-                try? await Task.sleep(for: .seconds(1))
+                try? await Task.sleep(for: .seconds(rest))
             }
+            let beforeWarning = footprintMegabytes()
+            NotificationCenter.default.post(
+                name: UIApplication.didReceiveMemoryWarningNotification, object: UIApplication.shared)
+            try? await Task.sleep(for: .seconds(0.5))
+            AppLogger.performance.info(
+                "bench memorywarning footprintMB before=\(beforeWarning) after=\(footprintMegabytes())")
             AppLogger.performance.info(
                 leakedViews == 0
                     ? "CHAT_LIFETIME_OK every popped chat released its views"
@@ -167,6 +230,17 @@ import UIKit
             try? await Task.sleep(for: .seconds(2.5))
             report("same chat twice", expect: base + 1, stack: stack)
 
+            if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_ROTATE"] != nil {
+                push(make(other))
+                try? await Task.sleep(for: .milliseconds(120))
+                turn(to: .landscapeRight)
+                try? await Task.sleep(for: .seconds(2.5))
+                report("a rotation during the push", expect: base + 2, stack: stack)
+                turn(to: .portrait)
+                try? await Task.sleep(for: .seconds(1.5))
+                stack.popViewController(animated: false)
+            }
+
             push(make(other))
             try? await Task.sleep(for: .milliseconds(80))
             push(make(session))
@@ -192,6 +266,12 @@ import UIKit
             stack.popToRootViewController(animated: false)
         }
 
+        private func turn(to mask: UIInterfaceOrientationMask) {
+            window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in
+                AppLogger.performance.info("bench rotate refused \(error)")
+            }
+        }
+
         private func report(_ name: String, expect depth: Int, stack: UINavigationController) {
             let got = stack.viewControllers.count
             AppLogger.performance.info(
@@ -207,7 +287,9 @@ import UIKit
                 serverName: "bench")
             let chat = ChatViewController(viewModel: model)
             reset()
-            stack.pushViewController(chat, animated: true)
+            ChatNavigator.shared.push(chat, on: stack, animated: true)
+            await untilOpened(chat)
+            let opened = snapshot()
             await untilAppeared(chat, in: stack)
             let pushed = snapshot()
             AppLogger.performance.info(
@@ -217,6 +299,7 @@ import UIKit
             try? await Task.sleep(for: .seconds(settle))
             let settled = snapshot()
             let tree = census(of: chat.view)
+            AppLogger.performance.info("bench chrome \(chromeCensus(of: chat.view))")
             let endGap = tree.compactMap { $0.view as? UICollectionView }.first.map {
                 Int($0.contentSize.height + $0.adjustedContentInset.bottom - $0.bounds.height - $0.contentOffset.y)
             }
@@ -244,7 +327,7 @@ import UIKit
             let heads = brainViews.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
             return Trip(
                 report:
-                    "push[\(pushed)] settled[\(settled)] pop[\(popped)] gesture[\(gesture)] swipe[\(swiped)] brain[\(heads)]",
+                    "open[\(opened)] push[\(pushed)] settled[\(settled)] pop[\(popped)] gesture[\(gesture)] swipe[\(swiped)] brain[\(heads)]",
                 tree: tree, chat: WeakChat(value: chat))
         }
 
@@ -305,7 +388,7 @@ import UIKit
         }
 
         private func snapshot() -> String {
-            "cpuLongest=\(Int(longestCPU))ms cpuTotal=\(Int(cpuTotal))ms turns>6ms=\(bigTurns.map(String.init).joined(separator: "/")) longest=\(Int(longest))ms slowTurns=\(slowCount) slowTotal=\(Int(slowTotal))ms busy=\(Int(busyTotal))/\(Int((CFAbsoluteTimeGetCurrent() - windowStart) * 1000))ms"
+            "fits=\(TextBubbleCell.fitCount) verified=\(TextBubbleCell.verifiedFits) cpuLongest=\(Int(longestCPU))ms cpuTotal=\(Int(cpuTotal))ms turns>6ms=\(bigTurns.map(String.init).joined(separator: "/")) longest=\(Int(longest))ms slowTurns=\(slowCount) slowTotal=\(Int(slowTotal))ms busy=\(Int(busyTotal))/\(Int((CFAbsoluteTimeGetCurrent() - windowStart) * 1000))ms window=\(Int((CFAbsoluteTimeGetCurrent() - windowStart) * 1000))ms"
         }
 
         private func stage(scenario: String?, chat: ChatViewController, tree: [WeakView]) async {
@@ -336,6 +419,13 @@ import UIKit
             return "stayed"
         }
 
+        private func untilOpened(_ chat: ChatViewController) async {
+            for _ in 0..<600 {
+                try? await Task.sleep(for: .milliseconds(5))
+                if chat.isOpenedForBench { return }
+            }
+        }
+
         private func untilAppeared(_ chat: ChatViewController, in stack: UINavigationController) async {
             for _ in 0..<400 {
                 try? await Task.sleep(for: .milliseconds(10))
@@ -361,6 +451,20 @@ import UIKit
                 "enabled=\(pop.isEnabled) state=\(pop.state.rawValue) shouldBegin=\(begins) depth=\(stack.viewControllers.count) transition=\(stack.transitionCoordinator != nil)"
         }
 
+        /// An answer of that many words in paragraphs of forty, the way a model writes one, so a
+        /// streamed token is measured against a row the size of a paragraph and not against one
+        /// ever-growing block of text.
+        private static func answer(words: Int) -> String {
+            var paragraphs: [String] = []
+            var remaining = words
+            while remaining > 0 {
+                let take = min(remaining, 40)
+                paragraphs.append(String(repeating: "streaming word ", count: take))
+                remaining -= take
+            }
+            return paragraphs.joined(separator: "\n\n")
+        }
+
         private static func script(turns: Int) -> [MockScriptStep] {
             let messages = ChatRebuildBench.conversation(turns: turns, growing: "Done.")
             let steps = messages.map {
@@ -373,8 +477,7 @@ import UIKit
                 for index in 1...300 {
                     var grown = last
                     grown.parts = [
-                        MessagePart(
-                            id: "a", kind: .text(String(repeating: "streaming word ", count: index)))
+                        MessagePart(id: "a", kind: .text(Self.answer(words: index)))
                     ]
                     growing.append(
                         MockScriptStep(

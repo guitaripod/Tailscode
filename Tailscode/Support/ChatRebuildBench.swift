@@ -82,6 +82,8 @@ import TailscodeCore
             var prepare = 0.0
             var rowCount = 0
             var compare = 0.0
+            var workflow = 0.0
+            var index = 0.0
             var previous = conversation(turns: turns, growing: "")
             var retained: [[ChatMessage]] = []
             _ = cache.partitionList(messages: previous, running: true)
@@ -103,6 +105,18 @@ import TailscodeCore
                     _ = ChatRowBuilder.makeRows(
                         from: messages, agents: agents, turnOpen: true, memo: memo)
                 }
+                workflow += milliseconds {
+                    _ = WorkflowRunAssembly.runs(messages: messages, agents: [])
+                }
+                index += milliseconds {
+                    let rows = ChatRowBuilder.makeRows(
+                        from: messages, agents: agents, turnOpen: true, memo: memo)
+                    var seen = Set<String>()
+                    let unique = rows.filter { seen.insert($0.id).inserted }
+                    let byID = Dictionary(uniqueKeysWithValues: unique.map { ($0.id, $0) })
+                    let ids = unique.map(\.id)
+                    if byID.count + ids.count < 0 { print(ids.count) }
+                }
                 partition += milliseconds {
                     _ = cache.partitionList(
                         messages: messages, running: true, stablePrefix: messages.count - 12)
@@ -123,7 +137,7 @@ import TailscodeCore
                 "bench phases (cold+memo, summed over \(iterations) passes) fuse=\(String(format: "%.1f", timings.fuse))ms rails=\(String(format: "%.1f", timings.rails))ms pictures=\(String(format: "%.1f", timings.pictures))ms"
             )
             AppLogger.performance.info(
-                "bench rebuild turns=\(turns) messages=\(turns * 2) rows=\(rowCount) coldRows=\(String(format: "%.2f", cold / n))ms memoRows=\(String(format: "%.2f", warm / n))ms memoHits=\(memo.messageHits) memoBuilds=\(memo.messageBuilds) partitionCold=\(String(format: "%.2f", brainCold / n))ms partitionCached=\(String(format: "%.2f", partition / n))ms brainPrepare=\(String(format: "%.2f", prepare / n))ms messageCompare=\(String(format: "%.2f", compare / n))ms"
+                "bench rebuild turns=\(turns) messages=\(turns * 2) rows=\(rowCount) coldRows=\(String(format: "%.2f", cold / n))ms memoRows=\(String(format: "%.2f", warm / n))ms memoHits=\(memo.messageHits) memoBuilds=\(memo.messageBuilds) partitionCold=\(String(format: "%.2f", brainCold / n))ms partitionCached=\(String(format: "%.2f", partition / n))ms brainPrepare=\(String(format: "%.2f", prepare / n))ms messageCompare=\(String(format: "%.2f", compare / n))ms workflowRuns=\(String(format: "%.2f", workflow / n))ms rowsAndIndex=\(String(format: "%.2f", index / n))ms"
             )
         }
     }
