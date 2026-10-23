@@ -301,14 +301,14 @@ extension SelfTest {
         guard let account = view.account else { throw SelfTestFailure("brain: no narrow account") }
         let metrics = view.currentMetrics
         let height = Double(gtk_widget_get_height(bed.widget))
-        let want = metrics.rowHeight + view.narrowExtra(metrics)
+        let want = metrics.openHeight
         try expect(
             metrics.arrangement == .accordion && metrics.filterStyle == .chips && abs(height - want) <= 1.5,
             "under 860 the brain is the head, the chips and the account, \(Int(height)) tall (\(Int(want)))")
         let place = bed.rect(of: account.root)
         try expect(
             abs(place.x) <= 1.5 && abs(place.w - metrics.width) <= 1.5 && place.y >= metrics.stage.height
-                && abs(place.h - view.narrowAccountHeight(metrics)) <= 1.5,
+                && abs(place.h - metrics.narrowAccountHeight) <= 1.5,
             "the account stands where the step list would, at the row's full width (\(Int(place.y)), \(Int(place.w)) by \(Int(place.h)))")
         try expect(
             gtk_widget_get_child_visible(view.list!.canvas) == 0 && !view.currentMetrics.hasLeader,

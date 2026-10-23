@@ -217,6 +217,16 @@ extension BrainDraw {
         cairo_restore(cr)
     }
 
+    /// The size of a Pango font description in pixels at 96 dpi: a bare number or a point size is
+    /// points.
+    static func pixelSize(of font: String) -> Double {
+        guard let last = font.split(separator: " ").last else { return 0 }
+        let isPixels = last.hasSuffix("px")
+        let unit = isPixels ? "px" : last.hasSuffix("pt") ? "pt" : ""
+        guard let size = Double(last.dropLast(unit.count)) else { return 0 }
+        return isPixels ? size : size * 96 / 72
+    }
+
     /// A Pango font description with its size multiplied and nothing else changed; the size may
     /// carry a unit, as GTK writes it (`22.18px`).
     static func resized(_ font: String, by factor: Double) -> String {

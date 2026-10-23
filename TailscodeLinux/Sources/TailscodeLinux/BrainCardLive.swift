@@ -27,6 +27,7 @@ final class BrainCardLive {
         let output: String
         let quote: String
         let speaker: String
+        let mark: String
         let wordHeight: Double
         let lineHeight: Double
 
@@ -46,6 +47,7 @@ final class BrainCardLive {
             output = probe("bn-lc-out", line: Self.nowLine)
             quote = probe("bn-lc-quote", line: Self.nowLine)
             speaker = probe("bn-lc-speaker", line: Self.nowLine)
+            mark = probe("bn-label", line: Self.nowLine)
             func height(_ font: String) -> Double {
                 var width = 0.0
                 var height = 0.0
@@ -347,6 +349,7 @@ extension BrainCard {
         let reserve = layoutClass == .wide ? 170.0 : 0
         let countsX = wordX + wordWidth + 12
         let room = width - reserve - countsX
+        var end = countsX
         if room > 40 {
             let counts = cut(words.counts, font: fonts.counts, width: room)
             var countsHeight = 0.0
@@ -355,7 +358,29 @@ extension BrainCard {
             BrainDraw.text(
                 cr, counts, font: fonts.counts, x: countsX, y: mid - countsHeight / 2 + 1, color: inks.dim,
                 alpha: alpha)
+            end += BrainDraw.measure(counts, fonts.counts) + 8
         }
+        paintLiveWordmark(cr, fonts: fonts, end: end, width: width, mid: mid, alpha: alpha)
+    }
+
+    /// Megatron's name at the right end of the live headline, where the settled headline's own
+    /// label stands, when Core's rule says the words leave it room.
+    private func paintLiveWordmark(
+        _ cr: OpaquePointer, fonts: BrainCardLive.Fonts, end: Double, width: Double, mid: Double,
+        alpha: Double
+    ) {
+        let name = NeuralReading.wordmark
+        let tracking = Typography.spec(.sectionLabel).tracking(forSize: BrainDraw.pixelSize(of: fonts.mark))
+        let wordWidth = BrainDraw.measure(name, fonts.mark) + tracking * Double(name.count)
+        let right = width - wordmarkReserve
+        guard NeuralStageMetrics.cardShowsWordmark(
+            width: self.width, headlineEnd: end, headlineRight: right, wordmarkWidth: wordWidth)
+        else { return }
+        let height = BrainDraw.lineHeight(of: fonts.mark)
+        let color = owner.inks.dim
+        tailscode_poster_text(
+            cr, name, fonts.mark, right - wordWidth, mid - height / 2, 0, 0, 1, 0, tracking, color.red,
+            color.green, color.blue, alpha)
     }
 
     /// `text` cut with an ellipsis to fit `width`.

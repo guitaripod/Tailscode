@@ -39,6 +39,7 @@ final class BrainView: @unchecked Sendable {
     private(set) var filters: BrainFilters?
     private(set) var account: BrainAccount?
     private(set) var readoutClip: UnsafeMutablePointer<GtkWidget>?
+    private(set) var wordmark: UnsafeMutablePointer<GtkWidget>?
     var dimmedNodes: Set<String> = []
     var legendPopover: Gtk.WeakWidget?
     var pendingHover: (id: String?, delay: Double)?
@@ -257,7 +258,7 @@ final class BrainView: @unchecked Sendable {
     func metrics(forWidth width: Double) -> NeuralStageMetrics {
         let zones = model.browseState.list.zoneChips.count
         let viewport = host?.viewportHeight
-        let bucket = Int((viewport ?? 0) / 8)
+        let bucket = Int(viewport ?? 0)
         let need = BrainCard.neededHeight(for: self, width: width)
         if let memo = metricsMemo, memo.width == width, memo.density == density, memo.zones == zones,
             memo.viewport == bucket, memo.need == need
@@ -277,26 +278,13 @@ final class BrainView: @unchecked Sendable {
         return metrics(forWidth: width > 0 ? width : lastWidth > 0 ? lastWidth : 600)
     }
 
-    /// How much taller a narrow brain is than the step list it replaces: the account there is as
-    /// tall as the window allows, not as tall as eight rows.
-    func narrowExtra(_ m: NeuralStageMetrics) -> Double {
-        guard m.arrangement == .accordion else { return 0 }
-        return max(0, narrowAccountHeight(m) - m.list.height)
-    }
-
-    /// The account of a narrow brain: 62 percent of what the reader sees, between 340 and 640.
-    func narrowAccountHeight(_ m: NeuralStageMetrics) -> Double {
-        let viewport = host?.viewportHeight ?? 700
-        return min(max((viewport * 0.62).rounded(), 340), 640)
-    }
-
     func height(forWidth width: Int) -> Int {
         let m = metrics(forWidth: Double(max(width, 1)))
         switch phase {
         case .closed:
             return Int(m.card.height.rounded())
         case .open:
-            return Int((m.rowHeight + narrowExtra(m)).rounded())
+            return Int(m.openHeight.rounded())
         case .moving:
             return Int((moveState?.frame.rowHeight ?? m.rowHeight).rounded())
         }
@@ -382,7 +370,26 @@ final class BrainView: @unchecked Sendable {
         placeLeader(sink, m, stage: stage)
         place(sink, stage.hit, m.stageHover)
         placeBrowse(sink, m, readoutRect: nil)
-        place(sink, footer?.widget, m.footer, dy: narrowExtra(m))
+        place(sink, footer?.widget, m.footer, dy: m.narrowExtra)
+        placeWordmark(sink, m)
+    }
+
+    /// The name the open stage wears in the row's corner, nil where it wears none.
+    var wordmarkText: String? {
+        guard let wordmark, gtk_widget_get_visible(wordmark) != 0 else { return nil }
+        return gtk_label_get_text(op(wordmark)).map { String(cString: $0) }
+    }
+
+    /// Megatron's name in the row's top left corner where Core's metrics say the corner is clear of
+    /// the head.
+    private func placeWordmark(_ sink: OpaquePointer, _ m: NeuralStageMetrics) {
+        guard let wordmark else { return }
+        guard let box = m.stageWordmark else {
+            gtk_widget_set_visible(wordmark, 0)
+            return
+        }
+        gtk_widget_set_visible(wordmark, 1)
+        place(sink, wordmark, box)
     }
 
     /// The leader's own canvas covers the head and the gutter, in the head's coordinates, so the
@@ -410,7 +417,7 @@ final class BrainView: @unchecked Sendable {
             place(sink, list.canvas, canvasRect)
         }
         var base = narrow
-            ? NeuralRect(x: 0, y: m.list.y, width: m.width, height: narrowAccountHeight(m)) : m.readout
+            ? NeuralRect(x: 0, y: m.list.y, width: m.width, height: m.narrowAccountHeight) : m.readout
         if let moved = readoutRect {
             base = narrow ? base.offsetBy(dx: moved.x, dy: moved.y) : moved
         }
@@ -462,6 +469,7 @@ final class BrainView: @unchecked Sendable {
             sink, m,
             readoutRect: target.readout.offsetBy(dx: f.readoutOffset.x, dy: f.readoutOffset.y))
         place(sink, footer?.widget, target.footer)
+        placeWordmark(sink, m)
     }
 
     private func widthChanged() {
@@ -726,6 +734,11 @@ final class BrainView: @unchecked Sendable {
         let footer = BrainFooter(owner: self)
         self.footer = footer
         tailscode_brain_row_add(widget, footer.widget)
+        let mark = BrainUI.label(NeuralReading.wordmark, "bn-label")
+        tailscode_set_accessible_hidden(mark, 1)
+        gtk_widget_set_can_target(mark, 0)
+        wordmark = mark
+        tailscode_brain_row_add(widget, mark)
         installMoveCanvas()
         let m = currentMetrics
         made.configure(
@@ -762,7 +775,7 @@ final class BrainView: @unchecked Sendable {
     /// The readout's clip, the footer and the move's canvases stand over the account and the list
     /// whichever of them was made last.
     private func raiseOverlays() {
-        for part in [readoutClip, footer?.widget, moveCanvas, edgeCanvas] {
+        for part in [readoutClip, footer?.widget, wordmark, moveCanvas, edgeCanvas] {
             if let part { tailscode_brain_row_raise(widget, part) }
         }
     }
@@ -826,6 +839,7 @@ final class BrainView: @unchecked Sendable {
             tailscode_brain_row_remove(widget, account.root)
         }
         if let footer { tailscode_brain_row_remove(widget, footer.widget) }
+        if let wordmark { tailscode_brain_row_remove(widget, wordmark) }
         if let moveCanvas { tailscode_brain_row_remove(widget, moveCanvas) }
         if let edgeCanvas { tailscode_brain_row_remove(widget, edgeCanvas) }
         account = nil
@@ -837,6 +851,7 @@ final class BrainView: @unchecked Sendable {
         hoverApplied = nil
         pendingHover = nil
         footer = nil
+        wordmark = nil
         moveCanvas = nil
         edgeCanvas = nil
         model.clearSelection()

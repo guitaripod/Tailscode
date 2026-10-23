@@ -49,6 +49,9 @@ final class BrainCard: @unchecked Sendable {
     private var chipWidgets: [UnsafeMutablePointer<GtkWidget>] = []
     private var digestLabel: UnsafeMutablePointer<GtkWidget>?
     private var digestFitted = ""
+    private var wordmarkLabel: UnsafeMutablePointer<GtkWidget>?
+    /// How much of the headline's right end Replay and Rows take, which the wordmark stays clear of.
+    var wordmarkReserve = 0.0
 
     /// The words a card drew, for the harness: the headline, the chips, the digest.
     private(set) var drawn = (headline: "", chips: [String](), digest: "")
@@ -395,6 +398,7 @@ final class BrainCard: @unchecked Sendable {
         chipRow = nil
         digestLabel = nil
         digestFitted = ""
+        wordmarkLabel = nil
         let inks = owner.inks
         let split = pieces()
         func head(clauses wide: Bool) -> UnsafeMutablePointer<GtkWidget> {
@@ -406,6 +410,12 @@ final class BrainCard: @unchecked Sendable {
                 gtk_box_append(ptr(row), BrainUI.label(duration.text, "bn-dur"))
             }
             if wide { gtk_box_append(ptr(row), clauses(inks: inks)) }
+            let mark = BrainUI.label(NeuralReading.wordmark, "bn-label")
+            gtk_widget_set_hexpand(mark, 1)
+            gtk_widget_set_halign(mark, GTK_ALIGN_END)
+            tailscode_set_accessible_hidden(mark, 1)
+            gtk_box_append(ptr(row), mark)
+            wordmarkLabel = mark
             for child in children(of: row) { gtk_widget_set_valign(child, GTK_ALIGN_BASELINE_FILL) }
             gtk_widget_set_valign(row, GTK_ALIGN_START)
             return row
@@ -522,6 +532,7 @@ final class BrainCard: @unchecked Sendable {
     /// Shows the zone chips that fit whole and the digest cut by whole clauses, which is all a
     /// narrower card gives up before its picture, its headline, Replay and Rows.
     func fitContent() {
+        fitWordmark()
         guard hasContent, layout == .wide || card.hasQuote else { return }
         let shown = parts
         var room = textColumnWidth
@@ -553,6 +564,22 @@ final class BrainCard: @unchecked Sendable {
             digestFitted = fitted
             gtk_label_set_markup(op(digest), BrainUI.escape(fitted))
         }
+    }
+
+    /// Shows Megatron's name at the right end of the headline's row when Core's rule says the row's
+    /// own words leave it room, and keeps it clear of Replay and Rows where they share the line.
+    private func fitWordmark() {
+        guard hasContent, let mark = wordmarkLabel, let row = settledHeadWidgets.first else { return }
+        wordmarkReserve = layout == .wide ? Double(naturalWidth(buttons)) + 10 : 0
+        gtk_widget_set_visible(mark, 1)
+        gtk_widget_set_margin_end(mark, 0)
+        let markWidth = Double(naturalWidth(mark))
+        let end = Double(naturalWidth(row)) - markWidth - 8
+        let shown = NeuralStageMetrics.cardShowsWordmark(
+            width: width, headlineEnd: end, headlineRight: textColumnWidth - wordmarkReserve,
+            wordmarkWidth: markWidth)
+        gtk_widget_set_visible(mark, shown ? 1 : 0)
+        gtk_widget_set_margin_end(mark, Int32(wordmarkReserve.rounded()))
     }
 
     /// The agent's own first words as the card's third line: the quote mark and its name in the
@@ -626,6 +653,7 @@ final class BrainCard: @unchecked Sendable {
         return "card layout=\(layout) width=\(Int(width)) content=\(hasContent) chips=\(chips)/\(chipWidgets.count) digest=\(digest) picture=\(restPicture != nil) hovered=\(hovered)"
     }
 
+    var wordmarkVisible: Bool { wordmarkLabel.map { gtk_widget_get_visible($0) != 0 } ?? false }
     var visibleChipCount: Int { chipWidgets.filter { gtk_widget_get_visible($0) != 0 }.count }
     var digestVisible: Bool { digestLabel.map { gtk_widget_get_visible($0) != 0 } ?? false }
     var digestText: String {

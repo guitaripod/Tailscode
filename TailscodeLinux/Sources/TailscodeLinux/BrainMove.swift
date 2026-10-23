@@ -163,6 +163,7 @@ extension BrainView {
         if let readout { gtk_widget_set_opacity(readout.widget, f.readoutAlpha) }
         if let account { gtk_widget_set_opacity(account.root, f.readoutAlpha) }
         if let footer { gtk_widget_set_opacity(footer.widget, f.footerAlpha) }
+        if let wordmark { gtk_widget_set_opacity(wordmark, f.panelAlpha) }
         if let filters { gtk_widget_set_opacity(filters.canvas, f.panelAlpha) }
         list?.setReveal(f.listRows, headerAlpha: f.listHeaderAlpha)
         if let list { gtk_widget_set_opacity(list.entry, f.listHeaderAlpha) }
@@ -190,6 +191,7 @@ extension BrainView {
         if let readout { gtk_widget_set_opacity(readout.widget, 1) }
         if let account { gtk_widget_set_opacity(account.root, 1) }
         if let footer { gtk_widget_set_opacity(footer.widget, 1) }
+        if let wordmark { gtk_widget_set_opacity(wordmark, 1) }
         if let filters { gtk_widget_set_opacity(filters.canvas, 1) }
         list?.setReveal(nil, headerAlpha: 1)
         if let list { gtk_widget_set_opacity(list.entry, 1) }

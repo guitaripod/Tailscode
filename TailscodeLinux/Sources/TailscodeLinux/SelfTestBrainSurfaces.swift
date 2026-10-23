@@ -16,9 +16,10 @@ extension SelfTest {
 
         init(
             row: BrainRow, width: Int, key: String, policy: (() -> NeuralOpenPolicy?)? = nil,
-            onScreen: ((BrainView) -> Bool)? = nil
+            onScreen: ((BrainView) -> Bool)? = nil, viewport: Double? = nil
         ) throws {
             host.sessionKey = key
+            host.viewport = viewport.map { pane in { pane } }
             host.onScreen = onScreen
             host.policy = policy
             context.brains = host
@@ -286,7 +287,7 @@ extension SelfTest {
             }
             let hit = bed.rect(of: stage.visibleLayers[0])
             let rowHeight = Double(gtk_widget_get_height(bed.widget))
-            let want = metrics.rowHeight + bed.view.narrowExtra(metrics)
+            let want = metrics.openHeight
             try expect(
                 abs(hit.x - metrics.stage.x) <= 1.5 && abs(hit.w - metrics.stage.width) <= 1.5
                     && abs(hit.h - metrics.stage.height) <= 1.5,
@@ -342,6 +343,47 @@ extension SelfTest {
             reports.joined(separator: " ")
                 == "380:accordion 460:accordion 700:accordion 859:accordion 860:split 1300:split 1440:split",
             "the layout is an accordion under 860 and a split from it (\(reports.joined(separator: " ")))")
+        try checkBrainShortPane(expect, open: open, policy: policy)
+    }
+
+    /// An open brain in a pane that is short stays under its share of the pane, its account the
+    /// height the metrics give it, and the card and the stage wear Megatron's name.
+    private static func checkBrainShortPane(
+        _ expect: (Bool, String) throws -> Void, open: BrainRow, policy: @escaping () -> NeuralOpenPolicy?
+    ) throws {
+        for (width, pane) in [(1300, 640.0), (1000, 700.0), (700, 600.0), (1300, 1400.0)] {
+            let bed = try BrainBed(row: open, width: width, key: "st-short-\(width)-\(Int(pane))", policy: policy, viewport: pane)
+            _ = brainPump(0.4) { bed.view.stage != nil && bed.view.account != nil }
+            _ = brainPump(0.15)
+            let metrics = bed.view.currentMetrics
+            let least = NeuralStageMetrics.make(
+                width: Double(width), density: bed.view.density, rows: NeuralStageMetrics.rowsFloor,
+                viewportHeight: 0
+            ).openHeight
+            let bound = max(least, pane * NeuralStageMetrics.openHeightShare)
+            let height = Double(gtk_widget_get_height(bed.widget))
+            try expect(
+                abs(height - metrics.openHeight) <= 1.5 && height <= bound + 1.5,
+                "at \(width) in a pane \(Int(pane)) tall the open row is \(Int(metrics.openHeight)), within \(Int(bound)) (\(Int(height)))")
+            if metrics.arrangement == .split, let account = bed.view.account {
+                let place = bed.rect(of: account.root)
+                try expect(
+                    abs(place.h - metrics.brainHeight) <= 1.5,
+                    "the account follows the metrics' height, \(Int(metrics.brainHeight)), and no floor of its own (\(Int(place.h)))")
+            }
+            try expect(
+                (bed.view.wordmarkText == NeuralReading.wordmark) == (metrics.stageWordmark != nil),
+                "the open stage names Megatron where Core clears its corner at \(width) in \(Int(pane))")
+            bed.close()
+            BrainCompositors.dropIdle(olderThan: 0)
+        }
+        var closed = open
+        closed.open = false
+        let card = try BrainBed(row: closed, width: 900, key: "st-name-card", policy: policy)
+        _ = brainPump(8) { card.view.card.hasPicture && card.view.card.hasContent }
+        _ = brainPump(0.4)
+        try expect(card.view.card.wordmarkVisible, "a wide card wears Megatron's name at the right end of its headline")
+        card.close()
     }
 
     // MARK: the readout
