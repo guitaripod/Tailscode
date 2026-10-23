@@ -22,6 +22,7 @@ enum BrainChecks {
         try cascadeTail(expect)
         try gates(expect)
         try incremental(expect)
+        try lazy(expect)
         try rows(expect)
         guard MacBrain.isEnabled else { return checks }
         checks += try BrainViewChecks.run()
@@ -276,6 +277,41 @@ enum BrainChecks {
         try expect(agree, "tail layout equals full layout: \(disagreement)")
         try expect(
             mismatch.isEmpty, "with heads the tail layout lists the rows the whole one does: \(mismatch)")
+    }
+
+    private static func lazy(_ expect: (Bool, String) throws -> Void) throws {
+        guard MacBrain.isEnabled else { return }
+        let messages = (0..<30).flatMap {
+            NeuralDemo.buildFix(prefix: "z\($0)-", origin: 1_700_000_000 + Double($0) * 600)
+        }
+        let store = BrainStore()
+        store.read(messages: messages, running: false, awaiting: .none)
+        try expect(
+            store.order.count == 30 && store.madeCount == 1,
+            "reading a conversation makes the newest turn's model and no other (\(store.order.count) brains, \(store.madeCount) made)")
+        let older = store.order[10]
+        let before = store.row(forTurn: older)
+        let found = store.stepHolding("swift build", turnID: store.order[20])
+        try expect(
+            found != nil && store.madeCount == 2,
+            "find lands on a step of a turn nobody looked at (\(String(describing: found)), \(store.madeCount) made)")
+        let looked = store.entry(older)
+        try expect(
+            looked?.turn.id == older && store.madeCount == 3 && store.row(forTurn: older) == before,
+            "looking at a turn makes it and leaves its row as it was")
+        let eager = NeuralTurns.partition(messages: messages, running: false)
+        try expect(
+            store.order.allSatisfy { id in
+                store.entry(id)?.turn == eager.first { $0.id == id }
+            }, "every turn made later is the turn the partition reads")
+        var slices = 0
+        while !store.indexSearch(budget: 0.000_01) { slices += 1 }
+        try expect(slices > 1, "find's words are read in more than one slice (\(slices))")
+        try expect(
+            store.order.allSatisfy { id in
+                let words = store.indexedSearchText(turnID: id)
+                return !words.isEmpty && words == store.searchText(turnID: id)
+            }, "the words are read for every brain")
     }
 
     private static func rows(_ expect: (Bool, String) throws -> Void) throws {

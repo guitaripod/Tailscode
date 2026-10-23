@@ -516,6 +516,10 @@ final class BrainStore {
         latestTurnID = nil
     }
 
+    /// How many turns have their steps read and a model made, which is the newest and the ones that
+    /// were looked at.
+    var madeCount: Int { built.count }
+
     func entry(_ turnID: String) -> Entry? {
         guard let held = placed[turnID], let made = made(turnID) else { return nil }
         return Entry(
