@@ -213,3 +213,28 @@ The cost that is left grows with the conversation, about 1.9 us a turn of one th
 
 `NeuralColdOpenBenchTests` (`NEURAL_COLD_BENCH=1`, release) prints the Core figures; the in-app probe is `TAILSCODE_NEURAL_PERF=1` with `TAILSCODE_NEURAL_STATE=shell TAILSCODE_NEURAL_LARGE=174` ("open cold N turns", "then a token"); `TAILSCODE_BENCH_OPEN` also logs `bench brain prepare` and `bench brain realise` lines for the store's own passes. On the Mac `TailscodeMac --bench brain-cold[=40,300,1500]`, on Linux the `efficiency` brain group of the selftest (`TAILSCODE_BRAIN_GROUP=efficiency`) prints "brain ledger: a cold pass".
 
+
+## Opening and closing one Megatron (2026-10-23)
+
+`TailscodeMac --bench brain-pane[=turns[:steps,steps]] [--rounds n]` opens and closes the newest turn of a 100-turn conversation through the real `TranscriptViewController` in a window on screen and times every main run loop turn from the press to the end of the move in the main thread's own CPU (`BrainTurnMeter`). It needs the display awake (`caffeinate -d -u`), because the move runs on a display link. The longest turn is the figure that matters: a frame is lost for every 8 ms (120 Hz) past it. Release, the macbook, before and after run back to back from the same checkout; the host was loaded by Spotlight indexing (load average 10-23 at the one-minute mark during the runs below), so read the pair and not the absolute numbers.
+
+| | before | after |
+|---|---|---|
+| open, longest turn, 29 / 174 / 600 steps (median of 8 warm opens) | 42.7 / 51.5 / 54.9 ms | 12.3 / 12.4 / 13.8 ms |
+| close, longest turn | 26.7 / 32.9 / 40.5 ms | 8.6 / 14.2 / 16.3 ms |
+| CPU of the whole open move | 287 / 319 / 327 ms | 156 / 183 / 202 ms |
+| CPU of the whole close move | 186 / 198 / 220 ms | 87 / 117 / 155 ms |
+| turns of an open over 4 ms | 23 / 26 / 23 | 10 / 16 / 22 |
+| first open of the process, longest turn | 57 / 86 / 93 ms | 22 / 21 / 22 ms |
+
+What cost the time, found by sampling and by counting what each layer was asked to draw:
+
+- Everything the press built (stage, list, account, footer) was built in the press's own turn, and the pane rebuilt its rows in the same turn. The press now builds nothing; each tick of the move builds the next part (`NeuralOpenSchedule` in Core: head, steps, nodes, account, story, footer), the account's items three to a frame, and the rows are rebuilt when the move has landed (`BrainStore.defersRebuild`).
+- A view whose frame changes makes every view under it draw again. The row grew a few points on each frame of its move, so the page, the account and the list were drawn again on every frame (7-10 ms a frame). The row now keeps the frame it will rest at (`RowMotion`, `TranscriptColumn` lays the rows below out from the height the move has reached and the page from the final height), shows itself through a mask that grows with Core's height, and the account slides by a transform of a carrier view; the page is scrolled to the final row at once and eased by the render server.
+- The account was read from the model on the main thread; it is read on another thread while the press is answered.
+- Fonts of the ramp were made from descriptors on every use (cached once per scale); a card at rest is drawn once into a picture and put down from it (a page asking every card to draw again found them 4 ms of drawing); pills, buttons and strips marked themselves for drawing when set to what they already held; the list redraws only the rows a frame changed; the card's content for a move is made once; the stage makes its nodes and wires a frame after its head.
+- `--bench` states the pane's cold costs apart: the first open of a process costs 22 ms in its longest turn.
+
+Linux (`TAILSCODE_TRACE=1`, `lagprobe` around one open in the headless harness on display 81, Release, worst lateness of a 10 ms timer, four runs each): 29 steps 15 / 18 / 14 / 12 ms before, 10 / 6 / 8 / 11 after; 174 steps 16 / 20 / 16 / 17 before, 16 / 19 / 16 / 17 after (the head's first frame, not the build, is the longest block there); the longest gap between two frames of the move at 29 steps 18.6-20.0 ms before, 17.2-17.5 ms after (one 60 Hz frame is 16.7). The press builds the head, and the list and the account arrive one to a frame, the account read on another thread.
+
+A regression guard runs in `--selftest` (`BrainOpenChecks`, a child process of the binary): the median of the longest turns of several opens and closes must stay under 22 ms and none past 45 ms; it says why it did not run and does not fail when the host's load average is over 4 a core or the display did not tick the move.
