@@ -33,15 +33,15 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
     let picture = BrainPictureLayer()
     let carrier = BrainCarrierView()
     let leader = BrainLeaderLayer()
-    private let wordmark = BrainWordmarkView()
-    private var wordmarkKey = 0
-    private(set) var stage: BrainStageView?
-    private(set) var chips: BrainFilterChips?
-    private(set) var list: BrainListView?
-    private(set) var account: BrainAccountView?
-    private(set) var slide: BrainCarrierView?
+    let wordmark = BrainWordmarkView()
+    var wordmarkKey = 0
+    var stage: BrainStageView?
+    var chips: BrainFilterChips?
+    var list: BrainListView?
+    var account: BrainAccountView?
+    var slide: BrainCarrierView?
     var moveMask: CALayer?
-    private(set) var footer: BrainFooterView?
+    var footer: BrainFooterView?
     private(set) var phase = Phase.closed
     var mover: BrainMover?
     var schedule: NeuralOpenSchedule?
@@ -50,15 +50,15 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
     var parkReasons = Set<String>()
     var startReplayOnOpen = false
     var legend: NSPopover?
-    private var metricsMemo: (key: MetricsKey, value: NeuralStageMetrics)?
-    private var lastWidth: CGFloat = 0
+    var metricsMemo: (key: MetricsKey, value: NeuralStageMetrics)?
+    var lastWidth: CGFloat = 0
     private var pictureRequested = ""
     var hoverApplied: String??
     var pendingHover: (id: String?, delay: Double)?
     var lastHoverApplyTime = 0.0
     var hoverFlush: Timer?
     var graceTimerStore: Timer?
-    private var announcement: String?
+    var announcement: String?
     private var memoStamp = -1
     private var contextObservers: [NSObjectProtocol] = []
     private(set) var tokenComputations = 0
@@ -225,51 +225,7 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
 
     func stagePressed() { dismissLegend() }
 
-
-    private struct MetricsKey: Equatable {
-        let width: Double
-        let density: ChatDensity
-        let zones: Int
-        let bucket: Int
-    }
-
-    private var zonesMemo: (revision: Int, count: Int)?
-
-    /// How many zones have steps, which sets the stage's height. The chips are read from the
-    /// model once for each of its revisions, not once for each time a part asks where it goes.
-    private var zonesWithSteps: Int {
-        let model = model
-        if let memo = zonesMemo, memo.revision == model.revision { return memo.count }
-        let count = model.browseState.list.zoneChips.count
-        zonesMemo = (model.revision, count)
-        return count
-    }
-
-    func metrics(forWidth width: Double) -> NeuralStageMetrics {
-        let zones = zonesWithSteps
-        let viewport = store?.viewportHeight?().map { Double($0) }
-        let key = MetricsKey(
-            width: width, density: density, zones: zones, bucket: Int(viewport ?? 0))
-        if let memo = metricsMemo, memo.key == key { return memo.value }
-        let made = NeuralStageMetrics.make(
-            width: width, density: density, zonesWithSteps: max(zones, 1), viewportHeight: viewport)
-        metricsMemo = (key, made)
-        return made
-    }
-
-    var currentMetrics: NeuralStageMetrics {
-        let width = Double(bounds.width > 0 ? bounds.width : (lastWidth > 0 ? lastWidth : 600))
-        return metrics(forWidth: width)
-    }
-
-    var restingHeight: CGFloat {
-        let m = currentMetrics
-        switch phase {
-        case .closed: return CGFloat(m.card.height)
-        case .open: return CGFloat(m.openHeight.rounded())
-        case .moving: return CGFloat(max(m.card.height, m.openHeight).rounded())
-        }
-    }
+    var zonesMemo: (revision: Int, count: Int)?
 
     override var intrinsicContentSize: NSSize {
         NSSize(width: NSView.noIntrinsicMetric, height: restingHeight)
@@ -286,136 +242,7 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
         place()
     }
 
-    private func widthChanged() {
-        metricsMemo = nil
-        invalidateIntrinsicContentSize()
-        if let mover, abs(mover.metricsWidth - Double(lastWidth)) > 0.5 { finishMove(snapOpen: mover.isOpening) }
-        syncCard()
-        stage?.needsLayout = true
-        list?.configure(metrics: currentMetrics)
-        chips?.configure(metrics: currentMetrics)
-        account?.geometryChanged()
-        footer?.needsLayout = true
-    }
-
-    /// Every part at the rectangle Core gives it for this width and phase.
-    func place() {
-        let m = currentMetrics
-        let width = bounds.width
-        card.frame = CGRect(x: 0, y: 0, width: width, height: bounds.height)
-        carrier.frame = bounds
-        let stageRect = rect(m.stage)
-        switch phase {
-        case .closed:
-            placeClosed(m)
-        case .open:
-            placeOpen(m, stageRect: stageRect)
-        case .moving:
-            applyMoveFrame(m)
-        }
-        picture.place(m.stage)
-        if phase != .moving {
-            applyCarrier(rect: phase == .closed ? rect(m.card.picture) : stageRect, stage: stageRect)
-        }
-    }
-
-    func rect(_ r: NeuralRect) -> CGRect { CGRect(x: r.x, y: r.y, width: r.width, height: r.height) }
-
-    private func placeClosed(_ m: NeuralStageMetrics) {
-        card.isHidden = false
-        card.presentation = .rest
-        picture.container.isHidden = false
-        picture.container.opacity = 1
-        carrier.isHidden = false
-        picture.show(
-            card: cardInput?.card ?? model.brainCard(now: Date()), inks: inks, hovered: card.hovered,
-            lift: 1, liveZone: liveZone, liveMotion: liveMotion)
-        stage?.isHidden = true
-        placeWordmark(m, alpha: 0)
-    }
-
-    /// The name the open stage wears in the row's corner, nil where it wears none.
-    var wordmarkText: String? {
-        wordmark.isHidden ? nil : wordmark.words?.string
-    }
-
-    /// Megatron's name in the row's top left corner where Core's metrics say the corner is clear of
-    /// the head, at the stage's own opacity: one small view of the row standing over the head,
-    /// made with its words once per look and only moved after that.
-    func placeWordmark(_ m: NeuralStageMetrics, alpha: CGFloat) {
-        guard alpha > 0.01, let box = m.stageWordmark else {
-            if !wordmark.isHidden { wordmark.isHidden = true }
-            return
-        }
-        let font = MacTheme.Ramp.font(.sectionLabel)
-        var hasher = Hasher()
-        hasher.combine(effectiveAppearance.name.rawValue)
-        hasher.combine(font.pointSize)
-        let key = hasher.finalize()
-        if key != wordmarkKey {
-            wordmarkKey = key
-            wordmark.words = NSAttributedString(
-                string: NeuralReading.wordmark,
-                attributes: MacTheme.Ramp.attributes(.sectionLabel, color: inks.textDim))
-        }
-        wordmark.isHidden = false
-        wordmark.alphaValue = alpha
-        wordmark.frame = rect(box)
-    }
-
-    private var cardInput: BrainCardView.Content?
-
-    private func placeOpen(_ m: NeuralStageMetrics, stageRect: CGRect) {
-        card.isHidden = true
-        picture.container.opacity = stage?.head.isReady == true ? 0 : 1
-        picture.container.isHidden = stage == nil
-        let extra = m.narrowExtra
-        stage?.isHidden = false
-        stage?.frame = stageRect
-        footer?.frame = rect(m.footer).offsetBy(dx: 0, dy: extra)
-        placeWordmark(m, alpha: stage == nil ? 0 : 1)
-        placeBrowse(m, readout: nil)
-        placeLeader(m)
-    }
-
-    func placeBrowse(_ m: NeuralStageMetrics, readout moved: NeuralRect?) {
-        let narrow = m.arrangement == .accordion
-        if let rect = m.filterChips { chips?.frame = self.rect(rect) }
-        if narrow {
-            list?.isHidden = true
-        } else {
-            list?.isHidden = false
-            list?.frame = rect(m.list)
-        }
-        let rest =
-            narrow
-            ? NeuralRect(x: 0, y: m.list.y, width: m.width, height: m.narrowAccountHeight) : m.readout
-        var target = rest
-        if let moved { target = narrow ? rest.offsetBy(dx: moved.x, dy: moved.y) : moved }
-        slide?.frame = rect(rest)
-        account?.frame = CGRect(origin: .zero, size: rect(rest).size)
-        slide?.setTravel(
-            CGAffineTransform(translationX: CGFloat(target.x - rest.x), y: CGFloat(target.y - rest.y)))
-    }
-
-    private func placeLeader(_ m: NeuralStageMetrics) {
-        leader.layer.frame = bounds
-        updateLeader()
-    }
-
-    /// The carrier moves the picture and the stage together: a transform about the carrier's own
-    /// anchor that puts the head's bounds (`stage`) where `rect` is, which is the card's picture on
-    /// a card, the stage on an open brain, and anywhere between during the move.
-    func applyCarrier(rect target: CGRect, stage stageRect: CGRect) {
-        let k = stageRect.width > 0 ? target.width / stageRect.width : 1
-        let held = carrier.layer?.anchorPoint ?? .zero
-        let anchor = CGPoint(x: held.x * carrier.bounds.width, y: held.y * carrier.bounds.height)
-        let tx = target.minX - k * stageRect.minX - (1 - k) * anchor.x
-        let ty = target.minY - k * stageRect.minY - (1 - k) * anchor.y
-        carrier.setTravel(CGAffineTransform(a: k, b: 0, c: 0, d: k, tx: tx, ty: ty))
-        let radius = phase == .closed ? 8 : 0
-        picture.setCornerRadius(CGFloat(radius), designScale: target.width / CGFloat(NeuralStageMetrics.designWidth))
-    }
+    var cardInput: BrainCardView.Content?
 
 
     func restate(_ next: BrainRow) { apply(next, initial: false) }
@@ -540,8 +367,8 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
     }
 
 
-    private var liveZone: NeuralZone? { cardInput?.card.live?.activeZone }
-    private var liveMotion: NeuralMotion { cardInput?.card.live?.motion ?? .still }
+    var liveZone: NeuralZone? { cardInput?.card.live?.activeZone }
+    var liveMotion: NeuralMotion { cardInput?.card.live?.motion ?? .still }
 
     /// Brings the card to the model.
     func syncCard() {
@@ -636,148 +463,8 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
             && isVisible
     }
 
-    /// Builds every part of the open brain, without showing them.
-    func makeParts() {
-        var rest = schedule ?? NeuralOpenSchedule()
-        schedule = nil
-        for part in rest.remaining() { build(part) }
-    }
-
-    /// Builds the parts the schedule says are due on this tick of the opening move.
-    func buildDueParts(frame: Int, progress: Double) {
-        guard var held = schedule else { return }
-        let due = held.due(frame: frame, progress: progress)
-        schedule = held.isComplete ? nil : held
-        for part in due { build(part, paced: true) }
-    }
-
-    /// Builds the parts the opening move has not reached yet, for a move that ends first.
-    func completeParts() {
-        guard var held = schedule else { return }
-        schedule = nil
-        for part in held.remaining() { build(part) }
-    }
-
-    private func build(_ part: NeuralOpenPart, paced: Bool = false) {
-        switch part {
-        case .head: buildHead()
-        case .steps: buildSteps()
-        case .nodes: stage?.beginOverlay()
-        case .account: buildAccount(paced: paced)
-        case .story: account?.refresh(immediate: true)
-        case .footer: buildFooter()
-        }
-    }
-
-    /// How many of the account's items are made on one frame of the move that opens it.
-    private static let itemsPerFrame = 3
-
-    private func buildHead() {
-        guard stage == nil else { return }
-        let made = BrainStageView(turnID: turnID, host: self)
-        made.onActivity = { [weak self] in self?.stageActivity() }
-        made.onDive = { [weak self] zone in self?.diveChanged(zone) }
-        made.head.onReady = { [weak self] in self?.needsLayout = true }
-        made.drawsOverlay = false
-        carrier.addSubview(made)
-        addSubview(wordmark, positioned: .above, relativeTo: nil)
-        stage = made
-        if !parkReasons.isEmpty { made.park() }
-        made.refresh(force: true)
-    }
-
-    private func buildSteps() {
-        guard list == nil else { return }
-        let m = currentMetrics
-        let chipView = BrainFilterChips(host: self)
-        let listView = BrainListView(host: self)
-        addSubview(chipView)
-        addSubview(listView)
-        chips = chipView
-        list = listView
-        chipView.configure(metrics: m)
-        listView.configure(metrics: m)
-        syncBrowse()
-    }
-
-    private func buildAccount(paced: Bool) {
-        guard account == nil else { return }
-        let accountView = BrainAccountView(host: self)
-        if paced { accountView.makeCap = Self.itemsPerFrame }
-        let carrier = BrainCarrierView()
-        carrier.addSubview(accountView)
-        addSubview(carrier)
-        slide = carrier
-        account = accountView
-    }
-
-    private func buildFooter() {
-        guard footer == nil else { return }
-        let footerView = BrainFooterView(host: self)
-        addSubview(footerView)
-        footer = footerView
-        footerView.onReplay = { [weak self] in self?.toggleReplay() }
-        footerView.onScrub = { [weak self] fraction in self?.scrub(to: fraction) }
-        footerView.onScrubEnd = { [weak self] in self?.endScrub() }
-        footerView.onShare = { [weak self] in self?.presentShare() }
-        footerView.onRows = { [weak self] in self?.toggleRows() }
-        footerView.onClose = { [weak self] in self?.collapseBrain() }
-        footerView.onChipHover = { [weak self] token in self?.pointAt(token: token, hold: false) }
-        footerView.onChipPress = { [weak self] token in self?.pointAt(token: token, hold: true) }
-        footerView.sync(now: BrainClock.now)
-    }
-
-    private var graveyard: [NSView] = []
-    private var burialScheduled = false
-
-    /// Lets the views go one to a turn: the account's items and the head's layers cost a few
-    /// milliseconds each to take down, and a move that ends by taking all of them down in the turn
-    /// it ends in dropped a frame at its last step. They are hidden at once and taken out later.
-    private func bury(_ views: [NSView]) {
-        for view in views { view.isHidden = true }
-        graveyard += views
-        scheduleBurial()
-    }
-
-    private func scheduleBurial() {
-        guard !burialScheduled, !graveyard.isEmpty else { return }
-        burialScheduled = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.012) { [weak self] in
-            guard let self else { return }
-            self.burialScheduled = false
-            if !self.graveyard.isEmpty { self.graveyard.removeFirst().removeFromSuperview() }
-            self.scheduleBurial()
-        }
-    }
-
-    func dropParts() {
-        schedule = nil
-        guard stage != nil else { return }
-        returnFocusFromBrain()
-        dismissLegend()
-        bury([slide, list, chips, footer, stage].compactMap { $0 as NSView? })
-        stage = nil
-        chips = nil
-        list = nil
-        account = nil
-        slide = nil
-        footer = nil
-        hoverApplied = nil
-        pendingHover = nil
-        hoverFlush?.invalidate()
-        graceTimerStore?.invalidate()
-        leader.clear()
-        updateModel {
-            $0.clearSelection()
-            $0.browse(.hoverLeft)
-            $0.setBrowseFocus(.list)
-            $0.setProvenance(token: nil)
-            $0.setDiving(false)
-            $0.setDive(zone: nil)
-            if $0.isReplaying { $0.stopReplay() }
-        }
-        announcement = nil
-    }
+    var graveyard: [NSView] = []
+    var burialScheduled = false
 
     /// The stage, list, account and footer in place with no move.
     func showStage() {
@@ -818,7 +505,7 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
         relayout()
     }
 
-    private func returnFocusFromBrain() {
+    func returnFocusFromBrain() {
         guard let window, let responder = window.firstResponder as? NSView,
             responder !== self, responder.isDescendant(of: self)
         else { return }
@@ -953,133 +640,5 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
     func viewportMoved() {
         stage?.visibilityChanged()
         list?.viewportMoved()
-    }
-}
-
-/// The view the stage and the head's picture live in: a plain flipped view the row moves with one
-/// transform, so the head, its nodes and its picture travel as a single thing.
-@MainActor
-final class BrainCarrierView: NSView {
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.masksToBounds = false
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    nonisolated override var isFlipped: Bool { true }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let found = super.hitTest(point)
-        return found === self ? nil : found
-    }
-
-    func setTravel(_ transform: CGAffineTransform) {
-        guard let layer else { return }
-        layer.sublayerTransform = CATransform3DMakeAffineTransform(transform)
-    }
-}
-
-/// Megatron's name over the open row's corner: a view of its own so that it stands above the head,
-/// which fills that corner in a split, with the one text layer that draws it.
-@MainActor
-final class BrainWordmarkView: NSView {
-    private let text = CATextLayer()
-
-    var words: NSAttributedString? {
-        didSet {
-            text.string = words
-            text.contentsScale = window?.backingScaleFactor ?? 2
-        }
-    }
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        text.alignmentMode = .left
-        text.isWrapped = false
-        layer?.addSublayer(text)
-        setAccessibilityElement(false)
-        isHidden = true
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    nonisolated override var isFlipped: Bool { true }
-
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-    override func layout() {
-        super.layout()
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        text.frame = bounds
-        CATransaction.commit()
-    }
-}
-
-/// The brain's one standing clock: none. What it does is notice that nobody is looking. A head
-/// holds the process's textures while it is open, so an app that has been in the background, hidden
-/// or behind another window for a minute and a half lets go of them, and takes them back the moment
-/// it is looked at; a window that closes lets go at once.
-@MainActor
-final class MacBrainIdle {
-    static let shared = MacBrainIdle()
-    static let delay: TimeInterval = 90
-
-    private var installed = false
-    private var timer: Timer?
-    private(set) var isIdle = false
-
-    func install() {
-        guard !installed else { return }
-        installed = true
-        let center = NotificationCenter.default
-        for name in [NSApplication.didResignActiveNotification, NSApplication.didHideNotification] {
-            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainThread.call { self?.away() }
-            }
-        }
-        for name in [
-            NSApplication.didBecomeActiveNotification, NSApplication.didUnhideNotification,
-        ] {
-            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainThread.call { self?.back() }
-            }
-        }
-        center.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) {
-            note in
-            guard let closing = (note.object as? NSWindow).map({ ObjectIdentifier($0) }) else {
-                return
-            }
-            MainThread.call {
-                for row in BrainRowView.live where row.window.map({ ObjectIdentifier($0) }) == closing {
-                    row.setParked(true, reason: "window")
-                }
-            }
-        }
-    }
-
-    func away() {
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: Self.delay, repeats: false) { [weak self] _ in
-            MainThread.call { self?.fallIdle() }
-        }
-    }
-
-    func fallIdle() {
-        timer = nil
-        isIdle = true
-        BrainCardPictures.shared.dropAll()
-        for row in BrainRowView.live { row.setParked(true, reason: "idle") }
-    }
-
-    func back() {
-        timer?.invalidate()
-        timer = nil
-        guard isIdle else { return }
-        isIdle = false
-        for row in BrainRowView.live { row.setParked(false, reason: "idle") }
     }
 }
