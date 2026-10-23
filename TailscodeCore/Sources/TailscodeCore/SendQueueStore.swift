@@ -69,6 +69,15 @@ public enum SendQueueStore {
     /// file, so a second process holding the same queue cannot take the same message either. Nil
     /// when the conversation holds nothing.
     public static func takeFirst(profileID: String, sessionID: String) -> QueuedSend? {
+        takeFirst(profileID: profileID, sessionID: sessionID, where: { _ in true })
+    }
+
+    /// The same atomic take, for a head only the caller may send: the device drains the messages
+    /// it holds itself and leaves the ones that belong to the server's queue where they are.
+    /// Nil when the conversation holds nothing or its head is not one `accepts` wants.
+    public static func takeFirst(
+        profileID: String, sessionID: String, where accepts: (QueuedSend) -> Bool
+    ) -> QueuedSend? {
         lock.lock()
         defer { lock.unlock() }
         fileLock.lock()
@@ -82,6 +91,10 @@ public enum SendQueueStore {
                 return nil
             }
             var queue = records[index].queue
+            guard let first = queue.items.first, accepts(first) else {
+                loaded = records
+                return nil
+            }
             let head = queue.takeFirst()
             if queue.isEmpty {
                 records.remove(at: index)
@@ -92,6 +105,43 @@ public enum SendQueueStore {
             loaded = records
             writeLocked(records)
             return head
+        }
+    }
+
+    /// Changes one conversation's queue as a single read, edit and write, atomically across
+    /// threads and processes, and answers what it holds afterwards.
+    ///
+    /// A copy a pane keeps in memory and saves whole would put back a message that the store had
+    /// already handed to the server in the meantime, which is how a message goes out twice. Every
+    /// change is therefore made here, to what the disk holds now.
+    @discardableResult
+    public static func update(
+        profileID: String, sessionID: String, _ change: (inout SendQueue) -> Void
+    ) -> SendQueue {
+        lock.lock()
+        defer { lock.unlock() }
+        fileLock.lock()
+        defer { fileLock.unlock() }
+        return withFileLock {
+            var records = restoreFromDisk()
+            var queue = records.first {
+                $0.profileID == profileID && $0.sessionID == sessionID
+            }?.queue ?? SendQueue()
+            let before = queue
+            change(&queue)
+            guard queue != before else {
+                loaded = records
+                return queue
+            }
+            records.removeAll { $0.profileID == profileID && $0.sessionID == sessionID }
+            if !queue.isEmpty {
+                records.append(
+                    SendQueueRecord(profileID: profileID, sessionID: sessionID, items: queue.items))
+            }
+            records = bounded(records)
+            loaded = records
+            writeLocked(records)
+            return queue
         }
     }
 
@@ -212,10 +262,15 @@ public enum SendQueueStore {
 /// it is the one thing the queue exists to prevent. A conversation nobody is looking at follows
 /// the same rule from a background watch, because a message written for a chat goes when that
 /// chat's turn ends, whichever chat is on screen.
+///
+/// Only the messages this device holds itself are drained here. Where the server keeps the queue
+/// it drains it, and a message this device still holds for it (see ``ConversationQueue``) is
+/// handed over, not sent. What the device drains waits for the server's queue to be empty, so a
+/// command the server could not take does not overtake the messages written before it.
 public enum SendQueueDrain {
     public static func mayDrain(_ state: ConversationState, editing: Bool = false) -> Bool {
         state.status.isSettled && state.compaction?.isRunning != true
-            && state.lastFailure == nil && !editing
+            && state.lastFailure == nil && !editing && state.queue.isEmpty
     }
 
     /// The same rule for a surface that sends from the desk: nothing goes while the last send is
