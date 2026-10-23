@@ -11,6 +11,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         ReviewPromptPolicy.migrateIfNeeded()
         FieldMetrics.shared.start()
         MainStallMonitor.shared.start()
+        MemoryRelief.install()
         ShortcutSet.configDirectoryOverride = FileManager.default.urls(
             for: .documentDirectory, in: .userDomainMask
         ).first

@@ -10,7 +10,15 @@ final class LinkPreviewStore {
     static let shared = LinkPreviewStore()
     private init() {}
 
-    private let imageCache = NSCache<NSString, UIImage>()
+    private let imageCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 400
+        return cache
+    }()
+
+    func relieve() {
+        imageCache.removeAllObjects()
+    }
 
     /// The page's title and icon address — nil only when the page cannot be read at all.
     func metadata(for urlString: String) async -> LinkPreviewMetadata? {

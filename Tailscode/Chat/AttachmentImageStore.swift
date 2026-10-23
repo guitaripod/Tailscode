@@ -31,6 +31,12 @@ final class AttachmentImageStore {
         originals.totalCostLimit = 48 * 1024 * 1024
     }
 
+    func relieve() {
+        cache.removeAllObjects()
+        originals.removeAllObjects()
+        thumbnails.removeAllObjects()
+    }
+
     func cached(_ file: FileReference) -> UIImage? {
         Self.key(file).flatMap { cache.object(forKey: $0 as NSString) }
     }
