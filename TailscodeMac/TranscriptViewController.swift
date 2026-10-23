@@ -734,7 +734,7 @@ final class TranscriptViewController: NSViewController {
         calls.bind(entry)
         statusBand.resetSlots()
         editingQueued = nil
-        queue = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
+        queue = ConversationQueue(profileID: entry.profileID, sessionID: entry.session.id)
         lastState = nil
         dismissChooser()
         hideEmptyState()
@@ -1336,7 +1336,7 @@ final class TranscriptViewController: NSViewController {
     var holdsRows: Bool { !rowViews.isEmpty || !keptPages.isEmpty }
 
     /// Messages waiting in this chat's queue, as this pane last read them.
-    var queuedCount: Int { queue.count }
+    var queuedCount: Int { queueDisplay.count }
 
     /// Whether this pane may take a streaming row up for the reveal: only the focused one.
     var revealsAnswers: Bool { MotionBudget.reveals(focused: isFocusedPane) }
@@ -1698,6 +1698,7 @@ final class TranscriptViewController: NSViewController {
         cascade.onFrame = { [weak self] in self?.paintCascadeFrame() }
         cascade.onStalled = { [weak self] in self?.giveUpCascade() }
         context.editQueued = { [weak self] id in self?.editQueued(id) }
+        context.resumeQueue = { [weak self] in self?.resumeQueue() }
         context.pendingAct = { [weak self] id, act in self?.actOnPending(id, act) }
         context.resumeAct = { [weak self] id, act in self?.actOnResume(id, act) }
         composer.onTakeBackQueued = { [weak self] in self?.takeBackLastQueued() ?? false }
@@ -1979,15 +1980,63 @@ final class TranscriptViewController: NSViewController {
     /// Prompts written while a turn was running, held here rather than handed to the server so
     /// they can still be reworded, reordered or taken back — which is the whole point of them
     /// being a queue and not a send.
-    private var queue = SendQueue() {
-        didSet {
-            guard queue != oldValue, !adoptingStoredQueue, let entry else { return }
-            SendQueueStore.save(queue, profileID: entry.profileID, sessionID: entry.session.id)
-        }
-    }
+    private var queue: ConversationQueue?
     /// Which waiting message the composer is rewriting. A message taken back and sent again would
     /// land at the end of the queue, which is not editing but deleting and re-adding.
-    private var editingQueued: UUID?
+    private var editingQueued: String?
+
+    /// How this conversation's backend takes a queued message, read each time because a bridge
+    /// says whether it keeps a queue only after the first request to it.
+    private var queueRouting: QueueRouting {
+        guard let backend, let entry else { return .device }
+        return QueueRouting(capabilities: backend.capabilities, profileID: entry.profileID)
+    }
+
+    /// The whole queue as it is drawn: what the server holds for every client of the
+    /// conversation, then what this device still holds.
+    private var queueDisplay: QueueDisplay {
+        queue?.display(lastState, routing: queueRouting) ?? .empty
+    }
+
+    /// Writes a message behind a running turn. Where the server keeps the queue it is handed over
+    /// at once, under its own id; elsewhere, or while the server cannot be reached, it waits here.
+    private func hold(_ send: QueuedSend) {
+        queue?.append(send)
+        handOverQueue()
+    }
+
+    /// Hands the server every message this device holds for it. Asked on every state, so a
+    /// message written offline goes the moment the server answers and one left in the store by a
+    /// version that held everything locally goes on the first connection.
+    private func handOverQueue() {
+        guard let queue, let conversation else { return }
+        let routing = queueRouting
+        guard queue.holdsServerBound(routing: routing) else { return }
+        Task { [weak self] in
+            if await queue.flush(through: conversation, routing: routing) { self?.redrawPending() }
+        }
+    }
+
+    /// Reports what became of a press on a queued row; a message the server had already started
+    /// is said to be sent, and its row is gone either way.
+    private func report(_ outcome: QueueOutcome) {
+        redrawPending()
+        if let message = outcome.message { onToast?(message) }
+    }
+
+    /// The words of a message the server started while it was being rewritten go back into the
+    /// box, because the rewrite can no longer land and losing them would be the worse outcome.
+    private func giveBackEditedWords(_ text: String, attachments: [PromptAttachment]) {
+        _ = composer.adoptForEditing(QueuedSend(text: text, attachments: attachments))
+    }
+
+    private func resumeQueue() {
+        guard let queue, let conversation else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            self.report(await queue.resume(through: conversation))
+        }
+    }
 
     private func sendPrompt(
         _ text: String, model: ModelSelection?, effort: String?,
@@ -1996,7 +2045,20 @@ final class TranscriptViewController: NSViewController {
         guard let conversation else { return }
         if !spoken, let id = editingQueued {
             editingQueued = nil
-            _ = queue.replace(id: id, text: text, attachments: attachments)
+            if let queue, let row = queueDisplay.row(id: id) {
+                queue.edit(row, text: text, attachments: attachments, through: conversation) {
+                    [weak self] outcome in
+                    Task { @MainActor in
+                        if outcome == .alreadyStarted {
+                            self?.giveBackEditedWords(text, attachments: attachments)
+                        }
+                        self?.report(outcome)
+                    }
+                }
+            } else {
+                giveBackEditedWords(text, attachments: attachments)
+                onToast?(QueueReading.alreadySent)
+            }
             if let state = lastState { apply(state: state, rows: lastFullRows) }
             return
         }
@@ -2006,7 +2068,7 @@ final class TranscriptViewController: NSViewController {
         if lastState?.status == .running || lastState?.compaction?.isRunning == true
             || handoff.isOpen
         {
-            queue.append(send)
+            hold(send)
             MacHaptics.shared.play(.send)
             if let state = lastState { apply(state: state, rows: lastFullRows) }
             scrollToBottom()
@@ -2082,15 +2144,11 @@ final class TranscriptViewController: NSViewController {
     private func drainQueue() {
         guard let state = lastState,
             SendQueueDrain.mayDrain(state, editing: editingQueued != nil, handoff: handoff),
-            !queue.isEmpty, !draining, ownsQueue, let entry
+            let queue, queue.holdsDeviceHead(routing: queueRouting), !draining, ownsQueue
         else { return }
         draining = true
         defer { draining = false }
-        let next = SendQueueStore.takeFirst(profileID: entry.profileID, sessionID: entry.session.id)
-        adoptingStoredQueue = true
-        queue = SendQueueStore.queue(profileID: entry.profileID, sessionID: entry.session.id)
-        adoptingStoredQueue = false
-        guard let next else { return }
+        guard let next = queue.takeDeviceHead(routing: queueRouting) else { return }
         if next.isCommand {
             runCommand(next)
             return
@@ -2103,9 +2161,6 @@ final class TranscriptViewController: NSViewController {
     /// sending re-applies. Re-rendering from inside the render is what makes a transcript write
     /// itself twice — the second pass adopts the tail the first one is still revealing.
     private var draining = false
-    /// Set while the queue is read back from the store after an atomic take, so what the store
-    /// already holds is not written to it again.
-    private var adoptingStoredQueue = false
 
     /// The stretch after a send during which the server still reads idle. The queue waits it out,
     /// or every message written during a turn goes at once and the agent answers only the last.
@@ -2126,9 +2181,9 @@ final class TranscriptViewController: NSViewController {
 
     /// Opens a waiting message for rewriting. It keeps its place in the queue; only sending
     /// replaces it.
-    private func editQueued(_ id: UUID) {
-        guard let waiting = queue.item(id: id), !waiting.isCommand else { return }
-        guard composer.adoptForEditing(waiting) else {
+    private func editQueued(_ id: String) {
+        guard let waiting = queueDisplay.row(id: id), waiting.canEdit else { return }
+        guard composer.adoptForEditing(waiting.editable) else {
             onToast?(Localized.text("Send or clear what is in the composer first."))
             return
         }
@@ -2138,10 +2193,10 @@ final class TranscriptViewController: NSViewController {
 
     /// ↑ in an empty composer takes the last thing written back — the one being reconsidered.
     func takeBackLastQueued() -> Bool {
+        let display = queueDisplay
         guard
-            SendQueueReading.upArrowTakesBack(
-                composerText: composer.currentText, queue: queue),
-            let last = queue.items.last
+            QueueReading.upArrowOpensLast(composerText: composer.currentText, display: display),
+            let last = display.last
         else { return false }
         editQueued(last.id)
         return true
@@ -2455,9 +2510,9 @@ final class TranscriptViewController: NSViewController {
             text: arguments, model: choice.model, effort: choice.effort,
             kind: .command(name: "compact", arguments: arguments))
         if lastState?.status == .running || lastState?.compaction?.isRunning == true
-            || !queue.isEmpty || handoff.isOpen
+            || !queueDisplay.isEmpty || handoff.isOpen
         {
-            queue.append(send)
+            hold(send)
             if let state = lastState { apply(state: state, rows: lastFullRows) }
             scrollToBottom()
             return
@@ -2616,6 +2671,7 @@ final class TranscriptViewController: NSViewController {
         refreshWorkflowRuns()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
         handoff.observe(state, sendsInFlight: pending.hasInFlight)
+        handOverQueue()
         drainQueue()
         calls.conversationChanged()
     }
@@ -2753,11 +2809,14 @@ final class TranscriptViewController: NSViewController {
             rows.append(TranscriptRow(key: "retry", kind: .providerRetry(card)))
         }
         // What has been written and not sent sits at the very end, in the order it will go.
-        for (index, waiting) in queue.items.enumerated() {
+        let waiting = queueDisplay
+        for (index, row) in waiting.rows.enumerated() {
             rows.append(
                 TranscriptRow(
-                    key: "queued:\(waiting.id.uuidString)",
-                    kind: .queuedSend(waiting, position: index + 1, of: queue.count)))
+                    key: row.key, kind: .queuedSend(row, position: index + 1, of: waiting.count)))
+        }
+        if waiting.paused {
+            rows.append(TranscriptRow(key: "queue-paused", kind: .queuePaused(count: waiting.count)))
         }
         return rows
     }
@@ -3036,7 +3095,7 @@ final class TranscriptViewController: NSViewController {
         let facts = StatusFacts.from(
             state: state, agents: agents, usage: usage,
             attachments: composer.attachmentCount, context: contextFill, quotas: quotas,
-            queued: queue.count, spend: spend, git: git, model: composer.activeModelID,
+            queued: queueDisplay.count, spend: spend, git: git, model: composer.activeModelID,
             selection: composer.activeSelection, trail: RangeStore.trail)
         lastFacts = facts
         noteBrainContext(facts)

@@ -60,7 +60,7 @@ enum ChatLayout {
         case .agentProse:
             return .row(.prose)
         case .codeBlock, .table, .tableDraft, .workflow, .designBoard, .taskBoard, .answerless,
-            .failedTurn, .interruptedTurn, .providerRetry, .revertBanner, .brain:
+            .failedTurn, .interruptedTurn, .providerRetry, .revertBanner, .brain, .queuePaused:
             return .row(.code)
         case .linkRail:
             return .row(.rail)

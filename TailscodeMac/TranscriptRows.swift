@@ -65,7 +65,9 @@ final class TranscriptContext {
     var requestDesignBoard: ((String) -> Void)?
     /// A message still waiting behind the running turn, opened for rewriting. It is the one row in
     /// a transcript that has not happened yet, so it is the one row a press means something on.
-    var editQueued: ((UUID) -> Void)?
+    var editQueued: ((String) -> Void)?
+    /// Lifts the pause a Stop left on the queue, which is the queue's and not any one message's.
+    var resumeQueue: (() -> Void)?
     var pendingAct: ((UUID, PendingSend.Act) -> Void)?
     /// A message being held for a provider's window: sent into it now anyway, opened for
     /// rewriting, or let out of the wait.
@@ -544,7 +546,9 @@ struct TranscriptRow: Hashable {
         /// What the answer above it took, drawn only where the reader asked for it.
         case responseStats(ResponseStats)
         /// Written, not sent: a prompt waiting behind the turn that is running.
-        case queuedSend(QueuedSend, position: Int, of: Int)
+        case queuedSend(QueueRow, position: Int, of: Int)
+        /// The queue a Stop paused, with something in it: nothing goes until it is resumed.
+        case queuePaused(count: Int)
         case pendingSend(PendingSend, ResumePlan?, now: Date)
         /// Not `interruption`, which is the escape key: this is the machine stopping mid-answer.
         case interruptedTurn(InterruptedTurn)
@@ -972,8 +976,10 @@ struct TranscriptRow: Hashable {
             return "\(turn.title) \(turn.detail) \(turn.reason)"
         case .responseStats(let stats):
             return stats.spoken
-        case .queuedSend(let send, _, _):
-            return SendQueueReading.rowTitle(send)
+        case .queuedSend(let row, _, _):
+            return row.title
+        case .queuePaused(let count):
+            return QueueReading.pausedLine(count: count)
         case .pendingSend(let send, let plan, let now):
             guard let plan else { return PendingSendReading.spoken(send, now: now) }
             return ResumeReading.spoken(plan, words: send.text, now: now)
@@ -1054,8 +1060,10 @@ struct TranscriptRow: Hashable {
             return Self.failedTurn(turn, context: context)
         case .responseStats(let stats):
             return Self.responseStats(stats)
-        case .queuedSend(let send, let position, let total):
-            return Self.queuedSend(send, position: position, of: total, context: context)
+        case .queuedSend(let row, let position, let total):
+            return Self.queuedSend(row, position: position, of: total, context: context)
+        case .queuePaused(let count):
+            return Self.queuePaused(count: count, context: context)
         case .pendingSend(let send, let plan, let now):
             return Self.pendingSend(send, plan: plan, now: now, context: context)
         case .interruptedTurn(let turn):
@@ -1261,7 +1269,7 @@ struct TranscriptRow: Hashable {
     /// transcript that is still the reader's to change. Nothing about it may read as sent.
     @MainActor
     private static func queuedSend(
-        _ send: QueuedSend, position: Int, of total: Int, context: TranscriptContext
+        _ row: QueueRow, position: Int, of total: Int, context: TranscriptContext
     ) -> NSView {
         let column = NSStackView()
         column.orientation = .vertical
@@ -1271,22 +1279,39 @@ struct TranscriptRow: Hashable {
         let title = RowKit.wrapping(
             "", font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.secondaryLabel)
         title.attributedStringValue = RowKit.symbolText(
-            SendQueueReading.symbol, SendQueueReading.rowTitle(send),
+            QueueReading.symbol(row), row.title,
             font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.secondaryLabel)
         column.addArrangedSubview(title)
         column.addArrangedSubview(
             RowKit.label(
-                SendQueueReading.hint, font: MacTheme.Ramp.font(.hint),
+                QueueReading.hint(row), font: MacTheme.Ramp.font(.hint),
                 color: MacTheme.Color.secondaryLabel))
         column.setAccessibilityElement(true)
         column.setAccessibilityRole(.group)
-        column.setAccessibilityLabel(SendQueueReading.spoken(send, position: position, of: total))
-        column.toolTip = SendQueueReading.hint
-        guard !send.isCommand, let edit = context.editQueued else { return column }
-        let id = send.id
+        column.setAccessibilityLabel(QueueReading.spoken(row, position: position, of: total))
+        column.toolTip = QueueReading.hint(row)
+        guard row.canEdit, let edit = context.editQueued else { return column }
+        let id = row.id
         column.addGestureRecognizer(RowKit.PressGesture { edit(id) })
         HoverPlate.attach(to: column)
         return column
+    }
+
+    /// The note under a queue a Stop paused, with the one press that lets it go on: the pause is
+    /// the queue's, so Resume is drawn once beneath all of its messages.
+    @MainActor
+    private static func queuePaused(count: Int, context: TranscriptContext) -> NSView {
+        let line = QueueReading.pausedLine(count: count)
+        let card = RowKit.card(
+            symbol: SendQueueReading.heldSymbol, title: line, detail: QueueReading.pausedHint,
+            tint: MacTheme.Color.secondaryLabel)
+        if let resume = context.resumeQueue {
+            card.addArrangedSubview(RowKit.linkButton(QueueReading.resume, action: resume))
+        }
+        card.setAccessibilityElement(true)
+        card.setAccessibilityRole(.group)
+        card.setAccessibilityLabel("\(line). \(QueueReading.pausedHint)")
+        return card
     }
 
     /// A message on its way out: the words drawn as the prompt they will become, told by ink

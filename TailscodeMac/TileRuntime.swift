@@ -291,6 +291,7 @@ final class TileRuntime {
     private var watchReadings: [LiveKey: SessionPresence] = [:]
     private var handoffs: [LiveKey: TurnHandoff] = [:]
     private var draining: Set<LiveKey> = []
+    private var heldQueues: [LiveKey: ConversationQueue] = [:]
     private var redialDelay: [LiveKey: TimeInterval] = [:]
     private var redialArmed: Set<LiveKey> = []
 
@@ -434,6 +435,7 @@ final class TileRuntime {
         watches.removeValue(forKey: key)?.cancel()
         watchReadings[key] = nil
         handoffs[key] = nil
+        heldQueues[key] = nil
         backgroundPresence[Self.storeKey(key)] = nil
     }
 
@@ -498,16 +500,19 @@ final class TileRuntime {
     /// The disk read and the send run off the main thread; the handoff opens at once so the next
     /// state cannot start a second drain.
     private func drainHeld(_ key: LiveKey, state: ConversationState) -> Bool {
+        handOverHeld(key)
         guard !draining.contains(key), let handoff = handoffs[key],
             SendQueueDrain.mayDrain(state, handoff: handoff),
-            !SendQueueStore.queue(profileID: key.profileID, sessionID: key.sessionID).isEmpty,
+            let routing = queueRouting(key),
+            heldQueue(key).holdsDeviceHead(routing: routing),
             let conversation = instances[key]
         else { return false }
         draining.insert(key)
         handoffs[key]?.begin(after: state)
         Task.detached {
             guard let next = SendQueueStore.takeFirst(
-                profileID: key.profileID, sessionID: key.sessionID)
+                profileID: key.profileID, sessionID: key.sessionID,
+                where: { routing.holder(of: $0) == .device })
             else {
                 await TileRuntime.shared.drainEnded(key, sent: false)
                 return
@@ -518,13 +523,35 @@ final class TileRuntime {
                     attachments: next.attachments)
                 await TileRuntime.shared.drainEnded(key, sent: true)
             } catch {
-                var held = SendQueueStore.queue(profileID: key.profileID, sessionID: key.sessionID)
-                held.requeueAtHead(next)
-                SendQueueStore.save(held, profileID: key.profileID, sessionID: key.sessionID)
+                SendQueueStore.update(profileID: key.profileID, sessionID: key.sessionID) {
+                    $0.requeueAtHead(next)
+                }
                 await TileRuntime.shared.drainEnded(key, sent: false)
             }
         }
         return true
+    }
+
+    private func heldQueue(_ key: LiveKey) -> ConversationQueue {
+        if let held = heldQueues[key] { return held }
+        let made = ConversationQueue(profileID: key.profileID, sessionID: key.sessionID)
+        heldQueues[key] = made
+        return made
+    }
+
+    private func queueRouting(_ key: LiveKey) -> QueueRouting? {
+        backends[key].map { QueueRouting(capabilities: $0.capabilities, profileID: key.profileID) }
+    }
+
+    /// A conversation no pane shows still owes the server what was written for it: a message
+    /// written offline, or left in the store by a version that held everything on the device,
+    /// is handed over the moment a state shows the server answering.
+    private func handOverHeld(_ key: LiveKey) {
+        guard let conversation = instances[key], let routing = queueRouting(key) else { return }
+        let queue = heldQueue(key)
+        queue.adopt()
+        guard queue.holdsServerBound(routing: routing) else { return }
+        Task { await queue.flush(through: conversation, routing: routing) }
     }
 
     private func drainEnded(_ key: LiveKey, sent: Bool) {
