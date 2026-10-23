@@ -26,6 +26,7 @@ enum SelfTest {
         let tileChild = TileChecks.Child()
         let chatChild = ChatChecks.Child()
         let clockChild = MeridianChecks.Child()
+        let openChild = BrainOpenChecks.Child()
 
         do {
             let checks = try checkMarkup()
@@ -599,6 +600,16 @@ enum SelfTest {
                     + "own nothing, closed panes are freed, a split needs room, the canvas places every pane where Core says and never re-parents one (\(tiles.notes))")
         } else {
             report("tiles: \(tiles.failures.joined(separator: " · "))")
+            failures += 1
+        }
+
+        let opening = openChild.verdict()
+        if opening.failures.isEmpty {
+            report(
+                "megatron open: the longest turn of the main thread stays under \(Int(BrainOpenChecks.ceiling)) ms (median) while one opens or closes"
+                    + (opening.note.isEmpty ? "" : " (\(opening.note))"))
+        } else {
+            report("megatron open: \(opening.failures.joined(separator: " · "))")
             failures += 1
         }
 

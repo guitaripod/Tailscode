@@ -21,7 +21,7 @@ enum TranscriptBench {
         guard let flag = arguments.firstIndex(of: "--bench") else { exit(2) }
         let paths = arguments[(flag + 1)...].prefix { !$0.hasPrefix("-") }
         guard !paths.isEmpty else {
-            print("usage: TailscodeMac --bench <transcript.json …> | brain | tiles=N[:R:K:S] | tiles [<transcript.json …>]")
+            print("usage: TailscodeMac --bench <transcript.json …> | brain | brain-pane[=turns[:steps,…]] | tiles=N[:R:K:S] | tiles [<transcript.json …>]")
             exit(2)
         }
         if let spec = paths.first, spec.hasPrefix("brain-stream") {
@@ -41,6 +41,10 @@ enum TranscriptBench {
         }
         if paths.first == "brain" {
             if MacBrain.isEnabled { BrainBench.run() }
+            exit(0)
+        }
+        if let spec = paths.first, spec.hasPrefix("brain-pane") {
+            if MacBrain.isEnabled { BrainPaneBench.run(spec: spec) }
             exit(0)
         }
         if let spec = paths.first, spec.hasPrefix("brain-open") {
