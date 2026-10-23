@@ -244,7 +244,6 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
 
     var cardInput: BrainCardView.Content?
 
-
     func restate(_ next: BrainRow) { apply(next, initial: false) }
 
     /// What the row last restated itself from: the entry and model it held and the machine's
@@ -365,7 +364,6 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
         syncCard()
         requestPicture()
     }
-
 
     var liveZone: NeuralZone? { cardInput?.card.live?.activeZone }
     var liveMotion: NeuralMotion { cardInput?.card.live?.motion ?? .still }

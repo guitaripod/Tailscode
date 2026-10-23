@@ -657,7 +657,6 @@ final class TranscriptViewController: NSViewController {
     var holdMonitor: Any?
     var holdGeneration = 0
 
-
     var keptPages: [String: KeptPage] = [:]
     var keptOrder: [String] = []
 
