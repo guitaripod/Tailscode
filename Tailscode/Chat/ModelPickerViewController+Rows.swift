@@ -18,6 +18,9 @@ extension ModelPickerViewController {
         config.leadingSwipeActionsConfigurationProvider = { [weak self] indexPath in
             self?.pinActions(at: indexPath)
         }
+        config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
+            self?.partyActions(at: indexPath)
+        }
         return .list(using: config, layoutEnvironment: environment)
     }
 
@@ -264,6 +267,41 @@ extension ModelPickerViewController {
         action.backgroundColor = Theme.Color.accent
         action.image = UIImage(systemName: pinned ? "star.slash" : "star.fill")
         return UISwipeActionsConfiguration(actions: [action])
+    }
+
+    private func partyActions(at indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        guard context != .party, let id = dataSource.itemIdentifier(for: indexPath),
+            let row = row(for: id), row.pinning.preset != nil
+        else { return nil }
+        let action = UIContextualAction(
+            style: .normal, title: String(localized: "Add to party")
+        ) { [weak self] _, _, done in
+            self?.addToParty(row)
+            done(true)
+        }
+        action.backgroundColor = Theme.Color.info
+        action.image = UIImage(systemName: "plus.circle.fill")
+        return UISwipeActionsConfiguration(actions: [action])
+    }
+
+    /// The model at the level a pick of this row would run at, into the first hollow slot; with
+    /// six held, a short list asks which one makes room.
+    func addToParty(_ row: ModelChooserRow) {
+        guard let preset = row.pinning.preset else { return }
+        PartyAdding.add(
+            preset,
+            cards: { [weak self] in
+                guard let self else { return [] }
+                return PartyReading.cards(
+                    slots: ModelParty.slots(), sources: self.chooser.sources,
+                    model: self.chooser.selected, effort: self.dial?.effort,
+                    agentOptions: self.dial?.agentOptions ?? [])
+            }, from: self,
+            say: { [weak self] message in
+                guard let self else { return }
+                ToastView(message: message).flash(
+                    in: self.view, above: self.view.safeAreaLayoutGuide.bottomAnchor, duration: 1.8)
+            })
     }
 
     func togglePin(_ row: ModelChooserRow) {

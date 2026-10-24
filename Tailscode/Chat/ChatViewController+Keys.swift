@@ -137,8 +137,8 @@ extension ChatViewController: KeyActionHost {
         case .presetPrevious:
             cyclePreset(by: -1)
         case .preset(let number):
-            guard let preset = viewModel.preset(number: number) else { return false }
-            applyPreset(preset)
+            guard (1...ModelParty.size).contains(number) else { return false }
+            takePartySlot(number)
         default:
             return false
         }

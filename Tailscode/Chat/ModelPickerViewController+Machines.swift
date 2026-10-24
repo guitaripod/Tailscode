@@ -28,7 +28,7 @@ extension ModelPickerViewController {
             consequence.leadingAnchor.constraint(equalTo: line.leadingAnchor, constant: Theme.Spacing.l),
             consequence.trailingAnchor.constraint(equalTo: line.trailingAnchor, constant: -Theme.Spacing.l),
         ])
-        if let dial {
+        if let dial, context != .party {
             effortStrip.render(
                 modelName: dial.modelName, chip: dial.chip,
                 context: context == .composer ? String(localized: "Next chat") : String(localized: "This chat"),
@@ -68,7 +68,7 @@ extension ModelPickerViewController {
         machineStrip.render(chooser.machines.map(ChipStripView.Chip.init), selected: chooser.machineIndex)
         syncDoors()
         let line = chooser.shownMachine?.consequence(for: context.chooser)
-        consequence.superview?.isHidden = !(shown || context == .branch) || line == nil
+        consequence.superview?.isHidden = !(shown || context == .branch || context == .party) || line == nil
         consequence.attributedText = line.map {
             NSAttributedString(
                 string: $0, attributes: Theme.Ramp.attributes(.rowNote, color: Theme.Color.warning))

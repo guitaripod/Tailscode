@@ -31,6 +31,24 @@
             }
         }
 
+        /// Fills an empty party with the models the demo catalog names, so a screenshot of the
+        /// sheet shows named balls at different levels, one hollow slot and a lone slot in use.
+        static func fillParty() {
+            guard ModelParty.presets().isEmpty else { return }
+            let fixtures: [(String, PresetEffort, String?)] = [
+                ("claude-opus-4-8", .level("high"), "Daily"),
+                ("claude-sonnet-5", .level("low"), "Sprint"),
+                ("claude-fable-5", .level("xhigh"), nil),
+                ("claude-haiku-4-5", .server, "Quick"),
+            ]
+            for (slot, fixture) in fixtures.enumerated() {
+                ModelParty.replace(
+                    slot: slot,
+                    with: ModelPreset(selection: selection(fixture.0), effort: fixture.1),
+                    name: fixture.2)
+            }
+        }
+
         static func star(_ modelID: String) {
             let starred = ModelPreset(selection: selection(modelID), effort: .keep)
             if !ModelPresetStore.all().contains(starred) { ModelPresetStore.pin(starred) }

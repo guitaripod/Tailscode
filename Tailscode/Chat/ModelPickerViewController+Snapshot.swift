@@ -29,6 +29,13 @@ extension ModelPickerViewController {
                             image: UIImage(systemName: pinned ? "star.slash" : "star")
                         ) { [weak self] _ in self?.togglePin(row) })
                 }
+                if self.context != .party, row.pinning.preset != nil {
+                    actions.append(
+                        UIAction(
+                            title: String(localized: "Add to party"),
+                            image: UIImage(systemName: "plus.circle")
+                        ) { [weak self] _ in self?.addToParty(row) })
+                }
                 return UIMenu(children: actions)
             })
     }
@@ -45,6 +52,8 @@ extension ModelPickerViewController {
                 ? String(localized: "Start a new chat there") : String(localized: "Use for this chat")
         case .branch:
             return String(localized: "Try with this model")
+        case .party:
+            return String(localized: "Put in this slot")
         }
     }
 

@@ -524,13 +524,12 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
 
     /// Passing no content hides the pill entirely — a backend without model selection or effort
     /// must not show an affordance that does nothing.
-    func setDial(_ content: ModelDialPill.Content?, menu: UIMenu?) {
+    func setDial(_ content: ModelDialPill.Content?) {
         guard let content else {
             dialWanted = false
             return
         }
         dialPill.content = content
-        dialPill.modelMenu = menu
         dialWanted = true
     }
 

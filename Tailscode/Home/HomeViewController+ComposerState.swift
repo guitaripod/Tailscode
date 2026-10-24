@@ -114,7 +114,7 @@ extension HomeViewController {
     private func updateVideoComposer() {
         let board = ForgeRunner.shared.board
         let configured = ForgeRunner.shared.endpoint != nil
-        composerBar.setDial(nil, menu: nil)
+        composerBar.setDial(nil)
         composerBar.showsAttach = false
         composerBar.ultracodeEffort = nil
         let title = board.value(of: .endpoint)
@@ -141,7 +141,7 @@ extension HomeViewController {
     private func updateImageComposer() {
         let studio = ImageStudio.shared
         let door = studio.door
-        composerBar.setDial(nil, menu: nil)
+        composerBar.setDial(nil)
         composerBar.showsAttach = false
         composerBar.ultracodeEffort = nil
         let title = door.machine ?? ImageGenSurface.title
@@ -267,7 +267,7 @@ extension HomeViewController {
 
     private func updateModelChip(for aim: ComposerAim, label: String?) {
         guard label != nil, let backend = viewModel.backend(forProfileID: aim.profile.id) else {
-            composerBar.setDial(nil, menu: nil)
+            composerBar.setDial(nil)
             return
         }
         configureDialPill()
@@ -282,8 +282,7 @@ extension HomeViewController {
                     selection: choice.model, effort: nil,
                     catalog: ModelCatalog.cached(for: aim.profile.id)),
                 effort: ModelEffort.surviving(choice.effort, options: options), options: options,
-                choosesModel: backend.capabilities.supportsModelSelection),
-            menu: modelMenu(for: aim, backend: backend))
+                choosesModel: backend.capabilities.supportsModelSelection))
         resolveModelChoiceIfNeeded(for: aim, backend: backend)
     }
 
@@ -311,6 +310,7 @@ extension HomeViewController {
             self.setComposeEffort(level, for: aim, quiet: true)
         }
         pill.onCycle = { [weak self] delta in self?.cycleComposePreset(by: delta) }
+        pill.onOpenModels = { [weak self] in self?.presentParty() }
         pill.footer = { rung in EffortRail.footer(for: rung, yours: nil) }
     }
 
@@ -318,7 +318,7 @@ extension HomeViewController {
     /// and the ones that live on another machine.
     func composePins(for aim: ComposerAim) -> PinPlacement {
         ModelPresetCycle.placement(
-            ModelPresetStore.all(), models: ModelCatalog.cached(for: aim.profile.id),
+            ModelParty.ring(), models: ModelCatalog.cached(for: aim.profile.id),
             acceptsAnyModelID: ModelFleet.acceptsAnyModelID(aim.profile.backend),
             elsewhere: ModelFleet.sources(
                 profiles: ConnectionController.shared.profiles, current: aim.profile.id))
@@ -332,7 +332,7 @@ extension HomeViewController {
             let preset = ModelPresetCycle.step(
                 pins.reachable, model: choice.model, effort: choice.effort, by: delta)
         else {
-            toast(pins.awayNotice ?? String(localized: "Pin a model and level in the model menu"))
+            toast(pins.awayNotice ?? String(localized: "Add a model to your party"))
             return
         }
         setComposePreset(preset, for: aim)

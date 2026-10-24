@@ -47,7 +47,7 @@ extension ChatViewModel {
         return carry
     }
 
-    /// The pinned pairs this server can run, in the order they were pinned.
+    /// The party's filled slots this server can run, in slot order; the pins while the party is empty.
     var reachablePresets: [ModelPreset] {
         presetPlacement(elsewhere: []).reachable
     }
@@ -56,7 +56,7 @@ extension ChatViewModel {
     /// use, so a pin the menu offers is one the swipe reaches and the other way round.
     func presetPlacement(elsewhere: [ModelSource]) -> PinPlacement {
         ModelPresetCycle.placement(
-            ModelPresetStore.all(),
+            ModelParty.ring(),
             models: knownModels.isEmpty ? ModelCatalog.cached(for: contextID) : knownModels,
             acceptsAnyModelID: ModelFleet.acceptsAnyModelID(backend.agentType),
             elsewhere: elsewhere)
@@ -82,12 +82,6 @@ extension ChatViewModel {
     func presetStep(by delta: Int) -> ModelPreset? {
         ModelPresetCycle.step(
             reachablePresets, model: displayedModel, effort: displayedEffort, by: delta)
-    }
-
-    /// The nth pinned pair, 1-based, as a hardware key names it.
-    func preset(number: Int) -> ModelPreset? {
-        let presets = reachablePresets
-        return presets.indices.contains(number - 1) ? presets[number - 1] : nil
     }
 
     func setEffort(_ level: String?) {

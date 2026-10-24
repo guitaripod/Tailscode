@@ -325,7 +325,7 @@ enum ModelMenu {
         let candidates = directory.candidates
         let layout = ModelMenuLayout.build(
             sources: sources, selected: choice.model,
-            presets: actions.selectPreset == nil ? [] : ModelPresetStore.all(),
+            presets: actions.selectPreset == nil ? [] : ModelParty.ring(),
             showsElsewhere: actions.selectElsewhere != nil, limit: inlineLimit)
         let pairs = pinned(
             layout.pins, sources: sources, candidates: candidates, choice: choice,

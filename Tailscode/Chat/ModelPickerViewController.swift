@@ -35,9 +35,10 @@ final class ModelPickerViewController: UIViewController {
     /// Where the picker was opened from, which decides what a pick means and what the sheet says
     /// about it: a pick in a chat changes that chat, one from Home aims the message being written,
     /// and one from a server's own screen sets what that server runs by default. A pick from an
-    /// answer's menu branches the chat from that question, on this machine or another.
+    /// answer's menu branches the chat from that question, on this machine or another. A pick from
+    /// a party slot fills that slot, anywhere, and changes nothing else.
     enum Context {
-        case chat, composer, serverDefault, branch
+        case chat, composer, serverDefault, branch, party
 
         var chooser: ChooserContext {
             switch self {
@@ -45,6 +46,7 @@ final class ModelPickerViewController: UIViewController {
             case .composer: return .composer
             case .serverDefault: return .serverDefault
             case .branch: return .branch
+            case .party: return .party
             }
         }
     }
@@ -91,7 +93,7 @@ final class ModelPickerViewController: UIViewController {
     ) -> ModelChooser {
         ModelChooser(
             sources: sources, selected: selected, recents: recents, quotas: quotas,
-            showsPairs: dial != nil && context != .serverDefault,
+            showsPairs: dial != nil && context != .serverDefault && context != .party,
             aim: dial.map { ChooserAim(effort: $0.effort, agentOptions: $0.agentOptions) })
     }
 

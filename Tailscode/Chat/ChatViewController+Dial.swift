@@ -19,6 +19,7 @@ extension ChatViewController {
             dialPill.railBelow = composer
             dialPill.onEffort = { [weak self] level in self?.setEffortFromDial(level) }
             dialPill.onCycle = { [weak self] delta in self?.cyclePreset(by: delta) }
+            dialPill.onOpenModels = { [weak self] in self?.presentParty() }
             dialPill.footer = { [weak self] rung in self?.railFooter(for: rung) }
             composer.accessory = dialPill
         }
@@ -30,7 +31,6 @@ extension ChatViewController {
             chip: ModelBadge.chip(selection: model, effort: nil, catalog: availableModels),
             effort: effort, options: viewModel.reasoningEffortOptions,
             choosesModel: viewModel.supportsModelSelection)
-        dialPill.modelMenu = UIMenu(title: String(localized: "Model"), children: dialMenuElements())
         composer.heatColor = Self.heatColor(for: effort)
     }
 
@@ -40,27 +40,6 @@ extension ChatViewController {
             return nil
         }
         return Theme.Color.modelEffort(effort)
-    }
-
-    private func dialMenuElements() -> [UIMenuElement] {
-        let allowsAuto = ChatModelResolver.honoursServerDefault(viewModel.backend)
-        return ModelMenu.elements(
-            sources: ModelFleet.sources(
-                profiles: ConnectionController.shared.profiles, current: viewModel.contextID,
-                currentModels: viewModel.supportsModelSelection ? availableModels : [],
-                allowsServerDefault: allowsAuto, reachability: pickerReachability),
-            choice: ModelChoice(model: viewModel.selectedModel, effort: viewModel.currentEffort),
-            efforts: viewModel.backend.reasoningEffortOptions,
-            allowsServerDefault: allowsAuto,
-            quotas: QuotaSurface.relevantQuotas(
-                for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas()),
-            includesEffort: false,
-            actions: ModelMenu.Actions(
-                selectModel: { [weak self] selection in self?.chooseModel(selection) },
-                selectEffort: { [weak self] level in self?.setEffortFromDial(level) },
-                selectPreset: { [weak self] preset in self?.choose(preset) },
-                browseAll: { [weak self] in self?.presentModelPicker() },
-                selectElsewhere: { [weak self] pick in self?.apply(pick) }))
     }
 
     func chooseModel(_ selection: ModelSelection?) {
@@ -104,7 +83,7 @@ extension ChatViewController {
                 elsewhere: ModelFleet.sources(
                     profiles: ConnectionController.shared.profiles, current: viewModel.contextID)
             ).awayNotice
-            presentToast(away ?? String(localized: "Pin a model and level in the model menu"))
+            presentToast(away ?? String(localized: "Add a model to your party"))
             return
         }
         applyPreset(preset)
@@ -142,12 +121,13 @@ extension ChatViewController {
     /// answer's question. A branch carries no dial, because the level in force belongs to this chat
     /// and a pick made here never changes it.
     func presentChooser(
-        context: ModelPickerViewController.Context, onSelect: @escaping (ModelPick) -> Void
+        context: ModelPickerViewController.Context, from presenter: UIViewController? = nil,
+        onSelect: @escaping (ModelPick) -> Void
     ) {
         if context == .chat, let demo = Self.demoPicker(onSelect: onSelect) {
             modelPicker = demo
             demo.onClose = { [weak self] in self?.modelPicker = nil }
-            present(UINavigationController(rootViewController: demo), animated: true)
+            (presenter ?? self).present(UINavigationController(rootViewController: demo), animated: true)
             return
         }
         let picker = ModelPickerViewController(
@@ -159,7 +139,7 @@ extension ChatViewController {
                 selected: viewModel.selectedModel,
                 quotas: QuotaSurface.relevantQuotas(
                     for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas()),
-                dial: context == .chat ? pickerDial() : nil,
+                dial: context == .chat || context == .party ? pickerDial() : nil,
                 context: context, onSelect: onSelect)
         modelPicker = picker
         picker.onClose = { [weak self] in
@@ -199,7 +179,7 @@ extension ChatViewController {
             sheet.selectedDetentIdentifier = .large
             sheet.prefersGrabberVisible = true
         }
-        present(nav, animated: true)
+        (presenter ?? self).present(nav, animated: true)
     }
 
     /// What the picker needs from this chat to set the level and pin pairs from its own sheet.
@@ -216,7 +196,7 @@ extension ChatViewController {
     }
 
     /// What the picker names the current server's ask as: `nil` while it is still out.
-    private var pickerReachability: [String: Bool] {
+    var pickerReachability: [String: Bool] {
         guard let reachable = modelsReachable else { return [:] }
         return [viewModel.contextID: reachable]
     }

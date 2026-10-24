@@ -4,7 +4,7 @@ import UIKit
 /// The composer's one pill for model and effort: which machine answers and how hard it is asked
 /// to think, in one capsule with two halves.
 ///
-/// The model half is a button that opens the quick menu, and swiping along it steps through the
+/// The model half is a button that opens the party, and swiping along it steps through the
 /// pinned pairs without opening anything. The effort half is the control for the level: one tap
 /// lifts the ladder out as a rail (`EffortRailPresenter`) to tap a level on or slide along, and to
 /// a screen reader it is an adjustable element that steps one level at a time. Hue is who answers and heat is how hard, so colour sits on the dot and on the bars and
@@ -26,11 +26,8 @@ final class ModelDialPill: UIView {
         }
     }
 
-    /// The model menu, rebuilt by the host whenever what it lists could have changed.
-    var modelMenu: UIMenu? {
-        get { modelButton.menu }
-        set { modelButton.menu = newValue }
-    }
+    /// A press on the model half: the host opens the party.
+    var onOpenModels: (() -> Void)?
 
     var onCycle: ((Int) -> Void)?
     var onEffort: ((String?) -> Void)?
@@ -109,7 +106,7 @@ final class ModelDialPill: UIView {
         config.baseForegroundColor = Theme.Color.label
         config.titleLineBreakMode = .byTruncatingMiddle
         modelButton.configuration = config
-        modelButton.showsMenuAsPrimaryAction = true
+        modelButton.addAction(UIAction { [weak self] _ in self?.onOpenModels?() }, for: .touchUpInside)
         modelButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         modelButton.titleLabel?.lineBreakMode = .byTruncatingTail
         for direction in [UISwipeGestureRecognizer.Direction.left, .right] {
@@ -227,7 +224,7 @@ final class ModelDialPill: UIView {
         modelButton.isUserInteractionEnabled = content.choosesModel
         modelButton.accessibilityLabel = String(localized: "Model: \(content.modelWord)")
         modelButton.accessibilityHint =
-            content.choosesModel ? String(localized: "Opens the model menu") : nil
+            content.choosesModel ? String(localized: "Opens your party of models") : nil
 
         effortZone.isHidden = !face.showsMeter
         divider.isHidden = !face.showsMeter
@@ -287,7 +284,7 @@ final class ModelDialPill: UIView {
     @objc private func effortTapped() { openRail() }
 
     #if DEBUG
-        func openMenu() { modelButton.performPrimaryAction() }
+        func openMenu() { onOpenModels?() }
     #endif
 
     /// Sliding along the effort half is the same ladder the rail draws, walked a notch at a time:

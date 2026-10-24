@@ -4,78 +4,19 @@ import CodingAgentKitApple
 import UIKit
 
 extension HomeViewController {
-    /// Built lazily on every present: the catalog may still be in flight when
-    /// the chip is first drawn, and a menu opened a second later must show the
-    /// models rather than the placeholder it was built with.
-    func modelMenu(for aim: ComposerAim, backend: any CodingAgentBackend) -> UIMenu {
-        UIMenu(
-            title: String(localized: "Model"),
-            children: [
-                UIDeferredMenuElement.uncached { [weak self] completion in
-                    Task { @MainActor in
-                        guard let self else { return completion([]) }
-                        let models =
-                            backend.capabilities.supportsModelSelection
-                            ? await ModelCatalog.models(for: aim.profile.id, backend: backend) : []
-                        var elements = ModelMenu.elements(
-                            sources: ModelFleet.sources(
-                                profiles: ConnectionController.shared.profiles,
-                                current: aim.profile.id, currentModels: models,
-                                allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
-                                reachability: self.composeReachability),
-                            choice: self.modelChoices[aim.memoryKey] ?? ModelChoice(),
-                            efforts: backend.reasoningEffortOptions,
-                            allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
-                            quotas: QuotaSurface.relevantQuotas(
-                                for: backend.agentType, among: UsageWidgetStore.cachedQuotas()),
-                            includesEffort: false,
-                            actions: ModelMenu.Actions(
-                                selectModel: { [weak self] selection in
-                                    self?.setComposeModel(selection, for: aim)
-                                },
-                                selectEffort: { [weak self] level in
-                                    self?.setComposeEffort(level, for: aim)
-                                },
-                                selectPreset: { [weak self] preset in
-                                    self?.setComposePreset(preset, for: aim)
-                                },
-                                browseAll: { [weak self] in
-                                    self?.presentComposeModelPicker(
-                                        aim: aim, backend: backend, models: models)
-                                },
-                                selectElsewhere: { [weak self] pick in
-                                    self?.retargetCompose(to: pick, from: aim)
-                                }))
-                        if let follow = self.followServerElement(for: aim) {
-                            elements.append(follow)
-                        }
-                        completion(elements)
-                    }
-                }
-            ])
-    }
-
     /// The ask lane's aim is its own once it has been set by hand, which is the whole point of it
-    /// — and the way back is one row rather than a settings screen.
-    private func followServerElement(for aim: ComposerAim) -> UIMenuElement? {
+    /// — and the way back is one row in the party rather than a settings screen.
+    func followServerAction(for aim: ComposerAim) -> (() -> Void)? {
         guard aim.lane == .ask, QuickAskDefaults.hasOwnAim(forProfileID: aim.profile.id) else {
             return nil
         }
-        return UIMenu(
-            options: .displayInline,
-            children: [
-                UIAction(
-                    title: String(localized: "Follow this server"),
-                    subtitle: String(localized: "Use what a new chat here would"),
-                    image: UIImage(systemName: "arrow.uturn.backward")
-                ) { [weak self] _ in
-                    guard let self else { return }
-                    QuickAskDefaults.clearOwnAim(forProfileID: aim.profile.id)
-                    self.modelChoices[aim.memoryKey] = nil
-                    self.appliedComposerState = nil
-                    self.updateComposer()
-                }
-            ])
+        return { [weak self] in
+            guard let self else { return }
+            QuickAskDefaults.clearOwnAim(forProfileID: aim.profile.id)
+            self.modelChoices[aim.memoryKey] = nil
+            self.appliedComposerState = nil
+            self.updateComposer()
+        }
     }
 
     /// A pick in the ask lane claims that lane's own memory and leaves the server's exactly as it
@@ -150,8 +91,10 @@ extension HomeViewController {
         updateComposer()
     }
 
-    private func presentComposeModelPicker(
-        aim: ComposerAim, backend: any CodingAgentBackend, models: [ModelInfo]
+    func presentComposeModelPicker(
+        aim: ComposerAim, backend: any CodingAgentBackend, models: [ModelInfo],
+        context: ModelPickerViewController.Context = .composer,
+        from presenter: UIViewController? = nil, onPick: ((ModelPick) -> Void)? = nil
     ) {
         guard !models.isEmpty else { return }
         Theme.Haptics.tap()
@@ -165,9 +108,10 @@ extension HomeViewController {
             selected: modelChoices[aim.memoryKey]?.model,
             quotas: QuotaSurface.relevantQuotas(
                 for: profile.backend, among: UsageWidgetStore.cachedQuotas()),
-            dial: composePickerDial(for: aim, backend: backend), context: .composer
+            dial: composePickerDial(for: aim, backend: backend), context: context
         ) { [weak self] pick in
             guard let self else { return }
+            if let onPick { return onPick(pick) }
             guard pick.isElsewhere else {
                 if let preset = pick.preset {
                     self.setComposePreset(preset, for: aim)
@@ -184,7 +128,7 @@ extension HomeViewController {
             sheet.selectedDetentIdentifier = .large
             sheet.prefersGrabberVisible = true
         }
-        present(nav, animated: true)
+        (presenter ?? self).present(nav, animated: true)
         let contextID = profile.id
         let allowsServerDefault = profile.backend == .claudeCode
         let sources = { (models: [ModelInfo]) in

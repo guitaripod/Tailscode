@@ -119,10 +119,8 @@ extension HomeViewController: KeyActionHost {
         case .presetPrevious:
             cycleComposePreset(by: -1)
         case .preset(let number):
-            guard let aim = composerAim else { return false }
-            let presets = composePins(for: aim).reachable
-            guard presets.indices.contains(number - 1) else { return false }
-            setComposePreset(presets[number - 1], for: aim)
+            guard (1...ModelParty.size).contains(number), composerAim != nil else { return false }
+            takeComposePartySlot(number)
         default:
             return false
         }

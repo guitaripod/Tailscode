@@ -202,7 +202,7 @@ extension ChatViewController {
 #if DEBUG
     extension ChatViewController {
         /// One step of a scripted walk through the model dial, for the headless screenshot run:
-        /// `pins`, `pinscycle`, `star:<id>`, `auto`, `pick:<id>`, `level:<l>`, `rail[:<l>]`, `step`, `cycle`, `menu`, `model:<id>`.
+        /// `pins`, `pinscycle`, `star:<id>`, `auto`, `pick:<id>`, `level:<l>`, `rail[:<l>]`, `step`, `cycle`, `menu`, `party`, `partyedit`, `model:<id>`.
         func tourDial(_ verb: String) async {
             let parts = verb.split(separator: ":", maxSplits: 1).map(String.init)
             switch parts[0] {
@@ -232,6 +232,9 @@ extension ChatViewController {
             case "step": stepEffort(by: -1)
             case "cycle": cyclePreset(by: 1)
             case "menu": dialPill.openMenu()
+            case "party", "partyedit":
+                DialTour.fillParty()
+                presentParty(editing: parts[0] == "partyedit")
             case "model":
                 guard parts.count > 1 else { return }
                 chooseModel(DialTour.selection(parts[1]))

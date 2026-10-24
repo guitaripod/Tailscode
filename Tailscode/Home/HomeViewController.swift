@@ -183,6 +183,9 @@ final class HomeViewController: UIViewController {
                             }
                         case "rail": self.composerBar.dialPill.openRail()
                         case "menu": self.composerBar.dialPill.openMenu()
+                        case "party", "partyedit":
+                            DialTour.fillParty()
+                            self.presentParty(editing: parts[0] == "partyedit")
                         default: break
                         }
                         try? await Task.sleep(for: .seconds(0.6))
