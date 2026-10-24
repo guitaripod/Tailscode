@@ -56,14 +56,17 @@ xvenv() {
 }
 
 # The person's own servers, drafts and theme, copied once — a take should film the real app, not
-# a first run — but the window is sized to the film frame and the saved split tree is dropped, so
+# a first run — unless TAILSCODE_FILM_CLEAN=yes, which copies nothing: a take of the demo world must
+# never carry a real chat title into a video — but the window is sized to the film frame and the saved split tree is dropped, so
 # every take opens on one pane and the split in the scene is a split the viewer watches happen.
 seed_home() {
     [ -e "$CONFIG_HOME/tailscode" ] && return 0
-    [ -d "${XDG_CONFIG_HOME:-$HOME/.config}/tailscode" ] &&
-        cp -a "${XDG_CONFIG_HOME:-$HOME/.config}/tailscode" "$CONFIG_HOME/" 2>/dev/null || true
-    [ -d "${XDG_DATA_HOME:-$HOME/.local/share}/tailscode" ] &&
-        cp -a "${XDG_DATA_HOME:-$HOME/.local/share}/tailscode" "$DATA_HOME/" 2>/dev/null || true
+    if [ "${TAILSCODE_FILM_CLEAN:-no}" != yes ]; then
+        [ -d "${XDG_CONFIG_HOME:-$HOME/.config}/tailscode" ] &&
+            cp -a "${XDG_CONFIG_HOME:-$HOME/.config}/tailscode" "$CONFIG_HOME/" 2>/dev/null || true
+        [ -d "${XDG_DATA_HOME:-$HOME/.local/share}/tailscode" ] &&
+            cp -a "${XDG_DATA_HOME:-$HOME/.local/share}/tailscode" "$DATA_HOME/" 2>/dev/null || true
+    fi
     mkdir -p "$CONFIG_HOME/tailscode"
     python3 - "$CONFIG_HOME/tailscode/ui.json" "$((WIDTH / SCALE))" "$((HEIGHT / SCALE))" <<'PY'
 import json, os, sys
