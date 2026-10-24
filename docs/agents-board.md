@@ -43,11 +43,11 @@ Three views, one board.
 - **In the background.** Sessions whose turn ended while a task still runs.
 - **Finished.** The last hour, unread first: how long it took, the tools it ran, what it changed, or why it failed.
 
-**Peek** (every desk; a sheet on the phone, an inspector on the desktops). Title, machine, model and level, elapsed. **Doing now** in large type with the file or command under it. **Last steps**, newest first, each with its age. **Agents in this chat**, the files touched, and three meters: context fill, tokens this turn, an API-equivalent estimate marked as one. Open chat, Stop (confirmed), Nudge (queues a message).
+**Peek** (every desk; a sheet on the phone, an inspector on the desktops). Title, machine, model and level, elapsed. **Doing now** in large type with what it is about under it: the whole command, or the file's path with how many lines an edit adds and removes (`AgentFacts.object`). **Last steps**, newest first, each with its age. **Agents in this chat**, the files touched, and three meters: context fill, tokens this turn, an API-equivalent estimate marked as one. Open chat, Stop (confirmed), Nudge (queued where the server keeps a queue; otherwise it opens the chat).
 
 **Hour** (Mac, Linux, iPad). Lanes over the last hour, one per session with its agents beneath, bars in the activity tones, a *now* line, an amber bar while it waits on you, a mark where it ended. Spans this device did not see are hatched. Selecting a lane fills the inspector with its Peek.
 
-Entry points: Home's Working band header and the orb on the phone; the sidebar's Agents entry, its orb and ⌘⇧A / Ctrl+Shift+A on the desktops; a Live Activity tap opens that agent's Peek. The orb, the Live Activity and the band stay as the glance; this is the read.
+Entry points: Home's status header (always there) and the Working band's header, and the orb's long-press on the phone; the sidebar's Agents entry, the orb's secondary click and Ctrl+Shift+A on the desktops (⌘⇧A stays Select All Chats on the Mac). The orb's plain tap or click keeps the action it always had. A Live Activity tap keeps opening its chat: it is a wire contract with every installed app, and the Peek is one tap away on the board. The orb, the Live Activity and the band stay as the glance; this is the read.
 
 ## 5. Data, and what the board can honestly say
 
@@ -64,22 +64,19 @@ Entry points: Home's Working band header and the orb on the phone; the sidebar's
 - **Time is only what the server stamped.** A tool call carries no duration, so a step's age is when this device first saw it, and Hour hatches what it did not.
 - **A machine that stops answering keeps its rows**, dimmed, with when they were last seen.
 - **Backends differ and the board says so.** claude-bridge and omp-bridge report agents, background work and interruptions; opencode 2.x agents and interruptions; opencode 1.x agents as child sessions and nothing else. A section a backend cannot fill is never drawn for it.
-- **Answers keep their paths.** A Claude `AskUserQuestion` goes through `ChatViewModel.send`, an approval asks Face ID, and a subagent is read inline, never opened as a chat of its own.
+- **Answers keep their paths.** An approval is the shared `PermissionAnswer`; the phone asks Face ID or the passcode first (`AgentsApprovalGate`), the desktops answer the way their notification does, with no gate; a question with a side channel is answered in place, and a Claude `AskUserQuestion` opens its chat, because `ChatViewModel.send` is its only road; a subagent is read inline, never opened as a chat of its own.
 - **Money is an estimate.** API-equivalent, marked as such, never a bill.
 
 ## 6. Where it lives
 
-Core, toolkit-free, so three clients agree:
-- `AgentRoster.read(sessions:watched:now:)` → `AgentBoard` (needs-you cards, working trees, background, finished, the footer's watch count).
-- `AgentLine.words(for:)`: a tool call to its line (*Editing Backoff.swift*, *Running swift test*, *Searching “jitter”*, *Reading 12 files* for a run of reads), built on `ToolCallSummary.Kind`, never on `summary` in a loop.
-- `AgentWatch.plan(running:watching:cap:)`: which sessions to attach and which to release.
-- `AgentBeat`: the heartbeat as bucketed counters of observed events.
-- `AgentHour`: lane spans from `PresenceLedger` and turn stamps, unseen spans marked.
-- `AgentAction`: approve, deny, answer, stop, nudge, each routed through the chat's own path.
+Core, toolkit-free, so three clients agree (TailscodeCore, all tested):
+- `AgentTower` (actor, not on the main actor; its poll doubles as the board's clock, so a quiet session's heartbeat strip goes flat): opened and closed with the board, it watches the running sessions `AgentWatch.plan` allows (six, needs-you first, held ones sticky, an ending heard for 8 s) over their own `AgentConversation` at background refresh priority, polls their subagents every 4 s, reads each into `AgentFacts`, keeps the endings of the last hour and an `AgentHourLog`, and publishes an `AgentBoard` at most once a second (`boards()`), plus one agent's facts as they change (`facts(for:)`) and `hour()`. A client calls `update(entries:reachability:unread:)` whenever its own list refreshes.
+- Its actions answer in the chat's own paths: `approve(_:allow:)` is the shared `PermissionAnswer` a notification's button uses, `answer(_:option:)` goes through the conversation where the backend has a side channel for questions, `stop(_:)` is the conversation's own cancel, `nudge(_:text:)` the server queue where there is one. Each returns `.sent`, `.failed(why)` or `.needsChat`: a Claude `AskUserQuestion` and a server with no queue are the chat's own (`ChatViewModel.send`), so the client opens the chat, never going round it.
+- Pure readings: `AgentBoard.read` (needs-you cards, working and background rows, the finished ledger, machines, the headline sentence and the watch line), `AgentFacts.read` (doing now, steps with when they were first seen, files touched, children, context fill, tokens, an API-equivalent cost, the heartbeat), `AgentLine` (a tool call said as a sentence), `AgentBeat`, `AgentWatch`, `AgentHourLog` (lanes, marks, unseen spans), `AgentFinish.line`.
 
-Per client: a board view, a Peek, and on the wide desks the Hour lanes. Parity: `agentsBoard`, `agentPeek` and `agentsHour`; the iPhone answers `agentsHour` as not applicable (lanes need width) and the iPad implements it.
+Per client: a board, a peek, and on the wide desks the hour lanes, each only wired to a tower the app owns. Parity: `agentsBoard`, `agentPeek` and `agentsHour`; the iPhone has no lane view and the iPad does.
 
-Cost rules: the board rebuilds on state changes, coalesced to one a second, never per streamed token; the heartbeat is counters; motion is arithmetic on absolute time.
+Cost rules: the tower holds nothing while the board is closed; the board rebuilds on state changes, coalesced to one a second, never per streamed token; the heartbeat is counters; motion is arithmetic on absolute time.
 
 ## 7. Not in this
 
