@@ -86,6 +86,8 @@ extension HomeViewController: KeyActionHost {
             composerBar.focus()
         case .quickAsk:
             presentQuickAsk()
+        case .toggleAgents:
+            AgentsPresenter.toggle(from: self)
         case .leaveInsert:
             guard composerBar.isEditing else { return false }
             composerBar.unfocus()

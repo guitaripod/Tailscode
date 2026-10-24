@@ -77,6 +77,8 @@ extension SessionListViewController: KeyActionHost {
             toggleArchived(entry)
         case .toggleArchiveView:
             pushArchived()
+        case .toggleAgents:
+            AgentsPresenter.toggle(from: self)
         case .toggleUnreadSelected:
             guard let entry = cursorEntry() else { return false }
             toggleUnread(entry)

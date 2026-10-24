@@ -233,6 +233,7 @@ targets:
         NSCameraUsageDescription: Take a photo to ask your agent about it, or scan the code your computer prints to connect.
         NSMicrophoneUsageDescription: Talk to your agent out loud. Your voice goes to the server you chose over your tailnet, and nowhere else.
         NSPhotoLibraryAddUsageDescription: Save pictures from a conversation to your photo library.
+        NSFaceIDUsageDescription: Confirm it is you before approving a command an agent is waiting on.
         NSLocalNetworkUsageDescription: Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network.
         ITSAppUsesNonExemptEncryption: false
         NSAppTransportSecurity:

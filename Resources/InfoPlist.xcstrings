@@ -426,6 +426,77 @@
           }
         }
       }
+    },
+    "NSFaceIDUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm it is you before approving a command an agent is waiting on."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bestätige, dass du es bist, bevor du einen Befehl freigibst, auf den ein Agent wartet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirma que eres tú antes de aprobar un comando que un agente está esperando."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmez que c’est bien vous avant d’approuver une commande qu’un agent attend."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conferma che sei tu prima di approvare un comando che un agente sta aspettando."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントが待っているコマンドを承認する前に、本人であることを確認します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트가 기다리고 있는 명령을 승인하기 전에 본인인지 확인합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potwierdź, że to ty, zanim zatwierdzisz polecenie, na które czeka agent."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirme que é você antes de aprovar um comando que um agente está aguardando."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在批准代理正在等待的命令之前，请确认是你本人。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在核准代理程式正在等待的指令之前，請確認是你本人。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -4,8 +4,10 @@ import UIKit
 
 extension HomeViewController {
     func bind() {
+        registerAgents()
         viewModel.onChange = { [weak self] in
             guard let self else { return }
+            AgentsHub.shared.listingChanged()
             self.updateComposeButton()
             self.updateComposer()
             self.applySnapshot()
@@ -80,7 +82,10 @@ extension HomeViewController {
         }
     }
 
-    @objc private func activityDidChange() { applySnapshot() }
+    @objc private func activityDidChange() {
+        AgentsHub.shared.listingChanged()
+        applySnapshot()
+    }
 
     @objc private func archiveDidChange() { applySnapshot() }
 

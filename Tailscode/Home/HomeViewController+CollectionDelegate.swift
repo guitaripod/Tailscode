@@ -20,7 +20,9 @@ extension HomeViewController: UICollectionViewDelegate {
         switch item {
         case .alert:
             onOpenSettings?()
-        case .status, .demoNudge, .supporter, .placeholder:
+        case .status:
+            presentAgents()
+        case .demoNudge, .supporter, .placeholder:
             break
         case .glance:
             pushUsage()

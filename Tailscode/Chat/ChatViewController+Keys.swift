@@ -104,6 +104,8 @@ extension ChatViewController: KeyActionHost {
             composer.setDraft("/")
         case .toggleSaved:
             toggleSaved()
+        case .toggleAgents:
+            AgentsPresenter.toggle(from: self)
         case .archiveSelected:
             toggleArchivedFromHere()
         case .renameSelected:

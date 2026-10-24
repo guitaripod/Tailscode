@@ -116,6 +116,11 @@ final class AppCoordinator: NSObject {
             if CommandLine.arguments.contains("--analytics") || duoScreen == "analytics" {
                 openAnalyticsForDebug()
             }
+            let wantsAgentPeek = CommandLine.arguments.contains("--agent-peek")
+            let wantsAgentHour = CommandLine.arguments.contains("--agent-hour")
+            if CommandLine.arguments.contains("--agents") || wantsAgentPeek || wantsAgentHour {
+                openAgentsForDebug(peek: wantsAgentPeek, hour: wantsAgentHour)
+            }
             if let fixture = ProcessInfo.processInfo.environment["TAILSCODE_SHARE_SCREEN"] {
                 openShareForDebug(fixture: fixture)
             }
@@ -231,6 +236,17 @@ final class AppCoordinator: NSObject {
                 guard ProcessInfo.processInfo.environment["TAILSCODE_VIDEO_SCROLL"] != "home"
                 else { return }
                 self?.home?.presentVideo()
+            }
+        }
+
+        /// `--agents` opens the board, `--agent-peek` the peek of its working row, `--agent-hour`
+        /// the hour; with `--demo` they read the fictional board and need no server.
+        private func openAgentsForDebug(peek: Bool, hour: Bool) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                guard let home = self?.home,
+                    let board = AgentsPresenter.present(from: home)
+                else { return }
+                board.openForDebug(peek: peek, hour: hour)
             }
         }
 

@@ -34,6 +34,7 @@ final class PresenceOrbView: UIView {
     private var field: PresenceField
     private(set) var signal = PresenceSignal()
     var onTap: (() -> Void)?
+    var onOpenAgents: (() -> Void)?
 
     init() {
         field = PresenceField(colors: PresenceColors(
@@ -48,6 +49,13 @@ final class PresenceOrbView: UIView {
         accessibilityTraits = .button
         accessibilityLabel = signal.spoken
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
+        addInteraction(UIContextMenuInteraction(delegate: self))
+        accessibilityCustomActions = [
+            UIAccessibilityCustomAction(name: String(localized: "Agents")) { [weak self] _ in
+                self?.onOpenAgents?()
+                return true
+            }
+        ]
         registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) {
             (view: PresenceOrbView, _) in
             view.field.set(colors: view.inks())
@@ -148,6 +156,31 @@ final class PresenceOrbView: UIView {
     @objc private func tapped() { onTap?() }
 
     @objc private func motionPreferenceChanged() { wake() }
+}
+
+extension PresenceOrbView: UIContextMenuInteractionDelegate {
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard onOpenAgents != nil else { return nil }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+            UIMenu(children: [
+                UIAction(title: String(localized: "Agents"), image: UIImage(systemName: "person.2")) {
+                    _ in self?.onOpenAgents?()
+                }
+            ])
+        }
+    }
+
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        previewForHighlightingMenuWithConfiguration configuration: UIContextMenuConfiguration
+    ) -> UITargetedPreview? {
+        let parameters = UIPreviewParameters()
+        parameters.backgroundColor = .clear
+        parameters.visiblePath = UIBezierPath(ovalIn: bounds.insetBy(dx: 8, dy: 8))
+        return UITargetedPreview(view: self, parameters: parameters)
+    }
 }
 
 extension PresenceOrbView: MTKViewDelegate {

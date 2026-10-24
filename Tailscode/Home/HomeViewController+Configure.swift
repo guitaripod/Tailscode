@@ -229,6 +229,7 @@ extension HomeViewController {
             guard let self, let entry = self.orbTarget else { return }
             self.openChat(for: entry)
         }
+        orbView.onOpenAgents = { [weak self] in self?.presentAgents() }
         composerBar.onAuraChanged = { [weak self] in self?.applyOrbState() }
         NotificationCenter.default.addObserver(
             self, selector: #selector(orbSettingChanged),
@@ -442,7 +443,12 @@ extension HomeViewController {
         case .needsYou, .asks:
             view.configure(title: String(localized: "Needs you"), count: count, needsYou: true)
         case .working:
-            view.configure(title: String(localized: "Working"), count: count)
+            view.configure(
+                title: String(localized: "Working"), count: count,
+                actionTitle: String(localized: "Agents")
+            ) { [weak self] in
+                self?.presentAgents()
+            }
         case .pinned:
             view.configure(title: String(localized: "Pinned"), count: count)
         case .saved:
