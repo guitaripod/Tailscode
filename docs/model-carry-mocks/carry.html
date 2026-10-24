@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=1480">
+<title>Carry, phone</title>
+<style>
+:root{--canvas:#000;--ink:#fff;--ink2:rgba(235,235,245,.62);--ink3:rgba(235,235,245,.32);--line:rgba(84,84,88,.6);--card:#1c1c1e;--fill:#1c1c1e;--accent:#0a84ff;--ok:#30d158;--note:#ff6bb5;--bubble:#0a84ff;--page:#111113;--pageink:#f1f1f1;--menu:#2c2c2e;--scrim:rgba(0,0,0,.55);--opus:#e08a5e;--qwen:#9d7cf5}
+:root[data-theme=light]{--canvas:#fff;--ink:#000;--ink2:rgba(60,60,67,.62);--ink3:rgba(60,60,67,.32);--line:rgba(60,60,67,.18);--card:#fff;--fill:#ececf1;--accent:#007aff;--ok:#1fa840;--note:#d6006f;--bubble:#3478f6;--page:#e9e9ee;--pageink:#1d1d1f;--menu:#f2f2f7;--scrim:rgba(255,255,255,.6);--opus:#c4622f;--qwen:#7452e0}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--page);color:var(--ink);-webkit-font-smoothing:antialiased;font-family:-apple-system,"SF Pro Text",system-ui,sans-serif}
+.page{padding:20px 16px;display:flex;gap:24px;width:1480px}
+.fig{width:340px;flex:none}
+.cap{font:600 14px/20px -apple-system,system-ui,sans-serif;color:var(--pageink);margin-bottom:8px}
+.cap span{font-weight:400;opacity:.62;font-size:12px;margin-left:6px}
+.tot{font:12px/18px -apple-system,system-ui,sans-serif;margin-top:10px;color:var(--pageink)}
+.phone{height:600px;background:var(--canvas);box-shadow:0 0 0 1px var(--line);position:relative;overflow:hidden;display:flex;flex-direction:column}
+.nav{height:44px;flex:none;display:flex;align-items:center;justify-content:center;font:600 15px/1 inherit;border-bottom:.5px solid var(--line);color:var(--ink)}
+.nav small{font-weight:400;color:var(--ink3);margin-left:6px;font-size:12px}
+.col{flex:1;padding:12px 16px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.prose{font-size:15.5px;line-height:21px}
+.bubble{align-self:flex-end;background:var(--bubble);color:#fff;border-radius:18px;padding:7px 13px;max-width:82%;font-size:15.5px;line-height:20px}
+.line{min-height:24px;display:flex;align-items:center;gap:7px;font:12.5px/16px -apple-system,"SF Pro Text",system-ui,sans-serif;color:var(--ink2);flex:none;padding:4px 0}
+.line .dot{width:7px;height:7px;border-radius:50%;flex:none}
+.line b{color:var(--ink);font-weight:600;flex:none}
+.line .from{color:var(--ink3)}
+.line .gl{color:var(--ink3);flex:none;width:11px;text-align:center}
+.line .tx{min-width:0}
+.line .ch{margin-left:auto;color:var(--ink3);font-size:11px;flex:none}
+.bar{flex:none;padding:8px 12px 14px;display:flex;flex-direction:column;gap:6px}
+.chiprow{display:flex;gap:6px;min-height:28px}
+.chip{height:28px;border-radius:14px;background:var(--fill);display:flex;align-items:center;gap:6px;padding:0 6px 0 10px;font-size:12px;color:var(--ink2);max-width:100%}
+.chip .gl{color:var(--accent);font-size:13px}
+.chip .tx{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip .x{width:18px;height:18px;border-radius:50%;background:var(--ink3);color:var(--canvas);display:flex;align-items:center;justify-content:center;font-size:11px;flex:none}
+.field{min-height:44px;border-radius:22px;background:var(--fill);padding:0 8px 0 16px;display:flex;align-items:center;font-size:15.5px;gap:8px}
+.field .ph{color:var(--ink3);flex:1}
+.field .dr{flex:1;line-height:20px;padding:8px 0}
+.send{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;flex:none}
+.send.off{background:var(--ink3)}
+.pillrow{display:flex;align-items:center;gap:8px;height:28px;font-size:12px;color:var(--ink2)}
+.pill{height:28px;border-radius:14px;background:var(--fill);display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12.5px;color:var(--ink)}
+.pill .dot{width:7px;height:7px;border-radius:50%}
+.pill .bars{letter-spacing:1px;color:var(--ink3);font-size:10px}
+.pill .bars i{font-style:normal;color:var(--accent)}
+.aim{font-size:11.5px;color:var(--ink3);padding:0 4px}
+.scrim{position:absolute;inset:0;background:var(--scrim)}
+.lift{background:var(--canvas);border-radius:14px;padding:8px 10px;margin:-8px -10px;position:relative;z-index:2;box-shadow:0 0 0 1px var(--line)}
+.menu{position:relative;z-index:3;width:246px;background:var(--menu);border-radius:14px;margin-top:10px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+.mi{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:15.5px;color:var(--ink)}
+.mi+.mi{border-top:.5px solid var(--line)}
+.mi .g{color:var(--ink2);font-size:14px}
+.mi.new{color:var(--accent)}.mi.new .g{color:var(--accent)}
+.sep{height:6px;background:var(--scrim);border-top:.5px solid var(--line)}
+.hrow{height:48px;display:flex;align-items:center;padding:0 16px;font-size:15px;border-bottom:.5px solid var(--line);color:var(--ink2);gap:10px}
+.hrow b{color:var(--ink);font-weight:500}
+.hrow .t{margin-left:auto;font-size:12px;color:var(--ink3)}
+.dim{opacity:.5}
+.note{position:absolute;font:10.5px/1.35 ui-monospace,"SF Mono",Menlo,monospace;color:var(--note);z-index:30;background:var(--canvas);border:1px solid var(--note);border-radius:5px;padding:2px 6px}
+.ruler{position:absolute;left:0;right:0;border-top:1px dashed var(--note);z-index:29;pointer-events:none}
+</style></head>
+<body>
+<script>document.documentElement.dataset.theme=location.hash==='#light'?'light':'dark'</script>
+<div class="page">
+
+<div class="fig">
+<div class="cap">1 · The seam<span>one line where the model changed</span></div>
+<div class="phone">
+<div class="nav">Fix reconnect test<small>arch</small></div>
+<div class="col">
+<div class="bubble">why does the reconnect test flake?</div>
+<div class="prose">It races the backoff timer: the test sleeps 200 ms, but the first retry lands at 180–260 ms with jitter on.</div>
+<div class="bubble">try the fix with the fake clock</div>
+<div class="line" id="seam"><span class="dot" style="background:var(--qwen)"></span><b>Qwen Daily</b><span class="from">from DeepSeek V4</span></div>
+<div class="prose">Injected <code style="font:13px ui-monospace,Menlo,monospace;background:var(--fill);padding:0 4px;border-radius:4px">TestClock</code> into the backoff and advanced it by exactly the first delay. The test now passes 50 of 50 runs.</div>
+</div>
+<div class="bar">
+<div class="field"><span class="ph">Message</span><span class="send off">↑</span></div>
+<div class="pillrow"><div class="pill"><span class="dot" style="background:var(--qwen)"></span>Qwen Daily <span class="bars"><i>▮▮</i>▯▯</span></div></div>
+</div>
+</div>
+<div class="tot">Appears only when the badge word differs from the answer before; effort alone never makes one.</div>
+</div>
+
+<div class="fig">
+<div class="cap">2 · Try with…<span>long-press an answer</span></div>
+<div class="phone">
+<div class="nav">Fix reconnect test<small>arch</small></div>
+<div class="col">
+<div class="bubble dim">why does the reconnect test flake?</div>
+<div class="lift"><div class="prose">It races the backoff timer: the test sleeps 200 ms, but the first retry lands at 180–260 ms with jitter on.</div></div>
+<div class="menu">
+<div class="mi">Copy<span class="g">⧉</span></div>
+<div class="mi">Quote<span class="g">❝</span></div>
+<div class="mi">Share<span class="g">⇧</span></div>
+<div class="mi new">Try with another model…<span class="g">⑂</span></div>
+</div>
+</div>
+<div class="scrim" style="z-index:1;opacity:.0"></div>
+</div>
+<div class="tot">Opens the same chooser. Every machine tab, this one included, says “A pick here branches this chat from that question”.</div>
+</div>
+
+<div class="fig">
+<div class="cap">3 · Aimed, carrying<span>Home composer after a pick on another machine</span></div>
+<div class="phone">
+<div class="nav">Tailscode</div>
+<div style="flex:1;overflow:hidden" class="dim">
+<div class="hrow"><b>Fix reconnect test</b><span class="t">arch · now</span></div>
+<div class="hrow"><b>CI migration</b><span class="t">macbook · 2h</span></div>
+<div class="hrow"><b>Auth flow</b><span class="t">arch · yesterday</span></div>
+</div>
+<div class="bar">
+<div class="chiprow"><div class="chip"><span class="gl">↩</span><span class="tx">Fix reconnect test · 6 of 14</span><span class="x">✕</span></div></div>
+<div class="field"><span class="dr">why does the reconnect test flake?</span><span class="send">↑</span></div>
+<div class="pillrow"><div class="pill"><span class="dot" style="background:var(--qwen)"></span>Qwen Daily <span class="bars"><i>▮▮</i>▯▯</span></div><span class="aim">on macbook</span></div>
+</div>
+</div>
+<div class="tot">The chip is the only new control. ✕ makes it a fresh chat. “Try with” fills the field with that question; “Continue” leaves it empty.</div>
+</div>
+
+<div class="fig">
+<div class="cap">4 · Continued<span>first row of the new chat</span></div>
+<div class="phone">
+<div class="nav">Fix reconnect test<small>macbook</small></div>
+<div class="col">
+<div class="line" id="carry"><span class="gl">↩</span><span class="tx">Continued from <b>Fix reconnect test</b> · 6 of 14</span><span class="ch">›</span></div>
+<div class="bubble">why does the reconnect test flake?</div>
+<div class="prose">The 200 ms sleep is shorter than the worst-case first retry. Replace the sleep with an injected clock and advance it by the first delay.</div>
+</div>
+<div class="bar">
+<div class="field"><span class="ph">Message</span><span class="send off">↑</span></div>
+<div class="pillrow"><div class="pill"><span class="dot" style="background:var(--qwen)"></span>Qwen Daily <span class="bars"><i>▮▮</i>▯▯</span></div></div>
+</div>
+</div>
+<div class="tot">Tap opens the brief as text, in the compaction reader. The brief rode in the first message; the bubble shows only what was typed.</div>
+</div>
+
+</div>
+</body></html>
