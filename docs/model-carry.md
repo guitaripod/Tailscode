@@ -28,17 +28,18 @@ A pick on the *same* machine stays in place, as today. Only the seam is new ther
 Built on the device, once, when the pick is made. No model call, no server route, so it is instant, free, and the same bytes on every client and every backend.
 
 ```
+{what the person typed}
+
 <carried-conversation from="Fix reconnect test" kept="6" of="14" pictures="3">
-Earlier: {compaction summary, or the brief this chat itself was carried with}
+Carried from the chat "Fix reconnect test". The conversation so far:
+Earlier: {compaction summary, or the brief this chat was carried with}
 User: …
 Assistant: …
 Touched: Backoff.swift, ReconnectTests.swift
 </carried-conversation>
-
-{what the person typed}
 ```
 
-- **Rides in the first message**, so it is durable in the transcript, identical on all three backends and visible on any device. A client splits it off with `CarryMark.split` and draws the line plus a bubble of what was typed. No `displayPrompt`, no synthetic part, no bridge change.
+- **Rides in the first message, after what was typed.** Titles, notifications and the Live Activity read the first line of a prompt, so the person's own words lead and the brief follows. It is durable in the transcript, identical on all three backends and visible on any device. A client splits it off with `CarryMark.split` and draws the carried line, then a bubble of what was typed. No `displayPrompt`, no synthetic part, no bridge change.
 - **Budget** `min(0.4 × target window, 24k)` tokens, 12k when the catalog gives no window, estimated by `StatusFacts.estimateContextTokens`. Newest turns whole, oldest dropped whole; an earlier brief or compaction summary heads it, trimmed to half the budget. A newest turn that alone exceeds the budget is cut at it.
 - **Content** is what the person and the model wrote: prose only. Tool output, reasoning and pictures stay behind (a secret a tool printed does not travel; the pictures are counted). Tool calls collapse to a `Touched:` line.
 - The literal closing tag inside the text is written `<\/carried-conversation>`.
@@ -56,11 +57,13 @@ Cost rule (a rebuild runs per streamed token): seams are memoised per settled me
 
 **Try with another model…** Long-press an assistant answer → the chooser, whose every machine tab (this one too) says "A pick here branches this chat from that question on <machine>". The pick needs no alert, since the chooser said what it does. The Home composer opens aimed at the pick, the brief cut **before** the question, the field holding the question, unsent. The original chat is untouched, so the two answers sit in two chats a swipe apart.
 
+**Desktop.** The Mac and Linux have no Home composer to aim and no assistant-answer context menu. A pick elsewhere opens a new chat on that machine whose composer already holds the chip (and, for a retry, the question); "Try with another model…" is a verb on the answer's hover bar.
+
 **Carried line.** `↩ Continued from Fix reconnect test · 6 of 14`. The count appears only when something was dropped (an uncut carry just says where from). It wraps rather than truncates when it cannot fit. A tap opens the brief as text in the compaction reader. There is no link back to the original: the chat list already shows it.
 
 ## 3. Where it lives
 
-- **Core** (new, no Kit change, no Kit tag): `ConversationBrief` (build, budget), `CarryMark` (wrap, split), `ModelSeam`. Edited: `ChooserContext.branch` + `ModelMachine.consequence`, `ModelFleet.moveTitle/moveBody/moveAction`, `ComposerRetarget` gains `carry` and `draft`.
+- **Core** (new, no Kit change, no Kit tag): `ConversationBrief` (build, budget, `question(before:in:)`, `typed`), `CarryMark` (`wrap`, `split`) and `CarryReading` (`line`, `summary`), `CarryPlan` (`continuing`, `branching`, `moveWords`), `ModelSeamTracker` / `ModelSwitch`. Edited: `ChooserContext.branch` + `ModelMachine.consequence`, `ModelFleet.moveTitle/moveBody/moveAction`, `CarryPlan` carries the brief and the draft into the composer that will send them.
 - **Each client**: the seam row, the carried row, the chip, one menu item, the alert words. Nothing else.
 - **Parity**: two capabilities, `modelSeam` and `carryChat` (both entry points). All three manifests answer `.implemented`, no gaps.
 
@@ -83,6 +86,7 @@ Racing N models, an auto-router, failover along the pins, a price in the catalog
 - The carried line wrapped at "6 of 14 turns", orphaning the word. It now shows the count only when turns were dropped, without the unit (the reader says it), and wraps instead of truncating.
 - The seam example crossed Claude and a local Qwen, which is a carry and could never be a seam. It is now two models one server runs.
 - Dropped the "open original" link (§4).
+- Implementing it moved the brief after what was typed (§2): the first line names the chat everywhere.
 
 ## 7. Implement
 
