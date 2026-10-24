@@ -113,6 +113,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkPartyCards()
+            report("party: \(checks) claims hold: six cards, the one in use, a name kept and given back, a swap, a level step, no card on another")
+        } catch {
+            report("party: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkProviderRetryCard()
             report("provider retry: \(checks) claims hold: words, remedy and a clock that wakes once")
         } catch {

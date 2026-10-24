@@ -283,6 +283,18 @@ extension MainWindow {
             }
         case "agents":
             self.activePane.bandState.openMenu(id: "agents")
+        case "party":
+            self.presentPartyDemo(editing: false)
+        case "partyedit":
+            self.presentPartyDemo(editing: true)
+        case "chatchooser":
+            self.activePane.openModelChooser()
+        case "partyfill":
+            self.activePane.openPartyFill(slot: (Int(argument) ?? 6) - 1)
+        case "partyroom":
+            self.presentPartyRoomDemo()
+        case "partyclose":
+            self.demoParty?.close()
         case "dial":
             self.presentDialDemo()
         case "dkey":

@@ -17,6 +17,7 @@ final class ModelChooserWindow: @unchecked Sendable {
     private var chooser: ModelChooser
     private let onPick: @Sendable (ModelPick) -> Void
     private let onRefresh: (@Sendable () -> Void)?
+    private let onAddToParty: (@Sendable (ModelPick, UnsafeMutablePointer<GtkWidget>) -> Void)?
     private let selected: ModelSelection?
     private let context: ChooserContext
     private let quotas: [UsageQuota]
@@ -56,21 +57,25 @@ final class ModelChooserWindow: @unchecked Sendable {
         recents: [ModelSelection] = RecentModelsStore.all(),
         context: ChooserContext = .chat,
         onRefresh: (@Sendable () -> Void)? = nil,
+        onAddToParty: (@Sendable (ModelPick, UnsafeMutablePointer<GtkWidget>) -> Void)? = nil,
         onPick: @escaping @Sendable (ModelPick) -> Void
     ) {
         open?.close()
         open = ModelChooserWindow(
             sources: sources, selected: selected, parent: parent, quotas: quotas,
-            recents: recents, context: context, onRefresh: onRefresh, onPick: onPick)
+            recents: recents, context: context, onRefresh: onRefresh,
+            onAddToParty: onAddToParty, onPick: onPick)
     }
 
     private init(
         sources: [ModelSource], selected: ModelSelection?,
         parent: UnsafeMutablePointer<GtkWidget>?, quotas: [UsageQuota],
         recents: [ModelSelection], context: ChooserContext, onRefresh: (@Sendable () -> Void)?,
+        onAddToParty: (@Sendable (ModelPick, UnsafeMutablePointer<GtkWidget>) -> Void)?,
         onPick: @escaping @Sendable (ModelPick) -> Void
     ) {
         self.context = context
+        self.onAddToParty = onAddToParty
         chooser = ModelChooser(
             sources: sources, selected: selected, recents: recents, quotas: quotas)
         self.onPick = onPick
@@ -443,7 +448,7 @@ final class ModelChooserWindow: @unchecked Sendable {
                 from: ["model-scope-on"])
         }
         let words =
-            chooser.showsMachines || context == .branch
+            chooser.showsMachines || context == .branch || context == .party
             ? chooser.shownMachine?.consequence(for: context) : nil
         gtk_label_set_text(op(consequence), words ?? "")
         gtk_widget_set_visible(consequence, words == nil ? 0 : 1)
@@ -502,6 +507,9 @@ final class ModelChooserWindow: @unchecked Sendable {
             toggleFocusedPin()
             return true
         }
+        if chord.control, chord.keyval == Keymap.enter {
+            return addFocusedToParty()
+        }
         guard let command = ModelChooser.command(for: chord) else { return false }
         let outcome = chooser.handle(command)
         guard outcome.handled else { return false }
@@ -514,6 +522,16 @@ final class ModelChooserWindow: @unchecked Sendable {
             return true
         }
         refresh(keepingScroll: true)
+        return true
+    }
+
+    /// Offers a row's model to the party: from the keyboard the focused row, from the pointer the
+    /// row under the right button. Nothing where there is no party to offer to — a chooser that
+    /// is filling a slot — or no model on the row, as on the server's own choice.
+    @discardableResult
+    private func addFocusedToParty() -> Bool {
+        guard let onAddToParty, let row = chooser.focused, row.selection != nil else { return false }
+        onAddToParty(row.pick, scroller)
         return true
     }
 
@@ -694,6 +712,14 @@ final class ModelChooserWindow: @unchecked Sendable {
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
             Gtk.onMain { [weak self] in self?.activate(index) }
         }
+        if onAddToParty != nil, row.selection != nil {
+            let buttonBits = UInt(bitPattern: button)
+            Gtk.onRightClick(button) { [weak self] x, y in
+                Gtk.onMain { [weak self] in
+                    self?.openRowMenu(index, fromBits: buttonBits, x: x, y: y)
+                }
+            }
+        }
 
         let wrapper = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
         if row.isNested { Gtk.addClass(wrapper, "model-row-nested") }
@@ -728,6 +754,31 @@ final class ModelChooserWindow: @unchecked Sendable {
             gtk_box_append(ptr(wrapper), chevron)
         }
         return wrapper
+    }
+
+    private func openRowMenu(
+        _ index: Int, fromBits: UInt, x: Double, y: Double
+    ) {
+        chooser.focus(index)
+        guard let onAddToParty, let row = chooser.focused, row.selection != nil else { return }
+        let pick = row.pick
+        let anchor = scroller
+        let anchorBits = UInt(bitPattern: anchor)
+        let point = UnsafeMutablePointer<GtkWidget>(bitPattern: fromBits).flatMap {
+            Gtk.bounds(of: $0, in: anchor)
+        }
+        Gtk.contextMenu(
+            on: anchor, x: (point?.x ?? 0) + x, y: (point?.y ?? 0) + y,
+            rows: [
+                (
+                    Localized.text("Add to party"), nil,
+                    {
+                        guard let held = UnsafeMutablePointer<GtkWidget>(bitPattern: anchorBits)
+                        else { return }
+                        onAddToParty(pick, held)
+                    }
+                )
+            ])
     }
 
     /// Picking a row means picking its model — except on a folded row someone clicked while it was

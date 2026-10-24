@@ -7,6 +7,8 @@ extension MatrixStylesheet {
         return """
         \(dialTintCSS(for: palette))
 
+        \(partyRules())
+
         .chip {
             \(t(.chip))
             min-height: 0;

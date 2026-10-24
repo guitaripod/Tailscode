@@ -949,6 +949,16 @@ GType tailscode_pane_ref_get_type(void) {
     return (GType)once;
 }
 
+GType tailscode_party_ref_get_type(void) {
+    static gsize once = 0;
+    if (g_once_init_enter(&once)) {
+        GType registered = g_boxed_type_register_static(
+            "TailscodePartyRef", tailscode_chat_ref_copy, tailscode_chat_ref_free);
+        g_once_init_leave(&once, registered);
+    }
+    return (GType)once;
+}
+
 /// A widget the pointer can pick up, carrying `payload` under `type`. The content provider is made
 /// with a reference of its own, and the drag source takes one more rather than taking that one
 /// over — so it has to be let go of here, or every chat row the sidebar builds leaves a provider
@@ -971,6 +981,51 @@ void tailscode_make_chat_drag_source(GtkWidget *widget, const char *payload) {
 
 void tailscode_make_pane_drag_source(GtkWidget *widget, const char *payload) {
     tailscode_make_drag_source(widget, tailscode_pane_ref_get_type(), payload);
+}
+
+typedef struct {
+    void (*lift)(int lifted, void *data);
+    void *data;
+} TailscodePartyDrag;
+
+static void tailscode_party_drag_begin(GtkDragSource *source, GdkDrag *drag, gpointer raw) {
+    (void)source; (void)drag;
+    TailscodePartyDrag *box = raw;
+    box->lift(1, box->data);
+}
+
+static void tailscode_party_drag_end(
+    GtkDragSource *source, GdkDrag *drag, gboolean delete_data, gpointer raw) {
+    (void)source; (void)drag; (void)delete_data;
+    TailscodePartyDrag *box = raw;
+    box->lift(0, box->data);
+}
+
+static void tailscode_party_drag_destroy(gpointer raw, GClosure *closure) {
+    (void)closure;
+    TailscodePartyDrag *box = raw;
+    if (!box) return;
+    if (box->data && tailscode_box_release) tailscode_box_release(box->data);
+    g_free(box);
+}
+
+void tailscode_make_party_drag_source(
+    GtkWidget *widget, const char *payload, void (*lift)(int lifted, void *data), void *data) {
+    TailscodePartyDrag *box = g_new0(TailscodePartyDrag, 1);
+    box->lift = lift;
+    box->data = data;
+    GtkDragSource *source = gtk_drag_source_new();
+    gtk_drag_source_set_actions(source, GDK_ACTION_COPY);
+    GdkContentProvider *content = gdk_content_provider_new_typed(tailscode_party_ref_get_type(), payload);
+    gtk_drag_source_set_content(source, content);
+    g_object_unref(content);
+    g_signal_connect_data(source, "drag-begin", G_CALLBACK(tailscode_party_drag_begin), box, NULL, 0);
+    g_signal_connect_data(
+        source, "drag-end", G_CALLBACK(tailscode_party_drag_end), box, tailscode_party_drag_destroy, 0);
+    GdkPaintable *ghost = gtk_widget_paintable_new(widget);
+    gtk_drag_source_set_icon(source, ghost, 0, 0);
+    g_object_unref(ghost);
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(source));
 }
 
 typedef struct {
@@ -1126,7 +1181,8 @@ typedef struct {
 static const char *tailscode_chat_ref_value(const GValue *value) {
     if (!value) return NULL;
     if (!G_VALUE_HOLDS(value, tailscode_chat_ref_get_type())
-        && !G_VALUE_HOLDS(value, tailscode_pane_ref_get_type()))
+        && !G_VALUE_HOLDS(value, tailscode_pane_ref_get_type())
+        && !G_VALUE_HOLDS(value, tailscode_party_ref_get_type()))
         return NULL;
     return g_value_get_boxed(value);
 }
@@ -1190,6 +1246,15 @@ void tailscode_accept_pane_drops(
     gboolean (*drop)(const char *payload, double x, double y, void *data),
     void *data) {
     tailscode_accept_drops(widget, tailscode_pane_ref_get_type(), motion, leave, drop, data);
+}
+
+void tailscode_accept_party_drops(
+    GtkWidget *widget,
+    void (*motion)(const char *payload, double x, double y, void *data),
+    void (*leave)(void *data),
+    gboolean (*drop)(const char *payload, double x, double y, void *data),
+    void *data) {
+    tailscode_accept_drops(widget, tailscode_party_ref_get_type(), motion, leave, drop, data);
 }
 
 typedef struct {

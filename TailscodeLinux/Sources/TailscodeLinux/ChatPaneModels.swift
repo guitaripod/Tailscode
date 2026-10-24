@@ -27,7 +27,8 @@ extension ChatPane {
             onOpenCatalog: { [weak self] in
                 Gtk.onMain { [weak self] in self?.openModelChooser() }
             })
-        let pill = DialPill(css: ["chip-ctl"], dial: popover) { [weak self] delta in
+        let pill = DialPill(css: ["chip-ctl"], dial: popover, party: makePartyPopover()) {
+            [weak self] delta in
             self?.stepEffort(by: delta)
         }
         dial = pill
@@ -84,13 +85,14 @@ extension ChatPane {
         setChosenEffort(notch.level)
     }
 
-    /// The pinned pairs this chat's machine can run, in the order they were pinned.
+    /// The ring this chat's machine can run: the party's filled slots in slot order, and while the
+    /// party is empty the pinned pairs in the order they were pinned.
     func reachablePresets() -> [ModelPreset] {
         let accepts =
             modelSources().first { $0.profileID == entry?.profileID }?.acceptsAnyModelID
             ?? (backend?.agentType == .claudeCode)
         return ModelPresetCycle.reachable(
-            ModelPresetStore.all(), models: models, acceptsAnyModelID: accepts)
+            ModelParty.ring(), models: models, acceptsAnyModelID: accepts)
     }
 
     /// ⌃⌥←/→: the next pinned pair round the ring, from the one this chat runs now.
@@ -106,8 +108,14 @@ extension ChatPane {
         take(preset)
     }
 
-    /// ⌃⌥1–9: the nth pinned pair this machine can run.
+    /// ⌃⌥1–9. While the party holds anything, 1 to 6 are the slots themselves: the nth slot, or
+    /// the word for why it cannot be taken here. With an empty party the nth pinned pair this
+    /// machine can run, as before.
     func takePreset(number: Int) {
+        if (1...ModelParty.size).contains(number), !ModelParty.presets().isEmpty {
+            takeSlot(number)
+            return
+        }
         let presets = reachablePresets()
         guard !presets.isEmpty else {
             host?.flash(Localized.text("Pin a model and level with ⌃S in the model dial"))
@@ -137,6 +145,10 @@ extension ChatPane {
     }
 
     func openModelDial() {
+        dial?.openDial()
+    }
+
+    func openParty() {
         dial?.open()
     }
 
@@ -234,7 +246,14 @@ extension ChatPane {
         ModelChooserWindow.present(
             sources: modelSources(), selected: chosenModel,
             parent: host?.windowWidget ?? root, quotas: modelQuotas(),
-            onRefresh: { [weak self] in self?.refreshModelCatalog() }
+            onRefresh: { [weak self] in self?.refreshModelCatalog() },
+            onAddToParty: { [weak self] pick, anchor in
+                let bits = UInt(bitPattern: anchor)
+                Gtk.onMain { [weak self] in
+                    guard let held = UnsafeMutablePointer<GtkWidget>(bitPattern: bits) else { return }
+                    self?.addToParty(pick, on: held)
+                }
+            }
         ) { [weak self] pick in
             Gtk.onMain { [weak self] in self?.apply(pick) }
         }

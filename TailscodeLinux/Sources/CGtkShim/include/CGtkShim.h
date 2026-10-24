@@ -283,6 +283,25 @@ void tailscode_accept_pane_drops(
     gboolean (*drop)(const char *payload, double x, double y, void *data),
     void *data);
 
+/// The private type a dragged party card travels as, distinct from a chat's and a pane's so no
+/// other target reads a card, and a card target reads nothing else.
+GType tailscode_party_ref_get_type(void);
+
+/// Makes `widget` (a party card) draggable, carrying `payload` under the party type. `lift` is told
+/// 1 when the pointer has picked the card up and 0 when it lets go, wherever it lands, so the card
+/// can wear its lifted look for exactly as long as it is in the air. `data` is released with the
+/// source.
+void tailscode_make_party_drag_source(
+    GtkWidget *widget, const char *payload, void (*lift)(int lifted, void *data), void *data);
+
+/// Accepts a dragged card over `widget`, exactly as `tailscode_accept_chat_drops` accepts a chat.
+void tailscode_accept_party_drops(
+    GtkWidget *widget,
+    void (*motion)(const char *payload, double x, double y, void *data),
+    void (*leave)(void *data),
+    gboolean (*drop)(const char *payload, double x, double y, void *data),
+    void *data);
+
 /// Accepts files dropped on `widget` and calls back with their paths. The drop payload is a
 /// `GdkFileList` inside a `GValue`, neither of which Swift can unbox, so the whole exchange is C.
 void tailscode_accept_file_drops(

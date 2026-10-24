@@ -11,6 +11,7 @@ import TailscodeCore
 final class DialPill: @unchecked Sendable {
     let button: UnsafeMutablePointer<GtkWidget>
     let dial: ModelDialPopover
+    let party: PartyPopover?
     private let dot = Gtk.label("●", css: "dial-dot", selectable: false)
     private let modelLabel = Gtk.label("", css: "dial-model", selectable: false)
     private let separator = Gtk.label("·", css: "dial-sep", selectable: false)
@@ -22,10 +23,20 @@ final class DialPill: @unchecked Sendable {
     private var shimmerPhase = -1
     private var powerWord: String?
 
-    init(
+    convenience init(
         css: [String] = [], dial: ModelDialPopover, onStep: @escaping @Sendable (Int) -> Void
     ) {
+        self.init(css: css, dial: dial, party: nil, onStep: onStep)
+    }
+
+    /// The pill a chat wears: a press opens the party, and the dial, which the pill's own wheel
+    /// and the level chords already serve, stays one key away for the level and the long list.
+    init(
+        css: [String] = [], dial: ModelDialPopover, party: PartyPopover?,
+        onStep: @escaping @Sendable (Int) -> Void
+    ) {
         self.dial = dial
+        self.party = party
         button = gtk_menu_button_new()!
         Gtk.addClass(button, "dial-pill")
         for name in css { Gtk.addClass(button, name) }
@@ -43,7 +54,8 @@ final class DialPill: @unchecked Sendable {
         gtk_widget_set_valign(meterSlot, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(line), meterSlot)
         gtk_menu_button_set_child(op(button), line)
-        gtk_menu_button_set_popover(op(button), dial.popover)
+        gtk_menu_button_set_popover(op(button), party?.popover ?? dial.popover)
+        if party != nil { holdDial() }
         Gtk.onScroll(button) { dy in
             guard dy != 0 else { return false }
             Gtk.onMain { onStep(dy < 0 ? 1 : -1) }
@@ -54,6 +66,26 @@ final class DialPill: @unchecked Sendable {
 
     func open() {
         gtk_menu_button_popup(op(button))
+    }
+
+    /// The dial, beside the party: parented on the pill so it opens over it, and let go of when the
+    /// pill is, so no widget is finalized with a child still on it.
+    private func holdDial() {
+        gtk_widget_set_parent(dial.popover, button)
+        gtk_popover_set_position(ptr(dial.popover), GTK_POS_TOP)
+        let hold = Gtk.WeakWidget(dial.popover)
+        Gtk.connect(UnsafeMutableRawPointer(button), "destroy") {
+            guard let held = hold.widget, gtk_widget_get_parent(held) != nil else { return }
+            gtk_widget_unparent(held)
+        }
+    }
+
+    func openDial() {
+        guard party != nil else {
+            open()
+            return
+        }
+        gtk_popover_popup(ptr(dial.popover))
     }
 
     /// The pill wears the same colours the list chips do — the family's hue on the dot, the

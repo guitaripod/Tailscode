@@ -84,8 +84,9 @@ enum MatrixTheme {
         return ink
     }
 
-    static func modelTintCSS(for palette: Palette) -> String {
-        var lines: [String] = []
+    /// Every model identity class with the colour it wears on this palette: the families' own
+    /// hues, the twelve buckets everyone else falls into, and the plain grey.
+    static func modelIdentityPairs(for palette: Palette) -> [(cls: String, hex: String)] {
         var pairs: [(cls: String, hex: String)] = ModelTint.Family.allCases.map {
             (ModelTint.cssClass($0), ModelTint.hex($0, in: palette))
         }
@@ -93,6 +94,12 @@ enum MatrixTheme {
             pairs.append(("model-hue-\(bucket)", ModelTint.bucketHex(bucket, in: palette)))
         }
         pairs.append(("model-plain", palette.textDim))
+        return pairs
+    }
+
+    static func modelTintCSS(for palette: Palette) -> String {
+        var lines: [String] = []
+        var pairs = modelIdentityPairs(for: palette)
         for tier in ModelTint.effortTiers {
             if let hex = ModelTint.effortHex(tier, in: palette) {
                 pairs.append(("effort-\(tier)", hex))

@@ -162,6 +162,7 @@ final class MainWindow: @unchecked Sendable {
     var toastOverlay: UnsafeMutablePointer<GtkWidget>?
     var lastFlash: OpaquePointer?
     var demoDial: ModelDialPopover?
+    var demoParty: PartyPopover?
     var listStreamTasks: [String: Task<Void, Never>] = [:]
     var lastCatalogWarm: [String: Date] = [:]
     var usageStripSignature = ""
