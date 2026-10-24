@@ -438,6 +438,10 @@ public enum ShortcutRegistry {
             category: .view, action: .toggleFiles, contexts: [.normal, .insert, .terminal],
             defaults: ["normal,insert:ctrl+e", "ctrl+shift+e"]),
         .init(
+            id: "view.agents", title: Localized.text("Show the agents board"),
+            category: .view, action: .toggleAgents, contexts: [.normal, .insert, .terminal],
+            defaults: ["ctrl+shift+a"]),
+        .init(
             id: "pane.terminal", title: Localized.text("Show / hide the terminal"),
             category: .view, action: .toggleTerminal, contexts: [.normal, .insert, .terminal],
             defaults: ["normal,insert:ctrl+t", "ctrl+shift+t"]),
@@ -802,6 +806,7 @@ public enum KeyAction: Equatable, Sendable {
     case toggleSidebar
     case toggleFiles
     case toggleTerminal
+    case toggleAgents
     case archiveSelected
     case toggleArchiveView
     case toggleUnreadSelected

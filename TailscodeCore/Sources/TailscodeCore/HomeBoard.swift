@@ -188,7 +188,9 @@ public struct ApprovalAsk: Equatable, Sendable {
         self.object = object
     }
 
-    public static func reading(in state: ConversationState) -> ApprovalAsk? {
+    /// `whole` keeps a command's every line, for the one place a person decides on it; a row's
+    /// news line wants only the first.
+    public static func reading(in state: ConversationState, whole: Bool = false) -> ApprovalAsk? {
         if let question = state.pendingQuestions.first?.questions.first?.question,
             !question.isEmpty
         {
@@ -204,7 +206,7 @@ public struct ApprovalAsk: Equatable, Sendable {
         switch summary.kind {
         case .shell:
             guard let command = summary.command ?? summary.title, !command.isEmpty else { return nil }
-            return ApprovalAsk(lead: Localized.text("Wants to run"), object: firstLine(command))
+            return ApprovalAsk(lead: Localized.text("Wants to run"), object: whole ? command : firstLine(command))
         case .fileEdit, .fileWrite:
             guard let path = summary.title ?? summary.filePath, !path.isEmpty else { return nil }
             return ApprovalAsk(lead: Localized.text("Wants to edit"), object: path)
