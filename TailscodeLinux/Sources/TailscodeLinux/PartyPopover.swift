@@ -29,6 +29,10 @@ final class PartyPopover: @unchecked Sendable {
     private var footer: UnsafeMutablePointer<GtkWidget>?
     private var observer: ObserverToken?
     private(set) var editing = false
+    /// How the pill that owns this popover closes it, so the pill's own toggle lets go in step: a
+    /// popover put away behind its menu button's back leaves the button believing it is open, and
+    /// the next press on it only closes what is already closed.
+    var owner: (() -> Void)?
     private var cards: [PartyCard] = []
 
     init(hooks: PartyHooks) {
@@ -73,7 +77,7 @@ final class PartyPopover: @unchecked Sendable {
     }
 
     func close() {
-        gtk_popover_popdown(ptr(popover))
+        if let owner { owner() } else { gtk_popover_popdown(ptr(popover)) }
     }
 
     private func fill() {

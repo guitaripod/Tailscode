@@ -32,6 +32,7 @@ enum PartyRoom {
         let popover = gtk_popover_new()!
         Gtk.addClass(popover, "party-pop")
         gtk_widget_set_parent(popover, anchor)
+        gtk_popover_set_position(ptr(popover), GTK_POS_BOTTOM)
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         gtk_widget_set_size_request(column, PartyPopover.width, -1)
         let question = Gtk.label(

@@ -133,19 +133,17 @@ enum Dialogs {
         let (window, content) = Self.window(title: title, parent: parent)
         gtk_box_append(ptr(content), Gtk.label(body, css: "agent-text", wrap: true))
         let windowBits = UInt(bitPattern: window)
-        gtk_box_append(
-            ptr(content),
-            buttonRow(
-                window: window,
-                confirm: Gtk.button(
-                    confirmLabel, css: [destructive ? "destructive-action" : "suggested-action"]
-                ) {
-                    if let raw = UnsafeMutableRawPointer(bitPattern: windowBits) {
-                        gtk_window_destroy(ptr(raw))
-                    }
-                    onConfirm()
-                }))
+        let confirmButton = Gtk.button(
+            confirmLabel, css: [destructive ? "destructive-action" : "suggested-action"]
+        ) {
+            if let raw = UnsafeMutableRawPointer(bitPattern: windowBits) {
+                gtk_window_destroy(ptr(raw))
+            }
+            onConfirm()
+        }
+        gtk_box_append(ptr(content), buttonRow(window: window, confirm: confirmButton))
         gtk_window_present(ptr(window))
+        gtk_widget_grab_focus(confirmButton)
     }
 
     /// Long machine-facing prose — a compaction summary, a tool's full output — reads in a window
@@ -168,7 +166,7 @@ enum Dialogs {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         Gtk.addClass(column, "canvas")
         if let subtitle {
-            let header = Gtk.label(subtitle, css: "seam-text", selectable: false)
+            let header = Gtk.label(subtitle, css: "seam-text", wrap: true, selectable: false)
             gtk_widget_set_halign(header, GTK_ALIGN_START)
             Gtk.margins(header, top: 12, bottom: 10, leading: 18, trailing: 18)
             gtk_box_append(ptr(column), header)

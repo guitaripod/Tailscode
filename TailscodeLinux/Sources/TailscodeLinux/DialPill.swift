@@ -55,7 +55,13 @@ final class DialPill: @unchecked Sendable {
         gtk_box_append(ptr(line), meterSlot)
         gtk_menu_button_set_child(op(button), line)
         gtk_menu_button_set_popover(op(button), party?.popover ?? dial.popover)
-        if party != nil { holdDial() }
+        if let party {
+            holdDial()
+            party.owner = { [weak self] in
+                guard let self else { return }
+                gtk_menu_button_popdown(op(self.button))
+            }
+        }
         Gtk.onScroll(button) { dy in
             guard dy != 0 else { return false }
             Gtk.onMain { onStep(dy < 0 ? 1 : -1) }

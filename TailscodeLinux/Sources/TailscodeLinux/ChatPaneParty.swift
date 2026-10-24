@@ -88,6 +88,7 @@ extension ChatPane {
                 else { return }
                 PartyEdits.replace(slot, with: preset)
                 self.host?.toast(Localized.text("Added to slot %d", slot + 1))
+                Gtk.after(320) { [weak self] in Gtk.onMain { [weak self] in self?.openParty() } }
             }
         }
     }
