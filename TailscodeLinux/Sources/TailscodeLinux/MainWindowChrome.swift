@@ -90,6 +90,7 @@ extension MainWindow {
         adw_toolbar_view_add_top_bar(op(toolbar), header)
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        gtk_box_append(ptr(column), makeAgentsEntry())
         gtk_search_entry_set_placeholder_text(
             op(searchEntry), Localized.text("Filter chats  /   ⏎ to search inside"))
         Gtk.margins(searchEntry, top: 4, bottom: 4, leading: 6, trailing: 6)
@@ -188,10 +189,12 @@ extension MainWindow {
         ) { [weak self] _ in
             Gtk.onMain { [weak self] in self?.renderSidebar() }
         }
-        gtk_widget_set_tooltip_text(orb.widget, Localized.text("Nothing is running"))
-        Gtk.onRelease(orb.widget) { [weak self] in
-            guard let self, let entry = self.orbTarget else { return }
-            self.open(entry)
+        gtk_widget_set_tooltip_text(orb.widget, OrbPainter.tooltip(Localized.text("Nothing is running")))
+        Gtk.onPrimaryRelease(orb.widget) { [weak self] in
+            Gtk.onMain { [weak self] in self?.orbPressed(secondary: false) }
+        }
+        Gtk.onRightClick(orb.widget) { [weak self] _, _ in
+            Gtk.onMain { [weak self] in self?.orbPressed(secondary: true) }
         }
         gtk_box_append(ptr(column), usageBox)
         gtk_box_append(ptr(column), orb.widget)

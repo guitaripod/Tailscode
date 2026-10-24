@@ -223,6 +223,9 @@ enum ParityManifest {
         case .rateAndShare: return .notApplicable("there is no store to rate the app in and no listing to hand around from inside it — the AUR page and the README are the doors, and both are reached from a browser rather than from a settings row")
         case .midgarPortal: return .notApplicable("MidgarKit is an Apple package and the portal is a UIKit and AppKit surface, so there is no card to place; the Linux client has no door into the Midgar app catalog and shows none.")
         case .worldClock: return .implemented("ClockChip")
+        case .agentsBoard: return .implemented("AgentsWindow")
+        case .agentPeek: return .implemented("AgentPeekView")
+        case .agentsHour: return .implemented("AgentHourView")
         }
     }
 }

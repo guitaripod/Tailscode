@@ -137,6 +137,7 @@ extension MainWindow {
             ?? rows.first { $0.state == .live }?.entry
         orbKinds = rows.map { $0.state.activity }
         refreshOrb()
+        refreshAgentsEntry(rows: rows.map(\.state))
         let observations = rows.map {
             ActivityObservation(
                 profileID: $0.entry.profileID, sessionID: $0.entry.session.id,

@@ -125,6 +125,7 @@ struct MatrixStylesheet {
             composerRules(),
             drawRules(),
             panelRules(),
+            agentsRules(),
         ].joined(separator: "\n")
     }
 

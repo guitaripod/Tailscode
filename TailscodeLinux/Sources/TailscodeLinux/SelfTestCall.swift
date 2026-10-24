@@ -147,6 +147,7 @@ extension SelfTest {
             case "call": report("call: \(try checkCall()) claims hold")
             case "beta": report("beta: \(try checkBeta()) claims hold")
             case "sidebar": report("sidebar: \(try checkSidebar()) claims hold")
+            case "agents": report("agents: \(try checkAgentsBoard()) claims hold")
             case "clock": report("clock: \(try checkClock()) claims hold")
             case "shutdown": report("shutdown: \(try checkShutdown()) claims hold")
             case "share": report("analytics share: \(try checkAnalyticsShare()) claims hold")

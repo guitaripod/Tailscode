@@ -96,6 +96,7 @@ extension MainWindow {
             Soak.timeListSave { SessionListCache.enqueueSave(saved) }
             SessionMarks.reconcile(with: touched)
         }
+        feedAgents()
         scheduleSidebarRender()
         guard !touched.isEmpty else { return }
         let touchedIDs = Set(touched.map(\.session.id))
@@ -159,6 +160,7 @@ extension MainWindow {
         self.unreachable = unreachable
         if !lastHeard.isEmpty { self.lastHeard = lastHeard }
         if fromNetwork { listedFromNetwork = true }
+        feedAgents()
         wakeHeldQueues()
         if let fresh = freshlyCreated {
             if entries.contains(where: { $0.session.id == fresh.session.id }) {

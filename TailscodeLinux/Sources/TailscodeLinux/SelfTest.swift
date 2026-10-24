@@ -121,6 +121,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkAgentsBoard()
+            report("agents: \(checks) claims hold: four sections, Approve once and dead in flight, Stop asked first, long text wrapped, Core's hour, one window, no watch left")
+        } catch {
+            report("agents: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkProviderRetryCard()
             report("provider retry: \(checks) claims hold: words, remedy and a clock that wakes once")
         } catch {

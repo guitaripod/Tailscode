@@ -169,6 +169,7 @@ extension MainWindow {
         case .toggleSidebar: togglePane(.sidebar)
         case .toggleFiles: return false
         case .toggleTerminal: togglePane(.terminal)
+        case .toggleAgents: toggleAgents()
         case .commandPalette: activePane.popupCommandPalette()
         case .effortHotter: activePane.stepEffort(by: 1)
         case .effortColder: activePane.stepEffort(by: -1)

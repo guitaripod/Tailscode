@@ -68,6 +68,12 @@ final class OrbPainter: @unchecked Sendable {
             danger: rgb(palette.danger), quiet: rgb(palette.textDim))
     }
 
+    /// What the orb says on hover: its state, and the way to the agents board it opens on a
+    /// secondary press.
+    static func tooltip(_ spoken: String) -> String {
+        spoken + "\n" + Localized.text("Right-click or Ctrl+click for the agents board")
+    }
+
     func applyEnabled() {
         let enabled = Preferences.presenceOrb
         gtk_widget_set_visible(widget, enabled ? 1 : 0)
@@ -87,7 +93,7 @@ final class OrbPainter: @unchecked Sendable {
         guard signal != self.signal else { return }
         self.signal = signal
         field.set(signal: signal)
-        gtk_widget_set_tooltip_text(widget, signal.spoken)
+        gtk_widget_set_tooltip_text(widget, Self.tooltip(signal.spoken))
         wake()
     }
 

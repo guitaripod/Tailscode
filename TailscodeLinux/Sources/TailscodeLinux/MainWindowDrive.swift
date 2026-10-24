@@ -281,8 +281,11 @@ extension MainWindow {
                 FileHandle.standardOutput.write(
                     Data("TERMFOCUS \(self.terminal.ownsFocus(in: window))\n".utf8))
             }
-        case "agents":
+        case "bandagents":
             self.activePane.bandState.openMenu(id: "agents")
+        case "agents", "agents-hour", "agent-peek", "agents-close", "agents-size", "agents-state",
+            "agents-stress":
+            self.driveAgents(verb, argument)
         case "party":
             self.presentPartyDemo(editing: false)
         case "partyedit":

@@ -54,6 +54,7 @@ final class MainWindow: @unchecked Sendable {
         Gtk.onMain { [weak self] in self?.presentClock() }
     }
     let orb = OrbPainter()
+    var agentsEntry: AgentsSidebarEntry?
     var orbTarget: SessionEntry?
     var orbKinds: [ActivityKind?] = []
     var usageTask: Task<Void, Never>?
