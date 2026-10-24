@@ -107,6 +107,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case unifiedModelChooser
     case modelEffortDisplay
     case modelCapabilitySurfacing
+    case modelParty
     case modelSeam
     case carryChat
     case responseStats

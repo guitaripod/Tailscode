@@ -175,6 +175,8 @@ public enum ChooserContext: Sendable {
     /// A question in a conversation in hand, asked again: every pick, on this machine or another,
     /// branches the chat from that question into a new one.
     case branch
+    /// A hollow or held party slot being filled: every pick, on any machine, goes into the slot.
+    case party
 }
 
 /// The level a pick of one row would run at, read on the same meter the pill wears. `level` nil

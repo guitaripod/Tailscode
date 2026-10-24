@@ -69,11 +69,12 @@ public struct ModelMachine: Sendable, Hashable, Identifiable {
         if context == .branch {
             return Localized.text("A pick here branches this chat from that question on %@", title)
         }
+        if context == .party { return Localized.text("A pick here fills a party slot") }
         guard !isCurrent else { return nil }
         switch context {
         case .chat: return Localized.text("A pick here starts a new chat on %@", title)
         case .composer: return Localized.text("A pick here aims this message at %@", title)
-        case .serverDefault, .branch: return nil
+        case .serverDefault, .branch, .party: return nil
         }
     }
 }
