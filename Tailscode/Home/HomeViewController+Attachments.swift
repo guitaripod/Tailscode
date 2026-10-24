@@ -84,9 +84,9 @@ extension HomeViewController {
     }
 
     func refreshAttachments() {
-        attachmentStrip.update(attachments)
+        attachmentStrip.update(attachments, carry: composeCarry)
         composerBar.carriesAttachments = !attachments.isEmpty
-        setAccessory(attachmentStrip, visible: !attachments.isEmpty)
+        setAccessory(attachmentStrip, visible: !attachments.isEmpty || composeCarry != nil)
         updateSuggestions()
     }
 

@@ -141,7 +141,8 @@ extension ChatViewController {
         guard revert.messageID != lastRevertMessageID else { return }
         lastRevertMessageID = revert.messageID
         revertComposerFill = nil
-        guard let prompt = RevertReading.prompt(in: state.revertedMessages) else { return }
+        guard let prompt = RevertReading.prompt(in: state.revertedMessages).map(CarriedText.typed)
+        else { return }
         if composer.currentText == prompt {
             revertComposerFill = prompt
             return

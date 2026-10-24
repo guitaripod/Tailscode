@@ -94,6 +94,16 @@ extension ChatViewController {
         present(nav, animated: true)
     }
 
+    func presentCarried(_ reading: CarryReading) {
+        let nav = UINavigationController(
+            rootViewController: CarrySummaryViewController(reading: reading))
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.large()]
+            sheet.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
+    }
+
     func presentGoalDetail() {
         guard let goal = viewModel.goal, goal.isActive else { return }
         let sheet = UIAlertController(

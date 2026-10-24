@@ -152,9 +152,9 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
         case .edit:
             guard let taken = viewModel.takeBackPending(id: id) else { return }
             announcedFailedSends.remove(id)
-            composer.setDraft(taken.text)
+            composer.setDraft(CarriedText.typed(taken.text))
             composer.becomeFirstResponder()
-            DraftStore.record(taken.text, for: draftScope)
+            DraftStore.record(CarriedText.typed(taken.text), for: draftScope)
             if !taken.attachments.isEmpty {
                 pendingAttachments = taken.attachments
                 composer.showsAttach = canAttachAnything
@@ -182,9 +182,9 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
         case .edit:
             guard let taken = viewModel.actOnResume(id, .edit) else { return }
             announcedFailedSends.remove(id)
-            composer.setDraft(taken.text)
+            composer.setDraft(CarriedText.typed(taken.text))
             composer.becomeFirstResponder()
-            DraftStore.record(taken.text, for: draftScope)
+            DraftStore.record(CarriedText.typed(taken.text), for: draftScope)
             if !taken.attachments.isEmpty {
                 pendingAttachments = taken.attachments
                 composer.showsAttach = canAttachAnything

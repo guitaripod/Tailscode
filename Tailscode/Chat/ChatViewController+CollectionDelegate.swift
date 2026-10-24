@@ -72,6 +72,8 @@ extension ChatViewController: UICollectionViewDelegate {
                 ? message : nil
         }
 
+        let branchedAnswerID = answerOfferingBranch(rowID: id)
+
         return UIContextMenuConfiguration(identifier: id as NSString, previewProvider: nil) {
             [weak self] _ in
             var actions: [UIAction] = [
@@ -116,8 +118,40 @@ extension ChatViewController: UICollectionViewDelegate {
                         self?.confirmRevert(to: revertMessage)
                     })
             }
-            return UIMenu(children: actions)
+            var elements: [UIMenuElement] = actions
+            if let branchedAnswerID {
+                elements.append(
+                    UIMenu(
+                        options: .displayInline,
+                        children: [
+                            UIAction(
+                                title: String(localized: "Try with another model…"),
+                                image: UIImage(systemName: "arrow.triangle.branch")
+                            ) { _ in
+                                self?.tryWithAnotherModel(answerID: branchedAnswerID)
+                            }
+                        ]))
+            }
+            return UIMenu(children: elements)
         }
+    }
+
+    /// The answer a long press can ask again on another model: a settled piece of the model's own
+    /// words that was given to a question with something typed in it.
+    private func answerOfferingBranch(rowID: String) -> String? {
+        guard let row = rowsByID[rowID], row.role == .assistant else { return nil }
+        switch row.content {
+        case .text, .code, .table: break
+        default: return nil
+        }
+        guard let message = chatMessage(for: rowID), message.role == .assistant,
+            !message.isStreaming,
+            !(viewModel.isBusy && message.id == viewModel.state.messages.last?.id),
+            let question = ConversationBrief.question(
+                before: message.id, in: viewModel.state.messages),
+            ConversationBrief.typed(question) != nil
+        else { return nil }
+        return message.id
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -191,7 +225,7 @@ extension ChatViewController: UICollectionViewDelegate {
             return files.compactMap { $0.filename ?? $0.mime }.joined(separator: "\n")
         case .failed(let turn):
             return turn.reason
-        case .timestamp, .note:
+        case .timestamp, .note, .modelSeam, .carried:
             return nil
         }
     }

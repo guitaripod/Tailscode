@@ -9,12 +9,15 @@ enum ChatRowBuilder {
     ///   stamps nothing on the record itself (the Claude bridge) leaves every message reading
     ///   `isStreaming == false`, whether the turn that wrote it is still open or not. Only the
     ///   conversation knows that (`MessageSegment.isSealed`).
+    /// - Parameter seams: where the answering model changed, keyed by the answer that follows
+    ///   the change (`ModelSeamTracker`), so a settled answer costs a lookup here and nothing more.
     /// - Parameter modelName: the display name the client already shows for a model, for a note
     ///   that names one; nil when the catalog does not know it, which reads as the model's id.
     static func makeRows(
         from messages: [ChatMessage], agents: ChatViewController.SubagentPlacement,
         runs: [String: WorkflowRun] = [:], turnOpen: Bool = false, memo: SegmentRowMemo? = nil,
-        brains: BrainLayout = .none, modelName: (ModelSelection) -> String? = { _ in nil }
+        brains: BrainLayout = .none, seams: [String: ModelSwitch] = [:],
+        modelName: (ModelSelection) -> String? = { _ in nil }
     ) -> [ChatRow] {
         defer { memo?.sweep() }
         var rows: [ChatRow] = []
@@ -52,6 +55,11 @@ enum ChatRowBuilder {
             }
             if lastDate == nil || message.createdAt > (lastDate ?? .distantPast) {
                 lastDate = message.createdAt
+            }
+            if let seam = seams[message.id] {
+                rows.append(ChatRow(
+                    id: "\(message.id):seam", messageID: message.id, role: .system,
+                    content: .modelSeam(seam)))
             }
             let context = SegmentRowMemo.MessageContext(
                 promptID: lastPrompt?.id, promptAt: lastPrompt?.createdAt,
@@ -175,7 +183,15 @@ enum ChatRowBuilder {
                     if text.isEmpty { continue }
                     flushActivity()
                     if message.role == .user {
-                        let (interrupted, remainder) = Self.strippedInterruption(text)
+                        var shown = text
+                        if lastPrompt == nil, let carried = CarryMark.split(text) {
+                            rows.append(
+                                ChatRow(
+                                    id: "\(id):carried", messageID: message.id, role: .system,
+                                    content: .carried(carried.reading)))
+                            shown = carried.rest
+                        }
+                        let (interrupted, remainder) = Self.strippedInterruption(shown)
                         if interrupted {
                             rows.append(
                                 ChatRow(

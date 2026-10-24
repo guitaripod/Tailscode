@@ -17,8 +17,7 @@ extension ModelPickerViewController {
                         title: self.pickTitle(for: row),
                         image: UIImage(systemName: "checkmark.circle")
                     ) { [weak self] _ in
-                        self?.onSelect(row.pick)
-                        self?.dismiss(animated: true)
+                        self?.commit(row.pick)
                     }
                 ]
                 if row.pinning.preset != nil {
@@ -44,6 +43,8 @@ extension ModelPickerViewController {
         case .chat:
             return row.isElsewhere
                 ? String(localized: "Start a new chat there") : String(localized: "Use for this chat")
+        case .branch:
+            return String(localized: "Try with this model")
         }
     }
 
@@ -179,8 +180,20 @@ extension ModelPickerViewController: UICollectionViewDelegate {
         guard let id = dataSource.itemIdentifier(for: indexPath), let row = row(for: id) else {
             return
         }
-        onSelect(row.pick)
-        dismiss(animated: true)
+        commit(row.pick)
+    }
+
+    /// A pick that only changes this chat is told first and the sheet goes after it. A pick that
+    /// leaves the chat waits for the sheet to be gone, so the screen it leaves for is not being
+    /// presented over while it moves.
+    private func commit(_ pick: ModelPick) {
+        guard context == .branch else {
+            onSelect(pick)
+            dismiss(animated: true)
+            return
+        }
+        let report = onSelect
+        dismiss(animated: true) { report(pick) }
     }
 }
 

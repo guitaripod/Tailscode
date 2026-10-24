@@ -34,15 +34,17 @@ final class ModelPickerViewController: UIViewController {
 
     /// Where the picker was opened from, which decides what a pick means and what the sheet says
     /// about it: a pick in a chat changes that chat, one from Home aims the message being written,
-    /// and one from a server's own screen sets what that server runs by default.
+    /// and one from a server's own screen sets what that server runs by default. A pick from an
+    /// answer's menu branches the chat from that question, on this machine or another.
     enum Context {
-        case chat, composer, serverDefault
+        case chat, composer, serverDefault, branch
 
         var chooser: ChooserContext {
             switch self {
             case .chat: return .chat
             case .composer: return .composer
             case .serverDefault: return .serverDefault
+            case .branch: return .branch
             }
         }
     }

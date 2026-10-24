@@ -650,6 +650,7 @@ final class ChatViewController: UIViewController {
     var openTimed = false
 
     let segmentMemo = SegmentRowMemo()
+    var seamTracker = ModelSeamTracker()
     let brain = ChatBrainController()
     lazy var brainSearch = BrainSearchWarmer(
         store: brain.store, isVisible: { [weak self] in self?.view.window != nil },

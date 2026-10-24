@@ -36,6 +36,10 @@ final class HomeViewController: UIViewController {
     /// starts one on a machine and carries the ask's own memory of what should answer it.
     var askLane: QuickAskLane = .chat
     var attachments: [PendingAttachment] = []
+    /// The conversation a pick of another model carried here, waiting for the first message that
+    /// will take it along. It belongs to the message being written, not to the machine it is aimed
+    /// at, so re-aiming keeps it; only a send or the chip's own button lets it go.
+    var composeCarry: ConversationBrief?
     var abilities = ModelAbilities.words
     var pastedImageCount = 0
     let enhancement = PromptEnhancementController()

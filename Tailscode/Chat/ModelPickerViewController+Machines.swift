@@ -68,7 +68,7 @@ extension ModelPickerViewController {
         machineStrip.render(chooser.machines.map(ChipStripView.Chip.init), selected: chooser.machineIndex)
         syncDoors()
         let line = chooser.shownMachine?.consequence(for: context.chooser)
-        consequence.superview?.isHidden = !shown || line == nil
+        consequence.superview?.isHidden = !(shown || context == .branch) || line == nil
         consequence.attributedText = line.map {
             NSAttributedString(
                 string: $0, attributes: Theme.Ramp.attributes(.rowNote, color: Theme.Color.warning))

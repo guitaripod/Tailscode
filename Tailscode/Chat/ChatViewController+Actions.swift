@@ -180,6 +180,12 @@ extension ChatViewController {
             case .compaction(let row):
                 out.append(Self.compactionMarkdown(row))
                 continue
+            case .modelSeam(let seam):
+                out.append("_\(seam.line)_")
+                continue
+            case .carried(let reading):
+                out.append("_\(reading.line)_")
+                continue
             case .answerless(let turn):
                 body = "_\(turn.title) — \(turn.detail)_"
             case .designBoard(let sighting):

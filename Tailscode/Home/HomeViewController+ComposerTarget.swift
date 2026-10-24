@@ -225,9 +225,13 @@ extension HomeViewController {
     ///
     /// A pick carried from a chat aims the model and level too, through the same move as a pick
     /// made here; `directory` is the folder the chat was in, kept when that machine knows it.
+    ///
+    /// `carry` is the conversation that came with the pick: its brief rides in the first message
+    /// this composer sends, shown as one chip until then, and its draft, when there is one, is put
+    /// in the field unsent and the field is focused.
     func aimCompose(
         at profileID: String, carrying pick: ModelPick? = nil, effort: String? = nil,
-        directory: String? = nil
+        directory: String? = nil, carry: CarryPlan = .nothing
     ) {
         guard let profile = ConnectionController.shared.profiles.first(where: { $0.id == profileID })
         else { return }
@@ -236,6 +240,11 @@ extension HomeViewController {
         } else {
             setComposeTarget(profile: profile, directory: nil)
         }
+        if let brief = carry.brief {
+            composeCarry = brief
+            refreshAttachments()
+        }
+        if let draft = carry.draft { composerBar.setText(draft) }
         focusComposer()
     }
 
@@ -275,11 +284,17 @@ extension HomeViewController {
         guard let aim = composerAim,
             QuickAskComposition.canSend(text: text, attachments: attachments.count)
         else { return }
-        let send = composerDecision(text, on: aim.profile)
+        let send = carriedSend(text) ?? composerDecision(text, on: aim.profile)
         if case .command(let command, _) = send.kind { SlashRecents.record(command.name) }
         hideCommandPalette()
         dismissFailure()
         mint(aim: aim, send: send)
+    }
+
+    /// A carried conversation rides in the first message as plain words, so the send is a prompt
+    /// even when what was typed begins with a slash: a command has nowhere to put a brief.
+    private func carriedSend(_ text: String) -> QuickAskSend? {
+        composeCarry.map { QuickAskSend(text: $0.wrapped(with: text), kind: .prompt) }
     }
 
     func mint(aim: ComposerAim, send: QuickAskSend) {
@@ -295,8 +310,9 @@ extension HomeViewController {
                 self.landed(entry, aim: aim, send: send)
             case .failure(let failure):
                 Theme.Haptics.error()
-                self.composerBar.setText(send.text)
-                DraftStore.record(send.text, for: aim.draftScope)
+                let typed = CarriedText.typed(send.text)
+                self.composerBar.setText(typed)
+                DraftStore.record(typed, for: aim.draftScope)
                 self.showFailure(failure)
             }
         }
@@ -320,6 +336,7 @@ extension HomeViewController {
         }
         let payload = attachments.map(\.prompt)
         attachments = []
+        composeCarry = nil
         refreshAttachments()
         composerBar.clearText()
         DraftStore.clear(aim.draftScope)

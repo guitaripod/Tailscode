@@ -26,6 +26,10 @@ struct ChatRow: Hashable {
         case workflow(WorkflowRun)
         case subagentGroup(SubagentGroup)
         case compaction(CompactionRow)
+        /// Where the answering model changed, as one flat line before the answer it changed on.
+        case modelSeam(ModelSwitch)
+        /// The first row of a chat that was carried from another: where it came from.
+        case carried(CarryReading)
         case taskBoard(TaskBoard)
         /// A board of design alternatives the agent wrote, standing where the manifest that made
         /// it was written rather than as a line about a file.

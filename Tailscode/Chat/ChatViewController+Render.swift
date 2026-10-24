@@ -294,10 +294,11 @@ extension ChatViewController {
             reading: reading, facts: facts, call: callController.currentFace,
             providerID: viewModel.displayedModel?.providerID,
             effortOptions: effortOptions, effort: effort)
+        let seams = seamTracker.update(reading.messages, catalog: availableModels)
         var rows = ChatRowBuilder.makeRows(
             from: reading.messages, agents: subagentPlacement(for: reading.messages),
             runs: Dictionary(runs.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest }),
-            turnOpen: reading.running, memo: segmentMemo, brains: layout,
+            turnOpen: reading.running, memo: segmentMemo, brains: layout, seams: seams,
             modelName: { [contextID = viewModel.contextID] selection in
                 ModelCatalog.cached(for: contextID).first { $0.selection == selection }?.name
             })

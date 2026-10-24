@@ -56,6 +56,10 @@ enum ChatFind {
             return files.map { $0.filename ?? $0.path ?? "" }.joined(separator: " ")
         case .note(let line):
             return line.text
+        case .modelSeam(let seam):
+            return seam.line
+        case .carried(let reading):
+            return reading.line
         }
     }
 

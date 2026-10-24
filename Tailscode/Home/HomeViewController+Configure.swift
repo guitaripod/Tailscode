@@ -173,6 +173,12 @@ extension HomeViewController {
             Theme.Haptics.tap()
             self.refreshAttachments()
         }
+        attachmentStrip.onClearCarry = { [weak self] in
+            guard let self else { return }
+            self.composeCarry = nil
+            Theme.Haptics.tap()
+            self.refreshAttachments()
+        }
         failureCard.onFix = { [weak self] in self?.applyFix() }
         failureCard.onDismiss = { [weak self] in
             Theme.Haptics.tap()

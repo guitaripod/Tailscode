@@ -127,6 +127,7 @@ final class HomeAskSuggestions: UIView {
 @MainActor
 final class HomeAttachmentStrip: UIView {
     var onRemove: ((UUID) -> Void)?
+    var onClearCarry: (() -> Void)?
 
     private let scrollView = UIScrollView()
     private let row = UIStackView()
@@ -160,8 +161,16 @@ final class HomeAttachmentStrip: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func update(_ attachments: [PendingAttachment]) {
+    func update(_ attachments: [PendingAttachment], carry: ConversationBrief? = nil) {
         row.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        if let carry {
+            let chip = CarryChip(brief: carry) { [weak self] in self?.onClearCarry?() }
+            row.addArrangedSubview(chip)
+            chip.widthAnchor.constraint(
+                lessThanOrEqualTo: scrollView.frameLayoutGuide.widthAnchor,
+                constant: -2 * Theme.Spacing.l
+            ).isActive = true
+        }
         for attachment in attachments {
             let image =
                 attachment.mime.hasPrefix("image/") ? UIImage(data: attachment.data) : nil
@@ -174,6 +183,86 @@ final class HomeAttachmentStrip: UIView {
                 ) { [weak self] in self?.onRemove?(id) })
         }
     }
+}
+
+/// The conversation the next message will take along: where it came from and how much of it, as
+/// one chip. The words wrap rather than truncate, because a name cut to its first letters is a
+/// chip that no longer says what it carries. The pill is drawn small inside a 44-point row, and the
+/// button that drops it overhangs the pill's edge by the margin the row keeps for it, so the tap
+/// target is a finger's width while the chip stays a chip.
+@MainActor
+final class CarryChip: UIView {
+    private static let reach: CGFloat = 44
+    private static let overhang: CGFloat = 8
+
+    private let onClear: () -> Void
+
+    init(brief: ConversationBrief, onClear: @escaping () -> Void) {
+        self.onClear = onClear
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+
+        let pill = UIView()
+        pill.backgroundColor = Theme.Color.secondaryBackground
+        pill.layer.cornerRadius = Theme.Radius.control
+        pill.layer.cornerCurve = .continuous
+        pill.translatesAutoresizingMaskIntoConstraints = false
+
+        let glyph = UIImageView(
+            image: UIImage(
+                systemName: "arrow.turn.up.left",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)))
+        glyph.tintColor = Theme.Color.accent
+        glyph.contentMode = .center
+        glyph.setContentHuggingPriority(.required, for: .horizontal)
+        glyph.setContentCompressionResistancePriority(.required, for: .horizontal)
+        glyph.translatesAutoresizingMaskIntoConstraints = false
+
+        let label = UILabel()
+        label.text = brief.chip
+        label.font = Theme.Ramp.font(.panelFootnote)
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = Theme.Color.label
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let clear = UIButton(type: .system)
+        var configuration = UIButton.Configuration.plain()
+        configuration.image = UIImage(
+            systemName: "xmark.circle.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .medium))
+        configuration.baseForegroundColor = Theme.Color.tertiaryLabel
+        configuration.contentInsets = .zero
+        clear.configuration = configuration
+        clear.accessibilityLabel = Localized.text("Start a fresh chat instead")
+        clear.translatesAutoresizingMaskIntoConstraints = false
+        clear.addAction(UIAction { [weak self] _ in self?.onClear() }, for: .touchUpInside)
+
+        addSubview(pill)
+        pill.addSubview(glyph)
+        pill.addSubview(label)
+        addSubview(clear)
+        NSLayoutConstraint.activate([
+            pill.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.xs),
+            pill.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Theme.Spacing.xs),
+            pill.leadingAnchor.constraint(equalTo: leadingAnchor),
+            pill.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.overhang),
+            glyph.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: Theme.Spacing.s),
+            glyph.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+            label.topAnchor.constraint(equalTo: pill.topAnchor, constant: Theme.Spacing.s),
+            label.bottomAnchor.constraint(equalTo: pill.bottomAnchor, constant: -Theme.Spacing.s),
+            label.leadingAnchor.constraint(
+                equalTo: glyph.trailingAnchor, constant: Theme.Spacing.s),
+            label.trailingAnchor.constraint(equalTo: clear.leadingAnchor),
+            clear.trailingAnchor.constraint(equalTo: trailingAnchor),
+            clear.centerYAnchor.constraint(equalTo: pill.centerYAnchor),
+            clear.widthAnchor.constraint(equalToConstant: Self.reach),
+            clear.heightAnchor.constraint(equalToConstant: Self.reach),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: Self.reach),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 }
 
 /// Why the conversation did not start, said where the asking happened.

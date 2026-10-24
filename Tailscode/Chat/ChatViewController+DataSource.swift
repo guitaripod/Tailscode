@@ -253,6 +253,19 @@ extension ChatViewController {
                 self?.presentCompactionSummary(compaction)
             }
             return cell
+        case .modelSeam(let seam):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: ModelSeamCell.reuseID, for: indexPath) as! ModelSeamCell
+            cell.configure(
+                seam,
+                chip: ModelBadge.chip(
+                    selection: seam.selection, effort: nil, catalog: self.availableModels))
+            return cell
+        case .carried(let reading):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: CarriedLineCell.reuseID, for: indexPath) as! CarriedLineCell
+            cell.configure(reading) { [weak self] in self?.presentCarried(reading) }
+            return cell
         case .taskBoard(let board):
             let cell = collectionView.dequeueReusableCell(
                 withReuseIdentifier: TaskBoardCell.reuseID, for: indexPath) as! TaskBoardCell

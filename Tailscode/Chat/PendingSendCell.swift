@@ -140,8 +140,10 @@ final class PendingSendCell: UICollectionViewCell {
     }
 
     func configure(
-        _ send: PendingSend, plan: ResumePlan? = nil, delegate: PendingSendCellDelegate?
+        _ sent: PendingSend, plan: ResumePlan? = nil, delegate: PendingSendCellDelegate?
     ) {
+        var send = sent
+        send.text = CarriedText.typed(sent.text)
         self.send = send
         self.plan = plan
         self.delegate = delegate

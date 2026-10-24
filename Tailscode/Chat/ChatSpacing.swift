@@ -35,7 +35,7 @@ enum ChatSpacing {
             return brain.isOpen ? .code : .furniture
         case .activity, .subagentGroup, .timestamp, .responseStats:
             return .furniture
-        case .compaction, .note:
+        case .compaction, .note, .modelSeam, .carried:
             return .seam
         case .image, .pictures:
             return .picture
@@ -225,6 +225,8 @@ extension ProviderRetryCell: RowGapCell {}
 extension RevertBannerCell: RowGapCell {}
 extension QueuePausedCell: RowGapCell {}
 extension CompactionCell: RowGapCell {}
+extension ModelSeamCell: RowGapCell {}
+extension CarriedLineCell: RowGapCell {}
 extension TranscriptNoteCell: RowGapCell {}
 extension LinkRailCell: RowGapCell {}
 extension PictureGalleryCell: RowGapCell {}

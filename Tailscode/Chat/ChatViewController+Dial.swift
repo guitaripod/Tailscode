@@ -135,7 +135,16 @@ extension ChatViewController {
 
     @objc func presentModelPicker() {
         Theme.Haptics.tap()
-        if let demo = Self.demoPicker(onSelect: { [weak self] pick in self?.apply(pick) }) {
+        presentChooser(context: .chat) { [weak self] pick in self?.apply(pick) }
+    }
+
+    /// The one chooser, opened for what the pick will do: change this chat, or branch it from an
+    /// answer's question. A branch carries no dial, because the level in force belongs to this chat
+    /// and a pick made here never changes it.
+    func presentChooser(
+        context: ModelPickerViewController.Context, onSelect: @escaping (ModelPick) -> Void
+    ) {
+        if context == .chat, let demo = Self.demoPicker(onSelect: onSelect) {
             modelPicker = demo
             demo.onClose = { [weak self] in self?.modelPicker = nil }
             present(UINavigationController(rootViewController: demo), animated: true)
@@ -150,10 +159,8 @@ extension ChatViewController {
                 selected: viewModel.selectedModel,
                 quotas: QuotaSurface.relevantQuotas(
                     for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas()),
-                dial: pickerDial()
-            ) { [weak self] pick in
-                self?.apply(pick)
-            }
+                dial: context == .chat ? pickerDial() : nil,
+                context: context, onSelect: onSelect)
         modelPicker = picker
         picker.onClose = { [weak self] in
             self?.pickerWatch?.cancel()
@@ -253,34 +260,55 @@ extension ChatViewController {
             }
             return
         }
+        let plan = CarryPlan.continuing(
+            pick: pick, title: navDisplayTitle, messages: viewModel.state.messages)
+        let words = plan.moveWords(for: pick)
         let alert = UIAlertController(
-            title: ModelFleet.moveTitle(pick), message: ModelFleet.moveBody(pick),
-            preferredStyle: .alert)
+            title: words.title, message: words.body, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         alert.addAction(
-            UIAlertAction(title: ModelFleet.moveAction, style: .default) { [weak self] _ in
-                guard let self else { return }
-                let effort: String?
-                switch pick.preset?.effort {
-                case .level(let level)?: effort = level
-                case .server?: effort = nil
-                default: effort = self.viewModel.displayedEffort
-                }
-                let directory = self.viewModel.session.directory
-                let stacked = self.navigationController?.viewControllers.first as? HomeViewController
-                let workspace = sequence(first: self as UIViewController, next: \.parent)
-                    .lazy.compactMap { $0 as? WorkspaceSplitViewController }.first
-                Theme.Haptics.success()
-                if stacked == nil, let workspace {
-                    workspace.showHome()
-                } else {
-                    self.navigationController?.popToRootViewController(animated: true)
-                }
-                guard let home = stacked ?? workspace?.home else { return ModelFleet.adopt(pick) }
-                home.aimCompose(
-                    at: pick.profileID, carrying: pick, effort: effort, directory: directory)
+            UIAlertAction(title: words.action, style: .default) { [weak self] _ in
+                self?.moveToHome(pick, carrying: plan)
             })
         present(alert, animated: true)
+    }
+
+    /// Leaves this chat for the Home composer aimed at the pick, with what the pick carries: the
+    /// level and folder this chat was in, and the brief and the draft of the conversation left
+    /// behind.
+    private func moveToHome(_ pick: ModelPick, carrying plan: CarryPlan) {
+        let effort: String?
+        switch pick.preset?.effort {
+        case .level(let level)?: effort = level
+        case .server?: effort = nil
+        default: effort = viewModel.displayedEffort
+        }
+        let directory = viewModel.session.directory
+        let stacked = navigationController?.viewControllers.first as? HomeViewController
+        let workspace = sequence(first: self as UIViewController, next: \.parent)
+            .lazy.compactMap { $0 as? WorkspaceSplitViewController }.first
+        Theme.Haptics.success()
+        if stacked == nil, let workspace {
+            workspace.showHome()
+        } else {
+            navigationController?.popToRootViewController(animated: true)
+        }
+        guard let home = stacked ?? workspace?.home else { return ModelFleet.adopt(pick) }
+        home.aimCompose(
+            at: pick.profileID, carrying: pick, effort: effort, directory: directory, carry: plan)
+    }
+
+    /// An answer asked again on another model: the chooser says what a pick does, so a pick needs
+    /// no alert. The new chat starts from what came before the question, with the question waiting
+    /// unsent in the Home composer.
+    func tryWithAnotherModel(answerID: String) {
+        presentChooser(context: .branch) { [weak self] pick in
+            guard let self else { return }
+            let plan = CarryPlan.branching(
+                pick: pick, title: self.navDisplayTitle, messages: self.viewModel.state.messages,
+                answerID: answerID)
+            self.moveToHome(pick, carrying: plan)
+        }
     }
 
     /// Diagnostic: fires when a still-pending bubble (queued item or local echo)
