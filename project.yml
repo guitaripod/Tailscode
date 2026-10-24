@@ -90,27 +90,6 @@ targetTemplates:
           - midgar-07
           - midgar-08
           - midgar-09
-          - midgar-10
-          - midgar-11
-          - midgar-12
-          - midgar-13
-          - midgar-14
-          - midgar-15
-          - midgar-16
-          - midgar-17
-          - midgar-18
-          - midgar-19
-          - midgar-20
-          - midgar-21
-          - midgar-22
-          - midgar-23
-          - midgar-24
-          - midgar-25
-          - midgar-26
-          - midgar-27
-          - midgar-28
-          - midgar-29
-          - midgar-30
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         NSLocalNetworkUsageDescription: Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network.
@@ -209,6 +188,15 @@ targets:
           - com.marcusziade.solarbeam
           - com.midgarcorp.flaccy
           - com.midgarcorp.flaccy.mac
+          - midgar-01
+          - midgar-02
+          - midgar-03
+          - midgar-04
+          - midgar-05
+          - midgar-06
+          - midgar-07
+          - midgar-08
+          - midgar-09
         NSSupportsLiveActivitiesFrequentUpdates: true
         UIApplicationShortcutItems:
           - UIApplicationShortcutItemType: com.guitaripod.tailscode.compose
