@@ -172,6 +172,9 @@ public enum ChooserContext: Sendable {
     case composer
     /// A server's own default: there is no other machine to be moved to.
     case serverDefault
+    /// A question in a conversation in hand, asked again: every pick, on this machine or another,
+    /// branches the chat from that question into a new one.
+    case branch
 }
 
 /// The level a pick of one row would run at, read on the same meter the pill wears. `level` nil

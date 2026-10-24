@@ -66,11 +66,14 @@ public struct ModelMachine: Sendable, Hashable, Identifiable {
     /// another machine, a message waiting to be sent is only re-aimed, and a server's own default
     /// has nowhere else to go.
     public func consequence(for context: ChooserContext) -> String? {
+        if context == .branch {
+            return Localized.text("A pick here branches this chat from that question on %@", title)
+        }
         guard !isCurrent else { return nil }
         switch context {
         case .chat: return Localized.text("A pick here starts a new chat on %@", title)
         case .composer: return Localized.text("A pick here aims this message at %@", title)
-        case .serverDefault: return nil
+        case .serverDefault, .branch: return nil
         }
     }
 }

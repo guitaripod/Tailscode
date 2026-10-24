@@ -104,4 +104,18 @@ public enum ModelFleet {
     }
 
     public static var moveAction: String { Localized.text("New chat there") }
+
+    /// The same sentence for a conversation that comes along: the work is carried to the machine
+    /// that answers, as a brief, and the chat it left stays where it is.
+    public static func carryTitle(_ pick: ModelPick) -> String {
+        Localized.text("Continue on %@?", pick.serverName)
+    }
+
+    public static func carryBody(_ pick: ModelPick) -> String {
+        Localized.text(
+            "%@ runs on %@. Your conversation comes with you as a short brief; this chat stays where it is.",
+            pick.modelName, pick.serverName)
+    }
+
+    public static var carryAction: String { Localized.text("Continue there") }
 }
