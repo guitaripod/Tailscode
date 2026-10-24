@@ -331,6 +331,8 @@ final class TranscriptViewController: NSViewController {
         hoverBar.message = { [weak self] id in self?.lastState?.messages.first { $0.id == id } }
         hoverBar.offersUndo = { [weak self] id in self?.context.offersUndo?(id) ?? false }
         hoverBar.undo = { [weak self] id in self?.context.confirmUndo?(id) }
+        hoverBar.offersBranch = { [weak self] id in self?.composer.offersBranch(from: id) ?? false }
+        hoverBar.branch = { [weak self] id in self?.composer.openBranchChooser(from: id) }
         hoverBar.toast = { [weak self] text in self?.onToast?(text) }
         context.copyAnswer = { [weak self] rowKey in self?.copyAnswer(ofRowKey: rowKey) }
         hoverBar.locateCode = { [weak self] point in self?.codeTarget(at: point) }

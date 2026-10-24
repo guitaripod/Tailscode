@@ -43,6 +43,7 @@ extension ComposerView {
             self.attachments.removeAll { $0.id == id }
             self.syncChips()
         }
+        chips.onClearCarry = { [weak self] in self?.carry = nil }
         completion.onPick = { [weak self] command in
             self?.accept(command)
         }

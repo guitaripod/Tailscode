@@ -56,7 +56,7 @@ extension ComposerView {
     }
 
     func syncChips() {
-        chips.set(attachments)
+        chips.set(attachments, carry: carry)
         onAttachmentsChanged?()
     }
 

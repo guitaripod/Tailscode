@@ -104,6 +104,12 @@ struct TranscriptRow: Hashable {
         case designBoard(DesignSighting)
         case taskBoard(TaskBoard)
         case compaction(Compaction)
+        /// The answering model changed here: one flat line before the answer that the new model
+        /// wrote, so the change is read where it happened and not inferred from a footer.
+        case modelSeam(ModelSwitch)
+        /// The first row of a chat that was carried from another: where it came from, opening the
+        /// brief it rode in on.
+        case carried(CarryReading)
         case answerless(AnswerlessTurn)
         /// A turn the server ended with an error: the card stands after the turn's own rows, quoting
         /// what the server said and offering the same words again.
@@ -149,7 +155,7 @@ struct TranscriptRow: Hashable {
     /// them — which is the block that rises to the top when a prompt goes.
     var isPromptBlock: Bool {
         switch kind {
-        case .userText, .pendingSend: return true
+        case .userText, .pendingSend, .carried: return true
         case .file(_, let mine, _): return mine
         default: return false
         }
@@ -213,6 +219,10 @@ struct TranscriptRow: Hashable {
             return board.items.map(\.subject).joined(separator: " ")
         case .compaction(let compaction):
             return compaction.summary ?? ""
+        case .modelSeam(let change):
+            return change.line
+        case .carried(let reading):
+            return reading.line
         case .designBoard(let sighting):
             let reading = DesignCardReading.make(sighting: sighting, board: nil)
             return "\(reading.title) \(reading.detail)"

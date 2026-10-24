@@ -61,7 +61,9 @@ extension TranscriptRow {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !stripped.isEmpty else { continue }
                 if message.role == .user {
-                    let (interrupted, remainder) = Self.strippedInterruption(stripped)
+                    let words = carriedWords(
+                        of: stripped, key: key, isFirst: prompt == nil, into: &rows)
+                    let (interrupted, remainder) = Self.strippedInterruption(words)
                     if interrupted {
                         rows.append(TranscriptRow(key: "\(key):int", kind: .interruption))
                     }
@@ -138,6 +140,17 @@ extension TranscriptRow {
             rows.append(TranscriptRow(key: "\(message.id):stats", kind: .responseStats(stats)))
         }
         return (rows, trailingRail)
+    }
+
+    /// What the person typed in the first message of a chat that was carried from another, with
+    /// the line saying so put into `rows` ahead of it. A brief rides at the end of that message
+    /// (`CarryMark`), and what reads, copies and searches as the message is the words before it.
+    private static func carriedWords(
+        of text: String, key: String, isFirst: Bool, into rows: inout [TranscriptRow]
+    ) -> String {
+        guard isFirst, let carried = CarryMark.split(text) else { return text }
+        rows.append(TranscriptRow(key: "\(key):carried", kind: .carried(carried.reading)))
+        return carried.rest
     }
 
     /// A message's agents behind one row when there are more of them than the limit, standing where

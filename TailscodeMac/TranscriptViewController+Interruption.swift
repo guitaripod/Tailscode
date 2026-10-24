@@ -113,10 +113,9 @@ extension TranscriptViewController {
         revertOperation = nil
         if let fresh {
             revertComposerFill = nil
-            if let prompt = RevertReading.prompt(in: fresh.revertedMessages),
-                composer.fillIfEmpty(prompt)
-            {
-                revertComposerFill = prompt
+            if let prompt = RevertReading.prompt(in: fresh.revertedMessages) {
+                let words = CarryMark.split(prompt)?.rest ?? prompt
+                if composer.fillIfEmpty(words) { revertComposerFill = words }
             }
             applyFreshState(fresh)
         } else {

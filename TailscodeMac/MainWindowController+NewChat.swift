@@ -8,7 +8,11 @@ extension MainWindowController {
     /// one up — the thing that fixes the actual problem — rather than an empty picker.
     /// - Parameter profile: the server the sheet opens on, when the question has already been
     ///   answered somewhere else — a pane's chooser — so it is never asked twice.
-    func presentNewChat(on profile: ConnectionProfile? = nil, browsing: Bool = false) {
+    /// - Parameter carrying: the conversation this chat continues, if it does: its brief waits in
+    ///   the new chat's composer and its draft, when it has one, in the box.
+    func presentNewChat(
+        on profile: ConnectionProfile? = nil, browsing: Bool = false, carrying: CarryPlan? = nil
+    ) {
         let profiles = ServerDirectory.shared.profiles
         guard !profiles.isEmpty else {
             FirstRunWindow.present(way: nil)
@@ -24,7 +28,7 @@ extension MainWindowController {
                 localAddresses: locals, preferredServer: profile?.id, browsing: browsing,
                 onFix: { [weak self] fix, done in self?.applyNewChatFix(fix, done: done) }
             ) { [weak self] profile, directory, done in
-                self?.createChat(on: profile, directory: directory, done: done)
+                self?.createChat(on: profile, directory: directory, carrying: carrying, done: done)
             }
         }
     }
@@ -34,7 +38,7 @@ extension MainWindowController {
     /// focused; the full list refresh reconciles behind it, because a person who just started a
     /// chat is looking at the prompt box, not at the list.
     func createChat(
-        on profile: ConnectionProfile, directory: String?,
+        on profile: ConnectionProfile, directory: String?, carrying: CarryPlan? = nil,
         done: @escaping @MainActor (NewChatFailure?) -> Void = { _ in }
     ) {
         guard let backend = ServerDirectory.shared.backend(for: profile) else {
@@ -57,10 +61,20 @@ extension MainWindowController {
                 profileID: profile.id, profileName: profile.name,
                 host: profile.baseURL.host ?? profile.name,
                 backendType: profile.backend, session: session)
+            if let carrying { Self.hand(carrying, to: entry) }
             self.sidebar.noteCreated(entry)
             self.transcript.focusComposer()
             await self.sidebar.refresh()
         }
+    }
+
+    /// What a carried chat starts with, put where its composer will look when the chat opens: the
+    /// brief on the shelf and the question, for a retry, as the draft the box restores.
+    private static func hand(_ plan: CarryPlan, to entry: SessionEntry) {
+        CarryShelf.hold(plan.brief, profileID: entry.profileID, sessionID: entry.session.id)
+        guard let draft = plan.draft else { return }
+        DraftStore.record(
+            draft, for: .chat(profileID: entry.profileID, sessionID: entry.session.id))
     }
 
     static func newChatServer(_ profile: ConnectionProfile) -> NewChatServer {

@@ -110,12 +110,12 @@ extension TranscriptViewController {
         }
         composer.onToast = { [weak self] text in self?.onToast?(text) }
         composer.onDialToast = { [weak self] text in self?.onDialToast?(text) }
-        composer.onMoveToServer = { [weak self] profileID in
+        composer.onMoveToServer = { [weak self] profileID, plan in
             guard let self,
                 let host = self.view.window?.windowController as? MainWindowController,
                 let profile = ServerDirectory.shared.profiles.first(where: { $0.id == profileID })
             else { return }
-            host.presentNewChat(on: profile)
+            host.presentNewChat(on: profile, carrying: plan)
         }
         composer.onAttachmentsChanged = { [weak self] in self?.updateStatus() }
         composer.onModelChanged = { [weak self] in self?.updateStatus() }
@@ -176,7 +176,8 @@ extension TranscriptViewController {
     /// waits on the person marked on its node, so the brain can say it. The builder owns the memo
     /// and the brain's reading of the turns, and this is the one place the state is handed to it.
     func buildRows(_ messages: [ChatMessage], state: ConversationState) -> [TranscriptRow] {
-        rowBuilder.rows(
+        rowBuilder.catalog = composer.catalog
+        return rowBuilder.rows(
             for: messages, turnOpen: state.status == .running,
             awaiting: brains.isActive ? BrainStore.awaiting(for: state) : .none)
     }

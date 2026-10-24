@@ -38,6 +38,17 @@ final class TranscriptRowBuilder {
 
     private var cache: [String: Entry] = [:]
     private var prefix: Prefix?
+    private var seamTracker = ModelSeamTracker()
+    private var seams: [String: ModelSwitch] = [:]
+
+    /// The model catalog the seams' words are read against. A catalog that grows or shrinks can
+    /// rename a model, so the held prefix, which carries the seams it was laid out with, is let
+    /// go; the tracker starts over on its own.
+    var catalog: [ModelInfo] = [] {
+        didSet {
+            if catalog.count != oldValue.count { prefix = nil }
+        }
+    }
     private var lastMessages: [ChatMessage] = []
 
     /// Whether this is the array the last rebuild was handed, not one equal to it: an array that
@@ -96,6 +107,7 @@ final class TranscriptRowBuilder {
             prefix = nil
         }
         let brains = brains.flatMap { $0.isActive ? $0 : nil }
+        seams = seamTracker.update(messages, catalog: catalog)
         let same = isLastMessages(messages)
         lastMessages = messages
         let verified = prefixHolds(messages, turnOpen: turnOpen, same: same)
@@ -152,7 +164,16 @@ final class TranscriptRowBuilder {
         } else {
             shaped = nil
         }
+        if !rows.isEmpty, let change = seams[message.id] {
+            rows.insert(Self.seamRow(change, before: message), at: 0)
+        }
         return (rows, (message, prompt?.id, sealed, folded, trailing, shaped))
+    }
+
+    /// The line that stands ahead of the answer a different model wrote. It is keyed by that
+    /// answer, so it keeps its view for as long as the answer does.
+    private static func seamRow(_ change: ModelSwitch, before message: ChatMessage) -> TranscriptRow {
+        TranscriptRow(key: "\(message.id):modelseam", kind: .modelSeam(change))
     }
 
     /// What the brain says about the messages above the newest turn, as one number: the store's
@@ -289,8 +310,12 @@ final class TranscriptRowBuilder {
 
     /// The conversation laid out the plain way, with no memo and no prefix, for the selftest that
     /// proves the tail rebuild gives exactly these rows.
-    static func referenceRows(for messages: [ChatMessage], turnOpen: Bool) -> [TranscriptRow] {
+    static func referenceRows(
+        for messages: [ChatMessage], turnOpen: Bool, catalog: [ModelInfo] = []
+    ) -> [TranscriptRow] {
         var all: [TranscriptRow] = []
+        var tracker = ModelSeamTracker()
+        let seams = tracker.update(messages, catalog: catalog)
         let writing = messages.last?.id
         var prompt: ChatMessage?
         for message in messages {
@@ -308,6 +333,9 @@ final class TranscriptRowBuilder {
             guard !rows.isEmpty else { continue }
             if message.role == .user, !all.isEmpty {
                 all.append(TranscriptRow(key: "break:\(message.id)", kind: .turnBreak))
+            }
+            if let change = seams[message.id] {
+                rows.insert(seamRow(change, before: message), at: 0)
             }
             all += rows
         }

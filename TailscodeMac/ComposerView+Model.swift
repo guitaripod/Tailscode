@@ -1,5 +1,6 @@
 import AppKit
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 
 extension ComposerView {
@@ -162,6 +163,38 @@ extension ComposerView {
         }
     }
 
+    /// Whether an answer can be asked again of another model: it has a question of the person's
+    /// own before it, which is the thing a branch puts back in the box.
+    func offersBranch(from answerID: String) -> Bool {
+        guard let messages = lastState?.messages, entry != nil, window != nil else { return false }
+        return ConversationBrief.question(before: answerID, in: messages) != nil
+    }
+
+    /// "Try with another model…": the chooser over the whole fleet, every machine saying that a
+    /// pick branches this chat from that question. Any pick, here or on another machine, opens a
+    /// new chat there that carries what came before the question and holds the question, unsent.
+    func openBranchChooser(from answerID: String) {
+        guard let host = window, offersBranch(from: answerID) else { return }
+        modelSheet = ModelChooserSheet.present(
+            on: host, sources: modelSources(), selected: chosenModel,
+            quotas: quotasForModels?() ?? [], context: .branch
+        ) { [weak self] pick in
+            self?.modelSheet = nil
+            self?.branch(from: answerID, pick: pick)
+        }
+    }
+
+    private func branch(from answerID: String, pick: ModelPick) {
+        guard let entry, let messages = lastState?.messages else { return }
+        let plan = CarryPlan.branching(
+            pick: pick, title: entry.session.title, messages: messages, answerID: answerID)
+        MidgarLog.info(
+            "branch from \(answerID) to \(pick.profileID), carrying \(plan.brief != nil)",
+            category: .chat)
+        ModelFleet.adopt(pick)
+        onMoveToServer?(pick.profileID, plan)
+    }
+
     /// A pick's whole answer: this chat changes model, or the work moves to the machine that runs
     /// it — remembered there first (`adopt`, with the level the dial showed for it), then opened
     /// as a new chat that arrives already on it. `notice` is the dial's own sentence for a level
@@ -175,15 +208,18 @@ extension ComposerView {
                 modelName: pick.modelName.isEmpty ? nil : pick.modelName)
             return
         }
+        let plan = CarryPlan.continuing(
+            pick: pick, title: entry?.session.title ?? "", messages: lastState?.messages ?? [])
+        let words = plan.moveWords(for: pick)
         MacDialogs.confirm(
-            on: window, title: ModelFleet.moveTitle(pick), body: ModelFleet.moveBody(pick),
-            confirmLabel: ModelFleet.moveAction, destructive: false
+            on: window, title: words.title, body: words.body, confirmLabel: words.action,
+            destructive: false
         ) { [weak self] in
             ModelFleet.adopt(pick)
             if case .set(let level) = effort {
                 EffortPreferenceStore.recordPick(level, sessionKey: nil, contextID: pick.profileID)
             }
-            self?.onMoveToServer?(pick.profileID)
+            self?.onMoveToServer?(pick.profileID, plan.brief == nil ? nil : plan)
         }
     }
 

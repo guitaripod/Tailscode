@@ -55,6 +55,10 @@ extension TranscriptRow {
             return TaskBoardView.make(board)
         case .compaction(let compaction):
             return Self.seam(compaction, key: key, context: context)
+        case .modelSeam(let change):
+            return Self.modelSeam(change)
+        case .carried(let reading):
+            return Self.carried(reading, context: context)
         case .answerless(let turn):
             return Self.answerless(turn, context: context)
         case .failedTurn(let turn):

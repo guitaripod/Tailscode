@@ -21,6 +21,7 @@ final class ModelChooserSheet: NSObject {
 
     private let sheet: NSWindow
     private var chooser: ModelChooser
+    private let context: ChooserContext
     private let onPick: @MainActor (ModelPick) -> Void
     private var quotas: [UsageQuota]
     private let summary = FittedWrapLabel()
@@ -62,11 +63,12 @@ final class ModelChooserSheet: NSObject {
     @discardableResult
     static func present(
         on host: NSWindow, sources: [ModelSource], selected: ModelSelection?,
-        quotas: [UsageQuota] = [],
+        quotas: [UsageQuota] = [], context: ChooserContext = .chat,
         onPick: @escaping @MainActor (ModelPick) -> Void
     ) -> ModelChooserSheet {
         let controller = ModelChooserSheet(
-            sources: sources, selected: selected, quotas: quotas, onPick: onPick)
+            sources: sources, selected: selected, quotas: quotas, context: context,
+            onPick: onPick)
         active.append(controller)
         host.beginSheet(controller.sheet) { _ in
             controller.teardown()
@@ -79,9 +81,10 @@ final class ModelChooserSheet: NSObject {
 
     private init(
         sources: [ModelSource], selected: ModelSelection?, quotas: [UsageQuota],
-        onPick: @escaping @MainActor (ModelPick) -> Void
+        context: ChooserContext, onPick: @escaping @MainActor (ModelPick) -> Void
     ) {
         self.quotas = quotas
+        self.context = context
         chooser = ModelChooser(sources: sources, selected: selected, quotas: quotas)
         self.onPick = onPick
         sheet = NSWindow(
@@ -452,7 +455,7 @@ final class ModelChooserSheet: NSObject {
         summary.toolTip = chooser.summary
         empty.stringValue = chooser.emptyResult ?? ""
         empty.isHidden = chooser.emptyResult == nil
-        let line = chooser.shownMachine?.consequence
+        let line = chooser.shownMachine?.consequence(for: context)
         consequence.stringValue = line ?? ""
         consequence.isHidden = line == nil
         if let action = chooser.foldAction {

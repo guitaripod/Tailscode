@@ -37,6 +37,8 @@ final class MessageHoverBar: NSResponder {
     var message: ((String) -> ChatMessage?)?
     var offersUndo: ((String) -> Bool)?
     var undo: ((String) -> Void)?
+    var offersBranch: ((String) -> Bool)?
+    var branch: ((String) -> Void)?
     var toast: ((String) -> Void)?
 
     private weak var host: NSView?
@@ -55,6 +57,7 @@ final class MessageHoverBar: NSResponder {
     private struct VerbSet: Equatable {
         var copy: Bool
         var undo: Bool
+        var branch: Bool
     }
     private var hideWork: DispatchWorkItem?
     private let codeTag = BarCapsule()
@@ -154,7 +157,9 @@ final class MessageHoverBar: NSResponder {
         shown = target
         let offer = VerbSet(
             copy: !Self.words(of: message).isEmpty,
-            undo: target.isPrompt && offersUndo?(target.messageID) == true)
+            undo: target.isPrompt && offersUndo?(target.messageID) == true,
+            branch: !target.isPrompt && !message.isStreaming
+                && offersBranch?(target.messageID) == true)
         if !sameMessage || offer != offered {
             offered = offer
             stack.setViews(verbs(for: target, offer: offer), in: .leading)
@@ -222,10 +227,24 @@ final class MessageHoverBar: NSResponder {
                     [weak self] in self?.undo?(id)
                 })
         }
+        if offer.branch {
+            views.append(
+                Self.button(symbol: "arrow.triangle.branch", tip: Self.branchTitle) {
+                    [weak self] in self?.branch?(id)
+                })
+        }
         return views
     }
 
-    static func words(of message: ChatMessage) -> String { MessageHover.words(of: message) }
+    static var branchTitle: String { Localized.text("Try with another model…") }
+
+    /// A message's words as a person would copy them. The brief a carried chat's first message
+    /// rides with is not theirs to paste: it is drawn as its own line and read from there.
+    static func words(of message: ChatMessage) -> String {
+        let words = MessageHover.words(of: message)
+        guard message.role == .user, let carried = CarryMark.split(words) else { return words }
+        return carried.rest
+    }
 
     static func stamp(_ date: Date, now: Date = Date()) -> String {
         MessageHover.stamp(date, now: now)

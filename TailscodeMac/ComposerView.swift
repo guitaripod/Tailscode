@@ -30,7 +30,7 @@ final class ComposerView: NSView {
     /// The attachments-in-waiting changed — the status band counts them.
     var onAttachmentsChanged: (() -> Void)?
     /// A model picked on another machine, move confirmed: the hub opens a new chat there.
-    var onMoveToServer: ((String) -> Void)?
+    var onMoveToServer: ((String, CarryPlan?) -> Void)?
 
     let completion = CompletionPopover()
 
@@ -64,6 +64,18 @@ final class ComposerView: NSView {
     var lastRecordedDraft = ""
     var attachments: [PendingAttachment] = []
     var pastedImageCount = 0
+    /// The conversation this chat was carried from, waiting to ride in its first message. It is
+    /// the chat's own — kept on the shelf by the chat, so a switch to another and back finds it —
+    /// and goes when the message is sent or the person says to start fresh.
+    var carry: ConversationBrief? {
+        didSet {
+            guard carry != oldValue else { return }
+            if let entry {
+                CarryShelf.hold(carry, profileID: entry.profileID, sessionID: entry.session.id)
+            }
+            chips.set(attachments, carry: carry)
+        }
+    }
     var models: [ModelInfo] = []
     /// The server's catalog as this composer last heard it, for surfaces that read a model's
     /// limits rather than pick one.
@@ -195,6 +207,7 @@ final class ComposerView: NSView {
         running = false
         attachments = []
         pastedImageCount = 0
+        carry = CarryShelf.brief(profileID: entry.profileID, sessionID: entry.session.id)
         syncChips()
         let key = Self.preferenceKey(entry)
         chosenModel = ModelPreferenceStore.initialModel(
@@ -265,14 +278,16 @@ final class ComposerView: NSView {
         updateVimUI()
         dismissCompletion()
         if handleSlashCommand(text) { return }
+        let words = carry?.wrapped(with: text) ?? text
         attachments = []
+        carry = nil
         syncChips()
         let effort = ModelEffort.surviving(chosenEffort, options: effortOptions())
         if Ultracode.invokes(text) || effort == Ultracode.effortLevel {
             ultracodeInFlight = true
         }
         refreshAura()
-        onSubmitPrompt?(text, chosenModel, effort, outgoing.map(\.prompt))
+        onSubmitPrompt?(words, chosenModel, effort, outgoing.map(\.prompt))
     }
 
     /// What is in the box, for a caller deciding whether a key means something else.
@@ -452,5 +467,25 @@ final class ComposerView: NSView {
             return true
         }
         return false
+    }
+}
+
+/// The conversations new chats were carried from, held by the chat they will ride in. A chat is
+/// opened in a pane that shows another chat's composer a moment later and again on every switch,
+/// so the brief waits here rather than on a composer, and leaves when it is sent or put aside.
+@MainActor
+enum CarryShelf {
+    private static var held: [String: ConversationBrief] = [:]
+
+    private static func key(_ profileID: String, _ sessionID: String) -> String {
+        "\(profileID)/\(sessionID)"
+    }
+
+    static func hold(_ brief: ConversationBrief?, profileID: String, sessionID: String) {
+        held[key(profileID, sessionID)] = brief
+    }
+
+    static func brief(profileID: String, sessionID: String) -> ConversationBrief? {
+        held[key(profileID, sessionID)]
     }
 }

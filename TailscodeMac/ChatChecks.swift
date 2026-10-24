@@ -127,6 +127,7 @@ enum ChatChecks {
         try replacedRows(expect)
         try chrome(expect)
         try railViews(expect)
+        try carrying(expect)
         return checks
     }
 

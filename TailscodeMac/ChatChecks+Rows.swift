@@ -24,6 +24,9 @@ extension ChatChecks {
     private static func sampleKinds() -> [(String, TranscriptRow.Kind, ChatRowSpacing)] {
         let call = ToolCall(id: "t", name: "Read", status: .completed)
         let picture = FileReference(path: "/a.png", mime: "image/png", filename: "a.png")
+        let seam = ModelSwitch(
+            to: "Qwen", from: "DeepSeek", selection: ModelSelection(providerID: "ollama", modelID: "qwen3"))
+        let carried = CarryReading(source: "Chat", kept: 1, total: 1, pictures: 0, brief: "x")
         let failure = FailedTurnReading.read(
             ChatMessage(
                 id: "a", role: .assistant, agentType: .claudeCode, parts: [],
@@ -43,6 +46,8 @@ extension ChatChecks {
             ("agent group", .subagentGroup(SubagentFanout(id: "g", members: [])), .row(.furniture)),
             ("workflow", .workflow(call), .row(.code)),
             ("failed turn", .failedTurn(failure), .row(.code)),
+            ("model seam", .modelSeam(seam), .row(.seam)),
+            ("carried line", .carried(carried), .row(.seam)),
             ("turn break", .turnBreak, .turnBreak),
         ]
     }

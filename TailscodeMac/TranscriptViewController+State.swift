@@ -113,10 +113,17 @@ extension TranscriptViewController {
         }
         for send in pending.sends {
             let plan = resume.plan(for: send.id)
+            var shown = send
+            if let carried = CarryMark.split(send.text) {
+                shown.text = carried.rest
+                rows.append(
+                    TranscriptRow(
+                        key: "echo:\(send.id.uuidString):carried", kind: .carried(carried.reading)))
+            }
             rows.append(
                 TranscriptRow(
                     key: "echo:\(send.id.uuidString)" + (plan.map { ":wait\($0.attempt)" } ?? ""),
-                    kind: .pendingSend(send, plan, now: now)))
+                    kind: .pendingSend(shown, plan, now: now)))
         }
         armCaptionWake(now: now)
         return rows
