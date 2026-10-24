@@ -128,6 +128,7 @@ enum ChatChecks {
         try chrome(expect)
         try railViews(expect)
         try carrying(expect)
+        try party(expect)
         return checks
     }
 

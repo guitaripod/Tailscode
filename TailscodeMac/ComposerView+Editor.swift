@@ -51,7 +51,7 @@ extension ComposerView {
     }
 
     func wirePills() {
-        pills.onDial = { [weak self] in self?.openModelDial() }
+        pills.onDial = { [weak self] in self?.pressModelPill() }
         pills.onDialStep = { [weak self] delta in self?.stepEffort(by: delta) }
         pills.commandRows = { [weak self] in self?.commandMenuRows() ?? [] }
         pills.attachRows = { [weak self] in self?.attachMenuRows() ?? [] }

@@ -26,7 +26,7 @@ final class ModelChooserSheet: NSObject {
     private var quotas: [UsageQuota]
     private let summary = FittedWrapLabel()
     private let field = NSSearchField()
-    private let table = NSTableView()
+    private let table = ModelChooserTable()
     private let scroll = NSScrollView()
     private let empty = FittedWrapLabel()
     private let fold = NSButton()
@@ -36,6 +36,10 @@ final class ModelChooserSheet: NSObject {
     private let hint = FittedWrapLabel()
     private var entries: [Entry] = []
     private var monitor: Any?
+    private let onAddToParty: (@MainActor (ModelPick) -> String?)?
+    /// Told once the sheet has gone, however it went, for a caller that has something to open in
+    /// the sheet's place and cannot while it is still sliding away.
+    var onEnded: (@MainActor () -> Void)?
 
     /// Every server the app knows, as the one list a chooser is built from — this conversation's
     /// own machine first. The pattern is Linux's chat pane's: catalogs come from the fleet's own
@@ -64,15 +68,17 @@ final class ModelChooserSheet: NSObject {
     static func present(
         on host: NSWindow, sources: [ModelSource], selected: ModelSelection?,
         quotas: [UsageQuota] = [], context: ChooserContext = .chat,
+        onAddToParty: (@MainActor (ModelPick) -> String?)? = nil,
         onPick: @escaping @MainActor (ModelPick) -> Void
     ) -> ModelChooserSheet {
         let controller = ModelChooserSheet(
             sources: sources, selected: selected, quotas: quotas, context: context,
-            onPick: onPick)
+            onAddToParty: onAddToParty, onPick: onPick)
         active.append(controller)
         host.beginSheet(controller.sheet) { _ in
             controller.teardown()
             active.removeAll { $0 === controller }
+            controller.onEnded?()
         }
         controller.sheet.makeFirstResponder(controller.field)
         controller.revealCursor()
@@ -81,10 +87,12 @@ final class ModelChooserSheet: NSObject {
 
     private init(
         sources: [ModelSource], selected: ModelSelection?, quotas: [UsageQuota],
-        context: ChooserContext, onPick: @escaping @MainActor (ModelPick) -> Void
+        context: ChooserContext, onAddToParty: (@MainActor (ModelPick) -> String?)?,
+        onPick: @escaping @MainActor (ModelPick) -> Void
     ) {
         self.quotas = quotas
         self.context = context
+        self.onAddToParty = onAddToParty
         chooser = ModelChooser(sources: sources, selected: selected, quotas: quotas)
         self.onPick = onPick
         sheet = NSWindow(
@@ -144,6 +152,7 @@ final class ModelChooserSheet: NSObject {
         table.delegate = self
         table.target = self
         table.action = #selector(clicked)
+        table.menuForRow = { [weak self] row in self?.partyMenu(entry: row) }
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
@@ -228,6 +237,11 @@ final class ModelChooserSheet: NSObject {
             height: min(max(size.height, smallest.height), max(room.height - 80, smallest.height)))
     }
 
+    /// Closes the sheet without a pick.
+    func dismiss() {
+        sheet.sheetParent?.endSheet(sheet)
+    }
+
     /// A catalog that arrived while the sheet is open: the list, the summary and the machine strip
     /// are re-answered from it, and what the reader was doing — the query, the tab — survives the
     /// answer. A server that comes back from a restart reaches the open sheet this way.
@@ -245,7 +259,8 @@ final class ModelChooserSheet: NSObject {
         revealCursor()
     }
 
-    /// ⌃→ / ⌃← open and close a folded row, and ⌃1–9 take a machine's tab. AppKit hands ⌃N/⌃P
+    /// ⌃→ / ⌃← open and close a folded row, and ⌃1–9 take a machine's tab. ⌘P puts the model under
+    /// the cursor in the party. AppKit hands ⌃N/⌃P
     /// to the field as `moveDown:`/`moveUp:` already, but the arrows and the digits with a
     /// modifier never reach `doCommandBy`. ⌘S stars whatever row the cursor is on — a chord,
     /// because a star is a decision made from the keyboard while the hand is already there.
@@ -258,6 +273,12 @@ final class ModelChooserSheet: NSObject {
                 guard let selection = self.chooser.focused?.selection else { return event }
                 self.chooser.togglePin(selection)
                 return self.refreshed()
+            }
+            if event.modifierFlags.contains(.command),
+                event.charactersIgnoringModifiers?.lowercased() == "p"
+            {
+                guard let row = self.chooser.focused, self.addToParty(row) else { return event }
+                return nil
             }
             if event.modifierFlags.contains(.option), !event.modifierFlags.contains(.control) {
                 guard let digit = self.digit(of: event), self.handled(.door(digit == 0 ? nil : digit - 1))
@@ -456,6 +477,7 @@ final class ModelChooserSheet: NSObject {
         empty.stringValue = chooser.emptyResult ?? ""
         empty.isHidden = chooser.emptyResult == nil
         let line = chooser.shownMachine?.consequence(for: context)
+        consequence.textColor = MacTheme.Color.warning
         consequence.stringValue = line ?? ""
         consequence.isHidden = line == nil
         if let action = chooser.foldAction {
@@ -517,6 +539,43 @@ final class ModelChooserSheet: NSObject {
         let handler = onPick
         sheet.sheetParent?.endSheet(sheet)
         handler(row.pick)
+    }
+
+    /// Puts a row's model in the party and says where it went, in the line the sheet keeps for
+    /// what a pick will do. A row that is not a model — the server's own choice — has nothing to
+    /// put there.
+    @discardableResult
+    private func addToParty(_ row: ModelChooserRow) -> Bool {
+        guard let onAddToParty, row.selection != nil else { return false }
+        if let said = onAddToParty(row.pick) {
+            consequence.stringValue = said
+            consequence.textColor = MacTheme.Color.success
+            consequence.isHidden = false
+        }
+        return true
+    }
+
+    private func partyMenu(entry index: Int) -> NSMenu? {
+        guard onAddToParty != nil, entries.indices.contains(index),
+            case .row(let row, let cursor) = entries[index], row.selection != nil
+        else { return nil }
+        chooser.focus(cursor)
+        syncSelection()
+        let menu = NSMenu()
+        let item = NSMenuItem(
+            title: Localized.text("Add to party"), action: #selector(addToPartyFromMenu(_:)),
+            keyEquivalent: "p")
+        item.keyEquivalentModifierMask = .command
+        item.target = self
+        item.tag = index
+        menu.addItem(item)
+        return menu
+    }
+
+    @objc private func addToPartyFromMenu(_ sender: NSMenuItem) {
+        guard entries.indices.contains(sender.tag), case .row(let row, _) = entries[sender.tag]
+        else { return }
+        addToParty(row)
     }
 
     private func toggle(_ index: Int) {
@@ -605,5 +664,17 @@ extension ModelChooserSheet: NSSearchFieldDelegate {
         default:
             return false
         }
+    }
+}
+
+/// The chooser's table, which asks the sheet for a row's context menu rather than keeping one of
+/// its own: a row's menu depends on what the row is.
+@MainActor
+private final class ModelChooserTable: NSTableView {
+    var menuForRow: ((Int) -> NSMenu?)?
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let row = row(at: convert(event.locationInWindow, from: nil))
+        return menuForRow?(row) ?? super.menu(for: event)
     }
 }

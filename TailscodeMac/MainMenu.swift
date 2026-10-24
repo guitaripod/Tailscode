@@ -220,6 +220,7 @@ final class MainMenu: NSObject {
 
     private func rebuildModelMenu() {
         modelMenu.removeAllItems()
+        modelMenu.addItem(item(Localized.text("Open Party"), #selector(openParty), ""))
         modelMenu.addItem(bound(Localized.text("Open Dial"), #selector(openDial), .modelDial))
         modelMenu.addItem(.separator())
         modelMenu.addItem(
@@ -233,11 +234,20 @@ final class MainMenu: NSObject {
         modelMenu.addItem(
             bound(Localized.text("Previous Pinned"), #selector(previousPreset), .presetPrevious))
         modelMenu.addItem(.separator())
-        let presets = hub.window?.isVisible == true ? hub.transcript.composer.reachablePresets() : []
-        if presets.isEmpty {
+        let visible = hub.window?.isVisible == true
+        let slots = visible ? hub.transcript.composer.partyMenuRows() : []
+        let presets = visible && slots.isEmpty ? hub.transcript.composer.reachablePresets() : []
+        if slots.isEmpty, presets.isEmpty {
             let empty = NSMenuItem(title: ComposerView.noPresetsHint, action: nil, keyEquivalent: "")
             empty.isEnabled = false
             modelMenu.addItem(empty)
+        }
+        for slot in slots {
+            let number = slot.slot + 1
+            let row = bound(slot.title, #selector(takePreset(_:)), .preset(number))
+            row.tag = number
+            row.state = slot.isCurrent ? .on : .off
+            modelMenu.addItem(row)
         }
         for (index, entry) in presets.enumerated() {
             let number = index + 1
@@ -560,6 +570,8 @@ final class MainMenu: NSObject {
     @objc private func previousPreset() { run(.presetPrevious) }
     @objc private func takePreset(_ sender: NSMenuItem) { run(.preset(sender.tag)) }
     @objc private func serverDecides() { hub.transcript.composer.setServerDecidesEffort() }
+    @objc private func openParty() { hub.transcript.composer.openModelParty() }
+
     @objc private func allModels() { hub.transcript.composer.openModelChooser() }
     @objc private func quickAsk() { hub.summonQuickAsk() }
     @objc private func findNext() { hub.transcript.stepFind(by: 1) }
@@ -721,9 +733,9 @@ extension MainMenu: NSMenuItemValidation {
             return hub.splitPanes.paneCount > 1
         }
         let modelVerbs: Set<Selector> = [
-            #selector(openDial), #selector(effortHotter), #selector(effortColder),
-            #selector(nextPreset), #selector(previousPreset), #selector(takePreset(_:)),
-            #selector(serverDecides), #selector(allModels),
+            #selector(openParty), #selector(openDial), #selector(effortHotter),
+            #selector(effortColder), #selector(nextPreset), #selector(previousPreset),
+            #selector(takePreset(_:)), #selector(serverDecides), #selector(allModels),
         ]
         if let action = menuItem.action, modelVerbs.contains(action) {
             return hub.window?.isKeyWindow == true && hub.currentEntry != nil

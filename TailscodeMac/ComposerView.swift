@@ -94,6 +94,9 @@ final class ComposerView: NSView {
     /// own pill, and the pill's action then arrives on the mouse-up — so a press meant to close
     /// the dial would reopen it, and the moment of the close is what tells the two apart.
     var dialClosedAt: Date?
+    var partyPopover: PartyPopover?
+    var makeRoomPopover: PartyPopover?
+    var partyClosedAt: Date?
     var catalogWatch: Task<Void, Never>?
 
     /// What a prompt sent outside the text box should travel with — the same model and effort

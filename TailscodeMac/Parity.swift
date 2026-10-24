@@ -114,6 +114,7 @@ enum ParityManifest {
         case .unifiedModelChooser: return .implemented("MachineChip")
         case .modelEffortDisplay: return .implemented("ModelBadge")
         case .modelCapabilitySurfacing: return .implemented("dropUnsendableAttachments")
+        case .modelParty: return .implemented("PartyPopover")
         case .modelSeam: return .implemented("FlatNoteLineView")
         case .carryChat: return .implemented("CarryShelf")
         case .responseStats: return .implemented("responseStats")

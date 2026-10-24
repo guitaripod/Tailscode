@@ -24,6 +24,7 @@ extension ComposerView {
             }
                 .map(MacTheme.Color.modelIdentity))
         if let dialPopover, dialPopover.isShown { dialPopover.update(state: dialState()) }
+        if let partyPopover, partyPopover.isShown { partyPopover.panel.reload() }
         pills.setAttachShown(abilities.attachments)
         dropUnsendableAttachments()
         updateVimUI()
@@ -156,7 +157,8 @@ extension ComposerView {
         guard let host = window else { return }
         modelSheet = ModelChooserSheet.present(
             on: host, sources: sources, selected: selected,
-            quotas: quotas ?? quotasForModels?() ?? []
+            quotas: quotas ?? quotasForModels?() ?? [],
+            onAddToParty: { [weak self] pick in self?.addToParty(pick) }
         ) { [weak self] pick in
             self?.modelSheet = nil
             self?.handleModelPick(pick)
@@ -199,7 +201,7 @@ extension ComposerView {
     /// it — remembered there first (`adopt`, with the level the dial showed for it), then opened
     /// as a new chat that arrives already on it. `notice` is the dial's own sentence for a level
     /// the pick moved, said once the pick has landed.
-    private func handleModelPick(
+    func handleModelPick(
         _ pick: ModelPick, effort: EffortAsk = .unchanged, notice: String? = nil
     ) {
         guard pick.isElsewhere else {
@@ -288,7 +290,7 @@ extension ComposerView {
         let model = activeSelection
         let effort = displayedEffort()
         return ModelPresetCycle.reachable(
-            ModelPresetStore.all(), models: models,
+            ModelParty.ring(), models: models,
             acceptsAnyModelID: backend.map { ModelFleet.acceptsAnyModelID($0.agentType) } ?? false
         ).map { preset in
             (
@@ -315,8 +317,18 @@ extension ComposerView {
         applyPreset(preset)
     }
 
-    /// ⌃⌥1 to ⌃⌥9: the nth pinned pair this machine can run.
+    /// ⌃⌥1 to ⌃⌥9. With a party, a chord names a slot and never the nth filled one, so a slot left
+    /// hollow or living on another machine says so; with none, it is the nth pinned pair this
+    /// machine can run, exactly as before the party.
     func applyPreset(number: Int) {
+        guard !ModelParty.presets().isEmpty else {
+            applyPinnedPreset(number: number)
+            return
+        }
+        takePartySlot(number - 1)
+    }
+
+    private func applyPinnedPreset(number: Int) {
         let reachable = reachablePresets()
         guard !reachable.isEmpty else {
             onDialToast?(Self.noPresetsHint)
