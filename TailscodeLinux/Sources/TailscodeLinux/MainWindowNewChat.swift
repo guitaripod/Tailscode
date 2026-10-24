@@ -106,7 +106,12 @@ extension MainWindow {
     ///   - profile: the server the dialog opens on, when the question has already been answered
     ///     somewhere else — a pane's chooser — so it is never asked twice.
     ///   - pane: where the minted chat opens; the focused pane when nothing says otherwise.
-    func presentNewChat(on profile: ConnectionProfile? = nil, into pane: ChatPane? = nil) {
+    ///   - carrying: the conversation that goes with the person to the pane's new chat, handed to
+    ///     the pane that opens it.
+    func presentNewChat(
+        on profile: ConnectionProfile? = nil, into pane: ChatPane? = nil,
+        carrying carry: CarryPlan? = nil
+    ) {
         Task { [weak self, weak pane] in
             let profiles = await ServerDirectory.shared.profiles()
             let localAddresses = Self.localAddresses
@@ -125,7 +130,8 @@ extension MainWindow {
                     }
                 ) { [weak self, weak pane] profileID, directory, done in
                     self?.createChat(
-                        onProfileID: profileID, directory: directory, into: pane, done: done)
+                        onProfileID: profileID, directory: directory, into: pane, carrying: carry,
+                        done: done)
                 }
             }
         }
@@ -149,7 +155,7 @@ extension MainWindow {
     func createChat(
         onProfileID profileID: String, directory: String?, into pane: ChatPane? = nil,
         firstMessage: QuickAskSend? = nil, attachments: [PendingAttachment] = [],
-        quickAsk: Bool = false,
+        quickAsk: Bool = false, carrying carry: CarryPlan? = nil,
         done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
     ) {
         Task { [weak self] in
@@ -161,7 +167,7 @@ extension MainWindow {
             Gtk.onMain { [weak self] in
                 self?.createChat(
                     on: profile, directory: directory, into: pane, firstMessage: firstMessage,
-                    attachments: attachments, quickAsk: quickAsk, done: done)
+                    attachments: attachments, quickAsk: quickAsk, carrying: carry, done: done)
             }
         }
     }
@@ -172,13 +178,15 @@ extension MainWindow {
     ///   ever inherit it. A failed mint queues nothing. It carries the decision the surface already
     ///   made rather than bare words, because the catalog that answers `/` belongs to the machine
     ///   the question was aimed at and is fetched long before the chat it will run in exists.
+    /// - Parameter carry: the brief and, for a retry, the question that the minted chat's composer
+    ///   holds the moment it opens, so what travels is on screen before anything is sent.
     /// - Parameter quickAsk: stamps the minted conversation with the quick ask's own aim, so the
     ///   question runs on the model it was aimed at rather than on the server's own memory, which
     ///   the aim deliberately left alone.
     func createChat(
         on profile: ConnectionProfile, directory: String?, into pane: ChatPane? = nil,
         firstMessage: QuickAskSend? = nil, attachments: [PendingAttachment] = [],
-        quickAsk: Bool = false,
+        quickAsk: Bool = false, carrying carry: CarryPlan? = nil,
         done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
     ) {
         Trace.mark("createChat begin")
@@ -223,6 +231,7 @@ extension MainWindow {
                         firstMessage, attachments: attachments, forSession: entry.session.id)
                 }
                 target.open(entry, freshlyCreated: true)
+                if let carry { target.adoptCarry(carry) }
                 /// The surface that asked is told inside the same main-loop turn that put the
                 /// conversation on screen, so what it does next — closing itself — can only
                 /// happen over a window that is already showing the answer's chat. Answering

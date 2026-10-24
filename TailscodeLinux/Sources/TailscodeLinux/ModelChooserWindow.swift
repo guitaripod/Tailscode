@@ -18,6 +18,7 @@ final class ModelChooserWindow: @unchecked Sendable {
     private let onPick: @Sendable (ModelPick) -> Void
     private let onRefresh: (@Sendable () -> Void)?
     private let selected: ModelSelection?
+    private let context: ChooserContext
     private let quotas: [UsageQuota]
     private let recents: [ModelSelection]
     private let window: UnsafeMutablePointer<GtkWidget>
@@ -53,21 +54,23 @@ final class ModelChooserWindow: @unchecked Sendable {
         sources: [ModelSource], selected: ModelSelection?,
         parent: UnsafeMutablePointer<GtkWidget>?, quotas: [UsageQuota] = [],
         recents: [ModelSelection] = RecentModelsStore.all(),
+        context: ChooserContext = .chat,
         onRefresh: (@Sendable () -> Void)? = nil,
         onPick: @escaping @Sendable (ModelPick) -> Void
     ) {
         open?.close()
         open = ModelChooserWindow(
             sources: sources, selected: selected, parent: parent, quotas: quotas,
-            recents: recents, onRefresh: onRefresh, onPick: onPick)
+            recents: recents, context: context, onRefresh: onRefresh, onPick: onPick)
     }
 
     private init(
         sources: [ModelSource], selected: ModelSelection?,
         parent: UnsafeMutablePointer<GtkWidget>?, quotas: [UsageQuota],
-        recents: [ModelSelection], onRefresh: (@Sendable () -> Void)?,
+        recents: [ModelSelection], context: ChooserContext, onRefresh: (@Sendable () -> Void)?,
         onPick: @escaping @Sendable (ModelPick) -> Void
     ) {
+        self.context = context
         chooser = ModelChooser(
             sources: sources, selected: selected, recents: recents, quotas: quotas)
         self.onPick = onPick
@@ -439,7 +442,9 @@ final class ModelChooserWindow: @unchecked Sendable {
                 widget, chip.providerID == chooser.door ? "model-scope-on" : nil,
                 from: ["model-scope-on"])
         }
-        let words = chooser.showsMachines ? chooser.shownMachine?.consequence : nil
+        let words =
+            chooser.showsMachines || context == .branch
+            ? chooser.shownMachine?.consequence(for: context) : nil
         gtk_label_set_text(op(consequence), words ?? "")
         gtk_widget_set_visible(consequence, words == nil ? 0 : 1)
     }

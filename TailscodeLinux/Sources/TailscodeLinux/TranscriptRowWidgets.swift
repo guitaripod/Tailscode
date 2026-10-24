@@ -136,6 +136,10 @@ extension TranscriptRow {
             return brain.turn.steps.map { step in
                 [step.title, step.detail, step.text].filter { !$0.isEmpty }.joined(separator: " ")
             }.joined(separator: " ")
+        case .modelSeam(let seam):
+            return seam.line
+        case .carried(let reading):
+            return reading.line
         case .turnBreak:
             return ""
         }
@@ -214,6 +218,10 @@ extension TranscriptRow {
             return Self.revertBanner(banner, restoring: restoring, context: context)
         case .brain(let row):
             return BrainView.make(row, context: context)
+        case .modelSeam(let seam):
+            return Self.modelSeam(seam)
+        case .carried(let reading):
+            return Self.carriedLine(reading, context: context)
         case .turnBreak:
             return Gtk.hairline()
         }

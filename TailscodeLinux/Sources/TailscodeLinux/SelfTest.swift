@@ -105,6 +105,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkModelSeamAndCarry()
+            report("model seam and carry: \(checks) claims hold: one seam, one carried line, the typed words only")
+        } catch {
+            report("model seam and carry: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkProviderRetryCard()
             report("provider retry: \(checks) claims hold: words, remedy and a clock that wakes once")
         } catch {

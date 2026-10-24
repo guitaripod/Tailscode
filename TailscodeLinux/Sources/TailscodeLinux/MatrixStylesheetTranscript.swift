@@ -378,6 +378,17 @@ extension MatrixStylesheet {
         .agent-live { color: \(accent); \(t(.segment)) }
         .interruption { color: \(textDim); \(t(.interruption)) }
         .seam-text { color: \(special); \(t(.seamLabel)) }
+        .model-seam-text { color: \(text); \(t(.note)) }
+        .carried-text, .carried-glyph { color: \(textDim); \(t(.note)) }
+        .carried-line, .carried-line:hover {
+            min-height: 0;
+            padding: 0 4px;
+            border: none;
+            border-radius: 4px;
+            box-shadow: none;
+            background-color: transparent;
+        }
+        .carried-line:hover { background-color: alpha(\(special), 0.12); }
         .seam-read, .seam-read:hover {
             \(t(.codeAction))
             min-height: 0;

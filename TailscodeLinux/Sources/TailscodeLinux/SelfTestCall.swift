@@ -142,6 +142,7 @@ extension SelfTest {
     static func runOnly(_ name: String) -> Never {
         do {
             switch name {
+            case "carry": report("model seam and carry: \(try checkModelSeamAndCarry()) claims hold")
             case "call": report("call: \(try checkCall()) claims hold")
             case "beta": report("beta: \(try checkBeta()) claims hold")
             case "sidebar": report("sidebar: \(try checkSidebar()) claims hold")

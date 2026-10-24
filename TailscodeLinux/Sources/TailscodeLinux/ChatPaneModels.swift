@@ -48,12 +48,13 @@ extension ChatPane {
     /// rather than again by the model change underneath.
     func take(_ pick: ModelPick, effort: EffortAsk, notice: String?) {
         if pick.isElsewhere {
-            ModelFleet.adopt(pick)
-            if case .set(let level) = effort {
-                EffortPreferenceStore.recordPick(level, sessionKey: nil, contextID: pick.profileID)
-                SettingsFile.capture()
+            continueElsewhere(pick) {
+                if case .set(let level) = effort {
+                    EffortPreferenceStore.recordPick(
+                        level, sessionKey: nil, contextID: pick.profileID)
+                    SettingsFile.capture()
+                }
             }
-            host?.startChat(on: pick.profileID, into: self)
             return
         }
         guard case .set(let level) = effort else {
@@ -287,8 +288,7 @@ extension ChatPane {
             setChosenModel(pick.selection)
             return
         }
-        ModelFleet.adopt(pick)
-        host?.startChat(on: pick.profileID, into: self)
+        continueElsewhere(pick)
     }
 
     /// A level the new model has no word for moves to the nearest cooler one it takes and is said

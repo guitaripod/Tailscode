@@ -160,6 +160,8 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     private let published = NSLock()
     private var brainSettings = BrainBuildSettings()
     private var publishedPolicy: NeuralOpenPolicy?
+    private var seamTracker = ModelSeamTracker()
+    private var catalog: [ModelInfo] = []
 
     /// How the brains are drawn this build: the style, which one the person opened and which one
     /// lists its rows. Set from the main loop whenever one changes. It has a lock of its own,
@@ -168,6 +170,21 @@ final class TranscriptRowBuilder: @unchecked Sendable {
         published.lock()
         brainSettings = settings
         published.unlock()
+    }
+
+    /// The models of the machine this pane's chat runs on, which is what turns an answer's model
+    /// id into the word a seam compares. Same small lock as the brains' settings, so the main loop
+    /// never waits for a build.
+    func setCatalog(_ models: [ModelInfo]) {
+        published.lock()
+        catalog = models
+        published.unlock()
+    }
+
+    private var currentCatalog: [ModelInfo] {
+        published.lock()
+        defer { published.unlock() }
+        return catalog
     }
 
     /// The open policy the last build made, which is what a press on a head's chevron toggles.
@@ -210,14 +227,15 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     /// that stops being written is byte-identical to the one that was.
     private static func messageRows(
         _ message: ChatMessage, after prompt: ChatMessage?, writing: String?, turnOpen: Bool,
-        look: String, modelName: (ModelSelection) -> String?
+        look: String, carried: Bool, modelName: (ModelSelection) -> String?
     ) -> [TranscriptRow] {
         let sealed = MessageSegment.isSealed(
             streaming: message.isStreaming, isNewest: message.id == writing, turnOpen: turnOpen)
+        let look = carried ? look + ":carried" : look
         if let hit = RowMemo.shared.rows(for: message, sealed: sealed, look: look) { return hit }
         let rows = TranscriptRow.rows(
             for: message, prompt: prompt, cacheMarkup: message.id != writing, sealed: sealed,
-            modelName: modelName)
+            carried: carried, modelName: modelName)
         RowMemo.shared.store(rows, for: message, sealed: sealed, look: look)
         return rows
     }
@@ -231,11 +249,15 @@ final class TranscriptRowBuilder: @unchecked Sendable {
         let look = Self.look
         let writing = messages.last?.id
         var prompt: ChatMessage?
+        var sawUser = false
         for message in messages {
             _ = messageRows(
                 message, after: prompt, writing: writing, turnOpen: turnOpen, look: look,
-                modelName: modelName)
-            if message.role == .user { prompt = message }
+                carried: message.role == .user && !sawUser, modelName: modelName)
+            if message.role == .user {
+                prompt = message
+                sawUser = true
+            }
         }
     }
 
@@ -261,6 +283,7 @@ final class TranscriptRowBuilder: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         let look = Self.look
+        let seams = seamTracker.update(messages, catalog: currentCatalog)
         var brain = brains.pass(
             messages: messages, running: turnOpen, awaiting: awaiting,
             settings: currentBrainSettings)
@@ -268,15 +291,22 @@ final class TranscriptRowBuilder: @unchecked Sendable {
         var all: [TranscriptRow] = []
         let writing = messages.last?.id
         var prompt: ChatMessage?
+        var sawUser = false
         for message in messages {
             var rows = Self.messageRows(
                 message, after: prompt, writing: writing, turnOpen: turnOpen, look: look,
-                modelName: modelName)
-            if message.role == .user { prompt = message }
+                carried: message.role == .user && !sawUser, modelName: modelName)
+            if message.role == .user {
+                prompt = message
+                sawUser = true
+            }
             if brain != nil { rows = brain!.apply(to: rows, of: message) }
             guard !rows.isEmpty else { continue }
             if message.role == .user, !all.isEmpty {
                 all.append(TranscriptRow(key: "break:\(message.id)", kind: .turnBreak))
+            }
+            if let seam = seams[message.id] {
+                all.append(TranscriptRow(key: "seam:\(message.id)", kind: .modelSeam(seam)))
             }
             all += rows
         }
@@ -384,6 +414,11 @@ struct TranscriptRow: Hashable {
         /// Everything a turn did before it answered, as one head: the line and, while it is open,
         /// the stage. The member parts' own rows are not built unless the person asked for Rows.
         case brain(BrainRow)
+        /// Where the answering model changed inside the conversation: one flat line before the
+        /// first answer the new model wrote.
+        case modelSeam(ModelSwitch)
+        /// The first row of a carried conversation: where it came from, opening the brief it rode in.
+        case carried(CarryReading)
         case turnBreak
     }
 

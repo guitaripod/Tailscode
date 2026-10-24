@@ -19,6 +19,7 @@ final class MessageHoverBar: @unchecked Sendable {
     let widget = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 2)
     var copy: ((String) -> Void)?
     var undo: ((String) -> Void)?
+    var branch: ((String) -> Void)?
 
     private let stamp = Gtk.label("", css: "hover-stamp", selectable: false)
     private lazy var copyButton = Self.verbButton(Localized.text("Copy")) { [weak self] in
@@ -29,8 +30,15 @@ final class MessageHoverBar: @unchecked Sendable {
         guard let self, let id = self.shownID else { return }
         self.undo?(id)
     }
+    private lazy var branchButton = Self.verbButton(
+        Localized.text("Try with another model…")
+    ) { [weak self] in
+        guard let self, let id = self.shownID else { return }
+        self.branch?(id)
+    }
     private(set) var shownID: String?
     private var shownVerbs: MessageHover.Verbs?
+    private var shownBranch = false
     private var visibilityToken: UInt = 0
     private var hideToken: UInt = 0
 
@@ -52,6 +60,7 @@ final class MessageHoverBar: @unchecked Sendable {
         gtk_box_append(ptr(widget), stamp)
         gtk_box_append(ptr(widget), copyButton)
         gtk_box_append(ptr(widget), undoButton)
+        gtk_box_append(ptr(widget), branchButton)
     }
 
     /// Whether a point in `overlay`'s coordinates is on the plate.
@@ -67,17 +76,20 @@ final class MessageHoverBar: @unchecked Sendable {
     /// The words and the verbs are set only when the message or what is offered for it changed, so
     /// a message being written under a resting pointer only moves the corner the plate hangs from.
     func present(
-        messageID: String, verbs: MessageHover.Verbs, right: Double, top: Double, ceiling: Double
+        messageID: String, verbs: MessageHover.Verbs, branch: Bool = false, right: Double,
+        top: Double, ceiling: Double
     ) {
         cancelHide()
-        if messageID != shownID || verbs != shownVerbs {
+        if messageID != shownID || verbs != shownVerbs || branch != shownBranch {
             gtk_label_set_text(op(stamp), verbs.stamp)
             gtk_widget_set_tooltip_text(stamp, verbs.fullDate)
             gtk_widget_set_visible(copyButton, verbs.copy ? 1 : 0)
             gtk_widget_set_visible(undoButton, verbs.undo ? 1 : 0)
+            gtk_widget_set_visible(branchButton, branch ? 1 : 0)
             gtk_widget_set_tooltip_text(undoButton, RevertReading.actionTitle)
             shownID = messageID
             shownVerbs = verbs
+            shownBranch = branch
         }
         let wasShown = gtk_widget_get_visible(widget) != 0
         gtk_widget_set_visible(widget, 1)
@@ -107,6 +119,7 @@ final class MessageHoverBar: @unchecked Sendable {
         guard shownID != nil || gtk_widget_get_visible(widget) != 0 else { return }
         shownID = nil
         shownVerbs = nil
+        shownBranch = false
         gtk_widget_set_can_target(widget, 0)
         gtk_widget_remove_css_class(widget, "hover-bar-on")
         visibilityToken &+= 1

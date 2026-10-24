@@ -240,9 +240,19 @@ extension ChatPane {
     func finishUndo(_ state: ConversationState) {
         revertUndoInFlight = false
         revertComposerFill = nil
+        revertRestoredCarry = false
         retireUndoNotice()
-        guard editor.text.isEmpty, let words = RevertReading.prompt(in: state.revertedMessages)
+        guard editor.text.isEmpty, let prompt = RevertReading.prompt(in: state.revertedMessages)
         else { return }
+        let split = CarryMark.split(prompt)
+        let words = split?.rest ?? prompt
+        if let reading = split?.reading, carry == nil {
+            carry = ConversationBrief(
+                source: reading.source, body: reading.brief, kept: reading.kept,
+                total: reading.total, pictures: reading.pictures)
+            revertRestoredCarry = true
+            renderAttachments()
+        }
         fillComposerForRevert(words)
         revertComposerFill = words
     }
@@ -281,17 +291,20 @@ extension ChatPane {
         revertRestoring = false
         if let fill = revertComposerFill, editor.text == fill {
             clearComposer()
+            if revertRestoredCarry {
+                carry = nil
+                renderAttachments()
+            }
         }
         revertComposerFill = nil
+        revertRestoredCarry = false
     }
 
     /// Puts the wound-back prompt in the composer as if it were being edited: the same buffer,
     /// vim-document and mode sync a queued send's own Edit action uses, so a person can send it
     /// again unchanged or rework it before they do.
     func fillComposerForRevert(_ text: String) {
-        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), text, -1)
-        vim.reset(to: text, cursor: text.count, mode: .insert)
-        updateVimBadge()
+        fillComposer(with: text)
     }
 
     func attachRows() -> [(String, String?, @Sendable () -> Void)] {
@@ -354,7 +367,8 @@ extension ChatPane {
 
     func renderAttachments() {
         Gtk.removeChildren(of: attachmentsBox)
-        gtk_widget_set_visible(attachmentsBox, attachments.isEmpty ? 0 : 1)
+        gtk_widget_set_visible(attachmentsBox, attachments.isEmpty && carry == nil ? 0 : 1)
+        if let carry { gtk_box_append(ptr(attachmentsBox), carryChip(carry)) }
         if let attachButton {
             gtk_menu_button_set_label(
                 op(attachButton), attachments.isEmpty ? "📎" : "📎 \(attachments.count)")

@@ -115,6 +115,8 @@ final class ChatPane: @unchecked Sendable {
 
     let attachmentsBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
     var attachments: [PendingAttachment] = []
+    var carry: ConversationBrief?
+    var carryStash: [String: ConversationBrief] = [:]
     var pastedImageCount = 0
 
     let jumpButton = gtk_button_new()!
@@ -158,7 +160,7 @@ final class ChatPane: @unchecked Sendable {
     var hoverDirty = true
     var hoverRefreshQueued = false
     var hoverQuietToken: UInt = 0
-    var hoverVerbs: (id: String, verbs: MessageHover.Verbs)?
+    var hoverVerbs: (id: String, verbs: MessageHover.Verbs, branch: Bool)?
     var hoverOwners: [String: String] = [:]
     /// The room under the transcript that lets a just-sent prompt rest at the top of the window,
     /// and the row it was made for. Zero once the answer has filled it or the turn has ended.
@@ -256,6 +258,7 @@ final class ChatPane: @unchecked Sendable {
     /// follows clears them only if they are still exactly what was put there. A draft typed over
     /// them in the meantime is never thrown away.
     var revertComposerFill: String?
+    var revertRestoredCarry = false
     var retryWakeGeneration = 0
 
     var entry: SessionEntry?
@@ -298,7 +301,11 @@ final class ChatPane: @unchecked Sendable {
     var tickerTask: Task<Void, Never>?
 
     var models: [ModelInfo] = [] {
-        didSet { feed.update { [models] in $0.models = models } }
+        didSet {
+            feed.update { [models] in $0.models = models }
+            rowBuilder.setCatalog(models)
+            if oldValue.count != models.count, let lastState { feed.rebuild(lastState) }
+        }
     }
     var modelsReachable: Bool?
     var catalogWatchTask: Task<Void, Never>?

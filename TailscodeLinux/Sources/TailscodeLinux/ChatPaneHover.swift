@@ -13,6 +13,7 @@ extension ChatPane {
         rails.install(on: overlay)
         messageBar.copy = { [weak self] id in self?.copyMessage(id) }
         messageBar.undo = { [weak self] id in self?.confirmUndo(messageID: id) }
+        messageBar.branch = { [weak self] id in self?.tryWithAnotherModel(answerID: id) }
         Gtk.onPointer(
             overlay,
             move: { [weak self] x, y in
@@ -88,8 +89,10 @@ extension ChatPane {
             return
         }
         let verbs: MessageHover.Verbs
+        let branch: Bool
         if let held = hoverVerbs, held.id == hit.owner, !hoverDirty {
             verbs = held.verbs
+            branch = held.branch
         } else {
             guard let message = lastState?.messages.last(where: { $0.id == hit.owner }) else {
                 messageBar.scheduleHide()
@@ -97,11 +100,13 @@ extension ChatPane {
             }
             verbs = MessageHover.verbs(
                 for: message, isPrompt: message.role == .user, capabilities: backend?.capabilities)
-            hoverVerbs = (hit.owner, verbs)
+            branch = offersBranch(message, in: lastState?.messages ?? [])
+            hoverVerbs = (hit.owner, verbs, branch)
             hoverDirty = false
         }
         messageBar.present(
-            messageID: hit.owner, verbs: verbs, right: hit.right, top: hit.top, ceiling: 2)
+            messageID: hit.owner, verbs: verbs, branch: branch, right: hit.right, top: hit.top,
+            ceiling: 2)
     }
 
     /// The message under a point on the overlay, with the corner its plate hangs from. Nothing
@@ -166,7 +171,8 @@ extension ChatPane {
 
     private func copyMessage(_ id: String) {
         guard let message = lastState?.messages.first(where: { $0.id == id }) else { return }
-        Gtk.copyToClipboard(MessageHover.words(of: message))
+        let words = MessageHover.words(of: message)
+        Gtk.copyToClipboard(message.role == .user ? TranscriptRow.typedWords(words) : words)
         host?.toast(Localized.text("Copied"))
     }
 }

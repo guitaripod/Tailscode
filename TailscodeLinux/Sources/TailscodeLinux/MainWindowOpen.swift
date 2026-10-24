@@ -370,9 +370,9 @@ extension MainWindow {
 
     /// A pane asking for a chat on another machine, which is what picking that machine's model
     /// means.
-    func startChat(on profileID: String, into pane: ChatPane) {
+    func startChat(on profileID: String, into pane: ChatPane, carrying carry: CarryPlan? = nil) {
         guard let profile = knownProfiles.first(where: { $0.id == profileID }) else { return }
-        presentNewChat(on: profile, into: pane)
+        presentNewChat(on: profile, into: pane, carrying: carry)
     }
 
     /// Where the terminal is standing, for the rows that offer it. Only a shell that stays alive

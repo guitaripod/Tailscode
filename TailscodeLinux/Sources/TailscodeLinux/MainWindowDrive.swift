@@ -105,6 +105,8 @@ extension MainWindow {
         case "cutoffdemo":
             self.activePane.driverInterruptedDemo(
                 argument.isEmpty ? "busy" : argument)
+        case "carrydemo":
+            self.activePane.driverCarryDemo()
         case "retrydemo":
             self.activePane.driverRetryDemo(argument)
         case "undodemo":

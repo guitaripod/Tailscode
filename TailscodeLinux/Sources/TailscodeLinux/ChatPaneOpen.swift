@@ -67,6 +67,7 @@ extension ChatPane {
         chooser = nil
         leaveFreshCanvas()
         freshlyCreatedID = freshlyCreated ? entry.session.id : nil
+        if let previousEntry, let carry { carryStash[Self.preferenceKey(previousEntry)] = carry }
         stashDraft()
         self.entry = entry
         brains.sessionKey = entry.session.id
@@ -97,6 +98,7 @@ extension ChatPane {
         landedPictures = []
         inFlightSubagents = []
         attachments = []
+        carry = carryStash.removeValue(forKey: Self.preferenceKey(entry))
         pastedImageCount = 0
         pending.removeAll()
         resume.removeAll()

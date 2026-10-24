@@ -95,6 +95,8 @@ enum ParityManifest {
         case .modelEffortDisplay: return .implemented("ModelBadge")
         case .modelCapabilitySurfacing: return .implemented("dropUnsendableAttachments")
         case .responseStats: return .implemented("response-stats")
+        case .modelSeam: return .implemented("ModelSeamTracker")
+        case .carryChat: return .implemented("adoptCarry")
         case .ultracodeAura: return .implemented("AuraPainter")
         case .stopTurn: return .implemented("cancelCurrentTurn")
         case .statusBand: return .implemented("StatusBand")

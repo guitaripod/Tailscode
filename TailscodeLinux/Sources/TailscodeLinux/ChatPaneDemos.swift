@@ -70,6 +70,48 @@ extension ChatPane {
         entry?.profileID.hasPrefix(DemoWorld.profilePrefix) == true
     }
 
+    /// A conversation that arrived with a brief and changed model part-way, and a composer holding
+    /// a carry chip of its own, so the seam, the carried line and the chip can be photographed
+    /// headlessly without moving a real chat between machines.
+    func driverCarryDemo() {
+        let now = Date()
+        let brief = ConversationBrief(
+            source: "Fix reconnect test",
+            body: "User: why does the reconnect test flake?\nAssistant: It races the backoff timer.",
+            kept: 6, total: 14, pictures: 0)
+        func message(
+            _ id: String, _ role: MessageRole, _ text: String, ago: TimeInterval,
+            provider: String? = nil, model: String? = nil
+        ) -> ChatMessage {
+            ChatMessage(
+                id: id, role: role, agentType: .openCode,
+                parts: [MessagePart(id: id + "-t", kind: .text(text))],
+                createdAt: now.addingTimeInterval(-ago), providerID: provider, modelID: model)
+        }
+        models = [
+            ModelInfo(id: "qwen-daily", name: "Qwen Daily", providerID: "llama"),
+            ModelInfo(id: "deepseek-v4", name: "DeepSeek V4", providerID: "opencode"),
+        ]
+        let state = ConversationState(
+            messages: [
+                message(
+                    "carry-u1", .user, brief.wrapped(with: "why does the reconnect test flake?"),
+                    ago: 600),
+                message(
+                    "carry-a1", .assistant,
+                    "It races the backoff timer: the test sleeps 200 ms, but the first retry lands at 180-260 ms with jitter on.",
+                    ago: 580, provider: "opencode", model: "deepseek-v4"),
+                message("carry-u2", .user, "try the fix with the fake clock", ago: 300),
+                message(
+                    "carry-a2", .assistant,
+                    "Injected a test clock into the backoff and advanced it by exactly the first delay. The test now passes 50 of 50 runs.",
+                    ago: 280, provider: "llama", model: "qwen-daily"),
+            ], status: .idle, hasLoadedTranscript: true)
+        carry = brief
+        renderAttachments()
+        reassert(state)
+    }
+
     /// A turn waiting on its provider between attempts, so the card and its countdown can be
     /// driven and photographed headlessly without an account that is actually rate-limited.
     /// `mode == "remedy"` adds the provider's own remedy and its link; anything else is the bare

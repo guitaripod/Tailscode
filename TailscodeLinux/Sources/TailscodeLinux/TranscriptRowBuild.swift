@@ -34,9 +34,12 @@ extension TranscriptRow {
     ///   what the record says about itself, which is all a caller with no state has.
     /// - Parameter modelName: maps a note's model to the name this client already shows for it, so
     ///   `TranscriptNoteReading` can write the model's picked name rather than its bare id.
+    /// - Parameter carried: whether this is the conversation's first message, the only one a brief
+    ///   rides in. Its brief becomes a row of its own and the words that follow it the prompt.
     static func rows(
         for message: ChatMessage, prompt: ChatMessage? = nil, cacheMarkup: Bool = true,
-        sealed: Bool? = nil, modelName: (ModelSelection) -> String? = { _ in nil }
+        sealed: Bool? = nil, carried: Bool = false,
+        modelName: (ModelSelection) -> String? = { _ in nil }
     ) -> [TranscriptRow] {
         let sealed = sealed ?? !message.isStreaming
         var rows: [TranscriptRow] = []
@@ -44,7 +47,11 @@ extension TranscriptRow {
         for part in message.parts {
             let key = "\(message.id):\(part.id)"
             switch part.kind {
-            case .text(let text):
+            case .text(var text):
+                if carried, message.role == .user, let split = CarryMark.split(text) {
+                    rows.append(TranscriptRow(key: "\(key):carried", kind: .carried(split.reading)))
+                    text = split.rest
+                }
                 let stripped = AgentMarkup.strip(text)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !stripped.isEmpty else { continue }
@@ -216,9 +223,15 @@ extension TranscriptRow {
     ) -> [TranscriptRow] {
         var all: [TranscriptRow] = []
         var prompt: ChatMessage?
+        var sawUser = false
         for message in messages {
-            let rows = Self.rows(for: message, prompt: prompt, modelName: modelName)
-            if message.role == .user { prompt = message }
+            let rows = Self.rows(
+                for: message, prompt: prompt, carried: message.role == .user && !sawUser,
+                modelName: modelName)
+            if message.role == .user {
+                prompt = message
+                sawUser = true
+            }
             guard !rows.isEmpty else { continue }
             if message.role == .user, !all.isEmpty {
                 all.append(TranscriptRow(key: "break:\(message.id)", kind: .turnBreak))

@@ -117,7 +117,7 @@ extension TranscriptRow {
 
         let lines = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         let label = Gtk.markupLabel(
-            PangoMarkdown.plainWithLinks(send.text, accent: MatrixTheme.palette.accent),
+            PangoMarkdown.plainWithLinks(typedWords(send.text), accent: MatrixTheme.palette.accent),
             css: "prompt-text")
         if send.isFailed { Gtk.addClass(label, "pending-text-failed") }
         gtk_widget_set_hexpand(label, 1)

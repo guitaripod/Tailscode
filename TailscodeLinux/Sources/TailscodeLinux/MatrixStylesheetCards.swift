@@ -215,6 +215,27 @@ extension MatrixStylesheet {
             border-color: \(accentDim);
         }
         .chip-glyph { font-size: \(chipIconEm)em; }
+        .carry-chip {
+            \(t(.chip))
+            padding: 2px 4px 2px 10px;
+            background-color: \(controlFill);
+            border: 1px solid \(rule);
+            border-radius: 14px;
+            color: \(text);
+        }
+        .carry-chip-text { color: \(text); }
+        button.carry-chip-clear, button.carry-chip-clear:hover {
+            min-height: 0;
+            min-width: 0;
+            padding: 0 6px;
+            border: none;
+            border-radius: 999px;
+            box-shadow: none;
+            background-image: none;
+            background-color: transparent;
+            color: \(textDim);
+        }
+        button.carry-chip-clear:hover { color: \(text); background-color: alpha(\(accent), 0.14); }
         .chip-gap { margin-left: \(chipGap)px; }
         .chip-tone-live { color: \(accent); }
         .chip-tone-attention { color: \(warn); }

@@ -433,9 +433,11 @@ extension ChatPane {
         }
         if handleSlashCommand(text) { return }
         attachments = []
+        let sentText = carry?.wrapped(with: text) ?? text
+        carry = nil
         renderAttachments()
         let send = QueuedSend(
-            text: text, model: chosenModel,
+            text: sentText, model: chosenModel,
             effort: ModelEffort.surviving(chosenEffort, options: effortOptions()),
             attachments: outgoing.map(\.prompt))
         // A prompt written while a turn runs is held here, not handed over: a message you can
