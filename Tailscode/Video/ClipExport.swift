@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -46,7 +47,7 @@ enum ClipExport {
             try FileManager.default.moveItem(at: received, to: staged)
             return staged
         } catch {
-            AppLogger.ui.error("could not stage \(name): \(error)")
+            MidgarLog.error("could not stage \(name): \(error)", category: .ui)
             throw ForgeFailure.unreachable(endpoint.host)
         }
     }

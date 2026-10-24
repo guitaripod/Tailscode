@@ -1,4 +1,4 @@
-import StoreKit
+import MidgarCommerce
 import TailscodeCore
 import UIKit
 
@@ -13,7 +13,7 @@ final class ProUpgradeViewController: UIViewController {
     private let tipStack = UIStackView()
     private let tipHeader = UILabel()
     private let statusLabel = UILabel()
-    private var proProduct: Product?
+    private var proProduct: StoreProduct?
     private let lead: Lead
 
     /// Which perk brought somebody here, so the sheet leads with the thing they touched rather than
@@ -47,12 +47,12 @@ final class ProUpgradeViewController: UIViewController {
             barButtonSystemItem: .close, target: self, action: #selector(close))
         build()
         NotificationCenter.default.addObserver(
-            self, selector: #selector(proStateChanged), name: ProStore.didChange, object: nil)
+            self, selector: #selector(proStateChanged), name: ProAccess.didChange, object: nil)
         Task { await load() }
     }
 
     @objc private func proStateChanged() {
-        guard ProStore.shared.isPro else { return }
+        guard ProAccess.shared.isPro else { return }
         purchaseButton.setTitle(String(localized: "You're a supporter — thank you ♥"))
         purchaseButton.isEnabled = false
         statusLabel.text = nil
@@ -202,16 +202,16 @@ final class ProUpgradeViewController: UIViewController {
     }
 
     private func load() async {
-        if ProStore.shared.isPro {
+        if ProAccess.shared.isPro {
             purchaseButton.setTitle(String(localized: "You're a supporter — thank you ♥"))
             purchaseButton.isEnabled = false
         } else {
             purchaseButton.isEnabled = false
             purchaseButton.setLoading(true)
         }
-        let (pro, tips) = await ProStore.shared.products()
+        let (pro, tips) = await ProAccess.shared.products()
         proProduct = pro
-        if !ProStore.shared.isPro {
+        if !ProAccess.shared.isPro {
             purchaseButton.setLoading(false)
             if let pro {
                 purchaseButton.isEnabled = true
@@ -250,7 +250,7 @@ final class ProUpgradeViewController: UIViewController {
         Task {
             defer { purchaseButton.setLoading(false) }
             do {
-                switch try await ProStore.shared.purchase(proProduct) {
+                switch try await ProAccess.shared.purchase(proProduct) {
                 case .success:
                     Theme.Haptics.success()
                     dismiss(animated: true)
@@ -265,20 +265,19 @@ final class ProUpgradeViewController: UIViewController {
                     break
                 }
             } catch {
-                statusLabel.text = String(
-                    localized: "Purchase failed: \(error.localizedDescription)")
+                statusLabel.text = error.localizedDescription
                 Theme.Haptics.error()
             }
         }
     }
 
-    private func tip(_ product: Product) {
+    private func tip(_ product: StoreProduct) {
         Theme.Haptics.tap()
         tipStack.isUserInteractionEnabled = false
         Task {
             defer { tipStack.isUserInteractionEnabled = true }
             do {
-                switch try await ProStore.shared.purchase(product) {
+                switch try await ProAccess.shared.purchase(product) {
                 case .success:
                     Theme.Haptics.success()
                     statusLabel.text = String(localized: "Thank you! 🙏")
@@ -291,8 +290,7 @@ final class ProUpgradeViewController: UIViewController {
                     break
                 }
             } catch {
-                statusLabel.text = String(
-                    localized: "Purchase failed: \(error.localizedDescription)")
+                statusLabel.text = error.localizedDescription
             }
         }
     }
@@ -304,17 +302,17 @@ final class ProUpgradeViewController: UIViewController {
         Task {
             defer { restoreButton.isEnabled = true }
             do {
-                try await ProStore.shared.restore()
-                if ProStore.shared.isPro {
+                switch try await ProAccess.shared.restore() {
+                case .restored:
                     Theme.Haptics.success()
                     dismiss(animated: true)
-                } else {
+                case .nothingFound:
                     statusLabel.text = String(localized: "No previous purchase found for this Apple ID.")
+                case .cancelled:
+                    statusLabel.text = nil
                 }
-            } catch StoreKitError.userCancelled {
-                statusLabel.text = nil
             } catch {
-                statusLabel.text = String(localized: "Restore failed: \(error.localizedDescription)")
+                statusLabel.text = error.localizedDescription
             }
         }
     }

@@ -1,3 +1,4 @@
+import MidgarCore
 #if DEBUG
     import TailscodeCore
     import UIKit
@@ -175,7 +176,7 @@
         }
 
         private func run() async {
-            AppLogger.ui.info("tour: begin")
+            MidgarLog.info("tour: begin", category: .ui)
             await board()
             await oneSentence()
             await watchItWork()
@@ -186,13 +187,13 @@
             await questions()
             await seam()
             await budget()
-            AppLogger.ui.info("tour: end")
+            MidgarLog.info("tour: end", category: .ui)
         }
 
         /// About 29 seconds. Where it spends them: the board (0–4.5), a sentence sent and the answer
         /// arriving (4.5–16), the effort rail (16–19), an approval (19–26), the quotas (26–29).
         private func preview() async {
-            AppLogger.ui.info("preview: begin")
+            MidgarLog.info("preview: begin", category: .ui)
             home?.tourResetBoard(seenAge: 300_000)
             await hold(1.5)
             await glide(home?.tourScrollView, by: 260, duration: 1.7)
@@ -228,7 +229,7 @@
             await hold(2.2)
             await glide(topScrollView, by: 700, duration: 2.0)
             await hold(1.4)
-            AppLogger.ui.info("preview: end")
+            MidgarLog.info("preview: end", category: .ui)
         }
 
         /// 0.0–9.5 — the whole fleet on one board, then aim at the project this
@@ -369,22 +370,22 @@
         /// `TAILSCODE_SLASH_STATE` names which state to sit in.
         private func slashWalk() async {
             let state = ProcessInfo.processInfo.environment["TAILSCODE_SLASH_STATE"] ?? "all"
-            AppLogger.ui.info("slashwalk: state=\(state)")
+            MidgarLog.info("slashwalk: state=\(state)", category: .ui)
             await hold(2.0)
             home?.openSession(withID: "demo-c1")
             await hold(2.5)
             guard let draft = Self.slashDrafts[state] else {
                 chat?.tourOpenCommandCatalog()
-                AppLogger.ui.info("slashwalk: catalog open")
+                MidgarLog.info("slashwalk: catalog open", category: .ui)
                 return
             }
             chat?.tourSetDraft(draft)
-            AppLogger.ui.info("slashwalk: draft=\(draft)")
+            MidgarLog.info("slashwalk: draft=\(draft)", category: .ui)
         }
 
         private func modelWalk() async {
             let state = ProcessInfo.processInfo.environment["TAILSCODE_MODEL_STATE"] ?? "list"
-            AppLogger.ui.info("modelwalk: state=\(state)")
+            MidgarLog.info("modelwalk: state=\(state)", category: .ui)
             await hold(2.0)
             home?.openSession(withID: "demo-o1")
             await hold(2.5)
@@ -392,7 +393,7 @@
             await hold(1.5)
             guard let query = Self.modelQueries[state] else { return }
             modelPicker?.tourSearch(query)
-            AppLogger.ui.info("modelwalk: query=\(query)")
+            MidgarLog.info("modelwalk: query=\(query)", category: .ui)
         }
 
         /// The chat list's own surfaces, each held still long enough to be photographed: the
@@ -400,7 +401,7 @@
         /// of the chooser's modes.
         private func designWalk() async {
             let state = ProcessInfo.processInfo.environment["TAILSCODE_DESIGN_STATE"] ?? "board"
-            AppLogger.ui.info("designwalk: state=\(state)")
+            MidgarLog.info("designwalk: state=\(state)", category: .ui)
             await hold(2.0)
             home?.openSession(withID: "demo-c1")
             await hold(2.5)
@@ -409,7 +410,7 @@
             } else {
                 chat?.tourPresentDesignBoard()
             }
-            AppLogger.ui.info("designwalk: settled")
+            MidgarLog.info("designwalk: settled", category: .ui)
         }
 
         private func cardWalk() async {
@@ -420,7 +421,7 @@
             chat?.tourSend("Tighten the retry loop")
             await hold(0.4)
             await popToHome(hold: 1.0)
-            AppLogger.ui.info("cardwalk: away from \(session)")
+            MidgarLog.info("cardwalk: away from \(session)", category: .ui)
         }
 
         private func boardWalk() async {
@@ -429,7 +430,7 @@
             await hold(0.5)
             await glide(home?.tourScrollView, by: 330, duration: 1.8)
             await hold(2.0)
-            AppLogger.ui.info("boardwalk: settled")
+            MidgarLog.info("boardwalk: settled", category: .ui)
         }
 
         private func lockWalk() async {
@@ -449,14 +450,14 @@
                 reading: LiveActivityReading(
                     detail: .tool, tool: "Read", toolCount: 6, startedAt: begun),
                 title: title)
-            AppLogger.ui.info("lockwalk: working for \(session)")
+            MidgarLog.info("lockwalk: working for \(session)", category: .ui)
             await awaitCue("approval")
             AppActivityController.shared.update(
                 sessionID: session,
                 reading: LiveActivityReading(
                     detail: .approval, tool: "Edit", toolCount: 7, startedAt: begun),
                 title: title)
-            AppLogger.ui.info("lockwalk: asking for \(session)")
+            MidgarLog.info("lockwalk: asking for \(session)", category: .ui)
             await awaitCue("end")
             UIApplication.shared.endBackgroundTask(task)
         }
@@ -473,7 +474,7 @@
 
         private func revertWalk() async {
             let state = ProcessInfo.processInfo.environment["TAILSCODE_REVERT_STATE"] ?? "notes"
-            AppLogger.ui.info("revertwalk: state=\(state)")
+            MidgarLog.info("revertwalk: state=\(state)", category: .ui)
             await hold(1.5)
             home?.openSession(withID: "demo-o1")
             await hold(2.5)
@@ -493,12 +494,12 @@
             default:
                 chat?.tourScrollToBottom()
             }
-            AppLogger.ui.info("revertwalk: settled")
+            MidgarLog.info("revertwalk: settled", category: .ui)
         }
 
         private func chatsWalk() async {
             let state = ProcessInfo.processInfo.environment["TAILSCODE_CHATS_STATE"] ?? "sections"
-            AppLogger.ui.info("chatswalk: state=\(state)")
+            MidgarLog.info("chatswalk: state=\(state)", category: .ui)
             await hold(1.5)
             home?.tourPushChats()
             await hold(2.0)
@@ -524,7 +525,7 @@
             default:
                 break
             }
-            AppLogger.ui.info("chatswalk: settled")
+            MidgarLog.info("chatswalk: settled", category: .ui)
         }
 
         private var folderBrowser: FolderBrowserViewController? {

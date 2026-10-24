@@ -318,7 +318,7 @@ enum ParityManifest {
             return .varies(
                 direct: .notApplicable(
                     "a build somebody installed themselves has no receipt and never will, so this copy sells nothing and gates nothing"),
-                appStore: .implemented("MacProStore"),
+                appStore: .implemented("ProAccess"),
                 because:
                     "The unlock is a purchase, and a purchase is a receipt from the App Store — only one of the two Mac builds has any relationship with it. The store copy asks for the same product the phone does, so a supporter is already a supporter here; the direct copy is simply open.")
         case .videoForge: return .implemented("VideoLane")

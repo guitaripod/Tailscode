@@ -1,4 +1,5 @@
 import AppKit
+import MidgarCore
 import TailscodeCore
 
 /// Lifecycle only: activation, reconnect-on-active, and the one window controller that is the
@@ -14,7 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
             LiveShot.prepare()
         #endif
-        AppLogger.lifecycle.info("launch: Tailscode \(MacCLI.version)")
+        MidgarLog.info("launch: Tailscode \(MacCLI.version)", category: .lifecycle)
         NeuralMetalContext.warm()
         ReviewPromptPolicy.migrateIfNeeded()
         Self.typeWhatIsTyped()
@@ -39,7 +40,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.install()
         self.menu = menu
         MacGameCenter.shared.start()
-        MacProStore.shared.start()
+        TailscodeMidgar.shared.start()
+        ProAccess.shared.start()
         MacSummon.shared.start { [weak controller] in controller?.summonQuickAsk() }
         MacNotifier.shared.activate()
         MacNotifier.shared.onOpen = { [weak controller] sessionID in

@@ -1,5 +1,6 @@
 import Foundation
 import MetricKit
+import MidgarCore
 
 /// What the phone itself measured about this app in the field, written into the log file.
 ///
@@ -15,7 +16,7 @@ final class FieldMetrics: NSObject, MXMetricManagerSubscriber, Sendable {
     }
 
     func didReceive(_ payloads: [MXMetricPayload]) {
-        for payload in payloads { AppLogger.performance.info(Self.summary(payload)) }
+        for payload in payloads { MidgarLog.info(Self.summary(payload), category: .performance) }
     }
 
     func didReceive(_ payloads: [MXDiagnosticPayload]) {
@@ -24,8 +25,8 @@ final class FieldMetrics: NSObject, MXMetricManagerSubscriber, Sendable {
             let crashes = payload.crashDiagnostics?.count ?? 0
             let writes = payload.diskWriteExceptionDiagnostics?.count ?? 0
             let file = Self.keep(payload.jsonRepresentation(), endingAt: payload.timeStampEnd)
-            AppLogger.performance.info(
-                "diagnostics hangs=\(hangs) crashes=\(crashes) diskWrites=\(writes) file=\(file ?? "unwritten")")
+            MidgarLog.info(
+                "diagnostics hangs=\(hangs) crashes=\(crashes) diskWrites=\(writes) file=\(file ?? "unwritten")", category: .performance)
         }
     }
 

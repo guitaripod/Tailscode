@@ -1,5 +1,6 @@
 import CodingAgentKit
 import Foundation
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -28,8 +29,8 @@ enum BrainDebug {
             guard environment["TAILSCODE_BENCH_OPEN"] != nil, noted < 600 else { return }
             noted += 1
             let spent = (CACurrentMediaTime() - began) * 1000
-            AppLogger.performance.info(
-                "bench brain \(what) ms=\(String(format: "%.2f", spent)) \(detail())")
+            MidgarLog.info(
+                "bench brain \(what) ms=\(String(format: "%.2f", spent)) \(detail())", category: .performance)
         #endif
     }
 
@@ -153,7 +154,10 @@ enum BrainDebug {
             let pad = String(repeating: " ", count: max - depth)
             var extra = ""
             if let label = view as? UILabel { extra = " text=\(label.attributedText?.string ?? "")" }
-            AppLogger.ui.info("dump \(pad)\(type(of: view)) f=\(NSCoder.string(for: view.frame)) a=\(view.alpha) h=\(view.isHidden)\(extra)")
+            MidgarLog.info(
+                "dump \(pad)\(type(of: view)) f=\(NSCoder.string(for: view.frame)) a=\(view.alpha) h=\(view.isHidden)\(extra)",
+                category: .ui
+            )
             guard depth > 0 else { return }
             for child in view.subviews { dumpTree(child, depth: depth - 1, max: max) }
         }
@@ -162,8 +166,9 @@ enum BrainDebug {
     /// One line of the log per move: how many frames it drew and the longest gap between two of
     /// them, which is what a dropped frame is.
     static func logMove(turn: String, direction: String, frames: Int, maxGap: Double, duration: Double) {
-        AppLogger.performance.info(
-            "brain move turn=\(turn) direction=\(direction) frames=\(frames) maxGapMs=\(String(format: "%.1f", maxGap * 1000)) durationMs=\(String(format: "%.0f", duration * 1000))"
+        MidgarLog.info(
+            "brain move turn=\(turn) direction=\(direction) frames=\(frames) maxGapMs=\(String(format: "%.1f", maxGap * 1000)) durationMs=\(String(format: "%.0f", duration * 1000))",
+            category: .performance
         )
     }
 
@@ -235,7 +240,10 @@ enum BrainDebug {
             toggle: (String) -> Void, rows: (String) -> Void, share: (String) -> Void,
             refresh: () -> Void
         ) {
-            AppLogger.ui.info("brain walk verb=\(verb) value=\(value) open=\(store.openTurnID ?? "-")")
+            MidgarLog.info(
+                "brain walk verb=\(verb) value=\(value) open=\(store.openTurnID ?? "-")",
+                category: .ui
+            )
             let cells = collection.visibleCells.compactMap { $0 as? NeuralBrainCell }
             let openCell = cells.first { $0.brainRow.openView != nil }
             let turnID = store.openTurnID ?? store.latestTurnID

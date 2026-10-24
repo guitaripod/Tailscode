@@ -1,5 +1,6 @@
 import AppKit
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 
 /// Where a `tailscode://` address opened from outside the app is read. The pairing link a machine
@@ -12,10 +13,11 @@ enum ConnectLinkDoor {
         for url in urls where url.scheme?.lowercased() == PairingLink.scheme {
             switch ConnectLink.read(url: url) {
             case .link(let link):
-                AppLogger.connection.info("open link \(ConnectLink.logLine(link))")
+                MidgarLog.info("open link \(ConnectLink.logLine(link))", category: .connection)
                 FirstRunWindow.receive(link: url.absoluteString)
             case .rejected(let rejection):
-                AppLogger.connection.info("open \(ConnectLink.logLine(rejection: rejection))")
+                MidgarLog.info(
+                    "open \(ConnectLink.logLine(rejection: rejection))", category: .connection)
                 refuse(rejection, on: main)
             }
         }

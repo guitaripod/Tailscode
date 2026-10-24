@@ -68,7 +68,7 @@ final class SupporterCardView: NSView {
         NotificationCenter.default.addObserver(
             self, selector: #selector(refresh), name: SupporterInvitation.didChange, object: nil)
         NotificationCenter.default.addObserver(
-            self, selector: #selector(refresh), name: MacProStore.didChange, object: nil)
+            self, selector: #selector(refresh), name: ProAccess.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(applyTheme), name: MacTheme.Chrome.didRepaint, object: nil)
         applyTheme()
@@ -79,7 +79,7 @@ final class SupporterCardView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     @objc func refresh() {
-        let store = MacProStore.shared
+        let store = ProAccess.shared
         if store.isPro { SupporterInvitation.settle() }
         let due = store.sellsPro && SupporterInvitation.isDue(isPro: store.isPro)
         isHidden = !due

@@ -12,7 +12,7 @@ packages:
     path: TailscodeCore
   MidgarKit:
     url: https://github.com/guitaripod/MidgarKit
-    from: "3.0.0"
+    exactVersion: 4.4.0
 targetTemplates:
   MacApp:
     type: application
@@ -26,8 +26,8 @@ targetTemplates:
       - path: Tailscode/Usage/UsageWidgetStore.swift
       - path: Tailscode/Usage/UsageWidgetWriter.swift
       - path: Tailscode/Usage/UsagePushPayload.swift
-      - path: Tailscode/Logging/AppLogger.swift
-      - path: Tailscode/Logging/LogFileWriter.swift
+      - path: Tailscode/Logging/TailscodeLogging.swift
+      - path: Shared/Midgar
       - path: Shared/Neural
       - path: Resources/Neural/ntex
         type: folder
@@ -44,7 +44,13 @@ targetTemplates:
       - package: TailscodeCore
         product: TailscodeCore
       - package: MidgarKit
-        product: MidgarKit
+        product: MidgarCore
+      - package: MidgarKit
+        product: MidgarCommerce
+      - package: MidgarKit
+        product: MidgarUI
+      - package: MidgarKit
+        product: MidgarPortal
     info:
       path: TailscodeMac/Info.plist
       properties:
@@ -134,6 +140,7 @@ targets:
       - path: TailscodeWidget/UsageWidgetConfiguration.swift
       - path: TailscodeWidget/LiveActivityViews.swift
       - path: TailscodeWidget/NeuralGlyphView.swift
+      - path: Shared/Midgar
       - path: Shared/Neural
       - path: Resources/Neural/ntex
         type: folder
@@ -152,7 +159,13 @@ targets:
       - package: TailscodeCore
         product: TailscodeCore
       - package: MidgarKit
-        product: MidgarKit
+        product: MidgarCore
+      - package: MidgarKit
+        product: MidgarCommerce
+      - package: MidgarKit
+        product: MidgarUI
+      - package: MidgarKit
+        product: MidgarPortal
       - target: TailscodeWidget
         embed: true
       - target: TailscodeNSE
@@ -263,6 +276,25 @@ targets:
           CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Distribution"
           PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode App Store 2026
 
+  TailscodeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: TailscodeTests
+    dependencies:
+      - target: Tailscode
+      - package: MidgarKit
+        product: MidgarCore
+      - package: MidgarKit
+        product: MidgarCommerce
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        TARGETED_DEVICE_FAMILY: "1,2"
+
   TailscodeWidget:
     type: app-extension
     platform: iOS
@@ -282,8 +314,7 @@ targets:
       - path: Tailscode/Usage/DeepSeekBalance.swift
       - path: Tailscode/Usage/OllamaUsage.swift
       - path: Tailscode/Connection/SharedConnectionStore.swift
-      - path: Tailscode/Logging/AppLogger.swift
-      - path: Tailscode/Logging/LogFileWriter.swift
+      - path: Tailscode/Logging/TailscodeLogging.swift
     info:
       path: TailscodeWidget/Info.plist
       properties:
@@ -302,6 +333,8 @@ targets:
         product: CodingAgentKitApple
       - package: TailscodeCore
         product: TailscodeCore
+      - package: MidgarKit
+        product: MidgarCore
       - sdk: SwiftUI.framework
       - sdk: WidgetKit.framework
       - sdk: ActivityKit.framework
@@ -336,8 +369,7 @@ targets:
         buildPhase: resources
       - path: Tailscode/Usage/UsageWidgetStore.swift
       - path: Tailscode/Usage/UsagePushPayload.swift
-      - path: Tailscode/Logging/AppLogger.swift
-      - path: Tailscode/Logging/LogFileWriter.swift
+      - path: Tailscode/Logging/TailscodeLogging.swift
       - path: Tailscode/Notifications/NoticeFace.swift
       - path: Tailscode/Notifications/NoticeContent.swift
       - path: Tailscode/Notifications/NoticeCategories.swift
@@ -359,6 +391,8 @@ targets:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
     dependencies:
+      - package: MidgarKit
+        product: MidgarCore
       - sdk: UserNotifications.framework
     settings:
       base:
@@ -524,9 +558,15 @@ schemes:
     build:
       targets:
         Tailscode: all
+        TailscodeTests: [test]
     run:
       config: Debug
       storeKitConfiguration: Tailscode.storekit
+    test:
+      config: Debug
+      storeKitConfiguration: Tailscode.storekit
+      targets:
+        - TailscodeTests
     archive:
       config: Release
   TailscodeMac:

@@ -1,5 +1,6 @@
 import CodingAgentKit
 import Foundation
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -20,7 +21,7 @@ enum RangeRecorder {
             NotificationManager.notify(
                 kind: .runningLow, title: notice.title, body: notice.body,
                 identifier: "usage:low:\(notice.id)|\(Int(notice.resetsAt.timeIntervalSince1970))")
-            AppLogger.session.info("range: running-low notice raised for \(notice.id)")
+            MidgarLog.info("range: running-low notice raised for \(notice.id)", category: .session)
         }
     }
 }

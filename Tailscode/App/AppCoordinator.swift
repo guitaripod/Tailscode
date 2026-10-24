@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import CodingAgentKitApple
@@ -89,15 +90,15 @@ final class AppCoordinator: NSObject {
             }
             if ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_CHAT"] == "1" {
                 let failures = ChatSpacing.selfCheck()
-                AppLogger.chat.info(
+                MidgarLog.info(
                     failures.isEmpty
-                        ? "CHAT_SELFTEST_OK" : "CHAT_SELFTEST_FAIL " + failures.joined(separator: "; "))
+                        ? "CHAT_SELFTEST_OK" : "CHAT_SELFTEST_FAIL " + failures.joined(separator: "; "), category: .chat)
             }
             if ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_PREVIEW"] == "1" {
                 let failures = PreviewDemo.selfCheck()
-                AppLogger.ui.info(
+                MidgarLog.info(
                     failures.isEmpty
-                        ? "PREVIEW_SELFTEST_OK" : "PREVIEW_SELFTEST_FAIL " + failures.joined(separator: "; "))
+                        ? "PREVIEW_SELFTEST_OK" : "PREVIEW_SELFTEST_FAIL " + failures.joined(separator: "; "), category: .ui)
             }
             if ShareCardChecks.isEnabled {
                 Task { @MainActor in
@@ -253,7 +254,7 @@ final class AppCoordinator: NSObject {
             let env = ProcessInfo.processInfo.environment
             guard let host = env["TAILSCODE_HOST"], let url = URL(string: host) else { return }
             guard !ConnectionController.shared.hasConnection else {
-                AppLogger.connection.info("seed skipped — already connected")
+                MidgarLog.info("seed skipped — already connected", category: .connection)
                 return
             }
             seed(
@@ -281,11 +282,14 @@ final class AppCoordinator: NSObject {
             ConnectionController.shared.setOverridePassword(password, for: id)
             do {
                 try ConnectionController.shared.save(profile, password: password, makeActive: id == "debug")
-                AppLogger.connection.info("seed saved profile for \(name)")
+                MidgarLog.info("seed saved profile for \(name)", category: .connection)
             } catch {
                 ConnectionController.shared.addDebugProfile(profile)
                 if id == "debug" { ConnectionController.shared.setActive(id) }
-                AppLogger.connection.error("seed keychain failed (\(error)); using in-memory profile")
+                MidgarLog.error(
+                    "seed keychain failed (\(error)); using in-memory profile",
+                    category: .connection
+                )
             }
         }
 
@@ -446,9 +450,15 @@ final class AppCoordinator: NSObject {
         }
         let reading = ConnectLink.read(url: url)
         switch reading {
-        case .link(let link): AppLogger.lifecycle.info("connect link opened: \(ConnectLink.logLine(link))")
+        case .link(let link): MidgarLog.info(
+            "connect link opened: \(ConnectLink.logLine(link))",
+            category: .lifecycle
+        )
         case .rejected(let rejection):
-            AppLogger.lifecycle.info("connect link opened: \(ConnectLink.logLine(rejection: rejection))")
+            MidgarLog.info(
+                "connect link opened: \(ConnectLink.logLine(rejection: rejection))",
+                category: .lifecycle
+            )
         }
         guard showingMain else {
             openSetup(with: url.absoluteString)
@@ -476,7 +486,8 @@ final class AppCoordinator: NSObject {
             let nav = window.rootViewController as? UINavigationController,
             let welcome = nav.viewControllers.first as? WelcomeViewController
         else {
-            AppLogger.lifecycle.info("connect link ignored, the welcome screen is not showing")
+            MidgarLog.info(
+                "connect link ignored, the welcome screen is not showing", category: .lifecycle)
             return
         }
         guard nav.presentedViewController != nil else {

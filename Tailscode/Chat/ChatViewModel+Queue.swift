@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import Foundation
@@ -44,8 +45,8 @@ extension ChatViewModel {
         guard !queue.isEmpty else { return }
         let held = queue.local.items.map(\.id)
         guard queue.adopt() else { return }
-        AppLogger.chat.info(
-            "queue adopted from store session=\(session.id) held=\(held.count) stored=\(queue.count)")
+        MidgarLog.info(
+            "queue adopted from store session=\(session.id) held=\(held.count) stored=\(queue.count)", category: .chat)
         onPending?()
     }
 
@@ -99,7 +100,7 @@ extension ChatViewModel {
             onPending?()
             return
         }
-        AppLogger.chat.info("queue drain session=\(session.id) left=\(queue.count)")
+        MidgarLog.info("queue drain session=\(session.id) left=\(queue.count)", category: .chat)
         if case .command(let name, let arguments) = next.kind {
             runNow(
                 AgentCommand(name: name, details: "", source: .builtin),
@@ -163,7 +164,7 @@ extension ChatViewModel {
             changed = true
         }
         if changed {
-            AppLogger.chat.info("retired delivered failure session=\(session.id)")
+            MidgarLog.info("retired delivered failure session=\(session.id)", category: .chat)
             onPending?()
         }
     }

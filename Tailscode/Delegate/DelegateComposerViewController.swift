@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -585,7 +586,10 @@ final class DelegateComposerViewController: UIViewController, UITextViewDelegate
             guard let self else { return }
             do {
                 let runID = try await self.desk.start(draft, host: self.host)
-                AppLogger.ui.info("delegate packet started run \(runID) on \(self.host) review=\(draft.review && self.board.supportsReview)")
+                MidgarLog.info(
+                    "delegate packet started run \(runID) on \(self.host) review=\(draft.review && self.board.supportsReview)",
+                    category: .ui
+                )
                 self.dismiss(animated: true) { [weak self] in self?.onStarted?(runID) }
             } catch {
                 self.sending = false

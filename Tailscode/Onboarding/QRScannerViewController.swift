@@ -1,4 +1,5 @@
 import AVFoundation
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -185,7 +186,7 @@ final class QRScannerViewController: UIViewController {
     }
 
     private func showUnavailable() {
-        AppLogger.ui.info("qr scanner: camera unavailable")
+        MidgarLog.info("qr scanner: camera unavailable", category: .ui)
         setUnavailable(true)
         UIAccessibility.post(notification: .layoutChanged, argument: deniedStack)
     }
@@ -202,7 +203,7 @@ final class QRScannerViewController: UIViewController {
         delivered = true
         stopCapture()
         Theme.Haptics.success()
-        AppLogger.ui.info("qr scanner: code read")
+        MidgarLog.info("qr scanner: code read", category: .ui)
         onCode?(text)
     }
 }

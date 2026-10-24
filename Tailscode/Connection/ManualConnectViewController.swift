@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import CodingAgentKitApple
@@ -138,7 +139,8 @@ final class ManualConnectViewController: UIViewController {
             let profile = ConnectionProfile(id: UUID().uuidString, name: name, backend: detected, baseURL: url)
             do {
                 try ConnectionController.shared.save(profile, password: password)
-                AppLogger.connection.info("connected to \(detected.displayName) \(version ?? "")")
+                MidgarLog.info(
+                    "connected to \(detected.displayName) \(version ?? "")", category: .connection)
                 Theme.Haptics.success()
                 onConnected?()
             } catch {

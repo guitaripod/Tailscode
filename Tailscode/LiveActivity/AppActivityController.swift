@@ -1,6 +1,7 @@
 import ActivityKit
 import CodingAgentKit
 import Foundation
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -94,11 +95,11 @@ final class AppActivityController {
         onPushToken: PushTokenSink? = nil
     ) -> Bool {
         guard AppPreferences.liveActivitiesEnabled else {
-            AppLogger.chat.info("Live Activity disabled in settings")
+            MidgarLog.info("Live Activity disabled in settings", category: .chat)
             return false
         }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            AppLogger.chat.info("Live Activity not authorized")
+            MidgarLog.info("Live Activity not authorized", category: .chat)
             return false
         }
         if isTracking(sessionID), var entry = entries[sessionID] {
@@ -116,16 +117,16 @@ final class AppActivityController {
             if let token = entry.pushToken, let sink = entry.onPushToken {
                 Task { await sink(token, startedAt) }
             }
-            AppLogger.chat.info("Live Activity taken back for \(sessionID)")
+            MidgarLog.info("Live Activity taken back for \(sessionID)", category: .chat)
             return true
         }
         if let lingering = entries[sessionID] {
             dismiss(sessionID, lingering)
         }
-        if !ProStore.shared.isPro {
+        if !ProAccess.shared.isPro {
             let others = entries.filter { $0.key != sessionID && !$0.value.retired }
             guard others.allSatisfy({ current($0.key, $0.value).isSettled }) else {
-                AppLogger.chat.info("second concurrent Live Activity gated (free tier)")
+                MidgarLog.info("second concurrent Live Activity gated (free tier)", category: .chat)
                 return false
             }
             for (other, entry) in others { dismiss(other, entry) }
@@ -144,16 +145,16 @@ final class AppActivityController {
             activity = try Activity.request(attributes: attributes, content: content, pushType: pushType)
         } catch {
             guard Self.isFull(error), let oldest = oldestSettled() else {
-                AppLogger.chat.error("Live Activity failed to start: \(error)")
+                MidgarLog.error("Live Activity failed to start: \(error)", category: .chat)
                 return false
             }
-            AppLogger.chat.info("Live Activity refused (\(error)); making room")
+            MidgarLog.info("Live Activity refused (\(error)); making room", category: .chat)
             dismiss(oldest, entries[oldest])
             guard
                 let retried = try? Activity.request(
                     attributes: attributes, content: content, pushType: pushType)
             else {
-                AppLogger.chat.error("Live Activity failed to start: \(error)")
+                MidgarLog.error("Live Activity failed to start: \(error)", category: .chat)
                 return false
             }
             activity = retried
@@ -161,7 +162,7 @@ final class AppActivityController {
         entries[sessionID] = Entry(
             activity: activity, state: state, pushedAt: startedAt, onPushToken: onPushToken)
         watch(activity, sessionID: sessionID)
-        AppLogger.chat.info("Live Activity started for \(sessionID)")
+        MidgarLog.info("Live Activity started for \(sessionID)", category: .chat)
         return true
     }
 
@@ -180,7 +181,10 @@ final class AppActivityController {
                 entries[sessionID] = entry
                 return
             }
-            AppLogger.chat.info("Live Activity taken back by a turn begun elsewhere for \(sessionID)")
+            MidgarLog.info(
+                "Live Activity taken back by a turn begun elsewhere for \(sessionID)",
+                category: .chat
+            )
         }
         let revived = shown.isSettled
         let startedAt = revived ? min(reading.startedAt ?? Date(), Date()) : shown.startedAt
@@ -220,12 +224,13 @@ final class AppActivityController {
     func settle(sessionID: String, reading: LiveActivityReading, title: String?) {
         guard isTracking(sessionID), var entry = entries[sessionID] else { return }
         if isBeingRead(sessionID) {
-            AppLogger.chat.info("Live Activity read as it ended for \(sessionID)")
+            MidgarLog.info("Live Activity read as it ended for \(sessionID)", category: .chat)
             dismiss(sessionID, entry)
             return
         }
         if reading.detail == .cancelled {
-            AppLogger.chat.info("Live Activity ended with its stopped turn for \(sessionID)")
+            MidgarLog.info(
+                "Live Activity ended with its stopped turn for \(sessionID)", category: .chat)
             dismiss(sessionID, entry)
             return
         }
@@ -256,8 +261,8 @@ final class AppActivityController {
         entries[sessionID] = entry
         write(sessionID, entry.activity, state)
         scheduleRetirement(sessionID, settledAt: endedAt)
-        AppLogger.chat.info(
-            "Live Activity settled for \(sessionID) (\(reading.detail.rawValue))")
+        MidgarLog.info(
+            "Live Activity settled for \(sessionID) (\(reading.detail.rawValue))", category: .chat)
     }
 
     /// The conversation was looked at, which is what reads a card about it. A live card stays:
@@ -265,7 +270,7 @@ final class AppActivityController {
     func seen(_ sessionID: String) {
         guard let entry = entries[sessionID] else { return }
         guard entry.retired || current(sessionID, entry).isSettled else { return }
-        AppLogger.chat.info("Live Activity read for \(sessionID)")
+        MidgarLog.info("Live Activity read for \(sessionID)", category: .chat)
         dismiss(sessionID, entry)
     }
 
@@ -360,8 +365,8 @@ final class AppActivityController {
             if Self.isStanding(kept), let endedAt = state.endedAt {
                 scheduleRetirement(sessionID, settledAt: endedAt)
             }
-            AppLogger.chat.info(
-                "Live Activity adopted for \(sessionID) (\(state.isSettled ? "settled" : "live"))")
+            MidgarLog.info(
+                "Live Activity adopted for \(sessionID) (\(state.isSettled ? "settled" : "live"))", category: .chat)
         }
         if !extras.isEmpty {
             Task.detached {
@@ -389,7 +394,7 @@ final class AppActivityController {
         enqueue(sessionID, entry.activity) { act in
             await act.end(content, dismissalPolicy: policy, timestamp: stamp)
         }
-        AppLogger.chat.info("Live Activity left the Dynamic Island for \(sessionID)")
+        MidgarLog.info("Live Activity left the Dynamic Island for \(sessionID)", category: .chat)
     }
 
     private func dismiss(_ sessionID: String, _ entry: Entry?) {

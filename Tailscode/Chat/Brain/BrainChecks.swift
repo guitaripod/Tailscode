@@ -1,3 +1,4 @@
+import MidgarCore
 #if DEBUG
     import CodingAgentKit
     import TailscodeCore
@@ -20,8 +21,7 @@
         private static func check(_ name: String, _ passed: Bool, _ detail: @autoclosure () -> String = "") {
             let result = Result(name: name, passed: passed, detail: passed ? "" : detail())
             results.append(result)
-            AppLogger.ui.info(
-                "brain-check \(passed ? "PASS" : "FAIL") \(name) \(result.detail)")
+            MidgarLog.info("brain-check \(passed ? "PASS" : "FAIL") \(name) \(result.detail)", category: .ui)
         }
 
         static var isEnabled: Bool {
@@ -76,7 +76,7 @@
             runEffort()
             runReader()
             let failed = results.filter { !$0.passed }.count
-            AppLogger.ui.info("brain-check model done pass=\(results.count - failed) fail=\(failed)")
+            MidgarLog.info("brain-check model done pass=\(results.count - failed) fail=\(failed)", category: .ui)
         }
 
         private static func runLiveAndSettle(_ all: [NeuralTurn]) {
@@ -613,7 +613,7 @@
             await wait(1.2)
             check("moving the cursor closes it", visibleReader() == nil)
             let failed = results.filter { !$0.passed }.count
-            AppLogger.ui.info("brain-check reader screen done pass=\(results.count - failed) fail=\(failed)")
+            MidgarLog.info("brain-check reader screen done pass=\(results.count - failed) fail=\(failed)", category: .ui)
         }
 
         private struct Sample {
@@ -636,8 +636,7 @@
         }
 
         private static func report(_ name: String, _ sample: Sample, _ extra: String = "") {
-            AppLogger.ui.info(
-                "brain-perf \(name) mean=\(String(format: "%.3f", sample.mean))ms p95=\(String(format: "%.3f", sample.p95))ms max=\(String(format: "%.3f", sample.max))ms \(extra)")
+            MidgarLog.info("brain-perf \(name) mean=\(String(format: "%.3f", sample.mean))ms p95=\(String(format: "%.3f", sample.p95))ms max=\(String(format: "%.3f", sample.max))ms \(extra)", category: .ui)
         }
 
         /// The longest the main thread went between two frames while it ran, and how many gaps
@@ -782,7 +781,7 @@
             })
             await wait(1.5)
             guard let closed = cell() else {
-                AppLogger.ui.info("brain-perf the latest brain is not on screen")
+                MidgarLog.info("brain-perf the latest brain is not on screen", category: .ui)
                 return
             }
             report("closed-live token", time(300) { closed.refreshLive(); closed.layoutIfNeeded() })
@@ -790,7 +789,7 @@
             if let settled {
                 report("settled-card token", time(300) { settled.refreshLive(); settled.layoutIfNeeded() })
             } else {
-                AppLogger.ui.info("brain-perf no settled card on screen")
+                MidgarLog.info("brain-perf no settled card on screen", category: .ui)
             }
             let attributes = UICollectionViewLayoutAttributes(forCellWith: IndexPath(item: 0, section: 0))
             attributes.size = CGSize(width: collection.bounds.width, height: 100)
@@ -805,7 +804,7 @@
             meter.stop()
             report("open tap", tap, "frames=\(meter.frames) longestGap=\(String(format: "%.1f", meter.longest))ms hitches=\(meter.hitches)")
             guard let open = cell(), open.brainRow.openView != nil else {
-                AppLogger.ui.info("brain-perf the brain did not open")
+                MidgarLog.info("brain-perf the brain did not open", category: .ui)
                 return
             }
             report("open-live token", time(300) { open.refreshLive(); open.layoutIfNeeded() })
@@ -817,18 +816,16 @@
             let parent = collection.superview
             collection.removeFromSuperview()
             await wait(3.5)
-            AppLogger.ui.info(
-                "brain-perf away registered=\(BrainLiveClock.shared.registered)/\(held) ticks=\(BrainLiveClock.shared.ticks - before) running=\(BrainLiveClock.shared.isRunning) headClock=\(headRunning)->\(open.brainRow.openView?.stage.head.isClockRunning ?? false) displayLink=\(open.brainRow.ownsDisplayLink) metalHolds=\(context)->\(NeuralMetalContext.shared?.retainCount ?? -1)")
+            MidgarLog.info("brain-perf away registered=\(BrainLiveClock.shared.registered)/\(held) ticks=\(BrainLiveClock.shared.ticks - before) running=\(BrainLiveClock.shared.isRunning) headClock=\(headRunning)->\(open.brainRow.openView?.stage.head.isClockRunning ?? false) displayLink=\(open.brainRow.ownsDisplayLink) metalHolds=\(context)->\(NeuralMetalContext.shared?.retainCount ?? -1)", category: .ui)
             if let parent { parent.addSubview(collection) }
             await wait(1)
-            AppLogger.ui.info(
-                "brain-perf back registered=\(BrainLiveClock.shared.registered) running=\(BrainLiveClock.shared.isRunning)")
+            MidgarLog.info("brain-perf back registered=\(BrainLiveClock.shared.registered) running=\(BrainLiveClock.shared.isRunning)", category: .ui)
             toggle(id)
             await wait(1.2)
             let second = time(1) { toggle(id); collection.layoutIfNeeded() }
             await wait(1.5)
             report("reopen tap", second)
-            AppLogger.ui.info("brain-perf done")
+            MidgarLog.info("brain-perf done", category: .ui)
         }
 
         private static func verticalScrollers(in view: UIView) -> [UIScrollView] {
@@ -859,7 +856,7 @@
             }
             func wait(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
             guard let width = cell()?.brainRow.bounds.width, width > 0, width < 500 else {
-                AppLogger.ui.info("brain-check phone screen skipped: the row is not a phone's")
+                MidgarLog.info("brain-check phone screen skipped: the row is not a phone's", category: .ui)
                 return
             }
             if !store.isOpen(id) { toggle(id) }
@@ -926,7 +923,7 @@
             await wait(0.9)
             check("leaving the dive lets the swipe go", !open.stage.holdsSwipe)
             let failed = results.filter { !$0.passed }.count
-            AppLogger.ui.info("brain-check phone screen done pass=\(results.count - failed) fail=\(failed)")
+            MidgarLog.info("brain-check phone screen done pass=\(results.count - failed) fail=\(failed)", category: .ui)
         }
 
         /// Opens and closes the latest brain in the list on screen and reads what the move cost,
@@ -982,7 +979,7 @@
                 (NeuralMetalContext.shared?.retainCount ?? 0) == 0, "\(NeuralMetalContext.shared?.retainCount ?? -1)")
             await runPhoneScreen(collection: collection, store: store, toggle: toggle)
             let total = results.filter { !$0.passed }.count
-            AppLogger.ui.info("brain-check screen done pass=\(results.count - total) fail=\(total)")
+            MidgarLog.info("brain-check screen done pass=\(results.count - total) fail=\(total)", category: .ui)
         }
     }
 #endif

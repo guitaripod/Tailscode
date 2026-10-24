@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -44,7 +45,7 @@ enum AnalyticsCardRenderer {
             try rendered.data.write(to: url, options: .atomic)
             return url
         } catch {
-            AppLogger.ui.error("could not stage analytics share: \(error)")
+            MidgarLog.error("could not stage analytics share: \(error)", category: .ui)
             return nil
         }
     }

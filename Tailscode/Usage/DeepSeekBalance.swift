@@ -1,5 +1,6 @@
 import CodingAgentKitApple
 import Foundation
+import MidgarCore
 
 /// A DeepSeek model reached through a direct API key is metered by that key's prepaid balance,
 /// not by any plan's windows. The key is optional, lives in the Keychain (app group, so the
@@ -27,13 +28,13 @@ enum DeepSeekCredentials {
     static func setToken(_ value: String) throws {
         try keychain().setValue(value, for: apiKey)
         UserDefaults(suiteName: UsageWidgetStore.suiteName)?.removeObject(forKey: "deepseek.lastFetch")
-        AppLogger.session.info("deepseek: api key saved")
+        MidgarLog.info("deepseek: api key saved", category: .session)
     }
 
     static func clearToken() {
         try? keychain().removeValue(for: apiKey)
         UserDefaults(suiteName: UsageWidgetStore.suiteName)?.removeObject(forKey: "deepseek.lastFetch")
-        AppLogger.session.info("deepseek: api key cleared")
+        MidgarLog.info("deepseek: api key cleared", category: .session)
     }
 }
 
@@ -86,17 +87,18 @@ enum DeepSeekBalance {
         }
         let reading = await fetch(key: key)
         if reading == nil {
-            AppLogger.session.info("deepseek: balance fetch failed; keeping stored snapshot")
+            MidgarLog.info(
+                "deepseek: balance fetch failed; keeping stored snapshot", category: .session)
         }
         if let defaults {
             defaults.set(Date().timeIntervalSince1970, forKey: lastFetchKey)
         }
         guard let reading else { return nil }
         UsageWidgetStore.upsertProvider(snapshot(for: reading))
-        AppLogger.session.info(
+        MidgarLog.info(
             "deepseek: balance \(currency(reading.total, reading.currency)) "
                 + "(topped up \(currency(reading.toppedUp, reading.currency)), "
-                + "granted \(currency(reading.granted, reading.currency)))")
+                + "granted \(currency(reading.granted, reading.currency)))", category: .session)
         return reading
     }
 

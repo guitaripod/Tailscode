@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import UIKit
@@ -317,7 +318,7 @@ extension ChatViewController {
         guard let settled = state.goal, settled.isMet, previous?.isActive == true,
             previous?.condition == settled.condition
         else { return }
-        AppLogger.chat.info("goal reached: \(settled.condition)")
+        MidgarLog.info("goal reached: \(settled.condition)", category: .chat)
         Theme.Haptics.received()
         presentToast(String(localized: "Goal reached — \(settled.condition)"))
     }

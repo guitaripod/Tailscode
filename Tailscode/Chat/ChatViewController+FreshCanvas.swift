@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -200,8 +201,8 @@ extension ChatViewController {
         collectionView.layoutIfNeeded()
         guard let frame = canvasPromptFrame(), frame.height > 0 else {
             guard let deadline = canvasRiseDeadline, CACurrentMediaTime() < deadline else {
-                AppLogger.chat.info(
-                    "fresh canvas: prompt row never measured session=\(viewModel.session.id)")
+                MidgarLog.info(
+                    "fresh canvas: prompt row never measured session=\(viewModel.session.id)", category: .chat)
                 canvasRising = false
                 releaseCanvas()
                 for cell in cells { cell.alpha = 1 }
@@ -215,8 +216,9 @@ extension ChatViewController {
         }
         canvasRiseDeadline = nil
         let offset = canvasOffset(for: frame)
-        AppLogger.chat.info(
-            "fresh canvas: rows=\(promptIDs.count) prompt=\(Int(frame.height)) offset=\(Int(offset)) padding=\(Int(canvasPadding)) session=\(viewModel.session.id)"
+        MidgarLog.info(
+            "fresh canvas: rows=\(promptIDs.count) prompt=\(Int(frame.height)) offset=\(Int(offset)) padding=\(Int(canvasPadding)) session=\(viewModel.session.id)",
+            category: .chat
         )
         let target = CGPoint(x: 0, y: offset)
         for cell in cells { cell.alpha = 0 }

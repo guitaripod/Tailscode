@@ -83,7 +83,7 @@ final class ServerDetailViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(deskChanged), name: DelegateDesk.didChange, object: nil)
         NotificationCenter.default.addObserver(
-            self, selector: #selector(deskChanged), name: ProStore.didChange, object: nil)
+            self, selector: #selector(deskChanged), name: ProAccess.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(previewHostsChanged), name: PreviewAccessStore.didChange, object: nil)
         Task { await refresh() }

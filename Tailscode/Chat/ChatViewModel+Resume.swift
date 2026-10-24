@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import Foundation
@@ -74,10 +75,10 @@ extension ChatViewModel {
         case .notAWall:
             return
         case .cannot(let obstacle):
-            AppLogger.chat.info("resume declined: \(String(describing: obstacle))")
+            MidgarLog.info("resume declined: \(String(describing: obstacle))", category: .chat)
         case .resume(let plan):
-            AppLogger.chat.info(
-                "resume armed session=\(self.session.id) in=\(Int(plan.remaining()))s")
+            MidgarLog.info(
+                "resume armed session=\(self.session.id) in=\(Int(plan.remaining()))s", category: .chat)
             resume.hold(plan)
             ResumeStore.hold(
                 ResumeRecord(
@@ -155,7 +156,7 @@ extension ChatViewModel {
         let held = pending.send(id: plan.id)
         let text = held?.text ?? record?.text ?? ""
         guard !text.isEmpty else { return }
-        AppLogger.chat.info("resume firing session=\(self.session.id)")
+        MidgarLog.info("resume firing session=\(self.session.id)", category: .chat)
         let attachments = held?.attachments ?? record?.attachments ?? []
         let model = held?.model ?? record?.model ?? selectedModel
         let effort = held?.effort ?? record?.effort ?? currentEffort

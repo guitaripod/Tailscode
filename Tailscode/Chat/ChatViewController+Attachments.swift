@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import PhotosUI
@@ -99,7 +100,8 @@ extension ChatViewController: UIDocumentPickerDelegate {
 
 extension ChatViewController: PromptEnhanceOverlayDelegate {
     func enhanceOverlay(_ overlay: PromptEnhanceOverlay, didChoose prompt: EnhancedPrompt) {
-        AppLogger.ui.info("enhance: chose card \"\(prompt.label)\" (\(prompt.text.count) chars)")
+        MidgarLog.info(
+            "enhance: chose card \"\(prompt.label)\" (\(prompt.text.count) chars)", category: .ui)
         Theme.Haptics.success()
         isApplyingEnhancedPrompt = true
         composer.setDraft(prompt.text, focus: true)

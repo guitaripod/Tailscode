@@ -1,5 +1,6 @@
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 import UIKit
 import UserNotifications
@@ -32,7 +33,7 @@ enum NoticeReplies {
                     to: sessionID)
                 return true
             } catch {
-                AppLogger.session.error("notice reply failed: \(error)")
+                MidgarLog.error("notice reply failed: \(error)", category: .session)
                 return false
             }
         } done: { sent in
@@ -81,7 +82,7 @@ enum NoticeReplies {
                     to: sessionID)
                 return true
             } catch {
-                AppLogger.session.error("notice answer failed: \(error)")
+                MidgarLog.error("notice answer failed: \(error)", category: .session)
                 return false
             }
         } done: { sent in
@@ -132,7 +133,7 @@ enum NoticeReplies {
             NoticeOwners.remember([sessionID: profile.id])
             return (profile, backend)
         }
-        AppLogger.session.error("notice reply: no server holds session \(sessionID)")
+        MidgarLog.error("notice reply: no server holds session \(sessionID)", category: .session)
         return nil
     }
 }

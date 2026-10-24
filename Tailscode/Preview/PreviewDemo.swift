@@ -1,3 +1,4 @@
+import MidgarCore
 #if DEBUG
     import CodingAgentKit
     import TailscodeCore
@@ -153,10 +154,13 @@
                 viewer = Self.viewer(value)
             }
             guard let viewer else {
-                AppLogger.ui.error("preview: no fixture or host named \(value)")
+                MidgarLog.error("preview: no fixture or host named \(value)", category: .ui)
                 return
             }
-            viewer.onAskAgent = { words in AppLogger.ui.info("preview: asked the agent: \(words)") }
+            viewer.onAskAgent = { words in MidgarLog.info(
+                "preview: asked the agent: \(words)",
+                category: .ui
+            ) }
             presenter.present(viewer, animated: false)
         }
 

@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -60,8 +61,8 @@ final class SessionActivity {
                 backend: backend, session: entry.session, contextID: entry.profileID,
                 serverName: entry.profileName)
             retained[record.sessionID] = viewModel
-            AppLogger.chat.info(
-                "queue wake session=\(record.sessionID) held=\(record.items.count)")
+            MidgarLog.info(
+                "queue wake session=\(record.sessionID) held=\(record.items.count)", category: .chat)
             viewModel.start()
         }
     }
@@ -84,7 +85,7 @@ final class SessionActivity {
                 serverName: entry.profileName)
             viewModel.isBound = false
             retained[sessionID] = viewModel
-            AppLogger.chat.info("live card wake session=\(sessionID)")
+            MidgarLog.info("live card wake session=\(sessionID)", category: .chat)
             viewModel.start()
         }
     }
@@ -187,8 +188,9 @@ final class SessionActivity {
                     sessionID: sessionID, profileID: profileID, notice: notice,
                     activity: failed ? .turnFailed : .turnEnded)
             } else {
-                AppLogger.lifecycle.info(
-                    "turn ended locally but already claimed by the background wait; skipping duplicate banner for session=\(sessionID)"
+                MidgarLog.info(
+                    "turn ended locally but already claimed by the background wait; skipping duplicate banner for session=\(sessionID)",
+                    category: .lifecycle
                 )
             }
         }

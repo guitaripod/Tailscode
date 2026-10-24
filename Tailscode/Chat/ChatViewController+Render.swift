@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import UIKit
@@ -222,8 +223,8 @@ extension ChatViewController {
             startBrainWalk()
             startBrainChecks()
         #endif
-        AppLogger.performance.info(
-            "journey open session=\(viewModel.session.id) ms=\(FirstAnswerClock.milliseconds(since: openedAt)) messages=\(state.messages.count) rows=\(orderedIDs.count)")
+        MidgarLog.info(
+            "journey open session=\(viewModel.session.id) ms=\(FirstAnswerClock.milliseconds(since: openedAt)) messages=\(state.messages.count) rows=\(orderedIDs.count)", category: .performance)
     }
 
     /// Only what this device is holding changed — a message sent, taken back, failed, or moved in

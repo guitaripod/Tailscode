@@ -28,7 +28,7 @@ enum MacDelegateGate {
 
     static var isOpen: Bool {
         DelegateProGate.allows(
-            isPro: MacProStore.shared.isPro, sells: MacProStore.shared.sellsPro,
+            isPro: ProAccess.shared.isPro, sells: ProAccess.shared.sellsPro,
             demo: ServerDirectory.shared.isDemoMode)
     }
 }

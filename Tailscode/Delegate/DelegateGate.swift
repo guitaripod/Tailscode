@@ -1,5 +1,6 @@
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -11,7 +12,7 @@ enum DelegateGate {
     static let desk = DelegateDesk(secrets: KeychainSecretStore())
 
     static var isOpen: Bool {
-        DelegateProGate.allows(isPro: ProStore.shared.isPro, sells: true, demo: ConnectionController.shared.isDemoMode)
+        DelegateProGate.allows(isPro: ProAccess.shared.isPro, sells: true, demo: ConnectionController.shared.isDemoMode)
     }
 
     nonisolated(unsafe) private static var noticeWatcher: NSObjectProtocol?
@@ -42,7 +43,7 @@ enum DelegateGate {
     static func open(from presenter: UIViewController, host: String, serverName: String) {
         Theme.Haptics.tap()
         guard isOpen else {
-            AppLogger.ui.info("delegate gated: free copy, presenting Pro")
+            MidgarLog.info("delegate gated: free copy, presenting Pro", category: .ui)
             ProUpgradeViewController.present(from: presenter, lead: .delegate)
             return
         }
@@ -61,7 +62,7 @@ enum DelegateGate {
     static func compose(from presenter: UIViewController, handoff: DelegateHandoff) {
         Theme.Haptics.tap()
         guard isOpen else {
-            AppLogger.ui.info("delegate handoff gated: free copy, presenting Pro")
+            MidgarLog.info("delegate handoff gated: free copy, presenting Pro", category: .ui)
             ProUpgradeViewController.present(from: presenter, lead: .delegate)
             return
         }

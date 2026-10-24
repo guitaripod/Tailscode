@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -70,7 +71,7 @@ extension HomeViewController {
             snapshot.appendSections([.demoNudge])
             snapshot.appendItems([.demoNudge(DemoNudgeCard())], toSection: .demoNudge)
         }
-        if SupporterInvitation.isDue(isPro: ProStore.shared.isPro) {
+        if SupporterInvitation.isDue(isPro: ProAccess.shared.isPro) {
             snapshot.appendSections([.supporter])
             snapshot.appendItems([.supporter(SupporterCard(price: proPrice))], toSection: .supporter)
         }
@@ -225,8 +226,9 @@ extension HomeViewController {
         var kept: [HomeItem] = []
         for item in items where seen.insert(item).inserted { kept.append(item) }
         if kept.count != items.count {
-            AppLogger.ui.error(
-                "home: \(items.count - kept.count) duplicate row(s) dropped from \(String(describing: section))"
+            MidgarLog.error(
+                "home: \(items.count - kept.count) duplicate row(s) dropped from \(String(describing: section))",
+                category: .ui
             )
         }
         return kept

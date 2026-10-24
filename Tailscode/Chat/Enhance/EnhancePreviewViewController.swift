@@ -1,4 +1,5 @@
 #if DEBUG
+import MidgarCore
 import UIKit
 
 /// DEBUG-only harness for eyeballing the enhancement overlay without a live
@@ -30,9 +31,11 @@ final class EnhancePreviewViewController: UIViewController, PromptEnhanceOverlay
 
         switch probe.availability {
         case .available:
-            AppLogger.ui.info("enhance preview: Foundation Model AVAILABLE on this device")
+            MidgarLog.info(
+                "enhance preview: Foundation Model AVAILABLE on this device", category: .ui)
         case .unavailable(let reason):
-            AppLogger.ui.info("enhance preview: Foundation Model unavailable — \(reason)")
+            MidgarLog.info(
+                "enhance preview: Foundation Model unavailable — \(reason)", category: .ui)
         }
     }
 
@@ -131,7 +134,7 @@ final class EnhancePreviewViewController: UIViewController, PromptEnhanceOverlay
     }
 
     func enhanceOverlay(_ overlay: PromptEnhanceOverlay, didChoose prompt: EnhancedPrompt) {
-        AppLogger.ui.info("enhance preview: chose \(prompt.label)")
+        MidgarLog.info("enhance preview: chose \(prompt.label)", category: .ui)
     }
     func enhanceOverlay(_ overlay: PromptEnhanceOverlay, didCopy prompt: EnhancedPrompt) {}
     func enhanceOverlayDidRequestRetry(_ overlay: PromptEnhanceOverlay) {}

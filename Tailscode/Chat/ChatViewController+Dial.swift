@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import UIKit
@@ -293,9 +294,9 @@ extension ChatViewController {
             state.messages.filter { $0.role == .user }.map { $0.text })
         let phantoms = pendingTexts.filter { serverUserTexts.contains($0) }
         guard !phantoms.isEmpty else { return }
-        AppLogger.chat.error(
+        MidgarLog.error(
             "pending phantom: \(phantoms.count) pending bubble(s) duplicate a server message — "
                 + "queued=\(viewModel.queued.count) echoes=\(viewModel.pendingSends.count) "
-                + "serverUsers=\(serverUserTexts.count) first=\"\(phantoms[0].prefix(30))\"")
+                + "serverUsers=\(serverUserTexts.count) first=\"\(phantoms[0].prefix(30))\"", category: .chat)
     }
 }

@@ -1,5 +1,6 @@
 import CodingAgentKit
 import Foundation
+import MidgarCore
 import TailscodeCore
 
 #if DEBUG
@@ -133,11 +134,13 @@ import TailscodeCore
             _ = retained.count
             let n = Double(iterations)
             let timings = ChatRowBuilder.BuilderTimings.self
-            AppLogger.performance.info(
-                "bench phases (cold+memo, summed over \(iterations) passes) fuse=\(String(format: "%.1f", timings.fuse))ms rails=\(String(format: "%.1f", timings.rails))ms pictures=\(String(format: "%.1f", timings.pictures))ms"
+            MidgarLog.info(
+                "bench phases (cold+memo, summed over \(iterations) passes) fuse=\(String(format: "%.1f", timings.fuse))ms rails=\(String(format: "%.1f", timings.rails))ms pictures=\(String(format: "%.1f", timings.pictures))ms",
+                category: .performance
             )
-            AppLogger.performance.info(
-                "bench rebuild turns=\(turns) messages=\(turns * 2) rows=\(rowCount) coldRows=\(String(format: "%.2f", cold / n))ms memoRows=\(String(format: "%.2f", warm / n))ms memoHits=\(memo.messageHits) memoBuilds=\(memo.messageBuilds) partitionCold=\(String(format: "%.2f", brainCold / n))ms partitionCached=\(String(format: "%.2f", partition / n))ms brainPrepare=\(String(format: "%.2f", prepare / n))ms messageCompare=\(String(format: "%.2f", compare / n))ms workflowRuns=\(String(format: "%.2f", workflow / n))ms rowsAndIndex=\(String(format: "%.2f", index / n))ms"
+            MidgarLog.info(
+                "bench rebuild turns=\(turns) messages=\(turns * 2) rows=\(rowCount) coldRows=\(String(format: "%.2f", cold / n))ms memoRows=\(String(format: "%.2f", warm / n))ms memoHits=\(memo.messageHits) memoBuilds=\(memo.messageBuilds) partitionCold=\(String(format: "%.2f", brainCold / n))ms partitionCached=\(String(format: "%.2f", partition / n))ms brainPrepare=\(String(format: "%.2f", prepare / n))ms messageCompare=\(String(format: "%.2f", compare / n))ms workflowRuns=\(String(format: "%.2f", workflow / n))ms rowsAndIndex=\(String(format: "%.2f", index / n))ms",
+                category: .performance
             )
         }
     }

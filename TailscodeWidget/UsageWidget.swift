@@ -1,4 +1,5 @@
 import AppIntents
+import MidgarCore
 import SwiftUI
 import TailscodeCore
 import WidgetKit
@@ -71,11 +72,15 @@ struct UsageTimelineProvider: AppIntentTimelineProvider {
         }
         let quotas = await LiveQuotaFetcher.fetch(deadline: 15)
         guard !quotas.isEmpty else {
-            AppLogger.session.info("widget: live quota refresh got nothing; serving stored snapshot")
+            MidgarLog.info(
+                "widget: live quota refresh got nothing; serving stored snapshot",
+                category: .session
+            )
             return
         }
         UsageWidgetStore.writeLive(quotas, reload: false)
-        AppLogger.session.info("widget: timeline reload refreshed \(quotas.count) live quota(s)")
+        MidgarLog.info(
+            "widget: timeline reload refreshed \(quotas.count) live quota(s)", category: .session)
     }
 }
 

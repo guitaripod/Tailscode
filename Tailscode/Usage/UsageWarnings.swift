@@ -1,5 +1,6 @@
 import CodingAgentKit
 import Foundation
+import MidgarCore
 import TailscodeCore
 
 /// Warns once when a usage window is nearly spent, and again when it is used up,
@@ -83,7 +84,7 @@ enum UsageWarnings {
         store(fired)
         NotificationManager.notify(
             kind: .usage, title: title, body: body, identifier: "usage:\(key)")
-        AppLogger.session.info("usage warning raised for \(key)")
+        MidgarLog.info("usage warning raised for \(key)", category: .session)
     }
 
     /// One warning per window, not per fetch: a gauge sits above the threshold

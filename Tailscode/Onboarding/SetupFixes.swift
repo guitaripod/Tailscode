@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -44,7 +45,8 @@ enum SetupFixes {
                 let backend = ConnectionController.shared.makeBackend(for: saved.profile)
                     as? any AuthenticatingBackend
             else {
-                AppLogger.connection.error("setup sign-in unavailable: no authenticating backend")
+                MidgarLog.error(
+                    "setup sign-in unavailable: no authenticating backend", category: .connection)
                 return
             }
             let signIn = ServerSignInViewController(profile: saved.profile, backend: backend)

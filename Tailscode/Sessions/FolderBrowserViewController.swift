@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -340,22 +341,24 @@ final class FolderBrowserViewController: UIViewController {
         guard inFlight.insert(request).inserted else { return }
         guard let backend = backends(request.profileID) else {
             inFlight.remove(request)
-            AppLogger.ui.error(
-                "folder browser has no listing backend profile=\(request.profileID) path=\(request.path)"
+            MidgarLog.error(
+                "folder browser has no listing backend profile=\(request.profileID) path=\(request.path)",
+                category: .ui
             )
             browser.offer(request, nodes: nil)
             render()
             return
         }
-        AppLogger.ui.info(
-            "folder browser reads profile=\(request.profileID) path=\(request.path)")
+        MidgarLog.info(
+            "folder browser reads profile=\(request.profileID) path=\(request.path)", category: .ui)
         Task { [weak self] in
             var nodes: [FileNode]?
             do {
                 nodes = try await backend.listFiles(path: request.path)
             } catch {
-                AppLogger.ui.error(
-                    "folder browser read failed profile=\(request.profileID) path=\(request.path): \(AgentErrorText.readable(error))"
+                MidgarLog.error(
+                    "folder browser read failed profile=\(request.profileID) path=\(request.path): \(AgentErrorText.readable(error))",
+                    category: .ui
                 )
             }
             guard let self else { return }
@@ -371,8 +374,8 @@ final class FolderBrowserViewController: UIViewController {
         if moved {
             cursorVisible = false
             if let location = browser.location, let server = browser.server {
-                AppLogger.ui.info(
-                    "folder browser at profile=\(server.profileID) path=\(location)")
+                MidgarLog.info(
+                    "folder browser at profile=\(server.profileID) path=\(location)", category: .ui)
             }
         }
         shownLocation = browser.location
@@ -575,8 +578,9 @@ final class FolderBrowserViewController: UIViewController {
         guard let server = browser.server else { return }
         Theme.Haptics.selection()
         let starred = FileBrowserFavorites.toggle(path, for: server.profileID)
-        AppLogger.ui.info(
-            "folder browser \(starred ? "starred" : "unstarred") profile=\(server.profileID) path=\(path)"
+        MidgarLog.info(
+            "folder browser \(starred ? "starred" : "unstarred") profile=\(server.profileID) path=\(path)",
+            category: .ui
         )
         browser = browser.restated(directories: directories())
         onStarred?()
@@ -587,7 +591,7 @@ final class FolderBrowserViewController: UIViewController {
         guard !finished else { return }
         finished = true
         Theme.Haptics.tap()
-        AppLogger.ui.info("folder browser chose profile=\(profileID) path=\(path)")
+        MidgarLog.info("folder browser chose profile=\(profileID) path=\(path)", category: .ui)
         onSelect?(profileID, path)
     }
 

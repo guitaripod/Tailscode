@@ -1,4 +1,5 @@
-import MidgarKit
+import MidgarPortal
+import MidgarUI
 import TailscodeCore
 import UIKit
 
@@ -103,7 +104,8 @@ extension SettingsViewController {
     private static func embedMidgarEntry(in cell: SurfaceListCell) {
         cell.surface = .ground
         guard !cell.contentView.subviews.contains(where: { $0 is MidgarEntryView }) else { return }
-        MidgarEntryView().embed(in: cell.contentView, verticalInset: 8)
+        MidgarEntryView(config: TailscodeMidgar.shared.portalConfig).embed(
+            in: cell.contentView, verticalInset: 8)
     }
 
     /// Sections are appended conditionally, so a supplementary view's index is
@@ -374,7 +376,7 @@ extension SettingsViewController {
             ]
         case .pro:
             content.text = "Tailscode Pro"
-            if ProStore.shared.isPro {
+            if ProAccess.shared.isPro {
                 content.secondaryText = String(localized: "Supporter — thank you ♥")
                 content.image = UIImage(systemName: "heart.fill")
                 content.imageProperties.tintColor = Theme.Color.danger
@@ -410,8 +412,9 @@ extension SettingsViewController {
             content.image = UIImage(systemName: "envelope")
             content.imageProperties.tintColor = Theme.Color.accent
         case .version:
-            content.text = String(localized: "Version")
-            content.secondaryText = Self.versionString
+            let row = Self.versionRow
+            content.text = row.title
+            content.secondaryText = row.detail
             content.prefersSideBySideTextAndSecondaryText = true
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
         case .source:
@@ -420,13 +423,15 @@ extension SettingsViewController {
             content.imageProperties.tintColor = Theme.Color.secondaryLabel
             cell.accessories = [.disclosureIndicator()]
         case .privacy:
-            content.text = String(localized: "Privacy policy")
-            content.image = UIImage(systemName: "hand.raised.square")
+            let row = Self.privacyRow
+            content.text = row.title
+            content.image = row.systemImage.flatMap { UIImage(systemName: $0) }
             content.imageProperties.tintColor = Theme.Color.secondaryLabel
             cell.accessories = [.disclosureIndicator()]
         case .support:
-            content.text = String(localized: "Support")
-            content.image = UIImage(systemName: "lifepreserver")
+            let row = Self.supportRow
+            content.text = row.title
+            content.image = row.systemImage.flatMap { UIImage(systemName: $0) }
             content.imageProperties.tintColor = Theme.Color.secondaryLabel
             cell.accessories = [.disclosureIndicator()]
         case .rate:

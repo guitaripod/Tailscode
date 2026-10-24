@@ -1,4 +1,5 @@
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -19,7 +20,8 @@ enum SetupGate {
         var top = presenter
         while let above = top.presentedViewController, !above.isBeingDismissed { top = above }
         if top is SetupChecklistViewController { return }
-        AppLogger.ui.info("setup opened capability=\(target.capability) host=\(target.host)")
+        MidgarLog.info(
+            "setup opened capability=\(target.capability) host=\(target.host)", category: .ui)
         SetupChecklistViewController.present(
             target: target, focus: focus, from: top, reportLines: reportLines, onFinish: onFinish, onChange: onChange)
     }

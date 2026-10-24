@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -49,7 +50,7 @@ final class AddMachineViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(didBecomeActive),
             name: UIApplication.didBecomeActiveNotification, object: nil)
-        AppLogger.lifecycle.info("add machine sheet shown")
+        MidgarLog.info("add machine sheet shown", category: .lifecycle)
     }
 
     override func viewWillAppear(_ animated: Bool) {

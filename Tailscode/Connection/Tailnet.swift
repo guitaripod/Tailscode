@@ -2,6 +2,7 @@ import CodingAgentKit
 import CodingAgentKitApple
 import Darwin
 import Foundation
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -34,7 +35,7 @@ enum TailnetCredentials {
     static func setToken(_ value: String) throws {
         try keychain.setValue(value, for: tokenKey)
         UserDefaults.standard.removeObject(forKey: rejectedKey)
-        AppLogger.connection.info("tailscale token saved")
+        MidgarLog.info("tailscale token saved", category: .connection)
     }
 
     static func clearToken() {
@@ -42,12 +43,12 @@ enum TailnetCredentials {
         UserDefaults.standard.removeObject(forKey: scanKey)
         UserDefaults.standard.removeObject(forKey: rejectedKey)
         UserDefaults.standard.removeObject(forKey: knownKey)
-        AppLogger.connection.info("tailscale token cleared")
+        MidgarLog.info("tailscale token cleared", category: .connection)
     }
 
     static func markRejected() {
         UserDefaults.standard.set(true, forKey: rejectedKey)
-        AppLogger.connection.error("tailscale refused the saved token")
+        MidgarLog.error("tailscale refused the saved token", category: .connection)
     }
 
     static var knownMachines: KnownMachines? {
@@ -110,7 +111,10 @@ enum TailnetDirectory {
                 TailnetCredentials.markRejected()
             } catch {
                 guard !TailnetCredentials.rememberedDevices.isEmpty else { throw Failure.unavailable(error) }
-                AppLogger.connection.error("tailscale listing failed, using remembered machines: \(error.localizedDescription)")
+                MidgarLog.error(
+                    "tailscale listing failed, using remembered machines: \(error.localizedDescription)",
+                    category: .connection
+                )
             }
         }
         let remembered = TailnetCredentials.rememberedDevices

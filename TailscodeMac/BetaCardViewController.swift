@@ -1,4 +1,5 @@
 import AppKit
+import MidgarCore
 import TailscodeCore
 
 /// Why a feature is in beta, as the popover's card: the title with the mark, the lead, what changed
@@ -173,7 +174,8 @@ final class BetaCardViewController: NSViewController {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(report, forType: .string)
         MacHaptics.shared.play(.success)
-        AppLogger.ui.info("beta report copied feature=\(feature.rawValue) chars=\(report.count)")
+        MidgarLog.info(
+            "beta report copied feature=\(feature.rawValue) chars=\(report.count)", category: .ui)
         NSAccessibility.post(
             element: copyButton, notification: .announcementRequested,
             userInfo: [

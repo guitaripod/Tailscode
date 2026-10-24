@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import UIKit
@@ -96,8 +97,9 @@ extension ChatViewController {
             canvasIntent = freshSend
             canvasFloor = orderedIDs.count
             canvasForcedSend = nil
-            AppLogger.chat.info(
-                "fresh canvas wanted: rows=\(freshSend.count) revealed=\(hasRevealed) session=\(viewModel.session.id)"
+            MidgarLog.info(
+                "fresh canvas wanted: rows=\(freshSend.count) revealed=\(hasRevealed) session=\(viewModel.session.id)",
+                category: .chat
             )
         }
         let shownIDs = idsToShow(from: uniqueIDs)

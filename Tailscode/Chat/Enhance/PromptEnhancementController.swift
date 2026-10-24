@@ -1,4 +1,5 @@
 import Foundation
+import MidgarCore
 import TailscodeCore
 
 /// Drives on-device prompt enhancement.
@@ -103,21 +104,22 @@ final class PromptEnhancementController {
             return true
         }
         if let reason = unavailableReason {
-            AppLogger.ui.info("enhance: requestNow — unavailable")
+            MidgarLog.info("enhance: requestNow — unavailable", category: .ui)
             status = .unavailable(reason)
             return true
         }
         guard Self.isEnhanceable(text) else {
-            AppLogger.ui.info("enhance: requestNow — draft too short (\(text.count) chars)")
+            MidgarLog.info(
+                "enhance: requestNow — draft too short (\(text.count) chars)", category: .ui)
             status = .unavailable(
                 String(localized: "Add a bit more detail, then hold Send to refine it."))
             return true
         }
         if text == generatedInput, case .ready = status {
-            AppLogger.ui.info("enhance: requestNow — serving cached suggestions")
+            MidgarLog.info("enhance: requestNow — serving cached suggestions", category: .ui)
             return true
         }
-        AppLogger.ui.info("enhance: requestNow — generating")
+        MidgarLog.info("enhance: requestNow — generating", category: .ui)
         generate(text)
         return true
     }
@@ -194,17 +196,17 @@ final class PromptEnhancementController {
                 }
                 self.generatedInput = clean.isEmpty ? nil : text
                 if clean.isEmpty {
-                    AppLogger.ui.info("enhance: no usable suggestions returned")
+                    MidgarLog.info("enhance: no usable suggestions returned", category: .ui)
                     self.status = .failed
                 } else {
-                    AppLogger.ui.info("enhance: ready with \(clean.count) cards")
+                    MidgarLog.info("enhance: ready with \(clean.count) cards", category: .ui)
                     self.status = .ready(clean)
                 }
             } catch is CancellationError {
                 return
             } catch {
                 guard !Task.isCancelled else { return }
-                AppLogger.ui.info("enhance: generation error surfaced")
+                MidgarLog.info("enhance: generation error surfaced", category: .ui)
                 self.status = .failed
             }
         }

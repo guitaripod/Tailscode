@@ -1,5 +1,6 @@
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -225,7 +226,8 @@ final class UsageViewController: UIViewController {
         hasOpencodeProfile = profiles.contains { $0.backend == .openCode }
 
         guard hasClaudeProfile || hasOpencodeProfile else {
-            AppLogger.session.info("usage: no Claude Code or opencode profile connected")
+            MidgarLog.info(
+                "usage: no Claude Code or opencode profile connected", category: .session)
             showEmptyState()
             return
         }
@@ -267,10 +269,12 @@ final class UsageViewController: UIViewController {
 
         refreshing = false
         if hasClaudeProfile, fetched.isEmpty, reports.isEmpty {
-            AppLogger.session.info("usage: no Claude usage API reachable from any bridge")
+            MidgarLog.info(
+                "usage: no Claude usage API reachable from any bridge", category: .session)
             showError(QuotaUnavailableError())
         } else if hasClaudeProfile, fetched.isEmpty {
-            AppLogger.session.info("usage: bridges did not answer; keeping the last figures")
+            MidgarLog.info(
+                "usage: bridges did not answer; keeping the last figures", category: .session)
         }
         if !fetched.isEmpty {
             lastRefreshed = Date()
@@ -321,8 +325,8 @@ final class UsageViewController: UIViewController {
             return collected
         }
         for entry in results {
-            AppLogger.session.info(
-                "usage: \(entry.server) answered with \(entry.quotas.count) quota(s)")
+            MidgarLog.info(
+                "usage: \(entry.server) answered with \(entry.quotas.count) quota(s)", category: .session)
         }
         return results.sorted { $0.index < $1.index }
             .flatMap { entry in entry.quotas.map { (entry.server, $0) } }

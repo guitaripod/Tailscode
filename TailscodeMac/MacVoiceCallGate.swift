@@ -2,6 +2,7 @@ import AppKit
 import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
+import MidgarCore
 import TailscodeCore
 
 /// The one door into calling on the Mac. It owns the process's single `VoiceCallDesk`, mirrors what
@@ -84,7 +85,7 @@ final class MacVoiceCallGate {
     /// mirror so a call that is still opening is ended too. Only the pane that started it may.
     func hangUp(chat: String, ownedBy pane: AnyObject, because reason: String) {
         guard owner === pane else { return }
-        AppLogger.connection.info("call hang up chat=\(chat) because \(reason)")
+        MidgarLog.info("call hang up chat=\(chat) because \(reason)", category: .connection)
         Task { [desk] in
             guard let call = await desk.active, call.chat == chat else { return }
             await call.session.hangUp()
@@ -94,7 +95,7 @@ final class MacVoiceCallGate {
     /// Ends whatever call there is, whoever owns it: the audio failed, the Mac is going to sleep,
     /// the app is quitting.
     func hangUp(because reason: String) {
-        AppLogger.connection.info("call hang up because \(reason)")
+        MidgarLog.info("call hang up because \(reason)", category: .connection)
         Task { [desk] in await desk.hangUp() }
     }
 
@@ -128,7 +129,8 @@ final class MacVoiceCallGate {
             return
         }
         beginHold()
-        AppLogger.connection.info("call tracked chat=\(call.chat) host=\(call.endpoint.host)")
+        MidgarLog.info(
+            "call tracked chat=\(call.chat) host=\(call.endpoint.host)", category: .connection)
         followTask = Task { [weak self] in
             for await snapshot in call.snapshots where snapshot.end != nil { break }
             self?.finished(call)
@@ -150,14 +152,14 @@ final class MacVoiceCallGate {
         guard awake == nil else { return }
         awake = ProcessInfo.processInfo.beginActivity(
             options: [.userInitiated], reason: "A Tailscode voice call is in progress")
-        AppLogger.ui.info("call hold on")
+        MidgarLog.info("call hold on", category: .ui)
     }
 
     private func endHold() {
         guard let token = awake else { return }
         ProcessInfo.processInfo.endActivity(token)
         awake = nil
-        AppLogger.ui.info("call hold off")
+        MidgarLog.info("call hold off", category: .ui)
     }
 
     @objc private func machineWillSleep() {

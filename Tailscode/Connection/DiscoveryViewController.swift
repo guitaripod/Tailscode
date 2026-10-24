@@ -1,5 +1,6 @@
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -312,7 +313,10 @@ final class DiscoveryViewController: UIViewController {
                 let listing = try await TailnetDirectory.load()
                 let fetched = listing.devices
                 guard !Task.isCancelled else { return }
-                AppLogger.connection.info("fetched \(fetched.count) tailscale devices (remembered: \(listing.fromMemory))")
+                MidgarLog.info(
+                    "fetched \(fetched.count) tailscale devices (remembered: \(listing.fromMemory))",
+                    category: .connection
+                )
                 lastDeviceCount = fetched.count
                 devices = TailnetScanner.scannableDevices(fetched)
                 let online = devices.count
@@ -337,7 +341,10 @@ final class DiscoveryViewController: UIViewController {
                 guard !Task.isCancelled else { return }
                 suggestions = found.sorted { $0.recommendedProfileName < $1.recommendedProfileName }
                 TailnetCredentials.recordScan(devices: fetched.count, servers: found.count)
-                AppLogger.connection.info("scanner returned \(found.count) unique suggestions after dedup")
+                MidgarLog.info(
+                    "scanner returned \(found.count) unique suggestions after dedup",
+                    category: .connection
+                )
                 let countText =
                     found.isEmpty
                     ? String(localized: "No supported servers found")
@@ -356,11 +363,13 @@ final class DiscoveryViewController: UIViewController {
                     statusLabel.text = reading.headline
                 case .unavailable(let error):
                     statusLabel.text = String(localized: "Scan failed: \(error.localizedDescription)")
-                    AppLogger.connection.error("tailnet scan failed: \(error.localizedDescription)")
+                    MidgarLog.error(
+                        "tailnet scan failed: \(error.localizedDescription)", category: .connection)
                 }
                 suggestions = []
             } catch {
-                AppLogger.connection.error("tailnet scan failed: \(error.localizedDescription)")
+                MidgarLog.error(
+                    "tailnet scan failed: \(error.localizedDescription)", category: .connection)
                 statusLabel.text = String(
                     localized: "Scan failed: \(error.localizedDescription)")
                 suggestions = []
@@ -402,7 +411,8 @@ final class DiscoveryViewController: UIViewController {
         snapshot.appendItems(suggestions.map { .server(SuggestionItem(suggestion: $0)) }, toSection: .servers)
         let showDeviceFallback = suggestions.isEmpty && !devices.isEmpty
         if showDeviceFallback {
-            AppLogger.connection.info("showing device fallback: \(devices.count) devices")
+            MidgarLog.info(
+                "showing device fallback: \(devices.count) devices", category: .connection)
             snapshot.appendItems(devices.map { .device(DeviceItem(device: $0)) }, toSection: .devices)
         }
         dataSource.apply(snapshot, animatingDifferences: false)
@@ -520,7 +530,8 @@ final class DiscoveryViewController: UIViewController {
             baseURL: suggestion.baseURL)
         do {
             try ConnectionController.shared.save(profile, password: password)
-            AppLogger.connection.info("connected via discovery to \(backend.displayName)")
+            MidgarLog.info(
+                "connected via discovery to \(backend.displayName)", category: .connection)
             Theme.Haptics.success()
             dismiss(animated: true) { [onConnected] in onConnected?() }
         } catch {

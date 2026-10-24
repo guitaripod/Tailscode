@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -38,7 +39,10 @@ final class BetaCardViewController: UIViewController {
         }
         presenter.present(card, animated: true)
         BetaSeenStore.markSeen(feature, at: BetaEnvironment.appVersion)
-        AppLogger.ui.info("beta card opened feature=\(feature.rawValue) freshness=\(String(describing: freshness))")
+        MidgarLog.info(
+            "beta card opened feature=\(feature.rawValue) freshness=\(String(describing: freshness))",
+            category: .ui
+        )
     }
 
     private init(feature: BetaFeature, freshness: BetaFreshness, reportLines: @escaping () -> [String]) {
@@ -215,7 +219,8 @@ final class BetaCardViewController: UIViewController {
             feature: feature, app: BetaEnvironment.appLine, system: BetaEnvironment.systemLine, lines: reportLines())
         UIPasteboard.general.string = report
         Theme.Haptics.success()
-        AppLogger.ui.info("beta report copied feature=\(feature.rawValue) chars=\(report.count)")
+        MidgarLog.info(
+            "beta report copied feature=\(feature.rawValue) chars=\(report.count)", category: .ui)
         UIAccessibility.post(notification: .announcement, argument: BetaWords.reportCopied)
         copiedTicket += 1
         let ticket = copiedTicket

@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -47,7 +48,7 @@ enum NeuralShareRenderer {
             try data.write(to: url, options: .atomic)
             return url
         } catch {
-            AppLogger.ui.error("could not stage turn share: \(error)")
+            MidgarLog.error("could not stage turn share: \(error)", category: .ui)
             return nil
         }
     }

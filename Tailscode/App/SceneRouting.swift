@@ -1,3 +1,4 @@
+import MidgarCore
 import UIKit
 
 /// Opening a chat in its own window is the iPad's version of a split: the request rides an
@@ -15,7 +16,8 @@ enum SceneRouting {
     static func openInNewWindow(_ url: URL) {
         let request = UISceneSessionActivationRequest(userActivity: activity(for: url))
         UIApplication.shared.activateSceneSession(for: request) { error in
-            AppLogger.lifecycle.error("new window refused: \(error.localizedDescription)")
+            MidgarLog.error(
+                "new window refused: \(error.localizedDescription)", category: .lifecycle)
         }
     }
 

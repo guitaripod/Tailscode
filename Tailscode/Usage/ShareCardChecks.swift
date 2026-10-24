@@ -1,3 +1,4 @@
+import MidgarCore
 #if DEBUG
     import TailscodeCore
     import UIKit
@@ -22,7 +23,10 @@
 
         private static func check(_ name: String, _ condition: Bool, _ detail: @autoclosure () -> String = "") {
             if condition { passed += 1 } else { failed += 1 }
-            AppLogger.ui.info("share-check \(condition ? "PASS" : "FAIL") \(name) \(condition ? "" : detail())")
+            MidgarLog.info(
+                "share-check \(condition ? "PASS" : "FAIL") \(name) \(condition ? "" : detail())",
+                category: .ui
+            )
         }
 
         static func run() async {
@@ -38,7 +42,7 @@
             if let directory = environment["TAILSCODE_SHARE_CARD_OUT"], !directory.isEmpty {
                 dump(to: directory, environment: environment)
             }
-            AppLogger.ui.info("share-check done pass=\(passed) fail=\(failed)")
+            MidgarLog.info("share-check done pass=\(passed) fail=\(failed)", category: .ui)
         }
 
         private static func package(_ analytics: UsageAnalytics) -> AnalyticsShare {
@@ -302,7 +306,7 @@
                     }
                 }
             }
-            AppLogger.ui.info("share-check dumped \(written) pictures to \(directory)")
+            MidgarLog.info("share-check dumped \(written) pictures to \(directory)", category: .ui)
         }
     }
 

@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import CodingAgentKitApple
@@ -11,7 +12,7 @@ extension ServerDetailViewController {
         permissionRequesting = kind
         reconfigure([.permissions])
         Theme.Haptics.tap()
-        AppLogger.connection.info("requesting \(kind.rawValue) on \(profile.name)")
+        MidgarLog.info("requesting \(kind.rawValue) on \(profile.name)", category: .connection)
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -24,8 +25,8 @@ extension ServerDetailViewController {
             } catch {
                 self.permissionRequesting = nil
                 self.reconfigure([.permissions])
-                AppLogger.connection.error(
-                    "permission request failed on \(self.profile.name): \(error)")
+                MidgarLog.error(
+                    "permission request failed on \(self.profile.name): \(error)", category: .connection)
                 self.presentToast(MachinePermissionReading.requestFailed)
             }
         }
@@ -60,7 +61,7 @@ extension ServerDetailViewController {
         reconfigure([.permissions])
         if wasWaiting, updated.isComplete {
             Theme.Haptics.success()
-            AppLogger.connection.info("permission granted on \(profile.name)")
+            MidgarLog.info("permission granted on \(profile.name)", category: .connection)
         }
         if !MachinePermissionReading.isWaiting(updated) { stopPermissionPolling() }
     }

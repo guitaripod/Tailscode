@@ -1,7 +1,8 @@
 import AppKit
 import CodingAgentKit
 import CodingAgentKitApple
-import MidgarKit
+import MidgarPortal
+import MidgarUI
 import TailscodeCore
 import UserNotifications
 
@@ -152,7 +153,7 @@ extension PreferencesWindow {
         gap(column)
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("About")))
         column.addArrangedSubview(
-            infoRow(title: Localized.text("Version"), detail: Self.versionLine))
+            infoRow(title: MidgarSettingsRow.version().title, detail: Self.versionLine))
         let updates = NSButton(
             title: Localized.text("Open"), target: self, action: #selector(openUpdates))
         column.addArrangedSubview(
@@ -167,7 +168,7 @@ extension PreferencesWindow {
             column.addArrangedSubview(
                 buttonRow(
                     title: Localized.text("Tailscode Pro"),
-                    subtitle: MacProStore.shared.isPro
+                    subtitle: ProAccess.shared.isPro
                         ? Localized.text("Unlocked — thank you")
                         : Localized.text("Unlimited servers, and delegation to cheaper models"),
                     button: pro))
@@ -178,7 +179,7 @@ extension PreferencesWindow {
     /// The doorway into the Midgar portal: the first thing in the first page, as wide as the
     /// page's other rows and a fixed 116 points tall.
     private func addMidgarEntry(to column: NSStackView) {
-        let entry = MidgarEntryView()
+        let entry = MidgarEntryView(config: TailscodeMidgar.shared.portalConfig)
         column.addArrangedSubview(entry)
         NSLayoutConstraint.activate([
             entry.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -48),

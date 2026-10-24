@@ -1,4 +1,5 @@
 import AppKit
+import MidgarCore
 import os
 import CodingAgentKit
 import TailscodeCore
@@ -115,7 +116,10 @@ extension TranscriptViewController {
         let handoff = DelegateHandoff(
             host: entry.host, serverName: entry.profileName, goal: goal,
             repo: entry.session.directory ?? "")
-        AppLogger.session.info("delegate handoff from session \(entry.session.id) to \(entry.host)")
+        MidgarLog.info(
+            "delegate handoff from session \(entry.session.id) to \(entry.host)",
+            category: .session
+        )
         host.presentDelegate(handoff: handoff)
     }
 

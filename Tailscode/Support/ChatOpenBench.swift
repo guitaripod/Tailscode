@@ -1,6 +1,7 @@
 import AgentTestSupport
 import CodingAgentKit
 import Foundation
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -118,7 +119,7 @@ import UIKit
             try? await Task.sleep(for: .seconds(6))
             watchRunLoop()
             guard let stack, let home = stack.viewControllers.first as? HomeViewController else {
-                AppLogger.performance.info("bench live: no home")
+                MidgarLog.info("bench live: no home", category: .performance)
                 return
             }
             home.openSession(withID: sessionID)
@@ -131,7 +132,7 @@ import UIKit
                 }
             }
             guard let chat else {
-                AppLogger.performance.info("bench live: chat never opened")
+                MidgarLog.info("bench live: chat never opened", category: .performance)
                 return
             }
             let collection = census(of: chat.view).compactMap { $0.view as? UICollectionView }.first
@@ -140,13 +141,13 @@ import UIKit
             }
             reset()
             await probeResume(chat: nil, collection: collection, in: chat.view.window)
-            AppLogger.performance.info("bench open done live")
+            MidgarLog.info("bench open done live", category: .performance)
         }
 
         private func run() async {
             try? await Task.sleep(for: .seconds(4))
             guard let stack else {
-                AppLogger.performance.info("bench open: no stack")
+                MidgarLog.info("bench open: no stack", category: .performance)
                 return
             }
             watchRunLoop()
@@ -173,11 +174,13 @@ import UIKit
                     reset()
                     plain.pushViewController(empty, animated: true)
                     try? await Task.sleep(for: .seconds(1))
-                    AppLogger.performance.info("bench plainpush cycle=\(cycle) \(snapshot())")
+                    MidgarLog.info(
+                        "bench plainpush cycle=\(cycle) \(snapshot())", category: .performance)
                     plain.popViewController(animated: false)
                     try? await Task.sleep(for: .seconds(0.5))
                 }
-                AppLogger.performance.info("bench open done turns=\(turns) cycles=\(cycles)")
+                MidgarLog.info(
+                    "bench open done turns=\(turns) cycles=\(cycles)", category: .performance)
                 return
             }
             if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "emptypush" {
@@ -187,16 +190,19 @@ import UIKit
                     reset()
                     stack.pushViewController(empty, animated: true)
                     try? await Task.sleep(for: .seconds(1))
-                    AppLogger.performance.info("bench emptypush cycle=\(cycle) \(snapshot())")
+                    MidgarLog.info(
+                        "bench emptypush cycle=\(cycle) \(snapshot())", category: .performance)
                     stack.popViewController(animated: false)
                     try? await Task.sleep(for: .seconds(0.5))
                 }
-                AppLogger.performance.info("bench open done turns=\(turns) cycles=\(cycles)")
+                MidgarLog.info(
+                    "bench open done turns=\(turns) cycles=\(cycles)", category: .performance)
                 return
             }
             if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "double" {
                 await doublePush(backend: backend, session: session, in: stack)
-                AppLogger.performance.info("bench open done turns=\(turns) cycles=\(cycles)")
+                MidgarLog.info(
+                    "bench open done turns=\(turns) cycles=\(cycles)", category: .performance)
                 return
             }
             let rest = ProcessInfo.processInfo.environment["TAILSCODE_BENCH_REST"].flatMap(Double.init) ?? 1
@@ -205,20 +211,24 @@ import UIKit
                 try? await Task.sleep(for: .seconds(1.5 * rest))
                 let left = survivors(of: trip.tree, chat: trip.chat)
                 leakedViews = max(leakedViews, trip.tree.filter { $0.view != nil }.count)
-                AppLogger.performance.info("bench open cycle=\(cycle) turns=\(turns) \(trip.report) afterPop[\(left)] footprintMB=\(footprintMegabytes())")
+                MidgarLog.info(
+                    "bench open cycle=\(cycle) turns=\(turns) \(trip.report) afterPop[\(left)] footprintMB=\(footprintMegabytes())",
+                    category: .performance
+                )
                 try? await Task.sleep(for: .seconds(rest))
             }
             let beforeWarning = footprintMegabytes()
             NotificationCenter.default.post(
                 name: UIApplication.didReceiveMemoryWarningNotification, object: UIApplication.shared)
             try? await Task.sleep(for: .seconds(0.5))
-            AppLogger.performance.info(
-                "bench memorywarning footprintMB before=\(beforeWarning) after=\(footprintMegabytes())")
-            AppLogger.performance.info(
+            MidgarLog.info(
+                "bench memorywarning footprintMB before=\(beforeWarning) after=\(footprintMegabytes())", category: .performance)
+            MidgarLog.info(
                 leakedViews == 0
                     ? "CHAT_LIFETIME_OK every popped chat released its views"
-                    : "CHAT_LIFETIME_FAIL a popped chat left \(leakedViews) views alive")
-            AppLogger.performance.info("bench open done turns=\(turns) cycles=\(cycles)")
+                    : "CHAT_LIFETIME_FAIL a popped chat left \(leakedViews) views alive", category: .performance)
+            MidgarLog.info(
+                "bench open done turns=\(turns) cycles=\(cycles)", category: .performance)
         }
 
         private struct Trip {
@@ -231,7 +241,7 @@ import UIKit
             backend: MockBackend, session: AgentSession, in stack: UINavigationController
         ) async {
             let base = stack.viewControllers.count
-            AppLogger.performance.info("bench double start depth=\(base)")
+            MidgarLog.info("bench double start depth=\(base)", category: .performance)
             let other = AgentSession(
                 id: "bench-other", agentType: .claudeCode, title: "Bench other conversation",
                 directory: "/Users/demo/dev/bench", createdAt: Date(), updatedAt: Date(),
@@ -291,29 +301,31 @@ import UIKit
             try? await Task.sleep(for: .seconds(2.5))
             report("a push during a pop", expect: base + 3, stack: stack)
 
-            AppLogger.performance.info("bench swipe wait cycle=1")
+            MidgarLog.info("bench swipe wait cycle=1", category: .performance)
             let started = CFAbsoluteTimeGetCurrent()
             let depth = stack.viewControllers.count
             for _ in 0..<500 {
                 try? await Task.sleep(for: .milliseconds(10))
                 if stack.viewControllers.count < depth, stack.transitionCoordinator == nil { break }
             }
-            AppLogger.performance.info(
-                "bench double swipe depth=\(depth)->\(stack.viewControllers.count) after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000))ms gesture[\(popGestureReading(of: stack))]"
+            MidgarLog.info(
+                "bench double swipe depth=\(depth)->\(stack.viewControllers.count) after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000))ms gesture[\(popGestureReading(of: stack))]",
+                category: .performance
             )
             stack.popToRootViewController(animated: false)
         }
 
         private func turn(to mask: UIInterfaceOrientationMask) {
             window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in
-                AppLogger.performance.info("bench rotate refused \(error)")
+                MidgarLog.info("bench rotate refused \(error)", category: .performance)
             }
         }
 
         private func report(_ name: String, expect depth: Int, stack: UINavigationController) {
             let got = stack.viewControllers.count
-            AppLogger.performance.info(
-                "\(got == depth ? "NAV_GUARD_OK" : "NAV_GUARD_FAIL") \(name) depth=\(got) expected=\(depth) gesture[\(popGestureReading(of: stack))] transition=\(stack.transitionCoordinator != nil)"
+            MidgarLog.info(
+                "\(got == depth ? "NAV_GUARD_OK" : "NAV_GUARD_FAIL") \(name) depth=\(got) expected=\(depth) gesture[\(popGestureReading(of: stack))] transition=\(stack.transitionCoordinator != nil)",
+                category: .performance
             )
         }
 
@@ -330,26 +342,27 @@ import UIKit
             let opened = snapshot()
             await untilAppeared(chat, in: stack)
             let pushed = snapshot()
-            AppLogger.performance.info(
-                "bench cells provided=\(chat.providedItems.count) items=\(chat.providedItems.prefix(40).map(String.init).joined(separator: ","))")
+            MidgarLog.info(
+                "bench cells provided=\(chat.providedItems.count) items=\(chat.providedItems.prefix(40).map(String.init).joined(separator: ","))", category: .performance)
             reset()
             let settle = ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SETTLE"].flatMap(Double.init) ?? 2
             try? await Task.sleep(for: .seconds(settle))
             let settled = snapshot()
             let tree = census(of: chat.view)
-            AppLogger.performance.info("bench chrome \(chromeCensus(of: chat.view))")
+            MidgarLog.info("bench chrome \(chromeCensus(of: chat.view))", category: .performance)
             let endGap = tree.compactMap { $0.view as? UICollectionView }.first.map {
                 Int($0.contentSize.height + $0.adjustedContentInset.bottom - $0.bounds.height - $0.contentOffset.y)
             }
-            AppLogger.performance.info("bench end gap=\(endGap.map(String.init) ?? "-")pt")
+            MidgarLog.info(
+                "bench end gap=\(endGap.map(String.init) ?? "-")pt", category: .performance)
             await stage(scenario: ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"], chat: chat, tree: tree)
             let rootAddress = String(describing: Unmanaged.passUnretained(chat.view).toOpaque())
             let collection = tree.compactMap { $0.view as? UICollectionView }.first
             let collectionAddress = collection.map {
                 String(describing: Unmanaged.passUnretained($0).toOpaque())
             }
-            AppLogger.performance.info(
-                "bench addresses cycle=\(cycle) root=\(rootAddress) collection=\(collectionAddress ?? "-")")
+            MidgarLog.info(
+                "bench addresses cycle=\(cycle) root=\(rootAddress) collection=\(collectionAddress ?? "-")", category: .performance)
             let gesture = popGestureReading(of: stack)
             if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "resume" {
                 if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_OPENBRAIN"] != nil {
@@ -402,8 +415,8 @@ import UIKit
             let elapsed = (now - turnStart) * 1000
             let cpu = Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - turnCPU) / 1_000_000
             if elapsed > 100 {
-                AppLogger.performance.info(
-                    "bench long turn t=\(Int(Date().timeIntervalSince1970 * 1000)) wall=\(Int(elapsed))ms cpu=\(Int(cpu))ms app=\(UIApplication.shared.applicationState.rawValue)")
+                MidgarLog.info(
+                    "bench long turn t=\(Int(Date().timeIntervalSince1970 * 1000)) wall=\(Int(elapsed))ms cpu=\(Int(cpu))ms app=\(UIApplication.shared.applicationState.rawValue)", category: .performance)
             }
             if cpu > 6 { bigTurns.append(Int(cpu)) }
             longestCPU = max(longestCPU, cpu)
@@ -461,7 +474,7 @@ import UIKit
             guard ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SWIPE"] != nil else {
                 return "off"
             }
-            AppLogger.performance.info("bench swipe wait cycle=\(cycle)")
+            MidgarLog.info("bench swipe wait cycle=\(cycle)", category: .performance)
             let started = CFAbsoluteTimeGetCurrent()
             for _ in 0..<600 {
                 try? await Task.sleep(for: .milliseconds(10))
@@ -482,8 +495,8 @@ import UIKit
             let seconds = ProcessInfo.processInfo.environment["TAILSCODE_BENCH_PROBE"].flatMap(Double.init) ?? 60
             var last = ""
             let deadline = CFAbsoluteTimeGetCurrent() + seconds
-            AppLogger.performance.info(
-                "bench resume probe start footprintMB=\(footprintMegabytes()) rows=\(Int(collection.contentSize.height))pt")
+            MidgarLog.info(
+                "bench resume probe start footprintMB=\(footprintMegabytes()) rows=\(Int(collection.contentSize.height))pt", category: .performance)
             var lastCPU = processCPUSeconds()
             var lastCPUAt = CFAbsoluteTimeGetCurrent()
             let flag = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("warn")
@@ -493,13 +506,13 @@ import UIKit
                     NotificationCenter.default.post(
                         name: UIApplication.didReceiveMemoryWarningNotification,
                         object: UIApplication.shared)
-                    AppLogger.performance.info(
-                        "bench resume memory warning posted footprintMB=\(footprintMegabytes())")
+                    MidgarLog.info(
+                        "bench resume memory warning posted footprintMB=\(footprintMegabytes())", category: .performance)
                 }
                 let snap = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("snap")
                 if FileManager.default.fileExists(atPath: snap.path) {
                     try? FileManager.default.removeItem(at: snap)
-                    AppLogger.performance.info("bench resume turns[\(snapshot())]")
+                    MidgarLog.info("bench resume turns[\(snapshot())]", category: .performance)
                     reset()
                 }
                 let refetch = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("refetch")
@@ -510,26 +523,29 @@ import UIKit
                         ?? ChatRebuildBench.conversation(turns: turns, growing: "Done.")
                     let before = footprintMegabytes()
                     let spent = chat.renderRefetchedCopyForBench(fresh)
-                    AppLogger.performance.info(
-                        "bench resume refetched \(fresh.count) messages rendered in \(Int(spent)) ms footprintMB \(before)->\(footprintMegabytes())")
+                    MidgarLog.info(
+                        "bench resume refetched \(fresh.count) messages rendered in \(Int(spent)) ms footprintMB \(before)->\(footprintMegabytes())", category: .performance)
                 }
                 if CFAbsoluteTimeGetCurrent() - lastCPUAt >= 1 {
                     let now = processCPUSeconds()
                     let wall = CFAbsoluteTimeGetCurrent() - lastCPUAt
-                    AppLogger.performance.info(
-                        "bench resume cpu=\(Int((now - lastCPU) / wall * 100))% app=\(UIApplication.shared.applicationState.rawValue) footprintMB=\(footprintMegabytes())")
+                    MidgarLog.info(
+                        "bench resume cpu=\(Int((now - lastCPU) / wall * 100))% app=\(UIApplication.shared.applicationState.rawValue) footprintMB=\(footprintMegabytes())", category: .performance)
                     lastCPU = now
                     lastCPUAt = CFAbsoluteTimeGetCurrent()
                 }
                 let reading = resumeReading(of: collection, in: window)
                 if reading != last || !reading.contains("tracking=false dragging=false decelerating=false") {
                     last = reading
-                    AppLogger.performance.info("bench resume t=\(Int(Date().timeIntervalSince1970 * 1000)) \(reading)")
+                    MidgarLog.info(
+                        "bench resume t=\(Int(Date().timeIntervalSince1970 * 1000)) \(reading)",
+                        category: .performance
+                    )
                 }
                 try? await Task.sleep(for: .milliseconds(40))
             }
-            AppLogger.performance.info(
-                "bench resume probe end lastText=\(chat?.lastTextLengthForBench ?? -2)")
+            MidgarLog.info(
+                "bench resume probe end lastText=\(chat?.lastTextLengthForBench ?? -2)", category: .performance)
         }
 
         private func processCPUSeconds() -> Double {

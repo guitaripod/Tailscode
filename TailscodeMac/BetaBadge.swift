@@ -1,4 +1,5 @@
 import AppKit
+import MidgarCore
 import TailscodeCore
 
 /// The mark a feature wears while it is in beta, as a control: resting the pointer on the capsule
@@ -310,7 +311,10 @@ final class BetaBadge: NSControl, NSPopoverDelegate {
         popover.show(relativeTo: bounds, of: self, preferredEdge: preferredEdge)
         self.popover = popover
         BetaSeenStore.markSeen(feature, at: BetaEnvironment.appVersion)
-        AppLogger.ui.info("beta card opened feature=\(feature.rawValue) freshness=\(String(describing: freshness))")
+        MidgarLog.info(
+            "beta card opened feature=\(feature.rawValue) freshness=\(String(describing: freshness))",
+            category: .ui
+        )
     }
 
     private func scheduleClose() {

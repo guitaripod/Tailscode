@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -572,7 +573,7 @@ final class ShareCardViewController: UIViewController {
             self.isExporting = false
             self.setActions(enabled: true)
             guard let rendered else {
-                AppLogger.ui.error("could not draw the analytics share")
+                MidgarLog.error("could not draw the analytics share", category: .ui)
                 Theme.Haptics.error()
                 return
             }
@@ -596,7 +597,7 @@ final class ShareCardViewController: UIViewController {
                     at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try data.write(to: url, options: .atomic)
             } catch {
-                AppLogger.ui.error("could not stage analytics share: \(error)")
+                MidgarLog.error("could not stage analytics share: \(error)", category: .ui)
                 Theme.Haptics.error()
                 return
             }

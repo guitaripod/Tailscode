@@ -1,3 +1,4 @@
+import MidgarCore
 import StoreKit
 import TailscodeCore
 import UIKit
@@ -39,23 +40,23 @@ final class ReviewPromptCoordinator {
             guard !CommandLine.arguments.contains("--demo") else { return }
         #endif
         guard ReviewPromptPolicy.isDue() else {
-            AppLogger.ui.info("review: skipped (not due)")
+            MidgarLog.info("review: skipped (not due)", category: .ui)
             return
         }
         guard UIApplication.shared.applicationState == .active else {
-            AppLogger.ui.info("review: skipped (not foreground-active)")
+            MidgarLog.info("review: skipped (not foreground-active)", category: .ui)
             return
         }
         guard let scene = Self.activeScene else {
-            AppLogger.ui.info("review: skipped (no active window scene)")
+            MidgarLog.info("review: skipped (no active window scene)", category: .ui)
             return
         }
         guard !Self.blockingUIPresented(in: scene) else {
-            AppLogger.ui.info("review: skipped (blocking UI on screen)")
+            MidgarLog.info("review: skipped (blocking UI on screen)", category: .ui)
             return
         }
         ReviewPromptPolicy.markAsked()
-        AppLogger.ui.info("review: asking (#\(ReviewPromptPolicy.askDates.count))")
+        MidgarLog.info("review: asking (#\(ReviewPromptPolicy.askDates.count))", category: .ui)
         AppStore.requestReview(in: scene)
     }
 

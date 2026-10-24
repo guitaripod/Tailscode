@@ -99,7 +99,7 @@ final class LogViewerViewController: UIViewController {
     }
 
     private nonisolated static func render(errorsOnly: Bool) async -> NSAttributedString? {
-        let text = LogFileWriter.shared.snapshot()
+        let text = TailscodeLogging.snapshot()
         guard !text.isEmpty else { return nil }
         let clipped = tail(of: text)
         let rendered = colorized(String(clipped), errorsOnly: errorsOnly)
@@ -127,7 +127,7 @@ final class LogViewerViewController: UIViewController {
         let mono = Theme.Ramp.font(.toolOutput)
         let result = NSMutableAttributedString()
         for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
-            let isError = line.contains("] ERROR ")
+            let isError = line.contains("] [error ") || line.contains("] [fault ")
             if errorsOnly && !isError { continue }
             let string = String(line) + "\n"
             let attributed = NSMutableAttributedString(
@@ -136,15 +136,25 @@ final class LogViewerViewController: UIViewController {
                     .font: mono,
                     .foregroundColor: isError ? Theme.Color.danger : Theme.Color.secondaryLabel,
                 ])
-            if !isError, let open = string.firstIndex(of: "["),
-                let close = string[open...].firstIndex(of: "]")
-            {
-                let range = NSRange(open...close, in: string)
+            if !isError, let range = categoryRange(in: string) {
                 attributed.addAttribute(.foregroundColor, value: Theme.Color.accent, range: range)
             }
             result.append(attributed)
         }
         return result
+    }
+
+    /// The bracketed category of a log line, the third bracket after the time, process id and level.
+    private nonisolated static func categoryRange(in line: String) -> NSRange? {
+        var cursor = line.startIndex
+        for _ in 0..<2 {
+            guard let close = line[cursor...].firstIndex(of: "]") else { return nil }
+            cursor = line.index(after: close)
+        }
+        guard let open = line[cursor...].firstIndex(of: "["),
+            let close = line[open...].firstIndex(of: "]")
+        else { return nil }
+        return NSRange(open...close, in: line)
     }
 
     private func scrollToBottom() {
@@ -154,12 +164,8 @@ final class LogViewerViewController: UIViewController {
     }
 
     @objc private func share() {
-        var items: [URL] = [LogFileWriter.shared.currentURL]
-        let previous = LogFileWriter.shared.previousFileURL
-        if FileManager.default.fileExists(atPath: previous.path) {
-            items.append(previous)
-        }
-        let sheet = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        let sheet = UIActivityViewController(
+            activityItems: TailscodeLogging.fileURLs.reversed(), applicationActivities: nil)
         sheet.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItems?.first
         present(sheet, animated: true)
     }

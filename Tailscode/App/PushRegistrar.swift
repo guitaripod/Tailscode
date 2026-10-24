@@ -1,6 +1,7 @@
 import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
+import MidgarCore
 import TailscodeCore
 
 /// Uploads the APNs device token to every connected claude-code bridge so the
@@ -89,7 +90,8 @@ enum PushRegistrar {
         let registration = DevicePushRegistration(token: token, environment: environment)
         Task {
             if (try? await backend.unregisterDeviceToken(registration)) != nil {
-                AppLogger.connection.info("push: device token unregistered from \(name)")
+                MidgarLog.info(
+                    "push: device token unregistered from \(name)", category: .connection)
             }
         }
     }
@@ -104,7 +106,8 @@ enum PushRegistrar {
             delivers.removeValue(forKey: baseURL)
             Task {
                 if (try? await backend.unregisterDeviceToken(registration)) != nil {
-                    AppLogger.connection.info("push: device token unregistered from \(name)")
+                    MidgarLog.info(
+                        "push: device token unregistered from \(name)", category: .connection)
                 }
             }
         }
@@ -135,7 +138,8 @@ enum PushRegistrar {
         let registration = DevicePushRegistration(token: token, environment: environment)
         let bridges = bridges(skippingAcked: true)
         guard !bridges.isEmpty else { return }
-        AppLogger.connection.info("push: uploading device token to \(bridges.count) bridge(s)")
+        MidgarLog.info(
+            "push: uploading device token to \(bridges.count) bridge(s)", category: .connection)
         for entry in bridges {
             let backend = entry.backend
             let name = entry.profile.name
@@ -145,14 +149,15 @@ enum PushRegistrar {
                     let receipt = try await backend.registerDeviceTokenReceipt(registration)
                     states[baseURL] = .registered
                     delivers[baseURL] = receipt.delivers
-                    AppLogger.connection.info(
-                        "push: device token registered with \(name) (delivers=\(receipt.delivers.map(String.init) ?? "unknown"))"
+                    MidgarLog.info(
+                        "push: device token registered with \(name) (delivers=\(receipt.delivers.map(String.init) ?? "unknown"))",
+                        category: .connection
                     )
                 } catch {
                     states[baseURL] = Self.classify(error)
                     delivers.removeValue(forKey: baseURL)
-                    AppLogger.connection.error(
-                        "push: registration with \(name) failed: \(error.localizedDescription)")
+                    MidgarLog.error(
+                        "push: registration with \(name) failed: \(error.localizedDescription)", category: .connection)
                 }
                 NotificationCenter.default.post(name: didChangeStates, object: nil)
             }

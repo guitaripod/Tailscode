@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 import UserNotifications
@@ -91,13 +92,14 @@ enum NotificationManager {
                 presenter.presentedViewController == nil
             else { return }
             NotificationPrimer.markOffered()
-            AppLogger.lifecycle.info("notification pre-prompt shown after first completed turn")
+            MidgarLog.info(
+                "notification pre-prompt shown after first completed turn", category: .lifecycle)
             let alert = UIAlertController(
                 title: NotificationPrimer.title, message: NotificationPrimer.body,
                 preferredStyle: .alert)
             alert.addAction(
                 UIAlertAction(title: NotificationPrimer.declineAction, style: .cancel) { _ in
-                    AppLogger.lifecycle.info("notification pre-prompt declined")
+                    MidgarLog.info("notification pre-prompt declined", category: .lifecycle)
                 })
             let accept = UIAlertAction(title: NotificationPrimer.acceptAction, style: .default) { _ in
                 Task { @MainActor in await requestAuthorization(source: "pre-prompt") }
@@ -116,7 +118,7 @@ enum NotificationManager {
     /// notification controls without ever having seen the system prompt.
     @discardableResult
     static func requestAuthorization(source: String = "settings") async -> Bool {
-        AppLogger.lifecycle.info("notification authorization requested from \(source)")
+        MidgarLog.info("notification authorization requested from \(source)", category: .lifecycle)
         return (try? await UNUserNotificationCenter.current().requestAuthorization(
             options: [.alert, .sound, .badge])) ?? false
     }
@@ -260,7 +262,8 @@ enum NotificationManager {
         activity: MissedActivity.Reason? = nil
     ) {
         guard kind.isEnabled else {
-            AppLogger.lifecycle.info("notification suppressed by preference: \(identifier)")
+            MidgarLog.info(
+                "notification suppressed by preference: \(identifier)", category: .lifecycle)
             return
         }
         guard UIApplication.shared.applicationState != .active else { return }
@@ -382,7 +385,7 @@ enum NotificationManager {
             identifier: identifier, content: content,
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false))
         center.add(request)
-        AppLogger.lifecycle.info("test notification scheduled: \(sample)")
+        MidgarLog.info("test notification scheduled: \(sample)", category: .lifecycle)
     }
 }
 
@@ -523,7 +526,7 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
                 PermissionRequest.self, from: Data(payload.utf8)),
             let profileID
         else {
-            AppLogger.session.error("notification decision: no stored payload")
+            MidgarLog.error("notification decision: no stored payload", category: .session)
             return
         }
         let decision: PermissionDecision = approve ? .once : .reject
@@ -532,7 +535,8 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
         let backend = ConnectionController.shared.profiles.first(where: { $0.id == profileID })
             .flatMap { ConnectionController.shared.makeBackend(for: $0) }
         guard held != nil || backend != nil else {
-            AppLogger.session.error("notification decision: no backend for stored payload")
+            MidgarLog.error(
+                "notification decision: no backend for stored payload", category: .session)
             return
         }
         do {
@@ -544,10 +548,10 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
                     permission, decision: decision, through: nil, backend: backend)
             }
             NotificationManager.withdraw(identifiers: [identifier])
-            AppLogger.session.info(
-                "notification decision \(approve ? "approved" : "denied") (\(outcome)): \(permission.id)")
+            MidgarLog.info(
+                "notification decision \(approve ? "approved" : "denied") (\(outcome)): \(permission.id)", category: .session)
         } catch {
-            AppLogger.session.error("notification decision failed: \(error)")
+            MidgarLog.error("notification decision failed: \(error)", category: .session)
         }
     }
 }

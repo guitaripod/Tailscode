@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -31,7 +32,8 @@ enum PendingRoute {
             .sorted { priority($0.activationState) < priority($1.activationState) }
         let delegates = scenes.compactMap { $0.delegate as? SceneDelegate }
         for delegate in delegates where delegate.routeDeepLink(url) { return }
-        AppLogger.lifecycle.info("route parked until the window exists: \(url.absoluteString)")
+        MidgarLog.info(
+            "route parked until the window exists: \(url.absoluteString)", category: .lifecycle)
         parked = (url, Date())
     }
 

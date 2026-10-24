@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import UIKit
@@ -77,8 +78,8 @@ extension ChatViewController {
     private func presentPreview() {
         guard let target = viewModel.previewTarget else { return }
         Theme.Haptics.tap()
-        AppLogger.ui.info(
-            "preview: open \(target.address) from session=\(viewModel.session.id)")
+        MidgarLog.info(
+            "preview: open \(target.address) from session=\(viewModel.session.id)", category: .ui)
         let viewer = PreviewViewController(target: target)
         viewer.onAskAgent = { [weak self] words in self?.offerToAgent(words) }
         present(viewer, animated: true)
@@ -89,7 +90,8 @@ extension ChatViewController {
     private func offerToAgent(_ words: String) {
         let held = composer.currentText
         composer.setDraft(held.isEmpty ? words : held + "\n\n" + words, focus: true, cursorAtEnd: true)
-        AppLogger.chat.info("preview: composed a fix request for session=\(viewModel.session.id)")
+        MidgarLog.info(
+            "preview: composed a fix request for session=\(viewModel.session.id)", category: .chat)
     }
 
     private func updateGitChip() {

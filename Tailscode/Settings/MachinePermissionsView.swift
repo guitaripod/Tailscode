@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -276,7 +277,7 @@ final class MachinePermissionsStepViewController: UIViewController {
         navigationItem.hidesBackButton = true
         buildUI()
         render()
-        AppLogger.connection.info("permissions step shown for \(profileName)")
+        MidgarLog.info("permissions step shown for \(profileName)", category: .connection)
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -358,7 +359,8 @@ final class MachinePermissionsStepViewController: UIViewController {
         requesting = kind
         render()
         Theme.Haptics.tap()
-        AppLogger.connection.info("requesting \(kind.rawValue) on \(profileName) during setup")
+        MidgarLog.info(
+            "requesting \(kind.rawValue) on \(profileName) during setup", category: .connection)
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -371,8 +373,8 @@ final class MachinePermissionsStepViewController: UIViewController {
             } catch {
                 self.requesting = nil
                 self.render()
-                AppLogger.connection.error(
-                    "permission request failed on \(self.profileName): \(error)")
+                MidgarLog.error(
+                    "permission request failed on \(self.profileName): \(error)", category: .connection)
                 ToastView(message: MachinePermissionReading.requestFailed)
                     .flash(in: self.view, above: self.footer.topAnchor)
             }
@@ -397,7 +399,8 @@ final class MachinePermissionsStepViewController: UIViewController {
         render()
         if wasWaiting, updated.isComplete {
             Theme.Haptics.success()
-            AppLogger.connection.info("permission granted on \(profileName) during setup")
+            MidgarLog.info(
+                "permission granted on \(profileName) during setup", category: .connection)
             scheduleAutoFinish()
         }
         if !MachinePermissionReading.isWaiting(updated) {

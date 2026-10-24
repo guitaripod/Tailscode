@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -390,8 +391,9 @@ final class CascadeDriver {
     private func pause() {
         #if DEBUG
             if link != nil, let began = startedAt {
-                AppLogger.performance.info(
-                    "cascade pause ticks=\(ticks) painted=\(painted) seconds=\(String(format: "%.2f", CACurrentMediaTime() - began))"
+                MidgarLog.info(
+                    "cascade pause ticks=\(ticks) painted=\(painted) seconds=\(String(format: "%.2f", CACurrentMediaTime() - began))",
+                    category: .performance
                 )
                 ticks = 0
                 painted = 0

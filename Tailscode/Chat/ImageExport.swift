@@ -1,3 +1,4 @@
+import MidgarCore
 import Photos
 import UIKit
 import UniformTypeIdentifiers
@@ -73,7 +74,7 @@ enum ImageExport {
         guard status == .authorized || status == .limited else { return .denied }
         if await write(bytes) { return .saved }
         if let fallback, fallback != bytes, await write(fallback) { return .saved }
-        AppLogger.ui.error("save to photos failed for \(payload.exportFilename)")
+        MidgarLog.error("save to photos failed for \(payload.exportFilename)", category: .ui)
         return .failed
     }
 
@@ -114,7 +115,7 @@ enum ImageExport {
             try bytes.write(to: url, options: .atomic)
             return url
         } catch {
-            AppLogger.ui.error("could not stage \(payload.exportFilename): \(error)")
+            MidgarLog.error("could not stage \(payload.exportFilename): \(error)", category: .ui)
             return nil
         }
     }

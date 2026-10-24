@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import UIKit
 
 /// The first screen of the app. It used to be a credentials form: four competing
@@ -25,7 +26,7 @@ final class WelcomeViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(refreshTailnet),
             name: UIApplication.didBecomeActiveNotification, object: nil)
-        AppLogger.lifecycle.info("welcome shown")
+        MidgarLog.info("welcome shown", category: .lifecycle)
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -284,7 +285,7 @@ final class WelcomeViewController: UIViewController {
     private func demoTapped() {
         Theme.Haptics.success()
         ConnectionController.shared.enterDemoMode()
-        AppLogger.lifecycle.info("demo mode entered from welcome")
+        MidgarLog.info("demo mode entered from welcome", category: .lifecycle)
         onConnected?()
     }
 

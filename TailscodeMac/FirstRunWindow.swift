@@ -1,6 +1,7 @@
 import AppKit
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 
 /// First run as a window that only draws. `FirstRunFlow` (Core) owns the checklist, the probe, the
@@ -141,7 +142,7 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
             offersTailnetScan: offersTailnetScan,
             profiles: { await MainActor.run { realProfiles } },
             save: { profile, password in await MainActor.run { save(profile, password: password) } },
-            log: { AppLogger.connection.info($0) })
+            log: { MidgarLog.info($0, category: .connection) })
     }
 
     private static func save(_ profile: ConnectionProfile, password: String?) -> FirstRunSave {

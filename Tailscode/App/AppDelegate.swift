@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -7,7 +8,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        AppLogger.lifecycle.info("didFinishLaunching")
+        TailscodeLogging.configure()
+        MidgarLog.info("didFinishLaunching", category: .lifecycle)
         ReviewPromptPolicy.migrateIfNeeded()
         FieldMetrics.shared.start()
         MainStallMonitor.shared.start()
@@ -15,7 +17,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         ShortcutSet.configDirectoryOverride = FileManager.default.urls(
             for: .documentDirectory, in: .userDomainMask
         ).first
-        ProStore.shared.start()
+        TailscodeMidgar.shared.start()
+        ProAccess.shared.start()
         GameCenterCoordinator.shared.startWhenIdle()
         UNUserNotificationCenter.current().delegate = NotificationRouter.shared
         NotificationManager.registerCategories()
@@ -49,7 +52,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             completionHandler()
             return
         }
-        AppLogger.lifecycle.info("handleEventsForBackgroundURLSession: \(identifier)")
+        MidgarLog.info("handleEventsForBackgroundURLSession: \(identifier)", category: .lifecycle)
         TurnWaitCenter.shared.awaitBackgroundEvents(completion: completionHandler)
     }
 
@@ -58,7 +61,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
-        AppLogger.connection.info("push: received APNs device token")
+        MidgarLog.info("push: received APNs device token", category: .connection)
         PushRegistrar.register(tokenHex: token)
     }
 
@@ -66,8 +69,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
-        AppLogger.connection.error(
-            "push: remote-notification registration failed: \(error.localizedDescription)")
+        MidgarLog.error(
+            "push: remote-notification registration failed: \(error.localizedDescription)", category: .connection)
     }
 
     func application(
@@ -76,7 +79,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
         let applied = UsagePushPayload.apply(userInfo: userInfo)
-        AppLogger.connection.info("push: silent notification applied \(applied) usage snapshot(s)")
+        MidgarLog.info(
+            "push: silent notification applied \(applied) usage snapshot(s)", category: .connection)
         if applied > 0 {
             let providers = UsagePushPayload.providers(from: userInfo)
             Task { @MainActor in

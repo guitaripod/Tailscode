@@ -6,6 +6,11 @@
 	<true/>
 	<key>aps-environment</key>
 	<string>production</string>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.guitaripod.tailscode</string>
+		<string>$(AppIdentifierPrefix)cc.midgarcorp.shared</string>
+	</array>
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.com.guitaripod.tailscode</string>

@@ -1,6 +1,7 @@
 import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -33,7 +34,7 @@ enum UpdateMonitor {
         environment: UpdateDriver.Environment(
             machines: { await machines() },
             checkApp: { _ in await checkApp() },
-            log: { AppLogger.connection.info("\($0)") }))
+            log: { MidgarLog.info("\($0)", category: .connection) }))
 
     static var snapshot: UpdateDriver.Snapshot { driver.snapshot }
 

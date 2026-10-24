@@ -1,4 +1,5 @@
 import CodingAgentKitApple
+import MidgarUI
 import UIKit
 
 extension SettingsViewController: UISearchResultsUpdating {
@@ -155,7 +156,7 @@ extension SettingsViewController: UICollectionViewDelegate {
             let copy = UIAction(
                 title: String(localized: "Copy version"), image: UIImage(systemName: "doc.on.doc")
             ) { _ in
-                UIPasteboard.general.string = "Tailscode \(Self.versionString)"
+                UIPasteboard.general.string = MidgarVersionInfo().copyText
                 Theme.Haptics.tap()
             }
             return UIMenu(children: [copy])

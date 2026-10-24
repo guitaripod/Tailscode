@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -17,7 +18,7 @@ extension HomeViewController {
         }
         viewModel.onError = { [weak self] message in
             self?.refreshControl.endRefreshing()
-            AppLogger.session.error("home load: \(message)")
+            MidgarLog.error("home load: \(message)", category: .session)
         }
         NotificationCenter.default.addObserver(
             self, selector: #selector(activityDidChange),
@@ -60,7 +61,7 @@ extension HomeViewController {
             name: SupporterInvitation.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(supporterDidChange),
-            name: ProStore.didChange, object: nil)
+            name: ProAccess.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(updateVideoMark),
             name: ForgeRunner.didChange, object: nil)
@@ -154,7 +155,7 @@ extension HomeViewController {
     var proPrice: String? {
         if let price = Self.fetchedProPrice { return price }
         Task { @MainActor [weak self] in
-            guard let product = await ProStore.shared.products().pro else { return }
+            guard let product = await ProAccess.shared.products().pro else { return }
             Self.fetchedProPrice = product.displayPrice
             self?.applySnapshot()
         }
@@ -174,7 +175,7 @@ extension HomeViewController {
     }
 
     @objc private func supporterDidChange() {
-        if ProStore.shared.isPro { SupporterInvitation.settle() }
+        if ProAccess.shared.isPro { SupporterInvitation.settle() }
         applySnapshot()
     }
 

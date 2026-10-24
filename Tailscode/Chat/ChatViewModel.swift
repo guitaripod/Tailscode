@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import Foundation
@@ -124,7 +125,7 @@ final class ChatViewModel {
         guard let status = try? await authenticator.authStatus() else { return }
         guard isSignedOut != !status.loggedIn else { return }
         isSignedOut = !status.loggedIn
-        AppLogger.connection.info("server signed \(self.isSignedOut ? "out" : "in")")
+        MidgarLog.info("server signed \(self.isSignedOut ? "out" : "in")", category: .connection)
         onSignInStateChanged?()
     }
 

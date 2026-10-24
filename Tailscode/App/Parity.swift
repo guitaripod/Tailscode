@@ -218,7 +218,7 @@ enum ParityManifest {
         case .linkEmbeds: return .implemented("LinkRailCell")
         case .chatDensity: return .implemented("ChatSpacing")
         case .neuralTrace: return .implemented("NeuralBrainCell")
-        case .proUnlock: return .implemented("ProStore")
+        case .proUnlock: return .implemented("ProAccess")
         case .supporterInvitation: return .implemented("SupporterCell")
         case .reviewPrompt: return .implemented("ReviewPromptCoordinator")
         case .rateAndShare: return .implemented("AppStoreLinks")

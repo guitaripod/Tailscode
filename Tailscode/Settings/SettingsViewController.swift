@@ -129,7 +129,7 @@ final class SettingsViewController: UIViewController {
     private func observe() {
         let center = NotificationCenter.default
         center.addObserver(
-            self, selector: #selector(proStateChanged), name: ProStore.didChange, object: nil)
+            self, selector: #selector(proStateChanged), name: ProAccess.didChange, object: nil)
         center.addObserver(
             self, selector: #selector(healthChanged), name: ServerHealthMonitor.didChange, object: nil)
         center.addObserver(

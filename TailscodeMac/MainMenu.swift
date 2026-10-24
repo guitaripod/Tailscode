@@ -43,7 +43,7 @@ final class MainMenu: NSObject {
             withTitle: Localized.text("About Tailscode"),
             action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         menu.addItem(item(Localized.text("Software…"), #selector(software), ""))
-        if MacProStore.shared.sellsPro {
+        if ProAccess.shared.sellsPro {
             menu.addItem(item(ProOffer.title + "…", #selector(pro), ""))
         }
         menu.addItem(.separator())

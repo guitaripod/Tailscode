@@ -1,6 +1,7 @@
 import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -214,7 +215,7 @@ final class ChatCallController {
         if !connected, next.face != .connecting {
             connected = true
             Theme.Haptics.success()
-            AppLogger.connection.info("call live chat=\(chatID)")
+            MidgarLog.info("call live chat=\(chatID)", category: .connection)
         }
         if case .degraded = next.face {
             if !degraded {
@@ -242,7 +243,7 @@ final class ChatCallController {
         let notice = CallNotice(
             face: .ended, title: VoiceCallFace.ended.word, line: end == .hungUp ? nil : line,
             offersSettings: settings)
-        AppLogger.connection.info("call ended chat=\(chatID) end=\(Self.name(of: end))")
+        MidgarLog.info("call ended chat=\(chatID) end=\(Self.name(of: end))", category: .connection)
         if end != .hungUp { Theme.Haptics.warning() }
         UIAccessibility.post(notification: .announcement, argument: line)
         show(notice, for: settings ? Self.settingsNoticeSeconds : Self.noticeSeconds)
@@ -392,7 +393,10 @@ final class ChatCallController {
         let chat = chatID
         let title = host.title()
         let app = BetaEnvironment.appVersion.raw
-        AppLogger.connection.info("call start chat=\(chat) host=\(endpoint.host) demo=\(endpoint.isDemo)")
+        MidgarLog.info(
+            "call start chat=\(chat) host=\(endpoint.host) demo=\(endpoint.isDemo)",
+            category: .connection
+        )
         let send: @Sendable (String) async -> Bool = { [weak self] text in
             await MainActor.run { self?.dispatch(text) ?? false }
         }
@@ -420,7 +424,8 @@ final class ChatCallController {
         case .notReady(let reach) where reach.opensSetup:
             if let endpoint { openSetup(for: endpoint) }
         case .notReady, .audio:
-            AppLogger.connection.info("call refused chat=\(chatID) reason=\(error.line)")
+            MidgarLog.info(
+                "call refused chat=\(chatID) reason=\(error.line)", category: .connection)
             Theme.Haptics.warning()
             show(CallNotice(face: .ended, title: VoiceCallReading.name, line: error.line, offersSettings: false),
                 for: Self.noticeSeconds)
@@ -446,14 +451,14 @@ final class ChatCallController {
     private func dispatch(_ text: String) -> Bool {
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !words.isEmpty else { return false }
-        AppLogger.chat.info("call dispatch session=\(chatID) chars=\(words.count)")
+        MidgarLog.info("call dispatch session=\(chatID) chars=\(words.count)", category: .chat)
         let accepted = host.deliver(words)
         feedAgent(host.state())
         return accepted
     }
 
     private func stopAgent() {
-        AppLogger.chat.info("call stop session=\(chatID)")
+        MidgarLog.info("call stop session=\(chatID)", category: .chat)
         host.stopTurn()
     }
 

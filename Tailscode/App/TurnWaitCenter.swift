@@ -1,6 +1,7 @@
 import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
+import MidgarCore
 import TailscodeCore
 import UIKit
 import UserNotifications
@@ -118,8 +119,9 @@ final class TurnWaitCenter {
             arm(profileID: viewModel.contextID, sessionID: viewModel.session.id, backend: viewModel.backend)
         }
         for viewModel in sessions.dropFirst(Self.maxConcurrentWaits) {
-            AppLogger.lifecycle.info(
-                "turnwait cap reached, not arming profile=\(viewModel.contextID) session=\(viewModel.session.id)"
+            MidgarLog.info(
+                "turnwait cap reached, not arming profile=\(viewModel.contextID) session=\(viewModel.session.id)",
+                category: .lifecycle
             )
         }
     }
@@ -139,8 +141,8 @@ final class TurnWaitCenter {
         guard armed[key] == nil, !arming.contains(key), !isUnsupported(profileID: profileID)
         else { return }
         guard armed.count + arming.count < Self.maxConcurrentWaits else {
-            AppLogger.lifecycle.info(
-                "turnwait cap reached, not arming profile=\(profileID) session=\(sessionID)")
+            MidgarLog.info(
+                "turnwait cap reached, not arming profile=\(profileID) session=\(sessionID)", category: .lifecycle)
             return
         }
         arming.insert(key)
@@ -190,7 +192,8 @@ final class TurnWaitCenter {
         task.taskDescription = description
         armed[key] = Armed(task: task, armedAt: info.armedAt)
         task.resume()
-        AppLogger.connection.info("turnwait armed profile=\(profileID) session=\(sessionID)")
+        MidgarLog.info(
+            "turnwait armed profile=\(profileID) session=\(sessionID)", category: .connection)
     }
 
     /// The conversation was watched to its end from here, so the wait held for it is redundant —
@@ -202,8 +205,9 @@ final class TurnWaitCenter {
             let profileID = Self.profileID(fromKey: key)
             cancelling.insert(key)
             armed.removeValue(forKey: key)?.task.cancel()
-            AppLogger.lifecycle.info(
-                "turnwait cancelled profile=\(profileID) session=\(sessionID) (seen ending locally)"
+            MidgarLog.info(
+                "turnwait cancelled profile=\(profileID) session=\(sessionID) (seen ending locally)",
+                category: .lifecycle
             )
         }
     }
@@ -215,8 +219,8 @@ final class TurnWaitCenter {
     private func markUnsupported(profileID: String, support: TurnWaitSupport) {
         guard support != .undetermined else { return }
         unsupportedProfiles[profileID] = UnsupportedMark(support: support, markedAt: Date())
-        AppLogger.connection.info(
-            "turnwait unsupported profile=\(profileID) reason=\(Self.describe(support))")
+        MidgarLog.info(
+            "turnwait unsupported profile=\(profileID) reason=\(Self.describe(support))", category: .connection)
     }
 
     private func isUnsupported(profileID: String) -> Bool {
@@ -242,14 +246,18 @@ final class TurnWaitCenter {
         description: String?, status: Int, headers: [String: String], data: Data, error: Error?
     ) async {
         guard let description, let info = Self.decode(description) else {
-            AppLogger.connection.error("turnwait completion carried no task info (status=\(status))")
+            MidgarLog.error(
+                "turnwait completion carried no task info (status=\(status))",
+                category: .connection
+            )
             return
         }
         let key = Self.key(info.profileID, info.sessionID)
         armed.removeValue(forKey: key)
         guard cancelling.remove(key) == nil else {
-            AppLogger.lifecycle.info(
-                "turnwait completion for a wait this device cancelled on purpose profile=\(info.profileID) session=\(info.sessionID); not re-arming"
+            MidgarLog.info(
+                "turnwait completion for a wait this device cancelled on purpose profile=\(info.profileID) session=\(info.sessionID); not re-arming",
+                category: .lifecycle
             )
             return
         }
@@ -259,8 +267,8 @@ final class TurnWaitCenter {
             }),
             let backend = ConnectionController.shared.makeBackend(for: profile)
         else {
-            AppLogger.connection.info(
-                "turnwait completion for a profile no longer on this device: \(info.profileID)")
+            MidgarLog.info(
+                "turnwait completion for a profile no longer on this device: \(info.profileID)", category: .connection)
             return
         }
         if let error {
@@ -275,22 +283,26 @@ final class TurnWaitCenter {
             await apply(result, info: info, profile: profile, backend: backend)
         } catch let agentError as AgentError {
             if case .http(let code, _) = agentError, code == 404 {
-                AppLogger.connection.info(
-                    "turnwait session gone (404) profile=\(info.profileID) session=\(info.sessionID); dropping without marking the server unsupported"
+                MidgarLog.info(
+                    "turnwait session gone (404) profile=\(info.profileID) session=\(info.sessionID); dropping without marking the server unsupported",
+                    category: .connection
                 )
             } else if case .http(let code, _) = agentError, code == 401 {
-                AppLogger.connection.info(
-                    "turnwait auth failure (401) profile=\(info.profileID) session=\(info.sessionID); will try again once credentials are current, not marking the server unsupported"
+                MidgarLog.info(
+                    "turnwait auth failure (401) profile=\(info.profileID) session=\(info.sessionID); will try again once credentials are current, not marking the server unsupported",
+                    category: .connection
                 )
             } else {
-                AppLogger.connection.error(
-                    "turnwait result error profile=\(info.profileID) session=\(info.sessionID): \(agentError)"
+                MidgarLog.error(
+                    "turnwait result error profile=\(info.profileID) session=\(info.sessionID): \(agentError)",
+                    category: .connection
                 )
                 rearmAfterFailure(info: info, backend: backend)
             }
         } catch {
-            AppLogger.connection.error(
-                "turnwait decode failed profile=\(info.profileID) session=\(info.sessionID): \(error)"
+            MidgarLog.error(
+                "turnwait decode failed profile=\(info.profileID) session=\(info.sessionID): \(error)",
+                category: .connection
             )
             rearmAfterFailure(info: info, backend: backend)
         }
@@ -304,13 +316,15 @@ final class TurnWaitCenter {
         if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled,
             nsError.userInfo[NSURLErrorBackgroundTaskCancelledReasonKey] != nil
         {
-            AppLogger.lifecycle.info(
-                "turnwait cancelled by the system (force-quit or Background App Refresh off) profile=\(info.profileID) session=\(info.sessionID)"
+            MidgarLog.info(
+                "turnwait cancelled by the system (force-quit or Background App Refresh off) profile=\(info.profileID) session=\(info.sessionID)",
+                category: .lifecycle
             )
             return
         }
-        AppLogger.connection.info(
-            "turnwait transport failure profile=\(info.profileID) session=\(info.sessionID): \(error.localizedDescription)"
+        MidgarLog.info(
+            "turnwait transport failure profile=\(info.profileID) session=\(info.sessionID): \(error.localizedDescription)",
+            category: .connection
         )
         rearmAfterFailure(info: info, backend: backend)
     }
@@ -319,8 +333,9 @@ final class TurnWaitCenter {
         guard UIApplication.shared.applicationState != .active else { return }
         let key = Self.key(info.profileID, info.sessionID)
         guard !retriedOnce.contains(key) else {
-            AppLogger.lifecycle.info(
-                "turnwait already retried once, not arming again profile=\(info.profileID) session=\(info.sessionID)"
+            MidgarLog.info(
+                "turnwait already retried once, not arming again profile=\(info.profileID) session=\(info.sessionID)",
+                category: .lifecycle
             )
             return
         }
@@ -334,8 +349,9 @@ final class TurnWaitCenter {
     ) async {
         switch result.state {
         case .running:
-            AppLogger.lifecycle.info(
-                "turnwait still running, re-arming profile=\(info.profileID) session=\(info.sessionID)"
+            MidgarLog.info(
+                "turnwait still running, re-arming profile=\(info.profileID) session=\(info.sessionID)",
+                category: .lifecycle
             )
             guard UIApplication.shared.applicationState != .active else { return }
             arm(profileID: info.profileID, sessionID: info.sessionID, backend: backend)
@@ -365,8 +381,9 @@ final class TurnWaitCenter {
         let (kind, identifier, reason) = Self.notification(for: result, sessionID: info.sessionID)
 
         if Self.pushAlreadyCovers(profileID: info.profileID) {
-            AppLogger.lifecycle.info(
-                "turnwait \(result.state) profile=\(info.profileID) session=\(info.sessionID); the bridge's own push covers it"
+            MidgarLog.info(
+                "turnwait \(result.state) profile=\(info.profileID) session=\(info.sessionID); the bridge's own push covers it",
+                category: .lifecycle
             )
             recordMissedIfAway(
                 identifier: identifier, profileID: info.profileID,
@@ -375,15 +392,17 @@ final class TurnWaitCenter {
         }
 
         guard TurnEndGate.claim(profileID: info.profileID, sessionID: info.sessionID) else {
-            AppLogger.lifecycle.info(
-                "turnwait profile=\(info.profileID) session=\(info.sessionID) already claimed by the live-stream path; skipping"
+            MidgarLog.info(
+                "turnwait profile=\(info.profileID) session=\(info.sessionID) already claimed by the live-stream path; skipping",
+                category: .lifecycle
             )
             return
         }
 
         guard !(await alreadyNotified(sessionID: info.sessionID, since: info.armedAt)) else {
-            AppLogger.lifecycle.info(
-                "turnwait profile=\(info.profileID) session=\(info.sessionID) already notified since it was armed; skipping"
+            MidgarLog.info(
+                "turnwait profile=\(info.profileID) session=\(info.sessionID) already notified since it was armed; skipping",
+                category: .lifecycle
             )
             return
         }
@@ -393,8 +412,8 @@ final class TurnWaitCenter {
             sessionID: info.sessionID, profileID: info.profileID,
             notice: Self.wire(for: kind, reason: reason, toolCount: toolCount, profile: profile),
             activity: reason)
-        AppLogger.lifecycle.info(
-            "turnwait posted for profile=\(info.profileID) session=\(info.sessionID) (\(result.state))")
+        MidgarLog.info(
+            "turnwait posted for profile=\(info.profileID) session=\(info.sessionID) (\(result.state))", category: .lifecycle)
     }
 
     /// What this device knows of an ending it was told about over the wait: that it happened, how

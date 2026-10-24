@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import UIKit
@@ -228,8 +229,8 @@ extension ChatViewController {
     /// own directory as the repository, behind the same gate as every other door into delegation.
     func handOff(goal: String) {
         guard let handoff = viewModel.delegateHandoff(goal: goal) else { return }
-        AppLogger.session.info(
-            "delegate handoff from session \(self.viewModel.session.id) to \(handoff.host) repo=\(handoff.repo)")
+        MidgarLog.info(
+            "delegate handoff from session \(self.viewModel.session.id) to \(handoff.host) repo=\(handoff.repo)", category: .session)
         DelegateGate.compose(from: self, handoff: handoff)
     }
 

@@ -1,3 +1,4 @@
+import MidgarCore
 import UIKit
 
 /// What the app lets go of when the system asks for memory back.
@@ -22,6 +23,9 @@ enum MemoryRelief {
         CodeBlockCell.relieveHighlightCache()
         AttachmentImageStore.shared.relieve()
         LinkPreviewStore.shared.relieve()
-        AppLogger.lifecycle.info("memory warning: render, highlight, picture and link caches released")
+        MidgarLog.info(
+            "memory warning: render, highlight, picture and link caches released",
+            category: .lifecycle
+        )
     }
 }

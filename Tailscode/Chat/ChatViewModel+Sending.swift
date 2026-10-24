@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import Foundation
@@ -27,8 +28,8 @@ extension ChatViewModel {
         attachments: [PromptAttachment] = []
     ) {
         if isBusy {
-            AppLogger.chat.info(
-                "send queued session=\(session.id) queue=\(queue.count + 1)")
+            MidgarLog.info(
+                "send queued session=\(session.id) queue=\(queue.count + 1)", category: .chat)
             hold(QueuedSend(text: text, model: model, effort: effort, attachments: attachments))
             return
         }
@@ -83,8 +84,8 @@ extension ChatViewModel {
         _ text: String, model: ModelSelection?, effort: String?, attachments: [PromptAttachment],
         reusing row: UUID? = nil
     ) {
-        AppLogger.chat.info(
-            "send session=\(session.id) chars=\(text.count) attachments=\(attachments.count)")
+        MidgarLog.info(
+            "send session=\(session.id) chars=\(text.count) attachments=\(attachments.count)", category: .chat)
         queueHeldAfterFailure = false
         queueHold = nil
         sendTask?.cancel()
@@ -172,7 +173,7 @@ extension ChatViewModel {
                     pending.remove(id: echoID)
                     onPending?()
                 } else {
-                    AppLogger.chat.error("send failed: \(Self.readable(error))")
+                    MidgarLog.error("send failed: \(Self.readable(error))", category: .chat)
                     let reason = Self.readable(error)
                     recoverFailedSend(outgoing, row: echoID, reason: reason)
                     armResume(row: echoID, reason: reason)
@@ -219,7 +220,8 @@ extension ChatViewModel {
     }
 
     func respond(to permission: PermissionRequest, decision: PermissionDecision) {
-        AppLogger.chat.info("permission \(permission.toolName ?? "?") -> \(decision.rawValue)")
+        MidgarLog.info(
+            "permission \(permission.toolName ?? "?") -> \(decision.rawValue)", category: .chat)
         Task {
             do {
                 try await conversation.respond(to: permission, decision: decision)
@@ -234,7 +236,7 @@ extension ChatViewModel {
     /// (which a direct call would be refused for), echoes locally, and reads back
     /// as what the user actually said.
     func answerQuestion(_ question: QuestionRequest, answers: [[String]]) {
-        AppLogger.chat.info("question \(question.id) answered")
+        MidgarLog.info("question \(question.id) answered", category: .chat)
         if backend.capabilities.answersQuestionsByMessage {
             let text = question.answerMessage(answers)
             guard !text.isEmpty else { return }
@@ -259,7 +261,7 @@ extension ChatViewModel {
     /// card corrects itself or comes down, and what is reported is the server's own sentence about
     /// why rather than a substitute this client wrote.
     func resumeInterruptedTurn() {
-        AppLogger.chat.info("interrupted turn resumed")
+        MidgarLog.info("interrupted turn resumed", category: .chat)
         runPress(.pickUp) { [weak self] in
             guard let self else { return }
             try await self.conversation.resumeInterruptedTurn()
@@ -268,7 +270,7 @@ extension ChatViewModel {
 
     /// Lets the interrupted turn go. Nothing in the transcript changes; only the offer stops.
     func dismissInterruptedTurn() {
-        AppLogger.chat.info("interrupted turn dismissed")
+        MidgarLog.info("interrupted turn dismissed", category: .chat)
         runPress(.letGo) { [weak self] in
             guard let self else { return }
             try await self.conversation.dismissInterruptedTurn()
@@ -293,7 +295,8 @@ extension ChatViewModel {
                 try await work()
                 finishInterruptionPress(nil)
             } catch {
-                AppLogger.chat.error("interrupted turn press failed: \(Self.readable(error))")
+                MidgarLog.error(
+                    "interrupted turn press failed: \(Self.readable(error))", category: .chat)
                 finishInterruptionPress(InterruptedTurnReading.refusal(for: error))
             }
         }
@@ -310,13 +313,13 @@ extension ChatViewModel {
     /// the banner appears through the ordinary state stream once the server has done it.
     func revert(to messageID: String) {
         guard !isReverting else { return }
-        AppLogger.chat.info("revert to \(messageID)")
+        MidgarLog.info("revert to \(messageID)", category: .chat)
         isReverting = true
         Task {
             do {
                 try await conversation.revert(to: messageID)
             } catch {
-                AppLogger.chat.error("revert failed: \(Self.readable(error))")
+                MidgarLog.error("revert failed: \(Self.readable(error))", category: .chat)
                 onError?(RevertReading.failure(restoring: false, error))
             }
             isReverting = false
@@ -328,7 +331,7 @@ extension ChatViewModel {
     /// the state stream like any other change the server made.
     func restoreRevert() {
         guard !isRestoringRevert else { return }
-        AppLogger.chat.info("revert restore")
+        MidgarLog.info("revert restore", category: .chat)
         isRestoringRevert = true
         onRevertChange?()
         Task {
@@ -337,7 +340,7 @@ extension ChatViewModel {
                 isRestoringRevert = false
                 onRevertRestored?()
             } catch {
-                AppLogger.chat.error("revert restore failed: \(Self.readable(error))")
+                MidgarLog.error("revert restore failed: \(Self.readable(error))", category: .chat)
                 isRestoringRevert = false
                 onRevertChange?()
                 onError?(RevertReading.failure(restoring: true, error))
@@ -346,7 +349,7 @@ extension ChatViewModel {
     }
 
     func rejectQuestion(_ question: QuestionRequest) {
-        AppLogger.chat.info("question \(question.id) skipped")
+        MidgarLog.info("question \(question.id) skipped", category: .chat)
         Task {
             do {
                 try await conversation.reject(question)

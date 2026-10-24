@@ -1,6 +1,7 @@
 import Foundation
 #if canImport(FoundationModels)
 import FoundationModels
+import MidgarCore
 #endif
 
 /// Wraps Apple's on-device Foundation Model to turn a developer's rough draft
@@ -53,8 +54,11 @@ final class PromptEnhancer {
     /// generation doesn't pay the cold-start cost.
     func prewarm() {
         switch availability {
-        case .available: AppLogger.ui.info("enhance: prewarm — model available")
-        case .unavailable(let reason): AppLogger.ui.info("enhance: prewarm — unavailable: \(reason)")
+        case .available: MidgarLog.info("enhance: prewarm — model available", category: .ui)
+        case .unavailable(let reason): MidgarLog.info(
+            "enhance: prewarm — unavailable: \(reason)",
+            category: .ui
+        )
         }
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
@@ -74,7 +78,7 @@ final class PromptEnhancer {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
             let clipped = String(input.prefix(PromptEnhancement.maxInputCharacters))
-            AppLogger.ui.info("enhance: generating for \(clipped.count) chars…")
+            MidgarLog.info("enhance: generating for \(clipped.count) chars…", category: .ui)
             let started = Date()
             let session = LanguageModelSession(instructions: Self.instructions)
             let options = GenerationOptions(temperature: 0.7, maximumResponseTokens: 700)
@@ -90,12 +94,12 @@ final class PromptEnhancer {
                         label: item.label.trimmingCharacters(in: .whitespacesAndNewlines),
                         text: item.prompt.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
-                AppLogger.ui.info(
-                    "enhance: got \(result.count) suggestions in \(ms)ms — labels=\(result.map(\.label))")
+                MidgarLog.info(
+                    "enhance: got \(result.count) suggestions in \(ms)ms — labels=\(result.map(\.label))", category: .ui)
                 return result
             } catch {
                 let ms = Int(Date().timeIntervalSince(started) * 1000)
-                AppLogger.ui.error("enhance: generation failed after \(ms)ms: \(error)")
+                MidgarLog.error("enhance: generation failed after \(ms)ms: \(error)", category: .ui)
                 throw error
             }
         }

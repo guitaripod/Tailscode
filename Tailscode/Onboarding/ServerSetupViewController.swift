@@ -1,5 +1,6 @@
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import SafariServices
 import TailscodeCore
 import UIKit
@@ -78,7 +79,10 @@ final class ServerSetupViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(didBecomeActive),
             name: UIApplication.didBecomeActiveNotification, object: nil)
-        AppLogger.lifecycle.info("server setup shown (\(mode == .firstRun ? "first run" : "add server"))")
+        MidgarLog.info(
+            "server setup shown (\(mode == .firstRun ? "first run" : "add server"))",
+            category: .lifecycle
+        )
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -420,7 +424,7 @@ final class ServerSetupViewController: UIViewController {
 
     private func share(_ text: String, from source: UIView) {
         Task { await flow.handedOver() }
-        AppLogger.lifecycle.info("setup steps shared for another computer")
+        MidgarLog.info("setup steps shared for another computer", category: .lifecycle)
         let activity = UIActivityViewController(activityItems: [text], applicationActivities: nil)
         activity.popoverPresentationController?.sourceView = source
         activity.popoverPresentationController?.sourceRect = source.bounds

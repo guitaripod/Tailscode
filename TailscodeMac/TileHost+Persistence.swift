@@ -1,5 +1,6 @@
 import AppKit
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 
 extension TileHost {
@@ -44,7 +45,8 @@ extension TileHost {
     private func recordDropped(_ kind: String) {
         Seatbelts.shared.writer?.write(
             FlightRecord(t: FlightRecord.epochMilliseconds(), ev: "restore \(kind)->empty"))
-        AppLogger.lifecycle.info("restore: a \(kind) pane this copy cannot show came back empty")
+        MidgarLog.info(
+            "restore: a \(kind) pane this copy cannot show came back empty", category: .lifecycle)
     }
 
     func snapshot() -> SplitSnapshot {

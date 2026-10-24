@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import UIKit
@@ -151,8 +152,9 @@ extension ChatViewController {
         }
         #if DEBUG
             let held = railAnchor(for: id)
-            AppLogger.chat.info(
-                "rail anchor id=\(id) before=\(Int(before.screenY.rounded())) after=\(Int((held?.screenY ?? 0).rounded())) firstVisible=\(before.firstVisibleID ?? "-") firstBefore=\(Int(before.firstVisibleY.rounded())) firstAfter=\(Int((held?.firstVisibleY ?? 0).rounded())) session=\(viewModel.session.id)"
+            MidgarLog.info(
+                "rail anchor id=\(id) before=\(Int(before.screenY.rounded())) after=\(Int((held?.screenY ?? 0).rounded())) firstVisible=\(before.firstVisibleID ?? "-") firstBefore=\(Int(before.firstVisibleY.rounded())) firstAfter=\(Int((held?.firstVisibleY ?? 0).rounded())) session=\(viewModel.session.id)",
+                category: .chat
             )
         #endif
     }

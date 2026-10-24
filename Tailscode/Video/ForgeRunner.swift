@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -196,7 +197,10 @@ final class ForgeRunner {
     func render(_ recipe: ForgeRecipe) {
         guard renderTask == nil, let client else { return }
         ForgeStore.remember(recipe)
-        AppLogger.ui.info("forge render \(recipe.size.label) \(recipe.seconds)s seed=\(recipe.seed)")
+        MidgarLog.info(
+            "forge render \(recipe.size.label) \(recipe.seconds)s seed=\(recipe.seed)",
+            category: .ui
+        )
         renderClient = client
         renderTicket += 1
         let ticket = renderTicket
@@ -224,8 +228,8 @@ final class ForgeRunner {
         renderTicket += 1
         let ticket = renderTicket
         let expecting = board.clock.estimate(pending.recipe)
-        AppLogger.ui.info(
-            "forge recovering render prompt=\(pending.promptID) confirmed=\(pending.confirmed)")
+        MidgarLog.info(
+            "forge recovering render prompt=\(pending.promptID) confirmed=\(pending.confirmed)", category: .ui)
         holdBackground()
         renderTask = Task { [weak self] in
             if let stream = await client.recover(pending, expecting: expecting) {

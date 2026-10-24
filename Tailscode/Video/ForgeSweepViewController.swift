@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -266,7 +267,10 @@ final class ForgeSweepViewController: UIViewController {
             (devices, probe) = try await peers()
         } catch {
             gate = Self.gate(for: error)
-            AppLogger.connection.error("forge sweep could not list devices: \(error.localizedDescription)")
+            MidgarLog.error(
+                "forge sweep could not list devices: \(error.localizedDescription)",
+                category: .connection
+            )
             render()
             return
         }

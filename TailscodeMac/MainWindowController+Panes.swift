@@ -1,6 +1,7 @@
 import AppKit
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 
 extension MainWindowController {
@@ -71,7 +72,10 @@ extension MainWindowController {
             let pane = splitPanes.panes[paneID], pane.currentEntry == nil
         else { return }
         pane.open(entry, backend: backend)
-        AppLogger.session.info("restore: woke pane \(paneID.raw.prefix(8)), \(wakingBindings.count) still waiting")
+        MidgarLog.info(
+            "restore: woke pane \(paneID.raw.prefix(8)), \(wakingBindings.count) still waiting",
+            category: .session
+        )
         if pane === transcript { focusedPaneChanged() }
     }
 

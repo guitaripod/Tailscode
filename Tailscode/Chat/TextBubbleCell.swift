@@ -1,3 +1,4 @@
+import MidgarCore
 import UIKit
 
 final class TextBubbleCell: UICollectionViewCell {
@@ -195,8 +196,8 @@ final class TextBubbleCell: UICollectionViewCell {
                 textView.measuredHeight = height
                 placeWords()
                 if abs(reference.size.height - sized.size.height) > 0.5 {
-                    AppLogger.performance.info(
-                        "TEXTFIT_MISMATCH ours=\(sized.size.height) uikit=\(reference.size.height) width=\(layoutAttributes.size.width) chars=\(textView.textStorage.length)")
+                    MidgarLog.info(
+                        "TEXTFIT_MISMATCH ours=\(sized.size.height) uikit=\(reference.size.height) width=\(layoutAttributes.size.width) chars=\(textView.textStorage.length)", category: .performance)
                 } else {
                     Self.verifiedFits += 1
                 }

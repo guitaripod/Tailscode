@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import PhotosUI
@@ -211,8 +212,8 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
     func composerDidLongPressSend(from view: UIView) {
         let text = composer.currentText
         guard !text.isEmpty else { return }
-        AppLogger.ui.info(
-            "enhance: long-press chars=\(text.count) available=\(enhancement.isAvailable) enhanceable=\(PromptEnhancementController.isEnhanceable(text))")
+        MidgarLog.info(
+            "enhance: long-press chars=\(text.count) available=\(enhancement.isAvailable) enhanceable=\(PromptEnhancementController.isEnhanceable(text))", category: .ui)
         enhancement.requestNow(for: text)
         presentEnhanceOverlay(original: text)
     }
@@ -290,7 +291,7 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
         let origin = anchor.convert(
             CGPoint(x: anchor.bounds.midX, y: anchor.bounds.midY), to: overlay)
         overlay.animateIn(fromButtonCenter: origin)
-        AppLogger.ui.info("enhance: overlay presented")
+        MidgarLog.info("enhance: overlay presented", category: .ui)
     }
 
     func handleEnhancementStatus(_ status: PromptEnhancementController.Status) {

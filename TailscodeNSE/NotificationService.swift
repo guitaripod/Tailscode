@@ -1,3 +1,4 @@
+import MidgarCore
 import UserNotifications
 
 /// Dresses a push the bridge sent, on the phone, in the phone's language.
@@ -11,6 +12,11 @@ final class NotificationService: UNNotificationServiceExtension {
     private var contentHandler: ((UNNotificationContent) -> Void)?
     private var bestAttemptContent: UNMutableNotificationContent?
 
+    override init() {
+        super.init()
+        TailscodeLogging.configure()
+    }
+
     override func didReceive(
         _ request: UNNotificationRequest,
         withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
@@ -18,7 +24,7 @@ final class NotificationService: UNNotificationServiceExtension {
         self.contentHandler = contentHandler
         bestAttemptContent = request.content.mutableCopy() as? UNMutableNotificationContent
         let applied = UsagePushPayload.apply(userInfo: request.content.userInfo)
-        AppLogger.session.info("nse: applied \(applied) usage snapshot(s)")
+        MidgarLog.info("nse: applied \(applied) usage snapshot(s)", category: .session)
         if let content = bestAttemptContent { dress(content, for: request) }
         contentHandler(bestAttemptContent ?? request.content)
     }
@@ -31,9 +37,10 @@ final class NotificationService: UNNotificationServiceExtension {
 
     private func dress(_ content: UNMutableNotificationContent, for request: UNNotificationRequest) {
         if let kind = NoticePushDresser.dress(content, identifier: request.identifier) {
-            AppLogger.session.info("nse: dressed a \(kind.rawValue) notice")
+            MidgarLog.info("nse: dressed a \(kind.rawValue) notice", category: .session)
         } else {
-            AppLogger.session.info("nse: no notice in the push, leaving the bridge's own words")
+            MidgarLog.info(
+                "nse: no notice in the push, leaving the bridge's own words", category: .session)
         }
     }
 }

@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import MidgarCore
 import QuartzCore
 import TailscodeCore
 import UIKit
@@ -127,8 +128,8 @@ enum BrainPictures {
             frame: key.frame, table: key.table, time: 0, width: key.width, height: key.height)
         let rendered = CACurrentMediaTime()
         if let pair, let image = compose(pair) {
-            AppLogger.performance.info(
-                "brain picture \(key.width)x\(key.height) gpu=\(Int((rendered - started) * 1000)) ms compose=\(Int((CACurrentMediaTime() - rendered) * 1000)) ms waiting=\(waiting.count - 1)")
+            MidgarLog.info(
+                "brain picture \(key.width)x\(key.height) gpu=\(Int((rendered - started) * 1000)) ms compose=\(Int((CACurrentMediaTime() - rendered) * 1000)) ms waiting=\(waiting.count - 1)", category: .performance)
             renders += 1
             let made = BrainPicture(
                 image: image, designWidth: CGFloat(key.width) / item.scale,

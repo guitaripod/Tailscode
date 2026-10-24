@@ -1,5 +1,6 @@
 import CodingAgentKitApple
 import Foundation
+import MidgarCore
 import TailscodeCore
 
 /// An Ollama Cloud account's API key, optional and held in the Keychain (app group, so the
@@ -28,14 +29,14 @@ enum OllamaCredentials {
         try keychain().setValue(value, for: apiKey)
         OllamaCloud.forgetLastFetch()
         UserDefaults(suiteName: UsageWidgetStore.suiteName)?.removeObject(forKey: "ollamaCloud.lastFetch")
-        AppLogger.session.info("ollama-cloud: api key saved")
+        MidgarLog.info("ollama-cloud: api key saved", category: .session)
     }
 
     static func clearToken() {
         try? keychain().removeValue(for: apiKey)
         OllamaCloud.forgetLastFetch()
         UserDefaults(suiteName: UsageWidgetStore.suiteName)?.removeObject(forKey: "ollamaCloud.lastFetch")
-        AppLogger.session.info("ollama-cloud: api key cleared")
+        MidgarLog.info("ollama-cloud: api key cleared", category: .session)
     }
 }
 

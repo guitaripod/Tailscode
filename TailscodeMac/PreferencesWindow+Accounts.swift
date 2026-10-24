@@ -1,7 +1,6 @@
 import AppKit
 import CodingAgentKit
 import CodingAgentKitApple
-import MidgarKit
 import TailscodeCore
 import UserNotifications
 

@@ -135,8 +135,8 @@ final class ServerDirectory {
         let existing = (try? store.profiles()) ?? []
         let isNew = !existing.contains { $0.id == profile.id }
         let real = existing.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }
-        if isNew, MacProStore.shared.sellsPro,
-            !ProOffer.allowsAnotherServer(existing: real.count, isPro: MacProStore.shared.isPro)
+        if isNew, ProAccess.shared.sellsPro,
+            !ProOffer.allowsAnotherServer(existing: real.count, isPro: ProAccess.shared.isPro)
         {
             throw ProRequired()
         }

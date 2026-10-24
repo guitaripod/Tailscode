@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import Foundation
@@ -71,8 +72,8 @@ extension ChatViewModel {
         let model = selectedModel
         let effort = currentEffort
         if isBusy {
-            AppLogger.chat.info(
-                "command queued session=\(session.id) name=\(command.name) queue=\(queue.count + 1)")
+            MidgarLog.info(
+                "command queued session=\(session.id) name=\(command.name) queue=\(queue.count + 1)", category: .chat)
             hold(
                 QueuedSend(
                     text: command.invocation(arguments: arguments), model: model, effort: effort,

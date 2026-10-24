@@ -126,6 +126,7 @@ enum Connect {
 /// store, no second place for a credential to be. Handed over before anything reads an account:
 /// an uninstalled store makes every account read as signed out, which is a feature quietly missing
 /// rather than a failure.
+TailscodeLogging.configure()
 MediaAccounts.install(KeychainSecretStore())
 
 if TranscriptBench.isRequested {

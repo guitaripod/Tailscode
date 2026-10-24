@@ -1,5 +1,6 @@
 import Foundation
 import Metal
+import MidgarCore
 import QuartzCore
 import TailscodeCore
 
@@ -405,8 +406,8 @@ extension NeuralHeadRenderer {
         commands.addCompletedHandler { buffer in
             permits.signal()
             if buffer.status == .error {
-                AppLogger.performance.error(
-                    "neural frame failed: \(buffer.error?.localizedDescription ?? "unknown")")
+                MidgarLog.error(
+                    "neural frame failed: \(buffer.error?.localizedDescription ?? "unknown")", category: .performance)
             }
             let seconds = buffer.gpuEndTime - buffer.gpuStartTime
             if let report, seconds > 0 { report(seconds) }

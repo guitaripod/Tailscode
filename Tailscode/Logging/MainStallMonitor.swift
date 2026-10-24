@@ -1,4 +1,5 @@
 import Foundation
+import MidgarCore
 import UIKit
 import UIKit.UIGestureRecognizerSubclass
 
@@ -146,7 +147,7 @@ final class MainStallMonitor: @unchecked Sendable {
             if current { asking = false }
             lock.unlock()
             guard current, late > Self.threshold else { return }
-            AppLogger.performance.info("stall ms=\(Int(late * 1000))")
+            MidgarLog.info("stall ms=\(Int(late * 1000))", category: .performance)
             noteActivity()
         }
     }

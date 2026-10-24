@@ -1,4 +1,5 @@
 import GameKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -143,7 +144,7 @@ final class GameCenterCoordinator: NSObject {
         started = false
         waiting = false
         standing = .off
-        AppLogger.session.info("gamecenter: turned off")
+        MidgarLog.info("gamecenter: turned off", category: .session)
         NotificationCenter.default.post(name: Self.standingChanged, object: nil)
     }
 
@@ -203,14 +204,15 @@ final class GameCenterCoordinator: NSObject {
             signInSheet = nil
             standing = .unavailable(Self.reading(for: error))
         }
-        AppLogger.session.info("gamecenter: standing \(String(describing: self.standing))")
+        MidgarLog.info(
+            "gamecenter: standing \(String(describing: self.standing))", category: .session)
         NotificationCenter.default.post(name: Self.standingChanged, object: nil)
     }
 
     /// GameKit offered a sign-in nobody just asked for — the banner is on its way or already up —
     /// so Game Center goes back to off and does not ask again on the next launch or return.
     private func withdrawUnasked() {
-        AppLogger.session.info("gamecenter: sign-in offered unasked, turning off")
+        MidgarLog.info("gamecenter: sign-in offered unasked, turning off", category: .session)
         turnOff()
     }
 
@@ -254,11 +256,11 @@ final class GameCenterCoordinator: NSObject {
                     submitted[score.leaderboardID] = score.value
                 }
                 defaults.set(submitted, forKey: Self.scoresKey)
-                AppLogger.session.info(
-                    "gamecenter: reported \(achievements.count) trophies, \(beaten.count) scores")
+                MidgarLog.info(
+                    "gamecenter: reported \(achievements.count) trophies, \(beaten.count) scores", category: .session)
             } catch {
-                AppLogger.session.error(
-                    "gamecenter: report failed: \(error.localizedDescription)")
+                MidgarLog.error(
+                    "gamecenter: report failed: \(error.localizedDescription)", category: .session)
             }
         }
     }

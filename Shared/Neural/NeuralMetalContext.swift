@@ -1,5 +1,6 @@
 import Foundation
 import Metal
+import MidgarCore
 import TailscodeCore
 
 #if canImport(UIKit)
@@ -269,7 +270,7 @@ final class NeuralMetalContext: @unchecked Sendable {
         let pending = waiters
         waiters = []
         if wasResident {
-            AppLogger.performance.info("neural textures dropped")
+            MidgarLog.info("neural textures dropped", category: .performance)
         }
         if !pending.isEmpty {
             Task { @MainActor in for waiter in pending { waiter(false) } }
@@ -301,10 +302,10 @@ final class NeuralMetalContext: @unchecked Sendable {
             lock.unlock()
             if ok {
                 let ms = Double(DispatchTime.now().uptimeNanoseconds - started.uptimeNanoseconds) / 1e6
-                AppLogger.performance.info(
-                    "neural textures resident \(set?.residentBytes ?? 0) bytes in \(Int(ms)) ms")
+                MidgarLog.info(
+                    "neural textures resident \(set?.residentBytes ?? 0) bytes in \(Int(ms)) ms", category: .performance)
             } else if set == nil {
-                AppLogger.performance.error("neural textures failed to load")
+                MidgarLog.error("neural textures failed to load", category: .performance)
             }
             if !finished.isEmpty {
                 Task { @MainActor in for waiter in finished { waiter(ok) } }
@@ -457,7 +458,8 @@ extension NeuralMetalContext {
         do {
             return try device.makeRenderPipelineState(descriptor: descriptor)
         } catch {
-            AppLogger.performance.error("neural pipeline \(request.pass) failed: \(error)")
+            MidgarLog.error(
+                "neural pipeline \(request.pass) failed: \(error)", category: .performance)
             return nil
         }
     }
@@ -483,7 +485,8 @@ extension NeuralMetalContext {
             guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
                 let container = NeuralTextureContainer.decode(data)
             else {
-                AppLogger.performance.error("neural container unreadable: \(name.fileName)")
+                MidgarLog.error(
+                    "neural container unreadable: \(name.fileName)", category: .performance)
                 return nil
             }
             return upload(container, name: name, device: device)

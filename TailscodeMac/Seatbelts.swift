@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import MidgarCore
 import TailscodeCore
 
 /// The panes as the seatbelts see them: what the governor ranks, and the counts the recorder keeps.
@@ -171,7 +172,8 @@ final class Seatbelts {
         do {
             writer = try FlightWriter(url: ringURL)
         } catch {
-            AppLogger.performance.error("flight ring unavailable at \(ringURL.path): \(error)")
+            MidgarLog.error(
+                "flight ring unavailable at \(ringURL.path): \(error)", category: .performance)
         }
         writer?.write(
             .launch(FlightWriter.header(), t: FlightRecord.epochMilliseconds()))
@@ -188,7 +190,7 @@ final class Seatbelts {
                     break
                 }
                 writer?.write(record)
-                AppLogger.performance.error("watchdog: \(line)")
+                MidgarLog.error("watchdog: \(line)", category: .performance)
             },
             onResume: { Seatbelts.shared.sample() })
         watchdog.start()
@@ -272,7 +274,8 @@ final class Seatbelts {
             var line = "restore unclean"
             if case .parked(let count) = plan.mode { line += " parked \(count)" }
             writer?.write(FlightRecord(t: FlightRecord.epochMilliseconds(), ev: line))
-            AppLogger.lifecycle.info("restore: the last launch did not close normally (\(line))")
+            MidgarLog.info(
+                "restore: the last launch did not close normally (\(line))", category: .lifecycle)
         }
         if let floor = plan.floor {
             governor.hold(atLeast: floor, until: MachClock.now() + plan.floorDuration)
@@ -341,7 +344,10 @@ final class Seatbelts {
             } else {
                 events.append("shed \(previous.rawValue)->\(next.rawValue) released")
             }
-            AppLogger.performance.info("shed: \(events[0]) · \(decision.reasons.map(\.code).joined(separator: ", "))")
+            MidgarLog.info(
+                "shed: \(events[0]) · \(decision.reasons.map(\.code).joined(separator: ", "))",
+                category: .performance
+            )
         }
         level = next
         MotionBudget.apply(

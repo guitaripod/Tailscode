@@ -1,3 +1,4 @@
+import MidgarCore
 #if DEBUG
     import Foundation
     import TailscodeCore
@@ -52,9 +53,10 @@
                 .sorted { $0.frame.minY < $1.frame.minY }
                 .map { "\($0.indexPath.item):\(Int($0.frame.height.rounded()))" }
                 .joined(separator: " ")
-            AppLogger.performance.info("chat rowHeights \(heights) session=\(sessionID)")
-            AppLogger.performance.info(
-                "chat contentHeight=\(Int(height.rounded())) rows=\(rows) density=\(ChatDensitySetting.current.rawValue) session=\(sessionID)")
+            MidgarLog.info(
+                "chat rowHeights \(heights) session=\(sessionID)", category: .performance)
+            MidgarLog.info(
+                "chat contentHeight=\(Int(height.rounded())) rows=\(rows) density=\(ChatDensitySetting.current.rawValue) session=\(sessionID)", category: .performance)
         }
     }
 #endif

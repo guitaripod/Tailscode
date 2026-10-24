@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import UIKit
@@ -463,8 +464,8 @@ final class ChatViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        AppLogger.chat.info(
-            "chat appeared session=\(viewModel.session.id) title=\(viewModel.displayTitle)")
+        MidgarLog.info(
+            "chat appeared session=\(viewModel.session.id) title=\(viewModel.displayTitle)", category: .chat)
         AppActivityController.shared.shown(viewModel.session.id, in: self)
         isChangingColumns = false
         if findVisible, !brainSearch.isWarm { brainSearch.start() }

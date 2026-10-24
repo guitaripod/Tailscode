@@ -47,10 +47,12 @@ Report the version and pid the install printed. If an install is deliberately sk
 
 - `final class`; `@available(*, unavailable) required init?(coder:)` on custom views/VCs. Value types `Sendable`.
 - No code comments, no MARK, no file headers. `///` sparingly.
-- Design tokens via `Theme`. Route diagnostics through `AppLogger` (categories: lifecycle/connection/session/chat/streaming/persistence/ui), which fans to OSLog + `Library/Logs/tailscode.log`.
+- Design tokens via `Theme`. Route diagnostics through `MidgarLog` (MidgarCore.Logging): `MidgarLog.info("…", category: .session)` with the categories lifecycle/connection/session/chat/streaming/persistence/performance from `Tailscode/Logging/TailscodeLogging.swift` and MidgarCore's `.ui`, which fans to OSLog + `Library/Logs/tailscode.log`. The app, the widget and the notification service each call `TailscodeLogging.configure()` first, because an unconfigured MidgarLog writes `app.log`.
 ## Rules that break shipped users or machines
 
 The reasons and the full designs are in `docs/agent-notes.md`.
+
+- Pro and the tips are bought through `MidgarStore` (MidgarKit, pinned to an exact tag in `project.yml`), never StoreKit directly: `Shared/Midgar/TailscodeMidgar.swift` is the one composition root (Midgar ID, gateway client, store; no services in a test host, in the direct Mac build or in a screenshot launch that holds StoreKit back) and `ProAccess` is the one model the iPhone and Mac screens read (`isPro`, `products()`, `purchase`, `restore`). A second `Transaction.updates` listener would finish transactions the store has not queued for the ledger. `keychain-access-groups` lists the app's own identifier first and `cc.midgarcorp.shared` second: dropping the first strands every saved server credential. The StoreKit tests are `TailscodeTests` and only run on an iOS 27.1 runtime (`xcodebuild test -scheme Tailscode -destination 'platform=iOS Simulator,id=<iPhone Duo on 27.1>'`); the first purchase on a fresh simulator can stall, so stop it and rerun once.
 
 - Wire contracts: Live Activity detail keys are a contract with every installed app, added and never renamed, and the coarse phase beside them is never extended. The server sends a detail key (`LiveActivityDetail`), never a sentence a widget has to show.
 - Background turn wait (`TurnWaitCenter`, `com.guitaripod.tailscode.turnwait`): the background `URLSession` never carries a request with a side effect, because nsurlsessiond re-sends a silent request. opencode 1.x has no wait route and gets no blocking send. A dropped wait is unknown, never an ending, and `.undetermined` (transport, 401, 5xx) is never latched. Nothing about a turn ending leaves the tailnet.

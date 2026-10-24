@@ -1,5 +1,6 @@
 import BackgroundTasks
 import Foundation
+import MidgarCore
 import TailscodeCore
 
 /// Periodic background refresh of every usage source, so the widgets keep moving even
@@ -25,9 +26,12 @@ enum UsageBackgroundRefresh {
         request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
         do {
             try BGTaskScheduler.shared.submit(request)
-            AppLogger.session.info("usage: background refresh scheduled")
+            MidgarLog.info("usage: background refresh scheduled", category: .session)
         } catch {
-            AppLogger.session.error("usage: background refresh submit failed: \(error.localizedDescription)")
+            MidgarLog.error(
+                "usage: background refresh submit failed: \(error.localizedDescription)",
+                category: .session
+            )
         }
     }
 
@@ -37,7 +41,7 @@ enum UsageBackgroundRefresh {
         schedule()
         nonisolated(unsafe) let task = task
         let work = Task { @MainActor in
-            AppLogger.session.info("usage: background refresh started")
+            MidgarLog.info("usage: background refresh started", category: .session)
             let quotas = await LiveQuotaFetcher.fetch(deadline: 10)
             if !quotas.isEmpty {
                 UsageWidgetStore.writeLive(quotas, reload: false)
@@ -55,9 +59,9 @@ enum UsageBackgroundRefresh {
                 UsageWarnings.evaluate(providers: [ollama])
             }
             UsageWidgetStore.reloadTimelinesThrottled()
-            AppLogger.session.info(
+            MidgarLog.info(
                 "usage: background refresh finished — \(quotas.count) live quota(s)"
-                    + (Task.isCancelled ? " (expired early)" : ""))
+                    + (Task.isCancelled ? " (expired early)" : ""), category: .session)
             task.setTaskCompleted(success: !Task.isCancelled)
         }
         task.expirationHandler = { work.cancel() }

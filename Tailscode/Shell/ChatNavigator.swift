@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -33,8 +34,8 @@ final class ChatNavigator {
         let verdict = guardrail.request(
             target, top: staged ?? Self.target(of: stack.topViewController),
             transitioning: staged != nil || stack.transitionCoordinator != nil)
-        AppLogger.session.info(
-            "chat push \(verdict) session=\(target.sessionID) top=\(Self.target(of: stack.topViewController)?.sessionID ?? "-") transitioning=\(stack.transitionCoordinator != nil)")
+        MidgarLog.info(
+            "chat push \(verdict) session=\(target.sessionID) top=\(Self.target(of: stack.topViewController)?.sessionID ?? "-") transitioning=\(stack.transitionCoordinator != nil)", category: .session)
         switch verdict {
         case .hold:
             self.retry = retry

@@ -1,5 +1,5 @@
 import AppKit
-import StoreKit
+import MidgarCommerce
 import TailscodeCore
 
 /// The Pro unlock and the tip jar, opened by hand — from the menu, or from the one gate in the app
@@ -14,7 +14,7 @@ final class ProWindowController: NSWindowController {
     private let status = RowKit.wrapping(
         "", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
     private let tips = NSStackView()
-    private var proProduct: Product?
+    private var proProduct: StoreProduct?
 
     init() {
         let window = NSWindow(
@@ -30,7 +30,7 @@ final class ProWindowController: NSWindowController {
         window.center()
         window.rememberFrame(as: "TailscodePro")
         NotificationCenter.default.addObserver(
-            self, selector: #selector(proChanged), name: MacProStore.didChange, object: nil)
+            self, selector: #selector(proChanged), name: ProAccess.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
     }
@@ -125,16 +125,16 @@ final class ProWindowController: NSWindowController {
     }
 
     @objc private func proChanged() {
-        guard MacProStore.shared.isPro else { return }
+        guard ProAccess.shared.isPro else { return }
         purchase.title = ProOffer.thanks
         purchase.isEnabled = false
         status.stringValue = ""
     }
 
     private func load() async {
-        let (pro, tipProducts) = await MacProStore.shared.products()
+        let (pro, tipProducts) = await ProAccess.shared.products()
         proProduct = pro
-        if MacProStore.shared.isPro {
+        if ProAccess.shared.isPro {
             proChanged()
         } else if let pro {
             purchase.title = Localized.text("Unlock Pro · %@", pro.displayPrice)
@@ -154,11 +154,11 @@ final class ProWindowController: NSWindowController {
         tips.addArrangedSubview(RowKit.spacer())
     }
 
-    private func buy(_ product: Product) {
+    private func buy(_ product: StoreProduct) {
         status.stringValue = ""
         Task {
             do {
-                switch try await MacProStore.shared.purchase(product, in: window) {
+                switch try await ProAccess.shared.purchase(product, in: window) {
                 case .success:
                     status.stringValue = Localized.text("Thank you ♥")
                 case .pending:
@@ -180,11 +180,12 @@ final class ProWindowController: NSWindowController {
         status.stringValue = Localized.text("Checking…")
         Task {
             do {
-                try await MacProStore.shared.restore()
-                status.stringValue =
-                    MacProStore.shared.isPro
-                    ? ProOffer.thanks
-                    : Localized.text("No purchase found on this Apple Account.")
+                switch try await ProAccess.shared.restore() {
+                case .restored: status.stringValue = ProOffer.thanks
+                case .nothingFound:
+                    status.stringValue = Localized.text("No purchase found on this Apple Account.")
+                case .cancelled: status.stringValue = ""
+                }
             } catch {
                 status.stringValue = error.localizedDescription
             }

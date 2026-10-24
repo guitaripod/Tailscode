@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -171,7 +172,10 @@ final class DelegateRunViewController: UIViewController {
             Task { [weak self] in
                 guard let self else { return }
                 do { try await self.desk.patch(runID: self.runID, host: self.host) } catch {
-                    AppLogger.ui.error("delegate patch for \(self.runID) unread: \(error.localizedDescription)")
+                    MidgarLog.error(
+                        "delegate patch for \(self.runID) unread: \(error.localizedDescription)",
+                        category: .ui
+                    )
                 }
             }
         }
@@ -373,10 +377,16 @@ final class DelegateRunViewController: UIViewController {
                 } else {
                     try await self.desk.discard(runID: self.runID, host: self.host)
                 }
-                AppLogger.ui.info("delegate run \(self.runID) \(apply ? "applied" : "discarded") on \(self.host)")
+                MidgarLog.info(
+                    "delegate run \(self.runID) \(apply ? "applied" : "discarded") on \(self.host)",
+                    category: .ui
+                )
                 Theme.Haptics.success()
             } catch {
-                AppLogger.ui.error("delegate run \(self.runID) \(apply ? "apply" : "discard") refused: \(error.localizedDescription)")
+                MidgarLog.error(
+                    "delegate run \(self.runID) \(apply ? "apply" : "discard") refused: \(error.localizedDescription)",
+                    category: .ui
+                )
                 Theme.Haptics.error()
                 DelegateRefusalViewController.present(DelegateRefusal(error), from: self)
             }

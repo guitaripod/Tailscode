@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -53,7 +54,10 @@ import UIKit
             case "dump":
                 func walk(_ view: UIView, _ depth: Int) {
                     let pad = String(repeating: " ", count: depth)
-                    AppLogger.ui.info("dump \(pad)\(type(of: view)) f=\(NSCoder.string(for: view.frame)) a=\(view.alpha) h=\(view.isHidden)")
+                    MidgarLog.info(
+                        "dump \(pad)\(type(of: view)) f=\(NSCoder.string(for: view.frame)) a=\(view.alpha) h=\(view.isHidden)",
+                        category: .ui
+                    )
                     if depth < Int(value) ?? 6 { for child in view.subviews { walk(child, depth + 1) } }
                 }
                 walk(account, 0)

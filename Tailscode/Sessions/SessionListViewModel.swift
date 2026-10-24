@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import CodingAgentKitApple
@@ -330,9 +331,9 @@ final class SessionListViewModel {
                 case .failure(let error):
                     let streak = (failureStreaks[source.profile.id] ?? 0) + 1
                     failureStreaks[source.profile.id] = streak
-                    AppLogger.session.error(
+                    MidgarLog.error(
                         "load failed for \(source.profile.name) (attempt \(streak)): "
-                            + Self.readable(error))
+                            + Self.readable(error), category: .session)
                 }
             }
         }
@@ -406,8 +407,8 @@ final class SessionListViewModel {
             },
             authoritativeProfileIDs: Set(fresh.keys))
         if changed {
-            AppLogger.session.info(
-                "loaded \(entries.count) sessions across \(sources.count) servers")
+            MidgarLog.info(
+                "loaded \(entries.count) sessions across \(sources.count) servers", category: .session)
         }
         onChange?()
         scheduleConfirmation(live.filter { failureStreaks[$0] == 1 })
@@ -529,8 +530,8 @@ final class SessionListViewModel {
         }
         let failures = results.compactMap(\.1)
         if !failures.isEmpty { await load() }
-        AppLogger.session.info(
-            "bulk delete: \(results.count - failures.count) removed, \(failures.count) failed")
+        MidgarLog.info(
+            "bulk delete: \(results.count - failures.count) removed, \(failures.count) failed", category: .session)
         return BulkChatOutcome(
             deleted: results.count - failures.count, failed: failures.count, reason: failures.first)
     }

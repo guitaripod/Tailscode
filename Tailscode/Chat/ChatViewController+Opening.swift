@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import UIKit
@@ -167,8 +168,8 @@ extension ChatViewController {
         parkOnEndBeforeFirstLayout()
         collectionView.layoutIfNeeded()
         scrollToBottom(animated: false)
-        AppLogger.performance.info(
-            "journey revealed session=\(viewModel.session.id) ms=\(FirstAnswerClock.milliseconds(since: openedAt)) rows=\(appliedIDs.count)/\(orderedIDs.count)")
+        MidgarLog.info(
+            "journey revealed session=\(viewModel.session.id) ms=\(FirstAnswerClock.milliseconds(since: openedAt)) rows=\(appliedIDs.count)/\(orderedIDs.count)", category: .performance)
         let hasRows =
             !orderedIDs.isEmpty || !viewModel.pendingSends.isEmpty || !viewModel.queued.isEmpty
         updatePlaceholders(hasRows: hasRows, for: viewModel.state)

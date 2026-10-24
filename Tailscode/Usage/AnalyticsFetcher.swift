@@ -1,5 +1,6 @@
 import CodingAgentKit
 import Foundation
+import MidgarCore
 import TailscodeCore
 
 /// Pulls the account's whole ledger from every saved server at once — each machine holds its own
@@ -61,7 +62,8 @@ enum AnalyticsFetcher {
                         await UsageAnalytics.rememberModels(profileID: profileID, backend: backend)
                         return .report(index: index, name: name, report: report)
                     } catch AgentError.decoding(let detail) {
-                        AppLogger.session.error("analytics: \(name) answered unreadably: \(detail)")
+                        MidgarLog.error(
+                            "analytics: \(name) answered unreadably: \(detail)", category: .session)
                         return .unreadable(index: index, name: name)
                     } catch {
                         return .unreachable
@@ -92,9 +94,9 @@ enum AnalyticsFetcher {
                 break
             }
         }
-        AppLogger.session.info(
+        MidgarLog.info(
             "analytics: \(reported.count)/\(servers.count) server(s) reported, "
-                + "\(missing.count) too old")
+                + "\(missing.count) too old", category: .session)
         return Haul(
             servers: reported.sorted { $0.index < $1.index }.map { ($0.name, $0.report) },
             missing: missing.sorted { $0.index < $1.index }.map(\.name), profileIDs: profileIDs)

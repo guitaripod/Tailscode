@@ -1,3 +1,4 @@
+import MidgarCore
 #if DEBUG
     import CodingAgentKit
     import SwiftUI
@@ -222,7 +223,8 @@
                         else { continue }
                         let name = "poster-\(look.id)-\(dark ? "dark" : "light").png"
                         try? data.write(to: directory.appendingPathComponent(name))
-                        AppLogger.ui.info("neural-share: wrote \(directory.path)/\(name)")
+                        MidgarLog.info(
+                            "neural-share: wrote \(directory.path)/\(name)", category: .ui)
                     }
                 }
             }

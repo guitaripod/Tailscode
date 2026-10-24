@@ -1,6 +1,7 @@
 import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -76,7 +77,7 @@ final class VoiceCallGate {
 
     func hangUp(because reason: String) {
         guard running != nil else { return }
-        AppLogger.connection.info("call hang up because \(reason)")
+        MidgarLog.info("call hang up because \(reason)", category: .connection)
         Task { [desk] in await desk.hangUp() }
     }
 
@@ -109,7 +110,8 @@ final class VoiceCallGate {
             return
         }
         setAwake(true)
-        AppLogger.connection.info("call tracked chat=\(call.chat) host=\(call.endpoint.host)")
+        MidgarLog.info(
+            "call tracked chat=\(call.chat) host=\(call.endpoint.host)", category: .connection)
         followTask = Task { [weak self] in
             for await snapshot in call.snapshots where snapshot.end != nil { break }
             self?.finished(call)
@@ -127,7 +129,7 @@ final class VoiceCallGate {
     private func setAwake(_ awake: Bool) {
         guard UIApplication.shared.isIdleTimerDisabled != awake else { return }
         UIApplication.shared.isIdleTimerDisabled = awake
-        AppLogger.ui.info("call screen awake=\(awake)")
+        MidgarLog.info("call screen awake=\(awake)", category: .ui)
     }
 
     /// Whether the app declared that it keeps playing and recording with the screen off. Without

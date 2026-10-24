@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import CodingAgentKitApple
@@ -42,9 +43,12 @@ final class ConnectionController {
         activeProfileID = UserDefaults.standard.string(forKey: activeKey)
         isDemoMode = DemoMode.isActive
         if let store {
-            AppLogger.connection.info("profile store ready at \(store.directory.lastPathComponent)")
+            MidgarLog.info(
+                "profile store ready at \(store.directory.lastPathComponent)",
+                category: .connection
+            )
         } else {
-            AppLogger.connection.error("profile store unavailable")
+            MidgarLog.error("profile store unavailable", category: .connection)
         }
         if activeProfileID == nil, let first = profiles.first {
             assignActive(first.id)
@@ -53,7 +57,10 @@ final class ConnectionController {
 
     private static func makeStore() -> ConnectionProfileStore? {
         guard let shared = try? SharedConnectionStore.make() else {
-            AppLogger.connection.error("shared profile store unavailable; falling back to sandbox store")
+            MidgarLog.error(
+                "shared profile store unavailable; falling back to sandbox store",
+                category: .connection
+            )
             return try? ConnectionProfileStore()
         }
         migrateLegacyProfilesIfNeeded(into: shared)
@@ -92,17 +99,17 @@ final class ConnectionController {
                 migrated += 1
             } catch {
                 failed += 1
-                AppLogger.connection.error(
-                    "failed to migrate profile \(profile.name) to shared store: \(error.localizedDescription)")
+                MidgarLog.error(
+                    "failed to migrate profile \(profile.name) to shared store: \(error.localizedDescription)", category: .connection)
             }
         }
         if failed == 0 {
             defaults.set(true, forKey: migratedKey)
-            AppLogger.connection.info(
-                "migrated \(migrated)/\(legacyProfiles.count) profile(s) to the shared app-group store")
+            MidgarLog.info(
+                "migrated \(migrated)/\(legacyProfiles.count) profile(s) to the shared app-group store", category: .connection)
         } else {
-            AppLogger.connection.error(
-                "profile migration incomplete (\(failed) of \(legacyProfiles.count) failed); retrying next launch")
+            MidgarLog.error(
+                "profile migration incomplete (\(failed) of \(legacyProfiles.count) failed); retrying next launch", category: .connection)
         }
     }
 
@@ -123,7 +130,7 @@ final class ConnectionController {
         DemoMode.enter()
         isDemoMode = true
         setActive(DemoWorld.claudeProfile.id)
-        AppLogger.connection.info("entered demo mode")
+        MidgarLog.info("entered demo mode", category: .connection)
     }
 
     func leaveDemoMode() {
@@ -131,7 +138,7 @@ final class ConnectionController {
         isDemoMode = false
         let remaining = profiles.first?.id
         setActive(activeProfileID.flatMap { id in profiles.contains { $0.id == id } ? id : nil } ?? remaining)
-        AppLogger.connection.info("left demo mode")
+        MidgarLog.info("left demo mode", category: .connection)
         mutated()
     }
 
@@ -157,19 +164,23 @@ final class ConnectionController {
             })
         {
             profile.id = duplicate.id
-            AppLogger.connection.info("save matched existing server \(duplicate.name); updating instead of duplicating")
+            MidgarLog.info(
+                "save matched existing server \(duplicate.name); updating instead of duplicating",
+                category: .connection
+            )
         }
         let isNew = !existing.contains { $0.id == profile.id }
         let isDebugSeed = profile.id.hasPrefix("debug")
         if isNew, !isDebugSeed,
-            !ProOffer.allowsAnotherServer(existing: existing.count, isPro: ProStore.shared.isPro)
+            !ProOffer.allowsAnotherServer(existing: existing.count, isPro: ProAccess.shared.isPro)
         {
             throw ProRequired()
         }
         try store.save(profile, password: password)
         if isDemoMode { leaveDemoMode() }
         if makeActive { setActive(profile.id) }
-        AppLogger.connection.info("saved profile \(profile.name) [\(profile.backend.rawValue)]")
+        MidgarLog.info(
+            "saved profile \(profile.name) [\(profile.backend.rawValue)]", category: .connection)
         if profile.backend == .claudeCode { PushRegistrar.reregisterIfNeeded() }
         mutated()
     }
@@ -182,7 +193,7 @@ final class ConnectionController {
         guard let store else { throw StoreUnavailable() }
         let resolved = try password ?? store.password(for: profile.id)
         try store.save(profile, password: resolved)
-        AppLogger.connection.info("updated profile \(profile.name)")
+        MidgarLog.info("updated profile \(profile.name)", category: .connection)
         if profile.backend == .claudeCode { PushRegistrar.reregisterIfNeeded() }
         mutated()
     }

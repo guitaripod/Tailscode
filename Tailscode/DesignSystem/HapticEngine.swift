@@ -1,4 +1,5 @@
 import CoreHaptics
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -182,7 +183,7 @@ private final class HapticDriver: @unchecked Sendable {
             engine.stoppedHandler = { [weak self] reason in
                 self?.queue.async {
                     self?.isRunning = false
-                    AppLogger.ui.debug("haptic engine stopped: \(reason.rawValue)")
+                    MidgarLog.debug("haptic engine stopped: \(reason.rawValue)", category: .ui)
                 }
             }
             engine.resetHandler = { [weak self] in
@@ -209,6 +210,6 @@ private final class HapticDriver: @unchecked Sendable {
     private func noteFailure(_ message: String) {
         guard !hasLoggedFailure else { return }
         hasLoggedFailure = true
-        AppLogger.ui.error("haptics \(message)")
+        MidgarLog.error("haptics \(message)", category: .ui)
     }
 }

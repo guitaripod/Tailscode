@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import CodingAgentKitApple
@@ -78,7 +79,7 @@ extension HomeViewController {
         chat.isBound = false
         warmed = chat
         chat.start()
-        AppLogger.session.info("warm session=\(entry.session.id)")
+        MidgarLog.info("warm session=\(entry.session.id)", category: .session)
         Task { @MainActor [weak self, weak chat] in
             try? await Task.sleep(for: Self.warmLifetime)
             guard let self, let chat, self.warmed === chat else { return }
@@ -126,8 +127,8 @@ extension HomeViewController {
             retry: { [weak self] in self?.openChat(for: entry, seeding: choice, sending: question) })
         {
         case .alreadyOnTop:
-            AppLogger.session.info(
-                "openChat dedupe session=\(entry.session.id) title=\(entry.session.title)")
+            MidgarLog.info(
+                "openChat dedupe session=\(entry.session.id) title=\(entry.session.title)", category: .session)
             if let top = nav.topViewController as? ChatViewController {
                 if let question {
                     top.deliver(question.send, attachments: question.attachments)
@@ -160,8 +161,8 @@ extension HomeViewController {
         let previousTop = (nav.topViewController as? ChatViewController)?.sessionID ?? "-"
         let chat = ChatViewController(viewModel: chatViewModel)
         showConversation(chat, animated: presentedViewController == nil)
-        AppLogger.session.info(
-            "openChat push session=\(entry.session.id) title=\(entry.session.title) top=\(previousTop) reused=\(reused != nil)")
+        MidgarLog.info(
+            "openChat push session=\(entry.session.id) title=\(entry.session.title) top=\(previousTop) reused=\(reused != nil)", category: .session)
         if let question { chat.deliver(question.send, attachments: question.attachments) }
         return chatViewModel
     }

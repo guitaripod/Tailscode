@@ -4,7 +4,7 @@
 Idempotent creation of Tailscode's four IAPs in ASC.
 
 Tailscode Pro (non-consumable, Family Sharing on) + three tip consumables,
-matching Tailscode.storekit and ProStore.swift exactly. Each gets an en-US
+matching Tailscode.storekit and ProOffer.swift exactly. Each gets an en-US
 localization, a USD base price, and a review screenshot. Products stay
 MISSING_METADATA until they ride the first version submission — normal.
 

@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -27,7 +28,10 @@ extension ServerDetailViewController {
 
     private func settlePreview(_ found: PreviewReach) {
         previewReach = found
-        AppLogger.connection.info("preview host on \(profile.baseURL.host ?? "?"): \(String(describing: found))")
+        MidgarLog.info(
+            "preview host on \(profile.baseURL.host ?? "?"): \(String(describing: found))",
+            category: .connection
+        )
         applySnapshot()
         reconfigure([.previewHost])
     }

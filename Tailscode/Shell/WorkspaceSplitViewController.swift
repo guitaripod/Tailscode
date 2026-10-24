@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 import UIKit.UIGestureRecognizerSubclass
@@ -141,7 +142,8 @@ final class WorkspaceSplitViewController: UISplitViewController {
             preferredSupplementaryColumnWidth = 320
             preferredDisplayMode = .secondaryOnly
         }
-        AppLogger.ui.info("workspace width \(Int(width)) band=\(String(describing: band))")
+        MidgarLog.info(
+            "workspace width \(Int(width)) band=\(String(describing: band))", category: .ui)
     }
 
     private var bookPage: CGFloat?
@@ -251,7 +253,7 @@ final class WorkspaceSplitViewController: UISplitViewController {
         } else {
             spreadIntoColumns()
         }
-        AppLogger.ui.info("workspace arranged \(collapsed ? "one stack" : "columns")")
+        MidgarLog.info("workspace arranged \(collapsed ? "one stack" : "columns")", category: .ui)
         for case let list as SessionListViewController in listNav.viewControllers {
             list.showsAsColumn = !collapsed
         }
@@ -359,7 +361,7 @@ final class WorkspaceSplitViewController: UISplitViewController {
         } else {
             replaceDetail(with: [home, chat], animated: animated)
         }
-        AppLogger.session.info("workspace opened session=\(chat.sessionID)")
+        MidgarLog.info("workspace opened session=\(chat.sessionID)", category: .session)
     }
 
     /// A place that fills the conversation column — usage, a delegate board — replaces what is
@@ -535,7 +537,7 @@ final class WorkspaceSplitViewController: UISplitViewController {
         }
 
         private func walkStep(_ step: String) {
-            AppLogger.ui.info("workspace walk \(step)")
+            MidgarLog.info("workspace walk \(step)", category: .ui)
             let pieces = step.split(separator: "=", maxSplits: 1).map(String.init)
             let argument = pieces.count > 1 ? pieces[1] : ""
             switch pieces[0] {
@@ -582,7 +584,10 @@ final class WorkspaceSplitViewController: UISplitViewController {
                     } else {
                         self.traitOverrides.remove(UITraitHorizontalSizeClass.self)
                     }
-                    AppLogger.ui.info("workspace width flip \(index) collapsed=\(self.isCollapsed)")
+                    MidgarLog.info(
+                        "workspace width flip \(index) collapsed=\(self.isCollapsed)",
+                        category: .ui
+                    )
                 }
             }
         }
@@ -674,7 +679,7 @@ extension WorkspaceSplitViewController: UISplitViewControllerDelegate {
         _ svc: UISplitViewController,
         topColumnForCollapsingToProposedTopColumn proposedTopColumn: UISplitViewController.Column
     ) -> UISplitViewController.Column {
-        AppLogger.ui.info("workspace will collapse")
+        MidgarLog.info("workspace will collapse", category: .ui)
         arrange(collapsed: true)
         return .compact
     }
@@ -684,7 +689,7 @@ extension WorkspaceSplitViewController: UISplitViewControllerDelegate {
         displayModeForExpandingToProposedDisplayMode proposedDisplayMode: UISplitViewController
             .DisplayMode
     ) -> UISplitViewController.DisplayMode {
-        AppLogger.ui.info("workspace will expand")
+        MidgarLog.info("workspace will expand", category: .ui)
         arrange(collapsed: false)
         return proposedDisplayMode
     }

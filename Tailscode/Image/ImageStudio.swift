@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -439,8 +440,9 @@ final class ImageStudio {
         let fresh = ImageGenRunner(endpoint: slot.endpoint, recipe: recipe)
         runner = fresh
         announce()
-        AppLogger.session.info(
-            "image render queued on \(endpoint.displayHost) engine=\(recipe.engine.rawValue) mode=\(recipe.mode.rawValue) aspect=\(recipe.aspect.rawValue) size=\(recipe.size.rawValue) steps=\(recipe.steps) references=\(recipe.references.count) cutout=\(recipe.cutout)"
+        MidgarLog.info(
+            "image render queued on \(endpoint.displayHost) engine=\(recipe.engine.rawValue) mode=\(recipe.mode.rawValue) aspect=\(recipe.aspect.rawValue) size=\(recipe.size.rawValue) steps=\(recipe.steps) references=\(recipe.references.count) cutout=\(recipe.cutout)",
+            category: .session
         )
         sketch = nil
         fresh.run(
@@ -485,12 +487,13 @@ final class ImageStudio {
             if let image = UIImage(data: data) {
                 decoded.setObject(image, forKey: path as NSString)
             }
-            AppLogger.session.info("image render landed as \(remoteName) in \(Int(seconds))s")
+            MidgarLog.info(
+                "image render landed as \(remoteName) in \(Int(seconds))s", category: .session)
             Theme.Haptics.received()
             library.refresh()
         case .failure(let reason):
             slot.fail(prompt: runner.prompt, reason: reason)
-            AppLogger.session.error("image render failed: \(reason)")
+            MidgarLog.error("image render failed: \(reason)", category: .session)
             Theme.Haptics.error()
         }
         if runner === self.runner {

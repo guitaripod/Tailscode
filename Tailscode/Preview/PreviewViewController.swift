@@ -1,5 +1,6 @@
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -131,7 +132,7 @@ final class PreviewViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        AppLogger.ui.info("preview: appeared target=\(slot.target?.address ?? "none")")
+        MidgarLog.info("preview: appeared target=\(slot.target?.address ?? "none")", category: .ui)
         unpark()
         if let runner, runner.pictures.isDirty || runner.states.isDirty { arm() }
     }
@@ -139,7 +140,7 @@ final class PreviewViewController: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         if isBeingDismissed || isMovingFromParent {
-            AppLogger.ui.info("preview: closed")
+            MidgarLog.info("preview: closed", category: .ui)
             shutdown()
         } else {
             park()
@@ -515,7 +516,7 @@ final class PreviewViewController: UIViewController {
 
     func rebuild() {
         Theme.Haptics.tap()
-        AppLogger.ui.info("preview: rebuild asked")
+        MidgarLog.info("preview: rebuild asked", category: .ui)
         runner?.rebuild()
     }
 
@@ -537,7 +538,7 @@ final class PreviewViewController: UIViewController {
         let words = Localized.text(
             "The preview of %@ would not build. The first problem is: %@. Please fix it.",
             slot.target?.appName ?? slot.title, problem)
-        AppLogger.ui.info("preview: asked the agent to fix the build")
+        MidgarLog.info("preview: asked the agent to fix the build", category: .ui)
         Theme.Haptics.tap()
         let handler = onAskAgent
         dismiss(animated: true) { handler?(words) }
@@ -628,7 +629,7 @@ final class PreviewViewController: UIViewController {
             slot.apply(failed)
             return
         }
-        AppLogger.connection.info("preview: starting \(target.address)")
+        MidgarLog.info("preview: starting \(target.address)", category: .connection)
         let runner = PreviewRunner(target: target, config: config, clock: clock)
         self.runner = runner
         guard !isParked, !isShutDown else { return }

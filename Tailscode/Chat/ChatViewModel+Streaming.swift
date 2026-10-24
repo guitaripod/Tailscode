@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import Foundation
@@ -10,13 +11,13 @@ extension ChatViewModel {
     func start() {
         let vmTag = String(UInt(bitPattern: ObjectIdentifier(self).hashValue) & 0xffff, radix: 16)
         guard streamTask == nil else {
-            AppLogger.chat.info(
-                "start reuse vm=\(vmTag) session=\(session.id) queued=\(queue.count) echoes=\(pending.count)")
+            MidgarLog.info(
+                "start reuse vm=\(vmTag) session=\(session.id) queued=\(queue.count) echoes=\(pending.count)", category: .chat)
             onState?(state)
             return
         }
-        AppLogger.chat.info(
-            "start fresh vm=\(vmTag) session=\(session.id) queued=\(queue.count) echoes=\(pending.count)")
+        MidgarLog.info(
+            "start fresh vm=\(vmTag) session=\(session.id) queued=\(queue.count) echoes=\(pending.count)", category: .chat)
         streamGeneration += 1
         let generation = streamGeneration
         streamTask = Task { [weak self] in
@@ -40,8 +41,8 @@ extension ChatViewModel {
                 let displayedBefore = (self.displayedModel, self.displayedEffort)
                 self.state = state
                 if let waited = self.firstAnswer.answered(state) {
-                    AppLogger.performance.info(
-                        "journey firstAnswer session=\(self.session.id) ms=\(waited)")
+                    MidgarLog.info(
+                        "journey firstAnswer session=\(self.session.id) ms=\(waited)", category: .performance)
                 }
                 if (self.displayedModel, self.displayedEffort) != displayedBefore {
                     self.onModelChange?()
@@ -91,7 +92,7 @@ extension ChatViewModel {
     /// session for a turn nothing on this device can observe anymore.
     private func handleStreamTermination(generation: Int) {
         guard generation == streamGeneration, streamTask != nil else { return }
-        AppLogger.chat.info("stream terminated for \(session.id); releasing busy state")
+        MidgarLog.info("stream terminated for \(session.id); releasing busy state", category: .chat)
         streamTask = nil
         SessionActivity.shared.markUnobserved(sessionID: session.id)
         onState?(state)

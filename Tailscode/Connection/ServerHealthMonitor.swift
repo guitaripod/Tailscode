@@ -1,6 +1,7 @@
 import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
+import MidgarCore
 import TailscodeCore
 
 /// Reachability per saved server, kept alive across screens. Settings used to
@@ -64,7 +65,10 @@ enum ServerHealthMonitor {
         }
         let policy = ConnectionPolicy(requestTimeout: .seconds(8), resourceTimeout: .seconds(12))
         let profiles = ConnectionController.shared.profiles
-        AppLogger.connection.info("health check starting for \(profiles.count) profiles (8s timeout)")
+        MidgarLog.info(
+            "health check starting for \(profiles.count) profiles (8s timeout)",
+            category: .connection
+        )
         await withTaskGroup(of: (String, Bool).self) { group in
             for profile in profiles {
                 group.addTask {
@@ -72,22 +76,24 @@ enum ServerHealthMonitor {
                         let backend = await ConnectionController.shared.makeBackend(
                             for: profile, policy: policy)
                     else {
-                        AppLogger.connection.info("health check \(profile.name): no backend")
+                        MidgarLog.info(
+                            "health check \(profile.name): no backend", category: .connection)
                         return (profile.id, false)
                     }
                     do {
                         let health = try await backend.health()
                         return (profile.id, health.healthy)
                     } catch {
-                        AppLogger.connection.info(
-                            "health check \(profile.name): error \(error.localizedDescription)")
+                        MidgarLog.info(
+                            "health check \(profile.name): error \(error.localizedDescription)", category: .connection)
                         return (profile.id, false)
                     }
                 }
             }
             for await (id, ok) in group {
                 record(ok, for: id)
-                AppLogger.connection.info("health check result id=\(id.prefix(8)) ok=\(ok)")
+                MidgarLog.info(
+                    "health check result id=\(id.prefix(8)) ok=\(ok)", category: .connection)
             }
         }
     }

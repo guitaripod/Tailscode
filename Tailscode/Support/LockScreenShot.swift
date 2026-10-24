@@ -1,3 +1,4 @@
+import MidgarCore
 #if DEBUG
     import Foundation
     import TailscodeCore
@@ -43,7 +44,10 @@
                         reading: LiveActivityReading(
                             detail: card.detail, tool: card.tool, toolCount: card.toolCount),
                         title: card.title)
-                    AppLogger.ui.info("lockscreen: card for \(card.session) (\(card.detail.rawValue))")
+                    MidgarLog.info(
+                        "lockscreen: card for \(card.session) (\(card.detail.rawValue))",
+                        category: .ui
+                    )
                 }
             }
         }

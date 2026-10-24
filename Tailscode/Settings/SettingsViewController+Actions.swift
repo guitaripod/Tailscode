@@ -31,7 +31,7 @@ extension SettingsViewController {
         let realProfiles = ConnectionController.shared.profiles.filter {
             !$0.id.hasPrefix(DemoWorld.profilePrefix)
         }
-        guard !ProStore.shared.isPro, !realProfiles.isEmpty else {
+        guard !ProAccess.shared.isPro, !realProfiles.isEmpty else {
             return true
         }
         ProUpgradeViewController.present(from: self)

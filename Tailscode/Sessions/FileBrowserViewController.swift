@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import UIKit
@@ -213,8 +214,8 @@ final class FileBrowserViewController: UIViewController {
                 contentUnavailableConfiguration = nil
             }
         } catch {
-            AppLogger.ui.error(
-                "file browser load failed for \(path): \(SessionListViewModel.readable(error))")
+            MidgarLog.error(
+                "file browser load failed for \(path): \(SessionListViewModel.readable(error))", category: .ui)
             if dataSource.snapshot().numberOfItems == 0 {
                 var config = UIContentUnavailableConfiguration.empty()
                 config.image = UIImage(systemName: "exclamationmark.triangle")

@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -211,6 +212,6 @@ final class NeuralShareViewController: UIViewController {
     private func copyTapped() {
         UIPasteboard.general.image = sentImage()
         Theme.Haptics.success()
-        AppLogger.ui.info("turn poster copied")
+        MidgarLog.info("turn poster copied", category: .ui)
     }
 }

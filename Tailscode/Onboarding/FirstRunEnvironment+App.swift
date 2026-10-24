@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -24,7 +25,7 @@ extension FirstRunEnvironment {
                     }
                 }
             },
-            log: { AppLogger.connection.info($0) })
+            log: { MidgarLog.info($0, category: .connection) })
     }
 }
 

@@ -1,4 +1,5 @@
 import AppKit
+import MidgarCore
 import StoreKit
 import TailscodeCore
 
@@ -40,31 +41,31 @@ final class MacReviewPrompt {
 
     private func askIfEligible() {
         guard ReviewPromptPolicy.isDue() else {
-            AppLogger.ui.info("review: skipped (not due)")
+            MidgarLog.info("review: skipped (not due)", category: .ui)
             return
         }
         guard NSApp.isActive else {
-            AppLogger.ui.info("review: skipped (not foreground-active)")
+            MidgarLog.info("review: skipped (not foreground-active)", category: .ui)
             return
         }
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow else {
-            AppLogger.ui.info("review: skipped (no active window)")
+            MidgarLog.info("review: skipped (no active window)", category: .ui)
             return
         }
         guard window.attachedSheet == nil else {
-            AppLogger.ui.info("review: skipped (blocking UI on screen)")
+            MidgarLog.info("review: skipped (blocking UI on screen)", category: .ui)
             return
         }
         guard !(window.windowController is ProWindowController) else {
-            AppLogger.ui.info("review: skipped (purchase window on screen)")
+            MidgarLog.info("review: skipped (purchase window on screen)", category: .ui)
             return
         }
         guard let host = window.contentViewController else {
-            AppLogger.ui.info("review: skipped (no window host)")
+            MidgarLog.info("review: skipped (no window host)", category: .ui)
             return
         }
         ReviewPromptPolicy.markAsked()
-        AppLogger.ui.info("review: asking (#\(ReviewPromptPolicy.askDates.count))")
+        MidgarLog.info("review: asking (#\(ReviewPromptPolicy.askDates.count))", category: .ui)
         AppStore.requestReview(in: host)
     }
 }
