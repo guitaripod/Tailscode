@@ -89,3 +89,5 @@ Racing N models, an auto-router, failover along the pins, a price in the catalog
 Core first (brief, mark, seam, chooser context, tests), merged before the clients start; then iOS, Mac and Linux in parallel from specs that cite this doc. Core tests: the brief never exceeds its budget and keeps the newest turn; a compaction summary heads it; a mark survives wrap/split with hostile text in it; no seam for an alias against its resolved id; a rebuild after a streamed token does no work for settled messages.
 
 Shipping: Linux `scripts/install-linuxapp.sh`, Mac `scripts/install-macapp.sh`; iOS cannot be installed from this machine and goes out with the next build. No bridge restart and no Kit tag.
+
+The canvas version of this design is a private Claude artifact (https://claude.ai/artifact/8Pb9kgn8vsohss6V3cWJPZ). Its hero is one Blender render, `docs/model-carry-mocks/hero/`: `blender -b --factory-startup --python scene.py -- /abs/hero.png 2200 640 320`, then `python3 -I finish.py hero.png out.png` (glow, edge fade, grain) and a WebP encode. 18 KB, shown at 1100 px wide.
