@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "dataUsages": [
+    {
+      "category": "DEVICE_ID",
+      "purposes": [
+        "APP_FUNCTIONALITY"
+      ],
+      "dataProtections": [
+        "DATA_LINKED_TO_YOU"
+      ]
+    },
+    {
+      "category": "PRODUCT_INTERACTION",
+      "purposes": [
+        "ANALYTICS"
+      ],
+      "dataProtections": [
+        "DATA_NOT_LINKED_TO_YOU"
+      ]
+    },
+    {
+      "category": "PURCHASE_HISTORY",
+      "purposes": [
+        "APP_FUNCTIONALITY"
+      ],
+      "dataProtections": [
+        "DATA_LINKED_TO_YOU"
+      ]
+    },
+    {
+      "category": "USER_ID",
+      "purposes": [
+        "APP_FUNCTIONALITY"
+      ],
+      "dataProtections": [
+        "DATA_LINKED_TO_YOU"
+      ]
+    }
+  ]
+}
