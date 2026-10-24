@@ -43,7 +43,10 @@ final class ModelDialPopover: @unchecked Sendable {
         Gtk.addClass(popover, "dial-pop")
         gtk_popover_set_has_arrow(ptr(popover), 1)
         Gtk.connect(UnsafeMutableRawPointer(popover), "map") { [weak self] in
-            Gtk.onMain { [weak self] in self?.fill() }
+            Gtk.onMain { [weak self] in
+                guard let self, self.state == nil else { return }
+                self.fill()
+            }
         }
         Gtk.connect(UnsafeMutableRawPointer(popover), "closed") { [weak self] in
             Gtk.onMain { [weak self] in self?.tearDown() }

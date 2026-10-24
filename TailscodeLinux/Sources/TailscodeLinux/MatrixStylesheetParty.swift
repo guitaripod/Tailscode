@@ -20,6 +20,7 @@ extension MatrixStylesheet {
         .party-pop contents { padding: 0; border-radius: 18px; }
         .party-head { font-size: 15px; font-weight: 700; color: \(text); }
         .party-count { font-size: 12px; color: \(textDim); }
+        .party-count.party-note { font-weight: 600; color: \(accent); }
         button.party-edit {
             min-height: 0;
             padding: 4px 12px;

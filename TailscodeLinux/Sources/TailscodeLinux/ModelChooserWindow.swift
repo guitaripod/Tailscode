@@ -252,7 +252,7 @@ final class ModelChooserWindow: @unchecked Sendable {
             Gtk.addClass(button, "model-scope")
             let label = gtk_label_new(nil)!
             let key = index <= 9 ? "  <span alpha=\"40%\">⌥\(index)</span>" : ""
-            let mark = door.kind == .local ? "<span class=\"x\">⌂</span> " : ""
+            let mark = door.kind == .local ? "<span alpha=\"60%\">⌂</span> " : ""
             gtk_label_set_markup(
                 op(label),
                 mark + PangoMarkdown.escape(door.title) + "  <span alpha=\"60%\">\(door.count)</span>"

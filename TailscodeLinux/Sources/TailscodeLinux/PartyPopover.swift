@@ -34,6 +34,8 @@ final class PartyPopover: @unchecked Sendable {
     /// the next press on it only closes what is already closed.
     var owner: (() -> Void)?
     private var cards: [PartyCard] = []
+    private var note: String?
+    private var noteGeneration = 0
 
     init(hooks: PartyHooks) {
         self.hooks = hooks
@@ -42,7 +44,7 @@ final class PartyPopover: @unchecked Sendable {
         gtk_popover_set_has_arrow(ptr(popover), 1)
         wire()
         Gtk.connect(UnsafeMutableRawPointer(popover), "map") { [weak self] in
-            Gtk.onMain { [weak self] in self?.fill() }
+            Gtk.onMain { [weak self] in self?.focusStart() }
         }
         Gtk.connect(UnsafeMutableRawPointer(popover), "closed") { [weak self] in
             Gtk.onMain { [weak self] in self?.tearDown() }
@@ -80,9 +82,38 @@ final class PartyPopover: @unchecked Sendable {
         if let owner { owner() } else { gtk_popover_popdown(ptr(popover)) }
     }
 
-    private func fill() {
+    /// Builds the content the popover is about to show. GTK sizes a popover's surface from what it
+    /// holds at the moment it is presented, and pops it down again if content that arrives later
+    /// needs more room than that surface has, so this runs before the popup and never after: a
+    /// popover that was emptied on close and filled once it was on screen dismissed itself
+    /// milliseconds after opening, which was the pill's dead press and the party that did not
+    /// come back after a fill.
+    func fillForPopup() {
+        retire()
         gtk_popover_set_child(ptr(popover), prepare())
-        focusStart()
+    }
+
+    /// Says what just happened in the header, where the count is, for a couple of seconds. The
+    /// words belong here and not in a toast when the party opens straight after the change: the
+    /// popover sits over the toast's corner of the window.
+    func announce(_ words: String) {
+        note = words
+        noteGeneration += 1
+        let generation = noteGeneration
+        reload()
+        Gtk.after(2400) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self, self.noteGeneration == generation else { return }
+                self.note = nil
+                self.reload()
+            }
+        }
+    }
+
+    /// Opens the popover on its own parent, content first.
+    func popup() {
+        fillForPopup()
+        gtk_popover_popup(ptr(popover))
     }
 
     /// The arrows start from the card the chat runs, or the first held one: a popover that opens
@@ -178,7 +209,12 @@ final class PartyPopover: @unchecked Sendable {
         grid.apply(cards, editing: editing)
         let held = cards.filter { !$0.isHollow }.count
         if let count {
-            gtk_label_set_text(op(count), Localized.text("%d of %d", held, ModelParty.size))
+            gtk_label_set_text(op(count), note ?? Localized.text("%d of %d", held, ModelParty.size))
+            if note == nil {
+                gtk_widget_remove_css_class(count, "party-note")
+            } else {
+                gtk_widget_add_css_class(count, "party-note")
+            }
         }
         if let title {
             gtk_label_set_text(op(title), Localized.text(editing ? "Edit party" : "Party"))

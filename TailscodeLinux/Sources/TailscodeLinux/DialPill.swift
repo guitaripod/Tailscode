@@ -61,6 +61,16 @@ final class DialPill: @unchecked Sendable {
                 guard let self else { return }
                 gtk_menu_button_popdown(op(self.button))
             }
+            gtk_menu_button_set_create_popup_func(
+                op(button),
+                { _, raw in
+                    guard let raw else { return }
+                    Unmanaged<PartyPopover>.fromOpaque(raw).takeUnretainedValue().fillForPopup()
+                }, Unmanaged.passRetained(party).toOpaque(),
+                { raw in
+                    guard let raw else { return }
+                    Unmanaged<PartyPopover>.fromOpaque(raw).release()
+                })
         }
         Gtk.onScroll(button) { dy in
             guard dy != 0 else { return false }
@@ -91,6 +101,7 @@ final class DialPill: @unchecked Sendable {
             open()
             return
         }
+        dial.fill()
         gtk_popover_popup(ptr(dial.popover))
     }
 

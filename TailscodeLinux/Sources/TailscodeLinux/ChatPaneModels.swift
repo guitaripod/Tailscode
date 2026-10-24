@@ -148,7 +148,8 @@ extension ChatPane {
         dial?.openDial()
     }
 
-    func openParty() {
+    func openParty(announcing words: String? = nil) {
+        if let words { dial?.party?.announce(words) }
         dial?.open()
     }
 

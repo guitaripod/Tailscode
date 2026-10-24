@@ -19,7 +19,7 @@ public enum SelfTest {
     /// when every server's newest chat is empty.
     public static func run() async -> Never {
         let only = ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_ONLY"]
-        startWatchdog(seconds: only == nil ? 150 : 600)
+        startWatchdog(seconds: only == nil ? 175 : 600)
         if let only { runOnly(only) }
         var failures = 0
 

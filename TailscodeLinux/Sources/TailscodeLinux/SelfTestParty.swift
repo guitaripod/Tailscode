@@ -223,6 +223,92 @@ extension SelfTest {
         try expect(
             naturalAway <= 620,
             "away cards and their long words wrap rather than widen the popover: \(naturalAway)")
+
+        claims += try checkPartyPill(pump: pump)
+        return claims
+    }
+
+    /// The party on the real pill, pressed the way a person presses it: every press after a take,
+    /// after the dial beside it was put away, after a fill and after another press opens it at
+    /// once, never needing a second.
+    private static func checkPartyPill(pump: (Double) -> Void) throws -> Int {
+        var claims = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("party pill: \(label)") }
+            claims += 1
+        }
+        PartyDemo.seed()
+        let heard = Told()
+        let window = gtk_window_new()!
+        gtk_window_set_default_size(ptr(UnsafeMutableRawPointer(window)), 900, 760)
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        let spacer = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        gtk_widget_set_vexpand(spacer, 1)
+        gtk_box_append(ptr(column), spacer)
+        gtk_window_set_child(ptr(UnsafeMutableRawPointer(window)), column)
+        defer { gtk_window_destroy(ptr(UnsafeMutableRawPointer(window))) }
+        let party = PartyPopover(hooks: PartyDemo.hooks { heard.say($0) })
+        let pill = DialPill(
+            dial: ModelDialPopover(
+                makeState: {
+                    ModelDialState(
+                        sources: [], selected: nil, effort: nil, options: [], modelWord: "")
+                }, onPick: { _, _, _ in }, onEffort: { _ in }, onOpenCatalog: {}),
+            party: party, onStep: { _ in })
+        gtk_widget_set_halign(pill.button, GTK_ALIGN_START)
+        gtk_box_append(ptr(column), pill.button)
+        gtk_window_present(ptr(UnsafeMutableRawPointer(window)))
+        pump(0.4)
+
+        func isOpen() -> Bool { gtk_widget_get_mapped(party.popover) != 0 }
+        func press() {
+            _ = gtk_widget_activate(pill.button)
+            pump(0.3)
+        }
+
+        press()
+        pump(0.4)
+        try expect(isOpen(), "the first press opens the party")
+        try expect(party.gridView?.views.count == 6, "with its six cards drawn")
+        press()
+        try expect(!isOpen(), "a press on the open pill closes it")
+        press()
+        try expect(isOpen(), "and the next press opens it again, in one press")
+
+        party.actions.activate(1)
+        pump(0.3)
+        try expect(
+            !isOpen() && heard.words.last?.hasPrefix("take slot=2") == true,
+            "a card taken puts the popover away and names the slot: \(heard.words)")
+        press()
+        try expect(isOpen(), "and the press after a take opens the party in one press")
+
+        party.close()
+        pump(0.15)
+        pill.openDial()
+        pump(0.3)
+        try expect(gtk_widget_get_mapped(pill.dial.popover) != 0, "the dial opens beside the pill")
+        gtk_popover_popdown(ptr(pill.dial.popover))
+        pump(0.15)
+        press()
+        try expect(isOpen(), "and the press after the dial is put away opens the party in one press")
+
+        party.actions.activate(5)
+        pump(0.15)
+        try expect(
+            !isOpen() && heard.words.last == "fill slot=6",
+            "a hollow card puts the party away and asks for a model: \(heard.words)")
+        pill.open()
+        pump(0.4)
+        try expect(isOpen(), "and opening the party again once that model is in stays open")
+        press()
+        try expect(!isOpen(), "and a press closes it")
+        pill.open()
+        pump(0.4)
+        try expect(isOpen(), "a second programmatic open stays open as well")
+        party.close()
+        pump(0.15)
+        PartyDemo.restore()
         return claims
     }
 }

@@ -105,7 +105,7 @@ extension MainWindow {
             }
         }
         demoParty = party
-        gtk_popover_popup(ptr(party.popover))
+        party.popup()
         Gtk.after(300) { [weak self] in
             if editing { self?.demoParty?.toggleEditing() }
             Gtk.after(300) { [weak self] in

@@ -100,7 +100,7 @@ enum Dialogs {
     ) {
         let (window, content) = Self.window(title: title, parent: parent)
         if let body {
-            gtk_box_append(ptr(content), Gtk.label(body, css: "row-detail", wrap: true))
+            gtk_box_append(ptr(content), Gtk.label(body, css: "row-detail", wrap: true, selectable: false))
         }
         let entry = secret ? gtk_password_entry_new()! : gtk_entry_new()!
         if !secret { gtk_entry_set_placeholder_text(ptr(entry), placeholder) }
@@ -131,7 +131,7 @@ enum Dialogs {
         onConfirm: @escaping @Sendable () -> Void
     ) {
         let (window, content) = Self.window(title: title, parent: parent)
-        gtk_box_append(ptr(content), Gtk.label(body, css: "agent-text", wrap: true))
+        gtk_box_append(ptr(content), Gtk.label(body, css: "agent-text", wrap: true, selectable: false))
         let windowBits = UInt(bitPattern: window)
         let confirmButton = Gtk.button(
             confirmLabel, css: [destructive ? "destructive-action" : "suggested-action"]
