@@ -15,6 +15,7 @@ final class MainMenu: NSObject {
     private var keepLiveItem: NSMenuItem?
     private var conversationChordItems: [(NSMenuItem, KeyAction)] = []
     private var pauseItem: NSMenuItem?
+    private var agentsItem: NSMenuItem?
 
     init(hub: MainWindowController) {
         self.hub = hub
@@ -298,6 +299,7 @@ final class MainMenu: NSObject {
         for (entry, action) in conversationChordItems { wearChord(entry, for: action) }
         if let keepLiveItem { wearChord(keepLiveItem, for: .pinSplit) }
         if let pauseItem { wearChord(pauseItem, for: .parkSplit) }
+        if let agentsItem { wearChord(agentsItem, for: .toggleAgents) }
     }
 
     private func paneMenuItems() -> [NSMenuItem] {
@@ -333,6 +335,9 @@ final class MainMenu: NSObject {
         #endif
         menu.addItem(
             item(Localized.text("Archived Chats"), #selector(toggleArchiveView), "e", [.command, .shift]))
+        let agents = bound(Localized.text("Show Agents"), #selector(toggleAgents), .toggleAgents)
+        agentsItem = agents
+        menu.addItem(agents)
         menu.addItem(videoForgeItem())
         menu.addItem(studioItem())
         menu.addItem(delegateItem())
@@ -608,6 +613,7 @@ final class MainMenu: NSObject {
         @objc private func toggleTerminal() { run(.toggleTerminal) }
     #endif
     @objc private func toggleArchiveView() { run(.toggleArchiveView) }
+    @objc private func toggleAgents() { hub.toggleAgents() }
     @objc private func toggleBrain() {
         ActivityStyleSetting.set(MacBrain.style == .brain ? .lines : .brain)
     }
@@ -758,6 +764,9 @@ extension MainMenu: NSMenuItemValidation {
                 menuItem.state = hub.terminalShown ? .on : .off
             }
         #endif
+        if menuItem.action == #selector(toggleAgents) {
+            menuItem.state = hub.agentsWindow?.window?.isVisible == true ? .on : .off
+        }
         if menuItem.action == #selector(toggleArchiveView) {
             menuItem.state = hub.sidebar.showingArchive ? .on : .off
         }

@@ -75,6 +75,7 @@ final class MainWindowController: NSWindowController {
     var readingTailscaleForWelcome = false
     var preferencesWindow: PreferencesWindow?
     var analyticsWindow: AnalyticsWindowController?
+    var agentsWindow: AgentsWindowController?
     var updateWindow: UpdateWindowController?
     var proWindow: ProWindowController?
     var delegateWindow: DelegateWindowController?

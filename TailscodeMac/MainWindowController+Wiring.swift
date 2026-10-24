@@ -101,6 +101,7 @@ extension MainWindowController {
             self?.refreshTitleFromListing()
         }
         sidebar.onAddMachine = { FirstRunWindow.present(way: nil) }
+        sidebar.onOpenAgents = { [weak self] in self?.presentAgents() }
         sidebar.onEntriesChanged = { [weak self] in
             guard let self else { return }
             self.refreshWelcome()
@@ -108,6 +109,8 @@ extension MainWindowController {
             self.refreshTitleFromListing()
             self.resolvePendingBindings()
             self.wakeHeldQueues(entries: self.sidebar.entries)
+            AgentsCenter.shared.listing(
+                entries: self.sidebar.entries, unreachable: self.sidebar.unreachableServers)
         }
     }
 

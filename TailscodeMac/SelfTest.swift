@@ -27,6 +27,7 @@ enum SelfTest {
         let chatChild = ChatChecks.Child()
         let clockChild = MeridianChecks.Child()
         let openChild = BrainOpenChecks.Child()
+        let agentsChild = AgentsChecks.Child()
 
         do {
             let checks = try checkMarkup()
@@ -611,6 +612,15 @@ enum SelfTest {
         } else {
             report("megatron open: \(opening.failures.joined(separator: " · "))")
             failures += 1
+        }
+
+        let agents = agentsChild.verdict()
+        if let failure = agents.failure {
+            report("agents: \(failure)")
+            failures += 1
+        } else {
+            report(
+                "agents: \(agents.notes) — the board, its peek and its hour draw, a verb in flight is off, Stop asks first, the tower leaves no watch")
         }
 
         report(failures == 0 ? "SELFTEST_OK" : "SELFTEST_FAILED")

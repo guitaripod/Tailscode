@@ -104,6 +104,8 @@ extension MainWindowController {
             return focus(pane)
         case .toggleFiles:
             return false
+        case .toggleAgents:
+            toggleAgents()
         case .cycleForward:
             cycle(1)
         case .cycleBackward:

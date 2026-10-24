@@ -20,6 +20,7 @@ enum TileBench {
     static func isRequested(_ paths: ArraySlice<String>) -> Bool {
         paths.first?.hasPrefix("tiles") == true || paths.first == ChatChecks.spec
             || paths.first == MeridianChecks.spec || paths.first == BrainOpenChecks.spec
+            || paths.first == AgentsChecks.spec
     }
 
     static func run(_ spec: String) -> Never {
@@ -27,6 +28,7 @@ enum TileBench {
         if spec == ChatChecks.spec { ChatChecks.runAsChild() }
         if spec == MeridianChecks.spec { MeridianChecks.runAsChild() }
         if spec == BrainOpenChecks.spec { BrainOpenChecks.runAsChild() }
+        if spec == AgentsChecks.spec { AgentsChecks.runAsChild() }
         let fields = spec.split(separator: "=", maxSplits: 1).dropFirst().first.map(String.init)
         let parts = (fields ?? "4").split(separator: ":").compactMap { Double($0) }
         let panes = Int(parts.first ?? 4)

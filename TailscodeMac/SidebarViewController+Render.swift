@@ -126,6 +126,7 @@ extension SidebarViewController {
         models += Self.orphanedSavedRows(savedChats, listed: entries)
         known = models
         refreshOrb()
+        refreshAgentsEntry()
         selection.prune(to: models.map(\.entry))
         let observations = models.map {
             ActivityObservation(

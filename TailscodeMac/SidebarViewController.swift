@@ -73,6 +73,8 @@ final class SidebarViewController: NSViewController {
     private let supporterCard = SupporterCardView()
     let bulkBar = SidebarBulkBar()
     let orb = PresenceOrbView()
+    let agentsEntry = AgentsSidebarEntry()
+    var onOpenAgents: (() -> Void)?
     /// Whether any open pane's composer is burning the ultracode aura, answered by the hub — the
     /// orb wears the same rainbow the moment the word is typed anywhere.
     var ultracodeSource: (() -> Bool)?
@@ -194,6 +196,7 @@ final class SidebarViewController: NSViewController {
             self, selector: #selector(orbSettingChanged), name: PresenceOrbSetting.didChange,
             object: nil)
         observeDecisions()
+        observeAgents()
 
         updateFooter.onOpen = { [weak self] in self?.onOpenUpdates?() }
         supporterCard.onUnlock = { [weak self] in self?.onOpenPro?() }
@@ -209,6 +212,7 @@ final class SidebarViewController: NSViewController {
         footer.translatesAutoresizingMaskIntoConstraints = false
 
         container.addSubview(searchField)
+        container.addSubview(agentsEntry)
         container.addSubview(scrollView)
         container.addSubview(footer)
         NSLayoutConstraint.activate([
@@ -218,8 +222,14 @@ final class SidebarViewController: NSViewController {
                 equalTo: container.leadingAnchor, constant: MacTheme.Spacing.s),
             searchField.trailingAnchor.constraint(
                 equalTo: container.trailingAnchor, constant: -MacTheme.Spacing.s),
-            scrollView.topAnchor.constraint(
+            agentsEntry.topAnchor.constraint(
                 equalTo: searchField.bottomAnchor, constant: MacTheme.Spacing.xs),
+            agentsEntry.leadingAnchor.constraint(
+                equalTo: container.leadingAnchor, constant: MacTheme.Spacing.s),
+            agentsEntry.trailingAnchor.constraint(
+                equalTo: container.trailingAnchor, constant: -MacTheme.Spacing.s),
+            scrollView.topAnchor.constraint(
+                equalTo: agentsEntry.bottomAnchor, constant: MacTheme.Spacing.xs),
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             scrollView.bottomAnchor.constraint(
