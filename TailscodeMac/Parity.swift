@@ -172,6 +172,7 @@ enum ParityManifest {
                 because:
                     "Every key resolves through the same registry either way, but the file they are rebound in is not the same file: ~/.config/tailscode is outside the container, so the store copy keeps keybindings.json in the Application Support folder it does hold, and reveals it in Finder rather than opening it in whatever a person edits text with — a door the container does not have.")
         case .shortcutCheatsheet: return .implemented("cheatsheet")
+        case .shortcutEditor: return .implemented("ShortcutCaptureSheet")
         case .gitState:
             return .varies(
                 direct: .implemented("GitPanelViewController"),

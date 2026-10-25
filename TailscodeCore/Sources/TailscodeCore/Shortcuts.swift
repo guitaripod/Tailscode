@@ -74,7 +74,15 @@ public struct KeyChord: Hashable, Sendable {
         case Keymap.down: return out + "↓"
         case 0xFF51: return out + "←"
         case 0xFF53: return out + "→"
+        case Keymap.backspace: return out + "⌫"
+        case Keymap.delete: return out + "⌦"
+        case Keymap.home: return out + "home"
+        case Keymap.end: return out + "end"
+        case Keymap.pageUp: return out + "pgup"
+        case Keymap.pageDown: return out + "pgdn"
+        case Keymap.insert: return out + "ins"
         default:
+            if let number = Keymap.functionNumber(keyval) { return out + "F\(number)" }
             if keyval < 0xFF00, let character = Keymap.scalar(keyval) {
                 return out + String(character)
             }
@@ -87,15 +95,39 @@ public struct KeyChord: Hashable, Sendable {
 /// an optional `context:` prefix limiting where it applies — `ctrl+shift+h`, `g g`, `J`,
 /// `normal,insert:ctrl+b`. This is both the defaults table's language and the rebinding file's.
 public enum KeySpec {
-    public static let names: [String: UInt32] = [
-        "enter": Keymap.enter, "return": Keymap.enter, "esc": Keymap.escape,
-        "escape": Keymap.escape, "tab": Keymap.tab, "space": 0x20,
-        "up": Keymap.up, "down": Keymap.down, "left": 0xFF51, "right": 0xFF53,
-        "minus": UInt32(UnicodeScalar("-").value), "plus": UInt32(UnicodeScalar("+").value),
-        "equal": UInt32(UnicodeScalar("=").value), "slash": UInt32(UnicodeScalar("/").value),
-        "question": UInt32(UnicodeScalar("?").value), "colon": UInt32(UnicodeScalar(":").value),
-        "comma": UInt32(UnicodeScalar(",").value), "period": UInt32(UnicodeScalar(".").value),
-    ]
+    public static let names: [String: UInt32] = {
+        var table: [String: UInt32] = [
+            "enter": Keymap.enter, "return": Keymap.enter, "esc": Keymap.escape,
+            "escape": Keymap.escape, "tab": Keymap.tab, "space": 0x20,
+            "up": Keymap.up, "down": Keymap.down, "left": 0xFF51, "right": 0xFF53,
+            "minus": UInt32(UnicodeScalar("-").value), "plus": UInt32(UnicodeScalar("+").value),
+            "equal": UInt32(UnicodeScalar("=").value), "slash": UInt32(UnicodeScalar("/").value),
+            "question": UInt32(UnicodeScalar("?").value),
+            "colon": UInt32(UnicodeScalar(":").value),
+            "comma": UInt32(UnicodeScalar(",").value), "period": UInt32(UnicodeScalar(".").value),
+            "backspace": Keymap.backspace, "delete": Keymap.delete, "home": Keymap.home,
+            "end": Keymap.end, "pageup": Keymap.pageUp, "pagedown": Keymap.pageDown,
+            "insert": Keymap.insert,
+        ]
+        for number in 1...12 { table["f\(number)"] = Keymap.functionKey(number) }
+        return table
+    }()
+
+    /// The one name a key is written under: `enter` and `escape` rather than their aliases, so the
+    /// same chord never persists as two different strings.
+    private static let spellings: [UInt32: String] = {
+        var table: [UInt32: String] = [:]
+        let aliases: Set<String> = ["return", "esc"]
+        for (name, keyval) in names where !aliases.contains(name) { table[keyval] = name }
+        return table
+    }()
+
+    /// A key as the spec grammar writes it: its name when it has one, else the character itself.
+    static func token(for keyval: UInt32) -> String {
+        if let name = spellings[keyval] { return name }
+        if let character = Keymap.scalar(keyval) { return String(character) }
+        return "0x\(String(keyval, radix: 16))"
+    }
 
     public static func parse(_ spec: String) -> (contexts: Set<KeyContext>?, chords: [KeyChord])? {
         var body = spec
@@ -173,6 +205,7 @@ public enum ShortcutCategory: CaseIterable, Sendable {
     case composer
     case navigate
     case view
+    case app
     case approvals
 
     public var title: String {
@@ -182,6 +215,7 @@ public enum ShortcutCategory: CaseIterable, Sendable {
         case .composer: return Localized.text("Composer")
         case .navigate: return Localized.text("Focus")
         case .view: return Localized.text("Panes and zoom")
+        case .app: return Localized.text("App and windows")
         case .approvals: return Localized.text("When an approval is waiting")
         }
     }
@@ -214,7 +248,13 @@ public struct ShortcutDefinition: Sendable {
 }
 
 public enum ShortcutRegistry {
-    public static let all: [ShortcutDefinition] = [
+    public static let all: [ShortcutDefinition] = core + appActions
+
+    private static let byID = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
+
+    public static func definition(_ id: String) -> ShortcutDefinition? { byID[id] }
+
+    private static let core: [ShortcutDefinition] = [
         .init(
             id: "chat.next", title: Localized.text("Next chat"), category: .chats,
             action: .selectNext, contexts: [.normal], defaults: ["J", "ctrl+n"]),
@@ -598,33 +638,12 @@ public struct ShortcutSet: Sendable {
         var overrides: [String: [String]] = [:]
         var issues: [String] = []
         if let data = try? Data(contentsOf: configURL) {
-            if let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                let known = Set(ShortcutRegistry.all.map(\.id))
-                for (key, value) in parsed where !key.hasPrefix("_") {
-                    guard known.contains(key) else {
-                        issues.append(Localized.text("unknown shortcut id \"%@\"", key))
-                        continue
-                    }
-                    switch value {
-                    case let spec as String:
-                        overrides[key] = spec.isEmpty ? [] : [spec]
-                    case let specs as [String]:
-                        overrides[key] = specs
-                    case is NSNull:
-                        overrides[key] = []
-                    default:
-                        issues.append(Localized.text("\"%@\" must be a string, a list or null", key))
-                    }
-                }
-            } else {
-                issues.append(Localized.text("keybindings.json is not valid JSON"))
-            }
+            (overrides, issues) = ShortcutFile.parse(data)
         }
-        var set = build(overrides: overrides)
-        set = ShortcutSet(
+        let set = build(overrides: overrides)
+        return ShortcutSet(
             actions: set.actions, prefixes: set.prefixes, approval: set.approval,
             effective: set.effective, issues: issues + set.issues)
-        return set
     }
 
     public static func build(overrides: [String: [String]]) -> ShortcutSet {
@@ -724,36 +743,9 @@ public struct ShortcutSet: Sendable {
     }
 
     /// Writes a self-describing starter file if none exists, so "edit the shortcuts" always has
-    /// a file to open. Only `_`-prefixed keys are written: the file starts as documentation, and
-    /// upgrades keep shipping new defaults to people who never rebound anything.
+    /// a file to open.
     public static func ensureConfigFile() {
-        let url = configURL
-        guard !FileManager.default.fileExists(atPath: url.path) else { return }
-        var defaults: [String: Any] = [:]
-        for definition in ShortcutRegistry.all {
-            if definition.defaults.count == 1 {
-                defaults[definition.id] = definition.defaults[0]
-            } else {
-                defaults[definition.id] = definition.defaults
-            }
-        }
-        let payload: [String: Any] = [
-            "_readme": [
-                "Rebind by id: \"chat.archive\": \"e\", a list for several keys, null to unbind.",
-                "Modifiers ctrl+ shift+ alt+ · sequences as two keys with a space: \"g g\".",
-                "Named keys: enter escape tab space up down left right minus plus equal.",
-                "Limit a binding: \"normal:f\" or \"normal,insert:ctrl+b\" (normal, insert, terminal).",
-                "Keys starting with _ are ignored. _defaults shows every id as shipped.",
-                "Apply with Settings → Keyboard → Reload, or restart.",
-            ],
-            "_defaults": defaults,
-        ]
-        guard let data = try? JSONSerialization.data(
-            withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
-        else { return }
-        try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: url, options: .atomic)
+        ShortcutFile.ensureStarter()
     }
 }
 
@@ -844,6 +836,16 @@ public enum KeyAction: Equatable, Sendable {
     case presetNext
     case presetPrevious
     case preset(Int)
+    case openSettings
+    case openServers
+    case openUpdates
+    case openUsage
+    case toggleAppearance
+    case toggleCompactTools
+    case toggleVimComposer
+    case toggleFullscreen
+    /// The nth chat in the list as it is shown right now, counting from one.
+    case openChat(Int)
 }
 
 /// The canonical key-code space is GDK's, spelled out rather than imported: on Linux the numbers
@@ -861,6 +863,19 @@ public enum Keymap {
     public static let up: UInt32 = 0xFF52
     public static let down: UInt32 = 0xFF54
     public static let backspace: UInt32 = 0xFF08
+    public static let home: UInt32 = 0xFF50
+    public static let pageUp: UInt32 = 0xFF55
+    public static let pageDown: UInt32 = 0xFF56
+    public static let end: UInt32 = 0xFF57
+    public static let insert: UInt32 = 0xFF63
+    public static let delete: UInt32 = 0xFFFF
+
+    /// F1 to F12, which GDK numbers consecutively from `0xFFBE`.
+    public static func functionKey(_ number: Int) -> UInt32 { 0xFFBD + UInt32(number) }
+
+    public static func functionNumber(_ keyval: UInt32) -> Int? {
+        (0xFFBE...0xFFC9).contains(keyval) ? Int(keyval - 0xFFBD) : nil
+    }
 
     public static let control: UInt32 = 1 << 2
     public static let shift: UInt32 = 1 << 0

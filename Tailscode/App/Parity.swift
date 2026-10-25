@@ -140,6 +140,8 @@ enum ParityManifest {
         case .newChatFailure: return .implemented("NewChatStatusView")
         case .keyboardShortcuts: return .implemented("KeyBridge")
         case .shortcutCheatsheet: return .implemented("ShortcutCheatsheetViewController")
+        case .shortcutEditor:
+            return .gap("an iPad keyboard rebinds through keybindings.json in the Files app; a pressed-key editor is not built for iOS")
         case .fileBrowser: return .implemented("FileBrowserViewController")
         case .gitState: return .implemented("GitStatusViewController")
         case .terminalPane: return .notApplicable("iOS has no shell; the pane presumes the app shares a filesystem with the agent")

@@ -131,6 +131,7 @@ enum ParityManifest {
         case .newChatFailure: return .implemented("failureCard")
         case .keyboardShortcuts: return .implemented("installKeymap")
         case .shortcutCheatsheet: return .implemented("helpOverlay")
+        case .shortcutEditor: return .implemented("SettingsKeyboardPage")
         case .fileBrowser:
             return .notApplicable(
                 "the column is gone: a tree of the server's files beside a conversation is a second way to say something the composer already says better with @, and nobody reached for it on either desk")

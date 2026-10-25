@@ -17,6 +17,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         ShortcutSet.configDirectoryOverride = FileManager.default.urls(
             for: .documentDirectory, in: .userDomainMask
         ).first
+        ShortcutSet.unavailable = ShortcutRegistry.appActionIDs
         TailscodeMidgar.shared.start()
         ProAccess.shared.start()
         GameCenterCoordinator.shared.startWhenIdle()

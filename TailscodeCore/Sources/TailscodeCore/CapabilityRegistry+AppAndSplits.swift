@@ -26,6 +26,10 @@ extension CapabilityRegistry {
             id: .shortcutCheatsheet, area: "app", title: "Shortcut cheatsheet",
             spec: "A help overlay derives its content from the effective bindings, config path included."),
         CapabilityDefinition(
+            id: .shortcutEditor, area: "app", title: "Rebind a shortcut by pressing it",
+            spec:
+                "Settings has a Keyboard page that lists every action in ShortcutRegistry by category with the keys it answers to now, and changes one by pressing the new keys instead of editing text. ShortcutEditor is the whole arrangement in Core so the desktops cannot disagree: fit() says whether a pressed key may be given to an action at all and as what — a key a text field or a shell would type is kept out of those contexts (a bare n becomes 'only when you are not typing') and refused with the reason where nothing is left; conflicts() names every action that would lose a key, including a two-key sequence whose first key is being taken and a single key that would shadow a new sequence; adding, removing and restoring plan an edit as the complete key list each touched action ends with, and apply writes only those ids through ShortcutFile, which leaves every note, _defaults and unknown id in keybindings.json exactly as it was and refuses to overwrite a file that is not a JSON object. A key that conflicts is never taken silently: the screen names who has it and offers to take it. Every row can be put back to its shipped keys, and so can the whole file. The file stays the source of truth and the way in for a person who prefers text; a change from either side is live without a restart."),
+        CapabilityDefinition(
             id: .fileBrowser, area: "app", title: "The server's files",
             spec:
                 "Browse the conversation directory's tree via FileBrowsingBackend.listFiles; picking a file hands its path to the composer."),

@@ -146,6 +146,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case serverFolderBrowser
     case keyboardShortcuts
     case shortcutCheatsheet
+    case shortcutEditor
     case fileBrowser
     case gitState
     case terminalPane
