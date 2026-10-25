@@ -11,13 +11,13 @@ enum PartyRoom {
     /// what happened, in words.
     static func offer(
         _ preset: ModelPreset, on anchor: UnsafeMutablePointer<GtkWidget>, inputs: PartyInputs,
-        told: @escaping @Sendable (String) -> Void
+        floor: Double = 0, told: @escaping @Sendable (String) -> Void
     ) {
         switch PartyEdits.place(preset) {
         case .placed(let slot):
             told(Localized.text("Added to slot %d", slot + 1))
         case .full:
-            ask(on: anchor, inputs: inputs) { slot in
+            ask(on: anchor, inputs: inputs, floor: floor) { slot in
                 PartyEdits.replace(slot, with: preset)
                 told(Localized.text("Added to slot %d", slot + 1))
             }
@@ -26,7 +26,7 @@ enum PartyRoom {
 
     /// The six cards under the question, one press answering it.
     static func ask(
-        on anchor: UnsafeMutablePointer<GtkWidget>, inputs: PartyInputs,
+        on anchor: UnsafeMutablePointer<GtkWidget>, inputs: PartyInputs, floor: Double = 0,
         answered: @escaping @Sendable (Int) -> Void
     ) {
         let popover = gtk_popover_new()!
@@ -50,7 +50,7 @@ enum PartyRoom {
         gtk_scrolled_window_set_child(op(scroll), column)
         gtk_popover_set_child(ptr(popover), scroll)
         grid.apply(inputs.cards, editing: false)
-        place(popover, scroll: scroll, column: column, on: anchor)
+        place(popover, scroll: scroll, column: column, on: anchor, floor: floor)
         let hold = Gtk.WeakWidget(popover)
         actions.activate = { slot in
             if let held = hold.widget { gtk_popover_popdown(ptr(held)) }
@@ -71,10 +71,12 @@ enum PartyRoom {
     /// How much of the window the question may take, so it is never cut by an edge: below the
     /// anchor when the six cards fit there, above it when they fit there, and otherwise over the
     /// anchor's own top, which is what a chooser as tall as its window leaves. What still does
-    /// not fit scrolls rather than runs off the window.
+    /// not fit scrolls rather than runs off the window. `floor` is the least height it may be given
+    /// by a window too small to hold it, whose popover then hangs past the window's edge.
     private static func place(
         _ popover: UnsafeMutablePointer<GtkWidget>, scroll: UnsafeMutablePointer<GtkWidget>,
-        column: UnsafeMutablePointer<GtkWidget>, on anchor: UnsafeMutablePointer<GtkWidget>
+        column: UnsafeMutablePointer<GtkWidget>, on anchor: UnsafeMutablePointer<GtkWidget>,
+        floor: Double
     ) {
         gtk_popover_set_position(ptr(popover), GTK_POS_BOTTOM)
         guard let root = gtk_widget_get_root(anchor) else { return }
@@ -89,20 +91,20 @@ enum PartyRoom {
             &ignoredB)
         let needed = Double(natural) + edgeMargin
         guard let box = Gtk.bounds(of: anchor, in: window) else {
-            limit(scroll, to: height - edgeMargin)
+            limit(scroll, to: max(height - edgeMargin, floor))
             return
         }
         let below = height - (box.y + box.height)
         let above = box.y
         if below >= needed {
-            limit(scroll, to: below - edgeMargin)
+            limit(scroll, to: max(below - edgeMargin, floor))
         } else if above >= needed {
             gtk_popover_set_position(ptr(popover), GTK_POS_TOP)
-            limit(scroll, to: above - edgeMargin)
+            limit(scroll, to: max(above - edgeMargin, floor))
         } else {
             var point = GdkRectangle(x: gint(box.width / 2), y: 6, width: 1, height: 1)
             gtk_popover_set_pointing_to(ptr(popover), &point)
-            limit(scroll, to: height - (box.y + 6) - edgeMargin)
+            limit(scroll, to: max(height - (box.y + 6) - edgeMargin, floor))
         }
     }
 

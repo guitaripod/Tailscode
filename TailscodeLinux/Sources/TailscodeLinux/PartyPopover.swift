@@ -33,6 +33,7 @@ final class PartyPopover: @unchecked Sendable {
     /// popover put away behind its menu button's back leaves the button believing it is open, and
     /// the next press on it only closes what is already closed.
     var owner: (() -> Void)?
+    var fit: (() -> PartyFit)?
     private var cards: [PartyCard] = []
     private var note: String?
     private var noteGeneration = 0
@@ -90,7 +91,7 @@ final class PartyPopover: @unchecked Sendable {
     /// come back after a fill.
     func fillForPopup() {
         retire()
-        gtk_popover_set_child(ptr(popover), prepare())
+        gtk_popover_set_child(ptr(popover), fitted(prepare()))
     }
 
     /// Says what just happened in the header, where the count is, for a couple of seconds. The

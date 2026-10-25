@@ -953,3 +953,13 @@ final class ModelChooserWindow: @unchecked Sendable {
         return label
     }
 }
+
+extension ModelChooserWindow {
+    static var openContext: ChooserContext? { open?.context }
+
+    static var openOffersParty: Bool { open?.onAddToParty != nil }
+
+    static func choose(_ chosen: ModelPick) { open?.pick(chosen) }
+
+    static func dismissOpen() { open?.close() }
+}

@@ -164,7 +164,14 @@ extension QuickAskWindow {
         ModelChooserWindow.present(
             sources: ModelFleet.sources(profiles: servers, current: server.id),
             selected: QuickAskDefaults.model(forProfileID: server.id), parent: window,
-            onRefresh: { [weak self] in self?.refreshModelCatalog(for: server) }
+            onRefresh: { [weak self] in self?.refreshModelCatalog(for: server) },
+            onAddToParty: { pick, anchor in
+                let bits = UInt(bitPattern: anchor)
+                Gtk.onMain {
+                    guard let held = UnsafeMutablePointer<GtkWidget>(bitPattern: bits) else { return }
+                    QuickAskWindow.open?.addToParty(pick, on: held)
+                }
+            }
         ) { [weak self] pick in
             Gtk.onMain { [weak self] in
                 guard let self else { return }
@@ -313,7 +320,10 @@ extension QuickAskWindow {
             {
                 guard let self, self.targetServer.id == server.id else { return }
                 ModelCatalogStore.store(reading.models, for: server.id)
-                Gtk.onMain { [weak self] in self?.refreshTarget() }
+                Gtk.onMain { [weak self] in
+                    if let reachable = reading.reachable { self?.reachability[server.id] = reachable }
+                    self?.refreshTarget()
+                }
             }
         }
     }

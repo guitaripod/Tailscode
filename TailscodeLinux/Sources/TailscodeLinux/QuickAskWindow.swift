@@ -40,6 +40,8 @@ final class QuickAskWindow: @unchecked Sendable {
     let recents: [SessionEntry]
     var catalogWatch: Task<Void, Never>?
     var targetIndex: Int
+    var reachability: [String: Bool] = [:]
+    let shortcuts = ShortcutSet.load()
     let onAsk:
         @Sendable (String, QuickAskSend, [PendingAttachment], @escaping @Sendable (NewChatFailure?)
             -> Void) -> Void
@@ -144,7 +146,8 @@ final class QuickAskWindow: @unchecked Sendable {
                         open.setEffort(level, on: open.targetServer.id, refocus: false)
                     }
                 },
-                onOpenCatalog: { Gtk.onMain { QuickAskWindow.open?.chooseModel() } })
+                onOpenCatalog: { Gtk.onMain { QuickAskWindow.open?.chooseModel() } }),
+            party: Self.makePartyPopover()
         ) { delta in
             QuickAskWindow.open?.stepEffort(by: delta)
         }
@@ -269,6 +272,10 @@ final class QuickAskWindow: @unchecked Sendable {
                 return true
             }
             if isReturn { return false }
+            if let party = self.partyAction(keyval: keyval, state: state) {
+                Gtk.onMain { [weak self] in self?.perform(party: party) }
+                return true
+            }
             if control, state & KeyChord.altMask != 0, keyval == Keymap.up {
                 Gtk.onMain { [weak self] in self?.stepEffort(by: 1) }
                 return true
@@ -281,7 +288,7 @@ final class QuickAskWindow: @unchecked Sendable {
             if keyval == UInt32(UnicodeScalar("m").value)
                 || keyval == UInt32(UnicodeScalar("e").value)
             {
-                Gtk.onMain { [weak self] in self?.dial.open() }
+                Gtk.onMain { [weak self] in self?.dial.openDial() }
                 return true
             }
             if keyval == UInt32(UnicodeScalar("a").value) {

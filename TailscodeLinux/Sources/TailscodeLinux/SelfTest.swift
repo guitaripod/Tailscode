@@ -121,6 +121,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkQuickAskParty()
+            report("quick ask party: \(checks) claims hold: the pill opens the party in one press, a slot re-aims machine, model and level, the card in use follows, chords and ring, the chooser for a new chat, the fit, one party with the chat")
+        } catch {
+            report("quick ask party: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkKeyboardRebind()
             report("keyboard: \(checks) claims hold: a pressed key resolves on the next load, restores clean, takes from its owner, never overwrites a file that is not JSON")
         } catch {

@@ -209,6 +209,17 @@ extension MainWindow {
             }
         case "ask":
             self.presentQuickAsk()
+        case "askparty":
+            guard DesktopGuard.isHarnessed else { break }
+            QuickAskPartyDemo.present(aimedAt: argument.isEmpty ? "arch" : argument, parent: self.window)
+        case "askpartyopen":
+            QuickAskWindow.open?.openParty()
+        case "askpartyroom":
+            guard DesktopGuard.isHarnessed else { break }
+            QuickAskPartyDemo.offerToFullParty()
+        case "askpartyclose":
+            QuickAskWindow.open?.close()
+            QuickAskPartyDemo.restore()
         case "summon":
             self.summonQuickAsk()
         case "asktype":
