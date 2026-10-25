@@ -46,7 +46,7 @@ SCREEN_NAME = "Tailscode Panels"
 POINTS = (1280, 832)
 PIXELS = (POINTS[0] * 2, POINTS[1] * 2)
 
-REQUIRED_GUARDS = {"Game Center", "StoreKit", "update checks", "global hot key", "activation"}
+REQUIRED_GUARDS = {"Game Center", "StoreKit", "update checks", "global hot key", "activation", "first run"}
 
 LANGUAGES = {
     "de-DE": "de", "es-ES": "es", "fr-FR": "fr", "it": "it", "ja": "ja", "ko": "ko", "pl": "pl",
@@ -57,24 +57,24 @@ CHAT_WINDOW = "20,40,1240,512"
 ZOOM = 1.4
 
 MASTERS = [
-    {"name": "01-conversation", "session": "demo-c1", "args": [], "delay": 16},
+    {"name": "fl-agents", "session": "demo-c1", "args": ["--open", "agent-peek"], "delay": 18, "open_delay": 4,
+     "hide_main": True, "scale": 1.0, "surface": "50,44,1180,760"},
+    {"name": "fl-party", "session": "demo-c1", "args": ["--open", "party"], "delay": 20, "open_delay": 5,
+     "window": "20,40,1240,620", "scale": 1.2},
+    {"name": "fl-carry", "session": "demo-o6", "args": [], "delay": 18, "window": "20,40,1240,780", "scale": 1.1},
+    {"name": "fl-gpu", "session": "demo-o5", "args": [], "delay": 18, "window": "20,40,1240,780", "scale": 1.1,
+     "drive": "8000:brain=rows"},
+    {"name": "01-conversation", "session": "demo-c1", "args": [], "delay": 20, "window": "20,40,1240,780",
+     "scale": 1.1, "drive": "9000:brain=open"},
     {"name": "02-split", "session": "demo-c1", "args": ["--open", "split:demo-o2"], "delay": 32,
      "drive": "9000:tile=focus,1;10000:tile=pin;11000:tile=focus,2;12000:tile=pin;13000:tile=focus,1;19000:tile=focus,1;500:shed=0;2000:shed=0;3500:shed=0;5000:shed=0;6500:shed=0;8000:shed=0;9500:shed=0;11000:shed=0;12500:shed=0;14000:shed=0;15500:shed=0;17000:shed=0;18500:shed=0;20000:shed=0;21500:shed=0;23000:shed=0;24500:shed=0;26000:shed=0;27500:shed=0;29000:shed=0", "window": "20,40,1240,512", "scale": 1.2,
      "strings": {"tailscode.liveBudget": "all"}},
-    {"name": "03-git", "session": "demo-c1", "args": ["--open", "git:diff"], "delay": 18,
-     "open_delay": 7, "surface": "30,56,1220,490"},
     {"name": "04-quickask", "session": "demo-c1", "args": ["--open", "quickask"], "delay": 16, "open_delay": 5,
      "hide_main": True, "backdrop": "editor", "window": "300,30,680,520", "scale": 1.1},
-    {"name": "05-spend", "session": "demo-o1", "args": ["--open", "spend"], "delay": 18, "open_delay": 7,
-     "window": "20,40,1240,560", "scale": 1.0},
     {"name": "06-analytics", "session": "demo-c1", "args": ["--open", "analytics"], "delay": 22,
      "hide_main": True, "surface": "190,40,900,512"},
-    {"name": "07-approval", "session": "demo-c3", "args": [], "delay": 16},
     {"name": "08-keyboard", "session": "demo-c1", "args": ["--open", "cheatsheet"], "delay": 14,
      "surface": "40,40,1200,512"},
-    {"name": "09-type", "session": "demo-c1", "args": ["--open", "typesize"], "delay": 14,
-     "hide_main": True, "surface": "100,40,1080,512",
-     "reals": {"tailscode.scale.prompt": 1.2, "tailscode.scale.answer": 1.1, "tailscode.scale.mono": 0.9}},
     {"name": "10-private", "session": None, "args": ["--open", "servers"], "delay": 16,
      "hide_main": True, "scale": 1.5, "surface": "230,46,820,512"},
 ]
@@ -108,9 +108,18 @@ def stage():
     run(["cp", "-R", source, app])
     run(["/usr/libexec/PlistBuddy", "-c", f"Set :CFBundleIdentifier {BUNDLE}",
          os.path.join(app, "Contents/Info.plist")])
-    run(["codesign", "--force", "--deep", "--sign", "-", "--entitlements",
-         os.path.join(ROOT, "TailscodeMac/TailscodeMac-Store.entitlements"), app])
+    run(["codesign", "--force", "--deep", "--sign", "-", "--entitlements", ad_hoc_entitlements(), app])
     return app
+
+
+def ad_hoc_entitlements():
+    """The store's sandbox entitlements without the keychain access groups: an ad-hoc signature may not
+    carry a restricted entitlement, and amfid kills the process at launch when it does."""
+    path = os.path.join(SCRATCH, "panels.entitlements")
+    shutil.copy(os.path.join(ROOT, "TailscodeMac/TailscodeMac-Store.entitlements"), path)
+    subprocess.run(["/usr/libexec/PlistBuddy", "-c", "Delete :keychain-access-groups", path],
+                   capture_output=True)
+    return path
 
 
 class VirtualDisplay:

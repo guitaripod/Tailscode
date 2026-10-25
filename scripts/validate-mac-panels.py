@@ -29,20 +29,15 @@ from PIL import Image
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PANELS = os.path.join(ROOT, "marketing/appstore/panels")
 REPORT = os.path.join(tempfile.gettempdir(), "tailscode-mac-frames", "fit-report.json")
-CAPTION_DIR = os.environ.get(
-    "TAILSCODE_CAPTIONS",
-    "/private/tmp/claude-501/-Users-marcus-Dev-ios-Tailscode/e32f8192-a50d-4a55-a4b4-356157018dd0/scratchpad/marketing")
+CAPTIONS = os.environ.get("TAILSCODE_CAPTIONS", os.path.join(ROOT, "marketing/captions"))
 LOCALES = ["en-US", "de-DE", "es-ES", "fr-FR", "it", "ja", "ko", "pl", "pt-BR", "zh-Hans", "zh-Hant"]
 MIN_HEADLINE = 110
 GAP = 10
 
 
 def book(locale):
-    if locale == "en-US":
-        with open(os.path.join(CAPTION_DIR, "captions-en-US.json")) as f:
-            return json.load(f)["mac"]
-    with open(os.path.join(CAPTION_DIR, "out", locale + ".json")) as f:
-        return json.load(f)["captions"]["mac"]
+    with open(os.path.join(CAPTIONS, locale + ".json")) as f:
+        return json.load(f)["mac"]
 
 
 def folder(locale):

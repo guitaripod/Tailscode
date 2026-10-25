@@ -25,7 +25,7 @@ Every caption box is measured and the run fails rather than let a translation to
 
 Masters:  marketing/appstore/mac-masters/<locale>/<name>.png (a locale without its own masters
           is told over the English chrome and says so)
-Captions: scratch captions-en-US.json, or <captions-dir>/out/<locale>.json under captions.mac
+Captions: marketing/captions/<locale>.json, key "mac" (the caption book)
 Panels:   marketing/appstore/panels/mac/<slug>.png for en-US,
           marketing/appstore/panels/l10n/<locale>/mac/<slug>.png otherwise
 """
@@ -46,9 +46,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MASTERS = os.path.join(ROOT, "marketing/appstore/mac-masters")
 PANELS = os.path.join(ROOT, "marketing/appstore/panels")
 CATALOG = os.path.join(ROOT, "Resources/Localizable.xcstrings")
-CAPTION_DIR = os.environ.get(
-    "TAILSCODE_CAPTIONS",
-    "/private/tmp/claude-501/-Users-marcus-Dev-ios-Tailscode/e32f8192-a50d-4a55-a4b4-356157018dd0/scratchpad/marketing")
+CAPTIONS = os.environ.get("TAILSCODE_CAPTIONS", os.path.join(ROOT, "marketing/captions"))
 FRAME_CACHE = os.path.join(tempfile.gettempdir(), "tailscode-mac-frames")
 
 W, H = 2880, 1800
@@ -67,12 +65,8 @@ LOCALES = ["de-DE", "es-ES", "fr-FR", "it", "ja", "ko", "pl", "pt-BR", "zh-Hans"
 CATALOG_CODE = {"de-DE": "de", "es-ES": "es", "fr-FR": "fr", "it": "it", "ja": "ja", "ko": "ko",
                 "pl": "pl", "pt-BR": "pt-BR", "zh-Hans": "zh-Hans", "zh-Hant": "zh-Hant"}
 FOCUS = {
-    "04-quickask": (3700, 0.50),
-    "05-spend": (4300, 0.30),
-    "07-approval": (3900, 0.40),
-    "08-keyboard": (3800, 0.40),
-    "09-type": (3800, 0.50),
-    "10-private": (3800, 0.50),
+    "fl-party": (3180, 0.50),
+    "06-analytics": (3300, 0.50),
 }
 MENU_TITLES = ["File", "Edit", "Chat", "Model", "View", "Go", "Studio", "Window", "Help"]
 
@@ -329,11 +323,8 @@ def compose(master_path, entry, locale, strings, wallpaper, report):
 
 
 def captions_for(locale):
-    if locale == "en-US":
-        with open(os.path.join(CAPTION_DIR, "captions-en-US.json")) as f:
-            return json.load(f)["mac"]
-    with open(os.path.join(CAPTION_DIR, "out", locale + ".json")) as f:
-        return json.load(f)["captions"]["mac"]
+    with open(os.path.join(CAPTIONS, locale + ".json")) as f:
+        return json.load(f)["mac"]
 
 
 def run_locale(locale, strings, wallpaper, report):
