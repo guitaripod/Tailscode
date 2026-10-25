@@ -175,7 +175,7 @@
         2007,
         2853
       ],
-      "fit": true
+      "crop": 0.27
     },
     "07-ask-anything": {
       "master": "fl-gpu",
@@ -184,7 +184,10 @@
       "size": [
         2853,
         2007
-      ]
+      ],
+      "device_width": 1.2,
+      "device_x": 0.425,
+      "device_top": -0.12
     },
     "08-carry": {
       "master": "fl-carry",
@@ -211,7 +214,8 @@
       "size": [
         2034,
         1398
-      ]
+      ],
+      "device_width": 0.78
     }
   }
 }

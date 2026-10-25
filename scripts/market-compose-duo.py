@@ -14,8 +14,9 @@ imports: one flat ink ground, the amber lit phrase, the heaviest system weight, 
 through a node at the margin, and the framed device from the `frames` CLI, never a drawn bezel.
 
 A portrait panel puts the caption on top and lets the device bleed off the bottom, like the iPhone set.
-A landscape panel puts the caption in a column on the left and the whole device on the right, so
-nothing a caption sits beside is ever cut. The headline is one size per orientation and locale, in
+A landscape panel puts the caption in a column on the left (about a third of the width, the headline
+as big against the panel's height as a portrait's) and the device from the column's edge, large enough
+to read, bleeding off the bottom and the right. The headline is one size per orientation and locale, in
 proportion to the panel's width, fitted by measuring, never by cutting words.
 
 Masters:  marketing/appstore/duo/<slug>.png for en-US, marketing/appstore/l10n/<locale>/duo/<slug>.png
@@ -70,9 +71,9 @@ PORTRAIT = {
     "device_width": 0.985, "align": "left", "sub_lines": 2.4,
 }
 LANDSCAPE = {
-    "ref": 2034, "margin": 0.048, "motif_y": 0.058, "head_y": None, "cap_share": 0.034,
-    "floor_share": 0.021, "sub_size": 0.0225, "sub_floor": 0.0175, "gap": 0.014, "column": 0.285,
-    "device_width": 0.65, "device_x": 0.345, "align": "left", "sub_lines": 5.0,
+    "ref": 2034, "margin": 0.048, "motif_y": 0.058, "head_y": None, "cap_share": 0.042,
+    "floor_share": 0.0283, "sub_size": 0.0245, "sub_floor": 0.0195, "gap": 0.014, "column": 0.36,
+    "device_width": 0.86, "device_x": 0.425, "device_top": 0.12, "align": "left", "sub_lines": 5.0,
 }
 
 
@@ -108,8 +109,8 @@ def metrics(size, extra=None):
         "gap": round(b["gap"] * W), "sub_lines": b["sub_lines"],
         "device_width": round(b["device_width"] * W), "device_x": round(b.get("device_x", 0.5) * W),
     }
+    out["device_top"] = round(b["device_top"] * H)
     if orientation(size) == "portrait":
-        out["device_top"] = round(b["device_top"] * H)
         out["column"] = W - 2 * out["margin"]
     else:
         out["column"] = round(b["column"] * W)
@@ -157,7 +158,7 @@ def centred_y(head, sub, spec):
 def clear_room(spec):
     """The y a caption block must end above: the device's top in a portrait panel, where the device
     sits under the caption, and the panel's bottom margin in a landscape one, where it sits beside it."""
-    if "device_top" in spec:
+    if spec["size"][1] > spec["size"][0]:
         return spec["device_top"] - compose.CLEAR
     return spec["size"][1] - spec["margin"]
 
@@ -193,7 +194,7 @@ def head_lines(row, head, column):
 
 def head_holds(group, head, spec, reflow):
     """Whether every caption of a group holds in the column at this headline size."""
-    limit = 2.0 if not reflow else MAX_REFLOW_LINES
+    limit = MAX_REFLOW_LINES
     for row in group:
         lines, widest = head_lines(shaped(row, reflow), head, spec["column"])
         if widest > spec["column"] * 0.985 or lines > limit + 0.01:
@@ -204,9 +205,8 @@ def head_holds(group, head, spec, reflow):
 def head_fraction(rows, name, table):
     """The headline setting of one orientation: its size as a fraction of the panel's width and whether
     the captions are reflowed. The widest size at which every caption of that orientation holds within
-    its column with its own line breaks and every block ends clear of its device; a locale whose words
-    cannot do that above the legible floor reflows its landscape headlines over up to three lines
-    instead. Measured at the orientation's reference width, since all of it scales."""
+    its column and every block ends clear of its device, measured with the author's line breaks and, for
+    a landscape column, reflowed over up to three lines too: the larger of the two wins. Measured at the orientation's reference width, since all of it scales."""
     group = [r for r in rows if orientation(table[r["slug"]]["size"]) == name]
     if not group:
         return None
@@ -223,9 +223,8 @@ def head_fraction(rows, name, table):
         head = round(head)
         while head > 40 and max(block_end(shaped(r, reflow), head, spec) for r in group) > clear_room(spec):
             head = round(head * 0.98)
-        best = (head / ref, reflow)
-        if head >= floor:
-            break
+        if best is None or head / ref > best[0] + 1e-9:
+            best = (head / ref, reflow)
     return best
 
 
@@ -272,10 +271,23 @@ def place_portrait(canvas, master, spec, entry):
         compose.cropped_top(canvas, base, spec["device_top"], entry.get("fade", round(0.02 * W)))
 
 
+def place_landscape(canvas, master, spec, entry):
+    """The device beside the caption column of a landscape panel, large enough to read: from the column's
+    edge, bleeding off the bottom and the right, its width, left edge and top (a fraction of the panel's
+    height, negative to hide the screen's empty head) each from the entry or the set. Whatever the
+    device puts left of `clip` (default: nothing) is laid back under the ground."""
+    W, H = spec["size"]
+    base = canvas.copy()
+    place_device(canvas, master, spec["device_top"], spec["device_width"], spec["device_x"])
+    if "clip" in entry:
+        clip = round(entry["clip"] * W)
+        canvas.paste(base.crop((0, 0, clip, H)), (0, 0))
+
+
 def compose_panel(master, row, entry, setting):
     """One panel. Portrait: the caption on top, the device from `device_top`. Landscape: the caption in
-    the left column, the whole device on the right, centred on the panel's height unless the entry gives
-    a `top`."""
+    the left column, the device large beside it, placed by the entry's `device_width`, `device_x` and
+    `device_top` over the set's defaults."""
     size = tuple(entry["size"])
     W, H = size
     spec = metrics(size, entry)
@@ -284,10 +296,7 @@ def compose_panel(master, row, entry, setting):
     if portrait:
         place_portrait(canvas, master, spec, entry)
     else:
-        framed = compose.framed(master, FRAME_COLOR)
-        height = round(framed.height * spec["device_width"] / framed.width)
-        top = round(entry["top"] * H) if "top" in entry else (H - height) // 2
-        place_device(canvas, master, top, spec["device_width"], spec["device_x"])
+        place_landscape(canvas, master, spec, entry)
     compose.motif(canvas, spec)
     fraction, reflow = setting
     caption_block(canvas, spec, shaped(row, reflow), round(fraction * W))
@@ -315,7 +324,7 @@ def fit_issues(locale, rows, table):
         lines, widest = head_lines(setting_row, head, spec["column"])
         if widest > spec["column"]:
             issues.append(f"{who}: headline run of {round(widest)}px in a {spec['column']}px column")
-        if lines > (MAX_REFLOW_LINES if reflow else 2.0) + 0.01:
+        if lines > MAX_REFLOW_LINES + 0.01:
             issues.append(f"{who}: headline runs to {lines:.1f} lines")
         if row.get("highlight") and not compose.phrase_span(row["headline"], row["highlight"]):
             issues.append(f"{who}: lit phrase {row['highlight']!r} is not in the headline")
