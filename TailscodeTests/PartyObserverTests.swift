@@ -59,7 +59,7 @@ struct PartyObserverTests {
             forName: ModelParty.didChange, object: nil, queue: .main
         ) { _ in sink.yield() }
         defer { NotificationCenter.default.removeObserver(token) }
-        await Task.detached { ModelParty.place(preset) }.value
+        await Task.detached { _ = ModelParty.place(preset) }.value
         for await _ in heard { break }
         #expect(party.isViewLoaded)
     }
