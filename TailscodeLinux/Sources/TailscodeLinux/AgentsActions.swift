@@ -20,6 +20,11 @@ enum AgentsActionState: Equatable, Sendable {
     case sent(AgentsAction, Date)
     case failed(AgentsAction, String)
 
+    var isFailure: Bool {
+        if case .failed = self { return true }
+        return false
+    }
+
     var isBusy: Bool {
         switch self {
         case .inFlight, .sent: return true

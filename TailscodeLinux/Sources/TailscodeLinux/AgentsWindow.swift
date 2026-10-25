@@ -4,19 +4,22 @@ import CodingAgentKit
 import Foundation
 import TailscodeCore
 
-/// The agents board as a window of its own: Now and Hour in the header, the board on the left and
-/// the peek of what is selected on the right, collapsed while nothing is.
+/// The agents as a window of its own, in three lenses: Watch, the wall left up on a monitor; Now,
+/// the board with the peek of what is selected beside it; and Hour, the last hour as lanes.
 ///
 /// One window for the process — raising it twice raises it, never builds a second — and it is the
 /// only thing that keeps the tower open: it opens the source when it is shown, and closes it when
 /// the window is closed or hidden by the compositor, so nothing is watched while nobody looks.
+/// It is sized from the window it came from and the monitor, never from what is in it: every body
+/// scrolls or draws to fit, so no board can make it taller than the screen.
 final class AgentsWindow: @unchecked Sendable {
     enum Mode: Equatable {
+        case watch
         case now
         case hour
     }
 
-    nonisolated(unsafe) private static var shared: AgentsWindow?
+    nonisolated(unsafe) static var shared: AgentsWindow?
     nonisolated(unsafe) private(set) static var built = 0
 
     static var current: AgentsWindow? { shared }
@@ -61,29 +64,35 @@ final class AgentsWindow: @unchecked Sendable {
     let actions: AgentsActions
     let boardView: AgentsBoardView
     let peek: AgentPeekView
+    let overlayPeek: AgentPeekView
     let hourView = AgentHourView()
-    private let hooks: AgentsHooks
-    private let onHeadline: @Sendable () -> Void
-    private let stack = gtk_stack_new()!
+    let watchView: AgentsWatchView
+    let hooks: AgentsHooks
+    let onHeadline: @Sendable () -> Void
+    let stack = gtk_stack_new()!
     let revealer = gtk_revealer_new()!
-    private let hourHeader = Gtk.label("", css: "agents-watch", wrap: true, selectable: false)
-    private let nowButton = gtk_toggle_button_new_with_label(Localized.text("Now"))!
-    private let hourButton = gtk_toggle_button_new_with_label(Localized.text("Hour"))!
+    let hourHeader = Gtk.label("", css: "agents-watch", wrap: true, selectable: false)
+    let watchButton = gtk_toggle_button_new_with_label(Localized.text("Watch"))!
+    let nowButton = gtk_toggle_button_new_with_label(Localized.text("Now"))!
+    let hourButton = gtk_toggle_button_new_with_label(Localized.text("Hour"))!
     let toasts = adw_toast_overlay_new()!
-    private(set) var mode: Mode = .now
+    var header: UnsafeMutablePointer<GtkWidget>?
+    var controls: WatchControls!
+    var openedSize = (width: Int32(0), height: Int32(0))
+    var mode: Mode = .watch
     var selectedKey: String?
     var selectedLane: String?
     private(set) var board: AgentBoard = .empty
     private(set) var isLive = false
-    private(set) var isDestroyed = false
+    var isDestroyed = false
     var facts: AgentFacts?
-    private var boardTask: Task<Void, Never>?
+    var boardTask: Task<Void, Never>?
     var factsTask: Task<Void, Never>?
-    private var tickToken = 0
-    private var fetchingHour = false
+    var tickToken = 0
+    var fetchingHour = false
     var factsFlush = false
     var pendingFacts: (key: String, facts: AgentFacts?)?
-    private var shortcuts = ShortcutSet.load()
+    var shortcuts = ShortcutSet.load()
     var selectionSeen = false
     var wantedIndex: Int?
     private(set) var boardsApplied = 0
@@ -98,7 +107,7 @@ final class AgentsWindow: @unchecked Sendable {
         self.hooks = hooks
         self.onHeadline = onHeadline
         actions = AgentsActions(source: source, hooks: hooks)
-        window = gtk_window_new()!
+        window = adw_window_new()!
         let select: @Sendable (String) -> Void = { key in
             Gtk.onMain { AgentsWindow.shared?.toggleSelection(key) }
         }
@@ -106,6 +115,8 @@ final class AgentsWindow: @unchecked Sendable {
         boardView = AgentsBoardView(
             actions: actions, hooks: .init(select: select, openChat: open))
         peek = AgentPeekView(actions: actions, select: select)
+        overlayPeek = AgentPeekView(actions: actions, select: select)
+        watchView = AgentsWatchView(context: WatchContext(actions: actions), peek: overlayPeek)
         build(parent: parent)
         actions.changed = { [weak self] key in self?.actionChanged(key) }
         hourView.onSelect = { [weak self] lane in
@@ -114,113 +125,51 @@ final class AgentsWindow: @unchecked Sendable {
         peek.onClose = { [weak self] in
             Gtk.onMain { [weak self] in self?.deselect() }
         }
+        overlayPeek.onClose = { [weak self] in
+            Gtk.onMain { [weak self] in self?.deselect() }
+        }
+        wireWatch()
         gtk_window_present(ptr(window))
+        watchVisibility()
+        if DemoMode.isActive { watchView.startScene("attention") }
         go()
-    }
-
-    private func build(parent: UnsafeMutablePointer<GtkWidget>?) {
-        gtk_window_set_title(ptr(window), Localized.text("Agents"))
-        gtk_window_set_default_size(ptr(window), 1180, 760)
-        FeatureWindow.fill(window, near: parent, minimumWidth: 760, minimumHeight: 520)
-        gtk_widget_set_size_request(window, 640, 420)
-        Gtk.addClass(window, "agents-window")
-        if let parent, let root = gtk_widget_get_root(parent) {
-            gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
-        }
-
-        let header = adw_header_bar_new()!
-        let switcher = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        Gtk.addClass(switcher, "linked")
-        gtk_toggle_button_set_group(ptr(hourButton), ptr(nowButton))
-        gtk_toggle_button_set_active(ptr(nowButton), 1)
-        gtk_box_append(ptr(switcher), nowButton)
-        gtk_box_append(ptr(switcher), hourButton)
-        tailscode_set_accessible_label(nowButton, Localized.text("Now"))
-        tailscode_set_accessible_label(hourButton, Localized.text("Hour"))
-        adw_header_bar_set_title_widget(op(UnsafeMutableRawPointer(header)), switcher)
-        gtk_window_set_titlebar(ptr(window), header)
-        Gtk.connect(UnsafeMutableRawPointer(nowButton), "toggled") { [weak self] in
-            Gtk.onMain { [weak self] in
-                guard let self, gtk_toggle_button_get_active(ptr(self.nowButton)) != 0 else { return }
-                self.show(.now)
-            }
-        }
-        Gtk.connect(UnsafeMutableRawPointer(hourButton), "toggled") { [weak self] in
-            Gtk.onMain { [weak self] in
-                guard let self, gtk_toggle_button_get_active(ptr(self.hourButton)) != 0 else { return }
-                self.show(.hour)
-            }
-        }
-
-        let hourPage = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
-        Gtk.margins(hourHeader, top: 14, bottom: 0, leading: 22, trailing: 22)
-        gtk_box_append(ptr(hourPage), hourHeader)
-        gtk_box_append(ptr(hourPage), hourView.widget)
-        gtk_stack_add_named(op(stack), boardView.widget, "now")
-        gtk_stack_add_named(op(stack), hourPage, "hour")
-        gtk_widget_set_hexpand(stack, 1)
-
-        let inspector = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        Gtk.addClass(inspector, "agents-inspector")
-        gtk_widget_set_size_request(peek.widget, 380, -1)
-        gtk_box_append(ptr(inspector), peek.widget)
-        gtk_revealer_set_child(op(revealer), inspector)
-        gtk_revealer_set_transition_type(op(revealer), GTK_REVEALER_TRANSITION_TYPE_SLIDE_LEFT)
-        gtk_revealer_set_reveal_child(op(revealer), 0)
-
-        let body = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        gtk_box_append(ptr(body), stack)
-        gtk_box_append(ptr(body), revealer)
-        adw_toast_overlay_set_child(op(UnsafeMutableRawPointer(toasts)), body)
-        gtk_window_set_child(ptr(window), toasts)
-
-        Gtk.onKey(window) { [weak self] keyval, state in
-            self?.handleKey(keyval: keyval, state: state) ?? false
-        }
-        Gtk.onNotify(UnsafeMutableRawPointer(window), property: "suspended") { [weak self] in
-            Gtk.onMain { [weak self] in self?.suspensionChanged() }
-        }
-        Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [weak self] in
-            guard let self else { return }
-            Self.destroyed(self)
-        }
     }
 
     func close() {
         guard !isDestroyed else { return }
+        rememberSize()
         gtk_window_destroy(ptr(window))
     }
 
-    private static func destroyed(_ window: AgentsWindow) {
+    static func destroyed(_ window: AgentsWindow) {
         window.isDestroyed = true
         if shared === window { shared = nil }
         window.stopWork()
-    }
-
-    func show(_ next: Mode) {
-        mode = next
-        gtk_stack_set_visible_child_name(op(stack), next == .now ? "now" : "hour")
-        gtk_toggle_button_set_active(ptr(next == .now ? nowButton : hourButton), 1)
-        if next == .hour { fetchHour() }
+        window.controls.releaseAll()
     }
 
     func handleKey(keyval: UInt32, state: UInt32) -> Bool {
         if keyval == Keymap.escape {
+            controls.noteInput()
             if Gtk.focusTakesText(window) {
                 gtk_window_set_focus(ptr(window), nil)
             } else if selectedKey != nil {
                 deselect()
+            } else if controls.isFullscreen {
+                controls.setFullscreen(false)
             } else {
                 close()
             }
             return true
         }
-        guard let chord = KeyChord.canonical(keyval: keyval, state: state),
+        if let chord = KeyChord.canonical(keyval: keyval, state: state),
             case .run(.toggleAgents) = shortcuts.resolve(
                 chord, context: .insert, pending: [], awaitingApproval: false)
-        else { return false }
-        close()
-        return true
+        {
+            close()
+            return true
+        }
+        return controls.handle(keyval: keyval, state: state, watch: watchView)
     }
 
     private func suspensionChanged() {
@@ -231,10 +180,12 @@ final class AgentsWindow: @unchecked Sendable {
         }
     }
 
+    func windowSuspended() { suspensionChanged() }
+
     func go() {
         guard !isLive else { return }
         isLive = true
-        AppLog.write(.lifecycle, "agents board opened in \(mode == .now ? "now" : "hour")")
+        AppLog.write(.lifecycle, "agents board opened in \(mode)")
         AgentsRuntime.shared.watching = true
         let source = source
         boardTask = Task { [weak self] in
@@ -246,7 +197,9 @@ final class AgentsWindow: @unchecked Sendable {
             }
         }
         if let key = selectedKey { watchFacts(key) }
-        if mode == .hour { fetchHour() }
+        if mode != .now { fetchHour() }
+        watchView.start()
+        controls.syncInhibit()
         scheduleTick()
     }
 
@@ -263,6 +216,8 @@ final class AgentsWindow: @unchecked Sendable {
         factsTask?.cancel()
         factsTask = nil
         pendingFacts = nil
+        watchView.stop()
+        controls?.syncInhibit()
         let source = source
         Task { await source.close() }
         AgentsRuntime.shared.openHeadline = nil
@@ -276,6 +231,7 @@ final class AgentsWindow: @unchecked Sendable {
         boardsApplied += 1
         let now = Date()
         boardView.apply(next, now: now)
+        watchView.apply(board: next)
         var live = Set(next.needsYou.map(\.id))
         live.formUnion(next.working.map(\.id))
         live.formUnion(next.background.map(\.id))
@@ -287,6 +243,10 @@ final class AgentsWindow: @unchecked Sendable {
         if let index = wantedIndex, mode == .now, boardView.orderedKeys.indices.contains(index) {
             wantedIndex = nil
             select(key: boardView.orderedKeys[index])
+        }
+        if let index = wantedIndex, mode == .watch, watchView.orderedKeys.indices.contains(index) {
+            wantedIndex = nil
+            select(key: watchView.orderedKeys[index])
         }
         if let key = selectedKey {
             if AgentPeekSubject.find(key, in: next) != nil { selectionSeen = true }
@@ -302,9 +262,10 @@ final class AgentsWindow: @unchecked Sendable {
         guard isLive else { return }
         hoursApplied += 1
         hourView.apply(next, now: Date())
+        watchView.apply(hour: next)
     }
 
-    private func fetchHour() {
+    func fetchHour() {
         guard isLive, !fetchingHour else { return }
         fetchingHour = true
         let source = source
@@ -325,14 +286,24 @@ final class AgentsWindow: @unchecked Sendable {
 
     private func tickFired(_ token: Int) {
         guard token == tickToken, isLive else { return }
+        secondPassed()
+        scheduleTick()
+    }
+
+    /// One second of the window's life: every clock it shows, every wait it keeps. A check calls
+    /// it directly after moving the wall's clock, instead of sleeping through the second.
+    func secondPassed() {
         let now = Date()
         boardView.tick(now: now)
         peek.tick(now: now)
+        overlayPeek.tick(now: now)
         actions.reconcile(live: Set(boardView.orderedKeys), now: now)
         if mode == .hour {
             fetchHour()
             hourView.tick()
         }
-        scheduleTick()
+        watchView.tickSecond()
+        controls.evaluateIdle(now: watchView.context.clock.now)
+        rememberSize()
     }
 }

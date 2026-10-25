@@ -159,7 +159,7 @@ extension SelfTest {
         let source = ScriptedAgentsSource(now: now)
         let log = AgentsHookLog()
         let builtBefore = AgentsWindow.built
-        let window = AgentsWindow.present(parent: nil, source: source, hooks: log.hooks)
+        let window = AgentsWindow.present(parent: nil, source: source, hooks: log.hooks, mode: .now)
         pump(0.45)
         defer {
             window.close()

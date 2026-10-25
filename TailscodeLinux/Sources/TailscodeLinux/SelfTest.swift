@@ -19,7 +19,7 @@ public enum SelfTest {
     /// when every server's newest chat is empty.
     public static func run() async -> Never {
         let only = ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_ONLY"]
-        startWatchdog(seconds: only == nil ? 175 : 600)
+        startWatchdog(seconds: only == nil ? 200 : 600)
         if let only { runOnly(only) }
         var failures = 0
 
@@ -133,6 +133,14 @@ public enum SelfTest {
             report("agents: \(checks) claims hold: four sections, Approve once and dead in flight, Stop asked first, long text wrapped, Core's hour, one window, no watch left")
         } catch {
             report("agents: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkAgentsWatch()
+            report("agents watch: \(checks) claims hold: every scene named and unclipped at three sizes, a window that never outgrows its parent, hold to approve, a peek that returns, the dim, keep-awake, fullscreen, still frames and a clock that stops")
+        } catch {
+            report("agents watch: \(error)")
             failures += 1
         }
 

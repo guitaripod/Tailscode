@@ -288,6 +288,8 @@ extension MainWindow {
             self.driveAgents(verb, argument)
         case "agents-face", "agents-sidebar", "agents-rows", "agents-focus":
             self.driveAgentsFace(verb, argument)
+        case "agents-watch", "agents-fullscreen", "agents-dim", "agents-keepawake", "agents-skew", "agents-hold", "agents-release":
+            self.driveAgentsWatch(verb, argument)
         case "party":
             self.presentPartyDemo(editing: false)
         case "partyedit":
