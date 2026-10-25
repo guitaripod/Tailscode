@@ -64,6 +64,7 @@ final class AppCoordinator: NSObject {
         }
         #if DEBUG
             seedDebugConnectionIfNeeded()
+            if ConnectionController.shared.isDemoMode { warmDemoCatalogs() }
             if DemoWorld.rangeDemoEnabled { seedDemoQuotasForRange() }
         #endif
         route(animated: false)
@@ -266,6 +267,15 @@ final class AppCoordinator: NSObject {
                     let presenter = self?.home?.navigationController ?? self?.home
                 else { return }
                 ShareCardViewController.present(analytics, from: presenter)
+            }
+        }
+
+        /// Asks each demo machine what it runs, so a chip, a party card or a chooser row names a model
+        /// by its codename on the first frame instead of by its id until the catalog lands.
+        private func warmDemoCatalogs() {
+            for profile in DemoWorld.profiles {
+                guard let backend = DemoWorld.backend(for: profile.id) else { continue }
+                Task { await ModelCatalogStore.refresh(profileID: profile.id, backend: backend) }
             }
         }
 

@@ -566,6 +566,7 @@ final class ServerSetupViewController: UIViewController {
                 case "opencode": await flow.selectAgent(.openCode)
                 default: break
                 }
+                if environment["TAILSCODE_SETUP_WAY"] == "install" { await flow.choose(.install) }
                 if let seeded = environment["TAILSCODE_SETUP_ADDRESS"] { await flow.paste(seeded) }
                 if let password = environment["TAILSCODE_SETUP_PASSWORD"] {
                     await flow.revealPassword()

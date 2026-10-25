@@ -49,6 +49,25 @@
             }
         }
 
+        /// Replaces the party with six models from both machines, cloud and local, so a screenshot
+        /// of the sheet shows a full room whichever machine the chat it opens from lives on.
+        static func fillFleetParty() {
+            let fixtures: [(String, PresetEffort, String?)] = [
+                ("claude-fable-5", .level("max"), "Deep dive"),
+                ("claude-opus-4-8", .level("xhigh"), nil),
+                ("claude-sonnet-5", .level("high"), "Daily"),
+                ("llama-server^qwen3-coder-30b-a3b", .server, nil),
+                ("llama-server^qwen3.6-27b", .server, nil),
+                ("openai^gpt-5.1-codex", .level("high"), nil),
+            ]
+            for (slot, fixture) in fixtures.enumerated() {
+                ModelParty.replace(
+                    slot: slot,
+                    with: ModelPreset(selection: selection(fixture.0), effort: fixture.1),
+                    name: fixture.2)
+            }
+        }
+
         static func star(_ modelID: String) {
             let starred = ModelPreset(selection: selection(modelID), effort: .keep)
             if !ModelPresetStore.all().contains(starred) { ModelPresetStore.pin(starred) }

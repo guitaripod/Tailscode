@@ -27,6 +27,12 @@ final class AgentsBoardViewController: UIViewController {
     private var isAcquired = false
     private var hasSeenBoard = false
 
+    #if DEBUG
+        override var prefersStatusBarHidden: Bool {
+            ProcessInfo.processInfo.environment["TAILSCODE_WINDOW"] != nil
+        }
+    #endif
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = Theme.Color.groupedBackground
