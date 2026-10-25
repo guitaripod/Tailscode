@@ -117,16 +117,94 @@ extension MatrixStylesheet {
         .agents-meter-value { \(t(.cardTitle)) color: \(text); }
         .agents-meter-caption { \(t(.rowMeta)) color: \(textDim); }
         .agents-hour { \(t(.rowDetail)) }
-        .agents-entry { padding: 6px 10px; border-radius: 8px; min-height: 0; }
-        .agents-entry-title { \(t(.rowTitle)) color: \(text); }
-        .agents-chip-live, .agents-chip-needs {
-            \(t(.rowMeta)) font-weight: 700;
-            border-radius: 999px;
-            padding: 0 8px;
-            color: \(palette.onAccent);
+        \(agentsEntryRules())
+        """
+    }
+}
+
+extension MatrixStylesheet {
+    /// The sidebar's Agents card, the "On now" rows under it and the pill at the foot. The card is
+    /// a tinted surface with a one pixel edge in the mood's own tone, brighter under the pointer,
+    /// pressed darker, ringed for the keyboard; the amber light that breathes along a waiting
+    /// card's edge is painted over it, inside the same rounded rectangle.
+    func agentsEntryRules() -> String {
+        return """
+        .agents-entry-frame { border-radius: 10px; }
+        button.agents-entry {
+            padding: 7px 10px;
+            min-height: 0;
+            border-radius: 10px;
+            box-shadow: none;
+            border: 1px solid \(rule);
+            background-image: none;
+            background-color: alpha(\(text), 0.035);
         }
-        .agents-chip-live { background-color: \(accent); }
-        .agents-chip-needs { background-color: \(warn); }
+        button.agents-entry:hover { background-color: alpha(\(text), 0.08); border-color: alpha(\(text), 0.4); }
+        button.agents-entry:active { background-color: alpha(\(text), 0.14); }
+        button.agents-entry.agents-entry-working {
+            border-color: alpha(\(accent), 0.42);
+            background-color: alpha(\(accent), 0.08);
+        }
+        button.agents-entry.agents-entry-working:hover {
+            border-color: alpha(\(accent), 0.85);
+            background-color: alpha(\(accent), 0.15);
+        }
+        button.agents-entry.agents-entry-working:active { background-color: alpha(\(accent), 0.24); }
+        button.agents-entry.agents-entry-needs {
+            border-color: alpha(\(warn), 0.6);
+            background-color: alpha(\(warn), 0.1);
+        }
+        button.agents-entry.agents-entry-needs:hover {
+            border-color: alpha(\(warn), 0.95);
+            background-color: alpha(\(warn), 0.17);
+        }
+        button.agents-entry.agents-entry-needs:active { background-color: alpha(\(warn), 0.26); }
+        button.agents-entry:focus-visible { outline: 2px solid \(accent); outline-offset: 1px; }
+        .agents-entry-title { \(t(.rowTitle)) color: \(text); font-weight: 700; }
+        .agents-entry-hint { \(t(.toolDetail)) color: \(textDim); opacity: 0.75; }
+        .agents-now-header { \(t(.sectionLabel)) color: \(textDim); padding: 6px 8px 2px; }
+        button.agents-now-row {
+            padding: 3px 8px;
+            min-height: 0;
+            border-radius: 8px;
+            border: 1px solid transparent;
+            background-image: none;
+            background-color: transparent;
+            box-shadow: none;
+        }
+        button.agents-now-row:hover { background-color: alpha(\(text), 0.06); }
+        button.agents-now-row:active { background-color: alpha(\(text), 0.12); }
+        button.agents-now-row:focus-visible { outline: 2px solid \(accent); outline-offset: 0; }
+        button.agents-now-row.agents-now-needs { background-color: alpha(\(warn), 0.07); }
+        button.agents-now-row.agents-now-needs:hover { background-color: alpha(\(warn), 0.14); }
+        .agents-now-dot { \(t(.rowTitle)) }
+        .agents-now-title { \(t(.rowTitle)) color: \(text); }
+        .agents-now-needs .agents-now-title { color: \(warn); font-weight: 600; }
+        .agents-now-words { \(t(.rowMeta)) color: \(textDim); }
+        .agents-now-needs .agents-now-words { color: \(warn); opacity: 0.85; }
+        .agents-now-elapsed { \(t(.rowStamp)) color: \(textDim); font-feature-settings: "tnum"; }
+        button.agents-pill {
+            padding: 3px 11px 3px 8px;
+            min-height: 0;
+            border-radius: 999px;
+            border: 1px solid \(rule);
+            background-image: none;
+            background-color: alpha(\(text), 0.035);
+            box-shadow: none;
+        }
+        button.agents-pill:hover { background-color: alpha(\(text), 0.09); }
+        button.agents-pill:focus-visible { outline: 2px solid \(accent); outline-offset: 1px; }
+        button.agents-pill.agents-pill-working {
+            border-color: alpha(\(accent), 0.45);
+            background-color: alpha(\(accent), 0.09);
+        }
+        button.agents-pill.agents-pill-needs {
+            border-color: alpha(\(warn), 0.65);
+            background-color: alpha(\(warn), 0.12);
+        }
+        .agents-pill-text { \(t(.rowMeta)) color: \(text); font-feature-settings: "tnum"; }
+        .agents-pill-idle .agents-pill-text { color: \(textDim); }
+        .agents-pill-needs .agents-pill-text { color: \(warn); font-weight: 700; }
         """
     }
 }

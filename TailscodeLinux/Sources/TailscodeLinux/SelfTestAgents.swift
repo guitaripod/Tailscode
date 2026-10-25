@@ -294,6 +294,7 @@ extension SelfTest {
             "and the cheatsheet lists it")
 
         claims += try checkAgentsChip(expect: expect)
+        claims += try checkAgentsEntry(expect: expect, pump: pump)
         claims += try checkAgentsTower(pump: pump)
         return claims
     }

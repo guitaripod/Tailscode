@@ -12,7 +12,10 @@ extension SelfTest {
             claims += 1
         }
         let urgent = AgentsChip(needsYou: 1, working: 2)
-        try note(urgent.isUrgent && urgent.text == "1", "a chip with something waiting is amber and counts it")
+        try note(urgent.isUrgent && urgent.text == "1", "a chip with something waiting counts it first")
+        try note(
+            urgent.spoken == "Agents, 2 working, 1 needs you",
+            "and a reader hears the working count first: \(urgent.spoken)")
         try note(
             !AgentsChip(needsYou: 0, working: 3).isUrgent && AgentsChip(needsYou: 0, working: 3).text == "3",
             "otherwise it counts the working")
@@ -20,16 +23,6 @@ extension SelfTest {
         try note(
             AgentsChip(rows: [.awaitingApproval, .live, .live, .idle]) == AgentsChip(needsYou: 1, working: 2),
             "the list's rows give the same count while the board is shut")
-        guard gtk_init_check() != 0 else { return claims }
-        let entry = AgentsSidebarEntry {}
-        entry.apply(urgent)
-        try note(entry.isChipShown, "the sidebar entry shows its chip")
-        try note(
-            gtk_widget_has_css_class(entry.chipLabel, "agents-chip-needs") != 0
-                && gtk_widget_has_css_class(entry.chipLabel, "agents-chip-live") == 0,
-            "in amber when it is urgent")
-        entry.apply(AgentsChip(needsYou: 0, working: 0))
-        try note(!entry.isChipShown, "and hides it when nothing runs")
         return claims
     }
 

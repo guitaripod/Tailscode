@@ -55,6 +55,11 @@ final class MainWindow: @unchecked Sendable {
     }
     let orb = OrbPainter()
     var agentsEntry: AgentsSidebarEntry?
+    var agentsNow: AgentsOnNowSection?
+    var agentsShimmer = AgentsShimmerMemory.settings
+    var agentsFace: AgentsReading?
+    var agentsPill: AgentsFooterPill?
+    var agentsListReading = AgentsReading.quiet
     var orbTarget: SessionEntry?
     var orbKinds: [ActivityKind?] = []
     var usageTask: Task<Void, Never>?

@@ -42,6 +42,8 @@ final class AgentsRuntime: @unchecked Sendable {
     }
 
     private let held = Mutex<AgentBoard.Headline?>(nil)
+    private let heldBoard = Mutex<AgentBoard?>(nil)
+    private let fiction = Mutex<AgentBoard?>(nil)
     private let shown = Mutex(false)
 
     private init() {
@@ -70,6 +72,23 @@ final class AgentsRuntime: @unchecked Sendable {
     var openHeadline: AgentBoard.Headline? {
         get { held.withLock { $0 } }
         set { held.withLock { $0 = newValue } }
+    }
+
+    /// The whole board while it is open, for the sidebar's "On now" rows and footer pill to say
+    /// what the board says.
+    var openBoard: AgentBoard? {
+        get { heldBoard.withLock { $0 } }
+        set { heldBoard.withLock { $0 = newValue } }
+    }
+
+    /// Core's demo board, read once so its clocks run on from what a screenshot shows.
+    var demoBoard: AgentBoard {
+        fiction.withLock { held in
+            if let held { return held }
+            let made = AgentDemo.board(now: Date())
+            held = made
+            return made
+        }
     }
 
     /// A fresh listing from the chat list. Nothing is sent in demo mode, whose board is not built
@@ -146,8 +165,8 @@ struct AgentsChip: Equatable, Sendable {
 
     var spoken: String {
         var parts = [Localized.text("Agents")]
-        if needsYou > 0 { parts.append(Localized.text("%d needs you", needsYou)) }
         if working > 0 { parts.append(Localized.text("%d working", working)) }
+        if needsYou > 0 { parts.append(Localized.text("%d needs you", needsYou)) }
         return parts.joined(separator: ", ")
     }
 

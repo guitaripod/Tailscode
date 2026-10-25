@@ -266,6 +266,7 @@ final class AgentsWindow: @unchecked Sendable {
         let source = source
         Task { await source.close() }
         AgentsRuntime.shared.openHeadline = nil
+        AgentsRuntime.shared.openBoard = nil
         onHeadline()
     }
 
@@ -281,6 +282,7 @@ final class AgentsWindow: @unchecked Sendable {
         actions.reconcile(live: live, now: now)
         AgentsParts.setText(hourHeader, next.sentence + " · " + next.watchLine)
         AgentsRuntime.shared.openHeadline = next.headline
+        AgentsRuntime.shared.openBoard = next
         onHeadline()
         if let index = wantedIndex, mode == .now, boardView.orderedKeys.indices.contains(index) {
             wantedIndex = nil
