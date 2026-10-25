@@ -1,0 +1,50 @@
+{
+  "size": "886x1920",
+  "dissolve": 0.3,
+  "chord": "am",
+  "segments": [
+    {
+      "clip": "L2.mov",
+      "t0": 3.0,
+      "dur": 29.69
+    }
+  ],
+  "captions": [
+    {
+      "text": "All your agents.\nOne screen.",
+      "highlight": "One screen.",
+      "start": 0.0,
+      "end": 5.7
+    },
+    {
+      "text": "Peek at what\nit's doing",
+      "highlight": "it's doing",
+      "start": 5.7,
+      "end": 10.8
+    },
+    {
+      "text": "Send a task,\nwatch it work",
+      "highlight": "watch it work",
+      "start": 10.8,
+      "end": 19.2
+    },
+    {
+      "text": "Six models,\none tap away",
+      "highlight": "one tap away",
+      "start": 19.2,
+      "end": 22.2
+    },
+    {
+      "text": "Ask your machines\nanything",
+      "highlight": "anything",
+      "start": 22.2,
+      "end": 26.8
+    },
+    {
+      "text": "The month\nin numbers",
+      "highlight": "in numbers",
+      "start": 26.8,
+      "end": 29.69
+    }
+  ]
+}
