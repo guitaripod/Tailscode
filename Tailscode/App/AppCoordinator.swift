@@ -14,6 +14,9 @@ final class AppCoordinator: NSObject {
         NotificationCenter.default.addObserver(
             self, selector: #selector(connectionsDidChange),
             name: ConnectionController.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(controlRouteDidPark),
+            name: UsageWidgetStore.controlRouteDidPark, object: nil)
     }
 
     func start() {
@@ -360,8 +363,13 @@ final class AppCoordinator: NSObject {
         case saved
         case usage
         case quickAsk
+        case question(String, askedAt: Date)
         case resume(sessionID: String)
     }
+
+    /// A spoken question parked behind setup is still the person's words when Home finally
+    /// appears, but no longer a send they are waiting on: past this it lands in the box unsent.
+    private static let questionHorizon: TimeInterval = 30
 
     private func perform(_ target: ShortcutTarget) {
         switch target {
@@ -373,6 +381,13 @@ final class AppCoordinator: NSObject {
             if let home { home.pushUsage() } else { pendingShortcut = .usage }
         case .quickAsk:
             if let home { home.presentQuickAsk() } else { pendingShortcut = .quickAsk }
+        case .question(let question, let askedAt):
+            guard let home else {
+                pendingShortcut = .question(question, askedAt: askedAt)
+                return
+            }
+            let fresh = Date().timeIntervalSince(askedAt) < Self.questionHorizon
+            home.presentQuickAsk(asking: question, sends: fresh)
         case .resume(let sessionID):
             if let home { home.openSession(withID: sessionID) } else {
                 pendingShortcut = .resume(sessionID: sessionID)
@@ -601,6 +616,20 @@ final class AppCoordinator: NSObject {
         }
     }
 
+    /// Siri, a Shortcut or a Vocal Shortcut can run a control's intent while the app is already in
+    /// front, and then no foreground ever comes to read the flag it left.
+    @objc private func controlRouteDidPark() {
+        handleControlRouteIfNeeded()
+    }
+
+    /// A parked notification link or a question spoken to Siri, Shortcuts or a Vocal Shortcut.
+    func take(_ route: PendingRoute.Route) {
+        switch route {
+        case .link(let url): handle(url)
+        case .question(let question): perform(.question(question, askedAt: Date()))
+        }
+    }
+
     /// The one Home this window has, held rather than found: on an iPad it moves between the
     /// conversation column and the one-stack arrangement as the window changes width, so no path
     /// through the view hierarchy reaches it every time.
@@ -669,6 +698,10 @@ final class AppCoordinator: NSObject {
     /// which is how a notification tap ends in an inconsistent stack rather than a chat.
     private func deliver(_ url: URL) {
         DispatchQueue.main.async { [weak self] in self?.handle(url) }
+    }
+
+    private func deliver(_ route: PendingRoute.Route) {
+        DispatchQueue.main.async { [weak self] in self?.take(route) }
     }
 
     private func makeOnboarding() -> UIViewController {

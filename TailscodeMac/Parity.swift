@@ -307,6 +307,7 @@ enum ParityManifest {
         case .quickAsk: return .implemented("QuickAskPanel")
         case .quickAskClipboard: return .implemented("QuickAskCopiedCard")
         case .summonAnywhere: return .implemented("MacSummon")
+        case .spokenAsk: return .gap("macOS has App Intents, Siri, Shortcuts and Vocal Shortcuts too, but TailscodeMac declares no App Shortcuts yet; QuickAskPanel would take a question the way the phone's Home box does")
         case .updateCenter:
             return .varies(
                 direct: .partial(

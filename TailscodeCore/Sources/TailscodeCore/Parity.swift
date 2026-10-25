@@ -204,6 +204,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case quickAsk
     case quickAskClipboard
     case summonAnywhere
+    case spokenAsk
     case updateCenter
     case designBoards
     case linkEmbeds

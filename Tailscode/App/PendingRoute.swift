@@ -2,7 +2,7 @@ import MidgarCore
 import TailscodeCore
 import UIKit
 
-/// Where a notification tap goes when there is nothing yet to send it to.
+/// Where a notification tap or a spoken question goes when there is nothing yet to send it to.
 ///
 /// Tapping a notification for an app that is not running delivers the response to
 /// `UNUserNotificationCenterDelegate` as soon as the delegate is set — which is inside
@@ -10,13 +10,21 @@ import UIKit
 /// exists. Handing the URL to whatever scene happens to be listed at that moment either finds
 /// nothing or finds a `SceneDelegate` still holding a nil coordinator, and the tap is lost: the
 /// app opens on Home instead of the chat that pinged you, which is the whole reason it was tapped.
-/// So a route that cannot be delivered is parked here, and the coordinator drains it once its
-/// window is on screen. Stale by 30 seconds it is dropped rather than hijacking navigation long
-/// after the tap.
+/// An App Intent that opens the app runs on the same cold launch with the same race. So a route
+/// that cannot be delivered is parked here, and the coordinator drains it once its window is on
+/// screen. Stale by 30 seconds it is dropped rather than hijacking navigation long after the tap.
 @MainActor
 enum PendingRoute {
+    /// A question never travels as a link: anything on the phone can open a `tailscode://` URL,
+    /// and only words the person said or typed to Siri, Shortcuts or a Vocal Shortcut may be sent
+    /// for them.
+    enum Route {
+        case link(URL)
+        case question(String)
+    }
+
     private static let horizon: TimeInterval = 30
-    private static var parked: (url: URL, at: Date)?
+    private static var parked: (route: Route, at: Date)?
 
     private static func priority(_ state: UIScene.ActivationState) -> Int {
         switch state {
@@ -27,20 +35,31 @@ enum PendingRoute {
         }
     }
 
-    static func deliver(_ url: URL) {
+    static func deliver(_ url: URL) { deliver(.link(url)) }
+
+    static func deliver(question: String) { deliver(.question(question)) }
+
+    private static func deliver(_ route: Route) {
         let scenes = UIApplication.shared.connectedScenes
             .sorted { priority($0.activationState) < priority($1.activationState) }
         let delegates = scenes.compactMap { $0.delegate as? SceneDelegate }
-        for delegate in delegates where delegate.routeDeepLink(url) { return }
-        MidgarLog.info(
-            "route parked until the window exists: \(url.absoluteString)", category: .lifecycle)
-        parked = (url, Date())
+        for delegate in delegates where delegate.route(route) { return }
+        MidgarLog.info("route parked until the window exists: \(described(route))", category: .lifecycle)
+        parked = (route, Date())
     }
 
-    static func take() -> URL? {
+    static func take() -> Route? {
         guard let pending = parked else { return nil }
         parked = nil
         guard Date().timeIntervalSince(pending.at) < horizon else { return nil }
-        return pending.url
+        return pending.route
+    }
+
+    /// A spoken question is the person's own words, so the log names only that one arrived.
+    private static func described(_ route: Route) -> String {
+        switch route {
+        case .link(let url): return url.absoluteString
+        case .question(let text): return "a spoken question of \(text.count) characters"
+        }
     }
 }

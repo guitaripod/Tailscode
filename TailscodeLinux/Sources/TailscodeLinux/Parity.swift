@@ -197,6 +197,7 @@ enum ParityManifest {
         case .quickAsk: return .implemented("QuickAskWindow")
         case .quickAskClipboard: return .implemented("renderCopied")
         case .summonAnywhere: return .implemented("Summon")
+        case .spokenAsk: return .notApplicable("a Linux desktop has no system voice assistant or automation layer an app can offer an action to; the question is reached from anywhere by the summon chord instead")
         case .designBoards: return .implemented("DesignBoardWindow")
         case .linkEmbeds: return .implemented("LinkRailView")
         case .chatDensity: return .implemented("TranscriptGaps")

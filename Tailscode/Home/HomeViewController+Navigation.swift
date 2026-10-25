@@ -311,14 +311,56 @@ extension HomeViewController {
             dismiss(animated: true) { [weak self] in self?.presentQuickAsk() }
             return
         }
+        guard throwAskLane() else { return }
+        composerBar.focus()
+    }
+
+    /// A question said to Siri, typed into Shortcuts or spoken to a Vocal Shortcut lands in the same
+    /// box with the lane thrown, and goes the way Send would send it: the words are the person's own
+    /// and saying them was the gesture. A box already holding a draft, something in hand or a carried
+    /// conversation keeps all of it, so the words join the draft and wait for Send instead of taking
+    /// the rest along, as they do when `sends` is false. A send still in flight finishes first,
+    /// because its landing empties the box and would take the new words with it.
+    func presentQuickAsk(asking question: String, sends: Bool) {
+        if presentedViewController != nil {
+            dismiss(animated: true) { [weak self] in self?.presentQuickAsk(asking: question, sends: sends) }
+            return
+        }
+        if composerBar.isSending {
+            Task { [weak self] in
+                while self?.composerBar.isSending == true { try? await Task.sleep(for: .milliseconds(200)) }
+                self?.presentQuickAsk(asking: question, sends: sends)
+            }
+            return
+        }
+        guard throwAskLane() else { return }
+        let draft = composerBar.rawText
+        let holdsNothing = composerBar.currentText.isEmpty && attachments.isEmpty && composeCarry == nil
+        guard sends, holdsNothing else {
+            MidgarLog.info(
+                "quick ask spoken question kept in the box fresh=\(sends) holdsNothing=\(holdsNothing)",
+                category: .session)
+            let joined = composerBar.currentText.isEmpty
+                ? question : (draft.hasSuffix("\n") ? draft : draft + "\n") + question
+            composerBar.setDraft(joined, focus: true)
+            return
+        }
+        MidgarLog.info("quick ask spoken question sent", category: .session)
+        composerBar.setText(question)
+        composerSend(question)
+    }
+
+    /// Whatever covers Home goes, and the box takes the ask lane. False when the gesture went to
+    /// setup instead, because a phone with no servers has nobody to ask.
+    private func throwAskLane() -> Bool {
         navigationController?.popToViewController(self, animated: true)
         Theme.Haptics.tap()
         guard !viewModel.servers.isEmpty else {
             presentServerSetup()
-            return
+            return false
         }
         setLane(.ask, animated: composerBar.lane != .ask)
-        composerBar.focus()
+        return true
     }
 
     /// Throwing the switch is a change of destination, so it moves the draft the way re-aiming the

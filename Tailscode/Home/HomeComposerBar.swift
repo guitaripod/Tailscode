@@ -54,7 +54,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     private var textViewLeadingToAttach: NSLayoutConstraint?
     private var textViewLeadingToBar: NSLayoutConstraint?
     private var lastMeasuredWidth: CGFloat = 0
-    private var isSending = false
+    private(set) var isSending = false
     private let auraHost = UIView()
     private lazy var aura = UltracodeAura(around: auraHost, cornerRadius: 23)
 

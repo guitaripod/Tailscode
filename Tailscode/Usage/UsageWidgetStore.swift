@@ -76,9 +76,17 @@ enum UsageWidgetStore {
     /// lose its fourth on the way in — before any widget got to decide whether it had room.
     static let storedGaugeLimit = 5
 
-    /// Written by the Top Usage control's App Intent; read+cleared by the app on foreground.
+    /// Posted on the main queue each time a control's intent leaves a route. Only the app listens:
+    /// its intent may run while the app is already in front, where no foreground comes to read it.
+    static let controlRouteDidPark = Notification.Name("tailscode.controlRoute.didPark")
+
+    /// Written by the Top Usage and Quick Ask controls' App Intents; read+cleared by the app on
+    /// foreground, or at once when the app is the process that ran the intent.
     static func setPendingControlRoute(_ route: String) {
         UserDefaults(suiteName: suiteName)?.set(route, forKey: pendingRouteKey)
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: controlRouteDidPark, object: nil)
+        }
     }
 
     static func takePendingControlRoute() -> String? {
