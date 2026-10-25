@@ -9,10 +9,10 @@
     },
     {
       "master": "07-home",
-      "slug": "02-at-a-glance",
-      "headline": "Quem precisa de você,\nde relance",
-      "subline": "Um painel para todas as máquinas: esperando, rodando, pronto.",
-      "highlight": "de relance"
+      "slug": "02-one-board",
+      "headline": "Cada máquina,\num só painel",
+      "subline": "Em andamento, recentes e concluídos, em cada computador que você usa.",
+      "highlight": "um só painel"
     },
     {
       "master": "fl-models",
@@ -22,11 +22,11 @@
       "highlight": "Até sua própria GPU."
     },
     {
-      "master": "lock",
-      "slug": "04-long-runs",
-      "headline": "Horas de trabalho.\nSem precisar vigiar.",
-      "subline": "Ao vivo na Tela de Bloqueio, com aviso quando terminar.",
-      "highlight": "Sem precisar vigiar."
+      "master": "fl-peek",
+      "slug": "04-peek",
+      "headline": "Espie\nqualquer agente",
+      "subline": "O que está fazendo agora, seus últimos passos e seus ajudantes.",
+      "highlight": "qualquer agente"
     },
     {
       "master": "fl-setup",

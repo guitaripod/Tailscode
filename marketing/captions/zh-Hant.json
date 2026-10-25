@@ -9,10 +9,10 @@
     },
     {
       "master": "07-home",
-      "slug": "02-at-a-glance",
-      "headline": "誰需要你\n一眼看清",
-      "subline": "跨所有機器的一個面板：等待中、運作中、已完成。",
-      "highlight": "一眼看清"
+      "slug": "02-one-board",
+      "headline": "每台機器\n一塊面板",
+      "subline": "進行中、最近和已完成的，橫跨你運行的每一台電腦。",
+      "highlight": "一塊面板"
     },
     {
       "master": "fl-models",
@@ -22,11 +22,11 @@
       "highlight": "包括你自己的顯示卡"
     },
     {
-      "master": "lock",
-      "slug": "04-long-runs",
-      "headline": "跑好幾小時的任務\n無需盯著",
-      "subline": "在鎖定畫面即時顯示，完成時提醒你。",
-      "highlight": "無需盯著"
+      "master": "fl-peek",
+      "slug": "04-peek",
+      "headline": "隨時查看\n任何智慧代理",
+      "subline": "它正在做什麼、最近幾步，以及它的子代理。",
+      "highlight": "任何智慧代理"
     },
     {
       "master": "fl-setup",

@@ -9,10 +9,10 @@
     },
     {
       "master": "07-home",
-      "slug": "02-at-a-glance",
-      "headline": "あなたを待つのは\n一目でわかる",
-      "subline": "全マシンをひとつの盤面で。待機中、作業中、完了。",
-      "highlight": "一目でわかる"
+      "slug": "02-one-board",
+      "headline": "すべてのマシン、\nひとつのボードに",
+      "subline": "作業中、最近、完了を、使っているすべてのコンピューターで。",
+      "highlight": "ひとつのボード"
     },
     {
       "master": "fl-models",
@@ -22,11 +22,11 @@
       "highlight": "自分のGPUでも"
     },
     {
-      "master": "lock",
-      "slug": "04-long-runs",
-      "headline": "数時間の作業も、\n見張り不要",
-      "subline": "ロック画面でライブ表示。終わったら通知で知らせます。",
-      "highlight": "見張り不要"
+      "master": "fl-peek",
+      "slug": "04-peek",
+      "headline": "どのエージェントも\n覗いてみる",
+      "subline": "いま何をしているか、直近の手順、そしてサブエージェント。",
+      "highlight": "どのエージェントも"
     },
     {
       "master": "fl-setup",

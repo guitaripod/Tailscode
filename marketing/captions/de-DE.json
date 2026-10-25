@@ -9,10 +9,10 @@
     },
     {
       "master": "07-home",
-      "slug": "02-at-a-glance",
-      "headline": "Wer dich braucht,\nauf einen Blick",
-      "subline": "Ein Board über alle Rechner: wartet, läuft, fertig.",
-      "highlight": "auf einen Blick"
+      "slug": "02-one-board",
+      "headline": "Jede Maschine,\nein Board",
+      "subline": "Laufend, zuletzt und fertig, über jeden Rechner, den du nutzt.",
+      "highlight": "ein Board"
     },
     {
       "master": "fl-models",
@@ -22,11 +22,11 @@
       "highlight": "Auch deine GPU."
     },
     {
-      "master": "lock",
-      "slug": "04-long-runs",
-      "headline": "Stundenlange Läufe.\nOhne Babysitten.",
-      "subline": "Live auf dem Sperrbildschirm, mit Hinweis, wenn es fertig ist.",
-      "highlight": "Ohne Babysitten."
+      "master": "fl-peek",
+      "slug": "04-peek",
+      "headline": "Schau rein bei\njedem Agenten",
+      "subline": "Was er gerade tut, seine letzten Schritte und seine Helfer.",
+      "highlight": "jedem Agenten"
     },
     {
       "master": "fl-setup",

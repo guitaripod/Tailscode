@@ -9,10 +9,10 @@
     },
     {
       "master": "07-home",
-      "slug": "02-at-a-glance",
-      "headline": "Qui a besoin de vous,\nd'un coup d'œil",
-      "subline": "Un tableau pour toutes vos machines : en attente, en cours, terminé.",
-      "highlight": "d'un coup d'œil"
+      "slug": "02-one-board",
+      "headline": "Chaque machine,\nun seul tableau",
+      "subline": "En cours, récents et terminés, sur chaque ordinateur que vous utilisez.",
+      "highlight": "un seul tableau"
     },
     {
       "master": "fl-models",
@@ -22,11 +22,11 @@
       "highlight": "Même votre GPU."
     },
     {
-      "master": "lock",
-      "slug": "04-long-runs",
-      "headline": "Des heures de travail.\nSans surveiller.",
-      "subline": "Sur votre écran verrouillé, avec un avis quand c'est terminé.",
-      "highlight": "Sans surveiller."
+      "master": "fl-peek",
+      "slug": "04-peek",
+      "headline": "Jetez un œil\nà chaque agent",
+      "subline": "Ce qu'il fait maintenant, ses dernières étapes et ses assistants.",
+      "highlight": "chaque agent"
     },
     {
       "master": "fl-setup",

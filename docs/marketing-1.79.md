@@ -67,9 +67,9 @@ The description is canonical in `store/metadata/ios/version/1.79/en-US.json` and
 | # | Slug | Master | Headline | Subline |
 |---|---|---|---|---|
 | 1 | 01-all-your-agents | `fl-agents` (Agents board, Now) | All your agents. **One pocket.** | Claude Code, opencode and Oh My Pi, working on your own computers. |
-| 2 | 02-at-a-glance | `07-home` (the ranked board) | Who needs you, **at a glance** | One board across every machine: waiting, working, done. |
+| 2 | 02-one-board | `07-home` (the ranked board) | Every machine, **one board** | Working, recent and done, across every computer you run. |
 | 3 | 03-any-model | `fl-models` (models sheet, the GPU machine's tab) | Any model. **Even your own GPU.** | A cloud model or a local one on your machine, per chat. |
-| 4 | 04-long-runs | `lock` | Hours-long runs. **No babysitting.** | Live on your Lock Screen, with a ping when it's done. |
+| 4 | 04-peek | `fl-peek` (the Peek over the board) | Look in on **any agent** | What it's doing now, its last steps and its helpers. |
 | 5 | 05-one-command | `fl-setup` (Claude Code picked, the one-line install) | One line. **Then scan.** | Claude Code's bridge installs with one command. No sign-in. |
 | 6 | 06-steer | `fl-steer` (a running chat, queue and stop in view) | Steer it **mid-run** | Queue the next message, or stop the turn on the server. |
 | 7 | 07-ask-anything | `fl-gpu` (new demo chat on the GPU machine) | Ask your machines **anything** | Not only code: ask what's eating the GPU. |
@@ -77,7 +77,7 @@ The description is canonical in `store/metadata/ios/version/1.79/en-US.json` and
 | 9 | 09-party | `fl-party` (the party sheet) | Six models, **one swipe away** | A model and its effort in each slot. Swipe the pill to switch. |
 | 10 | 10-costs | `14-analytics` | See what **it costs** | Every turn priced, every month totalled across machines. |
 
-The first three panels are the search card, and together they say three things: many agents, on my machines, any model.
+The Lock Screen panel was dropped: `shots.sh lock` drives Device Hub and cannot run over ssh, and the old master is one small card on a wallpaper, the weakness §2.3 names. Reshoot it at the Mac if it is wanted back. The first three panels are the search card, and together they say three things: many agents, on my machines, any model.
 
 ### iPad (2064×2752 portrait slot, landscape workspace masters)
 

@@ -9,10 +9,10 @@
     },
     {
       "master": "07-home",
-      "slug": "02-at-a-glance",
-      "headline": "Who needs you,\nat a glance",
-      "subline": "One board across every machine: waiting, working, done.",
-      "highlight": "at a glance"
+      "slug": "02-one-board",
+      "headline": "Every machine,\none board",
+      "subline": "Working, recent and done, across every computer you run.",
+      "highlight": "one board"
     },
     {
       "master": "fl-models",
@@ -22,11 +22,11 @@
       "highlight": "Even your own GPU."
     },
     {
-      "master": "lock",
-      "slug": "04-long-runs",
-      "headline": "Hours-long runs.\nNo babysitting.",
-      "subline": "Live on your Lock Screen, with a ping when it's done.",
-      "highlight": "No babysitting."
+      "master": "fl-peek",
+      "slug": "04-peek",
+      "headline": "Look in on\nany agent",
+      "subline": "What it's doing now, its last steps and its helpers.",
+      "highlight": "any agent"
     },
     {
       "master": "fl-setup",

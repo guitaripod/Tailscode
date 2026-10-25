@@ -9,10 +9,10 @@
     },
     {
       "master": "07-home",
-      "slug": "02-at-a-glance",
-      "headline": "Quién te necesita,\nde un vistazo",
-      "subline": "Un tablero para todas tus máquinas: esperando, trabajando, listo.",
-      "highlight": "de un vistazo"
+      "slug": "02-one-board",
+      "headline": "Cada máquina,\nun solo tablero",
+      "subline": "Trabajando, recientes y terminados, en cada ordenador que usas.",
+      "highlight": "un solo tablero"
     },
     {
       "master": "fl-models",
@@ -22,11 +22,11 @@
       "highlight": "Hasta tu propia GPU"
     },
     {
-      "master": "lock",
-      "slug": "04-long-runs",
-      "headline": "Ejecuciones de horas.\nSin vigilar",
-      "subline": "En tu pantalla bloqueada, con aviso cuando termina.",
-      "highlight": "Sin vigilar"
+      "master": "fl-peek",
+      "slug": "04-peek",
+      "headline": "Asómate a\ncualquier agente",
+      "subline": "Qué está haciendo ahora, sus últimos pasos y sus ayudantes.",
+      "highlight": "cualquier agente"
     },
     {
       "master": "fl-setup",

@@ -1,26 +1,126 @@
 {
   "iphone": {
-    "01-lock-screen": {"crop": 0.14, "fade": 20, "device_width": 1276},
-    "02-approve": {"crop": 0.07, "fade": 26, "device_width": 1300},
-    "03-private": {"crop": 0.185, "device_width": 1500},
-    "04-one-board": {"crop": 0.07, "fade": 26, "device_width": 1300},
-    "05-read-the-diff": {"crop": 0.07, "fade": 26, "device_width": 1300},
-    "06-it-asks": {"crop": 0.07, "fade": 26, "device_width": 1300},
-    "07-what-it-costs": {"crop": 0.07, "fade": 26, "device_width": 1300},
-    "08-limits": {"crop": 0.07, "fade": 26, "device_width": 1300},
-    "09-model-and-effort": {"crop": 0.07, "fade": 26, "device_width": 1300},
-    "10-hand-off": {"crop": 0.07, "fade": 26, "device_width": 1300}
+    "01-all-your-agents": {
+      "crop": 0.07,
+      "fade": 26,
+      "device_width": 1300
+    },
+    "02-one-board": {
+      "crop": 0.07,
+      "fade": 26,
+      "device_width": 1300
+    },
+    "03-any-model": {
+      "crop": 0.07,
+      "fade": 26,
+      "device_width": 1300
+    },
+    "04-peek": {
+      "crop": 0.07,
+      "fade": 26,
+      "device_width": 1300
+    },
+    "05-one-command": {
+      "crop": 0.07,
+      "fade": 26,
+      "device_width": 1300
+    },
+    "06-steer": {
+      "crop": 0.07,
+      "fade": 26,
+      "device_width": 1300
+    },
+    "07-ask-anything": {
+      "crop": 0.07,
+      "fade": 26,
+      "device_width": 1300
+    },
+    "08-carry": {
+      "crop": 0.07,
+      "fade": 26,
+      "device_width": 1300
+    },
+    "09-party": {
+      "crop": 0.07,
+      "fade": 26,
+      "device_width": 1300
+    },
+    "10-costs": {
+      "crop": 0.07,
+      "fade": 26,
+      "device_width": 1300
+    }
   },
   "ipad": {
-    "01-one-workspace": {"scale": 1.15, "at": [0.0, 0.0]},
-    "02-approve": {"scale": 1.85, "at": [0.46, 0.535]},
-    "03-agent-fanout": {"scale": 1.85, "at": [0.46, 0.125]},
-    "04-real-output": {"scale": 1.85, "at": [0.46, 0.285]},
-    "05-read-the-diff": {"scale": 2.0, "at": [0.1, 0.46]},
-    "06-limits": {"scale": 1.85, "at": [0.47, 0.05]},
-    "07-the-month": {"scale": 1.85, "at": [0.47, 0.13]},
-    "08-private": {"scale": 1.22, "at": [0.09, 0.085]},
-    "09-hand-it-down": {"scale": 1.85, "at": [0.47, 0.065]},
-    "10-whole-screen": {"scale": 1.1, "at": [0.045, 0.0]}
+    "01-all-your-agents": {
+      "scale": 1.85,
+      "at": [
+        0.0,
+        0.05
+      ]
+    },
+    "02-the-hour": {
+      "scale": 1.6,
+      "at": [
+        0.2,
+        0.0
+      ]
+    },
+    "03-every-step": {
+      "scale": 1.85,
+      "at": [
+        0.46,
+        0.285
+      ]
+    },
+    "04-any-model": {
+      "scale": 1.85,
+      "at": [
+        0.46,
+        0.1
+      ]
+    },
+    "05-ask-anything": {
+      "scale": 1.85,
+      "at": [
+        0.46,
+        0.2
+      ]
+    },
+    "06-approve": {
+      "scale": 1.85,
+      "at": [
+        0.46,
+        0.535
+      ]
+    },
+    "07-limits": {
+      "scale": 1.85,
+      "at": [
+        0.47,
+        0.05
+      ]
+    },
+    "08-costs": {
+      "scale": 1.85,
+      "at": [
+        0.47,
+        0.13
+      ]
+    },
+    "09-whole-screen": {
+      "scale": 1.1,
+      "at": [
+        0.045,
+        0.0
+      ]
+    },
+    "10-party": {
+      "scale": 1.6,
+      "at": [
+        0.3,
+        0.2
+      ]
+    }
   }
 }

@@ -9,10 +9,10 @@
     },
     {
       "master": "07-home",
-      "slug": "02-at-a-glance",
-      "headline": "Chi ti aspetta,\na colpo d'occhio",
-      "subline": "Un'unica bacheca su tutti i computer: in attesa, al lavoro, finiti.",
-      "highlight": "a colpo d'occhio"
+      "slug": "02-one-board",
+      "headline": "Ogni macchina,\nuna sola board",
+      "subline": "In corso, recenti e conclusi, su ogni computer che usi.",
+      "highlight": "una sola board"
     },
     {
       "master": "fl-models",
@@ -22,11 +22,11 @@
       "highlight": "Anche la tua GPU."
     },
     {
-      "master": "lock",
-      "slug": "04-long-runs",
-      "headline": "Ore di lavoro.\nSenza sorvegliare.",
-      "subline": "Attiva sulla schermata di blocco, con un avviso a fine lavoro.",
-      "highlight": "Senza sorvegliare."
+      "master": "fl-peek",
+      "slug": "04-peek",
+      "headline": "Guarda dentro\nogni agente",
+      "subline": "Cosa sta facendo ora, i suoi ultimi passi e i suoi aiutanti.",
+      "highlight": "ogni agente"
     },
     {
       "master": "fl-setup",

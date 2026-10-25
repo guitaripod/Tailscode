@@ -9,10 +9,10 @@
     },
     {
       "master": "07-home",
-      "slug": "02-at-a-glance",
-      "headline": "Kto czeka,\nna pierwszy rzut oka",
-      "subline": "Jedna tablica dla wszystkich komputerów: czeka, pracuje, skończone.",
-      "highlight": "na pierwszy rzut oka"
+      "slug": "02-one-board",
+      "headline": "Każdy komputer,\njedna tablica",
+      "subline": "W toku, ostatnie i zakończone, na każdym komputerze, którego używasz.",
+      "highlight": "jedna tablica"
     },
     {
       "master": "fl-models",
@@ -22,11 +22,11 @@
       "highlight": "Nawet twoja GPU."
     },
     {
-      "master": "lock",
-      "slug": "04-long-runs",
-      "headline": "Długie zadania.\nBez pilnowania.",
-      "subline": "Na ekranie blokady, z sygnałem po zakończeniu.",
-      "highlight": "Bez pilnowania."
+      "master": "fl-peek",
+      "slug": "04-peek",
+      "headline": "Zajrzyj do\nkażdego agenta",
+      "subline": "Co robi teraz, jego ostatnie kroki i jego pomocnicy.",
+      "highlight": "każdego agenta"
     },
     {
       "master": "fl-setup",
