@@ -75,7 +75,8 @@ enum Kit {
     /// server, so every client of the conversation shows the same queue and can edit, cancel and
     /// resume it. 0.44.0 reads the end of a held conversation ahead of the whole of it, so coming
     /// back to a long chat shows what the agent said while the phone was away after one small read.
-    static let version = Version(0, 44, 0)
+    /// 0.45.0 restarts a bridge on request, with or without a newer build waiting.
+    static let version = Version(0, 45, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
