@@ -38,13 +38,13 @@ THEME_ENV=""
 [ -n "${TAILSCODE_SHOT_OUT:-}" ] && OUT="$TAILSCODE_SHOT_OUT"
 if [ "${1:-}" = "--ipad" ]; then
   shift
-  DEVICE_NAME=TailscodeShotsPad
+  DEVICE_NAME="${TAILSCODE_SHOT_IPAD_DEVICE_NAME:-TailscodeShotsPad}"
   DEVICE_TYPE=com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-12GB
   OUT="$ROOT/marketing/appstore/ipad"
   IPAD=1
 fi
 if [ "$LOCALE" != "en-US" ]; then
-  OUT="$ROOT/marketing/appstore/l10n/$LOCALE/$( [ "$DEVICE_NAME" = TailscodeShotsPad ] && echo ipad || echo iphone )"
+  OUT="$ROOT/marketing/appstore/l10n/$LOCALE/$( [ -n "${IPAD:-}" ] && echo ipad || echo iphone )"
 fi
 
 # The store locale's language and region, as the launch arguments simctl hands the app.
@@ -162,6 +162,14 @@ SHOTS=(
   "welcome||TAILSCODE_FAKE_TAILNET=up|5"
   "setup||TAILSCODE_OPEN_GUIDE=1 TAILSCODE_FAKE_TAILNET=up|6"
   "lock|--demo|TAILSCODE_LOCKSCREEN=1|0"
+  "fl-agents|--demo --agents|TAILSCODE_HIDE_DEMO_BADGE=1|9"
+  "fl-peek|--demo --agent-peek|TAILSCODE_HIDE_DEMO_BADGE=1|10"
+  "fl-models|--demo|TAILSCODE_OPEN_SESSION=demo-o1 TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=8|16"
+  "fl-setup||TAILSCODE_OPEN_GUIDE=1 TAILSCODE_SETUP_AGENT=claude TAILSCODE_SETUP_WAY=install TAILSCODE_FAKE_TAILNET=up|8"
+  "fl-steer|--demo|TAILSCODE_OPEN_SESSION=demo-c1 TAILSCODE_DIAL=level:max TAILSCODE_AUTOSEND=also%20add%20a%20test%20for%20the%20jitter%20bound|15"
+  "fl-gpu|--demo|TAILSCODE_OPEN_SESSION=demo-o5 TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_NEURAL_OPEN=1 TAILSCODE_NEURAL_WALK=7:rows|11"
+  "fl-carry|--demo|TAILSCODE_OPEN_SESSION=demo-o6 TAILSCODE_HIDE_DEMO_BADGE=1|10"
+  "fl-party|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=fleetparty|14"
 )
 
 # The iPad is photographed as the workspace it is, in landscape: the device boots upright and
@@ -183,6 +191,12 @@ if [ -n "${IPAD:-}" ]; then
     "welcome||TAILSCODE_FAKE_TAILNET=up SHOT_CONTENT_SIZE=accessibility-medium|8"
     "pv-demo|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=12|20"
     "pv-demo-m3|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2 TAILSCODE_OPEN_MODELS=demo TAILSCODE_MODELS_DELAY=12 TAILSCODE_MODELS_MACHINE=2|22"
+    "fl-agents|--demo --agents|TAILSCODE_HIDE_DEMO_BADGE=1 SHOT_CONTENT_SIZE=extra-extra-large|12"
+    "fl-hour|--demo --agent-hour|TAILSCODE_HIDE_DEMO_BADGE=1 SHOT_CONTENT_SIZE=extra-extra-large|12"
+    "fl-hour-peek|--demo --agent-hour --agent-peek|TAILSCODE_HIDE_DEMO_BADGE=1 SHOT_CONTENT_SIZE=extra-extra-large|13"
+    "fl-models|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-opencode/demo-o1 TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=12|22"
+    "fl-gpu|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-opencode/demo-o5 TAILSCODE_NEURAL_OPEN=1 TAILSCODE_NEURAL_WALK=7:rows SHOT_CONTENT_SIZE=extra-extra-large|14"
+    "fl-party|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2 TAILSCODE_DIAL=fleetparty SHOT_CONTENT_SIZE=extra-extra-large|20"
   )
 fi
 
@@ -312,7 +326,7 @@ lock_state() { xcrun simctl spawn "$1" notifyutil -g com.apple.springboard.locks
 capture_lock() {
   local device=$1 name=$2 args=$3 envs=$4
   local prefixed=(SIMCTL_CHILD_TAILSCODE_HIDE_DEMO_BADGE=1)
-  for pair in $envs; do prefixed+=("SIMCTL_CHILD_${pair}"); done
+  for pair in $envs; do prefixed+=("SIMCTL_CHILD_${pair//%20/ }"); done
   xcrun simctl terminate "$device" "$BUNDLE" >/dev/null 2>&1 || true
   hub_show "$DEVICE_NAME"
   if [ "$(lock_state "$device")" = 1 ]; then
@@ -360,7 +374,7 @@ capture() {
       ;;
   esac
   [ -n "${IPAD:-}" ] && prefixed+=(SIMCTL_CHILD_TAILSCODE_WINDOW=1376x1032 SIMCTL_CHILD_TAILSCODE_HIDE_DEMO_BADGE=1)
-  for pair in $envs $THEME_ENV; do prefixed+=("SIMCTL_CHILD_${pair}"); done
+  for pair in $envs $THEME_ENV; do prefixed+=("SIMCTL_CHILD_${pair//%20/ }"); done
   env "${prefixed[@]}" xcrun simctl launch "$device" "$BUNDLE" $args $LANGUAGE_ARGS >/dev/null
   sleep "$delay"
   xcrun simctl io "$device" screenshot "$OUT/$name.png" >/dev/null 2>&1
@@ -380,7 +394,7 @@ for shot in "${SHOTS[@]}"; do
   IFS='|' read -r name args envs delay <<<"$shot"
   if [ $# -gt 0 ] && [[ ! " $* " == *" $name "* ]]; then continue; fi
   if [ -n "${IPAD:-}" ]; then install_fresh "$DEVICE" "$APP"; fi
-  case "$name" in welcome | setup | studio-* | video-*) install_fresh "$DEVICE" "$APP" ;; esac
+  case "$name" in welcome | setup | fl-setup | studio-* | video-*) install_fresh "$DEVICE" "$APP" ;; esac
   if [ "$name" = lock ]; then
     [ $# -gt 0 ] || continue
     capture_lock "$DEVICE" "$name" "$args" "$envs"
