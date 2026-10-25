@@ -166,9 +166,9 @@ SHOTS=(
   "fl-peek|--demo --agent-peek|TAILSCODE_HIDE_DEMO_BADGE=1|10"
   "fl-models|--demo|TAILSCODE_OPEN_SESSION=demo-o1 TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=8|16"
   "fl-setup||TAILSCODE_OPEN_GUIDE=1 TAILSCODE_SETUP_AGENT=claude TAILSCODE_SETUP_WAY=install TAILSCODE_FAKE_TAILNET=up|8"
-  "fl-steer|--demo|TAILSCODE_OPEN_SESSION=demo-c1 TAILSCODE_DIAL=level:max TAILSCODE_AUTOSEND=also%20add%20a%20test%20for%20the%20jitter%20bound|15"
+  "fl-steer|--demo|TAILSCODE_OPEN_SESSION=demo-c1 TAILSCODE_DIAL=level:max TAILSCODE_AUTOSEND=also%20add%20a%20test%20for%20the%20jitter%20bound TAILSCODE_NEURAL_OPEN=1|16"
   "fl-gpu|--demo|TAILSCODE_OPEN_SESSION=demo-o5 TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_NEURAL_OPEN=1 TAILSCODE_NEURAL_WALK=7:rows|11"
-  "fl-carry|--demo|TAILSCODE_OPEN_SESSION=demo-o6 TAILSCODE_HIDE_DEMO_BADGE=1|10"
+  "fl-carry|--demo|TAILSCODE_OPEN_SESSION=demo-o6 TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_NEURAL_OPEN=first TAILSCODE_NEURAL_WALK=9:hover=1|20"
   "fl-party|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=fleetparty|14"
 )
 
@@ -178,7 +178,7 @@ SHOTS=(
 # TAILSCODE_WORKSPACE_WALK presses the sidebar's rows on a clock.
 if [ -n "${IPAD:-}" ]; then
   SHOTS=(
-    "01-live|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c1 TAILSCODE_DIAL=level:ultracode SHOT_CONTENT_SIZE=extra-extra-large|16"
+    "01-live|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c1 TAILSCODE_DIAL=level:ultracode TAILSCODE_NEURAL_OPEN=1 TAILSCODE_NEURAL_WALK=9:rows SHOT_CONTENT_SIZE=extra-extra-large|18"
     "03-approval|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c3 SHOT_CONTENT_SIZE=extra-extra-large|14"
     "04-question|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-opencode/demo-o2|13"
     "02-work|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2 SHOT_CONTENT_SIZE=extra-extra-large|11"
