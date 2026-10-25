@@ -41,6 +41,8 @@ final class ModelChooserSheet: NSObject {
     /// the sheet's place and cannot while it is still sliding away.
     var onEnded: (@MainActor () -> Void)?
 
+    var openedFor: ChooserContext { context }
+
     /// Every server the app knows, as the one list a chooser is built from — this conversation's
     /// own machine first. The pattern is Linux's chat pane's: catalogs come from the fleet's own
     /// memory, so the list can name what another server runs without this chat ever having talked

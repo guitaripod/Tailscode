@@ -660,15 +660,19 @@ final class PartyPopover: NSObject, NSPopoverDelegate {
     private let popover = NSPopover()
     let panel: PartyPanelView
     private let onClosed: @MainActor () -> Void
+    private var heightLimit = CGFloat.greatestFiniteMagnitude
 
+    /// `side` is the side of the anchor the party would like; it stands on the other when the
+    /// cards do not fit there, so an anchor near an edge of the display never has it cut off.
     @discardableResult
     static func present(
-        from anchor: NSView, mode: PartyPanelView.Mode = .party, model: PartyPanelModel,
+        from anchor: NSView, mode: PartyPanelView.Mode = .party,
+        prefers side: PartyPopoverSide = .above, model: PartyPanelModel,
         actions: PartyPanelActions, onClosed: @escaping @MainActor () -> Void
     ) -> PartyPopover {
         let controller = PartyPopover(
             mode: mode, model: model, actions: actions, onClosed: onClosed)
-        controller.show(from: anchor)
+        controller.show(from: anchor, prefers: side)
         return controller
     }
 
@@ -689,25 +693,37 @@ final class PartyPopover: NSObject, NSPopoverDelegate {
         popover.performClose(nil)
     }
 
-    private func show(from anchor: NSView) {
+    private func show(from anchor: NSView, prefers side: PartyPopoverSide) {
         popover.behavior = .transient
         popover.delegate = self
-        let size = panel.preferredSize
+        let natural = panel.preferredSize
+        var edge = NSRectEdge.maxY
+        if let room = PartyPopoverPlacement.surroundings(of: anchor) {
+            let placement = PartyPopoverPlacement.decide(
+                anchor: room.anchor, content: natural, visible: room.visible, prefers: side)
+            heightLimit = placement.maxHeight
+            edge = placement.edge(for: anchor)
+        }
+        let size = NSSize(width: natural.width, height: min(natural.height, heightLimit))
         panel.frame = NSRect(origin: .zero, size: size)
         let host = NSViewController()
         host.view = panel
         host.preferredContentSize = size
         popover.ground(host)
         popover.contentSize = size
-        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: edge)
         panel.layoutSubtreeIfNeeded()
         panel.focusInitial()
     }
 
     private func resize(to size: NSSize) {
-        guard popover.isShown, popover.contentSize != size else { return }
-        popover.contentSize = size
+        let limited = NSSize(width: size.width, height: min(size.height, heightLimit))
+        guard popover.isShown, popover.contentSize != limited else { return }
+        popover.contentSize = limited
     }
+
+    /// Where the popover's window stands on the display, for the check that it is inside it.
+    var windowFrame: NSRect? { panel.window?.frame }
 
     func popoverDidClose(_ notification: Notification) {
         onClosed()

@@ -141,6 +141,15 @@ enum SelfTest {
         }
 
         do {
+            let checks = try await checkQuickAskParty()
+            report(
+                "quick ask party: \(checks) claims hold — the pill opens it, a slot re-aims model, level and machine, the chords and the ring take slots, the chooser is the new-chat one")
+        } catch {
+            report("quick ask party: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkTranscriptColumn()
             report("transcript column: \(checks) claims hold — rows stand alone and stack as a stack would")
         } catch {

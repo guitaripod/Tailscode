@@ -65,6 +65,7 @@ extension QuickAskPanel {
     /// that close is the same press.
     func openModelDial() {
         guard !asking else { return }
+        partyPopover?.close()
         if let dialPopover, dialPopover.isShown {
             dialPopover.close()
             return
@@ -98,7 +99,7 @@ extension QuickAskPanel {
     /// quick ask's own memory — the pair's level where the dial showed one, otherwise the level
     /// already remembered, carried to the nearest cooler one the model takes — and a level that
     /// moved is said on the status line, never in the chat's composer.
-    private func takePick(_ pick: ModelPick, effort: EffortAsk = .unchanged, notice: String? = nil) {
+    func takePick(_ pick: ModelPick, effort: EffortAsk = .unchanged, notice: String? = nil) {
         let profileID: String
         if pick.selection == nil, !pick.isElsewhere {
             profileID = targetServer.id
@@ -185,7 +186,7 @@ extension QuickAskPanel {
         }
     }
 
-    private func openModelDirectoryNow() {
+    func openModelDirectoryNow() {
         let server = targetServer
         watchedServerID = server.id
         catalogWatch?.cancel()
@@ -201,18 +202,13 @@ extension QuickAskPanel {
                 self.refreshAim()
             }
         }
-        modelSheet = ModelChooserSheet.present(
-            on: self, sources: chooserSources(for: server),
-            selected: QuickAskDefaults.model(forProfileID: server.id)
-        ) { [weak self] pick in
-            QuickAskDefaults.adopt(pick)
-            self?.modelSheet = nil
-            self?.aim(at: pick.profileID)
-            self?.refreshAim()
+        presentChooser(context: .composer) { [weak self] pick in
+            guard let self else { return }
+            self.takePick(pick, effort: pick.preset.map(self.effortAsk(for:)) ?? .unchanged)
         }
     }
 
-    private func chooserSources(
+    func chooserSources(
         for server: ConnectionProfile, models: [ModelInfo]? = nil, reachable: Bool? = nil
     ) -> [ModelSource] {
         ModelChooserSheet.fleetSources(
@@ -306,6 +302,7 @@ extension QuickAskPanel {
         aimStrip.select(id: server.id)
         watchCatalog()
         refreshEffort()
+        if let partyPopover, partyPopover.isShown { partyPopover.panel.reload() }
         let able = abilities
         attachButton.isHidden = !able.attachments
         refreshAura()

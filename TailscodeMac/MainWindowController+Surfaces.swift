@@ -30,7 +30,14 @@ extension MainWindowController {
         case "agents", "agents-hour", "agent-peek", "agents-long", "agents-away": openAgentsFixture(parts.first ?? name)
         case "usage", "quotas": presentUsageWindow()
         case "newchat": presentNewChat(browsing: parts.count > 1 && parts[1] == "browse")
-        case "quickask": presentQuickAsk(demoServer: parts.count > 1 && parts[1] == "long")
+        case "quickask":
+            let detail = parts.count > 1 ? parts[1] : ""
+            presentQuickAsk(demoServer: detail == "long")
+            #if DEBUG
+                if detail == "party" || detail == "take" {
+                    QuickAskPanel.frontmost?.stageParty(takes: detail == "take")
+                }
+            #endif
         case "cheatsheet", "shortcuts": presentCheatsheet()
         case "commands": transcript.presentCommandCatalog()
         case "chooser": presentChooser(in: transcript)
@@ -164,7 +171,7 @@ extension MainWindowController {
             FileHandle.standardError.write(
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, typesize, analytics, newchat[:browse], "
-                        + "quickask, cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
+                        + "quickask[:long|party|take], cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
                         + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], agents, agents-hour, agent-peek, party, clock-glance, clock-sheet[:minute+add+q=text], share[:fixture[+format]], draw, preview[:state[+split]], preview=HOST:PORT:/folder[+split], renderer, delegate\n").utf8))
         }
     }

@@ -22,7 +22,9 @@ extension QuickAskPanel {
     /// The dial's chords are the panel's own rather than the registry's, because the panel is
     /// not the window the registry serves: ⌃⌥↑↓ step the level the way the composer's do, and
     /// ⌥M or ⌥E — the key the effort menu used to answer to — open the dial. While the dial is
-    /// open its keys arrive at the popover's own window, so nothing here sees them.
+    /// open its keys arrive at the popover's own window, so nothing here sees them. The party's
+    /// slot chords and the ring are the registry's, asked of the shortcut set rather than spelled
+    /// here, so a chord a person rebound is the chord that works.
     func installMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self, !self.asking, !self.editor.isComposing else {
@@ -35,6 +37,7 @@ extension QuickAskPanel {
             let isReturn = event.keyCode == 36 || event.keyCode == 76
             if self.completion.isShowing, self.handleCompletionKey(event) { return nil }
             if self.handleDialKey(event) { return nil }
+            if self.handlePartyKey(event) { return nil }
             if event.keyCode == 48, !control, !flags.contains(.command), !option,
                 self.servers.count > 1
             {
