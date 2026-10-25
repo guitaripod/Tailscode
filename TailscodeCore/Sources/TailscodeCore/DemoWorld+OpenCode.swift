@@ -11,6 +11,8 @@ extension DemoWorld {
             "demo-o2": openCodePricingScript,
             "demo-o3": openCodeLeakScript,
             "demo-o4": openCodeNotesScript,
+            "demo-o5": openCodeGPUScript,
+            carriedSessionID: openCodeCarriedScript,
         ],
         replyTurns: [openCodeReplyA, openCodeReplyB],
         interactive: true,
@@ -31,6 +33,14 @@ extension DemoWorld {
                 id: "demo-o4", agentType: .openCode, title: "Write the v2.3 release notes",
                 directory: "/home/demo/dev/acme-api", createdAt: ago(267_000), updatedAt: ago(266_000),
                 model: "ollama/glm-4.7-air:latest"),
+            AgentSession(
+                id: "demo-o5", agentType: .openCode, title: "What's eating my GPU memory?",
+                directory: "/home/demo", createdAt: ago(2_700), updatedAt: ago(2_400),
+                model: "qwen3-coder-30b-a3b"),
+            AgentSession(
+                id: carriedSessionID, agentType: .openCode, title: "Add the jitter bound test",
+                directory: "/home/demo/dev/acme-api", createdAt: ago(1_500), updatedAt: ago(1_200),
+                model: "qwen3.6-27b"),
         ],
         models: [
             ModelInfo(id: "claude-sonnet-5", name: "Sonnet 5", providerID: "anthropic"),
@@ -223,6 +233,110 @@ extension DemoWorld {
                 MessagePart(id: "t", kind: .text(
                     "## v2.3 — Faster feeds, calmer nights\n\n**Highlights**\n\n- Feed loads 2.1× faster on cold start (query batching, #482)\n- Push notifications respect quiet hours across time zones (#476)\n- CSV export for workspace admins (#469)\n\n**Fixes**\n\n- Avatar cache no longer grows unbounded (#488)\n- Deep links open the right tab after cold launch (#471)\n\nMatched the attached style guide — verbs first, no internal ticket ids, user-visible wins only.")),
             ], cost: 1.20, tokens: 26_700)),
+            step(.status(.idle)),
+        ]
+    }
+
+    public static let carriedSessionID = "demo-o6"
+
+    private static let gpuQuery =
+        "nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv"
+
+    private static let gpuReading = """
+        pid, process_name, used_gpu_memory [MiB]
+        2841, /opt/llama.cpp/bin/llama-server, 31744 MiB
+        3377, /home/demo/comfy/venv/bin/python, 19456 MiB
+        1906, /usr/local/bin/ollama, 10240 MiB
+        1184, /usr/lib/Xorg, 614 MiB
+        """
+
+    private static let gpuAnswer = """
+        Four processes hold about 60 GiB of your 96 GiB card:
+
+        | Process | What it is | Memory |
+        |---|---|---|
+        | `llama-server` | Bolt, your local coding model | 31 GiB |
+        | `python` | ComfyUI, the image server | 19 GiB |
+        | `ollama` | Qwen3 14B, kept warm | 10 GiB |
+        | `Xorg` | The desktop session | 0.6 GiB |
+
+        ComfyUI is idle but still holds a checkpoint from an earlier render. Unloading it from its menu frees about 19 GiB without touching Bolt.
+        """
+
+    private static var openCodeGPUScript: [MockScriptStep] {
+        [
+            step(user("o5u1", .openCode, "what's eating my GPU memory?", at: ago(2_680))),
+            step(assistant(
+                "o5a1", .openCode, at: ago(2_660), model: "qwen3-coder-30b-a3b",
+                provider: "llama-server",
+                parts: [
+                    MessagePart(id: "t1", kind: .tool(ToolCall(
+                        id: "o5t1", name: "Bash", status: .completed, output: gpuReading,
+                        title: gpuQuery))),
+                    MessagePart(id: "t2", kind: .text(gpuAnswer)),
+                ], tokens: 3_240,
+                context: MessageUsage(input: 640, output: 410, cacheRead: 2_190))),
+            step(.status(.idle)),
+        ]
+    }
+
+    private static let carriedBrief: ConversationBrief? = {
+        func turn(_ id: String, _ question: String, _ answer: String, at seconds: TimeInterval)
+            -> [ChatMessage]
+        {
+            [
+                user("\(id)u", .openCode, question, at: ago(seconds)),
+                assistant(
+                    "\(id)a", .openCode, at: ago(seconds - 40), model: "claude-opus-4-8",
+                    provider: "anthropic", parts: [MessagePart(id: "t", kind: .text(answer))]),
+            ]
+        }
+        let earlier =
+            turn(
+                "c1", "The reconnect test fails one run in ten. Why?",
+                "The backoff has no jitter, so every client retries on the same tick and the test races its own server restart.",
+                at: 9_000)
+            + turn(
+                "c2", "Add jitter, up to 20% of the delay.",
+                "Done: each wait is now the base delay plus or minus up to 20%, drawn from a seeded source.",
+                at: 7_800)
+            + turn(
+                "c3", "Cap the wait at a minute.",
+                "The doubling stops at 60 seconds and the jitter is applied after the cap.",
+                at: 6_600)
+        return ConversationBrief.make(
+            title: "Fix the flaky reconnect test", messages: earlier, window: 131_072)
+    }()
+
+    private static var openCodeCarriedScript: [MockScriptStep] {
+        let typed = "Pick this up: add a test that the jitter stays inside its bound."
+        let first = carriedBrief.map { $0.wrapped(with: typed) } ?? typed
+        return [
+            step(user("o6u1", .openCode, first, at: ago(1_480))),
+            step(assistant(
+                "o6a1", .openCode, at: ago(1_440), model: "qwen3-coder-30b-a3b",
+                provider: "llama-server",
+                parts: [
+                    MessagePart(id: "t1", kind: .text(
+                        "Picked up from the brief: the wait doubles to a 60 second cap and the jitter is plus or minus 20%. Adding the bound test.")),
+                    MessagePart(id: "t2", kind: .tool(ToolCall(
+                        id: "o6t1", name: "Edit", status: .completed,
+                        input: .object([
+                            "file_path": .string("internal/net/backoff_test.go"),
+                            "old_string": .string("func TestBackoffDoubles"),
+                            "new_string": .string("func TestJitterStaysWithinBound"),
+                        ]),
+                        title: "Edit internal/net/backoff_test.go"))),
+                    MessagePart(id: "t3", kind: .text(
+                        "`TestJitterStaysWithinBound` draws a thousand waits per attempt from a seeded source and checks each one lands within 20% of its base delay.")),
+                ], tokens: 5_120)),
+            step(user("o6u2", .openCode, "Review the cap logic as well.", at: ago(1_300))),
+            step(assistant(
+                "o6a2", .openCode, at: ago(1_240), model: "qwen3.6-27b", provider: "llama-server",
+                parts: [
+                    MessagePart(id: "t1", kind: .text(
+                        "The cap is applied before the jitter, so the longest wait is 72 seconds, not 60. If a minute is a hard ceiling, clamp after the jitter instead."))
+                ], tokens: 2_860)),
             step(.status(.idle)),
         ]
     }

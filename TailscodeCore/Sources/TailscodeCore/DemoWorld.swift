@@ -224,7 +224,8 @@ public enum DemoWorld {
 
     static func assistant(
         _ id: String, _ type: AgentType, at date: Date, streaming: Bool = false,
-        error: String? = nil, model: String? = nil, parts: [MessagePart] = [],
+        error: String? = nil, model: String? = nil, provider: String? = nil,
+        parts: [MessagePart] = [],
         cost: Double? = nil, tokens: Int? = nil, context: MessageUsage? = nil,
         duration: TimeInterval? = nil
     ) -> ChatMessage {
@@ -232,7 +233,7 @@ public enum DemoWorld {
             id: id, role: .assistant, agentType: type, parts: parts, createdAt: date,
             completedAt: streaming ? nil : date.addingTimeInterval(45),
             isStreaming: streaming, error: error, costUSD: cost,
-            providerID: type == .openCode ? "opencode-go" : "anthropic",
+            providerID: provider ?? (type == .openCode ? "opencode-go" : "anthropic"),
             modelID: model, totalTokens: tokens, context: context, duration: duration)
     }
 }
