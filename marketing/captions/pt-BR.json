@@ -130,10 +130,10 @@
     },
     {
       "master": "whole",
-      "slug": "09-whole-screen",
-      "headline": "A tela inteira,\num só espaço",
-      "subline": "Chats, conversa e ferramentas lado a lado.",
-      "highlight": "um só espaço"
+      "slug": "09-room-to-read",
+      "headline": "Respostas longas,\nespaço para ler",
+      "subline": "Tabelas, código e explicações em largura total.",
+      "highlight": "espaço para ler"
     },
     {
       "master": "fl-party",

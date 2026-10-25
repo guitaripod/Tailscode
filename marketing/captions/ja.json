@@ -130,10 +130,10 @@
     },
     {
       "master": "whole",
-      "slug": "09-whole-screen",
-      "headline": "画面全体を\nひとつの作業場に",
-      "subline": "チャット、会話、ツールを並べて表示。",
-      "highlight": "ひとつの作業場に"
+      "slug": "09-room-to-read",
+      "headline": "長い回答も、\nゆったり読める",
+      "subline": "表、コード、解説を幅いっぱいに表示。",
+      "highlight": "ゆったり読める"
     },
     {
       "master": "fl-party",

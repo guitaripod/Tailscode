@@ -81,7 +81,7 @@ The Lock Screen panel was dropped: `shots.sh lock` drives Device Hub and cannot 
 
 ### iPad (2064×2752 portrait slot, landscape workspace masters)
 
-1. All your agents. **One screen.** (`fl-agents`) 2. The last hour, **lane by lane** (`fl-hour`, iPad Hour) 3. Every step, **live** (`01-live`) 4. Any model. **Even your own GPU.** (`fl-models`) 5. Ask your machines **anything** (`fl-gpu`) 6. Approve with the **list in view** (`03-approval`) 7. Every quota, **on one screen** (`08-usage`) 8. See what **it costs** (`14-analytics`) 9. The whole screen, **one workspace** (`whole`) 10. Six models, **one tap away** (`fl-party`)
+1. All your agents. **One screen.** (`fl-agents`) 2. The last hour, **lane by lane** (`fl-hour`, iPad Hour) 3. Every step, **live** (`01-live`) 4. Any model. **Even your own GPU.** (`fl-models`) 5. Ask your machines **anything** (`fl-gpu`) 6. Approve with the **list in view** (`03-approval`) 7. Every quota, **on one screen** (`08-usage`) 8. See what **it costs** (`14-analytics`) 9. Long answers, **room to read** (`whole`) 10. Six models, **one tap away** (`fl-party`)
 
 ### Mac (2880×1800)
 

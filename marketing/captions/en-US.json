@@ -130,10 +130,10 @@
     },
     {
       "master": "whole",
-      "slug": "09-whole-screen",
-      "headline": "The whole screen,\none workspace",
-      "subline": "Chats, conversation and tools, side by side.",
-      "highlight": "one workspace"
+      "slug": "09-room-to-read",
+      "headline": "Long answers,\nroom to read",
+      "subline": "Tables, code and explanations at full width.",
+      "highlight": "room to read"
     },
     {
       "master": "fl-party",

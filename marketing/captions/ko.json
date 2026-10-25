@@ -130,10 +130,10 @@
     },
     {
       "master": "whole",
-      "slug": "09-whole-screen",
-      "headline": "화면 전체를,\n하나의 작업 공간으로",
-      "subline": "채팅 목록, 대화, 도구를 나란히.",
-      "highlight": "하나의 작업 공간으로"
+      "slug": "09-room-to-read",
+      "headline": "긴 답변도,\n여유 있게 읽기",
+      "subline": "표, 코드, 설명을 화면 너비 가득 표시.",
+      "highlight": "여유 있게 읽기"
     },
     {
       "master": "fl-party",
