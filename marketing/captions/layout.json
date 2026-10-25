@@ -118,5 +118,100 @@
     "09-room-to-read": {
       "device_width": 2500
     }
+  },
+  "duo": {
+    "01-all-your-agents": {
+      "master": "fl-agents",
+      "screen": "agents",
+      "state": "inner-portrait",
+      "size": [
+        2007,
+        2853
+      ]
+    },
+    "02-one-board": {
+      "master": "07-home",
+      "screen": "homeo1",
+      "state": "inner-landscape",
+      "size": [
+        2853,
+        2007
+      ]
+    },
+    "03-any-model": {
+      "master": "fl-models",
+      "screen": "models",
+      "state": "outer-portrait",
+      "size": [
+        1398,
+        2034
+      ]
+    },
+    "04-peek": {
+      "master": "fl-peek",
+      "screen": "peek",
+      "state": "outer-portrait",
+      "size": [
+        1398,
+        2034
+      ],
+      "crop": 0.15
+    },
+    "05-one-command": {
+      "master": "fl-setup",
+      "screen": "setup",
+      "state": "inner-portrait",
+      "size": [
+        2007,
+        2853
+      ],
+      "crop": 0.17
+    },
+    "06-steer": {
+      "master": "fl-steer",
+      "screen": "steer",
+      "state": "laptop-portrait",
+      "size": [
+        2007,
+        2853
+      ],
+      "fit": true
+    },
+    "07-ask-anything": {
+      "master": "fl-gpu",
+      "screen": "gpu",
+      "state": "book-landscape",
+      "size": [
+        2853,
+        2007
+      ]
+    },
+    "08-carry": {
+      "master": "fl-carry",
+      "screen": "carry",
+      "state": "inner-landscape",
+      "size": [
+        2853,
+        2007
+      ]
+    },
+    "09-party": {
+      "master": "fl-party",
+      "screen": "party",
+      "state": "inner-landscape",
+      "size": [
+        2853,
+        2007
+      ]
+    },
+    "10-costs": {
+      "master": "14-analytics",
+      "screen": "costs",
+      "state": "outer-landscape",
+      "size": [
+        2034,
+        1398
+      ]
+    }
   }
 }
