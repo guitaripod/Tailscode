@@ -28,13 +28,13 @@ enum SettingsPage: String, CaseIterable {
 
     var icon: String {
         switch self {
-        case .general: return "preferences-system-symbolic"
-        case .appearance: return "applications-graphics-symbolic"
-        case .conversation: return "chat-message-new-symbolic"
-        case .notifications: return "preferences-system-notifications-symbolic"
-        case .accounts: return "system-users-symbolic"
-        case .keyboard: return "input-keyboard-symbolic"
-        case .advanced: return "applications-engineering-symbolic"
+        case .general: return AppIcon.general.name
+        case .appearance: return AppIcon.appearance.name
+        case .conversation: return AppIcon.conversation.name
+        case .notifications: return AppIcon.notifications.name
+        case .accounts: return AppIcon.accounts.name
+        case .keyboard: return AppIcon.keyboard.name
+        case .advanced: return AppIcon.advanced.name
         }
     }
 

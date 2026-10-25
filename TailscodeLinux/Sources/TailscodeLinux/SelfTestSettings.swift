@@ -27,6 +27,10 @@ extension SelfTest {
             try expect(name == page.rawValue, "\(page.rawValue) answers to its own name")
             let icon = adw_preferences_page_get_icon_name(ptr(built)).map { String(cString: $0) }
             try expect(icon == page.icon, "\(page.rawValue) wears its icon")
+            let theme = gtk_icon_theme_get_for_display(gdk_display_get_default())
+            try expect(
+                gtk_icon_theme_has_icon(theme, page.icon) != 0,
+                "\(page.rawValue)'s icon resolves under the icon theme in force")
         }
 
         let before = Preferences.settingsPage

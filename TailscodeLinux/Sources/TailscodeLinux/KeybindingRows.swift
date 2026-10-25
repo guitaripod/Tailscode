@@ -102,7 +102,7 @@ enum KeybindingRows {
         adw_preferences_row_set_use_markup(ptr(row), 0)
         adw_preferences_row_set_title(ptr(row), issue)
         adw_action_row_set_title_lines(ptr(row), 0)
-        let icon = gtk_image_new_from_icon_name("dialog-warning-symbolic")!
+        let icon = gtk_image_new_from_icon_name(AppIcon.warning.name)!
         adw_action_row_add_prefix(ptr(row), icon)
         gtk_list_box_row_set_activatable(ptr(UnsafeMutableRawPointer(row)), 0)
         return row
