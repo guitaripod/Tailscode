@@ -115,9 +115,9 @@ Tailscode's registry policy is `metadata_edit = propose` and `release = manual-o
 | What | Where |
 |---|---|
 | Listing text, 14 locales × 2 trains (description, keywords, promo, What's New) | `store/metadata/{ios,macos}/version/1.79/<locale>.json` |
-| iPhone and iPad panels, 14 locales | `store/shots/{iphone,ipad}/<locale>/` (source: `marketing/appstore/panels/`) |
+| iPhone, iPad and iPhone Duo panels, 14 locales | `store/shots/{iphone,ipad,duo}/<locale>/` (source: `marketing/appstore/panels/`) |
 | Mac panels, 14 locales | `store/shots/mac/<locale>/` |
-| Preview (plain footage, 29.7 s, poster at 00:00:01:00) | `marketing/video/tailscode-preview-fleet-886x1920.mp4` |
+| Preview (plain footage, 29.7 s, poster at 00:00:01:00) | `store/previews/ios/IPHONE_67.mp4` + `poster.txt` |
 | Header and search-result creative | `marketing/appstore/creative/<locale>/` |
 | Social cut (framed, captioned, not for the store) | `marketing/video/tailscode-promo-fleet-1080x1920.mp4` |
 
@@ -130,13 +130,13 @@ midgar ship tailscode --train ios   --version 1.79 --resume stage --build N   # 
 midgar ship tailscode --train macos --version 1.79 --resume stage --build M
 midgar listing tailscode --train ios     # plan; then again with --apply
 midgar listing tailscode --train macos   # plan; then --apply
-midgar shots tailscode --train ios       # plan; then --apply (iphone + ipad sets)
+midgar shots tailscode --train ios       # plan; then --apply (iphone, ipad and duo sets)
 midgar shots tailscode --train macos     # plan; then --apply
 asc video-previews list --version-localization <en-US loc id>   # the new version inherits 1.78's preview: delete it per locale first
-~/Dev/preview-kit/upload.sh 6791660932 1.79 marketing/video/tailscode-preview-fleet-886x1920.mp4 IPHONE_67
+~/Dev/preview-kit/upload.sh 6791660932 1.79 store/previews/ios/IPHONE_67.mp4 IPHONE_67
 asc video-previews set-poster-frame --id <preview id> --time-code 00:00:01:00
 python3 scripts/asc-creative.py 1.79     # header + search placements, every locale
-midgar ship tailscode --train ios --resume submit
+midgar ship tailscode --train ios --resume submit     # refuses while any set (Duo included) is stale or missing
 midgar ship tailscode --train macos --resume submit
 ```
 
