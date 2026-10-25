@@ -82,7 +82,7 @@ final class WelcomeViewController: UIViewController {
             Self.valueRow(
                 symbol: "lock.shield",
                 text: String(
-                    localized: "Point to point over your own tailnet. No relay, no account, no analytics.")),
+                    localized: "Point to point over your own tailnet. No relay, no sign-in.")),
             Self.valueRow(
                 symbol: "desktopcomputer",
                 text: String(
@@ -136,7 +136,7 @@ final class WelcomeViewController: UIViewController {
 
         let footnote = UILabel()
         footnote.text = String(
-            localized: "No account, no sign-in, no telemetry. App, engine, and bridge are GPL-3.0.")
+            localized: "App, engine, and bridge are open source under GPL-3.0.")
         footnote.font = Theme.Ramp.font(.panelFootnote)
         footnote.adjustsFontForContentSizeCategory = true
         footnote.textColor = Theme.Color.tertiaryLabel

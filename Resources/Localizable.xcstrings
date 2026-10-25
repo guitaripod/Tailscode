@@ -67757,73 +67757,73 @@
         }
       }
     },
-    "No account, no sign-in, no telemetry. App, engine, and bridge are GPL-3.0.": {
+    "App, engine, and bridge are open source under GPL-3.0.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No account, no sign-in, no telemetry. App, engine, and bridge are GPL-3.0."
+            "value": "App, engine, and bridge are open source under GPL-3.0."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kein Account, keine Anmeldung, keine Telemetrie. App, Engine und Bridge sind GPL-3.0."
+            "value": "App, Engine und Bridge sind Open Source unter GPL-3.0."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sin cuenta, sin inicio de sesión, sin telemetría. La app, el motor y el bridge son GPL-3.0."
+            "value": "La app, el motor y el bridge son de código abierto bajo GPL-3.0."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aucun compte, aucune connexion, aucune télémétrie. L’app, le moteur et le bridge sont en GPL-3.0."
+            "value": "L’app, le moteur et le bridge sont open source sous GPL-3.0."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nessun account, nessun accesso, nessuna telemetria. App, motore e bridge sono GPL-3.0."
+            "value": "App, motore e bridge sono open source sotto GPL-3.0."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "アカウントもサインインもテレメトリもありません。App、エンジン、ブリッジはすべて GPL-3.0 です。"
+            "value": "App、エンジン、ブリッジはすべて GPL-3.0 のオープンソースです。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "계정도, 로그인도, 텔레메트리도 없습니다. 앱과 엔진, 브리지는 모두 GPL-3.0입니다."
+            "value": "앱과 엔진, 브리지는 모두 GPL-3.0 오픈소스입니다."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sem conta, sem login, sem telemetria. App, motor e bridge são GPL-3.0."
+            "value": "App, motor e bridge são open source sob GPL-3.0."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有账户、无需登录、没有遥测。App、引擎和 bridge 均为 GPL-3.0。"
+            "value": "App、引擎和 bridge 均为 GPL-3.0 开源。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "沒有帳號、無需登入、沒有遙測。App、引擎與 bridge 皆為 GPL-3.0。"
+            "value": "App、引擎與 bridge 皆為 GPL-3.0 開源。"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bez konta, bez logowania, bez telemetrii. Aplikacja, silnik i bridge są na licencji GPL-3.0."
+            "value": "Aplikacja, silnik i bridge są open source na licencji GPL-3.0."
           }
         }
       }
@@ -73011,73 +73011,73 @@
         }
       }
     },
-    "Point to point over your own tailnet. No relay, no account, no analytics.": {
+    "Point to point over your own tailnet. No relay, no sign-in.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Point to point over your own tailnet. No relay, no account, no analytics."
+            "value": "Point to point over your own tailnet. No relay, no sign-in."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Punkt zu Punkt über dein eigenes Tailnet. Kein Relay, kein Account, keine Analysen."
+            "value": "Punkt zu Punkt über dein eigenes Tailnet. Kein Relay, keine Anmeldung."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Punto a punto por tu propia tailnet. Sin relé, sin cuenta, sin analíticas."
+            "value": "Punto a punto por tu propia tailnet. Sin relé, sin inicio de sesión."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "De point à point via votre propre tailnet. Aucun relais, aucun compte, aucun suivi."
+            "value": "De point à point via votre propre tailnet. Aucun relais, aucune connexion."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Punto a punto sul tuo tailnet. Nessun relay, nessun account, nessuna analisi."
+            "value": "Punto a punto sul tuo tailnet. Nessun relay, nessun accesso."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "自分の tailnet 上でのポイントツーポイント接続です。中継もアカウントも分析もありません。"
+            "value": "自分の tailnet 上でのポイントツーポイント接続です。中継もサインインもありません。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "tailnet을 통한 지점 간 직접 연결. 릴레이도, 계정도, 분석도 없습니다."
+            "value": "tailnet을 통한 지점 간 직접 연결. 릴레이도, 로그인도 없습니다."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ponto a ponto pela sua própria tailnet. Sem relay, sem conta, sem análises."
+            "value": "Ponto a ponto pela sua própria tailnet. Sem relay, sem login."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在你自己的 tailnet 上点对点连接。没有中继、没有账户、没有分析。"
+            "value": "在你自己的 tailnet 上点对点连接。没有中继、没有登录。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "在你自己的 tailnet 上點對點連線。沒有中繼、沒有帳號、沒有分析。"
+            "value": "在你自己的 tailnet 上點對點連線。沒有中繼、沒有登入。"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Połączenie punkt-punkt przez twój własny tailnet. Bez przekaźnika, bez konta, bez analityki."
+            "value": "Połączenie punkt-punkt przez twój własny tailnet. Bez przekaźnika, bez logowania."
           }
         }
       }
