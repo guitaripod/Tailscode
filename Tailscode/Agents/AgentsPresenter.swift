@@ -1,8 +1,8 @@
 import UIKit
 
 /// Where the board opens from: any screen, over whatever is on top of its window, and closed again
-/// by the same road. It is a full-screen surface like the studios, because the peek is a sheet that
-/// rises from it and the hour wants the width.
+/// by the same road. It is a sheet like Settings and the other panels, so a swipe down closes it as
+/// it closes them; the peek rises over it as a second sheet.
 @MainActor
 enum AgentsPresenter {
     @discardableResult
@@ -11,7 +11,6 @@ enum AgentsPresenter {
         guard board(in: chain) == nil, let top = chain.last, !top.isBeingDismissed else { return nil }
         let board = AgentsBoardViewController()
         let navigation = UINavigationController(rootViewController: board)
-        navigation.modalPresentationStyle = .fullScreen
         Theme.Haptics.tap()
         top.present(navigation, animated: true)
         return board

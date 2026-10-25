@@ -32,7 +32,7 @@ final class AgentsBoardViewController: UIViewController {
         view.backgroundColor = Theme.Color.groupedBackground
         title = String(localized: "Agents")
         navigationItem.largeTitleDisplayMode = .never
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
             systemItem: .done,
             primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
         configureCollectionView()
@@ -52,6 +52,11 @@ final class AgentsBoardViewController: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         resume()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateModeControl()
     }
 
     override func viewDidAppear(_ animated: Bool) {

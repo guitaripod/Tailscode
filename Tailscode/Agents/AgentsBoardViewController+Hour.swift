@@ -19,17 +19,21 @@ extension AgentsBoardViewController {
                 guard let self else { return }
                 self.setHour(self.modeControl.selectedSegmentIndex == 1)
             }, for: .valueChanged)
-        registerForTraitChanges([UITraitHorizontalSizeClass.self]) {
-            (controller: AgentsBoardViewController, _) in controller.updateModeControl()
-        }
         updateModeControl()
     }
 
+    /// The hour needs a lane label and an hour of bars side by side, which the iPad has room for
+    /// and the phone does not. The measure is the board's own width and not its size class: as a
+    /// sheet on an iPad the board reads compact however wide the sheet is, which hid the hour from
+    /// the one device that draws it.
     func updateModeControl() {
-        let wide = traitCollection.userInterfaceIdiom == .pad && traitCollection.horizontalSizeClass == .regular
-        navigationItem.titleView = wide ? modeControl : nil
+        let wide = traitCollection.userInterfaceIdiom == .pad && view.bounds.width >= Self.hourWidth
+        let wanted: UIView? = wide ? modeControl : nil
+        if navigationItem.titleView !== wanted { navigationItem.titleView = wanted }
         if !wide, showsHour { setHour(false) }
     }
+
+    static let hourWidth: CGFloat = 500
 
     func setHour(_ on: Bool) {
         guard on != showsHour else { return }
