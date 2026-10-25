@@ -541,6 +541,10 @@ targets:
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "-"
         OTHER_SWIFT_FLAGS: "$(inherited) -disable-dynamic-actor-isolation -disable-actor-data-race-checks"
+      configs:
+        Release:
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: Tailscode macOS App Store 2026
 
 schemes:
   Tailscode:
