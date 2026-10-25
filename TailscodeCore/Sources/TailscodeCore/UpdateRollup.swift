@@ -337,6 +337,12 @@ public struct UpdateRollup: Sendable, Equatable {
 
     public var canUpdateEverything: Bool { installableServers.count > 1 }
 
+    /// Every server this app talks to, which is what starting everything over takes in. One server
+    /// is its own screen's restart, so the shortcut appears only when there is more than one.
+    public var restartableEverywhere: [UpdateReading] { readings.filter { !$0.component.isApp } }
+
+    public var canRestartEverything: Bool { restartableEverywhere.count > 1 }
+
     /// The order to take them in, and it is one at a time: a bridge serialises its own fetch, and
     /// two updates started together queue behind each other anyway while both surfaces claim to be
     /// working.

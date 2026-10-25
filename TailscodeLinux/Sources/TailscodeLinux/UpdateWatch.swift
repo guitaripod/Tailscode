@@ -119,6 +119,17 @@ enum UpdateWatch {
         await driver.updateEverything()
     }
 
+    static func restart(_ component: UpdateComponent) async {
+        guard !fixturesRequested else { return }
+        await driver.restart(component)
+    }
+
+    @discardableResult
+    static func restartEverything() async -> [String] {
+        guard !fixturesRequested else { return [] }
+        return await driver.restartEverything()
+    }
+
     static func setAutoUpdate(_ component: UpdateComponent, _ enabled: Bool) async -> String? {
         guard !fixturesRequested else { return nil }
         return await driver.setAutoUpdate(component, enabled)

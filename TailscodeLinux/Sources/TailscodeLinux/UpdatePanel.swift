@@ -494,6 +494,7 @@ final class UpdatePanel: @unchecked Sendable {
     private var heroDetail: UnsafeMutablePointer<GtkWidget>?
     private var heroChecked: UnsafeMutablePointer<GtkWidget>?
     private var everythingButton: UnsafeMutablePointer<GtkWidget>?
+    private var restartAllButton: UnsafeMutablePointer<GtkWidget>?
     private var cards: [String: UpdateCardView] = [:]
     private var order: [String] = []
     private var watching = false
@@ -571,6 +572,11 @@ final class UpdatePanel: @unchecked Sendable {
         }
         everythingButton = everything
         gtk_box_append(ptr(buttons), everything)
+        let restartAll = Gtk.button("", css: ["pill"]) { [weak self] in
+            self?.confirmRestartEverything()
+        }
+        restartAllButton = restartAll
+        gtk_box_append(ptr(buttons), restartAll)
         gtk_box_append(
             ptr(buttons),
             Gtk.button(Localized.text("Check now")) { [weak self] in self?.checkNow() })
@@ -646,7 +652,9 @@ final class UpdatePanel: @unchecked Sendable {
     }
 
     private func renderHero(_ rollup: UpdateRollup, snapshot: UpdateDriver.Snapshot) {
-        guard let heroTitle, let heroDetail, let heroChecked, let everythingButton else { return }
+        guard let heroTitle, let heroDetail, let heroChecked, let everythingButton,
+            let restartAllButton
+        else { return }
         gtk_label_set_text(op(heroTitle), rollup.headline)
         let detail = rollup.readings.isEmpty ? "" : rollup.detail()
         gtk_label_set_text(op(heroDetail), detail)
@@ -662,10 +670,21 @@ final class UpdatePanel: @unchecked Sendable {
                     String(walk.total)))
         } else {
             gtk_widget_set_visible(everythingButton, rollup.canUpdateEverything ? 1 : 0)
-            gtk_widget_set_sensitive(everythingButton, 1)
+            gtk_widget_set_sensitive(everythingButton, snapshot.restartWalk == nil ? 1 : 0)
             gtk_button_set_label(
                 ptr(everythingButton),
                 Localized.text("Update all %@ servers", String(rollup.installableServers.count)))
+        }
+
+        if let walk = snapshot.restartWalk {
+            gtk_widget_set_visible(restartAllButton, 1)
+            gtk_widget_set_sensitive(restartAllButton, 0)
+            gtk_button_set_label(
+                ptr(restartAllButton), ServerRestart.allUnderway(done: walk.done, total: walk.total))
+        } else {
+            gtk_widget_set_visible(restartAllButton, rollup.canRestartEverything ? 1 : 0)
+            gtk_widget_set_sensitive(restartAllButton, snapshot.walk == nil ? 1 : 0)
+            gtk_button_set_label(ptr(restartAllButton), ServerRestart.allTitle)
         }
 
         let checkedText: String
@@ -698,6 +717,30 @@ final class UpdatePanel: @unchecked Sendable {
         }
     }
 
+    private func confirmRestartEverything() {
+        Task { [weak self] in
+            let profiles = await ServerDirectory.shared.profiles()
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                Dialogs.confirm(
+                    title: ServerRestart.allConfirmTitle(profiles.count),
+                    body: ServerRestart.allConfirmBody(
+                        openCodeTurns: ServerRestart.openCodeTurns(
+                            among: profiles.map { ($0.backend, 0) })),
+                    confirmLabel: ServerRestart.action, parent: self.window
+                ) { [weak self] in
+                    Task { [weak self] in
+                        let refused = await UpdateWatch.restartEverything()
+                        guard !refused.isEmpty else { return }
+                        Gtk.onMain { [weak self] in
+                            self?.toast(ServerRestart.allRefused(refused))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private func toast(_ text: String) {
         guard let toastOverlay, let toast = adw_toast_new(text) else { return }
         adw_toast_overlay_add_toast(op(toastOverlay), toast)
@@ -716,6 +759,7 @@ final class UpdatePanel: @unchecked Sendable {
         heroDetail = nil
         heroChecked = nil
         everythingButton = nil
+        restartAllButton = nil
         cards = [:]
         order = []
     }

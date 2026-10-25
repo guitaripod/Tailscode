@@ -88,13 +88,15 @@ extension ServerDetailViewController {
         applySnapshot()
     }
 
-    /// The press states its cost first, then hands the ask over and stops. Nothing waits on a
-    /// reply: the connection the ask went over dies with the process it restarted, so the ordinary
-    /// reconnect — which every screen already watches — is what says the machine is back.
+    /// The press states its cost first. opencode is handed the ask and forgotten: the connection it
+    /// went over dies with the process it restarted, so the ordinary reconnect — which every screen
+    /// already watches — is what says the machine is back. A bridge waits for its machine to be idle
+    /// and is followed by the driver, which is what the card on this screen draws.
     private func confirmRestart() {
         let alert = UIAlertController(
             title: ServerRestart.confirmTitle(profile.name),
             message: ServerRestart.confirmBody(
+                for: profile.backend,
                 workingTurns: SessionActivity.shared.workingCount(onProfile: profile.id)),
             preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
@@ -107,6 +109,11 @@ extension ServerDetailViewController {
 
     private func restartServer() {
         Theme.Haptics.tap()
+        guard ServerRestart.course(for: profile.backend) == .asked else {
+            let component = UpdateComponent.server(profileID: profile.id)
+            Task { await UpdateMonitor.restart(component) }
+            return
+        }
         Task { [weak self] in
             guard let self else { return }
             guard

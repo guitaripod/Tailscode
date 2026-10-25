@@ -119,6 +119,8 @@ public final class UpdateDriver: @unchecked Sendable {
         public var busy: Set<String> = []
         /// "Update everything", while it walks.
         public var walk: Walk?
+        /// "Restart all servers", while any of them is still being asked or followed.
+        public var restartWalk: Walk?
 
         public func isBusy(_ component: UpdateComponent) -> Bool { busy.contains(component.key) }
     }
@@ -302,6 +304,80 @@ public final class UpdateDriver: @unchecked Sendable {
         mutate { state in
             state.walk = nil
             return true
+        }
+    }
+
+    /// Starts every server over, all at once: a bridge holds its own restart until its machine is
+    /// idle and that wait can last hours, so taking them one at a time would leave the last server
+    /// waiting on the first. Each bridge is followed like any other restart; opencode cannot wait
+    /// for a quiet moment and is asked at once. Answers the titles of the servers that could not be
+    /// asked, in the order they are configured, so a surface can say which one did not go.
+    @discardableResult
+    public func restartEverything() async -> [String] {
+        let machines = await environment.machines()
+        guard !machines.isEmpty, mutate({ state in
+            guard state.walk == nil, state.restartWalk == nil else { return false }
+            state.restartWalk = Snapshot.Walk(done: 0, total: machines.count, current: nil)
+            return true
+        }) else { return [] }
+        environment.log("restart requested for \(machines.count) server(s)")
+        var refused: [(index: Int, title: String)] = []
+        await withTaskGroup(of: (Int, String?).self) { group in
+            for (index, machine) in machines.enumerated() {
+                group.addTask {
+                    let went = await self.restarted(machine)
+                    self.mutate { state in
+                        state.restartWalk?.done += 1
+                        return true
+                    }
+                    return (index, went ? nil : machine.title)
+                }
+            }
+            for await (index, title) in group {
+                if let title { refused.append((index, title)) }
+            }
+        }
+        mutate { state in
+            state.restartWalk = nil
+            return true
+        }
+        return refused.sorted { $0.index < $1.index }.map(\.title)
+    }
+
+    /// One server started over by the course its kind takes, and whether it could be asked.
+    private func restarted(_ machine: Machine) async -> Bool {
+        switch ServerRestart.course(for: machine.agent) {
+        case .asked:
+            return await ask(machine)
+        case .followed:
+            let reading = await follow(machine, press: .restart).value
+            return Self.restartWent(reading)
+        }
+    }
+
+    /// opencode's restart is handed over and forgotten: the connection the ask went over dies with
+    /// the process, so there is nothing to follow and the ordinary reconnect says it is back.
+    private func ask(_ machine: Machine) async -> Bool {
+        guard let restartable = await machine.backend() as? any RestartableBackend else {
+            return false
+        }
+        guard case .success? = await attempt(environment.timing.requestTimeout, {
+            try await restartable.restart()
+        }) else {
+            environment.log("\(machine.profileID.prefix(8)) could not be asked to restart")
+            return false
+        }
+        return true
+    }
+
+    /// Whether the last word on a followed restart is one that went. A machine still holding its
+    /// restart for a quiet moment has not failed; one that refused, could not be reached or ended
+    /// the job in failure has.
+    private static func restartWent(_ reading: UpdateReading) -> Bool {
+        guard reading.note == nil else { return false }
+        switch reading.verdict {
+        case .failed, .unverified: return false
+        case .working, .behind, .current, .ahead, .blocked: return true
         }
     }
 

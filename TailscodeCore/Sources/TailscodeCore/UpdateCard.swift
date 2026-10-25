@@ -480,6 +480,8 @@ public struct UpdateCard: Sendable, Equatable, Identifiable {
                 let to = outcome.to.flatMap(VersionLabel.short), from != to
             {
                 parts.append(Localized.text("%@ → %@", from, to))
+            } else if outcome.changedNothing {
+                parts.append(Localized.text("Restarted"))
             } else {
                 parts.append(Localized.text("Landed"))
             }

@@ -19,9 +19,28 @@ public enum ServerRestart {
         Localized.text("Restart %@?", serverName)
     }
 
+    /// How a server carries out a restart. opencode is asked and forgotten: the connection the ask
+    /// went over dies with the process. A bridge holds the restart behind its own idle check and
+    /// reports it as a job, so it is followed the way an update is.
+    public enum Course: Sendable, Equatable {
+        case asked
+        case followed
+    }
+
+    public static func course(for agent: AgentType) -> Course {
+        agent == .openCode ? .asked : .followed
+    }
+
     /// What it costs, said before the press rather than after it. The count is what this device
     /// knows is running on that machine, so it is stated only when there is something to state.
-    public static func confirmBody(workingTurns: Int) -> String {
+    public static func confirmBody(for agent: AgentType, workingTurns: Int) -> String {
+        switch course(for: agent) {
+        case .asked: return askedBody(workingTurns: workingTurns)
+        case .followed: return followedBody(workingTurns: workingTurns)
+        }
+    }
+
+    private static func askedBody(workingTurns: Int) -> String {
         let base = Localized.text(
             "The server stops answering for a few seconds and comes back with everything it reads at startup — models, config, plugins.")
         guard workingTurns > 0 else { return base }
@@ -32,6 +51,20 @@ public enum ServerRestart {
                 "%lld turns are running on it. Restarting stops them where they stand.",
                 workingTurns)
         return base + "\n\n" + cost
+    }
+
+    /// A bridge never takes a turn with it, so the cost is time rather than work: it waits.
+    private static func followedBody(workingTurns: Int) -> String {
+        let base = Localized.text(
+            "It waits until nothing is running on it, then restarts and comes back with everything it reads at startup — models, config, plugins.")
+        guard workingTurns > 0 else { return base }
+        let wait =
+            workingTurns == 1
+            ? Localized.text("A turn is running on it. The restart waits for it to finish.")
+            : Localized.text(
+                "%lld turns are running on it. The restart waits for them to finish.",
+                workingTurns)
+        return base + "\n\n" + wait
     }
 
     public static var action: String { Localized.text("Restart") }
@@ -74,15 +107,57 @@ public enum ServerRestart {
         backend is any ServeManagerBackend
     }
 
-    /// Whether this server can be asked at all. A machine set up by hand has no restart command on
-    /// it, and the ask fails at the ask rather than looking like a restart that did nothing — but
-    /// a client should not offer what a backend has no route for in the first place.
-    public static func isOffered(_ backend: any CodingAgentBackend) -> Bool {
-        backend is any RestartableBackend
+    /// How this backend would be restarted, or nil when it has no route for it. A machine set up by
+    /// hand has no restart command on it, and the ask fails at the ask rather than looking like a
+    /// restart that did nothing — but a client should not offer what a backend has no route for.
+    public static func course(for backend: any CodingAgentBackend) -> Course? {
+        if backend is any SelfUpdatingBackend { return .followed }
+        if backend is any RestartableBackend { return .asked }
+        return nil
     }
 
-    /// The same question asked of a server nobody has connected to yet, so a row can be there on
-    /// the first frame rather than appearing under the reader once a probe lands. A bridge answers
-    /// no here because its restart is part of its update, where it belongs.
-    public static func isOffered(_ backend: AgentType) -> Bool { backend == .openCode }
+    public static func isOffered(_ backend: any CodingAgentBackend) -> Bool {
+        course(for: backend) != nil
+    }
+
+    public static var allTitle: String { Localized.text("Restart all servers") }
+
+    public static func allConfirmTitle(_ count: Int) -> String {
+        Localized.text("Restart all %lld servers?", count)
+    }
+
+    /// What restarting everything costs. `openCodeTurns` is nil when no opencode server is among
+    /// them: that is the one kind that cannot wait for a quiet moment, so it is named only when it
+    /// is there to be named.
+    public static func allConfirmBody(openCodeTurns: Int?) -> String {
+        let base = Localized.text(
+            "Each server waits until nothing is running on it, then restarts and comes back with everything it reads at startup.")
+        guard let openCodeTurns else { return base }
+        let cost =
+            openCodeTurns == 0
+            ? Localized.text("opencode cannot wait, so it restarts at once.")
+            : openCodeTurns == 1
+                ? Localized.text(
+                    "opencode cannot wait, so it restarts at once and stops the turn it is running.")
+                : Localized.text(
+                    "opencode cannot wait, so it restarts at once and stops the %lld turns it is running.",
+                    openCodeTurns)
+        return base + "\n\n" + cost
+    }
+
+    /// The turns an opencode server among these would stop, or nil when there is none. It is the one
+    /// kind that cannot wait for a quiet moment, so it is the only one whose turns are a cost.
+    public static func openCodeTurns(among servers: [(agent: AgentType, workingTurns: Int)]) -> Int? {
+        let openCode = servers.filter { $0.agent == .openCode }
+        guard !openCode.isEmpty else { return nil }
+        return openCode.reduce(0) { $0 + $1.workingTurns }
+    }
+
+    public static func allUnderway(done: Int, total: Int) -> String {
+        Localized.text("%lld of %lld restarted…", done, total)
+    }
+
+    public static func allRefused(_ names: [String]) -> String {
+        Localized.text("Couldn't restart %@.", names.joined(separator: ", "))
+    }
 }

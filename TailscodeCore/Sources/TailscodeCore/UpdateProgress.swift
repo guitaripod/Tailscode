@@ -232,8 +232,14 @@ public struct UpdateOutcome: Sendable, Equatable, Codable {
     /// How long a landed update is news. Past this the card is simply current.
     public static let newsFor: TimeInterval = 24 * 3600
 
+    /// A restart that came back on the build it left. It happened and went well, and it is not
+    /// something to announce: nothing was updated.
+    public var changedNothing: Bool {
+        kind == .serverRestart && from != nil && from == to
+    }
+
     public func isNews(now: Date = Date()) -> Bool {
-        guard result == .succeeded, let at else { return false }
+        guard result == .succeeded, !changedNothing, let at else { return false }
         let age = now.timeIntervalSince(at)
         return age >= -300 && age < Self.newsFor
     }

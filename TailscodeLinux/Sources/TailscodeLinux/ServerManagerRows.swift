@@ -318,7 +318,7 @@ extension ServerManager {
             adw_expander_row_add_row(ptr(row), password)
         }
 
-        if ServerRestart.isOffered(profile.backend) && !isDemo {
+        if !isDemo {
             let restart = adw_action_row_new()!
             adw_preferences_row_set_use_markup(ptr(restart), 0)
             adw_preferences_row_set_title(ptr(restart), ServerRestart.title)
@@ -326,10 +326,11 @@ extension ServerManager {
             adw_action_row_set_subtitle_lines(ptr(restart), 0)
             let id = profile.id
             let name = profile.name
+            let agent = profile.backend
             adw_action_row_add_suffix(
                 ptr(restart),
                 Self.inlineButton(ServerRestart.action, css: []) { [weak self] in
-                    self?.confirmRestart(id: id, name: name)
+                    self?.confirmRestart(id: id, name: name, agent: agent)
                 })
             adw_expander_row_add_row(ptr(row), restart)
         }

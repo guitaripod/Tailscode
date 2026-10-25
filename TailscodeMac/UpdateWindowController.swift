@@ -11,6 +11,14 @@ import TailscodeCore
 final class UpdateWindowController: NSWindowController {
     private let board = UpdateBoardViewController()
 
+    /// How many conversations the sidebar's listing says are working on one server right now —
+    /// what restarting everything would stop on an opencode server, and so what the confirmation
+    /// owes the reader.
+    var workingTurns: (@MainActor (String) -> Int)? {
+        get { board.workingTurns }
+        set { board.workingTurns = newValue }
+    }
+
     init() {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 560, height: 680),
@@ -76,8 +84,11 @@ final class UpdateBoardViewController: NSViewController {
     private let emptyLabel = NSTextField(wrappingLabelWithString: "")
     private lazy var updateAllButton = RowKit.ActionButton(
         title: "", action: { [weak self] in self?.updateEverything() })
+    private lazy var restartAllButton = RowKit.ActionButton(
+        title: "", action: { [weak self] in self?.restartEverything() })
     private lazy var checkNowButton = RowKit.ActionButton(
         title: Localized.text("Check now"), action: { [weak self] in self?.checkNow() })
+    var workingTurns: (@MainActor (String) -> Int)?
     private var cards: [String: UpdateCardView] = [:]
     /// The machines the column is currently laid out for, in the order Core ranked them. A rank
     /// that changes is a real change of content and earns a relayout; the same list in the same
@@ -211,9 +222,13 @@ final class UpdateBoardViewController: NSViewController {
         updateAllButton.bezelStyle = .rounded
         updateAllButton.keyEquivalent = ""
         updateAllButton.bezelColor = MacTheme.Color.accent
+        restartAllButton.bezelStyle = .rounded
+        restartAllButton.keyEquivalent = ""
         checkNowButton.bezelStyle = .rounded
         checkNowButton.keyEquivalent = ""
-        let buttons = NSStackView(views: [updateAllButton, checkNowButton, RowKit.spacer()])
+        let buttons = NSStackView(views: [
+            updateAllButton, restartAllButton, checkNowButton, RowKit.spacer(),
+        ])
         buttons.orientation = .horizontal
         buttons.spacing = MacTheme.Spacing.s
         statusLabel.lineBreakMode = .byTruncatingTail
@@ -243,9 +258,18 @@ final class UpdateBoardViewController: NSViewController {
                 "Updating %@ of %@…", String(min(walk.done + 1, walk.total)), String(walk.total))
         } else {
             updateAllButton.isHidden = !rollup.canUpdateEverything
-            updateAllButton.isEnabled = true
+            updateAllButton.isEnabled = snapshot.restartWalk == nil
             updateAllButton.title = Localized.text(
                 "Update all %@ servers", String(rollup.installableServers.count))
+        }
+        if let walk = snapshot.restartWalk {
+            restartAllButton.isHidden = false
+            restartAllButton.isEnabled = false
+            restartAllButton.title = ServerRestart.allUnderway(done: walk.done, total: walk.total)
+        } else {
+            restartAllButton.isHidden = !rollup.canRestartEverything
+            restartAllButton.isEnabled = snapshot.walk == nil
+            restartAllButton.title = ServerRestart.allTitle
         }
         checkNowButton.isEnabled = !snapshot.checking
         if snapshot.checking {
@@ -271,6 +295,22 @@ final class UpdateBoardViewController: NSViewController {
         }
     }
 
+    private func restartEverything() {
+        let servers = ServerDirectory.shared.profiles
+        MacDialogs.confirm(
+            on: view.window, title: ServerRestart.allConfirmTitle(servers.count),
+            body: ServerRestart.allConfirmBody(
+                openCodeTurns: ServerRestart.openCodeTurns(
+                    among: servers.map { ($0.backend, workingTurns?($0.id) ?? 0) })),
+            confirmLabel: ServerRestart.action
+        ) {
+            Task { [weak self] in
+                let refused = await MacUpdateWatch.shared.restartEverything()
+                if !refused.isEmpty { self?.setStatus(ServerRestart.allRefused(refused)) }
+            }
+        }
+    }
+
     private func checkNow() {
         Task { await MacUpdateWatch.shared.checkAll() }
     }
@@ -289,6 +329,7 @@ final class UpdateBoardViewController: NSViewController {
         heroChecked.font = MacTheme.Ramp.font(.panelFootnote)
         heroChecked.textColor = MacTheme.Color.tertiaryLabel
         updateAllButton.font = MacTheme.Ramp.font(.control)
+        restartAllButton.font = MacTheme.Ramp.font(.control)
         checkNowButton.font = MacTheme.Ramp.font(.control)
         emptyLabel.font = MacTheme.Ramp.font(.panelLabel)
         emptyLabel.textColor = MacTheme.Color.secondaryLabel

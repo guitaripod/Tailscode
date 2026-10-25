@@ -384408,6 +384408,929 @@
           }
         }
       }
+    },
+    "%@ is restarting.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is restarting."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ wird neu gestartet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ se está reiniciando."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ redémarre."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ si sta riavviando."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ を再起動中です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 재시동 중입니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ jest uruchamiany ponownie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ está reiniciando."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 正在重新启动。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 正在重新開機。"
+          }
+        }
+      }
+    },
+    "%lld of %lld restarted…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld of %lld restarted…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld von %lld neu gestartet…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld de %lld reiniciados…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld sur %lld redémarrés…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld di %lld riavviati…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 件中 %lld 件を再起動しました…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld개 중 %lld개 재시동됨…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ponownie uruchomiono %lld z %lld…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld de %lld reiniciados…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已重新启动 %lld / %lld…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已重新開機 %lld / %lld…"
+          }
+        }
+      }
+    },
+    "A turn is running on it. The restart waits for it to finish.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A turn is running on it. The restart waits for it to finish."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf ihm läuft gerade ein Zug. Der Neustart wartet, bis er fertig ist."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hay un turno en curso en él. El reinicio espera a que termine."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un tour est en cours dessus. Le redémarrage attend qu’il se termine."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "C’è un turno in corso su di esso. Il riavvio attende che finisca."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "そこでは 1 件のターンが実行中です。再起動はそれが終わるまで待ちます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "그 위에서 턴 1개가 실행 중입니다. 재시동은 끝날 때까지 기다립니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Działa na nim tura. Ponowne uruchomienie poczeka, aż się zakończy."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Há um turno em execução nele. O reinício espera que ele termine."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上面正在运行一个回合。重新启动会等它结束。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上面正在執行一個回合。重新開機會等它結束。"
+          }
+        }
+      }
+    },
+    "%lld turns are running on it. The restart waits for them to finish.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld turns are running on it. The restart waits for them to finish."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Züge laufen gerade darauf. Der Neustart wartet, bis sie fertig sind."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hay %lld turnos en curso en él. El reinicio espera a que terminen."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld tours sont en cours dessus. Le redémarrage attend qu’ils se terminent."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ci sono %lld turni in corso su di esso. Il riavvio attende che finiscano."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "そこでは %lld 件のターンが実行中です。再起動はそれらが終わるまで待ちます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "그 위에서 턴 %lld개가 실행 중입니다. 재시동은 끝날 때까지 기다립니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Działa na nim %lld tur. Ponowne uruchomienie poczeka, aż się zakończą."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Há %lld turnos em execução nele. O reinício espera que terminem."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上面正在运行 %lld 个回合。重新启动会等它们结束。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上面正在執行 %lld 個回合。重新開機會等它們結束。"
+          }
+        }
+      }
+    },
+    "Couldn't restart %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't restart %@."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ konnte nicht neu gestartet werden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo reiniciar %@."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de redémarrer %@."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile riavviare %@."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ を再起動できませんでした。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@을(를) 재시동하지 못했습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nie udało się uruchomić %@ ponownie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível reiniciar %@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法重新启动 %@。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法重新開機 %@。"
+          }
+        }
+      }
+    },
+    "Each server waits until nothing is running on it, then restarts and comes back with everything it reads at startup.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Each server waits until nothing is running on it, then restarts and comes back with everything it reads at startup."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeder Server wartet, bis nichts mehr auf ihm läuft, startet dann neu und kommt mit allem zurück, was er beim Start einliest."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cada servidor espera hasta que no haya nada en ejecución en él, luego se reinicia y vuelve con todo lo que lee al iniciar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chaque serveur attend que rien ne tourne dessus, puis redémarre et revient avec tout ce qu’il lit au démarrage."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ogni server attende che non ci sia più nulla in esecuzione su di esso, poi si riavvia e torna con tutto ciò che legge all’avvio."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "各サーバは、上で何も実行されなくなるまで待ってから再起動し、起動時に読み込むすべてを反映して復帰します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "각 서버는 실행 중인 작업이 없어질 때까지 기다렸다가 재시동하고, 시작할 때 읽어들이는 모든 것을 반영해 돌아옵니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Każdy serwer czeka, aż nic na nim nie będzie działać, po czym uruchamia się ponownie i wraca ze wszystkim, co wczytuje przy starcie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cada servidor espera até que nada esteja em execução nele, depois reinicia e volta com tudo o que lê na inicialização."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每台服务器会等到上面没有任何任务在运行，然后重新启动，并带着它启动时读取的一切重新上线。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每台伺服器會等到上面沒有任何執行中的工作，然後重新開機，並帶著它啟動時讀取的一切重新上線。"
+          }
+        }
+      }
+    },
+    "It waits until nothing is running on it, then restarts and comes back with everything it reads at startup — models, config, plugins.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "It waits until nothing is running on it, then restarts and comes back with everything it reads at startup — models, config, plugins."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Er wartet, bis nichts mehr auf ihm läuft, startet dann neu und kommt mit allem zurück, was er beim Start einliest — Modelle, Konfiguration, Plugins."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Espera hasta que no haya nada en ejecución en él, luego se reinicia y vuelve con todo lo que lee al iniciar — modelos, configuración, complementos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il attend que rien ne tourne dessus, puis redémarre et revient avec tout ce qu’il lit au démarrage — modèles, configuration, extensions."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attende che non ci sia più nulla in esecuzione su di esso, poi si riavvia e torna con tutto ciò che legge all’avvio — modelli, configurazione, plugin."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上で何も実行されなくなるまで待ってから再起動し、起動時に読み込むすべて — モデル、設定、プラグイン — を反映して復帰します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "실행 중인 작업이 없어질 때까지 기다렸다가 재시동하고, 시작할 때 읽어들이는 모든 것 — 모델, 설정, 플러그인 — 을 반영해 돌아옵니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Czeka, aż nic na nim nie będzie działać, po czym uruchamia się ponownie i wraca ze wszystkim, co wczytuje przy starcie — modelami, konfiguracją, wtyczkami."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Espera até que nada esteja em execução nele, depois reinicia e volta com tudo o que lê na inicialização — modelos, configuração, plugins."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它会等到上面没有任何任务在运行，然后重新启动，并带着它启动时读取的一切重新上线 — 模型、配置、插件。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它會等到上面沒有任何執行中的工作，然後重新開機，並帶著它啟動時讀取的一切重新上線 — 模型、設定、外掛。"
+          }
+        }
+      }
+    },
+    "Restart all %lld servers?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restart all %lld servers?"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle %lld Server neu starten?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Reiniciar los %lld servidores?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redémarrer les %lld serveurs ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riavviare tutti i %lld server?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 台のサーバをすべて再起動しますか?"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버 %lld개를 모두 재시동하시겠습니까?"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uruchomić ponownie wszystkie serwery (%lld)?"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reiniciar todos os %lld servidores?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要重新启动全部 %lld 台服务器吗？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要重新開機全部 %lld 台伺服器嗎？"
+          }
+        }
+      }
+    },
+    "Restart all servers": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restart all servers"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle Server neu starten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reiniciar todos los servidores"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redémarrer tous les serveurs"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riavvia tutti i server"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべてのサーバを再起動"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모든 서버 재시동"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uruchom ponownie wszystkie serwery"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reiniciar todos os servidores"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新启动全部服务器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新開機全部伺服器"
+          }
+        }
+      }
+    },
+    "Restarted": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restarted"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neu gestartet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reiniciado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redémarré"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riavviato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再起動済み"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "재시동됨"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uruchomiono ponownie"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reiniciado"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已重新启动"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已重新開機"
+          }
+        }
+      }
+    },
+    "opencode cannot wait, so it restarts at once and stops the %lld turns it is running.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode cannot wait, so it restarts at once and stops the %lld turns it is running."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode kann nicht warten, deshalb startet es sofort neu und stoppt die %lld Züge, die es gerade ausführt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode no puede esperar, así que se reinicia de inmediato y detiene los %lld turnos que está ejecutando."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode ne peut pas attendre : il redémarre aussitôt et arrête les %lld tours qu’il exécute."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode non può attendere, quindi riavvia subito e interrompe i %lld turni che sta eseguendo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode は待機できないため、すぐに再起動し、実行中の %lld 件のターンを停止します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode는 기다릴 수 없으므로 바로 재시동하고, 실행 중인 턴 %lld개를 멈춥니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode nie może czekać, więc uruchamia się ponownie od razu i zatrzymuje %lld działających tur."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O opencode não consegue esperar, então reinicia de imediato e interrompe os %lld turnos em execução."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 无法等待，因此会立即重新启动，并停止它正在运行的 %lld 个回合。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 無法等待，因此會立即重新開機，並停止它正在執行的 %lld 個回合。"
+          }
+        }
+      }
+    },
+    "opencode cannot wait, so it restarts at once and stops the turn it is running.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode cannot wait, so it restarts at once and stops the turn it is running."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode kann nicht warten, deshalb startet es sofort neu und stoppt den Zug, den es gerade ausführt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode no puede esperar, así que se reinicia de inmediato y detiene el turno que está ejecutando."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode ne peut pas attendre : il redémarre aussitôt et arrête le tour qu’il exécute."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode non può attendere, quindi riavvia subito e interrompe il turno che sta eseguendo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode は待機できないため、すぐに再起動し、実行中のターンを停止します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode는 기다릴 수 없으므로 바로 재시동하고, 실행 중인 턴을 멈춥니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode nie może czekać, więc uruchamia się ponownie od razu i zatrzymuje działającą turę."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O opencode não consegue esperar, então reinicia de imediato e interrompe o turno em execução."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 无法等待，因此会立即重新启动，并停止它正在运行的回合。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 無法等待，因此會立即重新開機，並停止它正在執行的回合。"
+          }
+        }
+      }
+    },
+    "opencode cannot wait, so it restarts at once.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode cannot wait, so it restarts at once."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode kann nicht warten, deshalb startet es sofort neu."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode no puede esperar, así que se reinicia de inmediato."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode ne peut pas attendre : il redémarre aussitôt."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode non può attendere, quindi riavvia subito."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode は待機できないため、すぐに再起動します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode는 기다릴 수 없으므로 바로 재시동합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode nie może czekać, więc uruchamia się ponownie od razu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O opencode não consegue esperar, então reinicia de imediato."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 无法等待，因此会立即重新启动。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "opencode 無法等待，因此會立即重新開機。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -118,6 +118,15 @@ final class MacUpdateWatch {
         await driver.updateEverything()
     }
 
+    func restart(_ component: UpdateComponent) async {
+        await driver.restart(component)
+    }
+
+    @discardableResult
+    func restartEverything() async -> [String] {
+        await driver.restartEverything()
+    }
+
     func setAutoUpdate(_ component: UpdateComponent, _ enabled: Bool) async -> String? {
         await driver.setAutoUpdate(component, enabled)
     }

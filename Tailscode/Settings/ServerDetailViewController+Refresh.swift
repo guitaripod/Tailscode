@@ -61,7 +61,7 @@ extension ServerDetailViewController {
         if !isDemo, isShowingPreviewHost { snapshot.appendItems([.previewHost], toSection: .preview) }
 
         var actions: [Item] = isDemo ? [] : [.edit]
-        if !isDemo, ServerRestart.isOffered(profile.backend) { actions.insert(.restart, at: 0) }
+        if !isDemo { actions.insert(.restart, at: 0) }
         actions.append(.remove)
         snapshot.appendItems(actions, toSection: .actions)
         dataSource.apply(snapshot, animatingDifferences: false)

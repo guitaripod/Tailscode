@@ -89,17 +89,26 @@ extension ServerManager {
         }
     }
 
-    /// The press states its cost first, then hands the ask over and stops: the connection it went
-    /// over dies with the process it restarted, so the reconnect every pane already watches is what
-    /// says the machine is back. A machine set up by hand refuses the restart, and the refusal is
-    /// the offer: the setup that makes it restartable is one press, not a terminal instruction.
-    func confirmRestart(id: String, name: String) {
+    /// The press states its cost first. opencode is handed the ask and forgotten: the connection it
+    /// went over dies with the process it restarted, so the reconnect every pane already watches is
+    /// what says the machine is back. A machine set up by hand refuses the restart, and the refusal
+    /// is the offer: the setup that makes it restartable is one press, not a terminal instruction.
+    /// A bridge waits for its machine to be idle and is followed by the driver, which the update
+    /// panel draws.
+    func confirmRestart(id: String, name: String, agent: AgentType) {
         guard let window else { return }
         Dialogs.confirm(
             title: ServerRestart.confirmTitle(name),
-            body: ServerRestart.confirmBody(workingTurns: 0),
+            body: ServerRestart.confirmBody(for: agent, workingTurns: 0),
             confirmLabel: ServerRestart.action, parent: window
         ) { [weak self] in
+            guard ServerRestart.course(for: agent) == .asked else {
+                Gtk.onMain { [weak self] in
+                    self?.toast(Localized.text("%@ is restarting.", name))
+                }
+                Task { await UpdateWatch.restart(.server(profileID: id)) }
+                return
+            }
             Task { [weak self] in
                 guard let profile = await ServerDirectory.shared.profiles().first(where: { $0.id == id }),
                     let restartable = await ServerDirectory.shared.backend(for: profile)

@@ -173,6 +173,7 @@ final class UpdateCenterViewController: UIViewController {
     private let heroDetail = UILabel()
     private let heroChecked = UILabel()
     private let everythingButton = UIButton(type: .system)
+    private let restartAllButton = UIButton(type: .system)
     private let hero = UIStackView()
     private let emptyLabel = UILabel()
     private let refresher = UIRefreshControl()
@@ -224,14 +225,23 @@ final class UpdateCenterViewController: UIViewController {
         everythingButton.addAction(
             UIAction { [weak self] _ in self?.updateEverything() }, for: .touchUpInside)
 
-        for view: UIView in [heroTitle, heroDetail, everythingButton, heroChecked] {
+        var restartAll = Theme.Glass.buttonConfiguration(prominent: false)
+        restartAll.cornerStyle = .capsule
+        restartAll.image = UIImage(systemName: ServerRestart.symbol)
+        restartAll.imagePadding = Theme.Spacing.xs
+        restartAllButton.configuration = restartAll
+        restartAllButton.addAction(
+            UIAction { [weak self] _ in self?.restartEverything() }, for: .touchUpInside)
+
+        for view: UIView in [heroTitle, heroDetail, everythingButton, restartAllButton, heroChecked] {
             hero.addArrangedSubview(view)
         }
         hero.axis = .vertical
         hero.alignment = .leading
         hero.spacing = Theme.Spacing.xs
         hero.setCustomSpacing(Theme.Spacing.m, after: heroDetail)
-        hero.setCustomSpacing(Theme.Spacing.m, after: everythingButton)
+        hero.setCustomSpacing(Theme.Spacing.s, after: everythingButton)
+        hero.setCustomSpacing(Theme.Spacing.m, after: restartAllButton)
         hero.isLayoutMarginsRelativeArrangement = true
         hero.directionalLayoutMargins = NSDirectionalEdgeInsets(
             top: 0, leading: Theme.Spacing.xs, bottom: Theme.Spacing.xs,
@@ -329,9 +339,19 @@ final class UpdateCenterViewController: UIViewController {
                 localized: "Updating \(min(walk.done + 1, walk.total)) of \(walk.total)…")
         } else {
             everythingButton.isHidden = !rollup.canUpdateEverything
-            everythingButton.isEnabled = true
+            everythingButton.isEnabled = snapshot.restartWalk == nil
             everythingButton.configuration?.title = String(
                 localized: "Update all \(rollup.installableServers.count) servers")
+        }
+        if let walk = snapshot.restartWalk {
+            restartAllButton.isHidden = false
+            restartAllButton.isEnabled = false
+            restartAllButton.configuration?.title = ServerRestart.allUnderway(
+                done: walk.done, total: walk.total)
+        } else {
+            restartAllButton.isHidden = !rollup.canRestartEverything
+            restartAllButton.isEnabled = snapshot.walk == nil
+            restartAllButton.configuration?.title = ServerRestart.allTitle
         }
         if snapshot.checking {
             heroChecked.text = String(localized: "Checking every machine…")
@@ -366,6 +386,38 @@ final class UpdateCenterViewController: UIViewController {
                 Theme.Haptics.tap()
                 Task { await UpdateMonitor.updateEverything() }
             })
+        present(alert, animated: true)
+    }
+
+    private func restartEverything() {
+        let servers = ConnectionController.shared.profiles
+            .filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }
+        let alert = UIAlertController(
+            title: ServerRestart.allConfirmTitle(servers.count),
+            message: ServerRestart.allConfirmBody(
+                openCodeTurns: ServerRestart.openCodeTurns(
+                    among: servers.map {
+                        ($0.backend, SessionActivity.shared.workingCount(onProfile: $0.id))
+                    })),
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        alert.addAction(
+            UIAlertAction(title: ServerRestart.action, style: .destructive) { [weak self] _ in
+                Theme.Haptics.tap()
+                Task { [weak self] in
+                    let refused = await UpdateMonitor.restartEverything()
+                    guard !refused.isEmpty else { return }
+                    self?.presentRefused(refused)
+                }
+            })
+        present(alert, animated: true)
+    }
+
+    private func presentRefused(_ names: [String]) {
+        let alert = UIAlertController(
+            title: ServerRestart.refusedTitle, message: ServerRestart.allRefused(names),
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "OK"), style: .cancel))
         present(alert, animated: true)
     }
 }

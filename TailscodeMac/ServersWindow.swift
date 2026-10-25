@@ -366,14 +366,12 @@ final class ServersWindow: NSWindowController {
         remove.setContentHuggingPriority(.required, for: .horizontal)
 
         var trailing: [NSView] = [icon, lines, Self.spacer()]
-        if ServerRestart.isOffered(profile.backend) {
-            let restart = NSButton(
-                title: ServerRestart.title, target: self, action: #selector(restartTapped))
-            restart.bezelStyle = .inline
-            restart.identifier = NSUserInterfaceItemIdentifier(profile.id)
-            restart.setContentHuggingPriority(.required, for: .horizontal)
-            trailing.append(restart)
-        }
+        let restart = NSButton(
+            title: ServerRestart.title, target: self, action: #selector(restartTapped))
+        restart.bezelStyle = .inline
+        restart.identifier = NSUserInterfaceItemIdentifier(profile.id)
+        restart.setContentHuggingPriority(.required, for: .horizontal)
+        trailing.append(restart)
         trailing.append(remove)
 
         let row = NSStackView(views: trailing)
@@ -383,10 +381,12 @@ final class ServersWindow: NSWindowController {
         return row
     }
 
-    /// The press states its cost first, then hands the ask over and stops: the connection it went
-    /// over dies with the process it restarted, so the reconnect every screen already watches is
-    /// what says the machine is back. A machine set up by hand refuses the restart, and the refusal
-    /// is the offer: the setup that makes it restartable is one press, not a terminal instruction.
+    /// The press states its cost first. opencode is handed the ask and forgotten: the connection it
+    /// went over dies with the process it restarted, so the reconnect every screen already watches
+    /// is what says the machine is back. A machine set up by hand refuses the restart, and the
+    /// refusal is the offer: the setup that makes it restartable is one press, not a terminal
+    /// instruction. A bridge waits for its machine to be idle and is followed by the driver, which
+    /// the update window draws.
     @objc private func restartTapped(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue,
             let profile = ServerDirectory.shared.profiles.first(where: { $0.id == id })
@@ -394,9 +394,15 @@ final class ServersWindow: NSWindowController {
         MacDialogs.confirm(
             on: window,
             title: ServerRestart.confirmTitle(profile.name),
-            body: ServerRestart.confirmBody(workingTurns: workingTurns?(profile.id) ?? 0),
+            body: ServerRestart.confirmBody(
+                for: profile.backend, workingTurns: workingTurns?(profile.id) ?? 0),
             confirmLabel: ServerRestart.action
         ) { [weak self] in
+            guard ServerRestart.course(for: profile.backend) == .asked else {
+                self?.setStatus(ServerRestart.underway)
+                Task { await MacUpdateWatch.shared.restart(.server(profileID: profile.id)) }
+                return
+            }
             Task { [weak self] in
                 guard
                     let backend = ServerDirectory.shared.backend(for: profile),

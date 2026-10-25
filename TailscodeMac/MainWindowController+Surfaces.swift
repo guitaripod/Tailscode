@@ -262,6 +262,11 @@ extension MainWindowController {
     func presentUpdates() {
         if updateWindow == nil {
             updateWindow = UpdateWindowController()
+            updateWindow?.workingTurns = { [weak self] profileID in
+                self?.sidebar.allEntries.filter {
+                    $0.profileID == profileID && $0.session.isWorking
+                }.count ?? 0
+            }
         }
         updateWindow?.present()
     }
