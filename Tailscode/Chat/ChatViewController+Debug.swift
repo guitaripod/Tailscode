@@ -175,6 +175,10 @@ extension ChatViewController {
         func tourToggleSaved() { toggleSaved() }
 
         func tourDismissKeyboard() { view.endEditing(true) }
+
+        func tourTakePartySlot(_ index: Int) {
+            (presentedViewController as? PartyViewController)?.tourTake(slot: index)
+        }
     #endif
 }
 
@@ -202,7 +206,7 @@ extension ChatViewController {
 #if DEBUG
     extension ChatViewController {
         /// One step of a scripted walk through the model dial, for the headless screenshot run:
-        /// `pins`, `pinscycle`, `star:<id>`, `auto`, `pick:<id>`, `level:<l>`, `rail[:<l>]`, `step`, `cycle`, `menu`, `party`, `partyedit`, `fleetparty`, `model:<id>`.
+        /// `pins`, `pinscycle`, `star:<id>`, `auto`, `pick:<id>`, `level:<l>`, `rail[:<l>]`, `step`, `cycle`, `menu`, `party`, `partyedit`, `fleetparty`, `fleetpartykeep`, `model:<id>`.
         func tourDial(_ verb: String) async {
             let parts = verb.split(separator: ":", maxSplits: 1).map(String.init)
             switch parts[0] {
@@ -235,8 +239,8 @@ extension ChatViewController {
             case "party", "partyedit":
                 DialTour.fillParty()
                 presentParty(editing: parts[0] == "partyedit")
-            case "fleetparty":
-                DialTour.fillFleetParty()
+            case "fleetparty", "fleetpartykeep":
+                DialTour.fillFleetParty(localLevel: parts[0] == "fleetpartykeep" ? .keep : .server)
                 presentParty()
             case "model":
                 guard parts.count > 1 else { return }

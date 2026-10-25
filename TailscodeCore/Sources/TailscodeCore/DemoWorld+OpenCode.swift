@@ -352,7 +352,8 @@ extension DemoWorld {
                 id: "oreply-a-t1", name: "Grep", status: .completed,
                 output: "src/routes/billing.ts:41\nsrc/lib/flags.ts:12",
                 title: "grep -rn TODO src/")))), ms: 1100),
-            step(.partTextDelta(messageID: "oreply-a", partID: "t", delta: "Two spots to touch. Making the edits and running the checks — I'll report back with the diff."), ms: 450),
+            step(.partUpserted(messageID: "oreply-a", MessagePart(id: "t2", kind: .text(""))), ms: 300),
+            step(.partTextDelta(messageID: "oreply-a", partID: "t2", delta: "Two spots to touch. Making the edits and running the checks — I'll report back with the diff."), ms: 450),
         ]
     }
 

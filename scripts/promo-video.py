@@ -70,7 +70,8 @@ def frame_phone(clean, work):
     environment = dict(os.environ, PATH="/opt/homebrew/bin:" + os.environ.get("PATH", ""))
     folder = os.path.join(work, "framed")
     os.makedirs(folder)
-    subprocess.run(["frames", "video", clean, "--color", "Silver", "--background", "transparent",
+    frames = shutil.which("frames", path=environment["PATH"])
+    subprocess.run([sys.executable, frames, "video", clean, "--color", "Silver", "--background", "transparent",
                     "--codec", "prores", "--alpha", "--strip-audio", "-o", folder], check=True, env=environment)
     return os.path.join(folder, sorted(os.listdir(folder))[0])
 
@@ -80,15 +81,17 @@ def main():
     parser.add_argument("--rec", required=True)
     parser.add_argument("--store", default=os.path.join(ROOT, "marketing/video/tailscode-preview-886x1920.mp4"))
     parser.add_argument("--out", default=os.path.join(ROOT, "marketing/video/tailscode-promo-1080x1920.mp4"))
+    parser.add_argument("--config", default=os.path.join(ROOT, "marketing/video/preview.json"))
     args = parser.parse_args()
     clean, out = args.store, args.out
-    with open(os.path.join(ROOT, "marketing/video/preview.json")) as f:
+    with open(args.config) as f:
         claims = json.load(f)["captions"]
     length = duration(clean)
     work = tempfile.mkdtemp(prefix="tailscode-promo-")
     native = os.path.join(work, "native.mp4")
     subprocess.run([sys.executable, os.path.join(ROOT, "scripts/preview-video.py"), "--rec", args.rec, "--out", native,
-                    "--poster", "", "--size", "1320x2868", "--silent"], check=True)
+                    "--poster", "", "--size", "1320x2868", "--silent",
+                    "--config", args.config], check=True)
     framed = frame_phone(native, work)
 
     ground = os.path.join(work, "ground.png")

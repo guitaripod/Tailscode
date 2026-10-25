@@ -653,3 +653,9 @@ final class PartyRowView: UIControl {
         didSet { alpha = isHighlighted ? 0.6 : 1 }
     }
 }
+
+#if DEBUG
+    extension PartyViewController {
+        func tourTake(slot: Int) { tap(slot: slot) }
+    }
+#endif

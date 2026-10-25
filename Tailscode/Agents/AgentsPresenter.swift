@@ -6,13 +6,15 @@ import UIKit
 @MainActor
 enum AgentsPresenter {
     @discardableResult
-    static func present(from presenter: UIViewController) -> AgentsBoardViewController? {
+    static func present(from presenter: UIViewController, animated: Bool = true)
+        -> AgentsBoardViewController?
+    {
         let chain = presented(from: presenter)
         guard board(in: chain) == nil, let top = chain.last, !top.isBeingDismissed else { return nil }
         let board = AgentsBoardViewController()
         let navigation = UINavigationController(rootViewController: board)
         Theme.Haptics.tap()
-        top.present(navigation, animated: true)
+        top.present(navigation, animated: animated)
         return board
     }
 

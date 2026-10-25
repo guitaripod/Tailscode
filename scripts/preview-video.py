@@ -45,6 +45,8 @@ def arguments():
     parser.add_argument("--poster", default=os.path.join(ROOT, "marketing/video/tailscode-preview-poster.png"))
     parser.add_argument("--size", help="output size instead of the one in the config, e.g. 1320x2868")
     parser.add_argument("--silent", action="store_true", help="write the picture alone, with no sound bed")
+    parser.add_argument("--config", default=CONFIG, help="the cut points, instead of marketing/video/preview.json")
+    parser.add_argument("--score", help="a wav from scripts/preview-score.py to lay under the picture instead of the sine bed")
     return parser.parse_args()
 
 
@@ -95,7 +97,7 @@ def bed_graph(first_input, chord, total):
 
 def main():
     args = arguments()
-    with open(CONFIG) as f:
+    with open(args.config) as f:
         config = json.load(f)
     segments = config["segments"]
     size = args.size or config.get("size", "886x1920")
@@ -109,6 +111,11 @@ def main():
     filters, label = video_graph(segments, size, dissolve)
     if args.silent:
         command += ["-filter_complex", ";".join(filters), "-map", f"[{label}]", "-an"]
+    elif args.score:
+        command += ["-i", args.score, "-filter_complex", ";".join(filters),
+                    "-map", f"[{label}]", "-map", f"{len(segments)}:a",
+                    "-af", f"afade=t=out:st={total - 1.2:.2f}:d=1.2",
+                    "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-ac", "2"]
     else:
         audio_filters, tones = bed_graph(len(segments), config.get("chord", "gmaj"), total)
         for frequency in tones:

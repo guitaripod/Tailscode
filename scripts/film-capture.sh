@@ -9,6 +9,7 @@
 # Usage: scripts/film-capture.sh [seconds] [out.mov]
 #   TOUR_ARG=--preview-tour  films the thirty-second App Store preview take instead of the long tour
 #   APP=<path to Tailscode.app>  films a build other than build-sim/
+#   NAME=<simulator name>  films on that existing simulator instead of TailscodeFilm
 set -euo pipefail
 
 DURATION=${1:-46}
@@ -16,7 +17,7 @@ OUT=${2:-/tmp/tailscode-screen.mov}
 BUNDLE=com.guitaripod.tailscode
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 APP=${APP:-$ROOT/build-sim/Build/Products/Debug-iphonesimulator/Tailscode.app}
-NAME=TailscodeFilm
+NAME=${NAME:-TailscodeFilm}
 
 # gtimeout is coreutils; fall back to running bare if it is not on PATH so the
 # script still works from a login shell that never sourced Homebrew.

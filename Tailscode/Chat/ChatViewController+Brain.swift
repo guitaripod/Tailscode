@@ -204,6 +204,8 @@ extension ChatViewController {
             }
         }
 
+        func tourBrain(_ verb: String, _ value: String = "") { brainWalkStep(verb, value) }
+
         private func brainWalkStep(_ verb: String, _ value: String) {
             BrainWalk.run(
                 verb: verb, value: value, store: brain.store, collection: collectionView,

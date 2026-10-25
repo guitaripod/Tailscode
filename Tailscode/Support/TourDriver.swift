@@ -42,6 +42,18 @@ import MidgarCore
             Task { await driver.preview() }
         }
 
+        /// The take the fleet App Store preview is cut from: the Agents board and a peek at one
+        /// working agent, a task typed into a local chat and answered, the party and its local
+        /// slot, the GPU chat's table, and the month in numbers. It is one pass and nothing in it
+        /// waits for a person.
+        static func startFleet(in window: UIWindow) {
+            AppPreferences.autoExpandThinking = true
+            isFilming = true
+            let driver = TourDriver(window: window)
+            running = driver
+            Task { await driver.fleet() }
+        }
+
         /// Opens the Live Activity the preview's first seconds are filmed from. The card is the
         /// app's real one, started and written through `AppActivityController` for the demo's
         /// approval chat; the script that films it locks the simulator, then drops a file into
@@ -230,6 +242,80 @@ import MidgarCore
             await glide(topScrollView, by: 700, duration: 2.0)
             await hold(1.4)
             MidgarLog.info("preview: end", category: .ui)
+        }
+
+        private var agentsBoard: AgentsBoardViewController? {
+            presentedNav?.viewControllers.first as? AgentsBoardViewController
+        }
+
+        /// About 30 seconds from the board's first frame with its data, which is what the cut keeps:
+        /// the Agents board, the peek of a working agent, Home, a task sent to a local chat and
+        /// answered, the party and its local slot, the GPU chat, the month in numbers.
+        private func fleet() async {
+            MidgarLog.info("fleet: begin", category: .ui)
+            home?.tourResetBoard(seenAge: 300_000)
+            await fleetBoard()
+            await fleetPeek()
+            await fleetTask()
+            await fleetParty()
+            await fleetGPU()
+            await fleetMonth()
+            MidgarLog.info("fleet: end", category: .ui)
+        }
+
+        private func fleetBoard() async {
+            home?.tourOpenAgents()
+            await hold(5.9)
+        }
+
+        private func fleetPeek() async {
+            agentsBoard?.tourOpenPeek(titled: "Fix reconnect test")
+            await hold(2.2)
+            await glide(agentsBoard?.tourPeekScrollView, by: 260, duration: 1.6)
+            await hold(1.0)
+            await agentsBoard?.tourDismissPeek()
+            await hold(0.2)
+            await dismissPresented()
+            await hold(0.6)
+        }
+
+        private func fleetTask() async {
+            home?.openSession(withID: "demo-o1")
+            await hold(0.7)
+            await chat?.tourType("Add a retry budget to the sync client", perCharacter: 0.032)
+            await hold(0.3)
+            chat?.tourDismissKeyboard()
+            await hold(0.75)
+            chat?.tourSend("Add a retry budget to the sync client")
+            chat?.tourClearComposer()
+            await hold(2.4)
+        }
+
+        private func fleetParty() async {
+            await chat?.tourDial("fleetpartykeep")
+            await hold(1.6)
+            chat?.tourTakePartySlot(3)
+            await hold(1.5)
+        }
+
+        private func fleetGPU() async {
+            await popToHome(hold: 0.4)
+            home?.openSession(withID: "demo-o5")
+            await hold(0.5)
+            chat?.tourBrain("open")
+            await hold(1.0)
+            chat?.tourBrain("rows")
+            await hold(1.1)
+            await glide(chat?.tourScrollView, by: 300, duration: 1.0)
+            await hold(0.4)
+        }
+
+        private func fleetMonth() async {
+            await popToHome(hold: 0.4)
+            home?.pushUsage()
+            await hold(0.9)
+            await glide(topScrollView, by: 900, duration: 1.9)
+            await hold(0.3)
         }
 
         /// 0.0–9.5 — the whole fleet on one board, then aim at the project this

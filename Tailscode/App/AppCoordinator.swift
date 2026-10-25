@@ -139,6 +139,9 @@ final class AppCoordinator: NSObject {
             if CommandLine.arguments.contains("--preview-tour") {
                 TourDriver.startPreview(in: window)
             }
+            if CommandLine.arguments.contains("--fleet-tour") {
+                TourDriver.startFleet(in: window)
+            }
             LockScreenShot.startIfAsked()
             ChatOpenBench.runIfRequested(in: window)
             if CommandLine.arguments.contains("--lockwalk") {

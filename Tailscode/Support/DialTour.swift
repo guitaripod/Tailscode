@@ -51,12 +51,14 @@
 
         /// Replaces the party with six models from both machines, cloud and local, so a screenshot
         /// of the sheet shows a full room whichever machine the chat it opens from lives on.
-        static func fillFleetParty() {
+        /// `localLevel` is what the local Bolt slot asks of the level: `.keep` makes taking it say
+        /// what happened to the level the chat was on, which is the toast a take is filmed for.
+        static func fillFleetParty(localLevel: PresetEffort = .server) {
             let fixtures: [(String, PresetEffort, String?)] = [
                 ("claude-fable-5", .level("max"), "Deep dive"),
                 ("claude-opus-4-8", .level("xhigh"), nil),
                 ("claude-sonnet-5", .level("high"), "Daily"),
-                ("llama-server^qwen3-coder-30b-a3b", .server, nil),
+                ("llama-server^qwen3-coder-30b-a3b", localLevel, nil),
                 ("llama-server^qwen3.6-27b", .server, nil),
                 ("openai^gpt-5.1-codex", .level("high"), nil),
             ]

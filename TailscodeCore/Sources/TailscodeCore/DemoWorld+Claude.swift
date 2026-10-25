@@ -387,7 +387,8 @@ extension DemoWorld {
                 id: "reply-a-t1", name: "Bash", status: .completed,
                 output: "Executed 214 tests, with 0 failures (0 unexpected) in 38.2s",
                 title: "swift test")))), ms: 1400),
-            step(.partTextDelta(messageID: "reply-a", partID: "t", delta: "All 214 tests green. The change is minimal and covered by a regression test — want me to open the PR?"), ms: 400),
+            step(.partUpserted(messageID: "reply-a", MessagePart(id: "t2", kind: .text(""))), ms: 300),
+            step(.partTextDelta(messageID: "reply-a", partID: "t2", delta: "All 214 tests green. The change is minimal and covered by a regression test — want me to open the PR?"), ms: 400),
         ]
     }
 

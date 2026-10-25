@@ -26,6 +26,8 @@ extension HomeViewController {
 
         func tourOpenSettings() { onOpenSettings?() }
 
+        func tourOpenAgents() { AgentsPresenter.present(from: self, animated: false) }
+
         func tourPop() { navigationController?.popViewController(animated: true) }
 
         /// Puts the board into its first-frame state for a take: no bookmarks carried
