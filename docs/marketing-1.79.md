@@ -110,4 +110,34 @@ Driven by a new DEBUG `--fleet-tour` in `TourDriver`, recorded on a dedicated si
 
 ## 8. Shipping
 
-Tailscode's registry policy is `metadata_edit = propose` and `release = manual-only`. Every write to App Store Connect therefore goes through Marcus at a terminal. This work prepares the files in `store/` (the `midgar` layout) and the preview MP4. The commands are in `store/README.md`. Nothing here creates a version, uploads, or submits.
+Tailscode's registry policy is `metadata_edit = propose` and `release = manual-only`, so every write to App Store Connect is Marcus's, at a terminal. Everything below is ready in the repo; nothing has been created, uploaded or submitted.
+
+| What | Where |
+|---|---|
+| Listing text, 14 locales × 2 trains (description, keywords, promo, What's New) | `store/metadata/{ios,macos}/version/1.79/<locale>.json` |
+| iPhone and iPad panels, 14 locales | `store/shots/{iphone,ipad}/<locale>/` (source: `marketing/appstore/panels/`) |
+| Mac panels, 14 locales | `store/shots/mac/<locale>/` |
+| Preview (plain footage, 29.7 s, poster at 00:00:01:00) | `marketing/video/tailscode-preview-fleet-886x1920.mp4` |
+| Header and search-result creative | `marketing/appstore/creative/<locale>/` |
+| Social cut (framed, captioned, not for the store) | `marketing/video/tailscode-promo-fleet-1080x1920.mp4` |
+
+Before the build: decide the analytics line (§7), because the welcome screen ships in the binary.
+
+With a build uploaded (iOS N, Mac M), from the macbook:
+
+```
+midgar ship tailscode --train ios   --version 1.79 --resume stage --build N   # version, build, What's New
+midgar ship tailscode --train macos --version 1.79 --resume stage --build M
+midgar listing tailscode --train ios     # plan; then again with --apply
+midgar listing tailscode --train macos   # plan; then --apply
+midgar shots tailscode --train ios       # plan; then --apply (iphone + ipad sets)
+midgar shots tailscode --train macos     # plan; then --apply
+asc video-previews list --version-localization <en-US loc id>   # the new version inherits 1.78's preview: delete it per locale first
+~/Dev/preview-kit/upload.sh 6791660932 1.79 marketing/video/tailscode-preview-fleet-886x1920.mp4 IPHONE_67
+asc video-previews set-poster-frame --id <preview id> --time-code 00:00:01:00
+python3 scripts/asc-creative.py 1.79     # header + search placements, every locale
+midgar ship tailscode --train ios --resume submit
+midgar ship tailscode --train macos --resume submit
+```
+
+Judge the result a week after 1.79 is live: re-pull App Store Discovery & Engagement and App Downloads Standard (§1 baseline), split by device and source. Targets: iPhone search impression→view from 5.4 % to 8 %, view→download from 16.8 % to 25 %. Report a miss plainly.
