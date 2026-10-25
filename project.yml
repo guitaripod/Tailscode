@@ -99,7 +99,7 @@ targetTemplates:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
         MARKETING_VERSION: "1.79"
-        CURRENT_PROJECT_VERSION: "195"
+        CURRENT_PROJECT_VERSION: "207"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         SWIFT_EMIT_LOC_STRINGS: YES
@@ -507,7 +507,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.macwidget
         MARKETING_VERSION: "1.79"
-        CURRENT_PROJECT_VERSION: "195"
+        CURRENT_PROJECT_VERSION: "207"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
