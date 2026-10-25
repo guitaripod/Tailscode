@@ -13,14 +13,19 @@ public enum AgentOutcome: Sendable, Equatable {
 public struct AgentStep: Sendable, Hashable, Identifiable {
     public let id: String
     public let words: String
+    /// The same step in words anyone can read, which a wall's tile says instead of `words`.
+    public let plain: String?
     public let outcome: AgentOutcome
     /// When this device first saw the step. A tool call carries no duration of its own, so this
     /// is the only age there is, and it is said as that: "seen", never "took".
     public var seen: Date?
 
-    public init(id: String, words: String, outcome: AgentOutcome, seen: Date? = nil) {
+    public init(
+        id: String, words: String, outcome: AgentOutcome, seen: Date? = nil, plain: String? = nil
+    ) {
         self.id = id
         self.words = words
+        self.plain = plain
         self.outcome = outcome
         self.seen = seen
     }
@@ -199,7 +204,9 @@ public enum AgentLine {
     /// building a call's reading parses its input, which is not a price to pay for a whole turn.
     public static func steps(in state: ConversationState, limit: Int = 5) -> [AgentStep] {
         LiveActivityReading.turnCalls(in: state).suffix(limit).reversed().map { call in
-            AgentStep(id: call.id, words: words(for: call), outcome: outcome(of: call))
+            AgentStep(
+                id: call.id, words: words(for: call), outcome: outcome(of: call),
+                plain: AgentPlain.words(for: call).text)
         }
     }
 

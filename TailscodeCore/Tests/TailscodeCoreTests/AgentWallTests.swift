@@ -117,8 +117,8 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
         let read = wall([working("w")])
         let one = tile(read, "w")
         #expect(one?.state == .working)
-        #expect(one?.words == "Editing Backoff.swift")
-        #expect(one?.detail == "/r/Backoff.swift")
+        #expect(one?.words == "Changing Backoff.swift")
+        #expect(one?.detail == nil && one?.rewritable == nil)
         #expect(one?.steps.count == 1)
         #expect(one?.beat?.last ?? 0 > 0)
         #expect(one?.fade == 0)
@@ -175,14 +175,14 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
         let source = AgentSource(entry: entry("r", active: true), facts: facts(state), reachable: true, unread: false)
         let one = tile(wall([source]), "r")
         #expect(one?.state == .retrying(attempt: 2))
-        #expect(one?.words == "Waiting on the provider")
+        #expect(one?.words == "The AI service is busy, trying again")
         #expect(one?.statusWord(at: epoch) == "Waiting on the provider · try 2")
     }
 
     @Test func backgroundWorkIsBackgroundAndStuckWhenTheServerSaysSo() {
         let calm = tile(wall([background("b")]), "b")
         #expect(calm?.state == .background(stuck: false))
-        #expect(calm?.words == "swift test")
+        #expect(calm?.words == "Running the tests")
         #expect(calm?.statusWord(at: epoch) == "in the background · 22m")
         let stuck = tile(wall([background("b", stalled: true)]), "b")
         #expect(stuck?.state == .background(stuck: true))
@@ -350,7 +350,7 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
         #expect(ids(read) == ["p1/old", "p1/young"])
     }
 
-    @Test func aSlotIsKeptUntilTheRankChanges() {
+    @Test func aSlotIsKeptWhateverTheStateDoes() {
         let first = wall([working("a"), working("b"), working("c")])
         let before = ids(first)
         let shuffled = wall([working("c"), working("a"), working("b")], previous: first)
@@ -359,17 +359,41 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
         #expect(ids(again) == before + ["p1/d"])
     }
 
-    @Test func aTileWhoseRankChangesMovesToItsNewRankAndTheOthersStayPut() {
+    @Test func aTilesStateNeverMovesIt() {
         let first = wall([working("a"), working("b"), working("c")])
         let order = ids(first)
         let stalled = wall(
             [
                 working("a"), working("b"), working("c", beating: false),
             ], previous: first)
-        #expect(ids(stalled).first == "p1/c")
-        #expect(Array(ids(stalled).dropFirst()) == order.filter { $0 != "p1/c" })
+        #expect(ids(stalled) == order)
+        #expect(stalled.tiles.first { $0.id == "p1/c" }?.state.rank == 3)
         let asked = wall([asking("n", waited: 5), working("a"), working("b"), working("c")], previous: first)
-        #expect(ids(asked) == ["p1/n"] + order)
+        #expect(ids(asked) == order + ["p1/n"])
+    }
+
+    @Test func anAskThatTakesTheSlotOfAWorkingSessionStaysWhereItWas() {
+        let first = wall([working("a"), working("b")])
+        let asked = wall([asking("a", waited: 5), working("b")], previous: first)
+        #expect(ids(asked) == ids(first))
+        #expect(asked.tiles.first?.state.isNeedsYou == true)
+    }
+
+    @Test func pastTheCapAnAskIsNeverTheOneLeftOut() {
+        let sixWorking = (0..<6).map { working("w\($0)") }
+        let first = wall(sixWorking)
+        let crowded = wall(sixWorking + [asking("n", waited: 5)], previous: first)
+        #expect(crowded.tiles.count == 6 && ids(crowded).contains("p1/n"))
+        #expect(!ids(crowded).contains("p1/w5"))
+        #expect(crowded.listed.map(\.id).contains("p1/w5"))
+        #expect(Array(ids(crowded).prefix(5)) == Array(ids(first).prefix(5)))
+    }
+
+    @Test func aCooledEndingGivesWayBeforeARunningSession() {
+        let sixWorking = (0..<5).map { working("w\($0)") }
+        let first = wall(sixWorking, finished: [finish("d", .done, ago: 5)])
+        let more = wall(sixWorking + [working("late")], finished: [finish("d", .done, ago: 6)], previous: first)
+        #expect(more.tiles.count == 6 && ids(more).contains("p1/late") && !ids(more).contains("p1/d"))
     }
 
     @Test func aDeepeningWaitDoesNotMoveATile() {
@@ -379,10 +403,10 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
         #expect(ids(later) == ids(first))
     }
 
-    @Test func aFinishedTileSettlesBehindWhatIsStillRunning() {
-        let first = wall([working("a")], finished: [])
+    @Test func anEndedTileCoolsWhereItStood() {
+        let first = wall([working("a"), working("b")], finished: [])
         let ended = wall([working("b")], finished: [finish("a", .done, ago: 5)], previous: first)
-        #expect(ids(ended) == ["p1/b", "p1/a"])
+        #expect(ids(ended) == ["p1/a", "p1/b"])
     }
 }
 
@@ -444,27 +468,27 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
         }
     }
 
-    @Test func theFirstAskSpansTwoColumnsWhenThereIsRoom() {
-        for count in 2...6 {
-            let read = wall(sources(count, asks: true))
-            #expect(read.tiles.first?.state.isNeedsYou == true)
-            #expect(read.tiles.first?.span == 2)
-            #expect(read.tiles.dropFirst().allSatisfy { $0.span <= 2 })
+    @Test func anAskTakesNoMoreRoomThanAnyOtherTile() {
+        for aspect in [landscape, portrait, squarish] {
+            for count in 2...6 {
+                let read = wall(sources(count, asks: true), aspect: aspect)
+                #expect(read.tiles.first?.state.isNeedsYou == true)
+                #expect(read.tiles.first?.span == 1)
+            }
         }
-        let portraitPair = wall(sources(2, asks: true), aspect: portrait)
-        #expect(portraitPair.columns == 1)
-        #expect(portraitPair.tiles.allSatisfy { $0.span == 1 })
-        #expect(wall(sources(1, asks: true)).tiles.first?.span == 1)
+        #expect(shape(6, portrait, asks: true) == (2, 3))
+        #expect(shape(4, landscape, asks: true) == shape(4, landscape))
     }
 
     @Test func aTilesCellsAreWhereTheGridFlowsThem() {
         let read = wall(sources(5, asks: true))
         #expect(read.columns == 3 && read.rows == 2)
-        #expect(read.tiles.map(\.column) == [0, 2, 0, 1, 2])
-        #expect(read.tiles.map(\.row) == [0, 0, 1, 1, 1])
+        #expect(read.tiles.map(\.column) == [0, 1, 2, 0, 2])
+        #expect(read.tiles.map(\.row) == [0, 0, 0, 1, 1])
+        #expect(read.tiles.map(\.span) == [1, 1, 1, 2, 1])
         let four = wall(sources(4, asks: true))
-        #expect(four.columns == 3 && four.rows == 2)
-        #expect(four.tiles.map(\.span) == [2, 1, 2, 1])
+        #expect(four.columns == 2 && four.rows == 2)
+        #expect(four.tiles.map(\.span) == [1, 1, 1, 1])
     }
 
     @Test func noMoreThanSixTilesAndTheRestAreListed() {
@@ -601,7 +625,7 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
 
     @Test func everySceneBuildsAndIsNamedOnce() {
         let scenes = AgentDemo.wallScenes(now: now)
-        #expect(scenes.map(\.name) == ["calm", "busy", "attention", "alarm", "finishing", "crowded"])
+        #expect(scenes.map(\.name) == ["calm", "busy", "attention", "alarm", "finishing", "crowded", "squad"])
         for (_, wall) in scenes {
             #expect(wall.tiles.count <= 6)
             #expect(wall.tiles.reduce(0) { $0 + $1.span } == wall.columns * wall.rows)
@@ -632,7 +656,6 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
         let attention = scene("attention")
         #expect(attention.mood == .attention)
         #expect(attention.tiles.first?.state == .needsYou(.fresh))
-        #expect(attention.tiles.first?.span == 2)
         #expect(attention.tiles.first?.detail == "rm -rf build && swift build -c release")
         #expect(attention.tiles.count == 2)
     }
@@ -641,17 +664,17 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
         let alarm = scene("alarm")
         #expect(alarm.mood == .alarm)
         #expect(alarm.tiles.count == 6)
-        let states = alarm.tiles.map(\.state)
+        let tiles = alarm.tiles.sorted { $0.state.rank < $1.state.rank }
+        let states = tiles.map(\.state)
         #expect(states[0] == .needsYou(.overdue))
         #expect(states[1] == .finished(.failed))
         #expect(states[2] == .retrying(attempt: 2))
         #expect(states[3] == .quiet(since: now.addingTimeInterval(-180)))
         #expect(states[4] == .away(lastSeen: now.addingTimeInterval(-240)))
         #expect(states[5] == .background(stuck: true))
-        #expect(alarm.tiles[3].contextShare == 0.88)
-        #expect(alarm.tiles[0].span == 2)
-        #expect(alarm.tiles[1].words == "swift build exited with status 1")
-        #expect(alarm.tiles[0].statusWord(at: now) == "waiting 7m")
+        #expect(tiles[3].contextShare == 0.88)
+        #expect(tiles[1].words == "swift build exited with status 1")
+        #expect(tiles[0].statusWord(at: now) == "waiting 7m")
         #expect(alarm.headline == "3 working · 1 needs you")
     }
 

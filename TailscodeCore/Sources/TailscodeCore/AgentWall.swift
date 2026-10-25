@@ -59,8 +59,8 @@ public enum WallState: Sendable, Equatable {
     case finished(WallOutcome)
     case away(lastSeen: Date)
 
-    /// Where the state sits in the wall's order: needs-you, failed, retrying, quiet, away,
-    /// working, thinking, background, finished.
+    /// Where the state sits when two tiles first appear together: needs-you, failed, retrying,
+    /// quiet, away, working, thinking, background, finished. It never moves a tile that is placed.
     public var rank: Int {
         switch self {
         case .needsYou: return 0
@@ -100,8 +100,11 @@ public struct WallTile: Sendable, Equatable, Identifiable {
     public let state: WallState
     /// The primary line: what it is doing, what it waits to do, or why it failed.
     public let words: String
-    /// The whole command, the file's path, the question or the failure reason; nil otherwise.
+    /// The whole command, the question or the failure reason; for work the rules read it is nil,
+    /// since the words already say it, and for work they could not read it is the raw command.
     public let detail: String?
+    /// The raw words under `words` when no rule could read them, for a model that may say them better.
+    public internal(set) var rewritable: String?
     public let startedAt: Date?
     /// When the tile entered its state, for the counter that ticks beside the word.
     public let stateSince: Date?
@@ -110,6 +113,10 @@ public struct WallTile: Sendable, Equatable, Identifiable {
     /// How full the model's window is, `0...1`; nil when it is not known.
     public let contextShare: Double?
     public let children: [AgentChild]
+    /// The session's sub-agents and background work, one small tile each, most in need of a look first.
+    public internal(set) var workers: [WallWorker] = []
+    /// How the cell is shared with the workers; nil when the session has none.
+    public internal(set) var squad: WallSquad?
     /// The last three steps, newest first.
     public let steps: [AgentStep]
     /// Columns the tile covers, 1 or 2.
@@ -163,6 +170,11 @@ public struct WallChip: Sendable, Equatable, Identifiable {
     public let at: Date?
     public let words: String
     public let unread: Bool
+    /// Sub-agents the listing counts for a session nobody watches first-hand, which it cannot name.
+    public let agents: Int
+
+    /// "2 sub-agents" for a listed session that has some out; nil when it has none.
+    public var agentsLine: String? { WallWorker.count(agents) }
 }
 
 /// What the last hour held, for the screen where nothing runs.
@@ -194,6 +206,8 @@ public struct AgentWall: Sendable, Equatable {
     public let calm: WallCalm?
     public let watched: Int
     public let running: Int
+    /// Sub-agents running under the tiles, named; background work is not counted.
+    public let subagents: Int
     /// When this wall was read; the next read measures what it kept from here.
     public let at: Date
 
@@ -206,15 +220,19 @@ public struct AgentWall: Sendable, Equatable {
 
     public var isCalm: Bool { mood == .calm }
 
+    /// `aspect` is the screen's shape; `gridAspect` the shape of the area the tiles fill, which the
+    /// workers' share of each cell is cut from. Without it the screen's shape stands in.
     public static func read(
-        board: AgentBoard, hour: AgentHour?, now: Date, aspect: Double, previous: AgentWall?
+        board: AgentBoard, hour: AgentHour?, now: Date, aspect: Double, gridAspect: Double? = nil,
+        previous: AgentWall?
     ) -> AgentWall {
         let drafts = WallReading.drafts(board: board, now: now, previous: previous)
         let ordered = WallReading.order(drafts, previous: previous)
-        let shown = Array(ordered.prefix(maxTiles))
-        let overflow = ordered.dropFirst(maxTiles).filter { $0.state.isRunning }
-        let chips = WallReading.listed(board: board, overflow: Array(overflow))
-        let placed = WallGrid.place(shown, aspect: aspect)
+        let shown = WallReading.fit(ordered)
+        let shownIDs = Set(shown.map(\.id))
+        let overflow = ordered.filter { !shownIDs.contains($0.id) && $0.state.isRunning }
+        let chips = WallReading.listed(board: board, overflow: overflow)
+        let placed = WallGrid.place(shown, aspect: aspect, areaAspect: gridAspect)
         let mood = WallReading.mood(drafts: drafts, listed: chips)
         return AgentWall(
             mood: mood,
@@ -224,6 +242,27 @@ public struct AgentWall: Sendable, Equatable {
             listedOverflow: max(0, chips.count - maxListed),
             recent: WallReading.recent(board: board, shown: placed.tiles),
             calm: board.isEmpty ? WallReading.calm(board: board, hour: hour, now: now) : nil,
-            watched: board.watched, running: board.running, at: now)
+            watched: board.watched, running: board.running,
+            subagents: placed.tiles.reduce(0) { $0 + $1.liveSubagents }, at: now)
+    }
+
+    /// The same wall laid out for another screen: a demo scene is read once and fitted to the window
+    /// it is shown in.
+    public func reflowed(aspect: Double, gridAspect: Double? = nil) -> AgentWall {
+        let placed = WallGrid.place(tiles, aspect: aspect, areaAspect: gridAspect)
+        return AgentWall(
+            mood: mood, headline: headline, watchLine: watchLine, tiles: placed.tiles,
+            columns: placed.columns, rows: placed.rows, listed: listed, listedOverflow: listedOverflow,
+            recent: recent, calm: calm, watched: watched, running: running, subagents: subagents,
+            at: at)
+    }
+
+    /// "3 sub-agents" under the watch line; nil when none runs.
+    public var subagentsLine: String? { WallWorker.count(subagents) }
+}
+
+extension WallTile {
+    var liveSubagents: Int {
+        workers.filter { $0.kind == .agent && !$0.state.isFinished }.count
     }
 }

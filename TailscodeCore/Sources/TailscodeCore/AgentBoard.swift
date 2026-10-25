@@ -44,6 +44,8 @@ public struct AgentRow: Sendable, Equatable, Identifiable {
     /// The last three steps, newest first, for a watched row.
     public var steps: [AgentStep] = []
     public var object: AgentObject?
+    /// What it is doing in words anyone can read.
+    public var plain: PlainLine?
     /// How full the model's window is, `0...1`, when it is known.
     public var contextShare: Double?
     public var activity: ActivityKind?
@@ -313,7 +315,8 @@ public struct AgentBoard: Sendable, Equatable {
             children: facts.children, listedAgents: 0, isWatched: true,
             isAway: source.reachable == false, unread: source.unread, word: word,
             steps: Array(facts.steps.prefix(AgentRow.stepCount)), object: facts.object,
-            contextShare: facts.fill?.fraction, activity: facts.activity, retryAttempt: attempt,
+            plain: facts.plain, contextShare: facts.fill?.fraction, activity: facts.activity,
+            retryAttempt: attempt,
             lastActivity: session.updatedAt)
     }
 

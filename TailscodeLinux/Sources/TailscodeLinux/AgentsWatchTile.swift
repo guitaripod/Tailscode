@@ -5,15 +5,14 @@ import Foundation
 import TailscodeCore
 
 /// One agent on the wall: a glass card, the state's mark, the title, the one plain word for the
-/// state, what it is doing in large type, the command or path under it, the heartbeat, the agents
-/// it has out — and, for a session that waits on a person, the two answers. It is one container
+/// state, what it is doing in large type, the command or path under it, the heartbeat — and, for a
+/// session that waits on a person, the two answers. Its sub-agents are tiles of their own beside it. It is one container
 /// placed by the wall and lays its own parts out from the size it is given.
 final class WatchTileView: @unchecked Sendable {
     let container: TileCanvas
     let card = AgentsCanvas(width: 1, height: 1)
     let glyph = AgentsCanvas(width: 1, height: 1)
     let beatCanvas = AgentsCanvas(width: 1, height: 1)
-    let kidsCanvas = AgentsCanvas(width: 1, height: 1)
     let title = WatchLabel()
     let status = WatchLabel()
     let meta = WatchLabel()
@@ -32,6 +31,8 @@ final class WatchTileView: @unchecked Sendable {
     let stepsClamp = tailscode_tile_clamp_new()!
     let context: WatchContext
     var tile: WallTile?
+    private(set) var shownWords = ""
+    private(set) var writtenByModel = false
     var gauge = HoldGauge()
     var holdPumping = false
     var hintUntil: Date?
@@ -57,7 +58,7 @@ final class WatchTileView: @unchecked Sendable {
 
     private func build() {
         tailscode_set_accessible_hidden(card.widget, 1)
-        for canvas in [card, glyph, beatCanvas, kidsCanvas, ring] {
+        for canvas in [card, glyph, beatCanvas, ring] {
             gtk_widget_set_can_target(canvas.widget, canvas === card ? 1 : 0)
             gtk_widget_set_can_focus(canvas.widget, 0)
             tailscode_set_accessible_hidden(canvas.widget, 1)
@@ -65,10 +66,9 @@ final class WatchTileView: @unchecked Sendable {
         card.paint = { [weak self] cr, width, height in self?.paintCard(cr, width, height) }
         glyph.paint = { [weak self] cr, width, _ in self?.paintGlyph(cr, width) }
         beatCanvas.paint = { [weak self] cr, width, height in self?.paintBeat(cr, width, height) }
-        kidsCanvas.paint = { [weak self] cr, _, height in self?.paintKids(cr, height) }
         ring.paint = { [weak self] cr, width, _ in self?.paintRing(cr, width) }
         container.add(card.widget, layer: .panes)
-        for canvas in [glyph, beatCanvas, kidsCanvas] { container.add(canvas.widget, layer: .dividers) }
+        for canvas in [glyph, beatCanvas] { container.add(canvas.widget, layer: .dividers) }
         for label in [title, status, meta, words, hint] { container.add(label.widget, layer: .dividers) }
         tailscode_tile_clamp_add(detailClamp, detail.widget)
         tailscode_tile_clamp_add(stepsClamp, steps.widget)
@@ -79,6 +79,7 @@ final class WatchTileView: @unchecked Sendable {
         buildButton(chat, label: chatLabel, ring: nil)
         for button in [deny, approve, chat] { container.add(button, layer: .overlays) }
         Gtk.addClass(widget, "agents-wall-tile")
+        tailscode_tile_canvas_set_minimum(widget, 1, 1)
         gtk_widget_set_overflow(widget, GTK_OVERFLOW_HIDDEN)
         Gtk.onPrimaryRelease(widget) { [weak self] in
             Gtk.onMain { [weak self] in
@@ -114,7 +115,10 @@ final class WatchTileView: @unchecked Sendable {
         let state = next.statusWord(at: now)
         status.set(text: state)
         title.set(text: next.title)
-        words.set(text: next.words)
+        let line = Self.line(for: next, model: context.plainModel)
+        shownWords = line.text
+        writtenByModel = line.byModel
+        words.set(text: line.text)
         detail.set(text: next.detail == next.words ? "" : (next.detail ?? ""))
         meta.set(text: Self.metaLine(next))
         steps.set(text: Self.stepLines(next))
@@ -124,7 +128,7 @@ final class WatchTileView: @unchecked Sendable {
         } else if next.beat == nil {
             beat = []
         }
-        let sign = "\(next.state.rank)|\(next.title)|\(next.words)|\(next.detail ?? "")|\(next.children.count)|\(beat.isEmpty)|\(next.span)|\(next.ask?.id ?? "")"
+        let sign = "\(next.state.rank)|\(next.title)|\(line.text)|\(next.detail ?? "")|\(beat.isEmpty)|\(next.span)|\(next.ask?.id ?? "")"
         if sign != signature {
             signature = sign
             container.invalidate()
@@ -144,9 +148,18 @@ final class WatchTileView: @unchecked Sendable {
         }
     }
 
+    /// What the tile's main line says: the rules' words, or, for a command no rule could read and
+    /// only when the person has turned a local model on, the line it wrote, marked as its own.
+    static func line(for tile: WallTile, model: PlainWordsModel?) -> (text: String, byModel: Bool) {
+        guard let raw = tile.rewritable, let model else { return (tile.words, false) }
+        if let said = model.said(for: raw) { return (said + PlainWordsModel.marker, true) }
+        model.ask(raw)
+        return (tile.words, false)
+    }
+
     static func stepLines(_ tile: WallTile) -> String {
-        tile.steps.prefix(3).map { AgentsParts.outcomeGlyph($0.outcome).glyph + " " + $0.words }
-            .joined(separator: "\n")
+        tile.steps.map { ($0, $0.plain ?? $0.words) }.filter { $0.1 != tile.words }.prefix(3)
+            .map { AgentsParts.outcomeGlyph($0.0.outcome).glyph + " " + $0.1 }.joined(separator: "\n")
     }
 
     static func metaLine(_ tile: WallTile) -> String {
@@ -164,7 +177,8 @@ final class WatchTileView: @unchecked Sendable {
 
     func spoken(now: Date) -> String {
         guard let tile else { return "" }
-        var parts = [tile.title, tile.statusWord(at: now), tile.words]
+        var parts = [tile.title, tile.statusWord(at: now), shownWords]
+        if writtenByModel { parts.append(Localized.text("written by a model")) }
         if let detail = tile.detail, detail != tile.words { parts.append(detail) }
         return parts.joined(separator: ", ")
     }
@@ -184,7 +198,7 @@ final class WatchTileView: @unchecked Sendable {
     }
 
     func redrawAll() {
-        for canvas in [card, glyph, beatCanvas, kidsCanvas] { canvas.redraw() }
+        for canvas in [card, glyph, beatCanvas] { canvas.redraw() }
     }
 
     var isAnimating: Bool {
@@ -192,7 +206,7 @@ final class WatchTileView: @unchecked Sendable {
         if WatchTilePaint.breathPeriod(tile.state) != nil { return true }
         switch tile.state {
         case .quiet: return true
-        default: return !tile.children.isEmpty || gauge.isHolding
+        default: return gauge.isHolding
         }
     }
 
@@ -209,7 +223,6 @@ final class WatchTileView: @unchecked Sendable {
         if cardDue { card.redraw() }
         if glyphDue { glyph.redraw() }
         if beatDue || slideStart != nil { beatCanvas.redraw() }
-        if !(tile?.children.isEmpty ?? true), glyphDue { kidsCanvas.redraw() }
     }
 
     private func paintCard(_ cr: OpaquePointer, _ width: Double, _ height: Double) {
@@ -237,13 +250,6 @@ final class WatchTileView: @unchecked Sendable {
         WatchTilePaint.beat(
             cr, width: width, height: height, beat: beat, slide: slide,
             ink: context.palette.ink(tile.state), palette: context.palette)
-    }
-
-    private func paintKids(_ cr: OpaquePointer, _ height: Double) {
-        guard let tile else { return }
-        WatchTilePaint.kids(
-            cr, height: height, unit: unit, children: tile.children, palette: context.palette,
-            t: context.seconds, animated: context.animated)
     }
 
     var beatValues: [Int] { beat }

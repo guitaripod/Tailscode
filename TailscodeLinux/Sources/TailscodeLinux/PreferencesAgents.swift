@@ -18,6 +18,32 @@ extension Preferences {
         SettingsFile.set(Int(height), forKey: agentsHeightKey)
     }
 
+    private static let plainWordsKey = "tailscode.watch.plainWords"
+    private static let plainWordsAddressKey = "tailscode.watch.plainWordsAddress"
+    private static let plainWordsModelKey = "tailscode.watch.plainWordsModel"
+
+    /// Whether a model the person runs themselves may say the commands the rules could not read.
+    /// Off until they turn it on.
+    static var plainWords: Bool { UserDefaults.standard.bool(forKey: plainWordsKey) }
+
+    static var plainWordsAddress: String { UserDefaults.standard.string(forKey: plainWordsAddressKey) ?? "" }
+
+    static var plainWordsModel: String { UserDefaults.standard.string(forKey: plainWordsModelKey) ?? "" }
+
+    static func setPlainWords(_ on: Bool) {
+        SettingsFile.set(on ? true : nil, forKey: plainWordsKey)
+    }
+
+    static func setPlainWordsAddress(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        SettingsFile.set(trimmed.isEmpty ? nil : trimmed, forKey: plainWordsAddressKey)
+    }
+
+    static func setPlainWordsModel(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        SettingsFile.set(trimmed.isEmpty ? nil : trimmed, forKey: plainWordsModelKey)
+    }
+
     static func forgetAgentsWindowSize() {
         SettingsFile.set(nil, forKey: agentsWidthKey)
         SettingsFile.set(nil, forKey: agentsHeightKey)

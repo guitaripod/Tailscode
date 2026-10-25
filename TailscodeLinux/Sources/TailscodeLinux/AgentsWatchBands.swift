@@ -37,7 +37,7 @@ final class WatchTopBand: @unchecked Sendable {
     func apply(_ wall: AgentWall, now: Date) {
         let palette = context.palette
         headline.set(text: wall.headline)
-        watchLine.set(text: wall.watchLine)
+        watchLine.set(text: ([wall.watchLine] + [wall.subagentsLine].compactMap { $0 }).joined(separator: " · "))
         let tone = palette.mood(wall.mood, hasFailure: wall.hasFailure)
         headlineInk = tone
         watchLine.set(style: context.label(2.4, ink: palette.dim))

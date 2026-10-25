@@ -13,6 +13,8 @@ struct WatchCadence {
     var glyph = 0.0
     var calm = 0.0
     var vignette = 0.0
+    var worker = 0.0
+    var workerCard = 0.0
 
     static func due(_ last: inout Double, _ now: Double, _ interval: Double) -> Bool {
         guard now - last >= interval - 0.0005 else { return false }
@@ -22,7 +24,7 @@ struct WatchCadence {
 }
 
 extension AgentsWatchView {
-    static let sceneNames = ["calm", "busy", "attention", "alarm", "finishing", "crowded"]
+    static let sceneNames = ["calm", "busy", "attention", "alarm", "finishing", "crowded", "squad"]
     static let cycleEvery: TimeInterval = 8
     static let driftPixels = 6.0
     static let driftLoop: TimeInterval = 600
@@ -43,6 +45,7 @@ extension AgentsWatchView {
 
     func stop() {
         isLive = false
+        context.plainModel?.halt()
         lap.lift()
     }
 
@@ -86,6 +89,12 @@ extension AgentsWatchView {
             view.frame(
                 card: cardDue && view.isAnimating, glyph: glyphDue && view.glyphAnimates, beat: false)
         }
+        let workerGlyphDue = WatchCadence.due(&cadence.worker, t, 1.0 / 15)
+        let workerCardDue = WatchCadence.due(&cadence.workerCard, t, 1.0 / 6)
+        for view in workers.values {
+            view.frame(
+                card: workerCardDue && view.isAnimating, glyph: workerGlyphDue && view.glyphAnimates)
+        }
         if wall.hasOverdue, WatchCadence.due(&cadence.vignette, t, 1.0 / 15) { vignette.redraw() }
         if wall.tiles.isEmpty, WatchCadence.due(&cadence.calm, t, 1.0 / 15) { calm.orb.redraw() }
     }
@@ -103,7 +112,10 @@ extension AgentsWatchView {
         vignette.redraw()
         calm.orb.redraw()
         ribbon.canvas.redraw()
+        plates.redraw()
         for view in tiles.values { view.redrawAll() }
+        for view in workers.values { view.redrawAll() }
+        for view in crowds.values { view.redrawAll() }
     }
 
     func tickSecond() {
@@ -116,6 +128,8 @@ extension AgentsWatchView {
             view.tick(now: now)
             view.evaluateHold()
         }
+        for view in workers.values { view.tick(now: now) }
+
         rails.apply(wall, now: now)
         ribbon.canvas.redraw()
         updateDrift()
@@ -155,6 +169,25 @@ extension AgentsWatchView {
             animated: context.animated, brightness: 1)
     }
 
+    func paintPlates(_ cr: OpaquePointer, _ width: Double, _ height: Double) {
+        let palette = context.palette
+        let u = context.unit
+        let pad = 0.55 * u
+        for (index, tile) in wall.tiles.enumerated() where tile.squad != nil {
+            guard geometry.tiles.indices.contains(index) else { continue }
+            let cell = geometry.tiles[index]
+            let ink = palette.ink(tile.state)
+            agentsRoundedRect(
+                cr, x: cell.x - pad, y: cell.y - pad, width: cell.width + 2 * pad,
+                height: cell.height + 2 * pad, radius: 2.3 * u)
+            ink.set(cr, alpha: 0.05)
+            cairo_fill_preserve(cr)
+            ink.set(cr, alpha: 0.26)
+            cairo_set_line_width(cr, max(1, 0.14 * u))
+            cairo_stroke(cr)
+        }
+    }
+
     func paintVignette(_ cr: OpaquePointer, _ width: Double, _ height: Double) {
         guard wall.hasOverdue else { return }
         let swell = WatchGlyph.breath(context.seconds, period: 6, animated: context.animated)
@@ -169,7 +202,9 @@ extension AgentsWatchView {
         if scene?.name != name { cycleVisited.append(name) }
         scene = found
         sceneStarted = now
-        applyWall(found.wall, now: now, event: true)
+        applyWall(
+            found.wall.reflowed(aspect: lastSize.width / max(1, lastSize.height), gridAspect: gridAspect),
+            now: now, event: true)
     }
 
     func startScene(_ name: String) {
@@ -227,6 +262,9 @@ extension AgentsWatchView {
         let name: String? = hidden ? "none" : nil
         gtk_widget_set_cursor_from_name(stage.widget, name)
         for view in tiles.values { gtk_widget_set_cursor_from_name(view.widget, hidden ? "none" : "pointer") }
+        for view in Array(workers.values) + Array(crowds.values) {
+            gtk_widget_set_cursor_from_name(view.widget, hidden ? "none" : "pointer")
+        }
     }
 
     func settleDim() {

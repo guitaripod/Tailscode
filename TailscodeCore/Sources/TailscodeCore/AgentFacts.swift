@@ -67,10 +67,16 @@ public struct AgentChild: Sendable, Equatable, Identifiable {
     public let todos: (done: Int, total: Int)?
     public let startedAt: Date?
     public let isActive: Bool
+    /// What it is doing in a few words and no clock: its todo, or the tool it has out.
+    public let doing: String?
+    public let toolCount: Int?
+    /// When the listing last saw it move; nil for the work the process carries itself.
+    public let updatedAt: Date?
 
     public init(
         id: String, kind: Kind, title: String, line: String, todos: (done: Int, total: Int)?,
-        startedAt: Date?, isActive: Bool
+        startedAt: Date?, isActive: Bool, doing: String? = nil, toolCount: Int? = nil,
+        updatedAt: Date? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -79,12 +85,17 @@ public struct AgentChild: Sendable, Equatable, Identifiable {
         self.todos = todos
         self.startedAt = startedAt
         self.isActive = isActive
+        self.doing = doing
+        self.toolCount = toolCount
+        self.updatedAt = updatedAt
     }
 
     public static func == (lhs: AgentChild, rhs: AgentChild) -> Bool {
         lhs.id == rhs.id && lhs.kind == rhs.kind && lhs.title == rhs.title && lhs.line == rhs.line
             && lhs.todos?.done == rhs.todos?.done && lhs.todos?.total == rhs.todos?.total
             && lhs.startedAt == rhs.startedAt && lhs.isActive == rhs.isActive
+            && lhs.doing == rhs.doing && lhs.toolCount == rhs.toolCount
+            && lhs.updatedAt == rhs.updatedAt
     }
 }
 
@@ -102,6 +113,9 @@ public struct AgentFacts: Sendable, Equatable {
     public let phase: Phase
     public let detail: LiveActivityDetail
     public let doing: String?
+    /// What it is doing in words anyone can read, with the raw words a model could say better
+    /// when no rule knew them.
+    public let plain: PlainLine?
     public let object: AgentObject?
     public let tool: String?
     public let steps: [AgentStep]
@@ -162,6 +176,7 @@ public struct AgentFacts: Sendable, Equatable {
         return AgentFacts(
             phase: phase, detail: settled?.detail ?? live.detail,
             doing: phase == .idle ? nil : AgentLine.doing(in: state),
+            plain: phase == .idle ? nil : AgentPlain.doing(in: state),
             object: phase == .idle ? nil : AgentLine.object(in: state), tool: live.tool, steps: steps,
             touched: AgentLine.touched(in: state), toolCount: live.toolCount,
             startedAt: live.startedAt, endedAt: settled?.endedAt, ask: ask,
@@ -176,6 +191,12 @@ public struct AgentFacts: Sendable, Equatable {
     private static func ask(since state: ConversationState, seen: [String: Date]) -> Date? {
         let id = state.pendingQuestions.first?.id ?? state.pendingPermissions.first?.id
         return id.flatMap { seen[$0] }
+    }
+
+    private static func doing(_ agent: SubagentSummary) -> String? {
+        if let todo = agent.currentTodo, !todo.isEmpty { return String(todo.prefix(48)) }
+        guard let tool = agent.currentTool, !tool.isEmpty else { return nil }
+        return AgentPlain.tool(named: tool) ?? Localized.text("Using the %@ tool", AgentPlain.humanName(tool))
     }
 
     private static func turnMessages(in state: ConversationState) -> [ChatMessage] {
@@ -198,7 +219,8 @@ public struct AgentFacts: Sendable, Equatable {
                 todos: agent.todosTotal.flatMap { total in
                     total > 0 ? (agent.todosDone ?? 0, total) : nil
                 },
-                startedAt: agent.startedAt, isActive: true)
+                startedAt: agent.startedAt, isActive: true, doing: doing(agent),
+                toolCount: agent.toolCount, updatedAt: agent.updatedAt)
         }
         if let work = background, work.tasks > 0 {
             children.append(
@@ -208,7 +230,8 @@ public struct AgentFacts: Sendable, Equatable {
                     line: work.stalled
                         ? Localized.text("stuck")
                         : Localized.text("in the background"),
-                    todos: nil, startedAt: work.since, isActive: !work.stalled))
+                    todos: nil, startedAt: work.since, isActive: !work.stalled,
+                    doing: work.task.map { AgentPlain.command($0, tense: .running).text }))
         }
         return children
     }

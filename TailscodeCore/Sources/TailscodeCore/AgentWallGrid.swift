@@ -35,31 +35,16 @@ enum WallGrid {
         }
     }
 
-    /// The grid once the first tile takes two columns: one cell more than the count, in the
-    /// shape that keeps the cells closest to square.
-    static func spanned(count: Int, shape: Shape) -> (columns: Int, rows: Int) {
-        if shape == .portrait {
-            switch count {
-            case 4, 5: return (2, 3)
-            default: return (2, 4)
-            }
-        }
-        switch count {
-        case 2: return (3, 1)
-        case 3: return (2, 2)
-        case 4, 5: return (3, 2)
-        default: return (4, 2)
-        }
-    }
-
-    static func place(_ tiles: [WallTile], aspect: Double) -> (tiles: [WallTile], columns: Int, rows: Int) {
+    /// `aspect` is the screen's shape and picks the grid; `areaAspect` is the shape of the area the
+    /// grid fills, which is what each cell's own shape is measured from.
+    static func place(
+        _ tiles: [WallTile], aspect: Double, areaAspect: Double? = nil
+    ) -> (tiles: [WallTile], columns: Int, rows: Int) {
         guard !tiles.isEmpty else { return ([], 0, 0) }
         let shape = Shape(aspect: aspect)
         let flat = base(count: tiles.count, shape: shape)
-        let wide = tiles.count >= 2 && flat.columns >= 2 && tiles[0].state.isNeedsYou
-        let grid = wide ? spanned(count: tiles.count, shape: shape) : flat
+        let grid = flat
         var spans = [Int](repeating: 1, count: tiles.count)
-        if wide { spans[0] = 2 }
         var cells: [(column: Int, row: Int)] = []
         var column = 0
         var row = 0
@@ -89,6 +74,9 @@ enum WallGrid {
             placed[index].span = spans[index]
             placed[index].column = cells[index].column
             placed[index].row = cells[index].row
+            placed[index].squad = WallSquad.plan(
+                workers: placed[index].workers, sessions: tiles.count,
+                cellAspect: (areaAspect ?? aspect) * Double(spans[index] * (row + 1)) / Double(grid.columns))
         }
         return (placed, grid.columns, row + 1)
     }

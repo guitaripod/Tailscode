@@ -9,6 +9,20 @@ struct WatchRect: Equatable {
 
     var maxX: Double { x + width }
     var maxY: Double { y + height }
+
+    /// The part of this rectangle a frame in its own units covers.
+    func inside(_ frame: WallFrame) -> WatchRect {
+        WatchRect(
+            x: x + frame.x * width, y: y + frame.y * height, width: frame.width * width,
+            height: frame.height * height)
+    }
+}
+
+/// Where a session's own tile and its workers go inside the session's cell.
+struct WatchSquadRects: Equatable {
+    var parent: WatchRect
+    var slots: [WatchRect]
+    var more: WatchRect?
 }
 
 /// Where everything on the wall goes, from the window's size and the wall alone. Every size is a
@@ -29,6 +43,7 @@ struct WatchGeometry: Equatable {
     let date: WatchRect
     let grid: WatchRect
     let tiles: [WatchRect]
+    let squads: [WatchSquadRects?]
     let ribbon: WatchRect
     let recentRail: WatchRect
     let listedRail: WatchRect
@@ -86,6 +101,13 @@ struct WatchGeometry: Equatable {
                 y: grid.y + Double(tile.row) * (cellHeight + gutter),
                 width: span * cellWidth + (span - 1) * gutter, height: cellHeight)
         }
+        let squads = zip(tiles, placed).map { tile, cell in
+            tile.squad.map {
+                WatchSquadRects(
+                    parent: cell.inside($0.parent), slots: $0.slots.map(cell.inside),
+                    more: $0.more.map(cell.inside))
+            }
+        }
         let side = min(grid.width, grid.height) * 0.62
         let centre = WatchRect(
             x: grid.x + (grid.width - side) / 2, y: grid.y + (grid.height - side) / 2, width: side,
@@ -93,7 +115,7 @@ struct WatchGeometry: Equatable {
         return WatchGeometry(
             width: width, height: height, unit: unit, isPortrait: portrait, headline: headline,
             watchLine: watchLine, clock: clock, date: date, grid: grid, tiles: placed,
-            ribbon: ribbon, recentRail: recent, listedRail: listed, centre: centre)
+            squads: squads, ribbon: ribbon, recentRail: recent, listedRail: listed, centre: centre)
     }
 }
 

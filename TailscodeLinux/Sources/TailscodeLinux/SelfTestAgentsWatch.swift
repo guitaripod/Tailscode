@@ -65,6 +65,8 @@ extension SelfTest {
         defer { Preferences.forgetAgentsWindowSize() }
         try checkWatchSize(check)
         try checkWatchScenes(check)
+        try checkWatchSquad(check)
+        try checkWatchPlain(check)
         try checkWatchHold(check)
         try checkWatchTimers(check)
         try checkWatchControls(check)
@@ -101,7 +103,10 @@ extension SelfTest {
             }
             if view.truncated { problems.append("\(scene) \(tile.title) cut its command") }
         }
-        let boxes = window.watchView.tiles.values.compactMap { Gtk.bounds(of: $0.widget, in: window.window) }
+        problems += squadProblems(window, scene: scene)
+        let squad = window.watchView.workers.values.map(\.widget) + window.watchView.crowds.values.map(\.widget)
+        let boxes = (window.watchView.tiles.values.map(\.widget) + squad)
+            .compactMap { Gtk.bounds(of: $0, in: window.window) }
         for (index, one) in boxes.enumerated() {
             for other in boxes.dropFirst(index + 1)
             where one.x < other.x + other.width - 1 && other.x < one.x + one.width - 1

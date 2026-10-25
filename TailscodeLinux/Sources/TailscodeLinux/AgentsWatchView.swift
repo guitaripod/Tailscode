@@ -14,6 +14,7 @@ final class AgentsWatchView: @unchecked Sendable {
     let ground = AgentsCanvas(width: 1, height: 1)
     let motes = AgentsCanvas(width: 1, height: 1)
     let vignette = AgentsCanvas(width: 1, height: 1)
+    let plates = AgentsCanvas(width: 1, height: 1)
     let scrim = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
     let top: WatchTopBand
     let calm: WatchCalmView
@@ -22,6 +23,8 @@ final class AgentsWatchView: @unchecked Sendable {
     let peekLayer: WatchPeekLayer
     let moteField = WatchMotes()
     var tiles: [String: WatchTileView] = [:]
+    var workers: [String: WatchWorkerView] = [:]
+    var crowds: [String: WatchWorkerView] = [:]
     var wall = AgentWall.empty
     var geometry = WatchGeometry.make(width: 1920, height: 1080, tiles: [], columns: 0, rows: 0, isCalm: true)
     var board = AgentBoard.empty
@@ -68,7 +71,7 @@ final class AgentsWatchView: @unchecked Sendable {
         gtk_widget_set_vexpand(stage.widget, 1)
         gtk_widget_set_overflow(stage.widget, GTK_OVERFLOW_HIDDEN)
         tailscode_tile_canvas_set_minimum(stage.widget, 320, 200)
-        for canvas in [ground, motes, vignette] {
+        for canvas in [ground, motes, plates, vignette] {
             gtk_widget_set_can_target(canvas.widget, 0)
             gtk_widget_set_can_focus(canvas.widget, 0)
             tailscode_set_accessible_hidden(canvas.widget, 1)
@@ -79,8 +82,10 @@ final class AgentsWatchView: @unchecked Sendable {
         ground.paint = { [weak self] cr, width, height in self?.paintGround(cr, width, height) }
         motes.paint = { [weak self] cr, width, height in self?.paintMotes(cr, width, height) }
         vignette.paint = { [weak self] cr, width, height in self?.paintVignette(cr, width, height) }
+        plates.paint = { [weak self] cr, width, height in self?.paintPlates(cr, width, height) }
         stage.add(ground.widget, layer: .panes)
         stage.add(motes.widget, layer: .panes)
+        stage.add(plates.widget, layer: .panes)
         for widget in top.widgets + rails.widgets { stage.add(widget, layer: .dividers) }
         stage.add(calm.orb.widget, layer: .dividers)
         stage.add(calm.line.widget, layer: .dividers)
@@ -119,12 +124,21 @@ final class AgentsWatchView: @unchecked Sendable {
             width: w, height: h, tiles: tilesNow, columns: wall.columns, rows: wall.rows,
             isCalm: wall.isCalm, drift: drift)
         let full = TileRect(x: 0, y: 0, width: width, height: height)
-        for widget in [ground.widget, motes.widget, vignette.widget, scrim] { sink.place(widget, full) }
+        for widget in [ground.widget, motes.widget, plates.widget, vignette.widget, scrim] {
+            sink.place(widget, full)
+        }
         placeTop(sink)
         for (index, tile) in tilesNow.enumerated() {
             guard let view = tiles[tile.id], geometry.tiles.indices.contains(index) else { continue }
-            sink.place(view.widget, rect(geometry.tiles[index]))
+            let squad = geometry.squads.indices.contains(index) ? geometry.squads[index] : nil
+            sink.place(view.widget, rect(squad?.parent ?? geometry.tiles[index]))
+            guard let squad else { continue }
+            for (slot, frame) in squad.slots.enumerated() where tile.workers.indices.contains(slot) {
+                if let worker = workers[tile.workers[slot].id] { sink.place(worker.widget, rect(frame)) }
+            }
+            if let frame = squad.more, let crowd = crowds[tile.id] { sink.place(crowd.widget, rect(frame)) }
         }
+        plates.redraw()
         if tilesNow.isEmpty {
             let side = geometry.centre
             sink.place(calm.orb.widget, rect(WatchRect(x: side.x, y: side.y - 2 * geometry.unit, width: side.width, height: side.height)))
@@ -184,8 +198,9 @@ final class AgentsWatchView: @unchecked Sendable {
     func reread(now: Date) {
         guard scene == nil, lastSize.width > 1 else { return }
         rereads += 1
-        let aspect = lastSize.width / lastSize.height
-        let next = AgentWall.read(board: board, hour: hour, now: now, aspect: aspect, previous: wall)
+        let next = AgentWall.read(
+            board: board, hour: hour, now: now, aspect: lastSize.width / lastSize.height,
+            gridAspect: gridAspect, previous: wall)
         applyWall(next, now: now, event: true)
     }
 
@@ -211,6 +226,7 @@ final class AgentsWatchView: @unchecked Sendable {
             stage.remove(view.widget)
             tiles[key] = nil
         }
+        syncWorkers(next, now: now)
         top.apply(next, now: now)
         calm.apply(next)
         rails.apply(next, now: now)
@@ -222,6 +238,48 @@ final class AgentsWatchView: @unchecked Sendable {
         updateClock()
     }
 
+    private func syncWorkers(_ next: AgentWall, now: Date) {
+        var named = Set<String>()
+        var counted = Set<String>()
+        for tile in next.tiles {
+            guard let squad = tile.squad else { continue }
+            for (slot, _) in squad.slots.enumerated() where tile.workers.indices.contains(slot) {
+                let worker = tile.workers[slot]
+                named.insert(worker.id)
+                let view = workers[worker.id] ?? makeWorker(worker.id, into: \.workers)
+                view.apply(worker, parent: tile.id, now: now)
+            }
+            if squad.more != nil {
+                counted.insert(tile.id)
+                let view = crowds[tile.id] ?? makeWorker(tile.id, into: \.crowds)
+                view.apply(more: squad.hidden, needsEyes: squad.moreNeedsEyes, parent: tile.id)
+            }
+        }
+        for key in workers.keys where !named.contains(key) { dropWorker(key, from: \.workers) }
+        for key in crowds.keys where !counted.contains(key) { dropWorker(key, from: \.crowds) }
+    }
+
+    private func makeWorker(
+        _ key: String, into place: ReferenceWritableKeyPath<AgentsWatchView, [String: WatchWorkerView]>
+    ) -> WatchWorkerView {
+        let view = WatchWorkerView(context: context)
+        self[keyPath: place][key] = view
+        stage.add(view.widget, layer: .dividers)
+        return view
+    }
+
+    private func dropWorker(
+        _ key: String, from place: ReferenceWritableKeyPath<AgentsWatchView, [String: WatchWorkerView]>
+    ) {
+        guard let view = self[keyPath: place][key] else { return }
+        stage.remove(view.widget)
+        self[keyPath: place][key] = nil
+    }
+
+    var gridAspect: Double? {
+        geometry.grid.height > 1 ? geometry.grid.width / geometry.grid.height : nil
+    }
+
     private func makeTile(_ key: String) -> WatchTileView {
         let view = WatchTileView(context: context)
         tiles[key] = view
@@ -230,9 +288,20 @@ final class AgentsWatchView: @unchecked Sendable {
     }
 
     static func signature(_ wall: AgentWall) -> String {
-        let tiles = wall.tiles.map { "\($0.id)|\($0.state.rank)|\($0.words)|\($0.detail ?? "")" }
+        let tiles = wall.tiles.map {
+            let crew = $0.workers.map { "\($0.id):\($0.state.ordinal)" }.joined(separator: ",")
+            return "\($0.id)|\($0.state.rank)|\($0.words)|\($0.detail ?? "")|\(crew)"
+        }
         let rails = (wall.listed.map(\.id) + wall.recent.map(\.id)).joined(separator: ",")
         return wall.headline + "#" + tiles.joined(separator: ";") + "#" + rails
+    }
+
+    /// Reads every tile's line again, for a model that has just written one or has been turned off.
+    func replayWords() {
+        let now = context.clock.now
+        for view in tiles.values {
+            if let tile = view.tile { view.apply(tile, now: now) }
+        }
     }
 
     func tileView(_ key: String) -> WatchTileView? { tiles[key] }

@@ -12,16 +12,15 @@ extension WatchTileView {
         var words: Double
         var detail: Double
         var beat: Double
-        var kids: Bool
     }
 
     static let levels = [
-        Level(glyph: 12.5, title: 3.3, status: 2.9, meta: 2.2, words: 4.8, detail: 3.0, beat: 4.2, kids: true),
-        Level(glyph: 11, title: 2.95, status: 2.6, meta: 2.0, words: 4.0, detail: 2.55, beat: 3.7, kids: true),
-        Level(glyph: 9.6, title: 2.6, status: 2.3, meta: 1.8, words: 3.4, detail: 2.2, beat: 3.4, kids: true),
-        Level(glyph: 8.2, title: 2.3, status: 2.0, meta: 1.7, words: 3.0, detail: 1.95, beat: 3.0, kids: true),
-        Level(glyph: 6.8, title: 2.0, status: 1.8, meta: 1.6, words: 2.6, detail: 1.75, beat: 2.6, kids: false),
-        Level(glyph: 5.6, title: 1.8, status: 1.6, meta: 1.6, words: 2.2, detail: 1.6, beat: 0, kids: false),
+        Level(glyph: 12.5, title: 3.3, status: 2.9, meta: 2.2, words: 4.8, detail: 3.0, beat: 4.2),
+        Level(glyph: 11, title: 2.95, status: 2.6, meta: 2.0, words: 4.0, detail: 2.55, beat: 3.7),
+        Level(glyph: 9.6, title: 2.6, status: 2.3, meta: 1.8, words: 3.4, detail: 2.2, beat: 3.4),
+        Level(glyph: 8.2, title: 2.3, status: 2.0, meta: 1.7, words: 3.0, detail: 1.95, beat: 3.0),
+        Level(glyph: 6.8, title: 2.0, status: 1.8, meta: 1.6, words: 2.6, detail: 1.75, beat: 2.6),
+        Level(glyph: 5.6, title: 1.8, status: 1.6, meta: 1.6, words: 2.2, detail: 1.6, beat: 0),
     ]
 
     struct Plan {
@@ -32,7 +31,6 @@ extension WatchTileView {
         var words = TileRect(x: 0, y: 0, width: 0, height: 0)
         var detail: TileRect?
         var beat: TileRect?
-        var kids: TileRect?
         var deny: TileRect?
         var approve: TileRect?
         var chat: TileRect?
@@ -114,17 +112,6 @@ extension WatchTileView {
         } else if !beatValues.isEmpty, level.beat > 0 {
             footer = level.beat * u
             plan.beat = rect(pad, height - pad - footer, min(inner * 0.5, 38 * u), footer)
-            if level.kids, !tile.children.isEmpty {
-                let kidsWidth = WatchTilePaint.kidsWidth(tile.children, unit: u)
-                let beatRight = Double((plan.beat?.x ?? 0) + (plan.beat?.width ?? 0))
-                let left = beatRight + 2.4 * u
-                if left + kidsWidth < width - pad {
-                    plan.kids = rect(left, height - pad - footer, kidsWidth, footer)
-                }
-            }
-        } else if level.kids, !tile.children.isEmpty {
-            footer = level.beat > 0 ? level.beat * u : 3.0 * u
-            plan.kids = rect(pad, height - pad - footer, WatchTilePaint.kidsWidth(tile.children, unit: u), footer)
         }
 
         let top = pad + headHeight + gap + wordsHeight + (wordsHeight > 0 ? gap : 0)
@@ -221,7 +208,6 @@ extension WatchTileView {
         if !words.text.isEmpty { sink.place(words.widget, plan.words) }
         if let detail = plan.detail { sink.place(detailClamp, detail) }
         if let beat = plan.beat { sink.place(beatCanvas.widget, beat) }
-        if let kids = plan.kids { sink.place(kidsCanvas.widget, kids) }
         if let deny = plan.deny { sink.place(self.deny, deny) }
         if let approve = plan.approve { sink.place(self.approve, approve) }
         if let chat = plan.chat { sink.place(self.chat, chat) }

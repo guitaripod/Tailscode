@@ -40,7 +40,7 @@ enum WallReading {
             words = Localized.text("Has a question")
             detail = card.ask.lead
         }
-        return WallTile(
+        var made = WallTile(
             id: card.id, profileID: card.profileID, sessionID: card.sessionID, title: card.title,
             machine: card.machine, chip: card.chip, state: state,
             words: card.isAway ? notAnswering(card.machine) : words,
@@ -48,18 +48,23 @@ enum WallReading {
             stateSince: card.isAway ? state.awaySince : since, ask: card.ask, beat: card.beat,
             contextShare: card.contextShare, children: card.children, steps: card.steps, fade: 0,
             unread: card.unread)
+        made.workers = workers(
+            under: card.id, children: card.children, state: state, now: now, previous: previous)
+        return made
     }
 
     private static func tile(
         _ row: AgentRow, background: Bool, now: Date, previous: AgentWall?
     ) -> WallTile {
         let state = state(of: row, background: background, now: now, previous: previous)
+        let task = background ? row.children.first { $0.kind == .background && $0.doing != nil } : nil
+        let said = task.map { AgentPlain.command($0.title, tense: .running) } ?? row.plain
         let words: String
         switch state {
         case .away: words = notAnswering(row.machine)
         case .thinking: words = Localized.text("Thinking")
-        case .retrying: words = Localized.text("Waiting on the provider")
-        default: words = row.line ?? Localized.text("Working")
+        case .retrying: words = Localized.text("The AI service is busy, trying again")
+        default: words = said?.text ?? row.line ?? Localized.text("Working")
         }
         let since: Date?
         switch state {
@@ -67,17 +72,22 @@ enum WallReading {
         case .away(let seen): since = seen
         default: since = row.startedAt
         }
-        let showsObject: Bool
+        let rewritable: String?
         switch state {
-        case .working, .thinking, .quiet: showsObject = true
-        default: showsObject = false
+        case .working, .thinking, .quiet, .background: rewritable = said?.rewritable
+        default: rewritable = nil
         }
-        return WallTile(
+        let detail = rewritable.map { raw in task?.title ?? row.object?.text ?? raw }
+        var made = WallTile(
             id: row.id, profileID: row.profileID, sessionID: row.sessionID, title: row.title,
             machine: row.machine, chip: row.chip, state: state, words: words,
-            detail: showsObject ? row.object?.text : nil, startedAt: row.startedAt,
+            detail: detail, startedAt: row.startedAt,
             stateSince: since, ask: nil, beat: row.beat, contextShare: row.contextShare,
             children: row.children, steps: row.steps, fade: 0, unread: row.unread)
+        made.rewritable = rewritable
+        made.workers = workers(
+            under: row.id, children: row.children, state: state, now: now, previous: previous)
+        return made
     }
 
     private static func state(
@@ -132,22 +142,27 @@ enum WallReading {
             fade: outcome == .failed ? 0 : min(1, max(0, age / doneLasts)), unread: finish.unread)
     }
 
-    /// Needs-you tiles first, each rank after, but a tile that has not changed rank keeps the slot
-    /// it had: a newcomer joins the end of its rank, so the wall does not reshuffle on an event.
+    /// A tile keeps the slot it first took for as long as it is on the wall: nothing about its
+    /// state moves it, so a turn that flips between working and thinking or an ask that arrives
+    /// never reshuffles the wall. A newcomer joins the end; with nothing before it the most
+    /// urgent leads.
     static func order(_ drafts: [WallTile], previous: AgentWall?) -> [WallTile] {
         var slot: [String: Int] = [:]
-        var rank: [String: Int] = [:]
-        for (index, tile) in (previous?.tiles ?? []).enumerated() {
-            slot[tile.id] = index
-            rank[tile.id] = tile.state.rank
+        for (index, tile) in (previous?.tiles ?? []).enumerated() { slot[tile.id] = index }
+        let kept = drafts.filter { slot[$0.id] != nil }.sorted { (slot[$0.id] ?? 0) < (slot[$1.id] ?? 0) }
+        return kept + drafts.filter { slot[$0.id] == nil }.sorted(by: leads)
+    }
+
+    /// The tiles the wall has room for, in their order: past the cap what goes is what matters
+    /// least, latest first, so a new ask is never the one left out.
+    static func fit(_ ordered: [WallTile]) -> [WallTile] {
+        var kept = ordered
+        while kept.count > AgentWall.maxTiles {
+            let lowest = kept.map(\.state.keepPriority).min() ?? 0
+            guard let index = kept.lastIndex(where: { $0.state.keepPriority == lowest }) else { break }
+            kept.remove(at: index)
         }
-        let isKept = { (tile: WallTile) in slot[tile.id] != nil && rank[tile.id] == tile.state.rank }
-        var ordered = drafts.filter(isKept).sorted { (slot[$0.id] ?? 0) < (slot[$1.id] ?? 0) }
-        for tile in drafts.filter({ !isKept($0) }).sorted(by: leads) {
-            let at = ordered.lastIndex { $0.state.rank <= tile.state.rank }.map { $0 + 1 } ?? 0
-            ordered.insert(tile, at: at)
-        }
-        return ordered
+        return kept
     }
 
     private static func leads(_ lhs: WallTile, _ rhs: WallTile) -> Bool {
@@ -170,14 +185,14 @@ enum WallReading {
         var chips = overflow.map {
             WallChip(
                 id: $0.id, title: $0.title, machine: $0.machine, outcome: nil, at: $0.startedAt,
-                words: $0.words, unread: $0.unread)
+                words: $0.words, unread: $0.unread, agents: $0.liveSubagents)
         }
         for row in board.working + board.background where !row.isWatched && !row.isAway {
             chips.append(
                 WallChip(
                     id: row.id, title: row.title, machine: row.machine, outcome: nil,
                     at: row.startedAt, words: row.line ?? Localized.text("Working"),
-                    unread: row.unread))
+                    unread: row.unread, agents: row.listedAgents))
         }
         return chips
     }
@@ -188,7 +203,7 @@ enum WallReading {
             .sorted { $0.endedAt > $1.endedAt }.prefix(AgentWall.maxRecent).map {
                 WallChip(
                     id: $0.id, title: $0.title, machine: $0.machine, outcome: WallOutcome($0.outcome),
-                    at: $0.endedAt, words: $0.line, unread: $0.unread)
+                    at: $0.endedAt, words: $0.line, unread: $0.unread, agents: 0)
             }
     }
 
@@ -242,6 +257,18 @@ enum WallReading {
 }
 
 extension WallState {
+    /// How much a tile matters when the wall has no room for all of them: an ask, then a failure,
+    /// then what runs, then background work, then endings that have already cooled.
+    fileprivate var keepPriority: Int {
+        switch self {
+        case .needsYou: return 5
+        case .finished(.failed): return 4
+        case .working, .thinking, .retrying, .quiet, .away: return 3
+        case .background: return 2
+        case .finished: return 0
+        }
+    }
+
     fileprivate var awaySince: Date? {
         if case .away(let seen) = self { return seen }
         return nil

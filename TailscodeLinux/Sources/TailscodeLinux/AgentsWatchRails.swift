@@ -58,6 +58,7 @@ final class WatchChipView: @unchecked Sendable {
         } else if !next.machine.isEmpty {
             text += " · " + next.machine
         }
+        if next.outcome == nil, let agents = next.agentsLine { text += " · " + agents }
         words.set(text: text)
         mark.set(style: context.label(2.0, bold: true, ink: glyph.1))
         words.set(style: context.label(2.0, ink: palette.text))

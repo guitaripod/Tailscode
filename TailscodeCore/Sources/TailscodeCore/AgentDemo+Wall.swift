@@ -17,6 +17,7 @@ extension AgentDemo {
             ("alarm", alarmWall(now: now)),
             ("finishing", finishingWall(now: now)),
             ("crowded", crowdedWall(now: now)),
+            ("squad", squadWall(now: now)),
         ]
     }
 
@@ -249,11 +250,75 @@ extension AgentDemo {
             ], now: now)
     }
 
+    private static func crew(
+        _ id: String, _ title: String, started: TimeInterval, moved: TimeInterval, tool: String,
+        todos: (done: Int, total: Int, now: String)? = nil, tools: Int = 4, now: Date
+    ) -> SubagentSummary {
+        SubagentSummary(
+            id: id, title: title, updatedAt: now.addingTimeInterval(-moved), isActive: true,
+            startedAt: now.addingTimeInterval(-started), toolCount: tools, currentTool: tool,
+            todosDone: todos?.done, todosTotal: todos?.total, currentTodo: todos?.now)
+    }
+
+    private static func crewed(
+        _ id: String, _ title: String, profile: String = studio, machine: String = "studio",
+        calls: [ToolCall], agents: [SubagentSummary], work: BackgroundWork? = nil, now: Date
+    ) -> AgentSource {
+        var state = conversation(title.lowercased(), calls, now: now)
+        state.backgroundWork = work
+        return source(id, title, profile: profile, machine: machine, state: state, agents: agents, now: now)
+    }
+
+    private static func squadSources(at moment: Date, now: Date, lint: Bool) -> [AgentSource] {
+        var fixers = [
+            crew(
+                "explore", "Explore", started: 190, moved: 4, tool: "Read",
+                todos: (4, 6, "reading the retry paths"), tools: 12, now: moment),
+            crew("plan", "Plan", started: 75, moved: 9, tool: "Grep", tools: 5, now: moment),
+            crew(
+                "tests", "Test runner", started: 420, moved: 200, tool: "Bash", tools: 9, now: moment),
+        ]
+        if lint { fixers.append(crew("lint", "Lint sweep", started: 120, moved: 3, tool: "Glob", now: moment)) }
+        return [
+            crewed(
+                "w", "Fix reconnect test",
+                calls: [editing("/repo/Sources/Reconnect/Backoff.swift", "w1")], agents: fixers,
+                work: BackgroundWork(
+                    tasks: 1, task: "swift test --parallel",
+                    since: moment.addingTimeInterval(-2400), stalled: true), now: moment),
+            crewed(
+                "l", "Landing page refresh", profile: homelab, machine: "homelab",
+                calls: [editing("/site/styles/footer.css", "l1")],
+                agents: [
+                    crew("footer", "Footer styles", started: 50, moved: 2, tool: "Edit", now: moment),
+                    crew(
+                        "links", "Link check", started: 95, moved: 6, tool: "Bash",
+                        todos: (7, 9, "following the redirects"), tools: 18, now: moment),
+                ], now: moment),
+        ]
+    }
+
+    private static func squadWall(now: Date) -> AgentWall {
+        let first = now.addingTimeInterval(-24)
+        let second = now.addingTimeInterval(-12)
+        let before = read(squadSources(at: first, now: now, lint: true), now: first)
+        let between = read(
+            squadSources(at: second, now: now, lint: false), now: second, previous: before)
+        return read(squadSources(at: now, now: now, lint: false), now: now, previous: between)
+    }
+
     private static func crowdedWall(now: Date) -> AgentWall {
         let sources = [
-            working(
+            crewed(
                 "a", "Fix reconnect test",
-                calls: [editing("/repo/Sources/Reconnect/Backoff.swift", "a1")], now: now, anchor: now),
+                calls: [editing("/repo/Sources/Reconnect/Backoff.swift", "a1")],
+                agents: [
+                    crew("a1", "Explore", started: 190, moved: 4, tool: "Read", now: now),
+                    crew("a2", "Plan", started: 75, moved: 9, tool: "Grep", now: now),
+                    crew("a3", "Review", started: 40, moved: 2, tool: "Read", now: now),
+                    crew("a4", "Docs sweep", started: 30, moved: 15, tool: "Glob", now: now),
+                    crew("a5", "Test runner", started: 420, moved: 200, tool: "Bash", now: now),
+                ], now: now),
             working(
                 "b", "Landing page refresh", profile: homelab, machine: "homelab",
                 calls: [editing("/site/styles/footer.css", "b1")], now: now, anchor: now),

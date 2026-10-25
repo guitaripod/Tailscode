@@ -230,6 +230,7 @@ enum ParityManifest {
         case .agentPeek: return .implemented("AgentPeekView")
         case .agentsHour: return .implemented("AgentHourView")
         case .agentsWatch: return .implemented("AgentsWatchView")
+        case .agentsLocalWords: return .implemented("PlainWordsModel")
         }
     }
 }

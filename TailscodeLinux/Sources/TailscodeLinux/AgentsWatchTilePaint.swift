@@ -5,7 +5,7 @@ import Foundation
 import TailscodeCore
 
 /// The parts of a tile that are drawn rather than set in type: the glass card with the state's
-/// glow, the minute of heartbeat, and the agents a session has out. Pure cairo over numbers.
+/// glow and the minute of heartbeat. Pure cairo over numbers.
 enum WatchTilePaint {
     struct Face {
         var state: WallState
@@ -36,10 +36,10 @@ enum WatchTilePaint {
 
     static func card(
         _ cr: OpaquePointer, width: Double, height: Double, unit: Double, face: Face,
-        palette: WatchPalette, t: Double, animated: Bool
+        palette: WatchPalette, t: Double, animated: Bool, corner: Double = 1
     ) {
         let ink = palette.ink(face.state)
-        let radius = 1.6 * unit
+        let radius = 1.6 * unit * corner
         let swell = glow(face.state, t: t, animated: animated)
         agentsRoundedRect(cr, x: 0.5, y: 0.5, width: width - 1, height: height - 1, radius: radius)
         if let glass = cairo_pattern_create_linear(0, 0, 0, height) {
@@ -166,52 +166,6 @@ enum WatchTilePaint {
                 agentsRoundedRect(cr, x: x, y: height - lift, width: bar, height: lift, radius: bar / 2)
             }
             cairo_fill(cr)
-        }
-    }
-
-    static func kidsWidth(_ children: [AgentChild], unit: Double) -> Double {
-        var width = 0.0
-        for child in children.prefix(4) {
-            width += 2.8 * unit + (child.todos == nil ? 0 : 5.6 * unit)
-        }
-        return width
-    }
-
-    static func kids(
-        _ cr: OpaquePointer, height: Double, unit: Double, children: [AgentChild], palette: WatchPalette,
-        t: Double, animated: Bool
-    ) {
-        var x = 0.0
-        let centre = height / 2
-        let radius = min(height * 0.4, 1.1 * unit)
-        for (index, child) in children.prefix(4).enumerated() {
-            let ink = child.kind == .background ? palette.working.mixed(with: palette.dim, 0.35) : palette.working
-            let cx = x + radius + unit * 0.2
-            cairo_new_path(cr)
-            cairo_arc(cr, cx, centre, radius, 0, 2 * .pi)
-            ink.set(cr, alpha: child.isActive ? 0.7 : 0.35)
-            cairo_set_line_width(cr, max(1.2, unit * 0.2))
-            cairo_stroke(cr)
-            let angle = animated && child.isActive ? t * 2 * .pi / (2.6 + Double(index) * 0.55) + Double(index) * 1.7 : Double(index) * 2 - 1
-            cairo_new_path(cr)
-            cairo_arc(cr, cx + cos(angle) * radius, centre + sin(angle) * radius, max(1.6, unit * 0.34), 0, 2 * .pi)
-            ink.lifted(0.3).set(cr)
-            cairo_fill(cr)
-            x += 2.8 * unit
-            if let todos = child.todos, todos.total > 0 {
-                let barWidth = 4.8 * unit
-                let barHeight = max(2, unit * 0.5)
-                agentsRoundedRect(cr, x: x, y: centre - barHeight / 2, width: barWidth, height: barHeight, radius: barHeight / 2)
-                palette.text.set(cr, alpha: 0.16)
-                cairo_fill(cr)
-                let share = Double(todos.done) / Double(todos.total)
-                if share > 0 {
-                    agentsRoundedRect(cr, x: x, y: centre - barHeight / 2, width: max(barHeight, barWidth * share), height: barHeight, radius: barHeight / 2)
-                    ink.set(cr, alpha: 0.95)
-                    cairo_fill(cr)
-                }
-                x += 5.6 * unit
-            }
         }
     }
 }

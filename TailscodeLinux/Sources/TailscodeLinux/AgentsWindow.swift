@@ -129,10 +129,33 @@ final class AgentsWindow: @unchecked Sendable {
             Gtk.onMain { [weak self] in self?.deselect() }
         }
         wireWatch()
+        plainWordsChanged()
         gtk_window_present(ptr(window))
         watchVisibility()
         if DemoMode.isActive { watchView.startScene("attention") }
         go()
+    }
+
+    /// The wall's plain-words model, built again from the settings: nothing at all while the switch
+    /// is off or the address is not on this machine or the person's network.
+    func plainWordsChanged(transport: any PlainWordsTransport = PlainWordsURLTransport()) {
+        guard Preferences.plainWords else {
+            usePlainWords(nil)
+            return
+        }
+        let clock = watchView.context.clock
+        usePlainWords(
+            PlainWordsModel.make(
+                address: Preferences.plainWordsAddress, model: Preferences.plainWordsModel,
+                transport: transport, clock: { clock.now }))
+    }
+
+    func usePlainWords(_ next: PlainWordsModel?) {
+        let context = watchView.context
+        context.plainModel?.halt()
+        context.plainModel = next
+        next?.onReady = { [weak self] in self?.watchView.replayWords() }
+        watchView.replayWords()
     }
 
     func close() {

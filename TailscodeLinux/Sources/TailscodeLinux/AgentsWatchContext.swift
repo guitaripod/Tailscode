@@ -14,6 +14,7 @@ final class WatchContext: @unchecked Sendable {
     let actions: AgentsActions
     var openPeek: (String) -> Void = { _ in }
     var touched: () -> Void = {}
+    var plainModel: PlainWordsModel?
 
     init(actions: AgentsActions) {
         self.actions = actions
