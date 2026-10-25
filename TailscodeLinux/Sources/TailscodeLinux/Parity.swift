@@ -122,6 +122,7 @@ enum ParityManifest {
         case .machinePermissions: return .implemented("MachinePermissionsBox")
         case .serverSelfUpdate: return .implemented("UpdateWatch.perform")
         case .serverRestart: return .implemented("confirmRestart")
+        case .serverRestartAll: return .implemented("confirmRestartEverything")
         case .serverAutoUpdate: return .implemented("UpdateWatch.setAutoUpdate")
         case .updateCenter: return .implemented("UpdatePanel")
         case .newChat: return .implemented("NewChatWindow")
