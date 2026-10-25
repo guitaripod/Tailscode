@@ -27,6 +27,7 @@ targetTemplates:
       - path: Tailscode/Usage/UsageWidgetWriter.swift
       - path: Tailscode/Usage/UsagePushPayload.swift
       - path: Tailscode/Logging/TailscodeLogging.swift
+      - path: Tailscode/Support/DialTour.swift
       - path: Shared/Midgar
       - path: Shared/Neural
       - path: Resources/Neural/ntex

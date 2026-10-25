@@ -60,7 +60,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let controller else { return }
                 ConnectLinkDoor.show(serverID: id, main: controller)
             })
-        if MacShot.surface?.hasPrefix("welcome") != true { FirstRunWindow.presentIfNeeded() }
+        if MacShot.surface?.hasPrefix("welcome") != true, !holdsFirstRunBack {
+            FirstRunWindow.presentIfNeeded()
+        }
         openPendingLinks()
         #if DEBUG
             if !LiveShot.holdsBack("activation") { NSApp.activate(ignoringOtherApps: true) }
@@ -71,8 +73,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openRequestedSurface()
         MacShot.schedule()
         #if DEBUG
+            if DemoMode.isActive { Task { await DemoCatalogs.warm() } }
             DriveHooks.install(main: controller)
             LiveShot.install()
+        #endif
+    }
+
+    /// Whether a launch that photographs itself keeps the first-run window away: a picture of a
+    /// conversation has no use for the welcome that stands beside an empty machine list.
+    private var holdsFirstRunBack: Bool {
+        #if DEBUG
+            LiveShot.holdsBack("first run")
+        #else
+            false
         #endif
     }
 

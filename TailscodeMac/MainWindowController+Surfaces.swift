@@ -94,6 +94,9 @@ extension MainWindowController {
             presentStudio(lane: .video)
             StudioWindowController.shared.video.openSetup()
         #if DEBUG
+            case "party":
+                DialTour.fillFleetParty()
+                transcript.composer.openDemoParty()
             case "split":
                 let spec = parts.count > 1 ? parts[1].split(separator: ",").map(String.init) : []
                 let named = spec.filter { $0 != "zoom" && Int($0) == nil }
@@ -162,7 +165,7 @@ extension MainWindowController {
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, typesize, analytics, newchat[:browse], "
                         + "quickask, cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
-                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], agents, agents-hour, agent-peek, clock-glance, clock-sheet[:minute+add+q=text], share[:fixture[+format]], draw, preview[:state[+split]], preview=HOST:PORT:/folder[+split], renderer, delegate\n").utf8))
+                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], agents, agents-hour, agent-peek, party, clock-glance, clock-sheet[:minute+add+q=text], share[:fixture[+format]], draw, preview[:state[+split]], preview=HOST:PORT:/folder[+split], renderer, delegate\n").utf8))
         }
     }
 

@@ -31,6 +31,20 @@ extension ComposerView {
             effort: displayedEffort(), agentOptions: backend?.reasoningEffortOptions ?? [])
     }
 
+    #if DEBUG
+        /// The party opened over the demo fleet once each machine has said what it runs, so every card
+        /// names its model by codename — `--open party` from the command line, after `DialTour` has
+        /// filled the six slots, with two recent models for the footer.
+        func openDemoParty() {
+            RecentModelsStore.record(ModelSelection(providerID: "google", modelID: "gemini-3-pro"))
+            RecentModelsStore.record(ModelSelection(providerID: "anthropic", modelID: "claude-haiku-4-5"))
+            Task { @MainActor [weak self] in
+                await DemoCatalogs.warm()
+                self?.openModelParty()
+            }
+        }
+    #endif
+
     private func partyRecents() -> [PartyRecent] {
         PartyReading.recents(slots: ModelParty.slots(), sources: modelSources())
     }

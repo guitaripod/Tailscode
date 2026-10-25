@@ -483,6 +483,11 @@ enum MacShot {
                 return
             }
             let bounds = CGDisplayBounds(CGDirectDisplayID(number.uint32Value))
+            for window in NSApp.windows where window.isVisible {
+                print(
+                    "LIVESHOT window \(type(of: window)) \"\(window.title)\" \(window.frame) "
+                        + "level=\(window.level.rawValue) alpha=\(window.alphaValue)")
+            }
             lastWasBlank = false
             guard let image = windowListImage(of: bounds),
                 let destination = CGImageDestinationCreateWithURL(

@@ -41,10 +41,10 @@ final class MacGameCenter: NSObject {
     private static let playerKey = GameCenterConsent.reportedPlayerKey
 
     func start() {
-        guard consent.isOn, !started else { return }
         #if DEBUG
             guard !LiveShot.holdsBack("Game Center") else { return }
         #endif
+        guard consent.isOn, !started else { return }
         started = true
         GKLocalPlayer.local.authenticateHandler = { viewController, error in
             Task { @MainActor in

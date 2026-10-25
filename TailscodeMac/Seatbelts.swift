@@ -310,6 +310,18 @@ final class Seatbelts {
         sample()
     }
 
+    /// A level pinned at calm by the drive hook pins what the panes are given as well, not only the
+    /// level that is shown: a picture taken on a loaded machine would otherwise come back with the
+    /// governor's real decision and glance tiles where whole conversations were asked for.
+    private func steadied(_ sample: GovernorSample) -> GovernorSample {
+        #if DEBUG
+            guard forced == .calm else { return sample }
+            return GovernorSample(reducedMotion: sample.reducedMotion, occluded: sample.occluded)
+        #else
+            return sample
+        #endif
+    }
+
     /// One look at everything, one decision, one record.
     func sample() {
         guard isRunning else { return }
@@ -324,11 +336,12 @@ final class Seatbelts {
             seen.facts[index].lastTouched = touched[id] ?? 0
         }
         touched = touched.filter { entry in seen.facts.contains { $0.id == entry.key } }
-        let sample = GovernorSample(
-            loopBusy: loop.busy2, worstStall: loop.worst1, host: memory.host,
-            ownMemory: memory.ownMemory, thermal: memory.thermal, lowPower: memory.lowPower,
-            reducedMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-            occluded: seen.occluded, watchdog: hint)
+        let sample = steadied(
+            GovernorSample(
+                loopBusy: loop.busy2, worstStall: loop.worst1, host: memory.host,
+                ownMemory: memory.ownMemory, thermal: memory.thermal, lowPower: memory.lowPower,
+                reducedMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+                occluded: seen.occluded, watchdog: hint))
         let decision = governor.evaluate(
             now: now, sample: sample, panes: seen.facts, setting: liveBudget)
         self.decision = decision
