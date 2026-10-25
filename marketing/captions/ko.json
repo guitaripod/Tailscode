@@ -1,146 +1,146 @@
 {
   "iphone": [
     {
-      "master": "lock",
-      "slug": "01-lock-screen",
-      "headline": "보내고 넣어 두면\n알림이 와요",
-      "subline": "코딩 에이전트가 잠금 화면에서 라이브로, 내 tailnet 위에서.",
-      "highlight": "알림이 와요"
-    },
-    {
-      "master": "03-approval",
-      "slug": "02-approve",
-      "headline": "위험한 명령은\n내가 승인해요",
-      "subline": "한 번만 허용, 항상, 거부 — 에이전트가 기다리는 동안.",
-      "highlight": "위험한 명령"
-    },
-    {
-      "master": "welcome",
-      "slug": "03-private",
-      "headline": "내 tailnet 밖으로\n나가는 건 없어요",
-      "subline": "릴레이 없음. 계정 없음. 분석 없음. 오픈 소스, GPL-3.0.",
-      "highlight": "tailnet"
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "모든 에이전트,\n주머니 하나에",
+      "subline": "Claude Code, opencode, Oh My Pi를 내 컴퓨터에서 실행하세요.",
+      "highlight": "주머니 하나에"
     },
     {
       "master": "07-home",
-      "slug": "04-one-board",
-      "headline": "모든 머신,\n보드 하나에",
-      "subline": "라이브 턴 먼저, 프로젝트별로, 모든 서버를 한 곳에.",
-      "highlight": "보드 하나에"
+      "slug": "02-at-a-glance",
+      "headline": "누가 필요한지,\n한눈에",
+      "subline": "모든 기기를 한 보드에서. 대기 중, 작업 중, 완료.",
+      "highlight": "한눈에"
     },
     {
-      "master": "13-diff",
-      "slug": "05-read-the-diff",
-      "headline": "모든 diff를\n폰에서 읽어요",
-      "subline": "브랜치, 스테이지됨, 변경됨: 실제 패치를, 그 파일을 가진 머신에서.",
-      "highlight": "모든 diff를"
+      "master": "fl-models",
+      "slug": "03-any-model",
+      "headline": "어떤 모델이든,\n내 GPU 위에서도",
+      "subline": "클라우드 모델이든 내 기기의 로컬 모델이든, 채팅마다 선택.",
+      "highlight": "내 GPU 위에서도"
     },
     {
-      "master": "04-question",
-      "slug": "06-it-asks",
-      "headline": "에이전트가 물으면\n내가 답해요",
-      "subline": "질문은 카드로 도착해요. 탭 한 번으로 답하세요.",
-      "highlight": "내가 답해요"
+      "master": "lock",
+      "slug": "04-long-runs",
+      "headline": "몇 시간짜리 작업,\n지켜볼 필요 없이",
+      "subline": "잠금 화면에서 라이브로. 끝나면 알려 드려요.",
+      "highlight": "지켜볼 필요 없이"
+    },
+    {
+      "master": "fl-setup",
+      "slug": "05-one-command",
+      "headline": "명령 한 줄,\n그다음 스캔",
+      "subline": "Claude Code 브리지는 명령 한 줄로 설치됩니다. 로그인 없음.",
+      "highlight": "그다음 스캔"
+    },
+    {
+      "master": "fl-steer",
+      "slug": "06-steer",
+      "headline": "실행 중에도\n조종하세요",
+      "subline": "다음 메시지를 대기시키거나 서버에서 턴을 멈추세요.",
+      "highlight": "조종하세요"
+    },
+    {
+      "master": "fl-gpu",
+      "slug": "07-ask-anything",
+      "headline": "기기에 무엇이든\n물어보세요",
+      "subline": "코드만이 아니에요. GPU를 뭐가 잡아먹는지도 물어보세요.",
+      "highlight": "무엇이든"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "08-carry",
+      "headline": "모델을 바꿔도,\n대화는 이어져요",
+      "subline": "다음 모델이 채팅 요약을 받아 이어서 답합니다.",
+      "highlight": "대화는 이어져요"
+    },
+    {
+      "master": "fl-party",
+      "slug": "09-party",
+      "headline": "모델 여섯 개,\n스와이프 한 번",
+      "subline": "슬롯마다 모델과 추론 강도. 모델 버튼을 밀어 바꾸세요.",
+      "highlight": "스와이프 한 번"
     },
     {
       "master": "14-analytics",
-      "slug": "07-what-it-costs",
-      "headline": "비용이 얼마인지\n바로 확인하세요",
-      "subline": "모든 턴에 가격을, 매달 합계를 모든 머신에 걸쳐.",
-      "highlight": "비용"
-    },
-    {
-      "master": "08-usage",
-      "slug": "08-limits",
-      "headline": "한도의 벽에\n닿기 전에",
-      "subline": "제공자별 가장 빠듯한 구간과 리셋 시각을 홈 화면에서도.",
-      "highlight": "닿기 전에"
-    },
-    {
-      "master": "02-dial",
-      "slug": "09-model-and-effort",
-      "headline": "모델 선택,\n추론 강도까지",
-      "subline": "버튼 하나에 둘 다. 조합을 고정하고 스와이프로 전환.",
-      "highlight": "추론 강도까지"
-    },
-    {
-      "master": "15-delegate",
-      "slug": "10-hand-off",
-      "headline": "반복 작업은\n맡겨 두세요",
-      "subline": "더 저렴한 모델이 먼저 시도하고, 검증기가 판정합니다. 베타.",
-      "highlight": "반복 작업"
+      "slug": "10-costs",
+      "headline": "얼마나 드는지\n확인하세요",
+      "subline": "턴마다 가격을 매기고, 매달 모든 기기 합계를 냅니다.",
+      "highlight": "확인하세요"
     }
   ],
   "ipad": [
     {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "모든 에이전트,\n화면 하나에",
+      "subline": "내 모든 기기에서 실행 중인 에이전트를 라이브로.",
+      "highlight": "화면 하나에"
+    },
+    {
+      "master": "fl-hour",
+      "slug": "02-the-hour",
+      "headline": "지난 한 시간,\n레인별로",
+      "subline": "내가 없는 동안 각 에이전트가 한 일.",
+      "highlight": "레인별로"
+    },
+    {
       "master": "01-live",
-      "slug": "01-one-workspace",
-      "headline": "작업 공간 하나,\n모든 에이전트",
-      "subline": "모든 머신과 모든 대화를 대화 화면 옆에.",
-      "highlight": "모든 에이전트"
+      "slug": "03-every-step",
+      "headline": "모든 단계를,\n라이브로",
+      "subline": "생각, 도구 실행, diff가 일어나는 순간 그대로.",
+      "highlight": "라이브로"
+    },
+    {
+      "master": "fl-models",
+      "slug": "04-any-model",
+      "headline": "어떤 모델이든,\n내 GPU 위에서도",
+      "subline": "클라우드 모델이든 내 기기의 로컬 모델이든, 채팅마다 선택.",
+      "highlight": "내 GPU 위에서도"
+    },
+    {
+      "master": "fl-gpu",
+      "slug": "05-ask-anything",
+      "headline": "기기에 무엇이든\n물어보세요",
+      "subline": "코드만이 아니에요. GPU를 뭐가 잡아먹는지도 물어보세요.",
+      "highlight": "무엇이든"
     },
     {
       "master": "03-approval",
-      "slug": "02-approve",
-      "headline": "목록을 보면서\n바로 승인",
-      "subline": "턴 도중에도 자리를 잃지 않고 허용하거나 거부.",
-      "highlight": "바로 승인"
-    },
-    {
-      "master": "02-work",
-      "slug": "03-agent-fanout",
-      "headline": "여러 에이전트를\n한눈에",
-      "subline": "서브에이전트는 자신을 만든 턴 안에 도킹됩니다.",
-      "highlight": "한눈에"
-    },
-    {
-      "master": "05-subagents",
-      "slug": "04-real-output",
-      "headline": "진짜 출력이\n바로 거기에",
-      "subline": "어느 에이전트의 작업이든 일어난 자리에서 엽니다.",
-      "highlight": "바로 거기에"
-    },
-    {
-      "master": "13-diff",
-      "slug": "05-read-the-diff",
-      "headline": "diff를 먼저\n읽으세요",
-      "subline": "브랜치, 스테이지됨, 변경됨: 머신의 실제 패치.",
-      "highlight": "diff"
+      "slug": "06-approve",
+      "headline": "목록을 보며\n승인하세요",
+      "subline": "작업 흐름을 잃지 않고 턴 중간에 허용 또는 거부.",
+      "highlight": "승인하세요"
     },
     {
       "master": "08-usage",
-      "slug": "06-limits",
-      "headline": "모든 할당량을\n벽에 닿기 전에",
-      "subline": "가장 빠듯한 구간과 리셋 시각을 내 머신에서 읽어와요.",
-      "highlight": "벽에 닿기 전에"
+      "slug": "07-limits",
+      "headline": "모든 한도를\n한 화면에",
+      "subline": "가장 빡빡한 구간과 초기화 시간, 기기에서 읽은 값.",
+      "highlight": "한 화면에"
     },
     {
       "master": "14-analytics",
-      "slug": "07-the-month",
-      "headline": "한 달을\n숫자로",
-      "subline": "날짜, 모델, 프로젝트별 지출 — 모든 머신을 합산해서.",
-      "highlight": "숫자로"
-    },
-    {
-      "master": "welcome",
-      "slug": "08-private",
-      "headline": "내 tailnet 밖으로\n나가는 건 없어요",
-      "subline": "릴레이 없음. 계정 없음. 분석 없음. 오픈 소스.",
-      "highlight": "tailnet"
-    },
-    {
-      "master": "15-delegate",
-      "slug": "09-hand-it-down",
-      "headline": "싼 모델부터\n단계별로",
-      "subline": "더 저렴한 모델이 먼저 시도하고, 검증기가 판정합니다. 베타.",
-      "highlight": "단계별로"
+      "slug": "08-costs",
+      "headline": "얼마나 드는지\n확인하세요",
+      "subline": "턴마다 가격을 매기고, 매달 모든 기기 합계를 냅니다.",
+      "highlight": "확인하세요"
     },
     {
       "master": "whole",
-      "slug": "10-whole-screen",
-      "headline": "화면 전체가\n하나의 작업 공간",
-      "subline": "대화 목록, 대화, 도구를 나란히.",
-      "highlight": "하나의 작업 공간"
+      "slug": "09-whole-screen",
+      "headline": "화면 전체를,\n하나의 작업 공간으로",
+      "subline": "채팅 목록, 대화, 도구를 나란히.",
+      "highlight": "하나의 작업 공간으로"
+    },
+    {
+      "master": "fl-party",
+      "slug": "10-party",
+      "headline": "모델 여섯 개,\n한 번 탭이면",
+      "subline": "슬롯마다 모델과 추론 강도, 탭 한 번으로 전환.",
+      "highlight": "한 번 탭이면"
     }
   ],
   "mac": [
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "보내고 넣어 두면\n알림이 와요",
-    "highlight": "알림이 와요"
+    "headline": "모든 에이전트,\n주머니 하나에",
+    "highlight": "주머니 하나에"
   },
   "search": {
-    "headline": "잠금 화면에서\n에이전트를 승인해요",
-    "highlight": "잠금 화면에서"
+    "headline": "내가 돌리는 모든 에이전트,\n어떤 모델로도",
+    "highlight": "어떤 모델로도"
   }
 }

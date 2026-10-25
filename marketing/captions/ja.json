@@ -1,146 +1,146 @@
 {
   "iphone": [
     {
-      "master": "lock",
-      "slug": "01-lock-screen",
-      "headline": "送って、しまう。\n終わりは通知で。",
-      "subline": "コーディングエージェントの様子を、自分の tailnet 経由でロック画面にライブ表示。",
-      "highlight": "終わりは通知で。"
-    },
-    {
-      "master": "03-approval",
-      "slug": "02-approve",
-      "headline": "危険なコマンドは\nその場で承認",
-      "subline": "1回だけ許可、常に許可、拒否——エージェントが待っている間に。",
-      "highlight": "その場で承認"
-    },
-    {
-      "master": "welcome",
-      "slug": "03-private",
-      "headline": "tailnetから\n一歩も出ない",
-      "subline": "中継なし。アカウントなし。解析なし。オープンソース、GPL-3.0。",
-      "highlight": "一歩も出ない"
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "すべてのエージェント。\nポケットひとつに。",
+      "subline": "Claude Code・opencode・Oh My Pi を、手元のマシンで。",
+      "highlight": "ポケットひとつに。"
     },
     {
       "master": "07-home",
-      "slug": "04-one-board",
-      "headline": "すべてのマシン、\nひとつのボードに",
-      "subline": "実行中のターンを先頭に、プロジェクト別に。すべてのサーバーをまたいで。",
-      "highlight": "ひとつのボード"
+      "slug": "02-at-a-glance",
+      "headline": "あなたを待つのは\n一目でわかる",
+      "subline": "全マシンをひとつの盤面で。待機中、作業中、完了。",
+      "highlight": "一目でわかる"
     },
     {
-      "master": "13-diff",
-      "slug": "05-read-the-diff",
-      "headline": "diffは全部\nスマホで読める",
-      "subline": "ブランチ、ステージ済み、変更済み——本物のパッチを、リポジトリのあるマシンから。",
-      "highlight": "diffは全部"
+      "master": "fl-models",
+      "slug": "03-any-model",
+      "headline": "どんなモデルも、\n自分のGPUでも",
+      "subline": "クラウドでもローカルでも、チャットごとに選べます。",
+      "highlight": "自分のGPUでも"
     },
     {
-      "master": "04-question",
-      "slug": "06-it-asks",
-      "headline": "聞かれたら、\nタップで答える",
-      "subline": "質問はカードで届きます。タップひとつで答えられます。",
-      "highlight": "タップで答える"
+      "master": "lock",
+      "slug": "04-long-runs",
+      "headline": "数時間の作業も、\n見張り不要",
+      "subline": "ロック画面でライブ表示。終わったら通知で知らせます。",
+      "highlight": "見張り不要"
+    },
+    {
+      "master": "fl-setup",
+      "slug": "05-one-command",
+      "headline": "コマンドは一行、\nあとはスキャン",
+      "subline": "Claude Code のブリッジは一行で入ります。サインイン不要。",
+      "highlight": "あとはスキャン"
+    },
+    {
+      "master": "fl-steer",
+      "slug": "06-steer",
+      "headline": "走行中に\n操作できる",
+      "subline": "次のメッセージを予約するか、サーバー上でターンを止められます。",
+      "highlight": "操作できる"
+    },
+    {
+      "master": "fl-gpu",
+      "slug": "07-ask-anything",
+      "headline": "マシンに何でも\n聞いてみる",
+      "subline": "コードだけじゃない。GPUを何が使っているかも聞けます。",
+      "highlight": "聞いてみる"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "08-carry",
+      "headline": "モデルを替えても、\n会話は続く",
+      "subline": "次のモデルが短い要約を受け取り、そのまま続けます。",
+      "highlight": "会話は続く"
+    },
+    {
+      "master": "fl-party",
+      "slug": "09-party",
+      "headline": "六つのモデルを、\nスワイプひとつで",
+      "subline": "各枠にモデルと推論の強さ。ボタンをスワイプして切替。",
+      "highlight": "スワイプひとつで"
     },
     {
       "master": "14-analytics",
-      "slug": "07-what-it-costs",
-      "headline": "かかった費用が、\nひと目でわかる",
-      "subline": "ターンごとの価格、毎月の合計——すべてのマシンをまたいで。",
-      "highlight": "かかった費用"
-    },
-    {
-      "master": "08-usage",
-      "slug": "08-limits",
-      "headline": "壁にぶつかる前に\n上限がわかる",
-      "subline": "各プロバイダーの最も厳しい枠とリセット時刻を、ホーム画面にも。",
-      "highlight": "壁にぶつかる前に"
-    },
-    {
-      "master": "02-dial",
-      "slug": "09-model-and-effort",
-      "headline": "モデルを選ぶ。\n強度を決める。",
-      "subline": "ひとつのピルで両方。ペアをピン留めして、スワイプで切り替え。",
-      "highlight": "強度を決める。"
-    },
-    {
-      "master": "15-delegate",
-      "slug": "10-hand-off",
-      "headline": "定型作業は\n安価なモデルへ",
-      "subline": "まず安価なモデルが試し、検証役が判定します。ベータ版。",
-      "highlight": "安価なモデル"
+      "slug": "10-costs",
+      "headline": "いくらかかるか\n見える化",
+      "subline": "ターンごとに価格を表示、月ごとに全マシン分を合計。",
+      "highlight": "見える化"
     }
   ],
   "ipad": [
     {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "すべてのエージェント。\n画面ひとつ",
+      "subline": "マシン全体で動いている全エージェントを、ライブで。",
+      "highlight": "画面ひとつ"
+    },
+    {
+      "master": "fl-hour",
+      "slug": "02-the-hour",
+      "headline": "直近の一時間を\nレーンごとに",
+      "subline": "あなたが離れている間に、各エージェントが何をしたか。",
+      "highlight": "レーンごとに"
+    },
+    {
       "master": "01-live",
-      "slug": "01-one-workspace",
-      "headline": "ワークスペースに\n全エージェント",
-      "subline": "すべてのマシンとチャットが、会話のすぐ横に。",
-      "highlight": "全エージェント"
+      "slug": "03-every-step",
+      "headline": "すべてのステップを\nライブで",
+      "subline": "思考、ツールの実行、diff を、起きたそばから。",
+      "highlight": "ライブで"
+    },
+    {
+      "master": "fl-models",
+      "slug": "04-any-model",
+      "headline": "どんなモデルも、\n自分のGPUでも",
+      "subline": "クラウドでもローカルでも、チャットごとに選べます。",
+      "highlight": "自分のGPUでも"
+    },
+    {
+      "master": "fl-gpu",
+      "slug": "05-ask-anything",
+      "headline": "マシンに何でも\n聞いてみる",
+      "subline": "コードだけじゃない。GPUを何が使っているかも聞けます。",
+      "highlight": "聞いてみる"
     },
     {
       "master": "03-approval",
-      "slug": "02-approve",
-      "headline": "リストを見ながら\n承認できる",
-      "subline": "ターンの途中でも、いまの位置を見失わずに許可・拒否。",
-      "highlight": "リストを見ながら"
-    },
-    {
-      "master": "02-work",
-      "slug": "03-agent-fanout",
-      "headline": "並列作業も\nひと目で把握",
-      "subline": "サブエージェントは、生成したターンの中に収まります。",
-      "highlight": "ひと目で把握"
-    },
-    {
-      "master": "05-subagents",
-      "slug": "04-real-output",
-      "headline": "実際の出力を\nその場で開く",
-      "subline": "どのエージェントの作業も、起きた場所でそのまま開けます。",
-      "highlight": "その場で"
-    },
-    {
-      "master": "13-diff",
-      "slug": "05-read-the-diff",
-      "headline": "まず diff を\n読んでから",
-      "subline": "ブランチ、ステージ済み、変更済み——本物のパッチを、マシンから直接。",
-      "highlight": "diff"
+      "slug": "06-approve",
+      "headline": "一覧を見たまま\n承認",
+      "subline": "ターンの途中で、位置を失わずに許可または拒否。",
+      "highlight": "承認"
     },
     {
       "master": "08-usage",
-      "slug": "06-limits",
-      "headline": "どの上限も、\n壁の手前で",
-      "subline": "最も厳しい枠とリセット時刻を、あなたのマシンから読み取ります。",
-      "highlight": "壁の手前で"
+      "slug": "07-limits",
+      "headline": "すべての上限を\n一画面で",
+      "subline": "最も厳しい枠とリセット時刻を、マシンから読み取って表示。",
+      "highlight": "一画面で"
     },
     {
       "master": "14-analytics",
-      "slug": "07-the-month",
-      "headline": "ひと月を、\n数字で見る",
-      "subline": "日別・モデル別・プロジェクト別の支出を、全マシン分まとめて。",
-      "highlight": "数字で見る"
-    },
-    {
-      "master": "welcome",
-      "slug": "08-private",
-      "headline": "tailnetから\n一歩も出ない",
-      "subline": "中継なし。アカウントなし。解析なし。オープンソース。",
-      "highlight": "一歩も出ない"
-    },
-    {
-      "master": "15-delegate",
-      "slug": "09-hand-it-down",
-      "headline": "安い順に\n試していく",
-      "subline": "まず安価なモデルが試し、検証役が判定します。ベータ版。",
-      "highlight": "安い順に"
+      "slug": "08-costs",
+      "headline": "いくらかかるか\n見える化",
+      "subline": "ターンごとに価格を表示、月ごとに全マシン分を合計。",
+      "highlight": "見える化"
     },
     {
       "master": "whole",
-      "slug": "10-whole-screen",
-      "headline": "画面まるごと、\nワークスペース",
-      "subline": "チャット、会話、ツールを、横並びで。",
-      "highlight": "ワークスペース"
+      "slug": "09-whole-screen",
+      "headline": "画面全体を\nひとつの作業場に",
+      "subline": "チャット、会話、ツールを並べて表示。",
+      "highlight": "ひとつの作業場に"
+    },
+    {
+      "master": "fl-party",
+      "slug": "10-party",
+      "headline": "六つのモデルを\nワンタップで",
+      "subline": "各枠にモデルと推論の強さ。タップひとつで切り替え。",
+      "highlight": "ワンタップで"
     }
   ],
   "mac": [
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "送って、しまう。\n終わりは通知で。",
-    "highlight": "終わりは通知で。"
+    "headline": "すべてのエージェント。\nポケットひとつに。",
+    "highlight": "ポケットひとつに。"
   },
   "search": {
-    "headline": "ロック画面から\nエージェントを承認",
-    "highlight": "ロック画面から"
+    "headline": "動かすすべてのエージェントを、\nどのモデルでも",
+    "highlight": "どのモデルでも"
   }
 }

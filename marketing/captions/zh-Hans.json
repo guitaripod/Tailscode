@@ -1,146 +1,146 @@
 {
   "iphone": [
     {
-      "master": "lock",
-      "slug": "01-lock-screen",
-      "headline": "发完就揣兜里\n做完它会通知",
-      "subline": "你的编程智能体，实时显示在锁定屏幕上，走你自己的 tailnet。",
-      "highlight": "做完它会通知"
-    },
-    {
-      "master": "03-approval",
-      "slug": "02-approve",
-      "headline": "高风险命令\n随手审批",
-      "subline": "允许一次、始终允许或拒绝——智能体还在等你的时候。",
-      "highlight": "高风险命令"
-    },
-    {
-      "master": "welcome",
-      "slug": "03-private",
-      "headline": "数据绝不离开\n你的 tailnet",
-      "subline": "无中继、无账号、无分析、开源，GPL-3.0。",
-      "highlight": "你的 tailnet"
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "所有智能体\n装进口袋",
+      "subline": "Claude Code、opencode 和 Oh My Pi，在你自己的电脑上工作。",
+      "highlight": "装进口袋"
     },
     {
       "master": "07-home",
-      "slug": "04-one-board",
-      "headline": "每台机器\n一块面板",
-      "subline": "实时轮次优先，按项目分组，横跨你所有的服务器。",
-      "highlight": "一块面板"
+      "slug": "02-at-a-glance",
+      "headline": "谁需要你\n一眼看清",
+      "subline": "所有机器一个面板：等待、运行中、已完成。",
+      "highlight": "一眼看清"
     },
     {
-      "master": "13-diff",
-      "slug": "05-read-the-diff",
-      "headline": "每处 diff\n在手机上读",
-      "subline": "分支、已暂存、已修改——来自代码所在机器的真实补丁。",
-      "highlight": "每处 diff"
+      "master": "fl-models",
+      "slug": "03-any-model",
+      "headline": "任何模型\n包括你自己的显卡",
+      "subline": "云端模型，或你机器上的本地模型，每个对话单独选择。",
+      "highlight": "包括你自己的显卡"
     },
     {
-      "master": "04-question",
-      "slug": "06-it-asks",
-      "headline": "它一发问\n轻点就答",
-      "subline": "问题以卡片形式送达，轻点即可回答。",
-      "highlight": "轻点就答"
+      "master": "lock",
+      "slug": "04-long-runs",
+      "headline": "跑几小时的任务\n无需盯着",
+      "subline": "在锁屏上实时显示，完成时提醒你。",
+      "highlight": "无需盯着"
+    },
+    {
+      "master": "fl-setup",
+      "slug": "05-one-command",
+      "headline": "一行命令\n然后扫码",
+      "subline": "Claude Code 的桥接用一条命令即可安装，无需登录。",
+      "highlight": "然后扫码"
+    },
+    {
+      "master": "fl-steer",
+      "slug": "06-steer",
+      "headline": "运行途中\n随时调整",
+      "subline": "排队下一条消息，或在服务器上停止这一轮。",
+      "highlight": "随时调整"
+    },
+    {
+      "master": "fl-gpu",
+      "slug": "07-ask-anything",
+      "headline": "问你的机器\n任何事",
+      "subline": "不只是代码：问问是什么在占用显卡。",
+      "highlight": "任何事"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "08-carry",
+      "headline": "换模型\n不丢话题",
+      "subline": "下一个模型会拿到对话摘要，接着往下做。",
+      "highlight": "不丢话题"
+    },
+    {
+      "master": "fl-party",
+      "slug": "09-party",
+      "headline": "六个模型\n一划即达",
+      "subline": "每个槽位一个模型和它的强度，滑动模型按钮即可切换。",
+      "highlight": "一划即达"
     },
     {
       "master": "14-analytics",
-      "slug": "07-what-it-costs",
-      "headline": "花了多少\n一目了然",
+      "slug": "10-costs",
+      "headline": "看清\n花了多少",
       "subline": "每一轮都有价格，每月跨机器汇总。",
-      "highlight": "一目了然"
-    },
-    {
-      "master": "08-usage",
-      "slug": "08-limits",
-      "headline": "触顶之前\n先看额度",
-      "subline": "每家供应商最紧的周期与重置时间，主屏幕上也能看。",
-      "highlight": "触顶之前"
-    },
-    {
-      "master": "02-dial",
-      "slug": "09-model-and-effort",
-      "headline": "选好模型\n再定思考强度",
-      "subline": "一个胶囊按钮包办两件事。固定常用组合，左右滑动切换。",
-      "highlight": "再定思考强度"
-    },
-    {
-      "master": "15-delegate",
-      "slug": "10-hand-off",
-      "headline": "例行工作\n交给便宜的模型",
-      "subline": "更便宜的模型先试，验证器裁决。测试版。",
-      "highlight": "例行工作"
+      "highlight": "花了多少"
     }
   ],
   "ipad": [
     {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "所有智能体\n一个屏幕",
+      "subline": "你所有机器上正在运行的智能体，实时呈现。",
+      "highlight": "一个屏幕"
+    },
+    {
+      "master": "fl-hour",
+      "slug": "02-the-hour",
+      "headline": "最近一小时\n逐条泳道",
+      "subline": "离开时，每个智能体都做了什么。",
+      "highlight": "逐条泳道"
+    },
+    {
       "master": "01-live",
-      "slug": "01-one-workspace",
-      "headline": "一个工作区\n容纳所有智能体",
-      "subline": "每台机器、每个会话，都在对话旁边。",
-      "highlight": "所有智能体"
+      "slug": "03-every-step",
+      "headline": "每一步\n实时可见",
+      "subline": "思考、工具运行和差异，随发生随呈现。",
+      "highlight": "实时可见"
+    },
+    {
+      "master": "fl-models",
+      "slug": "04-any-model",
+      "headline": "任何模型\n包括你自己的显卡",
+      "subline": "云端模型，或你机器上的本地模型，每个对话单独选择。",
+      "highlight": "包括你自己的显卡"
+    },
+    {
+      "master": "fl-gpu",
+      "slug": "05-ask-anything",
+      "headline": "问你的机器\n任何事",
+      "subline": "不只是代码：问问是什么在占用显卡。",
+      "highlight": "任何事"
     },
     {
       "master": "03-approval",
-      "slug": "02-approve",
-      "headline": "看着列表\n就能审批",
-      "subline": "对话进行中允许或拒绝，不会丢掉你的位置。",
-      "highlight": "看着列表"
-    },
-    {
-      "master": "02-work",
-      "slug": "03-agent-fanout",
-      "headline": "并行的子智能体\n一眼看全",
-      "subline": "子智能体停靠在生成它们的那一轮里。",
-      "highlight": "一眼看全"
-    },
-    {
-      "master": "05-subagents",
-      "slug": "04-real-output",
-      "headline": "真实输出\n就在原地",
-      "subline": "在智能体干活的地方，直接打开它的工作成果。",
-      "highlight": "就在原地"
-    },
-    {
-      "master": "13-diff",
-      "slug": "05-read-the-diff",
-      "headline": "先读 diff\n再做决定",
-      "subline": "分支、已暂存、已修改——来自那台机器的真实补丁。",
-      "highlight": "先读 diff"
+      "slug": "06-approve",
+      "headline": "批准时\n列表仍在视野中",
+      "subline": "在一轮进行中允许或拒绝，不丢失你的位置。",
+      "highlight": "列表仍在视野中"
     },
     {
       "master": "08-usage",
-      "slug": "06-limits",
-      "headline": "每项配额\n触顶之前先知道",
-      "subline": "最紧的周期与重置时间，直接从你的机器读取。",
-      "highlight": "触顶之前先知道"
+      "slug": "07-limits",
+      "headline": "所有配额\n一屏看完",
+      "subline": "最紧的时间窗口和重置时间，来自你的机器。",
+      "highlight": "一屏看完"
     },
     {
       "master": "14-analytics",
-      "slug": "07-the-month",
-      "headline": "这个月\n用数字说话",
-      "subline": "按天、模型和项目统计花费，合并所有机器。",
-      "highlight": "用数字说话"
-    },
-    {
-      "master": "welcome",
-      "slug": "08-private",
-      "headline": "数据绝不离开\n你的 tailnet",
-      "subline": "无中继、无账号、无分析、开源。",
-      "highlight": "你的 tailnet"
-    },
-    {
-      "master": "15-delegate",
-      "slug": "09-hand-it-down",
-      "headline": "从最便宜的\n一档试起",
-      "subline": "更便宜的模型先试，验证器裁决。测试版。",
-      "highlight": "最便宜"
+      "slug": "08-costs",
+      "headline": "看清\n花了多少",
+      "subline": "每一轮都有价格，每月跨机器汇总。",
+      "highlight": "花了多少"
     },
     {
       "master": "whole",
-      "slug": "10-whole-screen",
-      "headline": "整块屏幕\n就是工作区",
-      "subline": "聊天、对话和工具，并排呈现。",
-      "highlight": "工作区"
+      "slug": "09-whole-screen",
+      "headline": "整个屏幕\n一个工作区",
+      "subline": "对话、会话和工具并排呈现。",
+      "highlight": "一个工作区"
+    },
+    {
+      "master": "fl-party",
+      "slug": "10-party",
+      "headline": "六个模型\n一点即达",
+      "subline": "每个槽位一个模型和它的强度，轻点即可切换。",
+      "highlight": "一点即达"
     }
   ],
   "mac": [
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "发完就揣兜里\n做完它会通知",
-    "highlight": "做完它会通知"
+    "headline": "所有智能体\n装进口袋",
+    "highlight": "装进口袋"
   },
   "search": {
-    "headline": "在锁定屏幕上\n审批智能体",
-    "highlight": "锁定屏幕"
+    "headline": "你运行的每个智能体\n无论什么模型",
+    "highlight": "无论什么模型"
   }
 }

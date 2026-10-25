@@ -1,146 +1,146 @@
 {
   "iphone": [
     {
-      "master": "lock",
-      "slug": "01-lock-screen",
-      "headline": "Wyślij. Schowaj.\nTelefon da znać.",
-      "subline": "Twoi agenci kodowania na żywo na ekranie blokady, przez własny tailnet.",
-      "highlight": "Telefon da znać."
-    },
-    {
-      "master": "03-approval",
-      "slug": "02-approve",
-      "headline": "Zatwierdź to,\nco ryzykowne",
-      "subline": "Zezwól raz, zawsze albo odmów, gdy agent czeka.",
-      "highlight": "co ryzykowne"
-    },
-    {
-      "master": "welcome",
-      "slug": "03-private",
-      "headline": "Nic nie wychodzi\npoza twój tailnet",
-      "subline": "Bez relay. Bez konta. Bez analityki. Open source, GPL-3.0.",
-      "highlight": "twój tailnet"
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "Wszystkie agenty.\nW kieszeni.",
+      "subline": "Claude Code, opencode i Oh My Pi na twoich własnych komputerach.",
+      "highlight": "W kieszeni."
     },
     {
       "master": "07-home",
-      "slug": "04-one-board",
-      "headline": "Każdy komputer,\njedna tablica",
-      "subline": "Tury na żywo na górze, według projektu, ze wszystkich serwerów.",
-      "highlight": "jedna tablica"
+      "slug": "02-at-a-glance",
+      "headline": "Kto czeka,\nna pierwszy rzut oka",
+      "subline": "Jedna tablica dla wszystkich komputerów: czeka, pracuje, skończone.",
+      "highlight": "na pierwszy rzut oka"
     },
     {
-      "master": "13-diff",
-      "slug": "05-read-the-diff",
-      "headline": "Czytaj każdy diff\nw telefonie",
-      "subline": "Gałąź, zaindeksowane, zmienione: prawdziwy patch z komputera, na którym powstał.",
-      "highlight": "każdy diff"
+      "master": "fl-models",
+      "slug": "03-any-model",
+      "headline": "Każdy model.\nNawet twoja GPU.",
+      "subline": "Model w chmurze albo lokalny na twoim komputerze, dla każdego czatu.",
+      "highlight": "Nawet twoja GPU."
     },
     {
-      "master": "04-question",
-      "slug": "06-it-asks",
-      "headline": "Gdy pyta,\nodpowiadasz ty",
-      "subline": "Pytanie przychodzi jako karta. Odpowiedz jednym stuknięciem.",
-      "highlight": "odpowiadasz ty"
+      "master": "lock",
+      "slug": "04-long-runs",
+      "headline": "Długie zadania.\nBez pilnowania.",
+      "subline": "Na ekranie blokady, z sygnałem po zakończeniu.",
+      "highlight": "Bez pilnowania."
+    },
+    {
+      "master": "fl-setup",
+      "slug": "05-one-command",
+      "headline": "Jedna linia.\nPotem skanuj.",
+      "subline": "Bridge dla Claude Code instaluje się jednym poleceniem. Bez logowania.",
+      "highlight": "Potem skanuj."
+    },
+    {
+      "master": "fl-steer",
+      "slug": "06-steer",
+      "headline": "Zmieniaj kurs\nw biegu",
+      "subline": "Ustaw kolejną wiadomość w kolejce albo zatrzymaj turę na serwerze.",
+      "highlight": "w biegu"
+    },
+    {
+      "master": "fl-gpu",
+      "slug": "07-ask-anything",
+      "headline": "Pytaj komputery\no wszystko",
+      "subline": "Nie tylko kod: zapytaj, co zjada kartę graficzną.",
+      "highlight": "o wszystko"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "08-carry",
+      "headline": "Zmień model,\nwątek zostaje",
+      "subline": "Następny model dostaje krótkie streszczenie czatu i prowadzi dalej.",
+      "highlight": "wątek zostaje"
+    },
+    {
+      "master": "fl-party",
+      "slug": "09-party",
+      "headline": "Sześć modeli,\njeden dotyk",
+      "subline": "Model i jego poziom w każdym miejscu. Dotknij przycisku, by zmienić.",
+      "highlight": "jeden dotyk"
     },
     {
       "master": "14-analytics",
-      "slug": "07-what-it-costs",
+      "slug": "10-costs",
       "headline": "Zobacz, ile\nto kosztuje",
-      "subline": "Każda tura z ceną, każdy miesiąc zsumowany ze wszystkich komputerów.",
-      "highlight": "kosztuje"
-    },
-    {
-      "master": "08-usage",
-      "slug": "08-limits",
-      "headline": "Limity na oku,\nzanim zablokują",
-      "subline": "Najciaśniejsze okno każdego dostawcy i zegar resetu, także na ekranie początkowym.",
-      "highlight": "zanim zablokują"
-    },
-    {
-      "master": "02-dial",
-      "slug": "09-model-and-effort",
-      "headline": "Wybierz model.\nUstaw wysiłek.",
-      "subline": "Jeden przycisk niesie oba. Przypnij pary i przesuwaj między nimi.",
-      "highlight": "Ustaw wysiłek."
-    },
-    {
-      "master": "15-delegate",
-      "slug": "10-hand-off",
-      "headline": "Zleć rutynę\ntańszym modelom",
-      "subline": "Najpierw próbuje tańszy model, a decyduje weryfikator. Beta.",
-      "highlight": "tańszym modelom"
+      "subline": "Każda tura wyceniona, każdy miesiąc zsumowany ze wszystkich maszyn.",
+      "highlight": "to kosztuje"
     }
   ],
   "ipad": [
     {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "Wszystkie agenty.\nJeden ekran.",
+      "subline": "Każdy działający agent na twoich komputerach, na żywo.",
+      "highlight": "Jeden ekran."
+    },
+    {
+      "master": "fl-hour",
+      "slug": "02-the-hour",
+      "headline": "Ostatnia godzina,\npas po pasie",
+      "subline": "Co zrobił każdy agent, gdy cię nie było.",
+      "highlight": "pas po pasie"
+    },
+    {
       "master": "01-live",
-      "slug": "01-one-workspace",
-      "headline": "Jedna przestrzeń,\nwszyscy agenci",
-      "subline": "Każdy komputer i każdy czat obok rozmowy.",
-      "highlight": "wszyscy agenci"
+      "slug": "03-every-step",
+      "headline": "Każdy krok,\nna żywo",
+      "subline": "Myślenie, narzędzia i diff, gdy się dzieją.",
+      "highlight": "na żywo"
+    },
+    {
+      "master": "fl-models",
+      "slug": "04-any-model",
+      "headline": "Każdy model.\nNawet twoja GPU.",
+      "subline": "Model w chmurze albo lokalny na twoim komputerze, dla każdego czatu.",
+      "highlight": "Nawet twoja GPU."
+    },
+    {
+      "master": "fl-gpu",
+      "slug": "05-ask-anything",
+      "headline": "Pytaj komputery\no wszystko",
+      "subline": "Nie tylko kod: zapytaj, co zjada kartę graficzną.",
+      "highlight": "o wszystko"
     },
     {
       "master": "03-approval",
-      "slug": "02-approve",
-      "headline": "Zatwierdzaj, nie\nzamykając listy",
+      "slug": "06-approve",
+      "headline": "Zatwierdzaj z listą\nw zasięgu wzroku",
       "subline": "Zezwól lub odmów w trakcie tury, nie tracąc miejsca.",
-      "highlight": "zamykając listy"
-    },
-    {
-      "master": "02-work",
-      "slug": "03-agent-fanout",
-      "headline": "Rój agentów\nod razu widać",
-      "subline": "Subagenci dokują wewnątrz tury, która ich uruchomiła.",
-      "highlight": "od razu widać"
-    },
-    {
-      "master": "05-subagents",
-      "slug": "04-real-output",
-      "headline": "Prawdziwe wyjście,\ntuż obok",
-      "subline": "Otwórz pracę każdego agenta tam, gdzie się odbyła.",
-      "highlight": "tuż obok"
-    },
-    {
-      "master": "13-diff",
-      "slug": "05-read-the-diff",
-      "headline": "Najpierw\nprzeczytaj diff",
-      "subline": "Gałąź, zaindeksowane, zmienione: prawdziwy patch z komputera.",
-      "highlight": "diff"
+      "highlight": "w zasięgu wzroku"
     },
     {
       "master": "08-usage",
-      "slug": "06-limits",
-      "headline": "Każdy limit,\nzanim zablokuje",
+      "slug": "07-limits",
+      "headline": "Każdy limit,\nna jednym ekranie",
       "subline": "Najciaśniejsze okno i zegar resetu, odczytane z twoich komputerów.",
-      "highlight": "zanim zablokuje"
+      "highlight": "na jednym ekranie"
     },
     {
       "master": "14-analytics",
-      "slug": "07-the-month",
-      "headline": "Miesiąc\nw liczbach",
-      "subline": "Wydatki według dnia, modelu i projektu, scalone z wielu komputerów.",
-      "highlight": "w liczbach"
-    },
-    {
-      "master": "welcome",
-      "slug": "08-private",
-      "headline": "Nic nie wychodzi\npoza twój tailnet",
-      "subline": "Bez relay. Bez konta. Bez analityki. Open source.",
-      "highlight": "twój tailnet"
-    },
-    {
-      "master": "15-delegate",
-      "slug": "09-hand-it-down",
-      "headline": "Przekaż to\nw dół drabiny",
-      "subline": "Najpierw próbuje tańszy model, a decyduje weryfikator. Beta.",
-      "highlight": "w dół drabiny"
+      "slug": "08-costs",
+      "headline": "Zobacz, ile\nto kosztuje",
+      "subline": "Każda tura wyceniona, każdy miesiąc zsumowany ze wszystkich maszyn.",
+      "highlight": "to kosztuje"
     },
     {
       "master": "whole",
-      "slug": "10-whole-screen",
+      "slug": "09-whole-screen",
       "headline": "Cały ekran,\njedna przestrzeń",
       "subline": "Czaty, rozmowa i narzędzia obok siebie.",
       "highlight": "jedna przestrzeń"
+    },
+    {
+      "master": "fl-party",
+      "slug": "10-party",
+      "headline": "Sześć modeli,\njeden dotyk",
+      "subline": "Model i jego poziom w każdym miejscu, jeden dotyk, by zmienić.",
+      "highlight": "jeden dotyk"
     }
   ],
   "mac": [
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "Wyślij. Schowaj.\nTelefon da znać.",
-    "highlight": "Telefon da znać."
+    "headline": "Wszystkie agenty.\nW kieszeni.",
+    "highlight": "W kieszeni."
   },
   "search": {
-    "headline": "Zatwierdzaj agentów\nz ekranu blokady",
-    "highlight": "z ekranu blokady"
+    "headline": "Każdy agent,\nna każdym modelu",
+    "highlight": "na każdym modelu"
   }
 }
