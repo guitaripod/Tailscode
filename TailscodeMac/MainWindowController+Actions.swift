@@ -290,6 +290,24 @@ extension MainWindowController {
             sidebar.toggleProjectScope(fallback: currentEntry)
         case .quickAsk:
             presentQuickAsk()
+        case .openSettings:
+            presentPreferences()
+        case .openServers:
+            presentServers()
+        case .openUpdates:
+            presentUpdates()
+        case .openUsage:
+            presentUsageWindow()
+        case .toggleAppearance:
+            toggleAppearance()
+        case .toggleCompactTools:
+            toggleCompactTools()
+        case .toggleVimComposer:
+            toggleVimComposer()
+        case .toggleFullscreen:
+            toggleFullscreen()
+        case .openChat(let number):
+            return sidebar.open(number: number)
         }
         return true
     }

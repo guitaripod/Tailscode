@@ -25,6 +25,12 @@ enum MacKeys {
         return KeyChord.canonical(keyval: keyval, state: state)
     }
 
+    /// F1 to F12 in order. They arrive with private-use characters (U+F704 and up) that mean
+    /// nothing in the registry's space, so the key code is what names them.
+    private static let functionKeyCodes: [UInt16] = [
+        122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111,
+    ]
+
     private static func keyval(for event: NSEvent) -> UInt32? {
         switch event.keyCode {
         case 53: return Keymap.escape
@@ -36,7 +42,15 @@ enum MacKeys {
         case 125: return Keymap.down
         case 123: return 0xFF51
         case 124: return 0xFF53
+        case 115: return Keymap.home
+        case 119: return Keymap.end
+        case 116: return Keymap.pageUp
+        case 121: return Keymap.pageDown
+        case 117: return Keymap.delete
         default: break
+        }
+        if let number = functionKeyCodes.firstIndex(of: event.keyCode) {
+            return Keymap.functionKey(number + 1)
         }
         /// `charactersIgnoringModifiers` keeps shift's work (`J`, `?`) while dropping control's
         /// (^C arrives as the letter, not as 0x03), which is exactly the shape the canonicaliser

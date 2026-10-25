@@ -82,6 +82,18 @@ extension SidebarViewController {
         openCursor()
     }
 
+    /// The nth chat of the list as it is drawn, counting from one: the numbers a person reads off
+    /// the rows, so a filtered or scoped list numbers what is on screen and nothing else. A number
+    /// past the end opens nothing and says so, which lets the key fall through to whatever else
+    /// might want it.
+    @discardableResult
+    func open(number: Int) -> Bool {
+        guard number >= 1, number <= visible.count else { return false }
+        cursor = number - 1
+        openCursor()
+        return true
+    }
+
     func openCursor() {
         guard cursor < visible.count else { return }
         openItem(visible[cursor])

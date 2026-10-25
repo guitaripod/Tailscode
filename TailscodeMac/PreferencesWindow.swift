@@ -21,6 +21,11 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     let summonButton = NSButton(title: "", target: nil, action: nil)
     let summonState = NSTextField(wrappingLabelWithString: "")
     var summonRecorder: Any?
+    let shortcutNote = NSTextField(wrappingLabelWithString: "")
+    let shortcutResetDetail = NSTextField(wrappingLabelWithString: "")
+    let shortcutResetButton = NSButton(title: "", target: nil, action: nil)
+    weak var shortcutList: ShortcutListView?
+    var captureSheet: ShortcutCaptureSheet?
     var hapticStop = -1
     /// What Settings asks the window it belongs to, because the servers, the updates, the pro
     /// unlock, the cheatsheet and the panes are the window's own and Settings only points at them.
@@ -166,6 +171,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     /// that started it is gone.
     func windowWillClose(_ notification: Notification) {
         stopRecordingSummon()
+        captureSheet?.stopHearing()
     }
 
     /// The monitor is application-wide and answers every press with nothing, so a recorder still

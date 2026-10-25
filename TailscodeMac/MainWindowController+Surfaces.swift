@@ -291,11 +291,10 @@ extension MainWindowController {
         if preferencesWindow == nil {
             preferencesWindow = PreferencesWindow(
                 onComposerChanged: { [weak self] in
-                    self?.transcript.composer.applyPreferences()
+                    self?.composerPreferencesChanged()
                 },
                 onTranscriptChanged: { [weak self] in
-                    self?.splitPanes.eachPane { $0.applyUIScale() }
-                    Task { await self?.sidebar.refresh() }
+                    self?.transcriptPreferencesChanged()
                 },
                 onReloadShortcuts: { [weak self] in
                     self?.reloadShortcuts()

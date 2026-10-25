@@ -265,6 +265,14 @@ enum SelfTest {
             failures += 1
         }
 
+        do {
+            let result = try checkShortcutEditor()
+            report("shortcut editor: \(result.checks) claims hold — \(result.note)")
+        } catch {
+            report("shortcut editor: \(error)")
+            failures += 1
+        }
+
         #if !TAILSCODE_MAS
             do {
                 let checks = try checkVideoSlot()

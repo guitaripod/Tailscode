@@ -447,6 +447,9 @@ extension PreferencesWindow {
                 button: reload))
 
         gap(column)
+        addShortcutsSection(to: column)
+
+        gap(column)
         column.addArrangedSubview(
             MacDialogs.sectionHeader(Localized.text("Ask from anywhere")))
         column.addArrangedSubview(
