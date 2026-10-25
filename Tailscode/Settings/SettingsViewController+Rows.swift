@@ -47,6 +47,10 @@ extension SettingsViewController {
             [weak self] cell, _, item in
             self?.configure(cell, item)
         }
+        let switchCell = UICollectionView.CellRegistration<SettingsSwitchCell, Item> {
+            [weak self] cell, _, item in
+            self?.configure(cell, item)
+        }
         let midgarCell = UICollectionView.CellRegistration<SurfaceListCell, Item> {
             cell, _, _ in
             Self.embedMidgarEntry(in: cell)
@@ -75,8 +79,17 @@ extension SettingsViewController {
 
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
             collectionView, indexPath, item in
-            collectionView.dequeueConfiguredReusableCell(
-                using: item == .midgar ? midgarCell : cell, for: indexPath, item: item)
+            switch item {
+            case .midgar:
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: midgarCell, for: indexPath, item: item)
+            case .toggle:
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: switchCell, for: indexPath, item: item)
+            default:
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: cell, for: indexPath, item: item)
+            }
         }
         dataSource.supplementaryViewProvider = { collectionView, kind, indexPath in
             let registration =
@@ -97,7 +110,7 @@ extension SettingsViewController {
     }
 
     private func isMidgarSection(at index: Int) -> Bool {
-        dataSource?.snapshot().sectionIdentifiers[safe: index] == .midgar
+        dataSource?.sectionIdentifier(for: index) == .midgar
     }
 
     /// Reconfiguring a cell runs this again, so the card is added only once.
@@ -111,7 +124,7 @@ extension SettingsViewController {
     /// Sections are appended conditionally, so a supplementary view's index is
     /// not its position in `allCases`.
     func section(at indexPath: IndexPath) -> Section? {
-        dataSource.snapshot().sectionIdentifiers[safe: indexPath.section]
+        dataSource.sectionIdentifier(for: indexPath.section)
     }
 
     private func footerText(for section: Section) -> String? {
@@ -153,7 +166,7 @@ extension SettingsViewController {
 
     func configure(_ cell: UICollectionViewListCell, _ item: Item) {
         var content = cell.defaultContentConfiguration()
-        cell.accessories = []
+        if !(cell is SettingsSwitchCell) { cell.accessories = [] }
         switch item {
         case .midgar:
             break
@@ -183,7 +196,7 @@ extension SettingsViewController {
             content.text = profile.name
             var detail = "\(profile.backend.displayName) · \(profile.baseURL.host ?? "")"
             if profile.id == ConnectionController.shared.activeProfileID,
-                ConnectionController.shared.profiles.count > 1
+                facts.profiles.count > 1
             {
                 detail += " · " + String(localized: "default")
             }
@@ -214,7 +227,7 @@ extension SettingsViewController {
             content.image = UIImage(systemName: "play.slash")
             content.imageProperties.tintColor = ThemePalette.color(\.info, system: .systemOrange)
         case .software:
-            let rollup = UpdateLedger.rollup()
+            let rollup = facts.updates
             content.text = rollup.headline
             content.secondaryText = rollup.detail()
             content.secondaryTextProperties.numberOfLines = 2
@@ -239,7 +252,7 @@ extension SettingsViewController {
             }
         case .tailnetToken:
             content.text = String(localized: "API access token")
-            let key = TailnetCredentials.key
+            let key = facts.tailnetKey
             content.secondaryText = key.settingsValue
             content.prefersSideBySideTextAndSecondaryText = true
             content.secondaryTextProperties.color =
@@ -283,9 +296,14 @@ extension SettingsViewController {
             }
             content.image = UIImage(systemName: toggle.icon)
             content.imageProperties.tintColor = toggle.tint
-            cell.accessories = [.customView(configuration: switchAccessory(toggle))]
+            (cell as? SettingsSwitchCell)?.show(title: toggle.title, isOn: toggle.isOn) {
+                [weak self] isOn in
+                toggle.set(isOn)
+                Theme.Haptics.tap()
+                self?.toggleDidChange(toggle)
+            }
         case .pushState(let profileID):
-            let profile = ConnectionController.shared.profiles.first { $0.id == profileID }
+            let profile = facts.profiles.first { $0.id == profileID }
             let state = profile.map { PushRegistrar.state(for: $0.baseURL) } ?? .unknown
             content.text = profile?.name ?? String(localized: "Server")
             content.secondaryText = pushDetail(state)
@@ -308,7 +326,7 @@ extension SettingsViewController {
         case .deepseekKey:
             content.text = String(localized: "DeepSeek API key")
             content.secondaryText =
-                DeepSeekCredentials.hasToken
+                facts.hasDeepSeekKey
                 ? String(localized: "Saved in Keychain") : String(localized: "Not set")
             content.prefersSideBySideTextAndSecondaryText = true
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel
@@ -318,7 +336,7 @@ extension SettingsViewController {
         case .ollamaKey:
             content.text = String(localized: "Ollama Cloud API key")
             content.secondaryText =
-                OllamaCredentials.hasToken
+                facts.hasOllamaKey
                 ? String(localized: "Saved in Keychain") : String(localized: "Not set")
             content.prefersSideBySideTextAndSecondaryText = true
             content.secondaryTextProperties.color = Theme.Color.secondaryLabel

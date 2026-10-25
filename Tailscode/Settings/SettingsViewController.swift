@@ -20,6 +20,9 @@ final class SettingsViewController: UIViewController {
     var query = ""
     var notificationStatus: UNAuthorizationStatus?
     var tailnetAddress: String?
+    var facts = SettingsFacts.read()
+    var hasDeferredSnapshot = false
+    var lastScrollAt: CFTimeInterval = 0
     private var hasScrolledToInitialSection = false
 
     init(initialSection: Section? = nil) {
@@ -46,6 +49,7 @@ final class SettingsViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        facts = SettingsFacts.read()
         applySnapshot()
         refreshEnvironment()
         Task { await ServerHealthMonitor.checkAll() }
@@ -149,7 +153,7 @@ final class SettingsViewController: UIViewController {
 
     /// The software row and the per-server marks are the same fact seen at two widths, so one
     /// answer landing repaints both.
-    @objc private func updatesChanged() { applySnapshot() }
+    @objc private func updatesChanged() { scheduleSnapshot() }
 
     @objc private func themeChanged() {
         reconfigure([.appearance])
@@ -175,9 +179,9 @@ final class SettingsViewController: UIViewController {
 
     @objc private func proStateChanged() { reconfigure([.pro]) }
 
-    @objc private func healthChanged() { applySnapshot() }
+    @objc private func healthChanged() { scheduleSnapshot() }
 
-    @objc private func pushStatesChanged() { applySnapshot() }
+    @objc private func pushStatesChanged() { scheduleSnapshot() }
 
-    @objc private func connectionsChanged() { applySnapshot() }
+    @objc private func connectionsChanged() { scheduleSnapshot() }
 }

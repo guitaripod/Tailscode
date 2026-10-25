@@ -88,7 +88,7 @@ extension SettingsViewController {
     /// when this server is not a reason for it: a dot that is always there is a dot nobody reads,
     /// and reachability already owns the slot beside it.
     func updateDot(for id: String) -> UICellAccessory? {
-        let rollup = UpdateLedger.rollup()
+        let rollup = facts.updates
         let component = UpdateComponent.server(profileID: id)
         guard let reading = rollup.readings.first(where: { $0.component == component }),
             reading.stands(acknowledged: rollup.isAcknowledged(reading)) || reading.verdict.isBusy
@@ -98,24 +98,10 @@ extension SettingsViewController {
         return .customView(configuration: .init(customView: badge, placement: .trailing()))
     }
 
-    func switchAccessory(_ toggle: Toggle) -> UICellAccessory.CustomViewConfiguration {
-        let toggleView = UISwitch()
-        toggleView.isOn = toggle.isOn
-        toggleView.accessibilityLabel = toggle.title
-        toggleView.addAction(
-            UIAction { [weak self] action in
-                guard let sender = action.sender as? UISwitch else { return }
-                toggle.set(sender.isOn)
-                Theme.Haptics.tap()
-                self?.toggleDidChange(toggle)
-            }, for: .valueChanged)
-        return .init(customView: toggleView, placement: .trailing())
-    }
-
     /// A toggle that changes what other rows mean repaints them: turning server
     /// pushes off makes every per-bridge row read "Turned off" immediately rather
     /// than after the next visit.
-    private func toggleDidChange(_ toggle: Toggle) {
+    func toggleDidChange(_ toggle: Toggle) {
         guard toggle == .serverPush else { return }
         applySnapshot()
     }
@@ -211,7 +197,7 @@ extension SettingsViewController {
     /// The inline trailing menu button shared by every value row.
     var pushCapableProfiles: [ConnectionProfile] {
         var seen = Set<URL>()
-        return ConnectionController.shared.profiles.filter {
+        return facts.profiles.filter {
             $0.backend == .claudeCode && !$0.id.hasPrefix(DemoWorld.profilePrefix)
                 && seen.insert($0.baseURL).inserted
         }

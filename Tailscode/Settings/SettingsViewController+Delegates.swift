@@ -12,6 +12,10 @@ extension SettingsViewController: UISearchResultsUpdating {
 }
 
 extension SettingsViewController: UICollectionViewDelegate {
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        lastScrollAt = CACurrentMediaTime()
+    }
+
     func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt indexPath: IndexPath)
         -> Bool
     {

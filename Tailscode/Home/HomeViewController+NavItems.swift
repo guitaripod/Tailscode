@@ -12,8 +12,9 @@ extension HomeViewController {
     /// won, and the other's item vanished.
     func updateLeftBarItems() {
         guard workspace == nil else {
-            navigationItem.leftBarButtonItems =
-                ConnectionController.shared.isDemoMode && !Self.demoBadgeHidden ? [demoBadge()] : []
+            show(
+                ConnectionController.shared.isDemoMode && !Self.demoBadgeHidden
+                    ? [demoBadgeItem] : [])
             return
         }
         var items = [settingsItem]
@@ -22,8 +23,16 @@ extension HomeViewController {
             items.append(updateChipItem)
         }
         if ConnectionController.shared.isDemoMode, !Self.demoBadgeHidden {
-            items.append(demoBadge())
+            items.append(demoBadgeItem)
         }
+        show(items)
+    }
+
+    /// An answer landing from any machine asks for the items again, and a bar handed the same
+    /// items rebuilds its buttons all the same, which is a frame spent on nothing for every one of
+    /// them, behind whatever sheet is up.
+    private func show(_ items: [UIBarButtonItem]) {
+        guard (navigationItem.leftBarButtonItems ?? []) != items else { return }
         navigationItem.leftBarButtonItems = items
     }
 
@@ -49,7 +58,7 @@ extension HomeViewController {
         UpdateCenterViewController.present(from: self)
     }
 
-    private func demoBadge() -> UIBarButtonItem {
+    func makeDemoBadge() -> UIBarButtonItem {
         var config = UIButton.Configuration.tinted()
         config.title = String(localized: "DEMO")
         config.baseForegroundColor = Theme.Color.warning

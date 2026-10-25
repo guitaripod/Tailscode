@@ -59,6 +59,7 @@ final class HomeViewController: UIViewController {
     lazy var settingsItem = UIBarButtonItem(customView: settingsButton)
     let updateChip = UpdateChipButton()
     lazy var updateChipItem = UIBarButtonItem(customView: updateChip)
+    lazy var demoBadgeItem = makeDemoBadge()
     let videoButton = VideoMarkButton()
     lazy var videoItem = UIBarButtonItem(customView: videoButton)
     let imageButton = ImageMarkButton()

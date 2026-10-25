@@ -9,7 +9,7 @@ import UIKit
 /// washes it toward the accent rather than toward the system's grey. "System" is a choice too
 /// and is the platform's own look, so under it a raised row keeps the colours Apple drew.
 @MainActor
-final class SurfaceListCell: UICollectionViewListCell {
+class SurfaceListCell: UICollectionViewListCell {
     enum Surface {
         case raised
         case ground

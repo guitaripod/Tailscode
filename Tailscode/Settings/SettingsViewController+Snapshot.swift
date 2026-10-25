@@ -5,7 +5,7 @@ extension SettingsViewController {
     private func allItems() -> [(Section, [Item])] {
         var connectionItems: [Item] = []
         if ServerHealthMonitor.verdict() != .fine { connectionItems.append(.connectionAlert) }
-        connectionItems += ConnectionController.shared.profiles.map { Item.profile($0) }
+        connectionItems += facts.profiles.map { Item.profile($0) }
         connectionItems += [.addConnection, .discover]
         if ConnectionController.shared.isDemoMode { connectionItems.append(.leaveDemo) }
 
@@ -43,7 +43,34 @@ extension SettingsViewController {
         ]
     }
 
+    /// A change that arrives from outside, such as a server answering a health probe or the update
+    /// driver finishing a step, is applied once on a later turn of the run loop however many came
+    /// together, and not while the list is moving: reconfiguring every row under a scroll is a
+    /// frame the scroll does not get back. It lands the moment the list has been still.
+    func scheduleSnapshot() {
+        guard !hasDeferredSnapshot else { return }
+        hasDeferredSnapshot = true
+        retryDeferredSnapshot(after: .milliseconds(1))
+    }
+
+    private func retryDeferredSnapshot(after delay: DispatchTimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.hasDeferredSnapshot else { return }
+            guard !self.isScrolling else { return self.retryDeferredSnapshot(after: .milliseconds(150)) }
+            self.applySnapshot()
+        }
+    }
+
+    var isScrolling: Bool {
+        collectionView.isTracking || collectionView.isDragging || collectionView.isDecelerating
+            || CACurrentMediaTime() - lastScrollAt < Self.stillnessInterval
+    }
+
+    private static let stillnessInterval: CFTimeInterval = 0.15
+
     func applySnapshot() {
+        hasDeferredSnapshot = false
+        facts = facts.refreshingStores()
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         for (section, items) in allItems() {
             let matching = items.filter { matches(query, $0) }
@@ -152,7 +179,7 @@ extension SettingsViewController {
                 comment: "search keywords")
         case .toggle(let toggle): return "\(toggle.title) \(toggle.subtitle ?? "")"
         case .pushState(let id):
-            let name = ConnectionController.shared.profiles.first { $0.id == id }?.name ?? ""
+            let name = facts.profiles.first { $0.id == id }?.name ?? ""
             return String(localized: "push notifications bridge", comment: "search keywords")
                 + " \(name)"
         case .testNotification:
