@@ -145,74 +145,74 @@
   ],
   "mac": [
     {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "所有智慧代理\n一個視窗",
+      "subline": "你所有機器上運作中的智慧代理，即時呈現，支援 Peek 與 Hour。",
+      "highlight": "一個視窗"
+    },
+    {
       "master": "01-conversation",
-      "slug": "01-native",
-      "headline": "為 Mac\n原生打造",
-      "subline": "Claude Code、opencode 與 Oh My Pi，盡在一扇真正的視窗裡。",
-      "highlight": "原生打造"
+      "slug": "02-every-step",
+      "headline": "每一步\n即時可見",
+      "subline": "思考、工具執行與差異，隨發生隨呈現。",
+      "highlight": "即時可見"
+    },
+    {
+      "master": "fl-party",
+      "slug": "03-party",
+      "headline": "六個模型\n一鍵即達",
+      "subline": "每個槽位一個模型及其強度，一個快捷鍵即可切換。",
+      "highlight": "一鍵即達"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "04-carry",
+      "headline": "換模型\n不丟話題",
+      "subline": "下一個模型會拿到對話簡要摘要，接著往下做。",
+      "highlight": "不丟話題"
     },
     {
       "master": "02-split",
-      "slug": "02-two-machines",
-      "headline": "兩台機器\n並排工作",
+      "slug": "05-two-machines",
+      "headline": "兩台機器\n並排顯示",
       "subline": "分割視窗，讓每個窗格指向不同的伺服器。",
-      "highlight": "並排工作"
+      "highlight": "並排顯示"
     },
     {
-      "master": "03-git",
-      "slug": "03-repo",
-      "headline": "看得到儲存庫\n絕不去動它",
-      "subline": "分支、已暫存與真實的 diff，來自擁有它們的那台機器。",
-      "highlight": "絕不去動它"
+      "master": "fl-gpu",
+      "slug": "06-ask-anything",
+      "headline": "問你的機器\n任何事",
+      "subline": "不只是程式碼：問問是什麼在吃掉顯示卡。",
+      "highlight": "任何事"
     },
     {
       "master": "04-quickask",
-      "slug": "04-one-chord",
-      "headline": "一組快速鍵\n隨處呼出",
-      "subline": "代理工作時，在任何 App 之上叫出提問框。",
-      "highlight": "一組快速鍵"
-    },
-    {
-      "master": "05-spend",
-      "slug": "05-priced",
-      "headline": "整段對話的\n花費一清二楚",
-      "subline": "錢花到哪了：回答、快取、新輸入。",
-      "highlight": "整段對話"
+      "slug": "07-one-chord",
+      "headline": "一個快捷鍵\n隨時呼出",
+      "subline": "智慧代理工作時，可在任何應用程式上方呼出提問框。",
+      "highlight": "隨時呼出"
     },
     {
       "master": "06-analytics",
-      "slug": "06-the-month",
-      "headline": "這個月\n用數字說話",
-      "subline": "每份對話紀錄都計價，合併所有伺服器。",
-      "highlight": "用數字說話"
-    },
-    {
-      "master": "07-approval",
-      "slug": "07-approve",
-      "headline": "不用切換 App\n就能核准",
-      "subline": "允許一次、一律允許或拒絕，就在聊天裡完成。",
-      "highlight": "不用切換 App"
+      "slug": "08-the-month",
+      "headline": "本月花費\n一目了然",
+      "subline": "每次執行都計價，並跨所有伺服器彙總。",
+      "highlight": "一目了然"
     },
     {
       "master": "08-keyboard",
-      "slug": "08-keyboard",
+      "slug": "09-keyboard",
       "headline": "鍵盤\n優先",
-      "subline": "窗格、聊天、模型都有快速鍵，還有 vim 模式的輸入框。",
+      "subline": "窗格、對話與模型的快捷鍵，還有 Vim 模式的輸入框。",
       "highlight": "鍵盤"
     },
     {
-      "master": "09-type",
-      "slug": "09-type-size",
-      "headline": "視窗每個部分\n字級各自調",
-      "subline": "聊天列表、你的提示、代理的回答、程式碼。",
-      "highlight": "字級各自調"
-    },
-    {
       "master": "10-private",
-      "slug": "10-private",
-      "headline": "資料絕不離開\n你的 tailnet",
-      "subline": "無中繼、無帳號、無分析、GPL-3.0。",
-      "highlight": "你的 tailnet"
+      "slug": "10-your-tailnet",
+      "headline": "你的對話\n留在你的 tailnet",
+      "subline": "點對點連接你的機器，無需登入。GPL-3.0。",
+      "highlight": "留在你的 tailnet"
     }
   ],
   "header": {

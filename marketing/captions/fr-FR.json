@@ -145,74 +145,74 @@
   ],
   "mac": [
     {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "Tous vos agents.\nUne seule fenêtre.",
+      "subline": "Chaque agent en cours sur vos machines, en direct, avec Peek et Hour.",
+      "highlight": "Une seule fenêtre."
+    },
+    {
       "master": "01-conversation",
-      "slug": "01-native",
-      "headline": "Natif\nsur le Mac",
-      "subline": "Claude Code, opencode et Oh My Pi dans une vraie fenêtre.",
-      "highlight": "Natif"
+      "slug": "02-every-step",
+      "headline": "Chaque étape,\nen direct",
+      "subline": "Réflexion, outils et diff, au fur et à mesure.",
+      "highlight": "en direct"
+    },
+    {
+      "master": "fl-party",
+      "slug": "03-party",
+      "headline": "Six modèles,\nà un clic",
+      "subline": "Un modèle et son effort dans chaque case. Un raccourci pour changer.",
+      "highlight": "à un clic"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "04-carry",
+      "headline": "Changez de modèle,\ngardez le fil",
+      "subline": "Le modèle suivant reçoit un bref résumé du chat et poursuit.",
+      "highlight": "gardez le fil"
     },
     {
       "master": "02-split",
-      "slug": "02-two-machines",
+      "slug": "05-two-machines",
       "headline": "Deux machines,\ncôte à côte",
-      "subline": "Divisez la fenêtre et pointez chaque volet vers un autre serveur.",
+      "subline": "Divisez la fenêtre et reliez chaque volet à un serveur différent.",
       "highlight": "côte à côte"
     },
     {
-      "master": "03-git",
-      "slug": "03-repo",
-      "headline": "Le dépôt, lu.\nJamais piloté.",
-      "subline": "Branche, indexé et les vrais diffs, de la machine qui les détient.",
-      "highlight": "Jamais piloté."
+      "master": "fl-gpu",
+      "slug": "06-ask-anything",
+      "headline": "Demandez à vos machines\nn'importe quoi",
+      "subline": "Pas que du code : demandez ce qui consomme le GPU.",
+      "highlight": "n'importe quoi"
     },
     {
       "master": "04-quickask",
-      "slug": "04-one-chord",
-      "headline": "Un raccourci\nde partout",
-      "subline": "Appelez la boîte de question au-dessus de n'importe quelle app pendant que l'agent travaille.",
+      "slug": "07-one-chord",
+      "headline": "Un raccourci\npartout",
+      "subline": "Affiche la zone de question sur toute app pendant que l'agent travaille.",
       "highlight": "Un raccourci"
     },
     {
-      "master": "05-spend",
-      "slug": "05-priced",
-      "headline": "Un prix pour toute\nla conversation",
-      "subline": "Où est passé l'argent : réponse, cache, entrée neuve.",
-      "highlight": "la conversation"
-    },
-    {
       "master": "06-analytics",
-      "slug": "06-the-month",
+      "slug": "08-the-month",
       "headline": "Le mois\nen chiffres",
-      "subline": "Chaque transcription avec son prix, fusionnée entre tous les serveurs.",
+      "subline": "Chaque tour chiffré, fusionné sur tous les serveurs.",
       "highlight": "en chiffres"
     },
     {
-      "master": "07-approval",
-      "slug": "07-approve",
-      "headline": "Approuvez sans\nchanger d'app",
-      "subline": "Autorisez une fois, toujours ou refusez dans le chat même.",
-      "highlight": "changer d'app"
-    },
-    {
       "master": "08-keyboard",
-      "slug": "08-keyboard",
+      "slug": "09-keyboard",
       "headline": "Le clavier\nd'abord",
-      "subline": "Raccourcis pour volets, chats et modèles. Un champ de saisie en mode vim.",
-      "highlight": "clavier"
-    },
-    {
-      "master": "09-type",
-      "slug": "09-type-size",
-      "headline": "Réglez la taille\nde chaque zone",
-      "subline": "Liste des chats, vos prompts, réponses de l'agent, code.",
-      "highlight": "chaque zone"
+      "subline": "Raccourcis pour volets, chats et modèles. Un compositeur en mode vim.",
+      "highlight": "Le clavier"
     },
     {
       "master": "10-private",
-      "slug": "10-private",
-      "headline": "Rien ne quitte\nvotre tailnet",
-      "subline": "Sans relais. Sans compte. Sans analytique. GPL-3.0.",
-      "highlight": "votre tailnet"
+      "slug": "10-your-tailnet",
+      "headline": "Vos chats restent\nsur votre tailnet",
+      "subline": "De point à point vers vos machines. Sans connexion. GPL-3.0.",
+      "highlight": "sur votre tailnet"
     }
   ],
   "header": {

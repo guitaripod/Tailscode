@@ -145,74 +145,74 @@
   ],
   "mac": [
     {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "Tutti i tuoi agenti.\nUna sola finestra.",
+      "subline": "Ogni agente attivo sui tuoi computer, in diretta, con Peek e Hour.",
+      "highlight": "Una sola finestra."
+    },
+    {
       "master": "01-conversation",
-      "slug": "01-native",
-      "headline": "Nativa\nsul Mac",
-      "subline": "Claude Code, opencode e Oh My Pi in una vera finestra.",
-      "highlight": "Nativa"
+      "slug": "02-every-step",
+      "headline": "Ogni passo,\nin diretta",
+      "subline": "Ragionamento, strumenti e diff, mentre accadono.",
+      "highlight": "in diretta"
+    },
+    {
+      "master": "fl-party",
+      "slug": "03-party",
+      "headline": "Sei modelli,\na un clic",
+      "subline": "Un modello e il suo impegno in ogni slot. Una scorciatoia per cambiare.",
+      "highlight": "a un clic"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "04-carry",
+      "headline": "Cambia modello,\nil filo resta",
+      "subline": "Il modello successivo riceve un breve riassunto della chat e prosegue.",
+      "highlight": "il filo resta"
     },
     {
       "master": "02-split",
-      "slug": "02-two-machines",
-      "headline": "Due macchine,\nfianco a fianco",
-      "subline": "Dividi la finestra e punta ogni riquadro a un server diverso.",
+      "slug": "05-two-machines",
+      "headline": "Due computer,\nfianco a fianco",
+      "subline": "Dividi la finestra e collega ogni riquadro a un server diverso.",
       "highlight": "fianco a fianco"
     },
     {
-      "master": "03-git",
-      "slug": "03-repo",
-      "headline": "Il repo si legge,\nnon si tocca.",
-      "subline": "Branch, staged e diff reali, dalla macchina che li possiede.",
-      "highlight": "non si tocca."
+      "master": "fl-gpu",
+      "slug": "06-ask-anything",
+      "headline": "Chiedi ai computer\nqualsiasi cosa",
+      "subline": "Non solo codice: chiedi cosa sta consumando la GPU.",
+      "highlight": "qualsiasi cosa"
     },
     {
       "master": "04-quickask",
-      "slug": "04-one-chord",
+      "slug": "07-one-chord",
       "headline": "Una scorciatoia\nda ovunque",
-      "subline": "Apri la casella della domanda sopra qualsiasi app mentre l'agente lavora.",
+      "subline": "Apri la casella di domanda sopra qualsiasi app mentre l'agente lavora.",
       "highlight": "Una scorciatoia"
     },
     {
-      "master": "05-spend",
-      "slug": "05-priced",
-      "headline": "Un prezzo su\ntutta la chat",
-      "subline": "Dove sono finiti i soldi: risposta, cache, input nuovo.",
-      "highlight": "tutta la chat"
-    },
-    {
       "master": "06-analytics",
-      "slug": "06-the-month",
-      "headline": "Il mese\nin numeri",
-      "subline": "Ogni trascrizione prezzata, unita su ogni server.",
-      "highlight": "in numeri"
-    },
-    {
-      "master": "07-approval",
-      "slug": "07-approve",
-      "headline": "Approva senza\ncambiare app",
-      "subline": "Consenti una volta, sempre o nega nella chat stessa.",
-      "highlight": "senza cambiare app"
+      "slug": "08-the-month",
+      "headline": "Il mese\nin cifre",
+      "subline": "Ogni turno prezzato, unito su tutti i server.",
+      "highlight": "in cifre"
     },
     {
       "master": "08-keyboard",
-      "slug": "08-keyboard",
-      "headline": "Prima la\ntastiera",
-      "subline": "Scorciatoie per riquadri, chat e modelli. Un campo di scrittura in modalità vim.",
-      "highlight": "tastiera"
-    },
-    {
-      "master": "09-type",
-      "slug": "09-type-size",
-      "headline": "Una dimensione\nper ogni parte",
-      "subline": "Elenco chat, i tuoi prompt, le risposte dell'agente, il codice.",
-      "highlight": "ogni parte"
+      "slug": "09-keyboard",
+      "headline": "Prima\nla tastiera",
+      "subline": "Scorciatoie per riquadri, chat e modelli. Un compositore in modalità vim.",
+      "highlight": "la tastiera"
     },
     {
       "master": "10-private",
-      "slug": "10-private",
-      "headline": "Nulla esce dal\ntuo tailnet",
-      "subline": "Nessun relay. Nessun account. Nessuna analitica. GPL-3.0.",
-      "highlight": "tuo tailnet"
+      "slug": "10-your-tailnet",
+      "headline": "Le tue chat restano\nnel tuo tailnet",
+      "subline": "Da punto a punto verso i tuoi computer. Senza accesso. GPL-3.0.",
+      "highlight": "nel tuo tailnet"
     }
   ],
   "header": {

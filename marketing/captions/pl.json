@@ -145,74 +145,74 @@
   ],
   "mac": [
     {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "Wszystkie agenty.\nJedno okno.",
+      "subline": "Każdy działający agent na twoich maszynach, na żywo, z Peek i Hour.",
+      "highlight": "Jedno okno."
+    },
+    {
       "master": "01-conversation",
-      "slug": "01-native",
-      "headline": "Natywnie\nna Macu",
-      "subline": "Claude Code, opencode i Oh My Pi w prawdziwym oknie.",
-      "highlight": "Natywnie"
+      "slug": "02-every-step",
+      "headline": "Każdy krok,\nna żywo",
+      "subline": "Myślenie, uruchomienia narzędzi i diff, w miarę jak się dzieje.",
+      "highlight": "na żywo"
+    },
+    {
+      "master": "fl-party",
+      "slug": "03-party",
+      "headline": "Sześć modeli,\njeden klik",
+      "subline": "Model i jego poziom w każdym miejscu. Skrót do przełączania.",
+      "highlight": "jeden klik"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "04-carry",
+      "headline": "Zmień model,\nwątek zostaje",
+      "subline": "Następny model dostaje krótkie streszczenie czatu i prowadzi dalej.",
+      "highlight": "wątek zostaje"
     },
     {
       "master": "02-split",
-      "slug": "02-two-machines",
-      "headline": "Dwa komputery,\nobok siebie",
+      "slug": "05-two-machines",
+      "headline": "Dwie maszyny,\nobok siebie",
       "subline": "Podziel okno i skieruj każdy panel na inny serwer.",
       "highlight": "obok siebie"
     },
     {
-      "master": "03-git",
-      "slug": "03-repo",
-      "headline": "Repo: czytasz,\nnie ruszasz",
-      "subline": "Gałąź, zaindeksowane i prawdziwe diffy z komputera, który je ma.",
-      "highlight": "nie ruszasz"
+      "master": "fl-gpu",
+      "slug": "06-ask-anything",
+      "headline": "Pytaj komputery\no wszystko",
+      "subline": "Nie tylko kod: zapytaj, co zjada kartę graficzną.",
+      "highlight": "o wszystko"
     },
     {
       "master": "04-quickask",
-      "slug": "04-one-chord",
-      "headline": "Jeden skrót\nz każdego miejsca",
-      "subline": "Przywołaj okno pytania nad dowolną aplikacją, gdy agent pracuje.",
+      "slug": "07-one-chord",
+      "headline": "Jeden skrót\nz dowolnego miejsca",
+      "subline": "Przywołaj okno pytań nad dowolną aplikacją, gdy agent pracuje.",
       "highlight": "Jeden skrót"
     },
     {
-      "master": "05-spend",
-      "slug": "05-priced",
-      "headline": "Wycena\ncałej rozmowy",
-      "subline": "Dokąd poszły pieniądze: odpowiedź, cache, świeże wejście.",
-      "highlight": "całej rozmowy"
-    },
-    {
       "master": "06-analytics",
-      "slug": "06-the-month",
+      "slug": "08-the-month",
       "headline": "Miesiąc\nw liczbach",
-      "subline": "Każda transkrypcja z ceną, scalona ze wszystkich serwerów.",
+      "subline": "Każda tura wyceniona, połączona ze wszystkich serwerów.",
       "highlight": "w liczbach"
     },
     {
-      "master": "07-approval",
-      "slug": "07-approve",
-      "headline": "Zatwierdzaj bez\nzmiany aplikacji",
-      "subline": "Zezwól raz, zawsze albo odmów w samej rozmowie.",
-      "highlight": "zmiany aplikacji"
-    },
-    {
       "master": "08-keyboard",
-      "slug": "08-keyboard",
-      "headline": "Klawiatura\nprzede wszystkim",
-      "subline": "Skróty do paneli, rozmów i modeli. Edytor w trybie vim.",
-      "highlight": "Klawiatura"
-    },
-    {
-      "master": "09-type",
-      "slug": "09-type-size",
-      "headline": "Każda część okna\nw swoim rozmiarze",
-      "subline": "Lista rozmów, twoje prompty, odpowiedzi agenta, kod.",
-      "highlight": "swoim rozmiarze"
+      "slug": "09-keyboard",
+      "headline": "Najpierw\nklawiatura",
+      "subline": "Skróty dla paneli, czatów i modeli. Edytor w trybie vim.",
+      "highlight": "klawiatura"
     },
     {
       "master": "10-private",
-      "slug": "10-private",
-      "headline": "Nic nie wychodzi\npoza twój tailnet",
-      "subline": "Bez relay. Bez konta. Bez analityki. GPL-3.0.",
-      "highlight": "twój tailnet"
+      "slug": "10-your-tailnet",
+      "headline": "Twoje czaty zostają\nw twoim tailnecie",
+      "subline": "Połączenie punkt-punkt z maszynami. Bez logowania. GPL-3.0.",
+      "highlight": "w twoim tailnecie"
     }
   ],
   "header": {

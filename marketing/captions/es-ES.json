@@ -145,74 +145,74 @@
   ],
   "mac": [
     {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "Todos tus agentes.\nUna sola ventana.",
+      "subline": "Cada agente en marcha en tus máquinas, en vivo, con Peek y Hour.",
+      "highlight": "Una sola ventana."
+    },
+    {
       "master": "01-conversation",
-      "slug": "01-native",
-      "headline": "Nativa\nen el Mac",
-      "subline": "Claude Code, opencode y Oh My Pi en una ventana de verdad.",
-      "highlight": "Nativa"
+      "slug": "02-every-step",
+      "headline": "Cada paso,\nen vivo",
+      "subline": "Pensamiento, herramientas y el diff, según ocurren.",
+      "highlight": "en vivo"
+    },
+    {
+      "master": "fl-party",
+      "slug": "03-party",
+      "headline": "Seis modelos,\na un clic",
+      "subline": "Un modelo y su esfuerzo en cada hueco. Un atajo para cambiar.",
+      "highlight": "a un clic"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "04-carry",
+      "headline": "Cambia de modelo,\nmantén el hilo",
+      "subline": "El siguiente modelo recibe un breve resumen del chat y sigue.",
+      "highlight": "mantén el hilo"
     },
     {
       "master": "02-split",
-      "slug": "02-two-machines",
-      "headline": "Dos máquinas,\nlado a lado",
+      "slug": "05-two-machines",
+      "headline": "Dos máquinas,\nuna junto a otra",
       "subline": "Divide la ventana y apunta cada panel a un servidor distinto.",
-      "highlight": "lado a lado"
+      "highlight": "una junto a otra"
     },
     {
-      "master": "03-git",
-      "slug": "03-repo",
-      "headline": "El repo, leído.\nNunca operado.",
-      "subline": "Rama, staged y los diffs reales, de la máquina que los tiene.",
-      "highlight": "Nunca operado."
+      "master": "fl-gpu",
+      "slug": "06-ask-anything",
+      "headline": "Pregunta a tus máquinas\nlo que sea",
+      "subline": "No solo código: pregunta qué se está comiendo la GPU.",
+      "highlight": "lo que sea"
     },
     {
       "master": "04-quickask",
-      "slug": "04-one-chord",
-      "headline": "Un atajo desde\ncualquier app",
-      "subline": "Invoca la caja de preguntas sobre cualquier app mientras el agente trabaja.",
+      "slug": "07-one-chord",
+      "headline": "Un atajo\ndesde cualquier lugar",
+      "subline": "Abre la caja de preguntas sobre cualquier app mientras el agente trabaja.",
       "highlight": "Un atajo"
     },
     {
-      "master": "05-spend",
-      "slug": "05-priced",
-      "headline": "El precio de toda\nla conversación",
-      "subline": "Adónde fue el dinero: respuesta, caché, entrada nueva.",
-      "highlight": "la conversación"
-    },
-    {
       "master": "06-analytics",
-      "slug": "06-the-month",
-      "headline": "El mes\nen cifras",
-      "subline": "Cada transcripción con su precio, unida entre todos los servidores.",
-      "highlight": "en cifras"
-    },
-    {
-      "master": "07-approval",
-      "slug": "07-approve",
-      "headline": "Aprueba sin\ncambiar de app",
-      "subline": "Permitir una vez, siempre o denegar en el propio chat.",
-      "highlight": "cambiar de app"
+      "slug": "08-the-month",
+      "headline": "El mes\nen números",
+      "subline": "Cada turno con su precio, sumado entre todos los servidores.",
+      "highlight": "en números"
     },
     {
       "master": "08-keyboard",
-      "slug": "08-keyboard",
-      "headline": "Primero\nel teclado",
-      "subline": "Atajos para paneles, chats y modelos. Un campo de escritura con modo vim.",
-      "highlight": "teclado"
-    },
-    {
-      "master": "09-type",
-      "slug": "09-type-size",
-      "headline": "Ajusta el tamaño\nde cada parte",
-      "subline": "Lista de chats, tus prompts, las respuestas del agente, código.",
-      "highlight": "cada parte"
+      "slug": "09-keyboard",
+      "headline": "Primero,\nel teclado",
+      "subline": "Atajos para paneles, chats y modelos. Un editor con modo vim.",
+      "highlight": "el teclado"
     },
     {
       "master": "10-private",
-      "slug": "10-private",
-      "headline": "Nada sale de\ntu tailnet",
-      "subline": "Sin relay. Sin cuenta. Sin analíticas. GPL-3.0.",
-      "highlight": "tu tailnet"
+      "slug": "10-your-tailnet",
+      "headline": "Tus chats se quedan\nen tu tailnet",
+      "subline": "De punto a punto con tus máquinas. Sin inicio de sesión. GPL-3.0.",
+      "highlight": "en tu tailnet"
     }
   ],
   "header": {

@@ -145,74 +145,74 @@
   ],
   "mac": [
     {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "Todos os agentes.\nUma só janela.",
+      "subline": "Cada agente rodando nas suas máquinas, ao vivo, com Peek e Hour.",
+      "highlight": "Uma só janela."
+    },
+    {
       "master": "01-conversation",
-      "slug": "01-native",
-      "headline": "Nativo\nno Mac",
-      "subline": "Claude Code, opencode e Oh My Pi numa janela de verdade.",
-      "highlight": "Nativo"
+      "slug": "02-every-step",
+      "headline": "Cada passo,\nao vivo",
+      "subline": "Raciocínio, ferramentas e o diff, enquanto acontecem.",
+      "highlight": "ao vivo"
+    },
+    {
+      "master": "fl-party",
+      "slug": "03-party",
+      "headline": "Seis modelos,\num clique",
+      "subline": "Um modelo e seu esforço em cada vaga. Um atalho para trocar.",
+      "highlight": "um clique"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "04-carry",
+      "headline": "Troque de modelo,\nmantenha a conversa",
+      "subline": "O próximo modelo recebe um breve resumo do chat e segue em frente.",
+      "highlight": "mantenha a conversa"
     },
     {
       "master": "02-split",
-      "slug": "02-two-machines",
-      "headline": "Duas máquinas,\nlado a lado",
+      "slug": "05-two-machines",
+      "headline": "Duas máquinas\nlado a lado",
       "subline": "Divida a janela e aponte cada painel para um servidor diferente.",
       "highlight": "lado a lado"
     },
     {
-      "master": "03-git",
-      "slug": "03-repo",
-      "headline": "O repo se lê.\nNão se mexe.",
-      "subline": "Branch, staged e diffs reais, da máquina que os guarda.",
-      "highlight": "Não se mexe."
+      "master": "fl-gpu",
+      "slug": "06-ask-anything",
+      "headline": "Pergunte às máquinas\nqualquer coisa",
+      "subline": "Não só código: pergunte o que está consumindo a GPU.",
+      "highlight": "qualquer coisa"
     },
     {
       "master": "04-quickask",
-      "slug": "04-one-chord",
-      "headline": "Um atalho,\nde qualquer lugar",
-      "subline": "Chame a caixa de pergunta sobre qualquer app enquanto o agente trabalha.",
+      "slug": "07-one-chord",
+      "headline": "Um atalho\nde qualquer lugar",
+      "subline": "Abra a caixa de perguntas sobre qualquer app enquanto o agente trabalha.",
       "highlight": "Um atalho"
     },
     {
-      "master": "05-spend",
-      "slug": "05-priced",
-      "headline": "Um preço para\na conversa inteira",
-      "subline": "Para onde foi o dinheiro: resposta, cache, entrada nova.",
-      "highlight": "conversa inteira"
-    },
-    {
       "master": "06-analytics",
-      "slug": "06-the-month",
+      "slug": "08-the-month",
       "headline": "O mês\nem números",
-      "subline": "Cada transcrição precificada, somada entre todos os servidores.",
+      "subline": "Cada turno com preço, somado entre todos os servidores.",
       "highlight": "em números"
     },
     {
-      "master": "07-approval",
-      "slug": "07-approve",
-      "headline": "Aprove sem\ntrocar de app",
-      "subline": "Permitir uma vez, sempre ou negar no próprio chat.",
-      "highlight": "sem trocar de app"
-    },
-    {
       "master": "08-keyboard",
-      "slug": "08-keyboard",
-      "headline": "Teclado\nem primeiro lugar",
-      "subline": "Atalhos para painéis, chats e modelos. Um campo de escrita com modo vim.",
+      "slug": "09-keyboard",
+      "headline": "Teclado\nprimeiro",
+      "subline": "Atalhos para painéis, chats e modelos. Um editor em modo vim.",
       "highlight": "Teclado"
     },
     {
-      "master": "09-type",
-      "slug": "09-type-size",
-      "headline": "Ajuste o tamanho\nde cada parte",
-      "subline": "Lista de chats, seus prompts, respostas do agente, código.",
-      "highlight": "cada parte"
-    },
-    {
       "master": "10-private",
-      "slug": "10-private",
-      "headline": "Nada sai da\nsua tailnet",
-      "subline": "Sem relay. Sem conta. Sem analytics. GPL-3.0.",
-      "highlight": "sua tailnet"
+      "slug": "10-your-tailnet",
+      "headline": "Seus chats ficam\nno seu tailnet",
+      "subline": "Ponto a ponto com suas máquinas. Sem login. GPL-3.0.",
+      "highlight": "no seu tailnet"
     }
   ],
   "header": {

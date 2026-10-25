@@ -145,74 +145,74 @@
   ],
   "mac": [
     {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "모든 에이전트,\n창 하나에",
+      "subline": "모든 기기에서 도는 에이전트를 라이브로, Peek와 Hour와 함께.",
+      "highlight": "창 하나에"
+    },
+    {
       "master": "01-conversation",
-      "slug": "01-native",
-      "headline": "Mac을 위한\n네이티브 앱",
-      "subline": "Claude Code, opencode, Oh My Pi를 진짜 창에서.",
-      "highlight": "네이티브"
+      "slug": "02-every-step",
+      "headline": "모든 단계를,\n실시간으로",
+      "subline": "생각, 도구 실행, diff를 일어나는 순간 그대로 보여줘요.",
+      "highlight": "실시간으로"
+    },
+    {
+      "master": "fl-party",
+      "slug": "03-party",
+      "headline": "여섯 개의 모델,\n원클릭이면 충분",
+      "subline": "슬롯마다 모델과 추론 강도. 단축키 하나로 전환.",
+      "highlight": "원클릭이면 충분"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "04-carry",
+      "headline": "모델을 바꿔도,\n대화는 이어져요",
+      "subline": "다음 모델이 채팅 요약을 받아 이어서 답합니다.",
+      "highlight": "대화는 이어져요"
     },
     {
       "master": "02-split",
-      "slug": "02-two-machines",
-      "headline": "머신 두 대를\n나란히",
-      "subline": "창을 나누고 구획마다 다른 서버를 연결하세요.",
+      "slug": "05-two-machines",
+      "headline": "두 대의 기기를\n나란히",
+      "subline": "창을 나누고 각 패널을 서로 다른 서버에 연결하세요.",
       "highlight": "나란히"
     },
     {
-      "master": "03-git",
-      "slug": "03-repo",
-      "headline": "저장소는 읽기만,\n건드리지 않아요",
-      "subline": "브랜치, 스테이지, 실제 diff를 그 파일을 가진 머신에서.",
-      "highlight": "건드리지 않아요"
+      "master": "fl-gpu",
+      "slug": "06-ask-anything",
+      "headline": "기기에 무엇이든\n물어보세요",
+      "subline": "코드만이 아니에요. GPU를 뭐가 잡아먹는지도 물어보세요.",
+      "highlight": "무엇이든"
     },
     {
       "master": "04-quickask",
-      "slug": "04-one-chord",
-      "headline": "단축키 하나로\n어디서든",
-      "subline": "에이전트가 일하는 동안 어떤 앱 위에서든 질문 상자를 엽니다.",
-      "highlight": "단축키 하나로"
-    },
-    {
-      "master": "05-spend",
-      "slug": "05-priced",
-      "headline": "대화 전체에\n가격표를",
-      "subline": "돈이 어디로 갔는지: 답변, 캐시, 새 입력.",
-      "highlight": "가격표를"
+      "slug": "07-one-chord",
+      "headline": "어디서든\n단축키 하나",
+      "subline": "에이전트가 일하는 동안 어떤 앱 위에서든 질문 창을 띄웁니다.",
+      "highlight": "단축키 하나"
     },
     {
       "master": "06-analytics",
-      "slug": "06-the-month",
-      "headline": "한 달을\n숫자로",
-      "subline": "모든 대화록에 가격을, 모든 서버를 합산해서.",
+      "slug": "08-the-month",
+      "headline": "이번 달을\n숫자로",
+      "subline": "모든 턴의 가격을 매기고, 모든 서버를 합산해요.",
       "highlight": "숫자로"
     },
     {
-      "master": "07-approval",
-      "slug": "07-approve",
-      "headline": "앱을 바꾸지 않고\n바로 승인",
-      "subline": "한 번만 허용, 항상, 거부를 채팅 안에서.",
-      "highlight": "앱을 바꾸지 않고"
-    },
-    {
       "master": "08-keyboard",
-      "slug": "08-keyboard",
-      "headline": "키보드가\n먼저",
-      "subline": "구획, 대화, 모델을 위한 단축키. vim 모드 입력창.",
+      "slug": "09-keyboard",
+      "headline": "키보드가\n먼저예요",
+      "subline": "패널, 채팅, 모델을 위한 단축키. vim 모드 입력창도 있어요.",
       "highlight": "키보드가"
     },
     {
-      "master": "09-type",
-      "slug": "09-type-size",
-      "headline": "창의 모든 부분\n글자 크기 조절",
-      "subline": "대화 목록, 내 프롬프트, 에이전트의 답변, 코드.",
-      "highlight": "모든 부분"
-    },
-    {
       "master": "10-private",
-      "slug": "10-private",
-      "headline": "내 tailnet 밖으로\n나가는 건 없어요",
-      "subline": "릴레이 없음. 계정 없음. 분석 없음. GPL-3.0.",
-      "highlight": "tailnet"
+      "slug": "10-your-tailnet",
+      "headline": "채팅은 내 tailnet\n안에만 머물러요",
+      "subline": "내 기기와 1:1로 직접 연결. 로그인 없음. GPL-3.0.",
+      "highlight": "안에만 머물러요"
     }
   ],
   "header": {

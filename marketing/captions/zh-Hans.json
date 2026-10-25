@@ -145,74 +145,74 @@
   ],
   "mac": [
     {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "所有智能体\n一个窗口",
+      "subline": "你所有机器上运行中的智能体，实时呈现，支持 Peek 与 Hour。",
+      "highlight": "一个窗口"
+    },
+    {
       "master": "01-conversation",
-      "slug": "01-native",
-      "headline": "为 Mac\n原生打造",
-      "subline": "Claude Code、opencode 和 Oh My Pi，尽在一扇真正的窗口里。",
-      "highlight": "原生打造"
+      "slug": "02-every-step",
+      "headline": "每一步\n实时可见",
+      "subline": "思考、工具运行与差异，随发生随呈现。",
+      "highlight": "实时可见"
+    },
+    {
+      "master": "fl-party",
+      "slug": "03-party",
+      "headline": "六个模型\n一键即达",
+      "subline": "每个槽位一个模型及其强度，一个快捷键即可切换。",
+      "highlight": "一键即达"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "04-carry",
+      "headline": "换模型\n不丢话题",
+      "subline": "下一个模型会拿到对话简要摘要，接着往下做。",
+      "highlight": "不丢话题"
     },
     {
       "master": "02-split",
-      "slug": "02-two-machines",
-      "headline": "两台机器\n并排工作",
-      "subline": "分割窗口，让每个窗格指向不同的服务器。",
-      "highlight": "并排工作"
+      "slug": "05-two-machines",
+      "headline": "两台机器\n并排显示",
+      "subline": "拆分窗口，让每个窗格指向不同的服务器。",
+      "highlight": "并排显示"
     },
     {
-      "master": "03-git",
-      "slug": "03-repo",
-      "headline": "看得到仓库\n绝不去动它",
-      "subline": "分支、已暂存和真实的 diff，来自拥有它们的那台机器。",
-      "highlight": "绝不去动它"
+      "master": "fl-gpu",
+      "slug": "06-ask-anything",
+      "headline": "问你的机器\n任何事",
+      "subline": "不只是代码：问问是什么在占用显卡。",
+      "highlight": "任何事"
     },
     {
       "master": "04-quickask",
-      "slug": "04-one-chord",
-      "headline": "一组快捷键\n随处呼出",
-      "subline": "智能体工作时，在任何 App 之上呼出提问框。",
-      "highlight": "一组快捷键"
-    },
-    {
-      "master": "05-spend",
-      "slug": "05-priced",
-      "headline": "整个会话的\n花费一清二楚",
-      "subline": "钱花到哪了：回答、缓存、新输入。",
-      "highlight": "整个会话"
+      "slug": "07-one-chord",
+      "headline": "一个快捷键\n随时呼出",
+      "subline": "智能体工作时，可在任何应用上方呼出提问框。",
+      "highlight": "随时呼出"
     },
     {
       "master": "06-analytics",
-      "slug": "06-the-month",
-      "headline": "这个月\n用数字说话",
-      "subline": "每份对话记录都计价，合并所有服务器。",
-      "highlight": "用数字说话"
-    },
-    {
-      "master": "07-approval",
-      "slug": "07-approve",
-      "headline": "不用切换 App\n就能审批",
-      "subline": "允许一次、始终允许或拒绝，就在聊天里完成。",
-      "highlight": "不用切换 App"
+      "slug": "08-the-month",
+      "headline": "本月花销\n一目了然",
+      "subline": "每次运行都计价，并跨所有服务器汇总。",
+      "highlight": "一目了然"
     },
     {
       "master": "08-keyboard",
-      "slug": "08-keyboard",
+      "slug": "09-keyboard",
       "headline": "键盘\n优先",
-      "subline": "窗格、聊天、模型都有快捷键。还有 vim 模式的输入框。",
+      "subline": "窗格、对话和模型的快捷键，还有 Vim 模式的输入框。",
       "highlight": "键盘"
     },
     {
-      "master": "09-type",
-      "slug": "09-type-size",
-      "headline": "窗口每个部分\n字号各自调",
-      "subline": "聊天列表、你的提示、智能体的回答、代码。",
-      "highlight": "字号各自调"
-    },
-    {
       "master": "10-private",
-      "slug": "10-private",
-      "headline": "数据绝不离开\n你的 tailnet",
-      "subline": "无中继、无账号、无分析、GPL-3.0。",
-      "highlight": "你的 tailnet"
+      "slug": "10-your-tailnet",
+      "headline": "你的对话\n留在你的 tailnet",
+      "subline": "点对点连接你的机器，无需登录。GPL-3.0。",
+      "highlight": "留在你的 tailnet"
     }
   ],
   "header": {

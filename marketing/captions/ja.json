@@ -145,74 +145,74 @@
   ],
   "mac": [
     {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "すべてのエージェントを\n一つのウインドウに",
+      "subline": "全マシンで動く全エージェントを、ライブで。Peek と Hour付き。",
+      "highlight": "一つのウインドウに"
+    },
+    {
       "master": "01-conversation",
-      "slug": "01-native",
-      "headline": "本物の\nMacネイティブ",
-      "subline": "Claude Code、opencode、Oh My Pi を、本物のウインドウで。",
-      "highlight": "Macネイティブ"
+      "slug": "02-every-step",
+      "headline": "一歩ずつ、\nライブで",
+      "subline": "思考、ツール実行、差分を、起きた瞬間に表示。",
+      "highlight": "ライブで"
+    },
+    {
+      "master": "fl-party",
+      "slug": "03-party",
+      "headline": "六つのモデルを、\nワンクリックで",
+      "subline": "各枠にモデルと推論の強さ。ショートカットひとつで切替。",
+      "highlight": "ワンクリックで"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "04-carry",
+      "headline": "モデルを替えても、\n会話は続く",
+      "subline": "次のモデルが短い要約を受け取り、そのまま続けます。",
+      "highlight": "会話は続く"
     },
     {
       "master": "02-split",
-      "slug": "02-two-machines",
-      "headline": "2台のマシンを\n横並びで",
-      "subline": "ウインドウを分割して、ペインごとに別のサーバーを指定。",
-      "highlight": "横並びで"
+      "slug": "05-two-machines",
+      "headline": "二台のマシンを\n並べて",
+      "subline": "ウインドウを分割し、各ペインを別のサーバーに向けられます。",
+      "highlight": "並べて"
     },
     {
-      "master": "03-git",
-      "slug": "03-repo",
-      "headline": "リポジトリは読む。\n操作はしない。",
-      "subline": "ブランチ、ステージ済み、本物の差分を、リポジトリのあるマシンから。",
-      "highlight": "操作はしない。"
+      "master": "fl-gpu",
+      "slug": "06-ask-anything",
+      "headline": "マシンに何でも\n聞いてみる",
+      "subline": "コードだけじゃない。GPUを何が使っているかも聞けます。",
+      "highlight": "聞いてみる"
     },
     {
       "master": "04-quickask",
-      "slug": "04-one-chord",
-      "headline": "ショートカット一つ\nどこからでも呼べる",
-      "subline": "エージェントの作業中も、どのアプリの上にも質問欄を呼び出せます。",
-      "highlight": "ショートカット一つ"
-    },
-    {
-      "master": "05-spend",
-      "slug": "05-priced",
-      "headline": "会話全体の\n費用がわかる",
-      "subline": "お金の行き先：回答、キャッシュ、新規入力。",
-      "highlight": "会話全体"
+      "slug": "07-one-chord",
+      "headline": "どこからでも\nショートカットひとつ",
+      "subline": "エージェントの作業中も、どのアプリの上でも質問欄を呼び出せます。",
+      "highlight": "ショートカットひとつ"
     },
     {
       "master": "06-analytics",
-      "slug": "06-the-month",
-      "headline": "ひと月を、\n数字で見る",
-      "subline": "すべての会話ログに価格を付け、全サーバーを横断して合算。",
-      "highlight": "数字で見る"
-    },
-    {
-      "master": "07-approval",
-      "slug": "07-approve",
-      "headline": "アプリを切り替えず\n承認できる",
-      "subline": "1回だけ許可、常に許可、拒否——チャットの中で完結。",
-      "highlight": "アプリを切り替えず"
+      "slug": "08-the-month",
+      "headline": "今月の内訳を\n数字で",
+      "subline": "すべてのターンを価格付きで、全サーバー分をまとめて表示。",
+      "highlight": "数字で"
     },
     {
       "master": "08-keyboard",
-      "slug": "08-keyboard",
+      "slug": "09-keyboard",
       "headline": "キーボード\nファースト",
-      "subline": "ペイン、チャット、モデルをキーボードで。Vim モードの入力欄つき。",
+      "subline": "ペイン、チャット、モデルのショートカット。Vimモードの入力欄も。",
       "highlight": "キーボード"
     },
     {
-      "master": "09-type",
-      "slug": "09-type-size",
-      "headline": "文字サイズは\n場所ごとに",
-      "subline": "チャットリスト、あなたのプロンプト、エージェントの返答、コード。",
-      "highlight": "場所ごとに"
-    },
-    {
       "master": "10-private",
-      "slug": "10-private",
-      "headline": "tailnetから\n一歩も出ない",
-      "subline": "中継なし。アカウントなし。解析なし。GPL-3.0。",
-      "highlight": "一歩も出ない"
+      "slug": "10-your-tailnet",
+      "headline": "チャットは\ntailnet の中だけ",
+      "subline": "マシンとは一対一で通信。サインイン不要。GPL-3.0。",
+      "highlight": "tailnet の中だけ"
     }
   ],
   "header": {

@@ -145,74 +145,74 @@
   ],
   "mac": [
     {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "All your agents.\nOne window.",
+      "subline": "Every running agent across your machines, live, with peek and hour.",
+      "highlight": "One window."
+    },
+    {
       "master": "01-conversation",
-      "slug": "01-native",
-      "headline": "Native\non the Mac",
-      "subline": "Claude Code, opencode and Oh My Pi in a real window.",
-      "highlight": "Native"
+      "slug": "02-every-step",
+      "headline": "Every step,\nlive",
+      "subline": "Thinking, tool runs and the diff, as they happen.",
+      "highlight": "live"
+    },
+    {
+      "master": "fl-party",
+      "slug": "03-party",
+      "headline": "Six models,\none click away",
+      "subline": "A model and its effort in each slot. One chord to switch.",
+      "highlight": "one click away"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "04-carry",
+      "headline": "Switch models,\nkeep the thread",
+      "subline": "The next model gets a short brief of the chat and carries on.",
+      "highlight": "keep the thread"
     },
     {
       "master": "02-split",
-      "slug": "02-two-machines",
+      "slug": "05-two-machines",
       "headline": "Two machines,\nside by side",
       "subline": "Split the window and point each pane at a different server.",
       "highlight": "side by side"
     },
     {
-      "master": "03-git",
-      "slug": "03-repo",
-      "headline": "The repo, read.\nNever operated.",
-      "subline": "Branch, staged and the real diffs, from the machine that owns them.",
-      "highlight": "Never operated."
+      "master": "fl-gpu",
+      "slug": "06-ask-anything",
+      "headline": "Ask your machines\nanything",
+      "subline": "Not only code: ask what's eating the GPU.",
+      "highlight": "anything"
     },
     {
       "master": "04-quickask",
-      "slug": "04-one-chord",
+      "slug": "07-one-chord",
       "headline": "One chord\nfrom anywhere",
       "subline": "Summon the question box over any app while the agent works.",
       "highlight": "One chord"
     },
     {
-      "master": "05-spend",
-      "slug": "05-priced",
-      "headline": "A price on the\nwhole conversation",
-      "subline": "Where the money went: answer, cache, fresh input.",
-      "highlight": "whole conversation"
-    },
-    {
       "master": "06-analytics",
-      "slug": "06-the-month",
+      "slug": "08-the-month",
       "headline": "The month\nin numbers",
       "subline": "Every transcript priced, merged across every server.",
       "highlight": "in numbers"
     },
     {
-      "master": "07-approval",
-      "slug": "07-approve",
-      "headline": "Approve without\nswitching apps",
-      "subline": "Allow once, always or deny in the chat itself.",
-      "highlight": "without switching apps"
-    },
-    {
       "master": "08-keyboard",
-      "slug": "08-keyboard",
+      "slug": "09-keyboard",
       "headline": "Keyboard\nfirst",
       "subline": "Chords for panes, chats and models. A vim-mode composer.",
       "highlight": "Keyboard"
     },
     {
-      "master": "09-type",
-      "slug": "09-type-size",
-      "headline": "Size every part\nof the window",
-      "subline": "Chat list, your prompts, the agent's answers, code.",
-      "highlight": "every part"
-    },
-    {
       "master": "10-private",
-      "slug": "10-private",
-      "headline": "Nothing leaves\nyour tailnet",
-      "subline": "No relay. No account. No analytics. GPL-3.0.",
-      "highlight": "your tailnet"
+      "slug": "10-your-tailnet",
+      "headline": "Your chats stay\non your tailnet",
+      "subline": "Point to point to your machines. No sign-in. GPL-3.0.",
+      "highlight": "on your tailnet"
     }
   ],
   "header": {
