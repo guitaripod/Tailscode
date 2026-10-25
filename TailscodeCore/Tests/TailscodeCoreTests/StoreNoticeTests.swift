@@ -9,35 +9,35 @@ extension DeviceStores {
     @Suite("Store notices") struct StoreNoticeTests {
         private static let name = Notification.Name("tailscode.test.storeNotice")
 
-        @MainActor
-        @Test("A notice posted off the main thread arrives on it")
-        func arrivesOnTheMainThread() async {
-            let (heard, sink) = AsyncStream.makeStream(of: Bool.self)
-            let token = NotificationCenter.default.addObserver(
-                forName: Self.name, object: nil, queue: nil
-            ) { _ in sink.yield(Thread.isMainThread) }
-            defer { NotificationCenter.default.removeObserver(token) }
-            await Task.detached { StoreNotice.post(Self.name) }.value
-            var arrivedOnMain: Bool?
-            for await onMain in heard {
-                arrivedOnMain = onMain
-                break
-            }
-            #expect(arrivedOnMain == true)
-        }
-
-        @MainActor
-        @Test("A notice posted on the main thread is delivered before the post returns")
-        func staysSynchronousOnTheMainThread() {
-            let witness = Witness()
-            NotificationCenter.default.addObserver(
-                witness, selector: #selector(Witness.noticed), name: Self.name, object: nil)
-            defer { NotificationCenter.default.removeObserver(witness) }
-            StoreNotice.post(Self.name)
-            #expect(witness.heard == 1)
-        }
-
         #if canImport(Darwin)
+            @MainActor
+            @Test("A notice posted off the main thread arrives on it")
+            func arrivesOnTheMainThread() async {
+                let (heard, sink) = AsyncStream.makeStream(of: Bool.self)
+                let token = NotificationCenter.default.addObserver(
+                    forName: Self.name, object: nil, queue: nil
+                ) { _ in sink.yield(Thread.isMainThread) }
+                defer { NotificationCenter.default.removeObserver(token) }
+                await Task.detached { StoreNotice.post(Self.name) }.value
+                var arrivedOnMain: Bool?
+                for await onMain in heard {
+                    arrivedOnMain = onMain
+                    break
+                }
+                #expect(arrivedOnMain == true)
+            }
+
+            @MainActor
+            @Test("A notice posted on the main thread is delivered before the post returns")
+            func staysSynchronousOnTheMainThread() {
+                let witness = Witness()
+                NotificationCenter.default.addObserver(
+                    witness, selector: #selector(Witness.noticed), name: Self.name, object: nil)
+                defer { NotificationCenter.default.removeObserver(witness) }
+                StoreNotice.post(Self.name)
+                #expect(witness.heard == 1)
+            }
+
             @MainActor
             @Test("A remembered catalog stored from a background task reaches a main-actor method")
             func aCatalogStoredInTheBackgroundReachesAMainActorObserver() async {
@@ -81,6 +81,7 @@ extension DeviceStores {
     }
 }
 
+#if canImport(Darwin)
 /// What a view controller is to a store: an object whose method runs on whatever thread posted,
 /// and which traps there unless the post came from the main actor.
 @MainActor
@@ -89,3 +90,4 @@ private final class Witness: NSObject {
 
     @objc func noticed() { heard += 1 }
 }
+#endif
