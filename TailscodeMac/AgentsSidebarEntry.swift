@@ -52,6 +52,7 @@ final class AgentsSidebarEntry: NSControl {
             badgeGround.bottomAnchor.constraint(equalTo: badge.bottomAnchor, constant: 1),
             heightAnchor.constraint(greaterThanOrEqualToConstant: 32),
         ])
+        setContentHuggingPriority(.required, for: .vertical)
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         badge.setContentCompressionResistancePriority(.required, for: .horizontal)
         setAccessibilityElement(true)
@@ -63,6 +64,14 @@ final class AgentsSidebarEntry: NSControl {
     required init?(coder: NSCoder) { fatalError() }
 
     override var acceptsFirstResponder: Bool { true }
+
+    /// The row's own height, so the list below it gets the rest: a control with no intrinsic size is
+    /// stretched by Auto Layout to fill the sidebar and squeezes the chat list to nothing.
+    override var intrinsicContentSize: NSSize {
+        NSSize(
+            width: NSView.noIntrinsicMetric,
+            height: max(32, title.intrinsicContentSize.height + 2 * MacTheme.Spacing.s))
+    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
