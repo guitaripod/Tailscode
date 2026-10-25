@@ -719,6 +719,17 @@ final class HomeGlanceCell: UICollectionViewCell {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ card: QuotaGlanceCard) {
+        UIView.performWithoutAnimation {
+            apply(card)
+            contentView.layoutIfNeeded()
+        }
+    }
+
+    /// Hiding and showing the ring, the value and the "+N" inside the snapshot's animation made the
+    /// row animate its arranged views while the cell was reconfigured again, and the row stayed
+    /// where the half-finished animation left it: the ring outside the capsule and the value laid
+    /// over the chevron. Applying with animations off settles every frame before the cell is seen.
+    private func apply(_ card: QuotaGlanceCard) {
         let lines = card.glance.lines
         guard let lead = lines.first else { return }
         textLabel.text = lead.text
@@ -795,9 +806,12 @@ final class MiniRingView: UIView {
         let path = UIBezierPath(
             arcCenter: CGPoint(x: bounds.midX, y: bounds.midY), radius: max(radius, 0),
             startAngle: -.pi / 2, endAngle: 1.5 * .pi, clockwise: true)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         track.path = path.cgPath
         fill.path = path.cgPath
         fill.strokeEnd = CGFloat(min(max(fraction ?? 0, 0), 1))
+        CATransaction.commit()
     }
 }
 
