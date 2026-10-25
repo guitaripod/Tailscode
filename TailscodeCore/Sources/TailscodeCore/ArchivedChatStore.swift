@@ -35,7 +35,7 @@ public enum ArchivedChatStore {
         defaults.set(current.sorted(), forKey: storageKey)
         MarkIntentStore.note(
             sessionID: sessionID, profileID: profileID, mark: .archived, on: archived)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
         return archived
     }
 
@@ -46,7 +46,7 @@ public enum ArchivedChatStore {
         let next = current.union(add).subtracting(remove)
         guard next != current else { return }
         defaults.set(next.sorted(), forKey: storageKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static func key(_ profileID: String, _ sessionID: String) -> String {

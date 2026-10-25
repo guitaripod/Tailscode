@@ -303,7 +303,7 @@ public enum SavedChatStore {
         defaults.set(data, forKey: storageKey)
         cache = list.sorted { $0.savedAt > $1.savedAt }
         if notify {
-            NotificationCenter.default.post(name: didChange, object: nil)
+            StoreNotice.post(didChange)
         }
     }
 }

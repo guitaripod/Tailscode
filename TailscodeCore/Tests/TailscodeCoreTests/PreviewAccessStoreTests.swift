@@ -74,6 +74,7 @@ struct PreviewAccessStoreTests {
         }
     }
 
+    @MainActor
     @Test("Every change tells whoever is listening")
     func postsDidChange() throws {
         try withDefaults { defaults in

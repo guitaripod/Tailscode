@@ -102,7 +102,7 @@ public enum UpdateLedger {
         }
         lock.unlock()
         guard changed else { return }
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     /// How long a reading that only moved its clock is left the way it was written.
@@ -161,7 +161,7 @@ public enum UpdateLedger {
         var acknowledged = acknowledgements()
         acknowledged[reading.component.key] = identity
         defaults.set(acknowledged, forKey: acknowledgedKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static func isAcknowledged(_ reading: UpdateReading) -> Bool {

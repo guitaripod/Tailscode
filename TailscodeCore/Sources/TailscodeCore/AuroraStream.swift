@@ -89,7 +89,7 @@ public enum StreamRendererSetting {
         } else {
             UserDefaults.standard.set(choice.rawValue, forKey: defaultsKey)
         }
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 }
 

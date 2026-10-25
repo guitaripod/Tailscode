@@ -372,7 +372,7 @@ public enum ActivityInbox {
         if let data = try? encoder.encode(entries) {
             defaults.set(data, forKey: storageKey)
         }
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     private enum Reason {

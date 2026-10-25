@@ -26,7 +26,7 @@ public enum ModelCatalogStore {
         let key = prefix + profileID
         guard UserDefaults.standard.data(forKey: key) != data else { return }
         UserDefaults.standard.set(data, forKey: key)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     /// Forgets one server's catalog — what a removed profile leaves behind, and what a test that

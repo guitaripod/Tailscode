@@ -91,7 +91,7 @@ public enum ClockAlarmStore {
         } else if let data = try? JSONEncoder().encode(book) {
             UserDefaults.standard.set(data, forKey: defaultsKey)
         }
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     /// Takes whatever has come due out of the stored book and returns it, writing the book back

@@ -37,7 +37,7 @@ public enum ChatDensitySetting {
 
     public static func set(_ value: ChatDensity) {
         UserDefaults.standard.set(value.rawValue, forKey: key)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static var title: String { Localized.text("Chat density") }

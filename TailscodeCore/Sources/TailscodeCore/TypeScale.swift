@@ -214,7 +214,7 @@ public enum TypeScaleStore {
         lock.lock()
         held = next
         lock.unlock()
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static func set(_ area: TypeArea, to scale: Double) {

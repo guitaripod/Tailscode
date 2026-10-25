@@ -17,7 +17,7 @@ Pins already exist (`ModelPresetStore`: a model plus a level, up to twelve expli
 - **Chords and swipes.** ⌃⌥1–6 take slot n, a swipe along the pill walks the filled slots as a ring, a toast says what was taken. An empty party falls back to the pins, exactly as today.
 - **Names** are up to 24 characters and wrap rather than cut; empty the field and the model's own word returns. The pill keeps saying what actually runs.
 - **A slot on another machine** asks first and carries the conversation, as *Continue on…* does (`docs/model-carry.md`), or re-aims the Home composer.
-- **First launch.** The first six pins and stars, in order, fill the party; nothing is removed anywhere.
+- **First launch.** The party is empty: six hollow slots on every client, never filled from the pins or stars. An empty party rings through the pins, as before there was one. A device that ran an early build and still holds exactly that fill has it let go once.
 
 ## 3. Not in this
 
@@ -26,7 +26,7 @@ Sharing a party between devices, a party per project, auto-filling, your own ico
 ## 4. Where it lives
 
 Core, toolkit-free, so three clients agree:
-- `ModelParty`: six `PartySlot?` in `tailscode.modelParty` (JSON, seeded once from `ModelPresetStore.all()`): `slots`, `presets`, `place`, `replace`, `release`, `rename`, `setEffort`, `swap`, `move`, `slotIndex(matching:effort:)`, `ring()`, `didChange`.
+- `ModelParty`: six `PartySlot?` in `tailscode.modelParty` (JSON, empty until the person fills a slot): `slots`, `presets`, `place`, `replace`, `release`, `rename`, `setEffort`, `swap`, `move`, `slotIndex(matching:effort:)`, `ring()`, `didChange`.
 - `PartyReading.cards(slots:sources:current:)`: six `PartyCard`s with the title (name or the model's word), subtitle, level bars, house rank, machine, in use, away.
 - `ChooserContext.party`: a pick fills a slot (the consequence line says so on every tab).
 - Linux `SettingsFile.capturedPrefixes` gains `tailscode.modelParty`, or the party is never durable there.

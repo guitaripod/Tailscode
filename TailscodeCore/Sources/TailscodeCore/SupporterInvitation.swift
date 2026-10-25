@@ -53,7 +53,7 @@ public enum SupporterInvitation: Sendable {
     }
 
     private static func post() {
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static var title: String { Localized.text("Tailscode is free and open source") }

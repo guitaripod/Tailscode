@@ -91,6 +91,7 @@ extension DeviceStores {
       fresh()
     }
 
+    @MainActor
     @Test("A write that changes nothing says nothing")
     func quietWhenNothingMoved() {
       fresh()

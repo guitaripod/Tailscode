@@ -58,7 +58,7 @@ public enum SessionPinStore {
         defaults.set(stamps, forKey: stampsKey)
         MarkIntentStore.note(
             sessionID: sessionID, profileID: profileID, mark: .pinned, on: pinned)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
         return pinned
     }
 
@@ -74,7 +74,7 @@ public enum SessionPinStore {
         let changed = order != all()
         defaults.set(order, forKey: storageKey)
         defaults.set(stamps, forKey: stampsKey)
-        if changed { NotificationCenter.default.post(name: didChange, object: nil) }
+        if changed { StoreNotice.post(didChange) }
     }
 
     public static func key(_ profileID: String, _ sessionID: String) -> String {

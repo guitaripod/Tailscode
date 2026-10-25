@@ -39,7 +39,7 @@ public enum ActivityStyleSetting {
 
     public static func set(_ value: ActivityStyle) {
         UserDefaults.standard.set(value.rawValue, forKey: key)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static var title: String { Localized.text("Activity style") }

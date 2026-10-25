@@ -14,7 +14,7 @@ public enum LinkEmbedsSetting {
 
     public static func setEnabled(_ value: Bool) {
         UserDefaults.standard.set(value, forKey: defaultsKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static var title: String { Localized.text("Link preview cards") }

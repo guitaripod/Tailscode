@@ -78,13 +78,13 @@ public enum WatchStore {
     public static func forget() {
         defaults.removeObject(forKey: channelsKey)
         defaults.removeObject(forKey: recentsKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     private static func write(_ list: [MediaChannel], forKey key: String) {
         guard let data = try? JSONEncoder().encode(list) else { return }
         defaults.set(data, forKey: key)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 }
 

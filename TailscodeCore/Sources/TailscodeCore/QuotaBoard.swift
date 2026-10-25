@@ -91,7 +91,7 @@ public enum QuotaBoardStore {
         } else if let data = try? JSONEncoder().encode(preferences) {
             UserDefaults.standard.set(data, forKey: defaultsKey)
         }
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static func update(_ change: (inout QuotaBoardPreferences) -> Void) {

@@ -22,13 +22,14 @@ public enum PartyPlacement: Sendable, Equatable {
 ///
 /// Six, always: the grid shows six places filled or hollow so its shape never moves under a thumb,
 /// and order is the person's — slot one is ⌃⌥1, and a swipe along the pill walks the filled ones as
-/// a ring. The first time the party is read it is filled from what was already pinned, in order,
-/// so nothing is asked of anyone and nothing is taken away: pins and stars keep their own lists,
-/// which are the box.
+/// a ring. It starts empty on every client: a model is in the party because the person put it
+/// there, never because it was already pinned. Pins and stars keep their own lists, which are the
+/// box, and an empty party rings through the pins exactly as before there was one.
 public enum ModelParty {
     public static let size = 6
     public static let nameLimit = 24
     static let storageKey = "tailscode.modelParty"
+    static let seedRetiredKey = "tailscode.modelParty.seedRetired"
     public static let didChange = Notification.Name("tailscode.modelParty.didChange")
 
     private struct Entry: Codable {
@@ -38,22 +39,39 @@ public enum ModelParty {
     }
 
     public static func slots() -> [PartySlot?] {
-        guard let raw = UserDefaults.standard.string(forKey: storageKey) else {
-            let seeded = seed()
-            write(seeded)
-            return seeded
-        }
+        retireSeedOnce()
+        guard let raw = UserDefaults.standard.string(forKey: storageKey) else { return hollow }
+        return decode(raw)
+    }
+
+    private static var hollow: [PartySlot?] { Array(repeating: nil, count: size) }
+
+    private static func decode(_ raw: String) -> [PartySlot?] {
         let entries =
             raw.data(using: .utf8).flatMap { try? JSONDecoder().decode([Entry?].self, from: $0) }
             ?? []
-        let slots = (0..<size).map { index -> PartySlot? in
+        return (0..<size).map { index -> PartySlot? in
             guard index < entries.count, let entry = entries[index],
                 let selection = ModelSelection(string: entry.model),
                 let effort = PresetEffort(raw: entry.effort)
             else { return nil }
             return PartySlot(preset: ModelPreset(selection: selection, effort: effort), name: entry.name)
         }
-        return slots
+    }
+
+    /// Early builds filled the party from the first six pins and stars on its first read, so a
+    /// device that ran one holds models nobody chose. Once per device, a stored party that is
+    /// exactly that fill (the current pins from slot one, in order, none named) is let go; one
+    /// that differs in any slot was edited and stays.
+    private static func retireSeedOnce() {
+        guard !UserDefaults.standard.bool(forKey: seedRetiredKey) else { return }
+        UserDefaults.standard.set(true, forKey: seedRetiredKey)
+        guard let raw = UserDefaults.standard.string(forKey: storageKey) else { return }
+        let held = decode(raw)
+        let pins = ModelPresetStore.all().prefix(size).map { PartySlot(preset: $0) }
+        let fill = (0..<size).map { $0 < pins.count ? pins[$0] : nil }
+        guard held.contains(where: { $0 != nil }), held == fill else { return }
+        UserDefaults.standard.removeObject(forKey: storageKey)
     }
 
     public static func slot(_ index: Int) -> PartySlot? {
@@ -140,11 +158,6 @@ public enum ModelParty {
         return String(joined.prefix(nameLimit)).trimmingCharacters(in: .whitespaces)
     }
 
-    private static func seed() -> [PartySlot?] {
-        let pins = ModelPresetStore.all().prefix(size).map { PartySlot(preset: $0) }
-        return (0..<size).map { $0 < pins.count ? pins[$0] : nil }
-    }
-
     private static func write(_ slots: [PartySlot?]) {
         let entries = slots.map { slot in
             slot.map {
@@ -158,6 +171,6 @@ public enum ModelParty {
         else { return }
         guard UserDefaults.standard.string(forKey: storageKey) != raw else { return }
         UserDefaults.standard.set(raw, forKey: storageKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 }

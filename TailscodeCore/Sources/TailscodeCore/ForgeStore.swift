@@ -188,13 +188,13 @@ public enum ForgeStore {
     public static func remember(_ endpoint: ForgeEndpoint?) {
         guard let endpoint else {
             clear(endpointKey)
-            NotificationCenter.default.post(name: didChange, object: nil)
+            StoreNotice.post(didChange)
             return
         }
         guard let data = try? JSONEncoder().encode(endpoint) else { return }
         defaults.set(data, forKey: endpointKey)
         file(ForgeRenderer(endpoint: endpoint))
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     /// Points renders at a machine and files it among the ones this device has used, which is the
@@ -204,7 +204,7 @@ public enum ForgeStore {
         guard let data = try? JSONEncoder().encode(renderer.endpoint) else { return }
         defaults.set(data, forKey: endpointKey)
         file(renderer)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     /// Every renderer this device has pointed at, most recently used first.
@@ -245,7 +245,7 @@ public enum ForgeStore {
         if endpoint()?.displayHost == id {
             clear(endpointKey)
         }
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     /// A machine used again moves to the front rather than appearing twice, and a name learned on
@@ -286,7 +286,7 @@ public enum ForgeStore {
     public static func remember(_ recipe: ForgeRecipe) {
         guard let data = try? JSONEncoder().encode(recipe) else { return }
         defaults.set(data, forKey: recipeKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     /// What renders have cost on the machines this device has used. One clock for all of them:
@@ -365,12 +365,12 @@ public enum ForgeStore {
 
     public static func forget() {
         clear(historyKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     private static func write(_ list: [ForgeEntry]) {
         guard let data = try? JSONEncoder().encode(list) else { return }
         defaults.set(data, forKey: historyKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 }

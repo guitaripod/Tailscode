@@ -300,7 +300,7 @@ public enum ResponseStatsSetting {
         } else {
             UserDefaults.standard.removeObject(forKey: defaultsKey)
         }
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static var title: String { Localized.text("Answer statistics") }

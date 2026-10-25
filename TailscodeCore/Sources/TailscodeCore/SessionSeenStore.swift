@@ -69,7 +69,7 @@ public enum SessionSeenStore {
             seen = seen.filter { $0.value >= cutoff }
         }
         defaults.set(seen, forKey: seenKey)
-        NotificationCenter.default.post(name: didSync, object: nil)
+        StoreNotice.post(didSync)
     }
 
     /// One snapshot of the store per list render: returns a closure judging

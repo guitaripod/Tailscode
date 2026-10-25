@@ -65,7 +65,7 @@ public enum DelegateAccessStore {
         } else {
             defaults.removeObject(forKey: key)
         }
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 }
 

@@ -737,7 +737,7 @@ public final class UpdateDriver: @unchecked Sendable {
     }
 
     private func post() {
-        NotificationCenter.default.post(name: Self.didChange, object: self)
+        StoreNotice.post(Self.didChange, object: self)
     }
 
     /// One question, raced against its budget. Nil is the budget running out, which is an answer

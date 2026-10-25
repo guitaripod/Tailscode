@@ -34,7 +34,7 @@ public enum BetaSeenStore {
     ) {
         guard defaults.string(forKey: key(feature)) != version.raw else { return }
         defaults.set(version.raw, forKey: key(feature))
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static func freshness(

@@ -40,12 +40,12 @@ public enum ImageGenStore {
     public static func remember(_ endpoint: ImageGenEndpoint?) {
         guard let endpoint else {
             defaults.removeObject(forKey: endpointKey)
-            NotificationCenter.default.post(name: didChange, object: nil)
+            StoreNotice.post(didChange)
             return
         }
         guard let data = try? JSONEncoder().encode(endpoint) else { return }
         defaults.set(data, forKey: endpointKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static func engine() -> ImageGenEngine {
@@ -59,7 +59,7 @@ public enum ImageGenStore {
     public static func remember(engine: ImageGenEngine, aspect: ImageGenAspect) {
         defaults.set(engine.rawValue, forKey: engineKey)
         defaults.set(aspect.rawValue, forKey: aspectKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     /// How big the last render was asked for. A size is a preference the way a shape is: the
@@ -75,7 +75,7 @@ public enum ImageGenStore {
     public static func remember(size: ImageGenSize, detail: ImageGenDetail) {
         defaults.set(size.rawValue, forKey: sizeKey)
         defaults.set(detail.rawValue, forKey: detailKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     /// The small model that thickens a thin brief, and where it answers. Nil until a machine has
@@ -88,12 +88,12 @@ public enum ImageGenStore {
     public static func remember(helper: ImageGenHelper?) {
         guard let helper else {
             defaults.removeObject(forKey: helperKey)
-            NotificationCenter.default.post(name: didChange, object: nil)
+            StoreNotice.post(didChange)
             return
         }
         guard let data = try? JSONEncoder().encode(helper) else { return }
         defaults.set(data, forKey: helperKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     /// What the machine last answered, kept so a surface drawn before any probe returns says the
@@ -106,14 +106,14 @@ public enum ImageGenStore {
     public static func record(_ sighting: ImageGenSighting) {
         guard let data = try? JSONEncoder().encode(sighting) else { return }
         defaults.set(data, forKey: healthKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static func forget() {
         for key in [endpointKey, engineKey, aspectKey, healthKey] {
             defaults.removeObject(forKey: key)
         }
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 }
 

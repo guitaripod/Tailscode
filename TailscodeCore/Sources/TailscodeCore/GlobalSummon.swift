@@ -545,16 +545,16 @@ public enum SummonSettings {
 
     public static func setEnabled(_ value: Bool) {
         defaults.set(value, forKey: enabledKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static func setChord(_ chord: SummonChord) {
         defaults.set(chord.spec, forKey: chordKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static func reset() {
         defaults.removeObject(forKey: chordKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 }

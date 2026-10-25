@@ -129,6 +129,6 @@ public enum ThemeSelection {
         if let suite = mirrorSuiteName, let shared = UserDefaults(suiteName: suite) {
             shared.set(value, forKey: key)
         }
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 }

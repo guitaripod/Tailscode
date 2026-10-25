@@ -17,12 +17,12 @@ public enum QuickAskDefaults {
 
     public static func record(profileID: String) {
         defaults.set(profileID, forKey: serverKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static func clear() {
         defaults.removeObject(forKey: serverKey)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     /// Which server answers a quick ask: the one the last quick ask used while it is still
@@ -70,14 +70,14 @@ public enum QuickAskDefaults {
         ModelPreferenceStore.setGlobalModel(
             model, forContextID: contextID(forProfileID: profileID))
         if let model { RecentModelsStore.record(model) }
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static func recordEffort(_ level: String?, forProfileID profileID: String) {
         claimOwnAim(forProfileID: profileID)
         EffortPreferenceStore.setGlobalEffort(
             level, forContextID: contextID(forProfileID: profileID))
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     /// A model picked on another machine re-aims the whole question at that machine — the same
@@ -92,7 +92,7 @@ public enum QuickAskDefaults {
         defaults.removeObject(forKey: ownAimPrefix + profileID)
         ModelPreferenceStore.setGlobalModel(nil, forContextID: contextID(forProfileID: profileID))
         EffortPreferenceStore.setGlobalEffort(nil, forContextID: contextID(forProfileID: profileID))
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     /// The minted conversation is stamped with the aim before it opens: the session carries the

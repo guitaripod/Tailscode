@@ -413,7 +413,7 @@ public enum MediaAccounts {
         if let data = try? JSONEncoder().encode(account) {
             UserDefaults.standard.set(data, forKey: accountPrefix + account.source.rawValue)
         }
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static func signOut(_ source: MediaSource) {
@@ -424,7 +424,7 @@ public enum MediaAccounts {
 
         try? store?.removeValue(for: key(source))
         UserDefaults.standard.removeObject(forKey: accountPrefix + source.rawValue)
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     /// A token good enough to send, refreshing it first if it is about to stop being one. A refresh

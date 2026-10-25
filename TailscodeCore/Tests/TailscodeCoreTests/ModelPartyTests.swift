@@ -8,7 +8,7 @@ import Testing
 /// the pins and the stars all live in the one shared `UserDefaults`.
 extension DeviceStores {
     @Suite struct ModelPartyTests {
-        private static let keys = ["tailscode.modelParty", "tailscode.modelPresets", "tailscode.favoriteModels"]
+        private static let keys = ["tailscode.modelParty", "tailscode.modelParty.seedRetired", "tailscode.modelPresets", "tailscode.favoriteModels"]
 
         private func fresh(_ body: () throws -> Void) rethrows {
             let saved = Self.keys.map { UserDefaults.standard.object(forKey: $0) }
@@ -37,18 +37,42 @@ extension DeviceStores {
             }
         }
 
-        @Test func theFirstReadFillsFromTheFirstSixPinsAndStarsInOrder() {
+        @Test func pinsAndStarsNeverFillThePartyAndAReadNeverWritesIt() {
             fresh {
                 ModelPresetStore.pin(opus())
                 ModelPresetStore.pin(qwen())
                 ModelFavoritesStore.replace([ModelSelection(providerID: "x", modelID: "star")])
-                let slots = ModelParty.slots()
-                #expect(slots[0]?.preset == qwen())
-                #expect(slots[1]?.preset == opus())
-                #expect(slots[2]?.preset.selection.modelID == "star")
-                #expect(slots[3] == nil)
-                ModelPresetStore.pin(ModelPreset(selection: ModelSelection(providerID: "x", modelID: "late"), effort: .server))
-                #expect(ModelParty.slots()[3] == nil)
+                #expect(ModelParty.slots().allSatisfy { $0 == nil })
+                #expect(ModelParty.presets().isEmpty)
+                #expect(UserDefaults.standard.string(forKey: "tailscode.modelParty") == nil)
+                #expect(ModelParty.ring() == ModelPresetStore.all())
+            }
+        }
+
+        @Test func aPartyFilledFromThePinsByAnEarlyBuildIsLetGoOnce() {
+            fresh {
+                ModelPresetStore.pin(opus())
+                ModelPresetStore.pin(qwen())
+                ModelParty.replace(slot: 0, with: qwen())
+                ModelParty.replace(slot: 1, with: opus())
+                UserDefaults.standard.removeObject(forKey: "tailscode.modelParty.seedRetired")
+                #expect(ModelParty.slots().allSatisfy { $0 == nil })
+                ModelParty.replace(slot: 0, with: qwen())
+                ModelParty.replace(slot: 1, with: opus())
+                #expect(ModelParty.slots()[0]?.preset == qwen())
+                #expect(ModelParty.slots()[1]?.preset == opus())
+            }
+        }
+
+        @Test func aPartyThePersonEditedSurvivesTheRetirement() {
+            fresh {
+                ModelPresetStore.pin(opus())
+                ModelPresetStore.pin(qwen())
+                ModelParty.replace(slot: 0, with: qwen(), name: "Daily")
+                ModelParty.replace(slot: 1, with: opus())
+                UserDefaults.standard.removeObject(forKey: "tailscode.modelParty.seedRetired")
+                #expect(ModelParty.slots()[0]?.name == "Daily")
+                #expect(ModelParty.slots()[1]?.preset == opus())
             }
         }
 

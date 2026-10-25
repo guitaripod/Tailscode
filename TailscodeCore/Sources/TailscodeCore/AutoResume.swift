@@ -487,7 +487,7 @@ public enum AutoResumeSetting {
         } else {
             UserDefaults.standard.set(false, forKey: defaultsKey)
         }
-        NotificationCenter.default.post(name: didChange, object: nil)
+        StoreNotice.post(didChange)
     }
 
     public static var title: String { ResumeReading.settingTitle }
