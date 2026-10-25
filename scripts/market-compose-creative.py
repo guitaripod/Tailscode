@@ -38,7 +38,7 @@ OUT = os.path.join(compose.ROOT, "marketing/appstore/creative")
 HEADER = (3840, 1646)
 SEARCH = (3840, 2560)
 UNIVERSAL = (5244, 2950)
-CARD_BOX = (50, 2125, 1270, 2400)
+BOARD_BOX = (30, 790, 1290, 1905)
 
 
 def master(locale, name):
@@ -81,9 +81,9 @@ def compose_header(locale, book):
     size, head = fitted_headline(book["header"]["headline"], book["header"].get("highlight"), 1500, 150, "center")
     canvas.paste(head, ((W - head.width) // 2, 104), head)
     top = 104 + head.height + 12
-    phone(canvas, master(locale, "03-approval"), 640, W // 2 - 720, top + 150)
+    phone(canvas, master(locale, "fl-models"), 640, W // 2 - 720, top + 150)
     phone(canvas, master(locale, "07-home"), 640, W // 2 + 720, top + 150)
-    phone(canvas, master(locale, "lock"), 700, W // 2, top)
+    phone(canvas, master(locale, "fl-agents"), 780, W // 2, top)
     return canvas.convert("RGB")
 
 
@@ -93,17 +93,18 @@ def compose_search(locale, book):
     hairline(canvas, 150, 560)
     size, head = fitted_headline(book["search"]["headline"], book["search"].get("highlight"), 1520, 168, "left")
     canvas.paste(head, (560, 1010 - head.height // 2), head)
-    phone(canvas, master(locale, "lock"), 1120, 2740, 420)
+    phone(canvas, master(locale, "fl-agents"), 1120, 2740, 420)
     return canvas.convert("RGB")
 
 
 def compose_universal(locale, book):
-    """Text-free: the Lock Screen's own card, cut from the master at its pixels and enlarged, on the
-    ground with the tailnet line through it, set above the middle of the canvas."""
+    """Text-free: the Agents board's needs-you card and the first working row, cut from the master at
+    its pixels and enlarged, on the ground with the tailnet line through it, set above the middle of
+    the canvas."""
     W, H = UNIVERSAL
     canvas = compose.ground(W, H, lift_at=(0.5, 0.42), lift_radius=0.3, lift_alpha=18)
-    cut = Image.open(master(locale, "lock")).convert("RGB").crop(CARD_BOX)
-    scale = 2240 / cut.width
+    cut = Image.open(master(locale, "fl-agents")).convert("RGB").crop(BOARD_BOX)
+    scale = 1760 / cut.width
     cut = cut.resize((round(cut.width * scale), round(cut.height * scale)), Image.LANCZOS)
     y = round(H * 0.40)
     hairline(canvas, y)
