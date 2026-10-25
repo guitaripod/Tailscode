@@ -26,18 +26,10 @@ struct GameCenterConsentTests {
         #expect(!consent.isOn)
     }
 
-    @Test("someone who already reported keeps taking part")
-    func earlierPlayerCountsAsAsked() {
+    @Test("having reported before is not asking")
+    func earlierReportIsNotConsent() {
         let (consent, defaults) = consent()
         defaults.set("player-1", forKey: GameCenterConsent.reportedPlayerKey)
-        #expect(consent.isOn)
-    }
-
-    @Test("an explicit off wins over an earlier report")
-    func offBeatsEarlierReport() {
-        let (consent, defaults) = consent()
-        defaults.set("player-1", forKey: GameCenterConsent.reportedPlayerKey)
-        consent.turnOff()
         #expect(!consent.isOn)
     }
 
