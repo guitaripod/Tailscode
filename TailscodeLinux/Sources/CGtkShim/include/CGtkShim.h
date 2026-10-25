@@ -323,6 +323,7 @@ void tailscode_on_release(GtkWidget *widget, void (*handler)(void *), void *data
 /// not also act as the click. `data` is let go of through the box release when the widget is
 /// finalized, like every signal connection made through ``tailscode_connect``.
 void tailscode_on_primary_release(GtkWidget *widget, void (*handler)(void *), void *data);
+void tailscode_on_claimed_click(GtkWidget *widget, void (*handler)(void *), void *data);
 
 /// Any pointer button going down anywhere inside `widget`, with where it landed in `widget`'s own
 /// coordinates. The gesture watches in the capture phase, which runs from the toplevel down before

@@ -26,15 +26,16 @@ enum AgentsSwell {
     }
 }
 
-/// The small glass orb the sidebar's agents face wears: a core that swells with the mood, a halo
-/// that brightens with it and a ring that holds its shape, drawn from the palette's own tone
-/// slots. Idle is a dim, still bead. It lives on its own frame clock only while its mood moves
-/// and the desk allows movement, and the clock belongs to its widget, so a sidebar nobody can see
-/// is not drawn.
+/// The glass orb the sidebar's agents face wears: a core that swells with the mood under a soft
+/// highlight, a halo that brightens with it, and an orbit of small lights, one per running
+/// session (``AgentsOrbit``). Idle with nothing running is a dim bead inside a calm still ring. It
+/// lives on its own frame clock only while its mood or its orbit moves and the desk allows
+/// movement, and the clock belongs to its widget, so a sidebar nobody can see is not drawn.
 final class AgentsMiniOrb: @unchecked Sendable {
     let canvas: AgentsCanvas
     private let size: Double
     private(set) var mood: AgentsMood = .idle
+    private(set) var running = 0
     private var lastDrawn = 0.0
     private lazy var lap = RepeatingMotion { [weak self] in self?.step() }
 
@@ -50,21 +51,30 @@ final class AgentsMiniOrb: @unchecked Sendable {
         tailscode_set_accessible_hidden(canvas.widget, 1)
         canvas.paint = { [weak self] cr, _, _ in
             guard let self else { return }
-            Self.paint(cr, size: self.size, mood: self.mood, time: Self.now, animated: RepeatingMotion.allowed)
+            Self.paint(
+                cr, size: self.size, mood: self.mood, time: Self.now, animated: RepeatingMotion.allowed,
+                running: self.running)
         }
         RepeatingMotion.watch(canvas.widget) { [weak self] in self?.relay() }
     }
 
     static var now: Double { Double(g_get_monotonic_time()) / 1_000_000 }
 
-    func set(mood next: AgentsMood) {
-        guard next != mood else { return }
+    func set(mood next: AgentsMood, running count: Int = 0) {
+        guard next != mood || count != running else { return }
         mood = next
+        running = count
         relay()
     }
 
+    /// What the lap stands for: the mood's own movement, or a slow drift of the orbit alone when
+    /// only background work runs under a quiet face.
+    private var meaning: ActivityMotion {
+        mood == .idle && running > 0 ? .working : mood.motion
+    }
+
     private func relay() {
-        _ = lap.lay(on: canvas.widget, meaning: mood.motion)
+        _ = lap.lay(on: canvas.widget, meaning: meaning)
         canvas.redraw()
     }
 
@@ -75,16 +85,22 @@ final class AgentsMiniOrb: @unchecked Sendable {
         canvas.redraw()
     }
 
-    static func paint(_ cr: OpaquePointer, size: Double, mood: AgentsMood, time: Double, animated: Bool) {
+    @discardableResult
+    static func paint(
+        _ cr: OpaquePointer, size: Double, mood: AgentsMood, time: Double, animated: Bool,
+        running: Int = 0
+    ) -> Int {
         let inks = AgentsInks()
         let tone = inks.ink(mood.tone)
         let swell = AgentsSwell.at(mood, time: time, animated: animated)
         let centre = size / 2
         if mood != .idle { halo(cr, centre: centre, radius: size * 0.5, tone: tone, swell: swell) }
-        ring(cr, centre: centre, radius: size * 0.4, tone: tone, mood: mood, swell: swell)
-        core(
-            cr, centre: centre, radius: size * 0.27 * (1 + 0.1 * swell), tone: tone,
-            lit: mood == .idle ? 0.6 : 1)
+        shell(cr, centre: centre, radius: size * 0.3, tone: tone, mood: mood)
+        let core = size * 0.22 * (1 + 0.1 * swell)
+        glass(cr, centre: centre, radius: core, tone: tone, lit: mood == .idle ? 0.6 : 1)
+        return AgentsOrbit.paint(
+            cr, centre: centre, radius: size * 0.43, tone: tone, mood: mood, running: running,
+            time: time, animated: animated, swell: swell)
     }
 
     private static func halo(
@@ -92,7 +108,7 @@ final class AgentsMiniOrb: @unchecked Sendable {
     ) {
         guard let gradient = cairo_pattern_create_radial(centre, centre, radius * 0.25, centre, centre, radius)
         else { return }
-        cairo_pattern_add_color_stop_rgba(gradient, 0, tone.red, tone.green, tone.blue, 0.1 + 0.34 * swell)
+        cairo_pattern_add_color_stop_rgba(gradient, 0, tone.red, tone.green, tone.blue, 0.1 + 0.3 * swell)
         cairo_pattern_add_color_stop_rgba(gradient, 1, tone.red, tone.green, tone.blue, 0)
         cairo_set_source(cr, gradient)
         cairo_arc(cr, centre, centre, radius, 0, 2 * .pi)
@@ -100,17 +116,16 @@ final class AgentsMiniOrb: @unchecked Sendable {
         cairo_pattern_destroy(gradient)
     }
 
-    private static func ring(
-        _ cr: OpaquePointer, centre: Double, radius: Double, tone: PartyInk, mood: AgentsMood,
-        swell: Double
+    private static func shell(
+        _ cr: OpaquePointer, centre: Double, radius: Double, tone: PartyInk, mood: AgentsMood
     ) {
-        tone.set(cr, alpha: mood == .idle ? 0.28 : 0.3 + 0.4 * swell)
+        tone.set(cr, alpha: mood == .idle ? 0.18 : 0.3)
         cairo_set_line_width(cr, 1)
         cairo_arc(cr, centre, centre, radius, 0, 2 * .pi)
         cairo_stroke(cr)
     }
 
-    private static func core(
+    private static func glass(
         _ cr: OpaquePointer, centre: Double, radius: Double, tone: PartyInk, lit: Double
     ) {
         guard
@@ -124,10 +139,17 @@ final class AgentsMiniOrb: @unchecked Sendable {
         cairo_pattern_add_color_stop_rgba(gradient, 0, bright.red, bright.green, bright.blue, lit)
         cairo_pattern_add_color_stop_rgba(gradient, 0.5, tone.red, tone.green, tone.blue, lit)
         cairo_pattern_add_color_stop_rgba(
-            gradient, 1, tone.red * 0.82, tone.green * 0.82, tone.blue * 0.82, lit)
+            gradient, 1, tone.red * 0.78, tone.green * 0.78, tone.blue * 0.78, lit)
         cairo_set_source(cr, gradient)
         cairo_arc(cr, centre, centre, radius, 0, 2 * .pi)
         cairo_fill(cr)
         cairo_pattern_destroy(gradient)
+        cairo_save(cr)
+        cairo_translate(cr, centre - radius * 0.3, centre - radius * 0.45)
+        cairo_scale(cr, 0.5, 0.3)
+        cairo_set_source_rgba(cr, 1, 1, 1, 0.6 * lit)
+        cairo_arc(cr, 0, 0, radius * 0.75, 0, 2 * .pi)
+        cairo_fill(cr)
+        cairo_restore(cr)
     }
 }

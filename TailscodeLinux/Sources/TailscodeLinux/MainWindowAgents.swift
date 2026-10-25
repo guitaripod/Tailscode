@@ -5,33 +5,16 @@ import Foundation
 import TailscodeCore
 
 extension MainWindow {
-    /// The sidebar's Agents card, built once and put above the filter.
+    /// The sidebar's Agents card, built once and put at the head of the sidebar.
     func makeAgentsEntry() -> UnsafeMutablePointer<GtkWidget> {
         let entry = AgentsSidebarEntry(memory: agentsShimmer) { [weak self] in self?.presentAgents() }
         agentsEntry = entry
         return entry.widget
     }
 
-    /// The "On now" rows under the card: a press opens that chat's peek in the board, the way the
-    /// orb's secondary press does.
-    func makeAgentsNow() -> UnsafeMutablePointer<GtkWidget> {
-        let section = AgentsOnNowSection { [weak self] key in
-            Gtk.onMain { [weak self] in self?.presentAgents(selecting: key) }
-        }
-        agentsNow = section
-        return section.widget
-    }
-
-    /// The pill above the clock at the foot of the sidebar.
-    func makeAgentsPill() -> UnsafeMutablePointer<GtkWidget> {
-        let pill = AgentsFooterPill { [weak self] in self?.presentAgents() }
-        agentsPill = pill
-        return pill.widget
-    }
-
-    /// What the card, the rows and the pill say, from one reading: the demo's fiction in demo
-    /// mode, the board while it is open, and what the chat list can tell while it is not — a turn
-    /// open and a turn waiting on an approval.
+    /// What the card says, from one reading: the demo's fiction in demo mode, the board while it
+    /// is open, and what the chat list can tell while it is not — a turn open and a turn waiting
+    /// on an approval.
     func refreshAgentsEntry(rows: [SessionRowModel]? = nil) {
         if let rows { agentsListReading = AgentsReading(list: rows) }
         let reading: AgentsReading
@@ -45,8 +28,6 @@ extension MainWindow {
             reading = agentsListReading
         }
         agentsEntry?.apply(reading)
-        agentsNow?.apply(reading.rows)
-        agentsPill?.apply(reading)
     }
 
     /// The chat list refreshed: tell the tower, but only while a board is watching — a closed
@@ -67,6 +48,12 @@ extension MainWindow {
             onHeadline: { [weak self] in Gtk.onMain { [weak self] in self?.refreshAgentsEntry() } })
         if let key { board.select(key: key) }
         return board
+    }
+
+    /// The board, opened on one chat's peek: what a row's agents chip and the orb's secondary
+    /// press ask for.
+    func presentAgentPeek(of entry: SessionEntry) {
+        presentAgents(selecting: entry.profileID + "/" + entry.session.id)
     }
 
     func toggleAgents() {

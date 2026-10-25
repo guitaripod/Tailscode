@@ -185,6 +185,7 @@ enum SidebarRow {
         vocabulary: ChatListVocabulary = .full,
         onOpen: @escaping @Sendable () -> Void,
         onMark: @escaping @Sendable (Bool) -> Void = { _ in },
+        onAgents: (@Sendable () -> Void)? = nil,
         onMenu: @escaping @Sendable (UInt, Double, Double) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let button = gtk_button_new()!
@@ -223,7 +224,8 @@ enum SidebarRow {
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         gtk_box_append(ptr(column), titleRow)
-        gtk_box_append(ptr(column), detailRow(model, vocabulary: vocabulary))
+        gtk_box_append(
+            ptr(column), detailRow(model, vocabulary: vocabulary, onAgents: onAgents))
         gtk_widget_set_hexpand(column, 1)
 
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
@@ -406,15 +408,18 @@ enum SidebarRow {
     /// it forms a straight column down the list — a staleness that has to be found at the end of a
     /// sentence of varying length is a fact nobody reads. A row that is working says what it is
     /// working on instead, and keeps the column.
-    private static func detailRow(_ model: SessionRowModel, vocabulary: ChatListVocabulary)
-        -> UnsafeMutablePointer<GtkWidget>
-    {
+    private static func detailRow(
+        _ model: SessionRowModel, vocabulary: ChatListVocabulary,
+        onAgents: (@Sendable () -> Void)?
+    ) -> UnsafeMutablePointer<GtkWidget> {
         let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         let facets = model.facets(vocabulary)
         let chip = ModelBadge.chip(for: model.entry)
+        let agents = onAgents.flatMap { agentsChip(model, onOpen: $0) }
         if let chip {
             gtk_box_append(ptr(line), modelLabel(chip))
         }
+        if let agents { gtk_box_append(ptr(line), agents) }
         if let snippet = model.snippet {
             let text = chip == nil ? snippet : "· \(snippet)"
             let label = Gtk.label(text, css: "row-note", selectable: false)

@@ -20,6 +20,7 @@ extension MainWindow {
             if let taken = SheetStack.shared?.handleKey(keyval: keyval, state: state) {
                 return taken
             }
+            if self.agentsEntry?.ownsKey(keyval, state: state, in: window) == true { return false }
             if self.splitHost.orderedPanes.contains(where: {
                 $0.brains.handleKey(keyval: keyval, state: state)
             }) {

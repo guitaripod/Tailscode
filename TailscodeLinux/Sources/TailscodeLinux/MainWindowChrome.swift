@@ -91,7 +91,6 @@ extension MainWindow {
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         gtk_box_append(ptr(column), makeAgentsEntry())
-        gtk_box_append(ptr(column), makeAgentsNow())
         gtk_search_entry_set_placeholder_text(
             op(searchEntry), Localized.text("Filter chats  /   ⏎ to search inside"))
         Gtk.margins(searchEntry, top: 4, bottom: 4, leading: 6, trailing: 6)
@@ -151,7 +150,6 @@ extension MainWindow {
         gtk_widget_set_hexpand(updateBox, 1)
         gtk_box_append(ptr(footRow), clockChip.widget)
         gtk_box_append(ptr(footRow), updateBox)
-        gtk_box_append(ptr(column), makeAgentsPill())
         gtk_box_append(ptr(column), footRow)
         ClockWatch.shared.start()
 

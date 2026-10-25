@@ -293,7 +293,6 @@ extension SelfTest {
             help.contains { $0.what == Localized.text("Show the agents board") && $0.keys.lowercased().contains("a") },
             "and the cheatsheet lists it")
 
-        claims += try checkAgentsChip(expect: expect)
         claims += try checkAgentsEntry(expect: expect, pump: pump)
         claims += try checkAgentsTower(pump: pump)
         return claims

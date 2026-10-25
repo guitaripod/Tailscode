@@ -286,7 +286,7 @@ extension MainWindow {
         case "agents", "agents-hour", "agent-peek", "agents-close", "agents-size", "agents-state",
             "agents-stress":
             self.driveAgents(verb, argument)
-        case "agents-face", "agents-sidebar":
+        case "agents-face", "agents-sidebar", "agents-rows", "agents-focus":
             self.driveAgentsFace(verb, argument)
         case "party":
             self.presentPartyDemo(editing: false)

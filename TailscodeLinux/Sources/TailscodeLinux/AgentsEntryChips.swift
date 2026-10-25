@@ -3,21 +3,23 @@ import CGtkShim
 import Foundation
 import TailscodeCore
 
-/// The two counts at the end of the Agents row, drawn rather than laid out: green for what is
-/// working and amber for what needs the person, each hidden at zero and each carrying its digits,
+/// The counts at the end of the Agents row, drawn rather than laid out: green for what is
+/// working, amber for what needs the person and a quiet grey for work carried in the background,
+/// each hidden at zero and each carrying its digits,
 /// so the colour is never the whole message. They are drawn so a change of count can pop the chip
 /// (1.0, 1.15, 1.0 over 220 ms) about its own centre without moving a pixel of the row around it.
 final class AgentsEntryChips: @unchecked Sendable {
     enum Kind: Int, CaseIterable {
         case working
         case needs
+        case background
     }
 
     static let popDuration = 0.22
     static let popPeak = 1.15
 
     let canvas = AgentsCanvas(width: 1, height: 1)
-    private var counts: [Kind: Int] = [.working: 0, .needs: 0]
+    private var counts: [Kind: Int] = [.working: 0, .needs: 0, .background: 0]
     private var popped: [Kind: Double] = [:]
     private(set) var pops = 0
 
@@ -36,8 +38,8 @@ final class AgentsEntryChips: @unchecked Sendable {
     func isShown(_ kind: Kind) -> Bool { count(kind) > 0 }
     var texts: [String] { Kind.allCases.filter(isShown).map { "\(count($0))" } }
 
-    func set(working: Int, needs: Int, popping: Bool) {
-        let next: [Kind: Int] = [.working: working, .needs: needs]
+    func set(working: Int, needs: Int, background: Int = 0, popping: Bool) {
+        let next: [Kind: Int] = [.working: working, .needs: needs, .background: background]
         guard next != counts else { return }
         let now = AgentsMiniOrb.now
         for kind in Kind.allCases where popping && next[kind]! > 0 && next[kind] != counts[kind] {
@@ -61,6 +63,14 @@ final class AgentsEntryChips: @unchecked Sendable {
         guard !popped.isEmpty else { return }
         popped = [:]
         canvas.redraw()
+    }
+
+    private static func ink(_ kind: Kind, _ inks: AgentsInks) -> PartyInk {
+        switch kind {
+        case .working: return inks.live
+        case .needs: return inks.attention
+        case .background: return inks.quiet
+        }
     }
 
     private func scale(_ kind: Kind, at time: Double) -> Double {
@@ -113,7 +123,7 @@ final class AgentsEntryChips: @unchecked Sendable {
         var x = 2.0
         for kind in Kind.allCases where isShown(kind) {
             let size = metrics(kind)
-            let tone = kind == .working ? inks.live : inks.attention
+            let tone = Self.ink(kind, inks)
             let top = 2.0
             cairo_save(cr)
             let centreX = x + size.width / 2

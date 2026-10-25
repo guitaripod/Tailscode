@@ -74,8 +74,7 @@ final class AgentsRuntime: @unchecked Sendable {
         set { held.withLock { $0 = newValue } }
     }
 
-    /// The whole board while it is open, for the sidebar's "On now" rows and footer pill to say
-    /// what the board says.
+    /// The whole board while it is open, for the sidebar's Agents card to say what the board says.
     var openBoard: AgentBoard? {
         get { heldBoard.withLock { $0 } }
         set { heldBoard.withLock { $0 = newValue } }
@@ -149,40 +148,5 @@ final class AgentsRuntime: @unchecked Sendable {
             })
         return AgentsListing(
             entries: entries, reachability: reachability, unread: unread, lastSeen: lastSeen)
-    }
-}
-
-/// What the sidebar's Agents row says: the chip that leads, in words a screen reader reads too.
-struct AgentsChip: Equatable, Sendable {
-    let needsYou: Int
-    let working: Int
-
-    var isEmpty: Bool { needsYou == 0 && working == 0 }
-
-    var isUrgent: Bool { needsYou > 0 }
-
-    var text: String { isUrgent ? "\(needsYou)" : working > 0 ? "\(working)" : "" }
-
-    var spoken: String {
-        var parts = [Localized.text("Agents")]
-        if working > 0 { parts.append(Localized.text("%d working", working)) }
-        if needsYou > 0 { parts.append(Localized.text("%d needs you", needsYou)) }
-        return parts.joined(separator: ", ")
-    }
-
-    init(needsYou: Int, working: Int) {
-        self.needsYou = needsYou
-        self.working = working
-    }
-
-    init(headline: AgentBoard.Headline) {
-        self.init(needsYou: headline.needsYou, working: headline.working)
-    }
-
-    /// The same count from the chat list's rows, for when the board is shut and nothing is watched:
-    /// what the list knows is a turn that is open and a turn that is waiting on an approval.
-    init(rows: [SessionRowState]) {
-        self.init(
-            needsYou: rows.count { $0 == .awaitingApproval }, working: rows.count { $0 == .live })
     }
 }

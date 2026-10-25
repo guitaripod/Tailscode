@@ -66,6 +66,9 @@ extension MainWindow {
                 onMark: { [weak self] shifted in
                     Gtk.onMain { [weak self] in self?.mark(item: item, shifted: shifted) }
                 },
+                onAgents: { [weak self] in
+                    Gtk.onMain { [weak self] in self?.presentAgentPeek(of: row.entry) }
+                },
                 onMenu: { [weak self] bits, x, y in
                     self?.presentRowMenu(row, rowBits: bits, x: x, y: y)
                 })

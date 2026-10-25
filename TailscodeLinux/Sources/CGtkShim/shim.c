@@ -1373,6 +1373,25 @@ void tailscode_on_primary_release(GtkWidget *widget, void (*handler)(void *), vo
     gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(click));
 }
 
+static void tailscode_claimed_pressed(
+    GtkGestureClick *gesture, gint n_press, gdouble x, gdouble y, gpointer raw) {
+    (void)n_press; (void)x; (void)y; (void)raw;
+    gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+}
+
+void tailscode_on_claimed_click(GtkWidget *widget, void (*handler)(void *), void *data) {
+    TailscodeClick *box = g_new0(TailscodeClick, 1);
+    box->handler = handler;
+    box->data = data;
+    GtkGesture *click = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), GDK_BUTTON_PRIMARY);
+    gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(click), GTK_PHASE_CAPTURE);
+    g_signal_connect(click, "pressed", G_CALLBACK(tailscode_claimed_pressed), NULL);
+    g_signal_connect_data(click, "released", G_CALLBACK(tailscode_click_released), box,
+                          tailscode_click_destroy, 0);
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(click));
+}
+
 typedef struct {
     void (*handler)(double x, double y, void *);
     void *data;

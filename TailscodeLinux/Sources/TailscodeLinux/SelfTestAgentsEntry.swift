@@ -14,11 +14,38 @@ final class ShimmerFlag: @unchecked Sendable {
     }
 }
 
+extension String {
+    var spaced: String {
+        replacingOccurrences(of: "\u{00A0}", with: " ").replacingOccurrences(of: "\n", with: " · ")
+    }
+}
+
 extension SelfTest {
-    /// The sidebar's Agents card, its "On now" rows and its footer pill: what they say over Core's
-    /// demo fiction, where they sit in the real sidebar, that a press on each reaches the board,
-    /// that nothing overlaps or runs past a narrow column, and that the movement is arithmetic the
-    /// desk can switch off — a still frame is the same frame at any time.
+    static func agentsReading(
+        working: Int = 0, needs: Int = 0, agents: Int = 0, background: Int = 0, waiting: String? = nil
+    ) -> AgentsReading {
+        AgentsReading(
+            working: working, needsYou: needs, agents: agents, background: background, waiting: waiting)
+    }
+
+    static func listRow(
+        _ id: String, active: Bool, agents: Int? = nil, work: BackgroundWork? = nil
+    ) -> SessionRowModel {
+        var session = AgentSession(
+            id: id, agentType: .claudeCode, title: "Chat " + id, createdAt: Date(), updatedAt: Date(),
+            isActive: active)
+        session.activeAgents = agents
+        session.backgroundWork = work
+        let entry = SessionEntry(
+            profileID: AgentDemo.homelab, profileName: "homelab", host: "homelab",
+            backendType: .claudeCode, session: session)
+        return SessionRowModel(entry: entry, unreachable: false, unread: false, saved: false)
+    }
+
+    /// The sidebar's Agents card: what it says over Core's demo fiction and over the chat list, the
+    /// orbit that counts the running sessions, where it sits in the real sidebar, that a press on
+    /// it and on a row's agents chip reaches the board, that nothing overlaps or runs past a narrow
+    /// column, and that the movement is arithmetic the desk can switch off.
     static func checkAgentsEntry(
         expect: (Bool, String) throws -> Void, pump: (Double) -> Void
     ) throws -> Int {
@@ -30,21 +57,50 @@ extension SelfTest {
         let now = Date()
         let reading = AgentsReading(board: AgentDemo.board(now: now))
         try note(
-            reading.chip == AgentsChip(needsYou: 1, working: 2) && reading.mood == .needs,
-            "the demo reads 2 working and 1 needing you, and is amber")
+            reading.working == 2 && reading.needsYou == 1 && reading.mood == .needs
+                && reading.waiting == "CI migration",
+            "the demo reads 2 working and 1 needing you, and is amber: \(reading)")
         try note(
-            reading.rows.map(\.title) == ["CI migration", "Fix reconnect test", "Landing page refresh"]
-                && reading.rows.map(\.needsYou) == [true, false, false],
-            "the rows are what waits first, then what works: \(reading.rows.map(\.title))")
-        try note(reading.running == 4, "four are running with the one in the background: \(reading.running)")
+            reading.agents == 3 && reading.background == 1 && reading.running == 4,
+            "three sub-agents, one background task, four running: \(reading.agents) \(reading.background) \(reading.running)")
         try note(
-            reading.footerText == Localized.text("%d needs you", 1),
-            "the pill says what waits on you: \(reading.footerText)")
+            reading.sentence(withShortcut: true) == "CI migration needs you",
+            "a card with something waiting names the first chat that waits: \(reading.sentence(withShortcut: true))")
         try note(
-            AgentsReading(chip: AgentsChip(needsYou: 0, working: 2), running: 4, rows: []).footerText
-                == Localized.text("%d running", 4)
-                && AgentsReading.quiet.footerText == Localized.text("All quiet"),
-            "a working board says how many run and a quiet one says all quiet")
+            reading.spoken == "Agents, 2 working, 1 needs you, 3 agents, 1 in the background",
+            "and a reader hears every count once: \(reading.spoken)")
+        let busy = agentsReading(working: 3, agents: 2, background: 1)
+        try note(
+            busy.sentence(withShortcut: true).spaced == "3 working · 2 agents · 1 in the background",
+            "a working card counts sessions, agents and background work: \(busy.sentence(withShortcut: true))")
+        try note(
+            agentsReading(working: 1, agents: 1).sentence(withShortcut: true).spaced == "1 working · 1 agent",
+            "and says one agent in the singular")
+        try note(
+            AgentsReading.quiet.sentence(withShortcut: true) == "all quiet · Ctrl+Shift+A"
+                && AgentsReading.quiet.sentence(withShortcut: false) == "all quiet"
+                && AgentsReading.quiet.spoken == "Agents",
+            "a quiet card says so and names the shortcut only when there is room")
+        let listed = AgentsReading(list: [
+            listRow("a", active: true, agents: 2), listRow("b", active: true, agents: 1),
+            listRow("c", active: false, work: BackgroundWork(tasks: 1, task: "build", since: now)),
+            listRow("d", active: false),
+        ])
+        try note(
+            listed == agentsReading(working: 2, agents: 3, background: 1),
+            "the chat list gives the same facts while the board is shut: \(listed)")
+        claims += try checkAgentsFaces(expect: expect)
+        let keys = ShortcutSet.build(overrides: [:])
+        func opensBoard(_ keyval: UInt32, _ state: UInt32) -> Bool {
+            guard let chord = KeyChord.canonical(keyval: keyval, state: state),
+                case .run(.toggleAgents) = keys.resolve(
+                    chord, context: .normal, pending: [], awaitingApproval: false)
+            else { return false }
+            return true
+        }
+        try note(
+            opensBoard(0x41, KeyChord.controlMask | KeyChord.shiftMask) && !opensBoard(0x61, 0),
+            "Ctrl+Shift+A opens the board and a bare a is no binding of it")
 
         guard gtk_init_check() != 0 else { return claims }
         MatrixTheme.install()
@@ -54,11 +110,38 @@ extension SelfTest {
         return claims
     }
 
-    private static func orbPixels(_ mood: AgentsMood, time: Double, animated: Bool) -> [UInt8] {
-        let side: Int32 = 22
+    private static func checkAgentsFaces(expect: (Bool, String) throws -> Void) throws -> Int {
+        var claims = 0
+        func note(_ condition: Bool, _ label: String) throws {
+            try expect(condition, "entry: " + label)
+            claims += 1
+        }
+        let faces = ["idle", "working", "needs", "background", "many", "long"].map { MainWindow.agentsFace($0) }
+        try note(faces.allSatisfy { $0 != nil } && MainWindow.agentsFace("nothing") == nil, "every face is named")
+        try note(
+            faces[0]?.mood == .idle && faces[1]?.mood == .working && faces[1]?.agents == 3
+                && faces[2]?.mood == .needs && faces[3]?.mood == .idle && faces[3]?.running == 2,
+            "idle, working, needs and background-only read as themselves")
+        try note(
+            AgentsOrbit.shown(faces[4]?.running ?? 0) == AgentsOrbit.cap
+                && AgentsOrbit.overflows(faces[4]?.running ?? 0),
+            "many has more running sessions than the orbit has lights")
+        try note(
+            AgentsOrbit.period(.needs) < AgentsOrbit.period(.working)
+                && AgentsOrbit.period(.working) < AgentsOrbit.period(.idle),
+            "the orbit turns fastest when something needs you")
+        return claims
+    }
+
+    private static func orbPixels(
+        _ mood: AgentsMood, time: Double, animated: Bool, running: Int = 0, drawn: UnsafeMutablePointer<Int>? = nil
+    ) -> [UInt8] {
+        let side: Int32 = 34
         let surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, side, side)!
         let cr = cairo_create(surface)!
-        AgentsMiniOrb.paint(cr, size: Double(side), mood: mood, time: time, animated: animated)
+        let count = AgentsMiniOrb.paint(
+            cr, size: Double(side), mood: mood, time: time, animated: animated, running: running)
+        drawn?.pointee = count
         cairo_surface_flush(surface)
         let data = cairo_image_surface_get_data(surface)!
         let bytes = Array(UnsafeBufferPointer(start: data, count: Int(side) * Int(side) * 4))
@@ -75,18 +158,37 @@ extension SelfTest {
         }
         for mood in [AgentsMood.working, .needs] {
             try note(
-                orbPixels(mood, time: 0, animated: false) == orbPixels(mood, time: 0.95, animated: false),
-                "\(mood) with reduced motion is the same picture at any time")
+                orbPixels(mood, time: 0, animated: false, running: 3)
+                    == orbPixels(mood, time: 0.95, animated: false, running: 3),
+                "\(mood) with reduced motion is the same picture at any time, orbit included")
             try note(
-                orbPixels(mood, time: 0, animated: true) != orbPixels(mood, time: 0.4, animated: true),
+                orbPixels(mood, time: 0, animated: true, running: 3)
+                    != orbPixels(mood, time: 0.4, animated: true, running: 3),
                 "\(mood) moves when the desk allows it")
         }
         try note(
-            orbPixels(.idle, time: 0, animated: true) == orbPixels(.idle, time: 0.95, animated: true),
-            "and an idle bead is still whatever the desk allows")
+            orbPixels(.idle, time: 0, animated: true) == orbPixels(.idle, time: 9, animated: true),
+            "an idle bead with nothing running is still whatever the desk allows")
+        try note(
+            orbPixels(.idle, time: 0, animated: true, running: 2)
+                != orbPixels(.idle, time: 9, animated: true, running: 2),
+            "and a quiet card with background work drifts its lights")
         try note(
             AgentsSwell.at(.needs, time: 3, animated: false) == AgentsSwell.at(.needs, time: 9, animated: false),
             "the swell is a constant under reduced motion")
+        var drawn = 0
+        for (running, lights) in [(0, 0), (1, 1), (3, 3), (5, 5), (6, 5), (40, 5)] {
+            _ = orbPixels(.working, time: 1, animated: true, running: running, drawn: &drawn)
+            try note(drawn == lights, "\(running) running sessions draw \(lights) lights: \(drawn)")
+        }
+        try note(
+            orbPixels(.working, time: 0, animated: false, running: 5)
+                != orbPixels(.working, time: 0, animated: false, running: 6),
+            "a sixth session adds the plus mark")
+        try note(
+            orbPixels(.working, time: 0, animated: false, running: 6)
+                == orbPixels(.working, time: 0, animated: false, running: 60),
+            "and nothing more after it")
         return claims
     }
 
@@ -107,34 +209,43 @@ extension SelfTest {
         gtk_window_set_child(ptr(window), entry.widget)
         gtk_window_present(ptr(window))
         defer { gtk_window_destroy(ptr(window)) }
+        entry.fit(sidebarWidth: 320)
         pump(0.4)
 
         try note(
-            !entry.orb.isTurning && !entry.glow.isTurning && entry.isHintShown,
-            "an idle card runs no clock and carries the shortcut")
-        entry.apply(AgentsReading(chip: AgentsChip(needsYou: 1, working: 2), running: 4, rows: []))
+            !entry.orb.isTurning && !entry.glow.isTurning && entry.sentenceText == "all quiet · Ctrl+Shift+A",
+            "an idle card runs no clock and carries the shortcut: \(entry.sentenceText)")
+        let waiting = "CI migration"
+        entry.apply(agentsReading(working: 2, needs: 1, agents: 2, background: 0, waiting: waiting))
         pump(0.3)
         try note(
-            entry.orb.isTurning && entry.glow.isTurning && !entry.isHintShown,
-            "a busy card turns its orb and its glow and gives the tail to the counts")
+            entry.orb.isTurning && entry.glow.isTurning && entry.sentenceText == "CI migration needs you",
+            "a busy card turns its orb and its glow and names who waits: \(entry.sentenceText)")
         try note(
-            entry.chips.texts == ["2", "1"] && entry.spokenName == "Agents, 2 working, 1 needs you",
+            entry.chips.texts == ["2", "1"] && entry.spokenName == "Agents, 2 working, 1 needs you, 2 agents",
             "two chips with digits, and the name a reader hears: \(entry.chips.texts) \(entry.spokenName)")
         try note(entry.chips.pops == 2, "both counts popped when they appeared: \(entry.chips.pops)")
         try note(entry.glow.sweeps == 1 && flag.value, "the first thing to say plays the sweep once and remembers it")
         pump(0.4)
-        entry.apply(AgentsReading(chip: AgentsChip(needsYou: 1, working: 3), running: 5, rows: []))
+        entry.apply(agentsReading(working: 3, needs: 1, agents: 2, background: 1, waiting: waiting))
         try note(
-            entry.chips.pops == 3 && entry.chips.isPopping,
-            "a changed count pops its chip alone: \(entry.chips.pops)")
+            entry.chips.texts == ["3", "1", "1"] && entry.chips.pops == 4 && entry.chips.isPopping,
+            "a changed count and a new chip pop alone: \(entry.chips.texts) \(entry.chips.pops)")
         pump(0.5)
         try note(!entry.chips.isPopping, "and the pop is over inside a quarter of a second")
-        entry.apply(AgentsReading(chip: AgentsChip(needsYou: 0, working: 3), running: 5, rows: []))
+        entry.apply(agentsReading(working: 3, needs: 0, agents: 2, background: 1))
         try note(
-            entry.chips.texts == ["3"] && !entry.chips.isShown(.needs),
-            "a chip at zero is hidden: \(entry.chips.texts)")
+            entry.chips.texts == ["3", "1"] && !entry.chips.isShown(.needs)
+                && entry.sentenceText.spaced == "3 working · 2 agents · 1 in the background",
+            "a chip at zero is hidden and the sentence counts: \(entry.chips.texts) \(entry.sentenceText)")
+        entry.apply(agentsReading(background: 2))
+        pump(0.2)
+        try note(
+            entry.mood == .idle && entry.orb.isTurning && !entry.glow.isTurning
+                && entry.sentenceText.spaced == "2 in the background",
+            "background work alone keeps the face quiet and drifts the lights: \(entry.sentenceText)")
         entry.apply(.quiet)
-        entry.apply(AgentsReading(chip: AgentsChip(needsYou: 1, working: 3), running: 5, rows: []))
+        entry.apply(agentsReading(working: 3, needs: 1, agents: 2, background: 1, waiting: waiting))
         try note(entry.glow.sweeps == 1, "the sweep is once ever, not once per busy spell")
 
         tailscode_set_animations_enabled(0)
@@ -143,7 +254,7 @@ extension SelfTest {
             !entry.orb.isTurning && !entry.glow.isTurning,
             "a desk that asks for less movement stops the orb and the glow")
         let popsBefore = entry.chips.pops
-        entry.apply(AgentsReading(chip: AgentsChip(needsYou: 2, working: 9), running: 12, rows: []))
+        entry.apply(agentsReading(working: 9, needs: 2, agents: 4, background: 1, waiting: waiting))
         try note(
             entry.chips.pops == popsBefore && !entry.chips.isPopping,
             "and a count that changes does not pop")
@@ -155,157 +266,11 @@ extension SelfTest {
         gtk_window_present(ptr(calmWindow))
         defer { gtk_window_destroy(ptr(calmWindow)) }
         pump(0.3)
-        calm.apply(AgentsReading(chip: AgentsChip(needsYou: 1, working: 2), running: 3, rows: []))
+        calm.apply(agentsReading(working: 2, needs: 1, waiting: waiting))
         pump(0.2)
         try note(
             calm.glow.sweeps == 0 && !still.value && !calm.glow.isTurning && !calm.orb.isTurning,
             "reduced motion plays no sweep and spends nothing of its one chance")
         return claims
     }
-
-    static func checkAgentsSidebar(
-        reading: AgentsReading, expect: (Bool, String) throws -> Void, pump: (Double) -> Void
-    ) throws -> Int {
-        var claims = 0
-        func note(_ condition: Bool, _ label: String) throws {
-            try expect(condition, "entry: " + label)
-            claims += 1
-        }
-        tailscode_set_animations_enabled(1)
-        let previousDemo = DemoMode.isActive
-        DemoMode.isActive = true
-        let flag = ShimmerFlag()
-        let host = MainWindow()
-        host.agentsShimmer = flag.memory
-        let pane = host.makeSidebarPane()
-        let window = gtk_window_new()!
-        gtk_window_set_default_size(ptr(window), 300, 900)
-        gtk_window_set_child(ptr(window), pane)
-        gtk_window_present(ptr(window))
-        defer {
-            AgentsWindow.close()
-            pump(0.3)
-            gtk_window_destroy(ptr(window))
-            DemoMode.isActive = previousDemo
-            tailscode_set_animations_enabled(1)
-        }
-        pump(0.5)
-        guard let column = host.sidebarColumn, let entry = host.agentsEntry, let section = host.agentsNow,
-            let pill = host.agentsPill
-        else { throw SelfTestFailure("entry: the sidebar has no Agents card, rows or pill") }
-
-        try note(
-            gtk_widget_get_first_child(column) == entry.widget
-                && gtk_widget_get_next_sibling(entry.widget) == section.widget,
-            "the card is the top of the sidebar and the rows follow it")
-        try note(
-            gtk_widget_get_parent(pill.widget) == column,
-            "the pill lives in the sidebar's foot")
-        try note(
-            gtk_widget_get_tooltip_text(entry.button).map { String(cString: $0) }
-                == "What every agent is doing · Ctrl+Shift+A",
-            "the tooltip names the shortcut")
-        try note(!section.isShown, "the rows are collapsed while nothing runs")
-
-        host.refreshAgentsEntry()
-        pump(0.4)
-        try note(
-            entry.chips.texts == ["2", "1"] && entry.mood == .needs
-                && entry.spokenName == "Agents, 2 working, 1 needs you",
-            "demo mode shows the card alive: \(entry.chips.texts) \(entry.spokenName)")
-        try note(
-            section.isShown && section.shownButtons.map(\.titleText)
-                == ["CI migration", "Fix reconnect test", "Landing page refresh"],
-            "the rows list the demo, what needs you first: \(section.shownButtons.map(\.titleText))")
-        try note(
-            section.shownButtons.first.map { gtk_widget_has_css_class($0.widget, "agents-now-needs") != 0 } == true
-                && section.shownButtons.dropFirst().allSatisfy { gtk_widget_has_css_class($0.widget, "agents-now-needs") == 0 },
-            "and only that one is amber")
-        try note(
-            section.shownButtons.allSatisfy { !$0.wordsText.isEmpty }
-                && section.shownButtons.dropFirst().first.map { !$0.elapsedText.isEmpty } == true,
-            "each row has its words, and a working one its clock")
-        try note(pill.shownText == Localized.text("%d needs you", 1) && pill.mood == .needs, "the pill is amber: \(pill.shownText)")
-        try note(entry.glow.sweeps == 1, "the sidebar played its sweep when something first ran")
-
-        tailscode_emit_clicked(entry.button)
-        pump(0.6)
-        try note(AgentsWindow.current != nil, "one press on the card opens the board")
-        AgentsWindow.close()
-        pump(0.4)
-        try note(AgentsWindow.current == nil, "and the board closes again")
-
-        let target = reading.rows[0].key
-        if let first = section.shownButtons.first { tailscode_emit_clicked(first.widget) }
-        pump(0.7)
-        try note(
-            AgentsWindow.current?.selectedKey == target,
-            "a press on a row opens the board on that chat's peek: \(String(describing: AgentsWindow.current?.selectedKey))")
-        AgentsWindow.close()
-        pump(0.4)
-        tailscode_emit_clicked(pill.widget)
-        pump(0.6)
-        try note(AgentsWindow.current != nil, "a press on the pill opens the board")
-        AgentsWindow.close()
-        pump(0.4)
-
-        claims += try checkAgentsNarrow(host: host, pane: pane, window: window, expect: expect, pump: pump)
-        return claims
-    }
-
-    static func checkAgentsNarrow(
-        host: MainWindow, pane: UnsafeMutablePointer<GtkWidget>, window: UnsafeMutablePointer<GtkWidget>,
-        expect: (Bool, String) throws -> Void, pump: (Double) -> Void
-    ) throws -> Int {
-        var claims = 0
-        func note(_ condition: Bool, _ label: String) throws {
-            try expect(condition, "entry: " + label)
-            claims += 1
-        }
-        guard let column = host.sidebarColumn, let entry = host.agentsEntry, let section = host.agentsNow else {
-            throw SelfTestFailure("entry: no sidebar to narrow")
-        }
-        let long = String(repeating: "A chat title that goes on far past any sidebar ", count: 5)
-        host.agentsNow?.apply(
-            (0..<4).map {
-                AgentsOnNowRow(
-                    key: "k\($0)", title: long, words: long, since: Date().addingTimeInterval(-3725),
-                    needsYou: $0 == 0)
-            })
-        entry.apply(AgentsReading(chip: AgentsChip(needsYou: 12, working: 345), running: 357, rows: []))
-        gtk_window_set_default_size(ptr(window), Self.agentsNarrowWidth, 900)
-        pump(0.6)
-        let width = Double(gtk_widget_get_width(column))
-        guard let card = Gtk.bounds(of: entry.button, in: column),
-            let chips = Gtk.bounds(of: entry.chips.widget, in: column),
-            let title = Gtk.bounds(of: entry.titleLabelWidget, in: column)
-        else { throw SelfTestFailure("entry: the narrow card has no geometry") }
-        try note(
-            card.x >= 0 && card.x + card.width <= width + 1,
-            "at \(Int(width)) wide the card stays inside the sidebar: \(card.x)+\(card.width)")
-        try note(
-            chips.x + chips.width <= card.x + card.width + 1 && chips.x >= title.x + title.width - 1,
-            "the chips sit inside the card and clear of the word: chips \(chips.x)+\(chips.width), title \(title.x)+\(title.width)")
-        try note(
-            entry.chips.texts == ["345", "12"],
-            "three digits keep all their digits: \(entry.chips.texts)")
-        for button in section.shownButtons {
-            guard let box = Gtk.bounds(of: button.widget, in: column),
-                let name = Gtk.bounds(of: button.titleLabel, in: column),
-                let clock = Gtk.bounds(of: button.elapsedLabel, in: column)
-            else { throw SelfTestFailure("entry: a long row has no geometry") }
-            try note(
-                box.x + box.width <= width + 1 && name.x + name.width <= clock.x + 1
-                    && gtk_label_get_lines(op(button.titleLabel)) <= 1,
-                "a title two hundred characters long is one line inside the column: \(box.width)")
-        }
-        entry.apply(.quiet)
-        entry.fit(sidebarWidth: 190)
-        try note(!entry.isHintShown, "an idle card at the narrowest sidebar leaves the shortcut out whole")
-        entry.fit(sidebarWidth: 320)
-        try note(entry.isHintShown, "and shows it when it has the room")
-        return claims
-    }
-
-    static let agentsNarrowWidth: Int32 = 200
 }

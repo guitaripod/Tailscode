@@ -21,7 +21,7 @@ struct AgentsShimmerMemory: Sendable {
 /// tells a first-time reader the row is alive. Both are painted inside the row's own rounded
 /// rectangle and clipped to it, so nothing bleeds past the card.
 final class AgentsEntryGlow: @unchecked Sendable {
-    static let radius = 10.0
+    static let radius = 12.0
     static let sweepDuration = 1.15
 
     let canvas = AgentsCanvas(width: 1, height: 1)

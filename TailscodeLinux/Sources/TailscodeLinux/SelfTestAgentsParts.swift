@@ -5,27 +5,6 @@ import Foundation
 import TailscodeCore
 
 extension SelfTest {
-    static func checkAgentsChip(expect: (Bool, String) throws -> Void) throws -> Int {
-        var claims = 0
-        func note(_ condition: Bool, _ label: String) throws {
-            try expect(condition, label)
-            claims += 1
-        }
-        let urgent = AgentsChip(needsYou: 1, working: 2)
-        try note(urgent.isUrgent && urgent.text == "1", "a chip with something waiting counts it first")
-        try note(
-            urgent.spoken == "Agents, 2 working, 1 needs you",
-            "and a reader hears the working count first: \(urgent.spoken)")
-        try note(
-            !AgentsChip(needsYou: 0, working: 3).isUrgent && AgentsChip(needsYou: 0, working: 3).text == "3",
-            "otherwise it counts the working")
-        try note(AgentsChip(needsYou: 0, working: 0).isEmpty, "and is empty with nothing running")
-        try note(
-            AgentsChip(rows: [.awaitingApproval, .live, .live, .idle]) == AgentsChip(needsYou: 1, working: 2),
-            "the list's rows give the same count while the board is shut")
-        return claims
-    }
-
     static func checkAgentsWrapping(
         _ window: AgentsWindow, expect: (Bool, String) throws -> Void, pump: (Double) -> Void
     ) throws {
