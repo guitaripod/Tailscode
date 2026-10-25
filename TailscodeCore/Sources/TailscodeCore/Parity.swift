@@ -111,6 +111,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case agentsBoard
     case agentPeek
     case agentsHour
+    case agentsWatch
     case modelSeam
     case carryChat
     case responseStats

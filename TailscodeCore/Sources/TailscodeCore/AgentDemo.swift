@@ -9,7 +9,7 @@ public enum AgentDemo {
     public static let studio = "demo-studio"
     public static let homelab = "demo-homelab"
 
-    private static func entry(
+    static func entry(
         _ id: String, _ title: String, profile: String, machine: String, now: Date,
         active: Bool = false, agents: Int? = nil, task: String? = nil, work: BackgroundWork? = nil,
         updated: TimeInterval = 0, model: String? = nil
@@ -25,13 +25,13 @@ public enum AgentDemo {
             session: session)
     }
 
-    private static func user(_ text: String, now: Date, ago: TimeInterval) -> ChatMessage {
+    static func user(_ text: String, now: Date, ago: TimeInterval) -> ChatMessage {
         ChatMessage(
             id: "u-" + text, role: .user, agentType: .claudeCode,
             parts: [MessagePart(id: "p", kind: .text(text))], createdAt: now.addingTimeInterval(-ago))
     }
 
-    private static func turn(_ calls: [ToolCall], now: Date, ago: TimeInterval) -> ChatMessage {
+    static func turn(_ calls: [ToolCall], now: Date, ago: TimeInterval) -> ChatMessage {
         ChatMessage(
             id: "a-" + (calls.first?.id ?? "x"), role: .assistant, agentType: .claudeCode,
             parts: calls.map { MessagePart(id: "p-" + $0.id, kind: .tool($0)) },
@@ -39,7 +39,7 @@ public enum AgentDemo {
             modelID: "claude-opus-5", reasoningEffort: "xhigh")
     }
 
-    private static func call(
+    static func call(
         _ id: String, _ name: String, _ input: [String: JSONValue], _ status: ToolStatus
     ) -> ToolCall {
         ToolCall(id: id, name: name, status: status, input: .object(input))

@@ -118,6 +118,9 @@ public struct AgentFacts: Sendable, Equatable {
     public let effort: String?
     public let beat: [Int]
     public let failed: Bool
+    /// What the open turn is doing, nil when none is open: the reading that tells a turn thinking
+    /// from one whose tool is out.
+    public let activity: ActivityKind?
 
     public var isRunning: Bool {
         switch phase {
@@ -166,7 +169,8 @@ public struct AgentFacts: Sendable, Equatable {
             fill: ContextFill.read(messages: state.messages, catalog: catalog),
             tokens: tokens > 0 ? tokens : nil, cost: cost > 0 ? cost : nil, model: selection,
             effort: assistant?.reasoningEffort, beat: AgentBeat.read(stamps: stamps, now: now),
-            failed: state.lastFailure != nil)
+            failed: state.lastFailure != nil,
+            activity: phase == .idle ? nil : ActivityKind.inFlight(in: state))
     }
 
     private static func ask(since state: ConversationState, seen: [String: Date]) -> Date? {

@@ -20,6 +20,9 @@ public struct AgentSource: Sendable {
 
 /// An agent working, or carrying work, with what is known of it.
 public struct AgentRow: Sendable, Equatable, Identifiable {
+    /// How many of a watched row's steps it carries: what a wall tile has room to say.
+    public static let stepCount = 3
+
     public let id: String
     public let profileID: String
     public let sessionID: String
@@ -38,6 +41,17 @@ public struct AgentRow: Sendable, Equatable, Identifiable {
     public let isAway: Bool
     public let unread: Bool
     public let word: String?
+    /// The last three steps, newest first, for a watched row.
+    public var steps: [AgentStep] = []
+    public var object: AgentObject?
+    /// How full the model's window is, `0...1`, when it is known.
+    public var contextShare: Double?
+    public var activity: ActivityKind?
+    public var retryAttempt: Int?
+    /// Background work the machine has found stopped.
+    public var isStuck = false
+    /// When the listing last saw the session move.
+    public var lastActivity: Date?
 }
 
 /// A session waiting on a person, with what it asks.
@@ -50,6 +64,13 @@ public struct AgentAskCard: Sendable, Equatable, Identifiable {
     public let ask: AgentAsk
     public let chip: ModelChip?
     public let isAway: Bool
+    public var startedAt: Date?
+    public var beat: [Int]?
+    public var children: [AgentChild] = []
+    public var steps: [AgentStep] = []
+    public var contextShare: Double?
+    public var unread = false
+    public var lastActivity: Date?
 }
 
 /// A turn that ended in the last hour.
@@ -71,10 +92,12 @@ public struct AgentFinish: Sendable, Equatable, Identifiable {
     public let line: String
     public let endedAt: Date
     public let unread: Bool
+    /// Why a turn failed, in the server's own words, apart from the line that frames it.
+    public let reason: String?
 
     public init(
         id: String, profileID: String, sessionID: String, title: String, machine: String,
-        outcome: Outcome, line: String, endedAt: Date, unread: Bool
+        outcome: Outcome, line: String, endedAt: Date, unread: Bool, reason: String? = nil
     ) {
         self.id = id
         self.profileID = profileID
@@ -85,6 +108,7 @@ public struct AgentFinish: Sendable, Equatable, Identifiable {
         self.line = line
         self.endedAt = endedAt
         self.unread = unread
+        self.reason = reason
     }
 }
 
@@ -171,7 +195,11 @@ public struct AgentBoard: Sendable, Equatable {
                             sessionID: source.entry.session.id, title: title(source),
                             machine: source.entry.profileName, ask: ask,
                             chip: ModelBadge.chip(for: source.entry),
-                            isAway: source.reachable == false),
+                            isAway: source.reachable == false, startedAt: facts.startedAt,
+                            beat: facts.beat, children: facts.children,
+                            steps: Array(facts.steps.prefix(AgentRow.stepCount)),
+                            contextShare: facts.fill?.fraction, unread: source.unread,
+                            lastActivity: source.entry.session.updatedAt),
                         ask.since ?? now
                     ))
                 continue
@@ -232,7 +260,8 @@ public struct AgentBoard: Sendable, Equatable {
             chip: ModelBadge.chip(for: source.entry), tone: .live, motion: .working,
             line: session.agentTask, startedAt: nil, beat: nil, children: [],
             listedAgents: session.activeAgents ?? 0, isWatched: false,
-            isAway: source.reachable == false, unread: source.unread, word: nil)
+            isAway: source.reachable == false, unread: source.unread, word: nil,
+            lastActivity: session.updatedAt)
     }
 
     private static func backgroundRow(_ source: AgentSource, now: Date) -> AgentRow? {
@@ -263,7 +292,10 @@ public struct AgentBoard: Sendable, Equatable {
             motion: work.stalled ? .still : .working, line: line, startedAt: work.since,
             beat: nil, children: watched ? children : [], listedAgents: 0, isWatched: watched,
             isAway: source.reachable == false, unread: source.unread,
-            word: work.stalled ? Localized.text("stuck") : nil)
+            word: work.stalled ? Localized.text("stuck") : nil,
+            steps: Array((source.facts?.steps ?? []).prefix(AgentRow.stepCount)),
+            contextShare: source.facts?.fill?.fraction, isStuck: work.stalled,
+            lastActivity: session.updatedAt)
     }
 
     private static func row(
@@ -271,13 +303,18 @@ public struct AgentBoard: Sendable, Equatable {
         word: String?, now: Date
     ) -> AgentRow {
         let session = source.entry.session
+        var attempt: Int?
+        if case .retrying(let tries) = facts.phase { attempt = tries }
         return AgentRow(
             id: key(source), profileID: source.entry.profileID, sessionID: session.id,
             title: title(source), machine: source.entry.profileName,
             chip: ModelBadge.chip(for: source.entry), tone: tone, motion: motion,
             line: facts.doing, startedAt: facts.startedAt, beat: facts.beat,
             children: facts.children, listedAgents: 0, isWatched: true,
-            isAway: source.reachable == false, unread: source.unread, word: word)
+            isAway: source.reachable == false, unread: source.unread, word: word,
+            steps: Array(facts.steps.prefix(AgentRow.stepCount)), object: facts.object,
+            contextShare: facts.fill?.fraction, activity: facts.activity, retryAttempt: attempt,
+            lastActivity: session.updatedAt)
     }
 
     /// The last hour's endings: what this device watched end, then the sessions the listing says

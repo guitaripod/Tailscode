@@ -359,7 +359,8 @@ public actor AgentTower {
                     outcome: outcome, duration: before.startedAt.map { now.timeIntervalSince($0) },
                     tools: before.toolCount, files: before.touched.count,
                     failure: state.lastFailure?.message),
-                endedAt: now, unread: true))
+                endedAt: now, unread: true,
+                reason: outcome == .failed ? state.lastFailure?.message : nil))
         finished = Array(
             finished.filter { now.timeIntervalSince($0.endedAt) < AgentBoard.finishedWindow }
                 .suffix(30))
