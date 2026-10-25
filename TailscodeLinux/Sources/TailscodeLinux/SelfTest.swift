@@ -121,6 +121,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkKeyboardRebind()
+            report("keyboard: \(checks) claims hold: a pressed key resolves on the next load, restores clean, takes from its owner, never overwrites a file that is not JSON")
+        } catch {
+            report("keyboard: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkAgentsBoard()
             report("agents: \(checks) claims hold: four sections, Approve once and dead in flight, Stop asked first, long text wrapped, Core's hour, one window, no watch left")
         } catch {
@@ -407,6 +415,14 @@ public enum SelfTest {
             report("parity: \(checks) capabilities answered")
         } catch {
             report("parity: \(error)")
+            failures += 1
+        }
+
+        do {
+            let checks = try checkSettingsPages()
+            report("settings: \(checks) claims hold — seven pages that answer to their names, a remembered page, cards that name the chosen theme")
+        } catch {
+            report("settings: \(error)")
             failures += 1
         }
 

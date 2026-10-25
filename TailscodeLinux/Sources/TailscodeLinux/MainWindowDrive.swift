@@ -233,7 +233,7 @@ extension MainWindow {
         case "updates":
             self.presentUpdates()
         case "settings":
-            self.presentSettings()
+            self.presentSettings(page: SettingsPage(rawValue: argument))
         case "models":
             ModelChooserWindow.present(
                 sources: ModelChooserDemo.sources(), selected: ModelChooserDemo.selected,

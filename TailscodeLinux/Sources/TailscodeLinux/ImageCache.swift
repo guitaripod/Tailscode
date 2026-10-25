@@ -32,6 +32,26 @@ enum ImageCache {
         return base.appendingPathComponent("tailscode/images", isDirectory: true)
     }
 
+    /// How much room the kept pictures take on disk.
+    static func bytesUsed() -> Int {
+        let files =
+            (try? FileManager.default.contentsOfDirectory(
+                at: directory, includingPropertiesForKeys: [.fileSizeKey],
+                options: .skipsHiddenFiles)) ?? []
+        return files.reduce(0) {
+            $0 + ((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+    }
+
+    /// Lets go of every kept picture. They are copies of what the servers hold, fetched again the
+    /// next time a row asks for one.
+    static func clear() {
+        try? FileManager.default.removeItem(at: directory)
+        bookkeeping.lock.lock()
+        bookkeeping.touched = [:]
+        bookkeeping.lock.unlock()
+    }
+
     static func identity(for reference: FileReference) -> String? {
         guard let ident = reference.path ?? reference.url ?? reference.filename else { return nil }
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325

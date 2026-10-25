@@ -126,6 +126,8 @@ struct MatrixStylesheet {
             drawRules(),
             panelRules(),
             agentsRules(),
+            settingsRules(),
+            keycapRules(),
         ].joined(separator: "\n")
     }
 

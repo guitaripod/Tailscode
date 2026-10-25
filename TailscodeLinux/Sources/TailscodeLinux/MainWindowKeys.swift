@@ -96,12 +96,12 @@ extension MainWindow {
 
     /// Re-reads the rebinding file and rebuilds everything derived from it, live: the resolver,
     /// every pane's cheatsheet, and the notice line if the file has something wrong in it.
-    func reloadShortcuts() {
+    func reloadShortcuts(announce: Bool = true) {
         shortcuts = ShortcutSet.load()
         pendingChords = []
         splitHost.eachPane { $0.rebuildHelpOverlay() }
         if shortcuts.issues.isEmpty {
-            toast(Localized.text("Shortcuts reloaded"))
+            if announce { toast(Localized.text("Shortcuts reloaded")) }
         } else {
             activePane.setNotice(
                 Localized.text(
@@ -236,6 +236,15 @@ extension MainWindow {
             toggleProjectScope()
         case .quickAsk:
             presentQuickAsk()
+        case .openSettings: presentSettings()
+        case .openServers: presentServers()
+        case .openUpdates: presentUpdates()
+        case .openUsage: presentUsage()
+        case .toggleAppearance: toggleAppearance()
+        case .toggleCompactTools: toggleCompactTools()
+        case .toggleVimComposer: toggleVimComposer()
+        case .toggleFullscreen: toggleFullscreen()
+        case .openChat(let number): openChat(number: number)
         }
         return true
     }

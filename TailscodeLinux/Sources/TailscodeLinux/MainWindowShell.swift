@@ -197,11 +197,18 @@ extension MainWindow {
         case terminal
 
         var key: String { "tailscode.pane.\(rawValue)" }
+
+        var isShown: Bool { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
+
+        init(_ pane: SettingsContext.Pane) {
+            switch pane {
+            case .sidebar: self = .sidebar
+            case .terminal: self = .terminal
+            }
+        }
     }
 
-    func paneShown(_ pane: ClosablePane) -> Bool {
-        UserDefaults.standard.object(forKey: pane.key) as? Bool ?? true
-    }
+    func paneShown(_ pane: ClosablePane) -> Bool { pane.isShown }
 
     /// A terminal someone just opened is a terminal they want to type into; focus follows the
     /// reveal, on idle so the widget is on screen by the time focus lands.
@@ -321,21 +328,41 @@ extension MainWindow {
         splitHost.persist()
     }
 
-    func presentSettings() {
-        SettingsDialog.present(
-            parent: window,
+    func presentSettings(page: SettingsPage? = nil) {
+        SettingsWindow.present(
+            parent: window, page: page,
             onLayoutChanged: { [weak self] in
                 Gtk.onMain { [weak self] in self?.applyLayoutPreferences() }
             },
-            onReloadShortcuts: { [weak self] in
-                Gtk.onMain { [weak self] in self?.reloadShortcuts() }
+            onShortcutsChanged: { [weak self] in
+                Gtk.onMain { [weak self] in self?.reloadShortcuts(announce: false) }
+            },
+            onShowCheatsheet: { [weak self] in
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.activePane.setHelp(true)
+                    if let window = self.window { gtk_window_present(ptr(window)) }
+                }
             },
             onOrbChanged: { [weak self] in
                 Gtk.onMain { [weak self] in self?.orb.applyEnabled() }
             },
-            onDeepSeekChanged: { [weak self] in
+            onUsageKeysChanged: { [weak self] in
                 Task { [weak self] in
                     _ = await self?.refreshUsage()
+                }
+            },
+            onOpenServers: { [weak self] in
+                Gtk.onMain { [weak self] in self?.presentServers() }
+            },
+            onOpenUpdates: { [weak self] in
+                Gtk.onMain { [weak self] in self?.presentUpdates() }
+            },
+            isPaneShown: { pane in ClosablePane(pane).isShown },
+            setPaneShown: { [weak self] pane, shown in
+                Gtk.onMain { [weak self] in
+                    guard let self, self.paneShown(ClosablePane(pane)) != shown else { return }
+                    self.togglePane(ClosablePane(pane))
                 }
             })
     }
