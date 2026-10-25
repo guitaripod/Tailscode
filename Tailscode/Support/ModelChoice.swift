@@ -12,8 +12,11 @@ struct ModelChoice: Equatable {
 extension ModelCatalog {
     /// A server's catalog changed under a surface that already read it. The refresh behind a
     /// warm cache is what makes a model the server gained today reachable without relaunching,
-    /// so it has to be able to say so rather than land silently into the store.
-    static let didChange = Notification.Name("tailscode.modelCatalog.didChange")
+    /// so it has to be able to say so rather than land silently into the store. It is posted on the
+    /// main actor with the profile in `userInfo`, and is not `ModelCatalogStore.didChange`, which
+    /// is posted from whatever task wrote the store: sharing a name delivered that one to the main
+    /// actor selectors observing this one, off the main thread, and trapped.
+    static let didChange = Notification.Name("tailscode.modelCatalog.app.didChange")
 }
 
 /// Per-server model catalogs, kept in memory and on disk so a chip can name the

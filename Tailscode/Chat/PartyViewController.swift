@@ -108,6 +108,11 @@ final class PartyViewController: UIViewController {
             self, selector: #selector(partyChanged), name: ModelParty.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(partyChanged), name: ModelCatalog.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            forName: ModelCatalogStore.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reload() }
+        }
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
             (party: PartyViewController, _) in party.fitRecentRow()
         }
