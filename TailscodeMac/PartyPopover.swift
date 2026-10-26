@@ -43,7 +43,7 @@ final class PartyRecentChip: NSView {
         label.font = PartyMetrics.chipFont
         label.textColor = MacTheme.Color.label
         label.maximumNumberOfLines = 3
-        label.stringValue = recent.machine.map { recent.word + " · " + $0 } ?? recent.word
+        label.stringValue = recent.word + " · " + recent.server
         label.toolTip = label.stringValue
         addSubview(label)
         addTrackingArea(
@@ -53,7 +53,7 @@ final class PartyRecentChip: NSView {
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel(
-            recent.machine.map { Localized.text("%@ on %@", recent.word, $0) } ?? recent.word)
+            Localized.text("%@ on %@", recent.word, recent.server))
         restyle()
     }
 

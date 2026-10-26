@@ -301,14 +301,12 @@ final class PartyPopover: @unchecked Sendable {
         let word = Gtk.label(recent.word, css: "party-chip-word", wrap: true, selectable: false)
         gtk_label_set_max_width_chars(op(word), 20)
         gtk_box_append(ptr(words), word)
-        if let machine = recent.machine {
-            let place = Gtk.label(machine, css: "party-chip-machine", wrap: true, selectable: false)
-            gtk_label_set_max_width_chars(op(place), 20)
-            gtk_box_append(ptr(words), place)
-        }
+        let place = Gtk.label(recent.server, css: "party-chip-machine", wrap: true, selectable: false)
+        gtk_label_set_max_width_chars(op(place), 20)
+        gtk_box_append(ptr(words), place)
         gtk_box_append(ptr(line), words)
         gtk_button_set_child(ptr(button), line)
-        let spoken = recent.machine.map { recent.word + ", " + Localized.text("on %@", $0) } ?? recent.word
+        let spoken = recent.word + ", " + Localized.text("on %@", recent.server)
         tailscode_set_accessible_label(button, spoken)
         let pick = ModelPick(
             profileID: recent.profileID, selection: recent.selection,

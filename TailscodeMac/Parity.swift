@@ -115,6 +115,8 @@ enum ParityManifest {
         case .modelEffortDisplay: return .implemented("ModelBadge")
         case .modelCapabilitySurfacing: return .implemented("dropUnsendableAttachments")
         case .modelParty: return .implemented("PartyPopover")
+        case .partyHold: return .gap("a right click on a held card offers Replace… and the cards edit in place; the model's peek, the per-slot level menu, the spent mark and dropping a recent model on a slot are the phone's so far")
+        case .partySpoken: return .gap("macOS has App Intents too, but TailscodeMac declares no App Shortcuts yet; a PartySlotEntity over the same ModelParty would serve it")
         case .agentsBoard: return .implemented("AgentsBoardViewController")
         case .agentPeek: return .implemented("AgentPeekViewController")
         case .agentsHour: return .implemented("AgentHourView")

@@ -303,7 +303,7 @@ final class PartyCardView: @unchecked Sendable {
         if let entry { showName(in: entry) }
         if let subtitle { gtk_label_set_text(op(subtitle), card.subtitle) }
         if let machine {
-            let words = card.machine.map { Localized.text("on %@", $0) }
+            let words = card.server.map { Localized.text("on %@", $0) }
             gtk_label_set_text(op(machine), words ?? "")
             gtk_widget_set_visible(machine, words == nil ? 0 : 1)
         }

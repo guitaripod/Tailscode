@@ -99,6 +99,8 @@ enum ParityManifest {
         case .modelEffortDial: return .implemented("EffortRailPresenter")
         case .modelPresets: return .implemented("ModelPresetStore")
         case .modelParty: return .implemented("PartyViewController")
+        case .partyHold: return .implemented("levelMenu")
+        case .partySpoken: return .implemented("UsePartySlotIntent")
         case .agentsBoard: return .implemented("AgentsBoardViewController")
         case .agentPeek: return .implemented("AgentPeekViewController")
         case .agentsHour: return .implemented("AgentHourView")

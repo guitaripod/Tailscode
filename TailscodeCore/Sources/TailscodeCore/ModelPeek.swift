@@ -25,7 +25,8 @@ public struct ModelPeekReading: Sendable, Equatable {
 
     public static func of(
         _ candidate: ModelCandidate, selected: ModelSelection?, effort: String?,
-        agentOptions: [String], contextTokens: Int?, quotas: [UsageQuota] = []
+        agentOptions: [String], contextTokens: Int?, quotas: [UsageQuota] = [],
+        server: String? = nil
     ) -> ModelPeekReading {
         let model = candidate.primary.model
         let options = ModelEffort.options(
@@ -46,7 +47,7 @@ public struct ModelPeekReading: Sendable, Equatable {
         let current = !candidate.isElsewhere && candidate.carries(selected)
         let carry = !current && !candidate.isElsewhere
             ? ModelEffort.carry(effort, options: options).forecast(modelName: candidate.name) : nil
-        let place = candidate.isElsewhere ? candidate.serverName : nil
+        let place = server ?? (candidate.isElsewhere ? candidate.serverName : nil)
         let detail = ([place].compactMap { $0 } + candidate.providerNames).joined(separator: " · ")
         return ModelPeekReading(
             name: candidate.name, detail: detail, facts: facts,

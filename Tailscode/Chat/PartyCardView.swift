@@ -2,12 +2,15 @@ import TailscodeCore
 import UIKit
 
 /// One slot of the party as a card: a glass ball in the model's hue, the name it goes by, the
-/// model and its level in words, five bars for the level, and the machine when it is not this one.
+/// model and its level in words, five bars for the level, and the server that runs it.
 ///
 /// A card is a button to a screen reader and to a thumb, and it never clips, so the release badge
-/// and the glow of the slot in use can leave its edge. In edit mode the same card turns the name
-/// into a field, the ball's button into a level stepper, and a ball can be lifted and dropped on
-/// another; none of that is decided here, the card only reports.
+/// and the glow of the slot in use can leave its edge. The card is the one thing a touch lands on
+/// (`hitTest`): what lies under a finger inside it is read as where on the card the press was, so
+/// nothing a card draws can swallow a tap. In edit mode the same card turns the name into a field,
+/// the ball's button into a level stepper and the model's line into a well that opens the
+/// chooser, and a ball can be lifted and dropped on another; none of that is decided here, the
+/// card only reports.
 @MainActor
 final class PartyCardView: UIControl {
     static let minimumHeight: CGFloat = 130
@@ -22,10 +25,12 @@ final class PartyCardView: UIControl {
     var onMove: ((Int) -> Void)?
     var onStartRename: (() -> Void)?
     var onNameFocus: ((Bool) -> Void)?
+    var onMenu: ((PartyCardView) -> UIContextMenuConfiguration?)?
 
     private(set) var card: PartyCard
     private(set) var isEditing = false
     private var isBusy = false
+    private var lastTouch: CGPoint?
 
     private let halo = UIView()
     private let dashed = CAShapeLayer()
@@ -37,8 +42,12 @@ final class PartyCardView: UIControl {
     private let underline = UIView()
     private let subtitleLabel = UILabel()
     private let bars = PartyBarsView()
-    private let machine = PartyPillView(
+    private let server = PartyPillView(
         font: PartyCardView.font(11, .medium), insets: UIEdgeInsets(top: 3, left: 8, bottom: 3, right: 8))
+    private let spentMark = UIImageView()
+    private let modelWell = UIView()
+    private let chevron = UIImageView()
+    private var wellInsets: [NSLayoutConstraint] = []
     private let hollowLabel = UILabel()
     private let filled = UIStackView()
     private let hollow = UIStackView()
@@ -163,31 +172,69 @@ final class PartyCardView: UIControl {
         subtitleLabel.adjustsFontForContentSizeCategory = true
         subtitleLabel.textColor = Theme.Color.secondaryLabel
         subtitleLabel.numberOfLines = 0
+        subtitleLabel.isUserInteractionEnabled = false
+        chevron.image = UIImage(
+            systemName: "chevron.up.chevron.down",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .bold))
+        chevron.tintColor = Theme.Color.accent
+        chevron.contentMode = .center
+        chevron.isHidden = true
+        chevron.isUserInteractionEnabled = false
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+        chevron.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let wellRow = UIStackView(arrangedSubviews: [subtitleLabel, chevron])
+        wellRow.axis = .horizontal
+        wellRow.alignment = .center
+        wellRow.spacing = 6
+        wellRow.isUserInteractionEnabled = false
+        wellRow.translatesAutoresizingMaskIntoConstraints = false
+        modelWell.isUserInteractionEnabled = false
+        modelWell.layer.cornerRadius = 9
+        modelWell.layer.cornerCurve = .continuous
+        modelWell.addSubview(wellRow)
+        wellInsets = [
+            wellRow.topAnchor.constraint(equalTo: modelWell.topAnchor),
+            wellRow.leadingAnchor.constraint(equalTo: modelWell.leadingAnchor),
+            wellRow.bottomAnchor.constraint(equalTo: modelWell.bottomAnchor),
+            wellRow.trailingAnchor.constraint(equalTo: modelWell.trailingAnchor),
+        ]
+        NSLayoutConstraint.activate(wellInsets)
 
         let spacer = UIView()
         spacer.setContentHuggingPriority(.defaultLow - 1, for: .vertical)
         spacer.setContentCompressionResistancePriority(.defaultLow - 1, for: .vertical)
 
         let bottom = UIView()
-        machine.translatesAutoresizingMaskIntoConstraints = false
-        machine.isUserInteractionEnabled = false
+        server.translatesAutoresizingMaskIntoConstraints = false
+        server.isUserInteractionEnabled = false
         bars.translatesAutoresizingMaskIntoConstraints = false
-        bottom.addSubview(machine)
+        spentMark.image = UIImage(
+            systemName: "exclamationmark.circle.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+        spentMark.tintColor = Theme.Color.warning
+        spentMark.isHidden = true
+        spentMark.isUserInteractionEnabled = false
+        spentMark.setContentHuggingPriority(.required, for: .horizontal)
+        spentMark.translatesAutoresizingMaskIntoConstraints = false
+        bottom.addSubview(server)
         bottom.addSubview(bars)
+        bottom.addSubview(spentMark)
         NSLayoutConstraint.activate([
-            machine.leadingAnchor.constraint(equalTo: bottom.leadingAnchor),
-            machine.topAnchor.constraint(equalTo: bottom.topAnchor),
-            machine.bottomAnchor.constraint(equalTo: bottom.bottomAnchor),
+            server.leadingAnchor.constraint(equalTo: bottom.leadingAnchor),
+            server.topAnchor.constraint(equalTo: bottom.topAnchor),
+            server.bottomAnchor.constraint(equalTo: bottom.bottomAnchor),
             bars.trailingAnchor.constraint(equalTo: bottom.trailingAnchor),
             bars.bottomAnchor.constraint(equalTo: bottom.bottomAnchor, constant: -3),
-            bars.leadingAnchor.constraint(greaterThanOrEqualTo: machine.trailingAnchor, constant: 6),
+            spentMark.trailingAnchor.constraint(equalTo: bars.leadingAnchor, constant: -5),
+            spentMark.centerYAnchor.constraint(equalTo: bars.centerYAnchor),
+            bars.leadingAnchor.constraint(greaterThanOrEqualTo: server.trailingAnchor, constant: 6),
             bottom.heightAnchor.constraint(greaterThanOrEqualToConstant: 20),
         ])
 
         filled.axis = .vertical
         filled.alignment = .fill
         filled.isUserInteractionEnabled = true
-        [top, titleHost, subtitleLabel, spacer, bottom].forEach(filled.addArrangedSubview)
+        [top, titleHost, modelWell, spacer, bottom].forEach(filled.addArrangedSubview)
         filled.setCustomSpacing(8, after: top)
         filled.setCustomSpacing(3, after: titleHost)
         filled.translatesAutoresizingMaskIntoConstraints = false
@@ -255,7 +302,7 @@ final class PartyCardView: UIControl {
         ])
 
         addAction(UIAction { [weak self] _ in self?.tapped() }, for: .touchUpInside)
-        isContextMenuInteractionEnabled = true
+        addInteraction(UIContextMenuInteraction(delegate: self))
         registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) {
             (view: PartyCardView, _) in view.paintSurface()
         }
@@ -307,11 +354,23 @@ final class PartyCardView: UIControl {
             titleLabel.text = reading.title
         }
         subtitleLabel.text = reading.subtitle
+        let replaceable = editing && !isHollow
+        subtitleLabel.textColor = replaceable ? Theme.Color.accent : Theme.Color.secondaryLabel
+        chevron.isHidden = !replaceable
+        let padding: CGFloat = replaceable ? 1 : 0
+        wellInsets[0].constant = padding * 6
+        wellInsets[1].constant = padding * 9
+        wellInsets[2].constant = -padding * 6
+        wellInsets[3].constant = -padding * 9
+        modelWell.backgroundColor = replaceable ? Theme.Color.accent.withAlphaComponent(0.14) : .clear
         bars.hue = hue
         bars.lit = reading.bars
         bars.isHidden = !reading.takesLevels
-        machine.text = reading.machine.map { String(localized: "on \($0)") }
-        machine.isHidden = reading.machine == nil
+        spentMark.isHidden = !reading.isSpent
+        server.text = reading.server.map { Self.placeWords($0) }
+        server.isHidden = reading.server == nil
+        server.isHere = reading.isHere
+        server.dotColor = reading.server == nil ? nil : Self.reachabilityDot(reading.serverAnswers)
         titleLabel.isHidden = editing && !isHollow
         nameField.isHidden = !(editing && !isHollow)
         underline.isHidden = nameField.isHidden
@@ -326,6 +385,21 @@ final class PartyCardView: UIControl {
         paintSurface()
         applyMotion()
         describe()
+    }
+
+    /// "on studio · Claude Code" with the dot held to the word before it, so a pill that wraps
+    /// breaks between the name and the kind and never leaves a dot at the head of a line.
+    private static func placeWords(_ server: String) -> String {
+        String(localized: "on \(server.replacingOccurrences(of: " · ", with: "\u{00A0}· "))")
+    }
+
+    /// The little lamp in the server's pill: it answered, it did not, or nobody has asked yet.
+    private static func reachabilityDot(_ answers: Bool?) -> UIColor {
+        switch answers {
+        case true?: return Theme.Color.success
+        case false?: return Theme.Color.danger
+        case nil: return Theme.Color.tertiaryLabel
+        }
     }
 
     private func paintSurface() {
@@ -369,13 +443,57 @@ final class PartyCardView: UIControl {
         accessibilityCustomActions = actions
     }
 
+    /// Where the last press lifted, because a card is one control and the press says which part of
+    /// it was meant: in edit mode the model's line is a button, everywhere else the card is taken.
+    override func endTracking(_ touch: UITouch?, with event: UIEvent?) {
+        lastTouch = touch?.location(in: self)
+        super.endTracking(touch, with: event)
+    }
+
     private func tapped() {
+        defer { lastTouch = nil }
         if nameField.isFirstResponder {
             nameField.resignFirstResponder()
             return
         }
-        if isEditing, !card.isHollow { return }
+        if isEditing, !card.isHollow {
+            if let lastTouch, wellFrame.contains(lastTouch) { onReplace?() }
+            return
+        }
         onTake?()
+    }
+
+    /// A press the way `endTracking` reports it: where on the card it lifted, or nowhere.
+    func press(at point: CGPoint?) {
+        lastTouch = point
+        sendActions(for: .touchUpInside)
+    }
+
+    /// The middle of the model's line, in the card's own space.
+    var modelLineCenter: CGPoint {
+        let frame = convert(modelWell.bounds, from: modelWell)
+        return CGPoint(x: frame.midX, y: frame.midY)
+    }
+
+    /// The model's line with a finger's slop around it, in the card's own space.
+    private var wellFrame: CGRect {
+        convert(modelWell.bounds, from: modelWell).insetBy(dx: -6, dy: -8)
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        super.point(inside: point, with: event)
+            || (!badge.isHidden && badge.point(inside: convert(point, to: badge), with: event))
+    }
+
+    /// Every touch inside a card lands on the card, except the three things in it that are
+    /// controls of their own: the name field, the level stepper and the release badge. A label or
+    /// a stack under the finger would otherwise be the view a press began on, and a card that
+    /// relied on those to pass the press up the chain stops being tappable the day one of them
+    /// takes it.
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard let hit = super.hitTest(point, with: event) else { return nil }
+        let own: [UIView] = [stepper, badge, nameField]
+        return own.first { hit === $0 || hit.isDescendant(of: $0) } ?? self
     }
 
     /// The ball picked up: a little larger, tilted the other way a moment, and a shadow under it,
@@ -392,6 +510,14 @@ final class PartyCardView: UIControl {
     func settle() {
         transform = .identity
         layer.shadowOpacity = 0
+    }
+
+    /// The card as a hold lifts it: the bare card without the halo's room around it.
+    var previewTarget: UITargetedPreview {
+        let parameters = UIPreviewParameters()
+        parameters.visiblePath = UIBezierPath(
+            roundedRect: bounds, cornerRadius: Self.radius)
+        return UITargetedPreview(view: self, parameters: parameters)
     }
 
     func setTargeted(_ targeted: Bool) {
@@ -429,22 +555,14 @@ extension PartyCardView {
     override func contextMenuInteraction(
         _ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint
     ) -> UIContextMenuConfiguration? {
-        guard isEditing, !card.isHollow else { return nil }
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-            guard let self else { return nil }
-            return UIMenu(children: [
-                UIAction(
-                    title: String(localized: "Replace…"),
-                    image: UIImage(systemName: "arrow.triangle.2.circlepath")
-                ) { _ in self.onReplace?() },
-                UIAction(title: String(localized: "Rename"), image: UIImage(systemName: "pencil")) {
-                    _ in self.focusName()
-                },
-                UIAction(
-                    title: String(localized: "Release"), image: UIImage(systemName: "xmark"),
-                    attributes: .destructive
-                ) { _ in self.onRelease?() },
-            ])
-        }
+        guard !card.isHollow, !nameField.isFirstResponder else { return nil }
+        return onMenu?(self)
+    }
+
+    override func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        previewForHighlightingMenuWithConfiguration configuration: UIContextMenuConfiguration
+    ) -> UITargetedPreview? {
+        previewTarget
     }
 }

@@ -21,6 +21,7 @@ enum PendingRoute {
     enum Route {
         case link(URL)
         case question(String)
+        case partySlot(Int)
     }
 
     private static let horizon: TimeInterval = 30
@@ -38,6 +39,8 @@ enum PendingRoute {
     static func deliver(_ url: URL) { deliver(.link(url)) }
 
     static func deliver(question: String) { deliver(.question(question)) }
+
+    static func deliver(partySlot number: Int) { deliver(.partySlot(number)) }
 
     private static func deliver(_ route: Route) {
         let scenes = UIApplication.shared.connectedScenes
@@ -60,6 +63,7 @@ enum PendingRoute {
         switch route {
         case .link(let url): return url.absoluteString
         case .question(let text): return "a spoken question of \(text.count) characters"
+        case .partySlot(let number): return "party slot \(number)"
         }
     }
 }

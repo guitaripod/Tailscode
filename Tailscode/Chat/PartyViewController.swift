@@ -9,11 +9,14 @@ struct PartyAim {
     var effort: String?
     var agentOptions: [String]
     var isBusy: Bool
+    var contextTokens: Int? = nil
 }
 
 /// The six models a person carries, as the sheet the model pill opens: six cards, the two models
 /// used lately that none of them holds, and the road to the whole catalog. *Edit* turns the same
-/// cards into the place the party is arranged.
+/// cards into the place the party is arranged. A card says which server runs it; a hold on one
+/// shows what the model is and offers everything Edit does one slot at a time; the number keys take
+/// a slot; and a recent model can be dragged onto a slot to fill it.
 ///
 /// The sheet decides nothing about what a take does. A slot on this machine is handed back as a
 /// resolved preset; a slot on another is handed back as the pick it would be in the chooser, so
@@ -33,11 +36,11 @@ final class PartyViewController: UIViewController {
     private static let margin: CGFloat = 20
 
     private let sources: () -> [ModelSource]
-    private let aim: () -> PartyAim
+    let aim: () -> PartyAim
     private let actions: Actions
     private(set) var isArranging: Bool
-    private var cards: [PartyCard] = []
-    private var currentSources: [ModelSource] = []
+    private(set) var cards: [PartyCard] = []
+    private(set) var currentSources: [ModelSource] = []
     private var recents: [PartyRecent] = []
 
     private let scroll = UIScrollView()
@@ -48,10 +51,10 @@ final class PartyViewController: UIViewController {
     private let grid = UIStackView()
     private var cardViews: [PartyCardView] = []
     private let browseFooter = UIStackView()
-    private let recentRow = UIStackView()
+    private let recentBox = UIStackView()
     private let recentLabel = UILabel()
-    private let recentChips = UIStackView()
     private let editFooter = UILabel()
+    private let pointer = PartyPointer()
     private var dragOrigin: CGPoint = .zero
     private var dragTarget: PartyCardView?
 
@@ -113,11 +116,15 @@ final class PartyViewController: UIViewController {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.reload() }
         }
-        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
-            (party: PartyViewController, _) in party.fitRecentRow()
-        }
         reload()
         syncMode()
+    }
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        becomeFirstResponder()
     }
 
     @objc private func partyChanged() { reload() }
@@ -218,6 +225,9 @@ final class PartyViewController: UIViewController {
         }
         card.onStartRename = { [weak self] in self?.startRename(slot: slot) }
         card.onNameFocus = { [weak self] focused in self?.nameFocus(slot: slot, focused: focused) }
+        card.onMenu = { [weak self] view in self?.menu(for: view) }
+        card.addInteraction(UIDropInteraction(delegate: self))
+        card.addInteraction(UIPointerInteraction(delegate: pointer))
         let pan = UIPanGestureRecognizer(target: self, action: #selector(dragged(_:)))
         pan.delegate = self
         card.addGestureRecognizer(pan)
@@ -230,17 +240,11 @@ final class PartyViewController: UIViewController {
         recentLabel.font = PartyCardView.font(13, .regular)
         recentLabel.adjustsFontForContentSizeCategory = true
         recentLabel.textColor = Theme.Color.secondaryLabel
-        recentLabel.setContentHuggingPriority(.required, for: .horizontal)
-        recentChips.axis = .horizontal
-        recentChips.spacing = 10
-        recentChips.alignment = .center
-        recentChips.distribution = .fill
-        recentRow.axis = .horizontal
-        recentRow.alignment = .center
-        recentRow.spacing = Theme.Spacing.m
-        [recentLabel, recentChips, UIView()].forEach(recentRow.addArrangedSubview)
-        browseFooter.addArrangedSubview(recentRow)
-        browseFooter.setCustomSpacing(Theme.Spacing.s, after: recentRow)
+        recentLabel.accessibilityTraits = .header
+        recentBox.axis = .vertical
+        recentBox.spacing = 0
+        browseFooter.addArrangedSubview(recentBox)
+        browseFooter.setCustomSpacing(Theme.Spacing.s, after: recentBox)
         browseFooter.addArrangedSubview(
             PartyRowView(title: String(localized: "All models…"), symbol: "chevron.right") {
                 [weak self] in self?.browseAll()
@@ -265,7 +269,7 @@ final class PartyViewController: UIViewController {
         let parts = [
             AttributedString(
                 localized:
-                    "**Tap a name** to rename it. **Tap the button** on a ball to change its level."),
+                    "**Tap a name** to rename it, **the model** to replace it, **the button** on a ball to change its level."),
             AttributedString(localized: "**Drag** onto another to swap. ✕ puts it back in the box."),
         ]
         for (index, part) in parts.enumerated() {
@@ -287,21 +291,13 @@ final class PartyViewController: UIViewController {
         return text
     }
 
-    private func fitRecentRow() {
-        let large = traitCollection.preferredContentSizeCategory.isAccessibilityCategory
-        recentRow.axis = large ? .vertical : .horizontal
-        recentRow.alignment = large ? .leading : .center
-        recentChips.axis = large ? .vertical : .horizontal
-        recentChips.alignment = large ? .leading : .center
-    }
-
     func reload() {
         let slots = ModelParty.slots()
         let reading = aim()
         currentSources = sources()
         cards = PartyReading.cards(
             slots: slots, sources: currentSources, model: reading.model, effort: reading.effort,
-            agentOptions: reading.agentOptions)
+            agentOptions: reading.agentOptions, quotas: UsageWidgetStore.cachedQuotas())
         for (view, card) in zip(cardViews, cards) {
             view.render(card, editing: isArranging, busy: reading.isBusy)
         }
@@ -313,24 +309,21 @@ final class PartyViewController: UIViewController {
     }
 
     private func rebuildRecents() {
-        recentChips.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        recentBox.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for recent in recents {
-            let chip = PartyPillView(
-                font: PartyCardView.font(15, .regular),
-                insets: UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 14))
-            chip.text = recent.word
-            chip.dotColor = recent.chip.map { Theme.Color.modelIdentity($0) }
-            chip.accessibilityLabel =
-                recent.machine.map { String(localized: "\(recent.word), on \($0)") } ?? recent.word
-            chip.accessibilityTraits = .button
-            chip.addAction(UIAction { [weak self] _ in self?.take(recent: recent) }, for: .touchUpInside)
-            chip.addInteraction(
+            let row = PartyRecentRow(
+                recent: recent,
+                take: { [weak self] in self?.take(recent: recent) },
+                add: { [weak self] in self?.addToParty(recent: recent) })
+            row.addInteraction(UIDragInteraction(delegate: self))
+            row.addInteraction(
                 UIContextMenuInteraction(
                     delegate: RecentMenu { [weak self] in self?.addToParty(recent: recent) }))
-            recentChips.addArrangedSubview(chip)
+            row.addInteraction(UIPointerInteraction(delegate: pointer))
+            recentBox.addArrangedSubview(row)
         }
-        recentRow.isHidden = recents.isEmpty
-        fitRecentRow()
+        if !recents.isEmpty { recentBox.insertArrangedSubview(recentLabel, at: 0) }
+        recentBox.isHidden = recents.isEmpty
     }
 
     private func syncMode() {
@@ -349,7 +342,7 @@ final class PartyViewController: UIViewController {
         }
     }
 
-    private func toggleEditing() {
+    func toggleEditing() {
         cardViews.forEach { $0.endNaming() }
         isArranging.toggle()
         Theme.Haptics.selection()
@@ -358,7 +351,7 @@ final class PartyViewController: UIViewController {
         UIAccessibility.post(notification: .layoutChanged, argument: titleLabel)
     }
 
-    private func startRename(slot: Int) {
+    func startRename(slot: Int) {
         if !isArranging {
             isArranging = true
             syncMode()
@@ -382,7 +375,7 @@ final class PartyViewController: UIViewController {
         }
     }
 
-    private func release(slot: Int) {
+    func release(slot: Int) {
         Theme.Haptics.selection()
         ModelParty.release(slot: slot)
     }
@@ -394,7 +387,7 @@ final class PartyViewController: UIViewController {
 }
 
 extension PartyViewController {
-    private func tap(slot: Int) {
+    func tap(slot: Int) {
         guard cards.indices.contains(slot) else { return }
         let card = cards[slot]
         guard !card.isHollow else { return fill(slot: slot) }
@@ -402,7 +395,7 @@ extension PartyViewController {
         take(card)
     }
 
-    private func take(_ card: PartyCard) {
+    func take(_ card: PartyCard) {
         guard !card.isAway, let resolved = card.resolved else {
             Theme.Haptics.warning()
             toast(
@@ -422,7 +415,7 @@ extension PartyViewController {
         dismiss(animated: true) { [actions] in actions.takeElsewhere(pick) }
     }
 
-    private func take(recent: PartyRecent) {
+    func take(recent: PartyRecent) {
         guard let machine = recent.machine else {
             Theme.Haptics.success()
             actions.takeModel(recent.selection)
@@ -436,12 +429,12 @@ extension PartyViewController {
         dismiss(animated: true) { [actions] in actions.takeElsewhere(pick) }
     }
 
-    private func browseAll() {
+    func browseAll() {
         Theme.Haptics.tap()
         dismiss(animated: true) { [actions] in actions.browseAll() }
     }
 
-    private func addToParty(recent: PartyRecent) {
+    func addToParty(recent: PartyRecent) {
         let preset = Self.carried(
             recent.selection, profileID: recent.profileID, sources: currentSources, aim: aim())
         PartyAdding.add(
@@ -449,7 +442,7 @@ extension PartyViewController {
             say: { [weak self] in self?.toast($0) })
     }
 
-    private func fill(slot: Int) {
+    func fill(slot: Int) {
         Theme.Haptics.tap()
         actions.fill(self) { [weak self] pick in self?.place(pick, in: slot) }
     }
@@ -489,7 +482,7 @@ extension PartyViewController {
         return index + 1 < ladder.count ? .level(ladder[index + 1]) : .server
     }
 
-    private func stepLevel(slot: Int) {
+    func stepLevel(slot: Int) {
         guard let held = ModelParty.slot(slot), cards.indices.contains(slot),
             cards[slot].takesLevels, let resolved = cards[slot].resolved,
             let source = currentSources.first(where: {

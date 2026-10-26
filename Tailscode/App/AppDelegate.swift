@@ -33,6 +33,12 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         ) { _ in
             MainActor.assumeIsolated { NotificationManager.syncBadge() }
         }
+        TailscodeShortcuts.updateAppShortcutParameters()
+        NotificationCenter.default.addObserver(
+            forName: ModelParty.didChange, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { TailscodeShortcuts.updateAppShortcutParameters() }
+        }
         AppActivityController.shared.adoptStanding()
         TurnWaitCenter.shared.start()
         UsageBackgroundRefresh.register()

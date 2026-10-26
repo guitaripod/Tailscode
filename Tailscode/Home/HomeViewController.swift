@@ -188,6 +188,9 @@ final class HomeViewController: UIViewController {
                         case "party", "partyedit":
                             DialTour.fillParty()
                             self.presentParty(editing: parts[0] == "partyedit")
+                        case "fleetparty", "fleetpartyedit":
+                            DialTour.fillFleetParty()
+                            self.presentParty(editing: parts[0] == "fleetpartyedit")
                         default: break
                         }
                         try? await Task.sleep(for: .seconds(0.6))

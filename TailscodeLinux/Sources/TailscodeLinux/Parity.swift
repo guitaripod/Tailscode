@@ -92,6 +92,8 @@ enum ParityManifest {
         case .modelEffortDial: return .implemented("ModelDialPopover")
         case .modelPresets: return .implemented("reachablePresets")
         case .modelParty: return .implemented("PartyPopover")
+        case .partyHold: return .gap("the popover's cards edit in place; the model's peek, the per-slot level menu and the spent mark are the phone's so far")
+        case .partySpoken: return .notApplicable("a Linux desktop has no system voice assistant or automation layer an app can offer an action to; the chords take a slot from anywhere the app is in front")
         case .unifiedModelChooser: return .implemented("buildMachines")
         case .modelEffortDisplay: return .implemented("ModelBadge")
         case .modelCapabilitySurfacing: return .implemented("dropUnsendableAttachments")

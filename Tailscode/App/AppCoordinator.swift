@@ -368,6 +368,7 @@ final class AppCoordinator: NSObject {
         case usage
         case quickAsk(draft: String?)
         case question(String, askedAt: Date)
+        case partySlot(Int)
         case resume(sessionID: String)
     }
 
@@ -404,6 +405,10 @@ final class AppCoordinator: NSObject {
             }
             let fresh = Date().timeIntervalSince(askedAt) < Self.questionHorizon
             home.presentQuickAsk(asking: question, sends: fresh)
+        case .partySlot(let number):
+            if let home { home.takePartySlot(fromOutside: number) } else {
+                pendingShortcut = .partySlot(number)
+            }
         case .resume(let sessionID):
             if let home { home.openSession(withID: sessionID) } else {
                 pendingShortcut = .resume(sessionID: sessionID)
@@ -647,6 +652,7 @@ final class AppCoordinator: NSObject {
         switch route {
         case .link(let url): handle(url)
         case .question(let question): perform(.question(question, askedAt: Date()))
+        case .partySlot(let number): perform(.partySlot(number))
         }
     }
 

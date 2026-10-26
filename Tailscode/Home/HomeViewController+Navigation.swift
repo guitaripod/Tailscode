@@ -350,6 +350,24 @@ extension HomeViewController {
         composerSend(question)
     }
 
+    /// A slot of the party taken from outside the app (Siri, Shortcuts, the Action Button): the chat
+    /// in front is moved onto it, and with none in front the box on Home is aimed at it and takes the
+    /// ask lane, so the next words typed are the ones that model answers.
+    func takePartySlot(fromOutside number: Int) {
+        guard (1...ModelParty.size).contains(number) else { return }
+        if presentedViewController != nil {
+            dismiss(animated: true) { [weak self] in self?.takePartySlot(fromOutside: number) }
+            return
+        }
+        if let chat = navigationController?.topViewController as? ChatViewController {
+            chat.takePartySlot(number)
+            return
+        }
+        guard throwAskLane() else { return }
+        takeComposePartySlot(number)
+        composerBar.focus()
+    }
+
     /// Whatever covers Home goes, and the box takes the ask lane. False when the gesture went to
     /// setup instead, because a phone with no servers has nobody to ask.
     private func throwAskLane() -> Bool {

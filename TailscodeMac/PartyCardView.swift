@@ -74,7 +74,7 @@ enum PartyMetrics {
             return Measure(titleHeight: 0, subtitleHeight: 0, chip: nil, height: baseHeight)
         }
         let title = height(of: card.title, font: titleFont, width: textWidth, maxLines: 2)
-        let chip = card.machine.map { chipWidth(for: Localized.text("on %@", $0)) }
+        let chip = card.server.map { chipWidth(for: Localized.text("on %@", $0)) }
         let reserve = card.takesLevels && chip == nil ? barsSize.width + 6 * scale : 0
         let subtitle = height(
             of: card.subtitle, font: subtitleFont, width: textWidth - reserve, maxLines: 2)
@@ -114,9 +114,9 @@ final class PartyBarsView: NSView {
     }
 }
 
-/// The machine a slot lives on, as the small pill under the model's line. It wraps rather than
-/// cutting a long machine name, because which machine a tap would move the work to is exactly
-/// what a person has to read.
+/// The server a slot lives on, as the small pill under the model's line, on every card and in the
+/// accent on the server in hand. It wraps rather than cutting a long name, because which machine a
+/// tap would move the work to is exactly what a person has to read.
 @MainActor
 final class PartyMachineChip: NSView {
     private let label = NSTextField(wrappingLabelWithString: "")
@@ -136,8 +136,9 @@ final class PartyMachineChip: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    func show(machine: String) {
-        label.stringValue = Localized.text("on %@", machine)
+    func show(server: String, here: Bool) {
+        label.stringValue = Localized.text("on %@", server)
+        label.textColor = here ? MacTheme.Color.accent : MacTheme.Color.secondaryLabel
         toolTip = label.stringValue
         needsLayout = true
     }
@@ -322,8 +323,8 @@ final class PartyCardView: NSView {
             editing
             ? Localized.text("Fill slot %d", fresh.slot + 1)
             : Localized.text("Slot %d", fresh.slot + 1)
-        chip.isHidden = fresh.machine == nil
-        if let machine = fresh.machine { chip.show(machine: machine) }
+        chip.isHidden = fresh.server == nil
+        if let server = fresh.server { chip.show(server: server, here: fresh.isHere) }
         setAccessibilityLabel(fresh.spoken)
         face.alphaValue = fresh.isAway ? 0.45 : 1
         underline.isHidden = !(editing && !fresh.isHollow)

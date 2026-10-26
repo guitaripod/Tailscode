@@ -1,7 +1,8 @@
 import AppIntents
 
 /// What Siri, Spotlight, the Shortcuts app and Vocal Shortcuts offer before the person builds
-/// anything: a question asked out loud, and the quick ask box opened to type in.
+/// anything: a question asked out loud, the quick ask box opened to type in, and one of the six
+/// models a person carries taken by the name they gave it.
 struct TailscodeShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -21,5 +22,13 @@ struct TailscodeShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Quick Ask",
             systemImageName: "sparkle")
+        AppShortcut(
+            intent: UsePartySlotIntent(),
+            phrases: [
+                "Use \(\.$slot) in \(.applicationName)",
+                "Switch \(.applicationName) to \(\.$slot)",
+            ],
+            shortTitle: "Use a Model",
+            systemImageName: "circle.grid.3x3.fill")
     }
 }

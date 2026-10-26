@@ -181,6 +181,94 @@ extension DeviceStores {
             #expect(cards[0].spoken.hasPrefix("Slot 1, Local"))
         }
 
+        @Test func everyCardNamesTheServerThatRunsItAndSaysWhenItIsHere() {
+            let here = source("arch", current: true, models: [
+                ModelInfo(id: "qwen-daily", name: "Qwen Daily", providerID: "llama", variants: ["think"]),
+            ], reachable: true)
+            let there = source("macbook", current: false, models: [
+                ModelInfo(id: "gpt-5.6", name: "GPT-5.6", providerID: "openai"),
+            ], reachable: nil)
+            let slots: [PartySlot?] = [
+                PartySlot(preset: qwen(.level("think"))),
+                PartySlot(preset: ModelPreset(selection: ModelSelection(providerID: "openai", modelID: "gpt-5.6"), effort: .keep)),
+                PartySlot(preset: ModelPreset(selection: ModelSelection(providerID: "nobody", modelID: "ghost"), effort: .keep)),
+                nil, nil, nil,
+            ]
+            let cards = PartyReading.cards(
+                slots: slots, sources: [here, there], model: nil, effort: nil, agentOptions: [])
+            #expect(cards[0].server == here.title && cards[0].isHere && cards[0].machine == nil)
+            #expect(cards[0].serverAnswers == true)
+            #expect(cards[0].spoken.contains("on \(here.title), where you are"))
+            #expect(cards[1].server == there.title && !cards[1].isHere && cards[1].machine == there.title)
+            #expect(cards[1].serverAnswers == nil)
+            #expect(cards[1].spoken.hasSuffix("on \(there.title)"))
+            #expect(cards[2].server == nil && !cards[2].isHere)
+            #expect(cards[3].server == nil && !cards[3].isHere)
+        }
+
+        @Test func aSlotWhoseAccountHasUsedUpItsWindowIsSpentAndSaysSo() {
+            let here = source("arch", current: true, models: [
+                ModelInfo(id: "claude-opus-5", name: "Claude Opus 5", providerID: "anthropic"),
+                ModelInfo(id: "claude-haiku-5", name: "Claude Haiku 5", providerID: "anthropic"),
+            ])
+            let wall = UsageQuota(
+                providerName: "Claude", subtitle: "", source: "test", live: true,
+                gauges: [
+                    UsageQuota.Gauge(
+                        key: "weekly", label: "Weekly", fraction: 1, resetsAt: nil, trustedReset: false)
+                ], details: [])
+            let slots: [PartySlot?] = [
+                PartySlot(preset: ModelPreset(selection: ModelSelection(providerID: "anthropic", modelID: "claude-opus-5"), effort: .keep)),
+                nil, nil, nil, nil, nil,
+            ]
+            let spent = PartyReading.cards(
+                slots: slots, sources: [here], model: nil, effort: nil, agentOptions: [], quotas: [wall])
+            let open = PartyReading.cards(
+                slots: slots, sources: [here], model: nil, effort: nil, agentOptions: [])
+            #expect(spent[0].isSpent && spent[0].spoken.hasSuffix("limit reached"))
+            #expect(!open[0].isSpent)
+        }
+
+        @Test func holdingACardReadsTheModelFromTheServerThatRunsIt() {
+            let there = source("macbook", current: false, models: [
+                ModelInfo(id: "gpt-5.6", name: "GPT-5.6", providerID: "openai", variants: ["low", "high"], contextWindow: 400_000),
+            ])
+            let slots: [PartySlot?] = [
+                PartySlot(preset: ModelPreset(selection: ModelSelection(providerID: "openai", modelID: "gpt-5.6"), effort: .level("high"))),
+                nil, nil, nil, nil, nil,
+            ]
+            let cards = PartyReading.cards(
+                slots: slots, sources: [there], model: nil, effort: nil, agentOptions: [])
+            let reading = PartyReading.peek(
+                cards[0], sources: [there], selected: nil, effort: nil, agentOptions: [],
+                contextTokens: nil)
+            #expect(reading?.name == "GPT-5.6")
+            #expect(reading?.detail.hasPrefix(there.title) == true)
+            #expect(reading?.facts.contains { $0.label == Localized.text("context") } == true)
+            #expect(PartyReading.peek(
+                .hollow(1), sources: [there], selected: nil, effort: nil, agentOptions: [],
+                contextTokens: nil) == nil)
+        }
+
+        @Test func holdingACardOnAClaudeCodeServerReadsItsPeekToo() {
+            let studio = ModelSource(
+                profileID: "studio", name: "studio", backend: .claudeCode,
+                models: [
+                    ModelInfo(id: "claude-sonnet-5", name: "Sonnet 5", providerID: "anthropic", variants: ["low", "high"], contextWindow: 1_000_000)
+                ], isCurrent: true, allowsServerDefault: true, acceptsAnyModelID: true, isReachable: true)
+            let slots: [PartySlot?] = [
+                PartySlot(preset: ModelPreset(selection: ModelSelection(providerID: "anthropic", modelID: "claude-sonnet-5"), effort: .level("high"))),
+                nil, nil, nil, nil, nil,
+            ]
+            let cards = PartyReading.cards(
+                slots: slots, sources: [studio], model: nil, effort: nil, agentOptions: [])
+            #expect(cards[0].resolved != nil)
+            let reading = PartyReading.peek(
+                cards[0], sources: [studio], selected: nil, effort: nil, agentOptions: [],
+                contextTokens: nil)
+            #expect(reading != nil)
+        }
+
         @Test func aMachineThatDoesNotAnswerDimsItsSlotsButKeepsThem() {
             let down = source("macbook", current: false, models: [
                 ModelInfo(id: "gpt-5.6", name: "GPT-5.6", providerID: "openai"),
@@ -209,6 +297,7 @@ extension DeviceStores {
             ]
             let found = PartyReading.recents(slots: slots, sources: [here], recent: recent, limit: 2)
             #expect(found.map(\.selection.modelID) == ["b", "c"])
+            #expect(found.allSatisfy { $0.server == here.title && $0.machine == nil })
         }
 
         @Test func aPartyPickSaysSoOnEveryMachine() {
