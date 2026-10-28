@@ -1,7 +1,6 @@
 import Foundation
 import MidgarCore
 import UIKit
-import UIKit.UIGestureRecognizerSubclass
 
 /// Says when the main thread was too busy to answer, and for how long.
 ///
@@ -15,14 +14,15 @@ import UIKit.UIGestureRecognizerSubclass
 ///
 /// The question is asked every 100 ms while somebody is using the app and every 250 ms once five
 /// seconds have gone by with no touch and no typing, because a stutter is something a person feels
-/// and a phone left on a desk has nobody to feel one. Touches are noticed by a gesture recognizer
-/// on each window that never recognizes anything and never delays or cancels a touch: it writes
-/// one timestamp in `touchesBegan` and `touchesMoved` and is otherwise inert, which is the whole
-/// per-event cost. Keystrokes arrive in the keyboard's own window, so the text fields' change
-/// notifications stamp the same clock. The fast tempo comes back the instant the app becomes
-/// active, a touch or keystroke arrives, or a stall is logged, so a slow sample never sits over the
-/// moment a person starts to scroll. The tempo changes only how often the question is asked; what
-/// counts as late (`threshold`) is the same at both.
+/// and a phone left on a desk has nobody to feel one. Touches are noticed at the window's own event
+/// stream — the cheapest place that sees every one and puts nothing in the touch path, where a
+/// recognizer that watches without recognizing can be left holding a sequence the system took away
+/// (the swipe up that leaves the app begins inside it) and the window's pans stop being recognized.
+/// Keystrokes arrive in the keyboard's own window, so the text fields' change notifications stamp
+/// the same clock. The fast tempo comes back the instant the app becomes active, a touch or
+/// keystroke arrives, or a stall is logged, so a slow sample never sits over the moment a person
+/// starts to scroll. The tempo changes only how often the question is asked; what counts as late
+/// (`threshold`) is the same at both.
 final class MainStallMonitor: @unchecked Sendable {
     static let shared = MainStallMonitor()
 
@@ -57,13 +57,16 @@ final class MainStallMonitor: @unchecked Sendable {
             self, selector: #selector(resigned),
             name: UIApplication.willResignActiveNotification, object: nil)
         DispatchQueue.main.async { [self] in
-            watchWindows()
+            MainActor.assumeIsolated { watchWindows() }
             if UIApplication.shared.applicationState == .active { arm() }
         }
     }
 
     @objc private func becameActive() {
-        MainActor.assumeIsolated { watchWindows() }
+        MainActor.assumeIsolated {
+            watchWindows()
+            releaseStuckGestures()
+        }
         arm()
         noteActivity()
     }
@@ -72,13 +75,39 @@ final class MainStallMonitor: @unchecked Sendable {
 
     @objc private func typed() { noteActivity() }
 
-    /// Puts the touch stamp on every window of every scene that does not carry one yet.
+    /// Hands the window the one timestamp this needs, once. The window reports a touch from its own
+    /// event stream rather than through a recognizer: a recognizer that is watching but never
+    /// recognizes still holds the touch sequence it was given, and a sequence the system ends
+    /// without telling the app — the swipe that leaves the app begins here — can leave every pan in
+    /// that window unrecognized when the app comes back.
     @MainActor private func watchWindows() {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         for window in scenes.flatMap(\.windows) {
-            let stamped = window.gestureRecognizers?.contains { $0 is TouchStamp } ?? false
-            guard !stamped else { continue }
-            window.addGestureRecognizer(TouchStamp { [weak self] in self?.noteActivity() })
+            guard let window = window as? TouchReportingWindow, window.onTouch == nil else {
+                continue
+            }
+            window.onTouch = { [weak self] in self?.noteActivity() }
+        }
+    }
+
+    /// A recognizer still holding a sequence after the app has been away is a sequence the system
+    /// ended without reaching it — the swipe up that left the app began inside it, a call or a
+    /// banner took the finger — and every pan beneath a recognizer like that is refused until
+    /// something resets it. A window that answers taps but not scrolls is exactly this, and a menu
+    /// opening is the accident that used to clear it. Nothing here is legitimately in flight at
+    /// activation, so each one is released, and named in the log the first time it has to be.
+    @MainActor private func releaseStuckGestures() {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let scene = scene as? UIWindowScene else { continue }
+            for window in scene.windows {
+                var released: [String] = []
+                window.releaseStuckGestures(into: &released)
+                guard !released.isEmpty else { continue }
+                MidgarLog.info(
+                    "gestures released on activate: \(released.joined(separator: ", "))",
+                    category: .lifecycle
+                )
+            }
         }
     }
 
@@ -153,21 +182,29 @@ final class MainStallMonitor: @unchecked Sendable {
     }
 }
 
-/// The inert recognizer that tells the monitor a finger is on the screen: it never leaves the
-/// possible state, so it neither recognizes anything nor holds another recognizer up, and it
-/// neither delays nor cancels a touch.
-private final class TouchStamp: UIGestureRecognizer {
-    private let stamp: () -> Void
+/// The window a scene draws in, which says when a touch arrives without standing in its way.
+final class TouchReportingWindow: UIWindow {
+    var onTouch: (() -> Void)?
 
-    init(_ stamp: @escaping () -> Void) {
-        self.stamp = stamp
-        super.init(target: nil, action: nil)
-        cancelsTouchesInView = false
-        delaysTouchesBegan = false
-        delaysTouchesEnded = false
+    override func sendEvent(_ event: UIEvent) {
+        if event.type == .touches { onTouch?() }
+        super.sendEvent(event)
     }
+}
 
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) { stamp() }
-
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) { stamp() }
+extension UIView {
+    /// Every gesture recognizer below this view that is not waiting for a touch, put back to
+    /// waiting and named by its type, state and carrier, so the window that comes back holding one
+    /// is a line in the log rather than a report of an app that will not scroll.
+    func releaseStuckGestures(into released: inout [String]) {
+        for recognizer in gestureRecognizers ?? [] where recognizer.state != .possible {
+            released.append(
+                "\(type(of: recognizer)) state=\(recognizer.state.rawValue) on=\(type(of: self))")
+            recognizer.isEnabled = false
+            recognizer.isEnabled = true
+        }
+        for subview in subviews {
+            subview.releaseStuckGestures(into: &released)
+        }
+    }
 }

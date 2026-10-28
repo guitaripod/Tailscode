@@ -10,7 +10,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         options connectionOptions: UIScene.ConnectionOptions
     ) {
         guard let windowScene = scene as? UIWindowScene else { return }
-        let window = UIWindow(windowScene: windowScene)
+        let window = TouchReportingWindow(windowScene: windowScene)
         #if DEBUG
             if let preview = AwayPreview.viewControllerIfRequested()
                 ?? NoticeCardPreview.viewControllerIfRequested()
