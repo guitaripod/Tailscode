@@ -233,8 +233,8 @@ enum ParityManifest {
         case .agentsHour: return .implemented("AgentHourView")
         case .agentsWatch: return .implemented("AgentsWatchView")
         case .agentsLocalWords: return .implemented("PlainWordsModel")
-        case .agentsWatchEffects: return .gap("Being built: Core WallEffectQueue drives it")
-        case .agentsWatchStyle: return .gap("Being built: Core WallStyle holds it")
+        case .agentsWatchEffects: return .implemented("WatchEffectsLayer")
+        case .agentsWatchStyle: return .implemented("SettingsWatchStyle")
         }
     }
 }

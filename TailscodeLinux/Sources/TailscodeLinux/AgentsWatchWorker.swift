@@ -167,6 +167,12 @@ final class WatchWorkerView: @unchecked Sendable {
         for canvas in [card, glyph, bar] { canvas.redraw() }
     }
 
+    /// The palette changed: lay the small tile out and paint it again.
+    func paletteChanged() {
+        container.invalidate()
+        redrawAll()
+    }
+
     var isCount: Bool {
         if case .more? = face { return true }
         return false

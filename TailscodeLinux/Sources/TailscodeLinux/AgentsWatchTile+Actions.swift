@@ -38,7 +38,9 @@ extension WatchTileView {
     }
 
     func approveDown() {
-        guard let tile, !tile.isAwayState, !context.actions.state(tile.id).blocks(.approve) else { return }
+        guard let tile, !tile.isAwayState, context.style.approvals == .hold,
+            !context.actions.state(tile.id).blocks(.approve)
+        else { return }
         context.touched()
         clearHint()
         gauge.begin(at: context.clock.now)

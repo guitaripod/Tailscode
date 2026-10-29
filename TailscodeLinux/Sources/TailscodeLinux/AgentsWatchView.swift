@@ -15,6 +15,9 @@ final class AgentsWatchView: @unchecked Sendable {
     let motes = AgentsCanvas(width: 1, height: 1)
     let vignette = AgentsCanvas(width: 1, height: 1)
     let plates = AgentsCanvas(width: 1, height: 1)
+    let effects = WatchEffectsLayer()
+    let groundCache = WatchGroundCache()
+    let auroraCache = WatchAuroraCache()
     let scrim = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
     let top: WatchTopBand
     let calm: WatchCalmView
@@ -43,6 +46,9 @@ final class AgentsWatchView: @unchecked Sendable {
     var lastSize = (width: 0.0, height: 0.0)
     var drift = (x: 0.0, y: 0.0)
     var cadence = WatchCadence()
+    var liveBaseline: AgentWall?
+    var fadePumping = false
+    var lightsDrawn = 0
     lazy var lap = RepeatingMotion { [weak self] in self?.frame() }
     var onHourWanted: () -> Void = {}
     var onPeekExpired: () -> Void = {}
@@ -86,6 +92,7 @@ final class AgentsWatchView: @unchecked Sendable {
         stage.add(ground.widget, layer: .panes)
         stage.add(motes.widget, layer: .panes)
         stage.add(plates.widget, layer: .panes)
+        stage.add(effects.canvas.widget, layer: .panes)
         for widget in top.widgets + rails.widgets { stage.add(widget, layer: .dividers) }
         stage.add(calm.orb.widget, layer: .dividers)
         stage.add(calm.line.widget, layer: .dividers)
@@ -103,6 +110,7 @@ final class AgentsWatchView: @unchecked Sendable {
             }
         }
         applyWall(wall, now: context.clock.now, event: false)
+        apply(style: Preferences.agentsWatchStyle)
     }
 
     var peekRequest: (String) -> Void = { _ in }
@@ -122,9 +130,9 @@ final class AgentsWatchView: @unchecked Sendable {
         let tilesNow = wall.tiles
         geometry = WatchGeometry.make(
             width: w, height: h, tiles: tilesNow, columns: wall.columns, rows: wall.rows,
-            isCalm: wall.isCalm, drift: drift)
+            isCalm: wall.isCalm, drift: drift, style: context.style)
         let full = TileRect(x: 0, y: 0, width: width, height: height)
-        for widget in [ground.widget, motes.widget, plates.widget, vignette.widget, scrim] {
+        for widget in [ground.widget, motes.widget, plates.widget, effects.canvas.widget, vignette.widget, scrim] {
             sink.place(widget, full)
         }
         placeTop(sink)
@@ -145,8 +153,8 @@ final class AgentsWatchView: @unchecked Sendable {
             let lineY = side.maxY - 1.4 * geometry.unit
             sink.place(calm.line.widget, rect(WatchRect(x: geometry.grid.x, y: lineY, width: geometry.grid.width, height: 4 * geometry.unit)))
         }
-        sink.place(ribbon.canvas.widget, rect(geometry.ribbon))
-        rails.place(geometry, sink: sink)
+        if context.style.showsHour { sink.place(ribbon.canvas.widget, rect(geometry.ribbon)) }
+        if context.style.showsRails { rails.place(geometry, sink: sink) }
         peekLayer.place(width: w, height: h, unit: geometry.unit, sink: sink)
         noteShape(aspect: w / h)
     }
@@ -164,6 +172,7 @@ final class AgentsWatchView: @unchecked Sendable {
         top.watchLine.set(style: context.label(2.4, ink: context.palette.dim))
         sink.place(top.headline.widget, rect(geometry.headline))
         sink.place(top.watchLine.widget, rect(geometry.watchLine))
+        guard context.style.showsClock else { return }
         sink.place(top.clock.widget, rect(geometry.clock))
         sink.place(top.date.widget, rect(geometry.date))
     }
@@ -201,16 +210,20 @@ final class AgentsWatchView: @unchecked Sendable {
         let next = AgentWall.read(
             board: board, hour: hour, now: now, aspect: lastSize.width / lastSize.height,
             gridAspect: gridAspect, previous: wall)
-        applyWall(next, now: now, event: true)
+        applyWall(next, now: now, event: true, live: true)
     }
 
-    func applyWall(_ next: AgentWall, now: Date, event: Bool) {
+    func applyWall(_ next: AgentWall, now: Date, event: Bool, live: Bool = false) {
         let moved = !next.sameShown(as: wall)
         let signature = Self.signature(next)
         let isEvent = event && signature != eventSignature
         eventSignature = signature
         let before = wall.mood
         let hadOverdue = wall.hasOverdue
+        let events = live ? WallEvents.between(liveBaseline, next) : []
+        let contexts = events.isEmpty ? [:] : Self.contexts(from: liveBaseline, to: next)
+        liveBaseline = live ? next : nil
+        if !events.isEmpty { remember(departing: next) }
         wall = next
         context.allowsBigType = next.tiles.count <= 3
         dim.observe(next.mood, at: now)
@@ -233,16 +246,17 @@ final class AgentsWatchView: @unchecked Sendable {
         ribbon.apply(hour: hour, calm: next.isCalm && next.tiles.isEmpty, unit: context.unit)
         refreshFocus()
         if moved { stage.invalidate() }
-        if before != next.mood { ground.redraw() }
+        if before != next.mood || (moved && context.style.light) { ground.redraw() }
         if hadOverdue != next.hasOverdue { vignette.redraw() }
+        play(events, contexts: contexts)
         updateClock()
     }
 
-    private func syncWorkers(_ next: AgentWall, now: Date) {
+    func syncWorkers(_ next: AgentWall, now: Date) {
         var named = Set<String>()
         var counted = Set<String>()
         for tile in next.tiles {
-            guard let squad = tile.squad else { continue }
+            guard context.style.showsSquads, let squad = tile.squad else { continue }
             for (slot, _) in squad.slots.enumerated() where tile.workers.indices.contains(slot) {
                 let worker = tile.workers[slot]
                 named.insert(worker.id)

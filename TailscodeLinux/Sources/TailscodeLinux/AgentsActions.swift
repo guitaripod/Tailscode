@@ -73,6 +73,8 @@ extension AgentsAction {
 struct AgentsHooks: @unchecked Sendable {
     var openChat: @Sendable (_ key: String, _ draft: String?) -> Void
     var confirmStop: @Sendable (_ title: String, _ proceed: @escaping @Sendable () -> Void) -> Void
+    /// Opens Preferences on the wall's Style group, the one place the style lives.
+    var openStyle: @Sendable () -> Void = {}
 }
 
 /// Every press the board answers, on the GTK thread. It guards the one rule all of them share: a

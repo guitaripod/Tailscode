@@ -105,6 +105,9 @@ final class AgentsHookLog: @unchecked Sendable {
     private var _opened: [(String, String?)] = []
     private var _asked: [String] = []
     private var _proceed: (@Sendable () -> Void)?
+    private var _styleOpened = 0
+
+    var styleOpened: Int { lock.withLock { _styleOpened } }
 
     var opened: [(String, String?)] { lock.withLock { _opened } }
     var asked: [String] { lock.withLock { _asked } }
@@ -129,7 +132,8 @@ final class AgentsHookLog: @unchecked Sendable {
     var hooks: AgentsHooks {
         AgentsHooks(
             openChat: { [self] key, draft in opened(key, draft) },
-            confirmStop: { [self] title, proceed in asked(title, proceed) })
+            confirmStop: { [self] title, proceed in asked(title, proceed) },
+            openStyle: { [self] in lock.withLock { _styleOpened += 1 } })
     }
 }
 

@@ -35,6 +35,26 @@ struct WatchPalette: Equatable, Sendable {
     let failed: PartyInk
     let source: Palette
 
+    private init(
+        source: Palette, ground: PartyInk, groundDeep: PartyInk, text: PartyInk, dim: PartyInk,
+        rule: PartyInk, working: PartyInk, thinking: PartyInk, needs: PartyInk, overdue: PartyInk,
+        quiet: PartyInk, finished: PartyInk, failed: PartyInk
+    ) {
+        self.source = source
+        self.ground = ground
+        self.groundDeep = groundDeep
+        self.text = text
+        self.dim = dim
+        self.rule = rule
+        self.working = working
+        self.thinking = thinking
+        self.needs = needs
+        self.overdue = overdue
+        self.quiet = quiet
+        self.finished = finished
+        self.failed = failed
+    }
+
     init(source: Palette) {
         self.source = source
         let canvas = PartyInk(hex: source.canvas)
@@ -50,6 +70,37 @@ struct WatchPalette: Equatable, Sendable {
         overdue = PartyInk(hex: source.warn).mixed(with: PartyInk(hex: source.danger), 0.62).lifted(0.08)
         quiet = PartyInk(hex: source.textDim).mixed(with: PartyInk(hex: source.info), 0.22).sunk(0.12)
         finished = PartyInk(hex: source.info)
+    }
+
+    private static let warmth = PartyInk(red: 1, green: 0.64, blue: 0.4)
+
+    /// The same palette warmer and dimmer, for the hours when a screen in a dark room should not
+    /// glare. Core's `WallPalette.night()` has the same formulas, so the three walls go warm alike.
+    func night() -> WatchPalette {
+        let warm = Self.warmth
+        func shade(_ ink: PartyInk) -> PartyInk { ink.mixed(with: warm, 0.22).sunk(0.2) }
+        func settle(_ ink: PartyInk) -> PartyInk { ink.mixed(with: warm, 0.06).sunk(0.25) }
+        return WatchPalette(
+            source: source, ground: settle(ground), groundDeep: settle(groundDeep), text: shade(text),
+            dim: shade(dim), rule: shade(rule), working: shade(working), thinking: shade(thinking),
+            needs: shade(needs), overdue: shade(overdue), quiet: shade(quiet), finished: shade(finished),
+            failed: shade(failed))
+    }
+
+    /// The colour an effect's role names; `tile` is the state's own, or plain text when no state is
+    /// given.
+    func ink(_ role: WallEffect.Ink, state: WallState?) -> PartyInk {
+        switch role {
+        case .working: return working
+        case .thinking: return thinking
+        case .needs: return needs
+        case .overdue: return overdue
+        case .failed: return failed
+        case .finished: return finished
+        case .quiet: return quiet
+        case .dim: return dim
+        case .tile: return state.map { ink($0) } ?? text
+        }
     }
 
     static func current() -> WatchPalette {

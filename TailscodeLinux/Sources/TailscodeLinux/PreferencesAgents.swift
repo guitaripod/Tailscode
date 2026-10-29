@@ -1,4 +1,5 @@
 import Foundation
+import TailscodeCore
 
 extension Preferences {
     private static let agentsWidthKey = "tailscode.agents.width"
@@ -42,6 +43,19 @@ extension Preferences {
     static func setPlainWordsModel(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         SettingsFile.set(trimmed.isEmpty ? nil : trimmed, forKey: plainWordsModelKey)
+    }
+
+    private static let watchStyleKey = "agentsWatchStyle"
+
+    /// How the wall looks and behaves on this device: Core's `WallStyle`, kept as its own JSON text
+    /// and read when a wall opens and when Settings changes it, never on a timer. Nothing stored,
+    /// or text that does not decode, is the Studio style.
+    static var agentsWatchStyle: WallStyle {
+        WallStyle.decoded(UserDefaults.standard.string(forKey: watchStyleKey))
+    }
+
+    static func setAgentsWatchStyle(_ style: WallStyle?) {
+        SettingsFile.set(style?.encoded(), forKey: watchStyleKey)
     }
 
     static func forgetAgentsWindowSize() {

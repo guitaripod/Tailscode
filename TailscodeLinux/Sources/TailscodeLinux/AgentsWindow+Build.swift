@@ -25,6 +25,12 @@ extension AgentsWindow {
         controls = WatchControls(window: window, toolbar: toolbarHandle, clock: watchView.context.clock)
         adw_header_bar_pack_end(op(UnsafeMutableRawPointer(bar)), controls.fullscreenButton)
         adw_header_bar_pack_end(op(UnsafeMutableRawPointer(bar)), controls.awakeButton)
+        adw_header_bar_pack_end(op(UnsafeMutableRawPointer(bar)), styleButton)
+        tailscode_set_accessible_label(styleButton, Localized.text("Style"))
+        gtk_widget_set_tooltip_text(styleButton, Localized.text("How the wall looks and moves"))
+        gtk_widget_set_focus_on_click(styleButton, 0)
+        let openStyle = hooks.openStyle
+        Gtk.connect(UnsafeMutableRawPointer(styleButton), "clicked") { openStyle() }
         wireControls()
         applyLens()
         Gtk.onKey(window) { [weak self] keyval, state in
@@ -165,6 +171,7 @@ extension AgentsWindow {
         gtk_stack_set_visible_child_name(op(stack), name)
         gtk_toggle_button_set_active(ptr(lensButton(mode)), 1)
         let wall = mode == .watch
+        gtk_widget_set_visible(styleButton, wall ? 1 : 0)
         gtk_widget_set_visible(revealer, !wall && selectedKey != nil ? 1 : 0)
         AgentsParts.setClass(window, "agents-wall-window", wall)
         if let header { AgentsParts.setClass(header, "agents-wall-bar", wall) }

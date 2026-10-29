@@ -58,35 +58,42 @@ struct WatchGeometry: Equatable {
 
     static func make(
         width: Double, height: Double, tiles: [WallTile], columns: Int, rows: Int, isCalm: Bool,
-        drift: (x: Double, y: Double) = (0, 0)
+        drift: (x: Double, y: Double) = (0, 0), style: WallStyle = .studio
     ) -> WatchGeometry {
         let unit = unit(width: width, height: height)
         let portrait = height > width
         let margin = 3.0 * unit
-        let clockWidth = (portrait ? 27.0 : 30.0) * unit
+        let showsClock = style.showsClock
+        let clockWidth = showsClock ? (portrait ? 27.0 : 30.0) * unit : 0
         let topY = 2.4 * unit + drift.y
         let bandHeight = (portrait ? 19.0 : 14.0) * unit
-        let headlineWidth = max(10 * unit, width - 2 * margin - clockWidth - 2 * unit)
+        let headlineWidth = max(10 * unit, width - 2 * margin - (showsClock ? clockWidth + 2 * unit : 0))
         let headline = WatchRect(x: margin + drift.x, y: topY, width: headlineWidth, height: bandHeight - 4.2 * unit)
         let watchLine = WatchRect(
             x: margin + drift.x, y: headline.maxY + 0.2 * unit, width: headlineWidth, height: 3.0 * unit)
         let clockX = width - margin - clockWidth + drift.x
-        let clock = WatchRect(x: clockX, y: topY, width: clockWidth, height: 8.4 * unit)
-        let date = WatchRect(x: clockX, y: clock.maxY + 0.2 * unit, width: clockWidth, height: 3.0 * unit)
+        let clock = WatchRect(x: clockX, y: topY, width: clockWidth, height: showsClock ? 8.4 * unit : 0)
+        let date = WatchRect(
+            x: clockX, y: clock.maxY + (showsClock ? 0.2 * unit : 0), width: clockWidth,
+            height: showsClock ? 3.0 * unit : 0)
 
         let ribbonHeight = (isCalm && tiles.isEmpty ? 14.0 : 8.8) * unit
         let railHeight = 4.4 * unit
+        let railsOn = style.showsRails
         let bottom = height - 1.8 * unit + drift.y
-        let rail = WatchRect(x: margin + drift.x, y: bottom - railHeight, width: width - 2 * margin, height: railHeight)
+        let rail = WatchRect(
+            x: margin + drift.x, y: bottom - railHeight, width: width - 2 * margin,
+            height: railsOn ? railHeight : 0)
+        let ribbonBottom = railsOn ? rail.y - 0.8 * unit : bottom
         let ribbon = WatchRect(
-            x: margin + drift.x, y: rail.y - 0.8 * unit - ribbonHeight, width: width - 2 * margin,
-            height: ribbonHeight)
+            x: margin + drift.x, y: ribbonBottom - ribbonHeight, width: width - 2 * margin,
+            height: style.showsHour ? ribbonHeight : 0)
         let leftWidth = rail.width * 0.56
-        let recent = WatchRect(x: rail.x, y: rail.y, width: leftWidth - unit, height: rail.height)
+        let recent = WatchRect(x: rail.x, y: rail.y, width: max(0, leftWidth - unit), height: rail.height)
         let listed = WatchRect(x: rail.x + leftWidth, y: rail.y, width: rail.width - leftWidth, height: rail.height)
 
         let gridTop = max(watchLine.maxY, date.maxY) + 1.6 * unit
-        let gridBottom = ribbon.y - 1.4 * unit
+        let gridBottom = (style.showsHour ? ribbon.y : ribbonBottom) - 1.4 * unit
         let grid = WatchRect(
             x: margin, y: gridTop, width: width - 2 * margin, height: max(0, gridBottom - gridTop))
         let gutter = Self.gutter * unit
@@ -102,11 +109,13 @@ struct WatchGeometry: Equatable {
                 width: span * cellWidth + (span - 1) * gutter, height: cellHeight)
         }
         let squads = zip(tiles, placed).map { tile, cell in
-            tile.squad.map {
-                WatchSquadRects(
-                    parent: cell.inside($0.parent), slots: $0.slots.map(cell.inside),
-                    more: $0.more.map(cell.inside))
-            }
+            style.showsSquads
+                ? tile.squad.map {
+                    WatchSquadRects(
+                        parent: cell.inside($0.parent), slots: $0.slots.map(cell.inside),
+                        more: $0.more.map(cell.inside))
+                }
+                : nil
         }
         let side = min(grid.width, grid.height) * 0.62
         let centre = WatchRect(

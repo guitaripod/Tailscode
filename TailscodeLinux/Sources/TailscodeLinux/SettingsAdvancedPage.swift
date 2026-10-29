@@ -3,12 +3,13 @@ import CGtkShim
 import Foundation
 import TailscodeCore
 
-/// Advanced: what a bug report needs, what the app keeps on disk, the opt-in for plain words from a
-/// local model, and work that is not ready.
+/// Advanced: what a bug report needs, what the app keeps on disk, how the agents wall looks and
+/// moves, the opt-in for plain words from a local model, and work that is not ready.
 enum SettingsAdvancedPage {
     static func fill(_ page: UnsafeMutablePointer<GtkWidget>, _ context: SettingsContext) {
         addDiagnostics(to: page)
         addStorage(to: page)
+        SettingsWatchStyle.add(to: page)
         SettingsPlainWords.add(to: page)
         addAlpha(page, context)
     }

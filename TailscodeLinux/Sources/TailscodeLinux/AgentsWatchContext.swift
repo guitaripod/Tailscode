@@ -6,7 +6,10 @@ import TailscodeCore
 /// What every part of the wall shares: the palette it is drawn in, the clock it waits by, the unit
 /// its sizes are multiples of, and the doors out of it (a peek, a chat, an answer).
 final class WatchContext: @unchecked Sendable {
+    let dayPalette = WatchPalette.current()
     var palette = WatchPalette.current()
+    var style = WallStyle.studio
+    var isNight = false
     let clock = WatchClock()
     var unit = 10.8
     var animated = RepeatingMotion.allowed

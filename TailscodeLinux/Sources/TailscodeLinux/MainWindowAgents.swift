@@ -91,6 +91,12 @@ extension MainWindow {
             },
             confirmStop: { [weak self] title, proceed in
                 Gtk.onMain { [weak self] in self?.confirmAgentStop(title: title, proceed: proceed) }
+            },
+            openStyle: { [weak self] in
+                Gtk.onMain { [weak self] in
+                    self?.presentSettings(page: .advanced)
+                    SettingsWatchStyle.reveal()
+                }
             })
     }
 

@@ -82,14 +82,17 @@ struct HoldGauge: Equatable {
     }
 }
 
-/// How bright the wall is: full, dimmed by hand, or dimmed because nothing has happened for
-/// ten minutes of calm. An event of any kind brings it back, and the amount eases there.
+/// How bright the wall is: full, dimmed by hand, or dimmed because nothing has happened for as
+/// long as the style asks (ten minutes unless it says otherwise). An event of any kind brings it
+/// back, and the amount eases there.
 struct WatchDim {
-    static let calmFor: TimeInterval = 600
+    static let defaultCalmFor: TimeInterval = 600
     static let level = 0.6
     static let easeOut: TimeInterval = 4
     static let easeBack: TimeInterval = 1
 
+    /// How long a calm wall waits before it dims by itself; nil never dims it, though a hand still can.
+    var calmFor: TimeInterval? = Self.defaultCalmFor
     private(set) var calmSince: Date?
     private(set) var manual = false
     private(set) var amount = 0.0
@@ -98,8 +101,8 @@ struct WatchDim {
     func isDimmed(at now: Date) -> Bool {
         guard !quiet else { return false }
         if manual { return true }
-        guard let calmSince else { return false }
-        return now.timeIntervalSince(calmSince) >= Self.calmFor
+        guard let calmSince, let calmFor else { return false }
+        return now.timeIntervalSince(calmSince) >= calmFor
     }
 
     var scrim: Double { amount * Self.level }

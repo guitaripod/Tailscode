@@ -72,6 +72,7 @@ final class AgentsWindow: @unchecked Sendable {
     let stack = gtk_stack_new()!
     let revealer = gtk_revealer_new()!
     let hourHeader = Gtk.label("", css: "agents-watch", wrap: true, selectable: false)
+    let styleButton = gtk_button_new_with_label(Localized.text("Style"))!
     let watchButton = gtk_toggle_button_new_with_label(Localized.text("Watch"))!
     let nowButton = gtk_toggle_button_new_with_label(Localized.text("Now"))!
     let hourButton = gtk_toggle_button_new_with_label(Localized.text("Hour"))!
@@ -129,11 +130,19 @@ final class AgentsWindow: @unchecked Sendable {
             Gtk.onMain { [weak self] in self?.deselect() }
         }
         wireWatch()
+        styleChanged()
         plainWordsChanged()
         gtk_window_present(ptr(window))
         watchVisibility()
         if DemoMode.isActive { watchView.startScene("attention") }
         go()
+    }
+
+    /// The wall's style, read again from the settings and put on the wall and its controls at once.
+    func styleChanged() {
+        let next = Preferences.agentsWatchStyle
+        controls.apply(keepAwake: next.keepAwake)
+        watchView.apply(style: next)
     }
 
     /// The wall's plain-words model, built again from the settings: nothing at all while the switch
@@ -328,5 +337,44 @@ final class AgentsWindow: @unchecked Sendable {
         watchView.tickSecond()
         controls.evaluateIdle(now: watchView.context.clock.now)
         rememberSize()
+    }
+}
+
+extension AgentsWindow {
+    /// The harness's way to set the style: a preset by name or one `key:value`, stored and applied
+    /// exactly as Settings does, or `open` to press the Style button.
+    func driveStyle(_ argument: String) {
+        if argument == "open" {
+            hooks.openStyle()
+            return
+        }
+        var style = Preferences.agentsWatchStyle
+        let parts = argument.split(separator: ":", maxSplits: 1).map(String.init)
+        let on = { (word: String) in ["on", "true", "yes", "1"].contains(word.lowercased()) }
+        switch (parts.first?.lowercased() ?? "", parts.count > 1 ? parts[1] : "") {
+        case ("studio", _): style = .studio
+        case ("nightdesk", _), ("night-desk", _): style = .nightDesk
+        case ("showcase", _): style = .showcase
+        case ("effects", let word): style.effects = WallStyle.Effects(rawValue: word) ?? style.effects
+        case ("field", let word): style.field = WallStyle.Field(rawValue: word) ?? style.field
+        case ("light", let word): style.light = on(word)
+        case ("still", let word): style.still = on(word)
+        case ("night", let word): style.night = WallStyle.Night(rawValue: word) ?? style.night
+        case ("dim", let word): style.dimAfter = TimeInterval(word)
+        case ("awake", let word): style.keepAwake = WallStyle.KeepAwake(rawValue: word) ?? style.keepAwake
+        case ("clock", let word): style.showsClock = on(word)
+        case ("hour", let word): style.showsHour = on(word)
+        case ("rails", let word): style.showsRails = on(word)
+        case ("squads", let word): style.showsSquads = on(word)
+        case ("approvals", let word): style.approvals = WallStyle.Approvals(rawValue: word) ?? style.approvals
+        default: return
+        }
+        if style.preset == Preferences.agentsWatchStyle.preset, style != Preferences.agentsWatchStyle,
+            !["studio", "nightdesk", "night-desk", "showcase"].contains(parts.first?.lowercased() ?? "")
+        {
+            style.preset = .custom
+        }
+        Preferences.setAgentsWatchStyle(style)
+        styleChanged()
     }
 }

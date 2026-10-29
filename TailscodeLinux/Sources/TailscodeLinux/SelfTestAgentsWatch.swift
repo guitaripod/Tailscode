@@ -30,6 +30,7 @@ final class WatchCheck {
 
     func open(parent: UnsafeMutablePointer<GtkWidget>? = nil, size: (Int32, Int32)? = nil) -> AgentsWindow {
         let window = AgentsWindow.present(parent: parent, source: source, hooks: log.hooks, mode: .watch)
+        window.controls.power = WatchPower(reading: { true })
         if let size { resize(window, size.0, size.1) }
         var waited = 0.0
         while window.boardsApplied == 0 && waited < 4 {
@@ -62,7 +63,11 @@ extension SelfTest {
         MatrixTheme.install()
         let check = WatchCheck()
         Preferences.forgetAgentsWindowSize()
-        defer { Preferences.forgetAgentsWindowSize() }
+        Preferences.setAgentsWatchStyle(nil)
+        defer {
+            Preferences.forgetAgentsWindowSize()
+            Preferences.setAgentsWatchStyle(nil)
+        }
         try checkWatchSize(check)
         try checkWatchScenes(check)
         try checkWatchSquad(check)
@@ -71,6 +76,8 @@ extension SelfTest {
         try checkWatchTimers(check)
         try checkWatchControls(check)
         try checkWatchMotion(check)
+        try checkWatchEffects(check)
+        try checkWatchStyle(check)
         return check.claims
     }
 

@@ -4,8 +4,10 @@ import Foundation
 import TailscodeCore
 
 /// When each layer last drew. One frame clock drives them all, capped at thirty a second, and a
-/// layer that moves slowly asks for fewer: the motes and the glow need fifteen, the marks that
-/// turn need thirty.
+/// layer that moves slowly asks for fewer: the motes and the glow need fifteen, the ground two,
+/// the marks that turn need thirty. How many frames a second the clock itself may run is Core's
+/// `WallCadence`: 30 while an effect plays or something breathes, 1 when dimmed and calm, none
+/// while hidden.
 struct WatchCadence {
     var frame = 0.0
     var motes = 0.0
@@ -15,6 +17,7 @@ struct WatchCadence {
     var vignette = 0.0
     var worker = 0.0
     var workerCard = 0.0
+    var ground = 0.0
 
     static func due(_ last: inout Double, _ now: Double, _ interval: Double) -> Bool {
         guard now - last >= interval - 0.0005 else { return false }
@@ -56,21 +59,44 @@ extension AgentsWatchView {
         if visible { redrawEverything() }
     }
 
-    func updateClock() {
-        context.animated = RepeatingMotion.allowed
+    /// Frames a second the wall may draw at now, from Core's `WallCadence`.
+    func cadenceCap() -> Int {
         let now = context.clock.now
         let asleep = wall.isCalm && dim.amount >= 0.99 && dim.isDimmed(at: now)
-        let wanted = isVisible && isLive && context.animated && !asleep
+        return WallCadence.cap(
+            effectsLive: effects.isLive(at: context.seconds), breathing: context.animated,
+            dimmedCalm: asleep, hidden: !isVisible, lowPower: false, thermal: .nominal, proMotion: false)
+    }
+
+    func updateClock() {
+        context.animated = RepeatingMotion.allowed && !context.style.still
+        let wanted = isLive && cadenceCap() >= 2
         if wanted {
             if !lap.isTurning { lap.lay(on: stage.widget, meaning: .working) }
+            if !lap.isTurning { pumpFades() }
         } else {
             lap.lift()
         }
     }
 
+    /// A desk that asks for no movement still gets a crossfade: with no frame clock to run, the
+    /// effects that play are stepped on a short timer for as long as they last.
+    func pumpFades() {
+        guard !fadePumping, isLive, isVisible, !lap.isTurning, effects.isLive(at: context.seconds) else { return }
+        fadePumping = true
+        Gtk.after(50) { [weak self] in
+            guard let self else { return }
+            self.fadePumping = false
+            guard self.isLive else { return }
+            self.frame()
+            self.pumpFades()
+        }
+    }
+
     func frame() {
         let t = context.seconds
-        guard t - cadence.frame >= 1.0 / 30 - 0.0005 else { return }
+        let cap = cadenceCap()
+        guard cap > 0, t - cadence.frame >= 1.0 / Double(cap) - 0.0005 else { return }
         let dt = min(0.1, t - cadence.frame)
         cadence.frame = t
         frames += 1
@@ -79,10 +105,19 @@ extension AgentsWatchView {
             gtk_widget_set_opacity(scrim, dim.scrim)
         }
         if WatchCadence.due(&cadence.motes, t, 1.0 / 15) {
-            moteField.step(
-                dt: 1.0 / 15, mood: wall.mood, target: attentionPoint, slow: 1 - 0.6 * dim.amount)
-            motes.redraw()
+            if fieldRuns {
+                moteField.step(
+                    dt: 1.0 / 15, mood: wall.mood, target: attentionPoint, slow: 1 - 0.6 * dim.amount,
+                    aspect: lastSize.width / max(1, lastSize.height))
+            }
+            if context.style.field != .none { motes.redraw() }
         }
+        if context.animated, context.style.light || context.style.field == .aurora,
+            WatchCadence.due(&cadence.ground, t, 1.0 / 2)
+        {
+            ground.redraw()
+        }
+        if effects.isLive(at: t) || effects.painted || effects.hasRipples { tickEffects(at: t) }
         let glyphDue = WatchCadence.due(&cadence.glyph, t, 1.0 / 30)
         let cardDue = WatchCadence.due(&cadence.card, t, 1.0 / 12)
         for view in tiles.values {
@@ -99,6 +134,11 @@ extension AgentsWatchView {
         if wall.tiles.isEmpty, WatchCadence.due(&cadence.calm, t, 1.0 / 15) { calm.orb.redraw() }
     }
 
+    /// Whether the field moves: not under Still, a desk that asks for less, or with no field at all.
+    var fieldRuns: Bool {
+        WallCadence.fieldRuns(lowPower: false, thermal: .nominal, style: queueStyle) && context.animated
+    }
+
     var attentionPoint: (x: Double, y: Double)? {
         guard let index = wall.needsYouIndex, geometry.tiles.indices.contains(index), lastSize.width > 1
         else { return nil }
@@ -109,6 +149,7 @@ extension AgentsWatchView {
     func redrawEverything() {
         ground.redraw()
         motes.redraw()
+        effects.canvas.redraw()
         vignette.redraw()
         calm.orb.redraw()
         ribbon.canvas.redraw()
@@ -133,6 +174,7 @@ extension AgentsWatchView {
         rails.apply(wall, now: now)
         ribbon.canvas.redraw()
         updateDrift()
+        refreshNight(now: now)
         let moved = dim.step(dt: 1, at: now, animated: context.animated && lap.isTurning)
         if moved { gtk_widget_set_opacity(scrim, dim.scrim) }
         if peekLayer.isExpired(at: now) { onPeekExpired() }
@@ -156,20 +198,78 @@ extension AgentsWatchView {
 
     func paintGround(_ cr: OpaquePointer, _ width: Double, _ height: Double) {
         let palette = context.palette
-        WatchAmbient.ground(
-            cr, width: width, height: height, unit: context.unit, palette: palette,
-            tint: palette.mood(wall.mood, hasFailure: wall.hasFailure))
+        let tint = palette.mood(wall.mood, hasFailure: wall.hasFailure)
+        let unit = context.unit
+        groundCache.paint(
+            cr,
+            key: WatchGroundCache.Key(
+                width: Int(width), height: Int(height), unit: unit, tint: tint, palette: palette)
+        ) { inner in
+            WatchAmbient.ground(inner, width: width, height: height, unit: unit, palette: palette, tint: tint)
+        }
+        let t = context.seconds
+        if context.style.field == .aurora {
+            auroraCache.paint(
+                cr, width: width, height: height, ink: tint, text: palette.text, t: context.animated ? t : 0)
+        }
+        if context.style.light { paintLights(cr, palette: palette, t: t) }
+        for piece in effects.ripples {
+            guard case .ripple(let rect, let corner, let grow, let span, let alpha) = piece.shape else { continue }
+            WatchGround.ripple(
+                cr, rect: WatchRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height),
+                corner: corner, grow: grow, width: span, ink: piece.ink, alpha: alpha,
+                bounds: (width, height))
+        }
+    }
+
+    /// The light each tile spills on the ground around it, as strong as Core's scene makes it: the
+    /// state's own figure, swelling and ebbing with the tile's breath, and fading with the tile.
+    func paintLights(_ cr: OpaquePointer, palette: WatchPalette, t: Double) {
+        var drawn = 0
+        for (index, tile) in wall.tiles.enumerated() where drawn < WallScene.maxLights {
+            guard geometry.tiles.indices.contains(index) else { continue }
+            let main = geometry.squads.indices.contains(index) ? geometry.squads[index]?.parent : nil
+            let swell = WatchTilePaint.glow(tile.state, t: t, animated: context.animated)
+            let strength = Self.lightOf(tile.state) * (0.75 + 0.5 * swell) * WatchTileView.opacity(tile)
+            WatchGround.spill(
+                cr, rect: main ?? geometry.tiles[index], unit: context.unit, ink: palette.ink(tile.state),
+                strength: strength)
+            drawn += 1
+        }
+        lightsDrawn = drawn
+    }
+
+    /// How much light a state spills, the figures Core's scene uses on the other walls.
+    static func lightOf(_ state: WallState) -> Double {
+        switch state {
+        case .working: return 0.05
+        case .thinking: return 0.04
+        case .needsYou(let urgency): return urgency == .overdue ? 0.13 : 0.09
+        case .retrying: return 0.06
+        case .background(let stuck): return stuck ? 0.05 : 0.035
+        case .quiet: return 0.025
+        case .finished(let outcome):
+            switch outcome {
+            case .done: return 0.035
+            case .failed: return 0.08
+            case .stopped, .unknown: return 0.02
+            }
+        case .away: return 0.02
+        }
     }
 
     func paintMotes(_ cr: OpaquePointer, _ width: Double, _ height: Double) {
+        guard context.style.field != .none else { return }
         let palette = context.palette
         let ink = palette.mood(wall.mood, hasFailure: wall.hasFailure).mixed(with: palette.text, 0.45)
         moteField.paint(
             cr, width: width, height: height, unit: context.unit, ink: ink, t: context.seconds,
-            animated: context.animated, brightness: 1)
+            animated: context.animated, brightness: context.isNight ? 0.5 : 1,
+            trails: context.style.field == .currents && context.animated)
     }
 
     func paintPlates(_ cr: OpaquePointer, _ width: Double, _ height: Double) {
+        guard context.style.showsSquads else { return }
         let palette = context.palette
         let u = context.unit
         let pad = 0.55 * u

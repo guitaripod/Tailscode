@@ -14,6 +14,8 @@ final class WatchControls: @unchecked Sendable {
     let fullscreenButton: UnsafeMutablePointer<GtkWidget>
     let awakeButton: UnsafeMutablePointer<GtkWidget>
     var inhibitor: WatchInhibiting = GtkInhibitor()
+    var power = WatchPower()
+    private(set) var keepAwakeStyle = WallStyle.KeepAwake.whileCharging
     let clock: WatchClock
     private(set) var isFullscreen = false
     private(set) var keepAwakeOverride: Bool?
@@ -69,7 +71,36 @@ final class WatchControls: @unchecked Sendable {
         gtk_widget_set_focus_on_click(button, 0)
     }
 
-    var keepAwake: Bool { keepAwakeOverride ?? isFullscreen }
+    /// On by default in fullscreen, the way the wall is left up on a monitor, unless the style says
+    /// never, or says only while charging and the machine runs on its battery. A press of the toggle
+    /// or the k key is the person's own say and stands until the wall changes screen.
+    var keepAwake: Bool { keepAwakeOverride ?? (isFullscreen && styleAllowsAwake) }
+
+    var styleAllowsAwake: Bool {
+        switch keepAwakeStyle {
+        case .always: return true
+        case .never: return false
+        case .whileCharging: return power.isOnMains(at: clock.now)
+        }
+    }
+
+    func apply(keepAwake style: WallStyle.KeepAwake) {
+        keepAwakeStyle = style
+        resync()
+    }
+
+    /// Reads the power again when its minute is up, and follows the answer.
+    func refreshPower() {
+        guard keepAwakeOverride == nil, keepAwakeStyle == .whileCharging else { return }
+        resync()
+    }
+
+    private func resync() {
+        syncing = true
+        gtk_toggle_button_set_active(ptr(awakeButton), keepAwake ? 1 : 0)
+        syncing = false
+        syncInhibit()
+    }
 
     func setFullscreen(_ on: Bool, ask: Bool = true) {
         guard on != isFullscreen else { return }
@@ -130,6 +161,7 @@ final class WatchControls: @unchecked Sendable {
 
     func evaluateIdle(now: Date) {
         applyChrome(now: now)
+        refreshPower()
     }
 
     var wantsQuietChrome: Bool { isFullscreen && lens() == .watch }

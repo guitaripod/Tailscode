@@ -10,6 +10,7 @@ enum WatchTilePaint {
     struct Face {
         var state: WallState
         var focused: Bool
+        var pulse = 0.0
     }
 
     static func breathPeriod(_ state: WallState) -> Double? {
@@ -79,7 +80,7 @@ enum WatchTilePaint {
     private static func wash(
         _ cr: OpaquePointer, width: Double, height: Double, ink: PartyInk, face: Face, swell: Double
     ) {
-        var strength = 0.06 + 0.06 * swell
+        var strength = 0.06 + 0.06 * swell + 0.03 * face.pulse
         switch face.state {
         case .needsYou(.overdue): strength = 0.15 + 0.1 * swell
         case .needsYou: strength = 0.1 + 0.08 * swell

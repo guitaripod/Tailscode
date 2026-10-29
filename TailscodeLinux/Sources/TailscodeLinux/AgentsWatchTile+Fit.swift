@@ -176,7 +176,7 @@ extension WatchTileView {
         for label in [denyLabel, approveLabel, chatLabel] {
             label.set(style: context.label(buttonSize, bold: true))
         }
-        if tile.ask?.isApproval == true {
+        if tile.ask?.isApproval == true, context.style.approvals == .hold {
             let denyWidth = denyLabel.naturalWidth + 4.4 * u
             let ringSize = min(footer * 0.8, 4.4 * u)
             gtk_widget_set_size_request(ring.widget, Int32(ringSize), Int32(ringSize))
@@ -201,6 +201,8 @@ extension WatchTileView {
     private func width(of x: Double, inner: Double, pad: Double) -> Double { inner + pad - x }
 
     private func place(_ plan: Plan, sink: TileSink) {
+        glyphBox = plan.glyph
+        beatBox = plan.beat
         sink.place(glyph.widget, plan.glyph)
         sink.place(title.widget, plan.title)
         sink.place(status.widget, plan.status)

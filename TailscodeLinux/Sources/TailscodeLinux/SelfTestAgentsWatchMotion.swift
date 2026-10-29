@@ -55,10 +55,10 @@ extension SelfTest {
         }
         try check.expect(field(0, false) == field(55, false), "the motes hold still with it")
         let before = motes.positionSum
-        motes.step(dt: 5, mood: .calm, target: nil, slow: 1)
+        motes.step(dt: 5, mood: .calm, target: nil, slow: 1, aspect: 1)
         let calmMove = abs(motes.positionSum - before)
         let busyStart = motes.positionSum
-        motes.step(dt: 5, mood: .busy, target: nil, slow: 1)
+        motes.step(dt: 5, mood: .busy, target: nil, slow: 1, aspect: 1)
         try check.expect(
             calmMove < abs(motes.positionSum - busyStart) / 3,
             "calm motes are almost still where busy ones drift: \(calmMove) against \(abs(motes.positionSum - busyStart))")

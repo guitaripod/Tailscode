@@ -37,6 +37,11 @@ final class WatchTileView: @unchecked Sendable {
     var holdPumping = false
     var hintUntil: Date?
     var truncated = false
+    var glyphBox = TileRect(x: 0, y: 0, width: 0, height: 0)
+    var beatBox: TileRect?
+    private(set) var drainShare: Double?
+    private(set) var pulse = 0.0
+    private(set) var arrival = 1.0
     private(set) var focused = false
     private var beat: [Int] = []
     private var slideStart: Double?
@@ -120,7 +125,7 @@ final class WatchTileView: @unchecked Sendable {
         writtenByModel = line.byModel
         words.set(text: line.text)
         detail.set(text: next.detail == next.words ? "" : (next.detail ?? ""))
-        meta.set(text: Self.metaLine(next))
+        meta.set(text: Self.metaLine(next, countsWorkers: !context.style.showsSquads))
         steps.set(text: Self.stepLines(next))
         if let beat = next.beat, beat != self.beat {
             slideStart = Self.isShift(self.beat, beat) && context.animated ? context.seconds : nil
@@ -133,7 +138,7 @@ final class WatchTileView: @unchecked Sendable {
             signature = sign
             container.invalidate()
         }
-        gtk_widget_set_opacity(widget, Self.opacity(next))
+        gtk_widget_set_opacity(widget, Self.opacity(next) * arrival)
         tailscode_set_accessible_label(widget, spoken(now: now))
         if previous == nil || previous?.state != next.state { redrawAll() }
         refreshControls()
@@ -162,10 +167,14 @@ final class WatchTileView: @unchecked Sendable {
             .map { AgentsParts.outcomeGlyph($0.0.outcome).glyph + " " + $0.1 }.joined(separator: "\n")
     }
 
-    static func metaLine(_ tile: WallTile) -> String {
+    static func metaLine(_ tile: WallTile, countsWorkers: Bool = false) -> String {
         var parts = [tile.machine]
         if let chip = tile.chip {
             parts.append(chip.effort.map { chip.name + " " + $0 } ?? chip.name)
+        }
+        if countsWorkers {
+            let agents = tile.workers.filter { $0.kind == .agent && !$0.state.isFinished }.count
+            if let count = WallWorker.count(agents) { parts.append(count) }
         }
         return parts.filter { !$0.isEmpty }.joined(separator: " · ")
     }
@@ -201,9 +210,35 @@ final class WatchTileView: @unchecked Sendable {
         for canvas in [card, glyph, beatCanvas] { canvas.redraw() }
     }
 
+    /// What the effects playing on this tile ask of it now: the context ring's share while it drains,
+    /// the flash of a step on the glass, and how far a newcomer has come in. Each redraws only the
+    /// part that changed.
+    func setEffects(drain: Double?, pulse nextPulse: Double, arrival nextArrival: Double) {
+        if drain != drainShare {
+            drainShare = drain
+            glyph.redraw()
+        }
+        if nextPulse != pulse {
+            pulse = nextPulse
+            card.redraw()
+        }
+        if nextArrival != arrival, let tile {
+            arrival = nextArrival
+            gtk_widget_set_opacity(widget, Self.opacity(tile) * arrival)
+        }
+    }
+
+    /// The style, the palette or the night changed: say the words again and lay the tile out anew.
+    func styleChanged(now: Date) {
+        if let tile { apply(tile, now: now) }
+        container.invalidate()
+        redrawAll()
+        refreshControls()
+    }
+
     var isAnimating: Bool {
         guard let tile else { return false }
-        if WatchTilePaint.breathPeriod(tile.state) != nil { return true }
+        if WatchTilePaint.breathPeriod(tile.state) != nil || pulse > 0 { return true }
         switch tile.state {
         case .quiet: return true
         default: return gauge.isHolding
@@ -229,14 +264,14 @@ final class WatchTileView: @unchecked Sendable {
         guard let tile else { return }
         WatchTilePaint.card(
             cr, width: width, height: height, unit: unit,
-            face: .init(state: tile.state, focused: focused),
+            face: .init(state: tile.state, focused: focused, pulse: pulse),
             palette: context.palette, t: context.seconds, animated: context.animated)
     }
 
     private func paintGlyph(_ cr: OpaquePointer, _ size: Double) {
         guard let tile else { return }
         WatchGlyph.paint(
-            cr, size: size, state: tile.state, share: tile.contextShare, fade: tile.fade,
+            cr, size: size, state: tile.state, share: drainShare ?? tile.contextShare, fade: tile.fade,
             palette: context.palette, t: context.seconds, animated: context.animated)
     }
 
