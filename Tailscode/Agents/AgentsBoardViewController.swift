@@ -38,6 +38,7 @@ final class AgentsBoardViewController: UIViewController {
         view.backgroundColor = Theme.Color.groupedBackground
         title = String(localized: "Agents")
         navigationItem.largeTitleDisplayMode = .never
+        navigationItem.leftBarButtonItem = watchBarButton()
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             systemItem: .done,
             primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })

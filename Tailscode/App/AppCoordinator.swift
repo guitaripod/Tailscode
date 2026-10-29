@@ -130,6 +130,7 @@ final class AppCoordinator: NSObject {
             if CommandLine.arguments.contains("--agents") || wantsAgentPeek || wantsAgentHour {
                 openAgentsForDebug(peek: wantsAgentPeek, hour: wantsAgentHour)
             }
+            if let scene = WatchViewController.demoScene { openWatchForDebug(scene: scene) }
             if let fixture = ProcessInfo.processInfo.environment["TAILSCODE_SHARE_SCREEN"] {
                 openShareForDebug(fixture: fixture)
             }
@@ -262,6 +263,16 @@ final class AppCoordinator: NSObject {
                     let board = AgentsPresenter.present(from: home)
                 else { return }
                 board.openForDebug(peek: peek, hour: hour)
+            }
+        }
+
+        /// `--demo` with `TAILSCODE_WATCH=<scene>` puts the wall on screen at once, full screen, reading
+        /// one of the demo walls and no tower.
+        private func openWatchForDebug(scene: String) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                guard let self, var top = self.window.rootViewController else { return }
+                while let next = top.presentedViewController { top = next }
+                top.present(WatchViewController(source: .demo(scene)), animated: false)
             }
         }
 

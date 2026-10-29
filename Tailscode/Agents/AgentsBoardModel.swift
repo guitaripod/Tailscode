@@ -72,6 +72,16 @@ struct AgentsPeekTarget {
         row = nil
     }
 
+    init(tile: WallTile) {
+        key = tile.id
+        profileID = tile.profileID
+        sessionID = tile.sessionID
+        title = tile.title
+        machine = tile.machine
+        chip = tile.chip
+        row = nil
+    }
+
     init(lane: AgentHourLane, key: String) {
         self.key = key
         profileID = lane.profileID

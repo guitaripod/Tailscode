@@ -222,6 +222,7 @@ targets:
             UIApplicationShortcutItemIconSymbolName: sparkle
         NSUserActivityTypes:
           - com.guitaripod.tailscode.route
+          - com.guitaripod.tailscode.watch
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
           UISceneConfigurations:

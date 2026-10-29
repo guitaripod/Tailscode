@@ -3,6 +3,10 @@ import UIKit
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
     private var coordinator: AppCoordinator?
+    private var isWatch = false
+
+    /// Whether this scene is the app's own window and not a wall of its own.
+    var hostsApp: Bool { coordinator != nil }
 
     func scene(
         _ scene: UIScene,
@@ -11,6 +15,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     ) {
         guard let windowScene = scene as? UIWindowScene else { return }
         let window = TouchReportingWindow(windowScene: windowScene)
+        if WatchScene.wants(connectionOptions, session: session) {
+            installWatch(in: window)
+            return
+        }
         #if DEBUG
             if let preview = AwayPreview.viewControllerIfRequested()
                 ?? NoticeCardPreview.viewControllerIfRequested()
@@ -45,7 +53,16 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func stateRestorationActivity(for scene: UIScene) -> NSUserActivity? {
-        coordinator?.restorationActivity()
+        isWatch ? WatchScene.activity() : coordinator?.restorationActivity()
+    }
+
+    private func installWatch(in window: UIWindow) {
+        Theme.Chrome.adopt(window)
+        Theme.Chrome.apply()
+        window.rootViewController = WatchViewController(standalone: true)
+        window.makeKeyAndVisible()
+        self.window = window
+        isWatch = true
     }
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
