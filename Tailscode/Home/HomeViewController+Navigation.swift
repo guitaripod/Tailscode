@@ -338,7 +338,7 @@ extension HomeViewController {
         let holdsNothing = composerBar.currentText.isEmpty && attachments.isEmpty && composeCarry == nil
         guard sends, holdsNothing else {
             MidgarLog.info(
-                "quick ask spoken question kept in the box fresh=\(sends) holdsNothing=\(holdsNothing)",
+                "quick ask question kept in the box fresh=\(sends) holdsNothing=\(holdsNothing)",
                 category: .session)
             let joined = composerBar.currentText.isEmpty
                 ? question : (draft.hasSuffix("\n") ? draft : draft + "\n") + question

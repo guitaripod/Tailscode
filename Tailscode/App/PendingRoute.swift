@@ -15,9 +15,9 @@ import UIKit
 /// screen. Stale by 30 seconds it is dropped rather than hijacking navigation long after the tap.
 @MainActor
 enum PendingRoute {
-    /// A question never travels as a link: anything on the phone can open a `tailscode://` URL,
-    /// and only words the person said or typed to Siri, Shortcuts or a Vocal Shortcut may be sent
-    /// for them.
+    /// A question that was spoken is delivered in process rather than as a link, and words a
+    /// `tailscode://ask?text=` link carries only ever reach the box unsent (`PromptLink`), because
+    /// anything on the phone can open a `tailscode://` URL.
     enum Route {
         case link(URL)
         case question(String)

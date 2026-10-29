@@ -72,6 +72,7 @@ final class HomeViewController: UIViewController {
     private var hasAppeared = false
     var hasLoadedOnce = false
     private var wantsComposerFocus = false
+    private var pendingComposerDraft: String?
     var pendingDeepLink: (sessionID: String, parkedAt: Date)?
     var modelChoices: [String: ModelChoice] = [:]
     var resolvingModels: Set<String> = []
@@ -343,7 +344,11 @@ final class HomeViewController: UIViewController {
         #if DEBUG
             DelegateGate.debugOpenIfAsked(from: self)
         #endif
-        if wantsComposerFocus {
+        if let draft = pendingComposerDraft {
+            pendingComposerDraft = nil
+            wantsComposerFocus = false
+            placeComposer(draft)
+        } else if wantsComposerFocus {
             wantsComposerFocus = false
             composerBar.focus()
         } else {
@@ -414,12 +419,37 @@ final class HomeViewController: UIViewController {
         if abs(collectionBottom.constant - wanted) > 0.5 { collectionBottom.constant = wanted }
     }
 
-    func focusComposer() {
+    /// One box answers every way in: the icon's menu, a Control Center tile, a spoken question, or a
+    /// `tailscode://compose?text=` link from a keyboard's Quicklink. Words handed over that way are a
+    /// draft like any other — in the box, in front of the person, never sent by the link.
+    func focusComposer(draft: String? = nil) {
         guard viewIfLoaded?.window != nil else {
+            pendingComposerDraft = draft
             wantsComposerFocus = true
             return
         }
-        composerBar.focus()
+        guard let draft else {
+            composerBar.focus()
+            return
+        }
+        guard !composerBar.isSending else {
+            Task { [weak self] in
+                while self?.composerBar.isSending == true {
+                    try? await Task.sleep(for: .milliseconds(200))
+                }
+                self?.placeComposer(draft)
+            }
+            return
+        }
+        placeComposer(draft)
+    }
+
+    private func placeComposer(_ draft: String) {
+        guard viewIfLoaded?.window != nil else {
+            pendingComposerDraft = draft
+            return
+        }
+        composerBar.setDraft(draft, focus: true)
     }
 
     var lastEnrichment: Date?

@@ -89,6 +89,11 @@ final class AppCoordinator: NSObject {
         }
         if let parked = PendingRoute.take() { deliver(parked) }
         #if DEBUG
+            if let raw = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_URL"],
+                let url = URL(string: raw)
+            {
+                deliver(url)
+            }
             if let sessionID = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SESSION"] {
                 deliver(URL(string: "tailscode://session/\(sessionID)")!)
             }
@@ -333,7 +338,6 @@ final class AppCoordinator: NSObject {
     private var pendingSessionLink: (url: URL, parkedAt: Date)?
     private var pendingConnectLink: (url: URL, parkedAt: Date)?
     private var isStanding = false
-    private var pendingComposeFocus = false
     private var pendingShortcut: ShortcutTarget?
 
     /// The quick actions the Home screen offers on a long press. Every target
@@ -345,10 +349,10 @@ final class AppCoordinator: NSObject {
     func handleShortcut(_ item: UIApplicationShortcutItem) -> Bool {
         let target: ShortcutTarget
         switch item.type {
-        case HomeQuickActions.newChat: target = .compose
+        case HomeQuickActions.newChat: target = .compose(draft: nil)
         case HomeQuickActions.saved: target = .saved
         case HomeQuickActions.usage: target = .usage
-        case HomeQuickActions.quickAsk: target = .quickAsk
+        case HomeQuickActions.quickAsk: target = .quickAsk(draft: nil)
         case HomeQuickActions.resume:
             guard let sessionID = item.userInfo?["sessionID"] as? String else { return false }
             target = .resume(sessionID: sessionID)
@@ -359,10 +363,10 @@ final class AppCoordinator: NSObject {
     }
 
     private enum ShortcutTarget {
-        case compose
+        case compose(draft: String?)
         case saved
         case usage
-        case quickAsk
+        case quickAsk(draft: String?)
         case question(String, askedAt: Date)
         case resume(sessionID: String)
     }
@@ -373,14 +377,26 @@ final class AppCoordinator: NSObject {
 
     private func perform(_ target: ShortcutTarget) {
         switch target {
-        case .compose:
-            if let home { home.focusComposer() } else { pendingComposeFocus = true }
+        case .compose(let draft):
+            if let home {
+                home.focusComposer(draft: draft)
+            } else {
+                pendingShortcut = .compose(draft: draft)
+            }
         case .saved:
             if let home { home.pushSaved() } else { pendingShortcut = .saved }
         case .usage:
             if let home { home.pushUsage() } else { pendingShortcut = .usage }
-        case .quickAsk:
-            if let home { home.presentQuickAsk() } else { pendingShortcut = .quickAsk }
+        case .quickAsk(let draft):
+            if let home {
+                if let draft {
+                    home.presentQuickAsk(asking: draft, sends: false)
+                } else {
+                    home.presentQuickAsk()
+                }
+            } else {
+                pendingShortcut = .quickAsk(draft: draft)
+            }
         case .question(let question, let askedAt):
             guard let home else {
                 pendingShortcut = .question(question, askedAt: askedAt)
@@ -445,7 +461,9 @@ final class AppCoordinator: NSObject {
             return
         }
         if url.host() == "compose" {
-            perform(.compose)
+            let draft = PromptLink.text(in: url)
+            MidgarLog.info("compose link carrying \(draft?.count ?? 0) characters", category: .lifecycle)
+            perform(.compose(draft: draft))
             return
         }
         if url.host() == "saved" {
@@ -453,7 +471,9 @@ final class AppCoordinator: NSObject {
             return
         }
         if url.host() == "ask" {
-            perform(.quickAsk)
+            let draft = PromptLink.text(in: url)
+            MidgarLog.info("ask link carrying \(draft?.count ?? 0) characters", category: .lifecycle)
+            perform(.quickAsk(draft: draft))
             return
         }
         if url.host() == "video" {
@@ -611,7 +631,7 @@ final class AppCoordinator: NSObject {
     func handleControlRouteIfNeeded() {
         switch UsageWidgetStore.takePendingControlRoute() {
         case "usage": handle(URL(string: "tailscode://usage")!)
-        case "ask": perform(.quickAsk)
+        case "ask": perform(.quickAsk(draft: nil))
         default: return
         }
     }
@@ -680,10 +700,6 @@ final class AppCoordinator: NSObject {
             if Date().timeIntervalSince(pending.parkedAt) < 30 {
                 deliver(pending.url)
             }
-        }
-        if pendingComposeFocus {
-            pendingComposeFocus = false
-            home?.focusComposer()
         }
         if let pendingShortcut {
             self.pendingShortcut = nil
