@@ -38,9 +38,10 @@ enum WallGrid {
     /// `aspect` is the screen's shape and picks the grid; `areaAspect` is the shape of the area the
     /// grid fills, which is what each cell's own shape is measured from.
     static func place(
-        _ tiles: [WallTile], aspect: Double, areaAspect: Double? = nil
+        _ tiles: [WallTile], aspect: Double, areaAspect: Double? = nil, pages: Bool = false
     ) -> (tiles: [WallTile], columns: Int, rows: Int) {
         guard !tiles.isEmpty else { return ([], 0, 0) }
+        if pages { return paged(tiles, aspect: aspect, areaAspect: areaAspect) }
         let shape = Shape(aspect: aspect)
         let flat = base(count: tiles.count, shape: shape)
         let grid = flat
@@ -79,5 +80,24 @@ enum WallGrid {
                 cellAspect: (areaAspect ?? aspect) * Double(spans[index] * (row + 1)) / Double(grid.columns))
         }
         return (placed, grid.columns, row + 1)
+    }
+
+    /// Two columns, one per page of a book, filled row-major: an odd last tile keeps one column and
+    /// the cell beside it stays empty, so nothing ever spans the fold.
+    private static func paged(
+        _ tiles: [WallTile], aspect: Double, areaAspect: Double?
+    ) -> (tiles: [WallTile], columns: Int, rows: Int) {
+        let columns = tiles.count <= 1 ? 1 : 2
+        let rows = (tiles.count + columns - 1) / columns
+        var placed = tiles
+        for index in placed.indices {
+            placed[index].span = 1
+            placed[index].column = index % columns
+            placed[index].row = index / columns
+            placed[index].squad = WallSquad.plan(
+                workers: placed[index].workers, sessions: tiles.count,
+                cellAspect: (areaAspect ?? aspect) * Double(rows) / Double(columns))
+        }
+        return (placed, columns, rows)
     }
 }

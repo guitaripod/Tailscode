@@ -23,7 +23,7 @@ The grid comes from `WallGrid` (count and the screen's own shape). What iOS adds
 | Duo closed | 466 × 678 | Stack, compact: rails fold into the watch line |
 | Duo closed, tent | 678 × 466 | Side: a clock column beside the tiles |
 | iPhone on a stand | 912 × 420 | Side, same as the tent |
-| External display | any | The wall in its own non-interactive scene; the iPad or Duo stays the remote (Now board) |
+| External display | any | The wall's own window, moved to the display in Stage Manager; the device keeps the board |
 | Stage Manager window | any | Whatever the window's shape says |
 
 Rules:
@@ -101,7 +101,7 @@ One Core value, `WallStyle`, read by all three walls under the same names; store
 | On the wall | clock, last hour, Recent and also running, sub-agent tiles | all |
 | Approve from the wall | hold, then Face ID; never, open the chat | hold, then Face ID |
 
-Night desk: no field, no light, only asks, endings and failures move, dim after 5 minutes. Showcase: Aurora and Lively. Colours always follow the app's theme, its dark side. The sheet opens from the wall's Style control and from Settings › Agents › Watch.
+Night desk: no field, no light, only asks, endings and failures move, dim after 5 minutes. Showcase: Aurora and Lively. Colours always follow the app's theme, its dark side. The sheet opens from the wall's Style control, the one place it lives.
 
 ## 7. Touch, keys and access
 
@@ -115,7 +115,6 @@ Night desk: no field, no light, only asks, endings and failures move, dim after 
 ## 8. Where it lives
 
 - The Agents board gets the Watch lens beside Now (and Hour where regular width), Watch first, as on Linux. iPad's sidebar gets the Agents row that opens it; its context menu offers *Open in New Window* (its own scene, so it can sit beside Tailscode in Stage Manager).
-- With an external display connected, the wall can go to it as its own scene while the device keeps the board.
 - StandBy keeps the Live Activity it has; the wall needs the app open, and is not a widget.
 
 ## 9. Parity
@@ -127,12 +126,14 @@ Night desk: no field, no light, only asks, endings and failures move, dim after 
 | `agentsWatchStyle` (new) | implemented | implemented | implemented |
 | `agentsLocalWords` | stays a gap | stays a gap | implemented |
 
-## 10. Decisions to make
+## 10. Decided (2026-10-29)
 
-1. **Mac in the same pass.** Recommended: yes; the renderer is shared and the Mac's wall is a declared gap today.
-2. **Linux effects now.** Recommended: yes, in Cairo from `WallEffects`, so the three walls keep moving alike; GL only if a measurement asks.
-3. **Pro.** Recommended: the wall stays free; it is a viewer, and Pro already carries delegation.
-4. **Open by itself.** Recommended: no. At most an offer when the device is charging in landscape on Home, off by default.
+1. **The Mac comes in the same pass**, with the same renderer, as the Agents window's Watch lens (its default, as on Linux), fullscreen and keep-awake.
+2. **Linux draws the effects now**, in Cairo, from the same Core shapes; it also gets the Style settings.
+3. **Free.** The wall is a viewer; nothing on it is gated.
+4. **It never opens by itself**, and offers nothing. Ways in: the Agents board's Watch button (every iPhone and iPad), Open in New Window on iPad (its own scene, so it can sit in Stage Manager or on a display), the keyboard on iPad, and the Mac and Linux Agents windows.
+5. **Performance first.** One render pass, instanced, preallocated, triple-buffered; words change once a second, never per frame; the frame cap of §5 is a Core function every client obeys; nothing draws while hidden.
+6. **One place to change it**: Style on the wall's own controls. No second copy in Settings.
 
 ## 11. Mocks, and what looking at them changed
 
@@ -143,3 +144,18 @@ The prototype on the canvas is WebGL standing in for Metal (`docs/agents-watch-i
 - Worker names lost to their ages in narrow tiles: the name wins and the age goes.
 - Recent and Also running collided on half-width rails: a narrow rail shows Recent and one `+N also running` chip.
 - The laptop base had one orphan button: it now carries the ask's hold, Dim and Style as three pills on the stable base.
+
+## 12. Core API (the build contract)
+
+All toolkit-free, in `TailscodeCore`, tested on Linux. Clients only draw.
+
+- `AgentWall.read(…, pages: Bool = false)` and `reflowed(…, pages:)`: with `pages`, `WallGrid` puts tiles in two columns (one per page of a book), rows = ⌈n/2⌉, one tile alone in one column, never a span across the fold.
+- `WallStyle` (`WallStyle.swift`): `Codable` with tolerant decoding (a missing or unknown key keeps the Studio value), presets `.studio`, `.nightDesk`, `.showcase`, and every field of §6 (`preset`, `effects`, `field`, `light`, `moves`, `dimAfter: TimeInterval?`, `night`, `keepAwake`, `still`, `showsClock`, `showsHour`, `showsRails`, `showsSquads`, `approvals`). `amplitude` (0, 1, 1.6), `moves(_ kind: WallEvent.Kind)`, `isNight(at:calendar:)` (22:00–07:00 local for `.scheduled`), `encoded()`/`decoded(_:)` as JSON text; changing any field by hand makes `preset` `.custom`.
+- `WallEvents.between(_ previous: AgentWall?, _ next: AgentWall) -> [WallEvent]` (`WallEvents.swift`): `joined`, `left`, `asked`, `answered`, `finished`, `failed`, `stopped`, `retried`, `quiet`, `resumed`, `compacted` (context share fell by 0.2 or more), `away`, `back`, `step` (a working tile's newest step or words changed, or its beat's last bucket grew), `workerStarted`, `workerEnded`, `workerQuiet`, `workerStuck`. A first read (`previous` nil) says nothing.
+- `WallEffect` and `WallEffectQueue` (`WallEffects.swift`): an effect is a kind (`spark`, `thread`, `dissolve`, `exhale`, `groundRipple`, `knock`, `fracture`, `pulse`, `approved`, `drain`, `gather`, `scatter`, `fade`), the tile and worker it hangs on, `start` and `duration` on the client's seconds clock, an ink role, an amplitude, a seed, and for `drain` the context share it falls from and to. The queue maps events to effects per §4 (two knocks 0.34 s apart, exhale plus a ripple, fracture plus a red ripple), honours `style.moves` and `style.amplitude`, turns everything into `fade` (or nothing, for spark, thread, dissolve, gather, scatter) when `style.still`, coalesces sparks to two a second per tile, holds at most 40 live and 3 per tile, never drops an ask's or a failure's, and prunes finished ones.
+- `WallCadence.cap(effectsLive:breathing:dimmedCalm:hidden:lowPower:thermal:proMotion:) -> Int` (`WallCadence.swift`): 0, 1, 15, 20, 30 or 60 by §5.
+- `WallPalette` and `WallInk` (`WallPalette.swift`): the Linux `WatchPalette` formulas from a theme's dark `Palette`, `night()`, `ink(for: WallState)`, `ink(_ role:)`, `mood(_:hasFailure:)`.
+- `WallLayout.make(width:height:safe:fold:wall:style:drift:)` (`WallLayout.swift`): the modes of §2 (`stack` reproduces the Linux `WatchGeometry`; `side`, `book`, `laptop` as the prototype), every rectangle in points: headline (and its line count), watch line, clock, date, grid, a cell per tile, squad rectangles from `WallSquad`, ribbon, rails, controls (laptop base), the calm centre; `WallLayout.reading(width:height:safe:fold:)` gives the `aspect`, `gridAspect` and `pages` to read the wall with.
+- `WallMotes` (`WallMotes.swift`): the Linux `WatchMotes` field, count by area (18 to 96), with a four-point trail for Currents.
+- `WallScene.build(_:)` (`WallScene.swift`): one frame as plain values for a renderer: tint and its strength, vignette, dim, drift, lights (≤ 8), ripples (≤ 12), plates, glyphs (drawn over) and glows (added light), dots (motes and particles). Glyph kinds, plate looks, breath and knock periods and every effect's shapes are the prototype's (`docs/agents-watch-ios-mocks/watch-engine.js`: `tileGlyph`, `workerGlyph`, `plateLook`, `tileSwell`, `drawFx`) and the Linux painters' (`AgentsWatchGlyph`, `AgentsWatchTilePaint`). Effect shapes are also available alone (`WallEffectShapes.shapes(for:at:anchor:unit:)`) for the Cairo wall.
+- Parity: `agentsWatchEffects`, `agentsWatchStyle`.

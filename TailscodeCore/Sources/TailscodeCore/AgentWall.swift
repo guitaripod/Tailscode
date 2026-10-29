@@ -221,10 +221,11 @@ public struct AgentWall: Sendable, Equatable {
     public var isCalm: Bool { mood == .calm }
 
     /// `aspect` is the screen's shape; `gridAspect` the shape of the area the tiles fill, which the
-    /// workers' share of each cell is cut from. Without it the screen's shape stands in.
+    /// workers' share of each cell is cut from. Without it the screen's shape stands in. With `pages`
+    /// the grid is two columns, one per page of a book, and no tile spans the fold.
     public static func read(
         board: AgentBoard, hour: AgentHour?, now: Date, aspect: Double, gridAspect: Double? = nil,
-        previous: AgentWall?
+        pages: Bool = false, previous: AgentWall?
     ) -> AgentWall {
         let drafts = WallReading.drafts(board: board, now: now, previous: previous)
         let ordered = WallReading.order(drafts, previous: previous)
@@ -232,7 +233,7 @@ public struct AgentWall: Sendable, Equatable {
         let shownIDs = Set(shown.map(\.id))
         let overflow = ordered.filter { !shownIDs.contains($0.id) && $0.state.isRunning }
         let chips = WallReading.listed(board: board, overflow: overflow)
-        let placed = WallGrid.place(shown, aspect: aspect, areaAspect: gridAspect)
+        let placed = WallGrid.place(shown, aspect: aspect, areaAspect: gridAspect, pages: pages)
         let mood = WallReading.mood(drafts: drafts, listed: chips)
         return AgentWall(
             mood: mood,
@@ -248,8 +249,8 @@ public struct AgentWall: Sendable, Equatable {
 
     /// The same wall laid out for another screen: a demo scene is read once and fitted to the window
     /// it is shown in.
-    public func reflowed(aspect: Double, gridAspect: Double? = nil) -> AgentWall {
-        let placed = WallGrid.place(tiles, aspect: aspect, areaAspect: gridAspect)
+    public func reflowed(aspect: Double, gridAspect: Double? = nil, pages: Bool = false) -> AgentWall {
+        let placed = WallGrid.place(tiles, aspect: aspect, areaAspect: gridAspect, pages: pages)
         return AgentWall(
             mood: mood, headline: headline, watchLine: watchLine, tiles: placed.tiles,
             columns: placed.columns, rows: placed.rows, listed: listed, listedOverflow: listedOverflow,

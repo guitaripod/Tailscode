@@ -491,6 +491,34 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
         #expect(four.tiles.map(\.span) == [1, 1, 1, 1])
     }
 
+    @Test func pagesPutTwoColumnsFillRowMajorAndNeverSpan() {
+        let expected: [Int: (columns: Int, rows: Int)] = [
+            1: (1, 1), 2: (2, 1), 3: (2, 2), 4: (2, 2), 5: (2, 3), 6: (2, 3),
+        ]
+        for aspect in [landscape, portrait, squarish] {
+            for count in 1...6 {
+                let board = AgentBoard.read(sources: sources(count), finished: [], now: epoch)
+                let read = AgentWall.read(
+                    board: board, hour: nil, now: epoch, aspect: aspect, pages: true, previous: nil)
+                #expect(read.columns == expected[count]?.columns)
+                #expect(read.rows == expected[count]?.rows)
+                #expect(read.tiles.allSatisfy { $0.span == 1 })
+                let columns = read.columns
+                #expect(read.tiles.map(\.column) == (0..<count).map { $0 % columns })
+                #expect(read.tiles.map(\.row) == (0..<count).map { $0 / columns })
+            }
+        }
+    }
+
+    @Test func pagesLeaveAnOddLastCellEmptyAndSurviveAReflow() {
+        let five = wall(sources(5), aspect: landscape)
+        let paged = five.reflowed(aspect: portrait, pages: true)
+        #expect(paged.columns == 2 && paged.rows == 3)
+        #expect(paged.tiles.last?.column == 0 && paged.tiles.last?.row == 2 && paged.tiles.last?.span == 1)
+        let flat = paged.reflowed(aspect: landscape)
+        #expect(flat.columns == 3 && flat.rows == 2)
+    }
+
     @Test func noMoreThanSixTilesAndTheRestAreListed() {
         let read = wall(sources(9))
         #expect(read.tiles.count == 6)
