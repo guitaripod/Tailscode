@@ -64,6 +64,14 @@ final class DisplayGate {
 
     var isOpen: Bool { Self.allows(view) }
 
+    /// Whether the wall may be drawn: the window is on screen and not minimised and the app is not
+    /// hidden. The app need not be in front, which is what sets the wall apart from the board.
+    static func allowsWall(_ view: NSView?) -> Bool {
+        guard let window = view?.window else { return false }
+        if assumesVisible { return true }
+        return window.occlusionState.contains(.visible) && !window.isMiniaturized && !(NSApp?.isHidden ?? false)
+    }
+
     /// Whether a view in a window may be drawn for now: the window is on screen and the app is in
     /// front.
     static func allows(_ view: NSView?) -> Bool {

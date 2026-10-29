@@ -27,7 +27,7 @@ extension MainWindowController {
             presentPreferences(page: parts.count > 1 ? PreferencesWindow.page(named: parts[1]) : nil)
         case "typesize", "type": presentPreferences(typeSize: true)
         case "analytics": presentAnalytics()
-        case "agents", "agents-hour", "agent-peek", "agents-long", "agents-away": openAgentsFixture(parts.first ?? name)
+        case "agents", "agents-watch", "agents-hour", "agent-peek", "agents-long", "agents-away": openAgentsFixture(parts.first ?? name)
         case "usage", "quotas": presentUsageWindow()
         case "newchat": presentNewChat(browsing: parts.count > 1 && parts[1] == "browse")
         case "quickask":
@@ -172,7 +172,7 @@ extension MainWindowController {
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, typesize, analytics, newchat[:browse], "
                         + "quickask[:long|party|take], cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
-                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], agents, agents-hour, agent-peek, party, clock-glance, clock-sheet[:minute+add+q=text], share[:fixture[+format]], draw, preview[:state[+split]], preview=HOST:PORT:/folder[+split], renderer, delegate\n").utf8))
+                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], agents, agents-watch, agents-hour, agent-peek, party, clock-glance, clock-sheet[:minute+add+q=text], share[:fixture[+format]], draw, preview[:state[+split]], preview=HOST:PORT:/folder[+split], renderer, delegate\n").utf8))
         }
     }
 

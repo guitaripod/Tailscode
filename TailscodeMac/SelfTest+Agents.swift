@@ -126,6 +126,18 @@ enum AgentsChecks {
         try await aListedAgentSaysSo(expect)
         step("theShortcutOpensTheWindow")
         try await theShortcutOpensTheWindow(expect)
+        step("theWatchWallDraws")
+        try await theWatchWallDraws(expect)
+        step("theWallGlidesToANewSize")
+        try await theWallGlidesToANewSize(expect)
+        step("anAskKeepsItsWholeCommandAndItsAnswers")
+        try await anAskKeepsItsWholeCommandAndItsAnswers(expect)
+        step("theWallObeysItsCadenceAndKeepsItsStyle")
+        try await theWallObeysItsCadenceAndKeepsItsStyle(expect)
+        step("aHoldDimAndGestureBehave")
+        try await aHoldDimAndGestureBehave(expect)
+        step("theWallPeeksAndLeaves")
+        try await theWallPeeksAndLeaves(expect)
         return "\(checks) agents claims"
     }
 

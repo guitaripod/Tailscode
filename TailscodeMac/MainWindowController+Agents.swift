@@ -49,10 +49,12 @@ extension MainWindowController {
         }
     }
 
-    /// `--open agents`, `agents-hour` and `agent-peek`: the board on the fictional world, so a
-    /// window nobody is sitting at can be drawn and measured with no server behind it.
+    /// `--open agents`, `agents-watch`, `agents-hour` and `agent-peek`: the wall and the board on the
+    /// fictional world, so a window nobody is sitting at can be drawn and measured with no server
+    /// behind it.
     func openAgentsFixture(_ name: String) {
         let controller = presentAgents(fixture: true)
+        controller.setMode(name == "agents-watch" ? .watch : .now)
         switch name {
         case "agents-hour":
             controller.setMode(.hour)
@@ -60,6 +62,8 @@ extension MainWindowController {
                 try? await Task.sleep(for: .milliseconds(500))
                 controller?.select(key: AgentDemo.homelab + "/ask", from: .code)
             }
+        case "agents-watch":
+            break
         case "agent-peek":
             controller.select(key: AgentDemo.studio + "/w", from: .code)
         case "agents-long":

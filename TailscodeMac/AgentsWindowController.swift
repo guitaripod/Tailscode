@@ -3,13 +3,15 @@ import CodingAgentKit
 import MidgarCore
 import TailscodeCore
 
-/// The Agents window: the board of what every agent is doing, in Now or Hour, with the peek of the
-/// one selected in an inspector beside it. It watches only while somebody can see it: the tower is
-/// opened when the window is on screen and the app in front, and closed when it closes, hides,
-/// miniaturizes or the app steps back.
+/// The Agents window: the wall of what every agent is doing, and the board of it in Now or Hour,
+/// with the peek of the one selected in an inspector beside it. It watches only while somebody can
+/// see it: the tower is opened when the window is on screen and, for the board, the app in front,
+/// and closed when it closes, hides or miniaturizes. The wall is for a screen that stays up while
+/// somebody works in another app, so a wall keeps watching when the app steps back.
 @MainActor
 final class AgentsWindowController: NSWindowController {
     enum Mode: Int {
+        case watch
         case now
         case hour
     }
@@ -17,6 +19,7 @@ final class AgentsWindowController: NSWindowController {
     static let toolbarID = NSToolbar.Identifier("tailscode.agents.toolbar")
     static let modeItem = NSToolbarItem.Identifier("tailscode.agents.mode")
     static let inspectorItem = NSToolbarItem.Identifier("tailscode.agents.inspector")
+    static let styleItem = NSToolbarItem.Identifier("tailscode.agents.style")
 
     let feed: any AgentsFeed
     let actions: AgentsActions
@@ -24,21 +27,25 @@ final class AgentsWindowController: NSWindowController {
     let board: AgentsBoardViewController
     let hour: AgentsHourViewController
     let peek: AgentPeekViewController
+    let wall: WatchWallViewController
+    let wallPeek: WatchPeekPopover
     let content: AgentsContentViewController
     let split: NSSplitViewController
     private(set) var inspector: NSSplitViewItem
-    private(set) var mode: Mode = .now
-    private(set) var selectedKey: String?
+    private(set) var mode: Mode
+    var selectedKey: String?
     private(set) var isWatching = false
     var visibilityOverride: Bool?
     var onOpenChat: ((String) -> Void)?
     private var ticker: Timer?
-    private var following: Task<Void, Never>?
+    var following: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
     weak var modeGroup: NSToolbarItemGroup?
+    weak var styleButton: NSToolbarItem?
 
-    init(feed: any AgentsFeed) {
+    init(feed: any AgentsFeed, mode: Mode = .watch) {
         self.feed = feed
+        self.mode = mode
         let actions = AgentsActions(feed: feed)
         self.actions = actions
         let context = AgentsContext(actions: actions)
@@ -46,7 +53,9 @@ final class AgentsWindowController: NSWindowController {
         board = AgentsBoardViewController(context: context)
         hour = AgentsHourViewController(context: context)
         peek = AgentPeekViewController(context: context)
-        content = AgentsContentViewController(board: board, hour: hour)
+        wall = WatchWallViewController()
+        wallPeek = WatchPeekPopover(context: context)
+        content = AgentsContentViewController(wall: wall, board: board, hour: hour, mode: mode)
         let splitController = NSSplitViewController()
         let main = NSSplitViewItem(viewController: content)
         main.minimumThickness = 440
@@ -66,6 +75,7 @@ final class AgentsWindowController: NSWindowController {
         window.title = Localized.text("Agents")
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 760, height: 480)
+        window.collectionBehavior.insert(.fullScreenPrimary)
         MacTheme.Chrome.adopt(window)
         super.init(window: window)
         window.contentViewController = split
@@ -75,6 +85,8 @@ final class AgentsWindowController: NSWindowController {
         window.onStop = { [weak self] in self?.stopSelected() }
         configureToolbar(for: window)
         wire()
+        wireWall()
+        applyMode(animated: false)
     }
 
     @available(*, unavailable)
@@ -91,6 +103,8 @@ final class AgentsWindowController: NSWindowController {
         actions.observe { [weak self] _ in
             self?.board.refresh()
             self?.peek.refreshActions()
+            self?.wallPeek.peek.refreshActions()
+            self?.wall.actionsChanged()
         }
         board.onSelect = { [weak self] key in self?.select(key: key, from: .board) }
         board.onOpenChat = { [weak self] key in self?.openChat(key) }
@@ -116,6 +130,7 @@ final class AgentsWindowController: NSWindowController {
                     let closing = note.name == NSWindow.willCloseNotification
                     MainThread.call {
                         if closing {
+                            self?.wallPeek.close()
                             self?.stopWatching()
                         } else {
                             self?.reconcile()
@@ -146,19 +161,33 @@ final class AgentsWindowController: NSWindowController {
 
     func setMode(_ next: Mode) {
         mode = next
-        content.show(next)
-        modeGroup?.selectedIndex = next.rawValue
-        if next == .hour, isWatching {
-            hour.reload()
+        applyMode(animated: true)
+        reconcile()
+    }
+
+    private func applyMode(animated: Bool) {
+        content.show(mode)
+        modeGroup?.selectedIndex = mode.rawValue
+        styleButton?.isEnabled = mode == .watch
+        wall.setActive(mode == .watch)
+        wall.setLive(isWatching && mode == .watch)
+        window?.appearance = mode == .watch ? NSAppearance(named: .darkAqua) : nil
+        if mode != .watch { wallPeek.close() }
+        switch mode {
+        case .watch:
+            window?.makeFirstResponder(wall.root)
+        case .hour:
+            if isWatching { hour.reload() }
             window?.makeFirstResponder(hour.lanes)
-        } else if next == .now {
+        case .now:
             window?.makeFirstResponder(board.table)
         }
         hour.lanes.select(key: selectedKey)
     }
 
     func reconcile() {
-        let wanted = visibilityOverride ?? (window?.isVisible == true && content.isVisibleToEyes)
+        let seen = mode == .watch ? content.isWatchable : content.isVisibleToEyes
+        let wanted = visibilityOverride ?? (window?.isVisible == true && seen)
         if wanted, !isWatching {
             startWatching()
         } else if !wanted, isWatching {
@@ -169,6 +198,7 @@ final class AgentsWindowController: NSWindowController {
     func startWatching() {
         guard !isWatching else { return }
         isWatching = true
+        wall.setLive(mode == .watch)
         MidgarLog.info("agents: board open", category: .lifecycle)
         feed.open { [weak self] board in self?.received(board) }
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
@@ -184,6 +214,7 @@ final class AgentsWindowController: NSWindowController {
     func stopWatching() {
         guard isWatching else { return }
         isWatching = false
+        wall.setLive(false)
         MidgarLog.info("agents: board closed", category: .lifecycle)
         ticker?.invalidate()
         ticker = nil
@@ -195,13 +226,16 @@ final class AgentsWindowController: NSWindowController {
 
     private func received(_ next: AgentBoard) {
         board.apply(next)
+        wall.apply(board: next)
         window?.subtitle = next.sentence
         AgentsCenter.shared.note(board: next)
         if let key = selectedKey {
             if let subject = AgentsSubject.resolve(key: key, in: next, lane: lane(forBoard: key)) {
                 peek.show(subject)
+                if wallPeek.key == key { wallPeek.peek.show(subject) }
             } else {
                 select(key: nil, from: .board)
+                closeWallPeek()
             }
         }
         if mode == .hour { hour.reload() }
@@ -211,6 +245,10 @@ final class AgentsWindowController: NSWindowController {
         let now = context.now()
         board.tick()
         peek.tick(now: now)
+        if wallPeek.isShown {
+            wallPeek.peek.tick(now: now)
+            if wallPeek.expire(at: now) { closeWallPeek() }
+        }
         if mode == .hour { hour.tick(now: now) }
     }
 
@@ -238,9 +276,12 @@ final class AgentsWindowController: NSWindowController {
         if isWatching { follow(key) }
     }
 
-    private func follow(_ key: String) {
+    func follow(_ key: String) {
         following?.cancel()
-        following = feed.follow(key) { [weak self] facts in self?.peek.apply(facts: facts) }
+        following = feed.follow(key) { [weak self] facts in
+            self?.peek.apply(facts: facts)
+            self?.wallPeek.peek.apply(facts: facts)
+        }
     }
 
     func toggleInspector() {

@@ -190,7 +190,9 @@ extension SelfTest {
         try expect(
             ModelParty.slot(1)?.name == "Sprint",
             "a rename made in the quick ask's party lands in the one store")
-        let keys = defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix(partyKey) }
+        let keys = defaults.dictionaryRepresentation().keys.filter {
+            $0.hasPrefix(partyKey) && $0 != partyKey + ".seedRetired"
+        }
         try expect(keys == [partyKey], "one party key, not a copy: \(keys)")
 
         try await escapeOrder(panel, expect)

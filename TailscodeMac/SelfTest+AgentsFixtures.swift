@@ -75,8 +75,10 @@ enum AgentsFixtures {
         return controller
     }
 
-    static func controller(_ feed: any AgentsFeed, width: CGFloat = 1180) -> AgentsWindowController {
-        let controller = keep(AgentsWindowController(feed: feed))
+    static func controller(
+        _ feed: any AgentsFeed, width: CGFloat = 1180, mode: AgentsWindowController.Mode = .now
+    ) -> AgentsWindowController {
+        let controller = keep(AgentsWindowController(feed: feed, mode: mode))
         controller.visibilityOverride = true
         controller.window?.setContentSize(NSSize(width: width, height: 760))
         return controller

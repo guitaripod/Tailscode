@@ -17,8 +17,8 @@ final class AgentsWindow: NSWindow {
     }
 }
 
-/// The content column: the Now face and the Hour face, one showing at a time, under the one gate
-/// that says whether anybody can see them.
+/// The content column: the wall, the Now face and the Hour face, one showing at a time, under the
+/// one gate that says whether anybody can see them.
 @MainActor
 final class AgentsContentViewController: NSViewController {
     private final class Root: NSView {
@@ -43,8 +43,10 @@ final class AgentsContentViewController: NSViewController {
     }
 
     private let root = Root()
+    let wall: WatchWallViewController
     let board: AgentsBoardViewController
     let hour: AgentsHourViewController
+    private let initial: AgentsWindowController.Mode
     var onGate: (() -> Void)? {
         get { root.onGate }
         set { root.onGate = newValue }
@@ -52,9 +54,18 @@ final class AgentsContentViewController: NSViewController {
 
     var isVisibleToEyes: Bool { root.gate.isOpen }
 
-    init(board: AgentsBoardViewController, hour: AgentsHourViewController) {
+    /// Whether the wall can be seen: its window is on screen and the app is not hidden. The app does
+    /// not have to be in front, since a wall is left up on a screen while somebody works elsewhere.
+    var isWatchable: Bool { DisplayGate.allowsWall(root) }
+
+    init(
+        wall: WatchWallViewController, board: AgentsBoardViewController, hour: AgentsHourViewController,
+        mode: AgentsWindowController.Mode
+    ) {
+        self.wall = wall
         self.board = board
         self.hour = hour
+        initial = mode
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -63,6 +74,10 @@ final class AgentsContentViewController: NSViewController {
 
     override func loadView() {
         view = root
+        addChild(wall)
+        wall.view.frame = root.bounds
+        wall.view.autoresizingMask = [.width, .height]
+        root.addSubview(wall.view)
         for child in [board, hour] {
             addChild(child)
             child.view.translatesAutoresizingMaskIntoConstraints = false
@@ -74,10 +89,11 @@ final class AgentsContentViewController: NSViewController {
                 child.view.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             ])
         }
-        show(.now)
+        show(initial)
     }
 
     func show(_ mode: AgentsWindowController.Mode) {
+        wall.view.isHidden = mode != .watch
         board.view.isHidden = mode != .now
         hour.view.isHidden = mode != .hour
     }
