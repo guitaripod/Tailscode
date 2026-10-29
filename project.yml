@@ -10,6 +10,8 @@ packages:
     path: ../../swift/CodingAgentKit
   TailscodeCore:
     path: TailscodeCore
+  TailscodeMetal:
+    path: TailscodeMetal
   MidgarKit:
     url: https://github.com/guitaripod/MidgarKit
     exactVersion: 4.4.0
@@ -44,6 +46,8 @@ targetTemplates:
         product: CodingAgentKitApple
       - package: TailscodeCore
         product: TailscodeCore
+      - package: TailscodeMetal
+        product: TailscodeMetal
       - package: MidgarKit
         product: MidgarCore
       - package: MidgarKit
@@ -140,6 +144,8 @@ targets:
         product: AgentTestSupport
       - package: TailscodeCore
         product: TailscodeCore
+      - package: TailscodeMetal
+        product: TailscodeMetal
       - package: MidgarKit
         product: MidgarCore
       - package: MidgarKit
