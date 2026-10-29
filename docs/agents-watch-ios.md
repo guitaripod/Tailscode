@@ -37,7 +37,7 @@ Rules:
 
 One `MTKView` behind everything, one render pass a frame, triple-buffered uniforms, nothing allocated per frame:
 
-1. **Ground**: the theme's dark gradient, the mood bloom, the grid, light spilled by each tile onto the ground (computed at quarter resolution and upsampled; it is low frequency), ground ripples, the overdue edge.
+1. **Ground**: the theme's dark gradient, the mood bloom, the grid, light spilled by each tile onto the ground (per pixel, with a distance cutoff; measured at 1.09 ms of GPU a frame for the whole iPad wall on an M5 Pro, so the quarter-resolution pass was never needed), ground ripples, the overdue edge.
 2. **Glass plates**: instanced rounded rectangles from a distance field: the glass fill, the state's wash, border, rim, an edge sheen, hatching for away.
 3. **Glyphs**: orbs, context rings, crawling dashes, the orbiting dot, check, cross, square, hatched disc; one instanced draw.
 4. **Motes and particles**: points with added light, stepped on the CPU in fixed buffers (48 on a phone, 96 on an iPad).
@@ -159,3 +159,10 @@ All toolkit-free, in `TailscodeCore`, tested on Linux. Clients only draw.
 - `WallMotes` (`WallMotes.swift`): the Linux `WatchMotes` field, count by area (18 to 96), with a four-point trail for Currents.
 - `WallScene.build(_:)` (`WallScene.swift`): one frame as plain values for a renderer: tint and its strength, vignette, dim, drift, lights (≤ 8), ripples (≤ 12), plates, glyphs (drawn over) and glows (added light), dots (motes and particles). Glyph kinds, plate looks, breath and knock periods and every effect's shapes are the prototype's (`docs/agents-watch-ios-mocks/watch-engine.js`: `tileGlyph`, `workerGlyph`, `plateLook`, `tileSwell`, `drawFx`) and the Linux painters' (`AgentsWatchGlyph`, `AgentsWatchTilePaint`). Effect shapes are also available alone (`WallEffectShapes.shapes(for:at:anchor:unit:)`) for the Cairo wall.
 - Parity: `agentsWatchEffects`, `agentsWatchStyle`.
+
+## 13. As built (2026-10-30)
+
+- Core `cd1c80f7` + `5fc3128c` (`WallLayout.morphed` for turns, folds and resizes), Metal `1c06939c` (`TailscodeMetal/`, `wall-render` writes every demo scene on every screen to PNG), Mac `40261e3a`, Linux `a4133859`, iPhone and iPad `3d6cd574`.
+- iPhone and iPad: `Tailscode/Agents/Watch/`; the status bar stays hidden on the wall (showing it when idle would move the safe area and relayout); insets map physically, since the Metal scene is not mirrored right to left; the laptop pose carries the controls on the base. `scripts/shots-watch.sh` shoots the iPad and every Duo pose in throwaway simulators.
+- Mac: the Agents window opens on Watch; a tile peeks in the inspector when it is open, else in a popover; no Face ID, as on its board.
+- Linux: the Watch style group lives on Preferences › Advanced above Plain words; keep-awake still engages only in fullscreen and `k` keeps the final say, the style can only veto it or ask for mains power; drive verbs `agents-fx=<kind>` and `agents-style=<preset|key:value|open>`.
