@@ -27,9 +27,9 @@ Free is the whole core with one server; **Pro** is a one-time $14.99 purchase fo
 ## What it does
 
 - **Every turn, live** — thinking, tool calls, subagents in place, diffs in the code's own colours, pictures the agent looked at. Prose is written out at an even pace, never re-wrapping under you.
-- **Steer without leaving the chat** — allow once / always / deny cards, the agent's questions as a real form, follow-ups queued while it works, stop server-side. A turn that produced nothing says so.
-- **Every machine, one list** — sessions across all your servers grouped by machine with live status; pin, archive, search inside transcripts across servers; a tailnet radar that finds the agent servers on your devices.
-- **Models and money** — one chooser over every provider, per-prompt model and effort, session spend, the month's analytics merged across machines, quota walls scoped to their provider, Game Center trophies on Apple.
+- **Steer without leaving the chat** — allow once / always / deny cards, the agent's questions as a real form, follow-ups queued on the server while it works, stop server-side.
+- **Every machine, one list** — sessions across all your servers grouped by machine with live status, search inside transcripts, a tailnet radar, and an agents board (Now, Peek, Hour) that becomes a wall on a monitor left on; restart one server or all of them from their cards.
+- **Models and money** — one chooser over every provider, a party of six models one tap away, carry a conversation to another model, per-prompt effort, session spend, the month's analytics across machines, per-provider quotas.
 - **Compaction is a seam you can read**; `/design` opens a mock-up board; slash commands complete from the server's own catalog; the repo is read (branch, drift, diffs), never operated.
 - **Delegate** — hand a packet down a ladder of cheaper models on the server (from the board or straight from a chat with `/delegate`) and get a verified patch back, held for you to read and apply.
 - **Image and video** — describe a clip or paint from a reference on a tailnet machine running ComfyUI (Linux and iPhone paint; the Mac renders video only).
@@ -79,7 +79,7 @@ First run is a checklist the app verifies: Tailscale on this device, your machin
 
 **macOS** — `scripts/install-macapp.sh`. Design contract in `TailscodeMac/AGENTS.md`.
 
-**Linux** — Swift 6.2, then:
+**Linux** — Swift 6.4, then:
 
 ```bash
 sudo pacman -S --needed gtk4 libadwaita glib2 gdk-pixbuf2 libepoxy vte4 mpv webkitgtk-6.0 libpulse curl   # Arch
@@ -118,16 +118,7 @@ Programmatic UIKit and AppKit, GTK4 through C shims, Swift 6 strict concurrency,
 
 `TailscodeCore/Sources/TailscodeCore/Parity.swift` declares `AppCapability` — one case per user-facing capability, each with a toolkit-free spec — and every client answers every case in its own `Parity.swift` with an exhaustive switch and no `default`. Adding a capability is a compile error in all three clients until each says what it does about it: `.implemented(anchor)`, `.partial`, `.gap(reason)`, `.notApplicable(reason)`, or on the Mac `.varies(direct:appStore:)`, because the ad-hoc build and the sandboxed App Store build are allowed different answers.
 
-`scripts/parity.sh` prints the matrix and greps every claimed anchor inside that client's own tree, reading `#if TAILSCODE_MAS` the way the compiler does so the store column cannot claim code it compiles out. It runs as a Claude Code Stop hook, and both desktops assert it under `--selftest`.
-
-```
-$ scripts/parity.sh
-capability                 iOS         linux       mac         mac-store
-sessionSections            ok          ok          ok          ok
-...
-684/788 implemented, 28 partial, 20 gaps, 56 n/a
-PARITY_OK
-```
+`scripts/parity.sh` prints the matrix and checks every claimed anchor in that client's own tree (reading `#if TAILSCODE_MAS` as the compiler does); it runs as a Stop hook and under both desktops' `--selftest`.
 
 Exhaustiveness forces disclosure, not implementation — `.gap("later")` compiles. What it guarantees is that nothing can exist on one platform while the others say nothing.
 
