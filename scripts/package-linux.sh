@@ -35,10 +35,23 @@ version() {
 
 binary() { echo "$BUILD_DIR/release/tailscode"; }
 
+# Swift 6.4's static SDK links libFoundation.a and its siblings without the libraries they in turn
+# need, so a static build names every one of them, in one group because they refer to each other,
+# and libcurl after it for URLSession. A toolchain that still links them itself ignores the repeat.
+STATIC_FOUNDATION=(
+    -Xlinker --start-group
+    -Xlinker -lFoundationNetworking -Xlinker -l_CFURLSessionInterface
+    -Xlinker -lFoundation -Xlinker -lFoundationInternationalization -Xlinker -l_FoundationICU
+    -Xlinker -lFoundationEssentials -Xlinker -l_FoundationCShims -Xlinker -l_FoundationCollections
+    -Xlinker -lCoreFoundation
+    -Xlinker --end-group
+    -Xlinker -lcurl
+)
+
 do_build() {
     echo "== building tailscode $(version) (static stdlib)"
     ( cd "$ROOT/TailscodeLinux" && swift build -c release --static-swift-stdlib \
-        --scratch-path "$BUILD_DIR" )
+        "${STATIC_FOUNDATION[@]}" --scratch-path "$BUILD_DIR" )
     strip --strip-unneeded "$(binary)"
     # The whole point of the static link is that nothing outside the system libraries is needed.
     if ldd "$(binary)" | grep -q 'libswiftCore\|libFoundation'; then

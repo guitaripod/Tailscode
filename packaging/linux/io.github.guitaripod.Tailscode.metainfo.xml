@@ -69,6 +69,27 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.80" date="2026-10-30">
+      <description>
+        <p>New:</p>
+        <ul>
+          <li>The agents board. One window for every agent at once: Now lists what is running, Peek opens one without leaving your chat, and Hour shows what the last hour did. Left on a monitor it becomes a wall that plays each event in the style you pick.</li>
+          <li>A party of six. Open six models from the model pill, edit a slot in place, add the current one with Add to party, and pick from the party in Quick ask. Each card names its server.</li>
+          <li>Carry a conversation to another model. Try with another model hands the chat over with a brief, and a seam in the transcript marks where the model changed.</li>
+          <li>Queued messages wait on the server where the backend keeps a queue, so they survive a restart, and any client can edit, remove or resume them.</li>
+          <li>Settings in seven pages, with theme cards, a type preview and a keyboard editor that rebinds a shortcut when you press the keys. Eight more actions can be bound, and nine number the chat list.</li>
+          <li>Restart a server, or every server at once, and follow it on its card.</li>
+          <li>A compose or ask link carries its words into the box as an unsent draft.</li>
+        </ul>
+        <p>Fixes:</p>
+        <ul>
+          <li>Megatron opens and scrolls quickly in long chats, and a wheel notch a step list cannot use moves the page.</li>
+          <li>The status band holds still while its counts and clocks change.</li>
+          <li>Settings&#x27; icons show under every icon theme.</li>
+          <li>Tailscode builds again with Swift 6.4, which stopped linking Foundation&#x27;s own libraries into a static build.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.79" date="2026-10-21">
       <description>
         <p>New:</p>
