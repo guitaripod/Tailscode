@@ -153,6 +153,17 @@ public enum NeuralTurns {
         var answers: [String] = []
         var members = Set<String>()
         var seenStepParts = 0
+        var trailingBytes = 0
+        for reading in readings {
+            for item in reading.items {
+                switch item.kind {
+                case .reasoning, .tool: trailingBytes = 0
+                case .text: trailingBytes += item.step.text.utf8.count
+                }
+            }
+        }
+        let holding = holdsTrailingWords(
+            running: running, hasSteps: totalStepParts > 0, bytes: trailingBytes)
         for (group, reading) in readings.enumerated() {
             for item in reading.items {
                 switch item.kind {
@@ -162,7 +173,7 @@ public enum NeuralTurns {
                 case .text:
                     if seenStepParts < totalStepParts {
                         append(item, group: group, to: &steps, members: &members)
-                    } else {
+                    } else if !holding {
                         answers.append(item.step.id)
                     }
                 }
@@ -224,6 +235,21 @@ public enum NeuralTurns {
         assemble(
             messages, readings: messages.map { readMessage($0, awaiting: awaiting) },
             running: running, awaiting: awaiting)
+    }
+
+    /// How many bytes of trailing words a running turn with work behind it keeps out of the answer
+    /// until they have grown past it. A note the agent writes before its next call is a line or
+    /// two; the words that outgrow this are the answer being written.
+    static let heldAnswerBytes = 320
+
+    /// Whether the words after a turn's last step are held back: not the answer yet, and not a step
+    /// either, so the chat shows nothing for them and the brain counts nothing for them. Showing
+    /// them at once is what put a line in the chat for as long as it took the next call to arrive
+    /// and then took it away into the brain. Held words become the answer when they outgrow
+    /// `heldAnswerBytes` or the turn ends, and a note when a call follows, and the steps only ever
+    /// grow.
+    static func holdsTrailingWords(running: Bool, hasSteps: Bool, bytes: Int) -> Bool {
+        running && hasSteps && bytes > 0 && bytes < heldAnswerBytes
     }
 
     static func hasWords(_ text: String) -> Bool {

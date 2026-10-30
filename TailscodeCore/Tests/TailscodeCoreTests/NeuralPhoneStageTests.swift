@@ -28,12 +28,12 @@ struct NeuralPhoneStageTests {
         NeuralStepList(steps: steps(count, ask: ask))
     }
 
-    @Test("the collapsed card stays 84 and the open stage is a fixed, short, scroll-free column")
+    @Test("the collapsed card is 60 on a narrow row and 84 on a wide one, and the open stage is a fixed, short, scroll-free column")
     func heights() {
         for width in [320.0, 375, 386, 402, 430, 744] {
             let metrics = phone(width)
             #expect(metrics.isPhone && metrics.arrangement == .accordion)
-            #expect(metrics.cardHeight == 84)
+            #expect(metrics.cardHeight == (metrics.card.layout == .narrow ? 60 : 84))
             #expect(metrics.stage.height <= 160)
             #expect(metrics.rowsShown == 5 && metrics.listRowHeight == 32)
             #expect(metrics.listHeader.height == 40 && metrics.listRows.height == 160)
@@ -107,7 +107,7 @@ struct NeuralPhoneStageTests {
         #expect(metrics.stageGeometry.picture == metrics.stage)
         #expect(metrics.stageGeometry.rowHeight == metrics.rowHeight)
         #expect(metrics.stageGeometry.list == metrics.list)
-        #expect(metrics.cardGeometry.rowHeight == 84)
+        #expect(metrics.cardGeometry.rowHeight == 60)
     }
 
     @Test("the other layouts are exactly what they were: a pointer, a wide touch row and a plain call")

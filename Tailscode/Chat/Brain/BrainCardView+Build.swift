@@ -360,11 +360,17 @@ extension BrainCardView {
     }
 
     func buttons(model: NeuralBrainModel, row: BrainRow, live: Bool) {
+        let tucked = isTucked
         replay.set(
-            title: NeuralReading.replayLabel, symbol: "play.fill", on: false, compact: isCompact)
-        rows.set(title: NeuralReading.rowsLabel, symbol: nil, on: row.showsRows, compact: isCompact)
-        open.set(title: Localized.text("Open"), symbol: nil, on: false, compact: isCompact)
-        replay.isHidden = false
+            title: NeuralReading.replayLabel, symbol: "play.fill", iconOnly: tucked, on: false,
+            compact: isCompact)
+        rows.set(
+            title: NeuralReading.rowsLabel, symbol: tucked ? "list.bullet" : nil, iconOnly: tucked,
+            on: row.showsRows, compact: isCompact)
+        open.set(
+            title: Localized.text("Open"), symbol: tucked ? "chevron.right" : nil, iconOnly: tucked,
+            on: false, compact: isCompact)
+        replay.isHidden = tucked && live
         replay.isEnabled = !(live || model.steps.count <= 1)
         replay.accessibilityLabel = NeuralReading.replayLabel
         rows.accessibilityLabel = NeuralReading.rowsLabel

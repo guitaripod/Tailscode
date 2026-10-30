@@ -48,18 +48,27 @@ enum ChatRowBuilder {
                 if brain == nil, !brains.isEmpty { brain = brains.turn(startingAt: message.id) }
             case .system: break
             }
-            if let prev = lastDate, message.createdAt.timeIntervalSince(prev) > 300 {
-                rows.append(ChatRow(
-                    id: "ts:\(message.id)", messageID: message.id, role: .system,
-                    content: .timestamp(Self.relativeTimestamp(message.createdAt))))
-            }
-            if lastDate == nil || message.createdAt > (lastDate ?? .distantPast) {
-                lastDate = message.createdAt
+            let leading = rows.count
+            let stamp = lastDate.flatMap { previous in
+                message.createdAt.timeIntervalSince(previous) > 300
+                    ? ChatRow(
+                        id: "ts:\(message.id)", messageID: message.id, role: .system,
+                        content: .timestamp(Self.relativeTimestamp(message.createdAt)))
+                    : nil
             }
             if let seam = seams[message.id] {
                 rows.append(ChatRow(
                     id: "\(message.id):seam", messageID: message.id, role: .system,
                     content: .modelSeam(seam)))
+            }
+            let contentStart = rows.count
+            /// A time is put above what a message draws, and a message the brain took whole draws
+            /// nothing: a stamp left standing over it is a date over an empty gap, and the next
+            /// stamp is measured from what the reader can see, not from the hidden message.
+            func datedBySightedRows() {
+                guard rows.count > contentStart else { return }
+                if let stamp { rows.insert(stamp, at: leading) }
+                lastDate = max(message.createdAt, lastDate ?? .distantPast)
             }
             let context = SegmentRowMemo.MessageContext(
                 promptID: lastPrompt?.id, promptAt: lastPrompt?.createdAt,
@@ -72,6 +81,7 @@ enum ChatRowBuilder {
                 isClaimed: { claimsAnything && (agents.byToolUse[$0] != nil || runs[$0] != nil) })
             {
                 rows.append(contentsOf: cached)
+                datedBySightedRows()
                 continue
             }
             let firstRow = rows.count
@@ -266,6 +276,7 @@ enum ChatRowBuilder {
                     message: message, context: context, toolIDs: toolIDs,
                     rows: Array(rows[firstRow...]))
             }
+            datedBySightedRows()
         }
         rows.append(
             contentsOf: Self.agentRows(

@@ -240,7 +240,7 @@ struct NeuralTurnTests {
         #expect(thoughts[0].text.hasPrefix("He wants"))
     }
 
-    @Test("a running turn keeps trailing text as the answer in progress until a tool follows")
+    @Test("a running turn holds a short trailing note out of the chat until it outgrows a note or a tool follows")
     func runningTrailingText() {
         var messages: [ChatMessage] = [
             Fixtures.user(0),
@@ -249,9 +249,17 @@ struct NeuralTurnTests {
         ]
         var turn = NeuralTurns.partition(messages: messages, running: true)[0]
         #expect(turn.steps.count == 1)
-        #expect(turn.answerPartIDs == ["m2:p0"])
+        #expect(turn.answerPartIDs.isEmpty)
+        #expect(turn.memberPartIDs.contains("m2:p0"))
         #expect(turn.outcome == .running)
         #expect(turn.endedAt == nil)
+
+        let written = String(repeating: "Looking at it now. ", count: 20)
+        messages[2] = Fixtures.message(2, [.text(written)], streaming: true)
+        turn = NeuralTurns.partition(messages: messages, running: true)[0]
+        #expect(turn.steps.count == 1)
+        #expect(turn.answerPartIDs == ["m2:p0"])
+        #expect(!turn.memberPartIDs.contains("m2:p0"))
 
         messages[2] = Fixtures.message(
             2, [.text("Looking at it now"), Fixtures.bash("ls", status: .running)], streaming: true)
@@ -262,6 +270,43 @@ struct NeuralTurnTests {
         #expect(turn.steps[1].id == "m2:p0")
         #expect(turn.steps[2].status == .running)
         #expect(turn.outcome == .running)
+    }
+
+    @Test("a short trailing line is the answer once the turn has ended, and the first words of a turn with no work are never held")
+    func shortAnswersStand() {
+        var messages: [ChatMessage] = [
+            Fixtures.user(0),
+            Fixtures.message(1, [Fixtures.read("a/b/c.swift", out: ["10 lines"])]),
+            Fixtures.message(2, [.text("Done.")]),
+        ]
+        var turn = NeuralTurns.partition(messages: messages, running: false)[0]
+        #expect(turn.answerPartIDs == ["m2:p0"])
+        #expect(!turn.memberPartIDs.contains("m2:p0"))
+
+        messages = [Fixtures.user(0), Fixtures.message(1, [.text("Hello")], streaming: true)]
+        turn = NeuralTurns.partition(messages: messages, running: true)[0]
+        #expect(turn.answerPartIDs == ["m1:p0"])
+    }
+
+    @Test("the outline holds the same words the turn does, and releases them at the same size")
+    func outlineHoldsToo() {
+        let held = [
+            Fixtures.user(0),
+            Fixtures.message(1, [Fixtures.read("a/b/c.swift", out: ["10 lines"])]),
+            Fixtures.message(2, [.text("Looking at it now")], streaming: true),
+        ]
+        let outline = NeuralTurns.outline(messages: Array(held.dropFirst()), running: true)
+        #expect(outline.answerPartIDs.isEmpty)
+        #expect(outline.consumes("m2:p0"))
+        #expect(outline.stepCount == 1)
+
+        let written = String(repeating: "Looking at it now. ", count: 20)
+        let grown = Array(held.dropFirst().dropLast()) + [
+            Fixtures.message(2, [.text(written)], streaming: true)
+        ]
+        let released = NeuralTurns.outline(messages: grown, running: true)
+        #expect(released.answerPartIDs == ["m2:p0"])
+        #expect(!released.consumes("m2:p0"))
     }
 
     @Test("a thought still being written is the running step")

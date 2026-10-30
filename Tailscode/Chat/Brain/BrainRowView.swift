@@ -232,10 +232,21 @@ final class BrainRowView: UIView {
         liveRegistered = false
     }
 
+    /// What a row is estimated at before its model is made: the card's height on a phone's narrow
+    /// row, a wide card's everywhere else.
+    private static func unmadeHeight(forWidth width: CGFloat) -> CGFloat {
+        guard NeuralStageMetrics.cardLayout(width: Double(width)) == .narrow else { return 112 }
+        let compact = ChatDensitySetting.current == .compact
+        return CGFloat(
+            compact ? NeuralStageMetrics.phoneCardHeightCompact : NeuralStageMetrics.phoneCardHeightComfortable)
+    }
+
     /// The row's height for a width: the card's, the open brain's, or the move's own at this
     /// instant.
     func height(forWidth width: CGFloat) -> CGFloat {
-        guard let store, let row, let model = store.model(for: row.turnID) else { return 112 }
+        guard let store, let row, let model = store.model(for: row.turnID) else {
+            return Self.unmadeHeight(forWidth: width)
+        }
         let m = (metrics?.width == Double(width)) ? metrics! : makeMetrics(width: width, model: model)
         switch phase {
         case .closed:

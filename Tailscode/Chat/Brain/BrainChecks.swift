@@ -71,6 +71,8 @@ import MidgarCore
             runAccount(long, build: build)
             runMetrics(long)
             runPhoneMetrics()
+            runTimestamps()
+            runHeldWords()
             runMove(long)
             runWords(all)
             runEffort()
@@ -292,13 +294,71 @@ import MidgarCore
             }())
         }
 
+        /// A long turn on opencode is many assistant messages, and the brain takes all but the first
+        /// and the last whole: the times over those messages must not be left standing in the
+        /// transcript with nothing under them.
+        private static func runTimestamps() {
+            let start = Date(timeIntervalSince1970: 1_792_000_000)
+            func message(_ id: String, _ role: MessageRole, at offset: TimeInterval, _ kind: MessagePart.Kind) -> ChatMessage {
+                let date = start.addingTimeInterval(offset)
+                return ChatMessage(
+                    id: id, role: role, agentType: .openCode, parts: [MessagePart(id: "p", kind: kind)],
+                    createdAt: date, completedAt: date)
+            }
+            func call(_ n: Int) -> MessagePart.Kind {
+                .tool(ToolCall(id: "c\(n)", name: "bash", status: .completed, input: .object(["command": .string("ls \(n)")]), output: "ok"))
+            }
+            var messages = [message("u", .user, at: 0, .text("eta?"))]
+            for n in 1...5 { messages.append(message("m\(n)", .assistant, at: Double(n) * 600, call(n))) }
+            messages.append(message("m6", .assistant, at: 3600, .text("Done. The run finished with no errors in the log.")))
+            let store = BrainStore()
+            let layout = store.prepare(messages: messages, running: false, awaiting: .none) { _ in contextFor(true) }
+            let rows = ChatRowBuilder.makeRows(from: messages, agents: ChatViewController.SubagentPlacement(), brains: layout)
+            let stamps = rows.indices.filter { if case .timestamp = rows[$0].content { return true } else { return false } }
+            check(
+                "every time stands over a row of its own message",
+                stamps.allSatisfy { $0 + 1 < rows.count && rows[$0 + 1].messageID == rows[$0].messageID },
+                "\(rows.map(\.id))")
+            check("a time is shown for what is seen: the card and the answer, not the messages between", stamps.count == 2, "\(stamps.count) \(rows.map(\.id))")
+        }
+
+        /// Words a working turn has written so far are held out of the chat while they are short, so
+        /// a note the agent follows with a call is never seen and taken away.
+        private static func runHeldWords() {
+            let start = Date(timeIntervalSince1970: 1_792_000_000)
+            func message(_ id: String, _ role: MessageRole, at offset: TimeInterval, _ parts: [MessagePart.Kind], streaming: Bool = false) -> ChatMessage {
+                let date = start.addingTimeInterval(offset)
+                return ChatMessage(
+                    id: id, role: role, agentType: .openCode,
+                    parts: parts.enumerated().map { MessagePart(id: "p\($0.offset)", kind: $0.element) },
+                    createdAt: date, completedAt: streaming ? nil : date, isStreaming: streaming)
+            }
+            let call = MessagePart.Kind.tool(ToolCall(id: "c1", name: "bash", status: .completed, input: .object(["command": .string("ls")]), output: "ok"))
+            func shown(_ words: String, running: Bool) -> Bool {
+                let messages = [
+                    message("u", .user, at: 0, [.text("go")]),
+                    message("m1", .assistant, at: 5, [call]),
+                    message("m2", .assistant, at: 10, [.text(words)], streaming: running),
+                ]
+                let store = BrainStore()
+                let layout = store.prepare(messages: messages, running: running, awaiting: .none) { _ in contextFor(true) }
+                let rows = ChatRowBuilder.makeRows(from: messages, agents: ChatViewController.SubagentPlacement(), turnOpen: running, brains: layout)
+                return rows.contains { $0.id.hasPrefix("m2:p0") }
+            }
+            let note = "Checking the log next."
+            let answer = String(repeating: "The run finished. ", count: 30)
+            check("a short note of a working turn is not put in the chat", !shown(note, running: true))
+            check("the words of a working turn that outgrow a note are put in the chat", shown(answer, running: true))
+            check("a short answer is put in the chat when the turn has ended", shown(note, running: false))
+        }
+
         private static func runPhoneMetrics() {
             for width in [320.0, 375, 402, 430, 744] {
                 let metrics = NeuralStageMetrics.make(
                     width: width - 16, density: .compact, input: .touch, phone: true)
                 check("a \(Int(width)) pt phone opens compact", metrics.isPhone && metrics.rowHeight <= 400, "\(metrics.rowHeight)")
                 check("a \(Int(width)) pt phone's head is 152 at most", metrics.stage.height <= 160, "\(metrics.stage.height)")
-                check("a \(Int(width)) pt phone's card stays 84", metrics.cardHeight == 84)
+                check("a \(Int(width)) pt phone's card is 60 on a narrow row and 84 on a wide one", metrics.cardHeight == (metrics.card.layout == .narrow ? 60 : 84), "\(metrics.cardHeight)")
                 check("a \(Int(width)) pt phone's stage names Megatron only where its corner is clear of the head", (metrics.stageWordmark != nil) == (width - 16 >= 386), "\(metrics.stage.x)")
             }
         }
@@ -945,7 +1005,14 @@ import MidgarCore
                 return
             }
             check("a settled card owns no display link and no clock", !row.ownsDisplayLink && BrainLiveClock.shared.registered == 0)
-            if row.bounds.width >= NeuralStageMetrics.cardWordmarkMinWidth {
+            if row.card.isTucked {
+                let layout = row.card.lastLayout
+                let buttonsLeft = [layout?.replay, layout?.rows, layout?.open].compactMap { $0 }
+                    .filter { $0 != .zero }.map(\.minX).min() ?? .greatestFiniteMagnitude
+                check(
+                    "a phone card's name never reaches its buttons",
+                    !row.card.wordmarkShown || row.card.wordmark.frame.maxX <= buttonsLeft)
+            } else if row.bounds.width >= NeuralStageMetrics.cardWordmarkMinWidth {
                 check("a card wears Megatron's name when its headline leaves room", row.card.wordmarkShown)
             }
             toggle(id)

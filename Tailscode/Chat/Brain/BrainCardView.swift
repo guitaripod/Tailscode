@@ -169,6 +169,9 @@ final class BrainCardView: UIView {
     var density: ChatDensity { metrics?.density ?? .comfortable }
     var isCompact: Bool { density == .compact }
 
+    /// Whether this is a phone's narrow card, whose buttons are icons in the first line's end.
+    var isTucked: Bool { metrics.map { $0.isPhone && $0.card.layout == .narrow } ?? false }
+
     /// Draws the card for a turn at a row width. Nothing is rebuilt when nothing the card says
     /// changed.
     func configure(

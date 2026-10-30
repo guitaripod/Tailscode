@@ -1,14 +1,16 @@
 import UIKit
 
 /// A small pill on the card: Replay, Rows or Open. A finger is given a 44 point target however
-/// small it is drawn.
+/// small it is drawn. On a phone's card it is its symbol alone, which is what lets the card keep
+/// its buttons in the first line's end instead of a line of their own.
 @MainActor
 final class CardButton: UIControl {
     var onTap: (() -> Void)?
     private let label = UILabel()
     private let icon = UIImageView()
     private var title = ""
-    private var hasIcon = false
+    private var symbol: String?
+    private var iconOnly = false
     private var compact = false
     private var isOn = false
 
@@ -32,32 +34,47 @@ final class CardButton: UIControl {
 
     @objc private func tapped() { onTap?() }
 
-    func set(title new: String, symbol: String?, on: Bool, compact isCompact: Bool) {
-        title = new
-        hasIcon = symbol != nil
+    private var hasIcon: Bool { symbol != nil }
+
+    func set(
+        title newTitle: String, symbol newSymbol: String?, iconOnly only: Bool = false, on: Bool,
+        compact isCompact: Bool
+    ) {
+        title = newTitle
+        symbol = newSymbol
+        iconOnly = only && newSymbol != nil
         isOn = on
         compact = isCompact
         let ink = on ? Theme.Color.accent : Theme.Color.label
         label.attributedText = NSAttributedString(
-            string: new, attributes: Theme.Ramp.attributes(.control, color: ink))
-        icon.image = symbol.flatMap { BrainCanvas.image($0, size: 9)?.withTintColor(ink, renderingMode: .alwaysOriginal) }
-        icon.isHidden = symbol == nil
+            string: newTitle, attributes: Theme.Ramp.attributes(.control, color: ink))
+        label.isHidden = iconOnly
+        let glyph: CGFloat = iconOnly ? 12 : 9
+        icon.image = newSymbol.flatMap { BrainCanvas.image($0, size: glyph)?.withTintColor(ink, renderingMode: .alwaysOriginal) }
+        icon.isHidden = newSymbol == nil
         layer.borderColor = (on ? Theme.Color.accent : Theme.Color.separator).resolvedColor(with: traitCollection).cgColor
         backgroundColor = on ? Theme.Color.accent.wash(0.14) : Theme.Color.background.wash(0.5)
         setNeedsLayout()
     }
 
     private func traitsChanged() {
-        set(title: title, symbol: hasIcon ? "play.fill" : nil, on: isOn, compact: compact)
+        set(title: title, symbol: symbol, iconOnly: iconOnly, on: isOn, compact: compact)
     }
 
+    static let iconWidth: CGFloat = 32
+
     func fitted(height: CGFloat) -> CGSize {
+        if iconOnly { return CGSize(width: Self.iconWidth, height: height) }
         let text = label.attributedText?.size().width.rounded(.up) ?? 0
         return CGSize(width: 12 + (hasIcon ? 13 : 0) + text + 12, height: height)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        if iconOnly {
+            icon.frame = bounds
+            return
+        }
         let text = label.attributedText?.size() ?? .zero
         var x: CGFloat = 12
         if hasIcon {

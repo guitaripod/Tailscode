@@ -139,6 +139,7 @@ extension NeuralTurns {
         classes.reserveCapacity(partCount)
         var lastStep = -1
         var stopped = false
+        var trailingBytes = 0
         for message in messages {
             for part in message.parts {
                 let found: Class
@@ -150,15 +151,22 @@ extension NeuralTurns {
                     found = isCard(call, kind: call.cachedKind, message: message) ? .card : .step
                 case .text(let words):
                     found = hasWords(words) ? .words : .other
+                    if found == .words { trailingBytes += words.utf8.count }
                 case .file:
                     found = .file
                 case .compaction, .note, .unknown:
                     found = .other
                 }
-                if found == .step || found == .card { lastStep = classes.count }
+                if found == .step || found == .card {
+                    lastStep = classes.count
+                    trailingBytes = 0
+                }
                 classes.append(found)
             }
         }
+        let outcome = decide(stopped)
+        let holding = holdsTrailingWords(
+            running: outcome == .running, hasSteps: lastStep >= 0, bytes: trailingBytes)
 
         var stepCount = 0
         var firstStep: (id: String, message: String)?
@@ -187,7 +195,7 @@ extension NeuralTurns {
                     if position < lastStep {
                         stepCount += 1
                         noteStep(false, message, part, &firstStep, &firstMember)
-                    } else {
+                    } else if !holding {
                         let id = partID(message, part)
                         answers.append(id)
                         kept.insert(id)
@@ -212,7 +220,6 @@ extension NeuralTurns {
 
         let first = messages[0]
         let last = messages[messages.count - 1]
-        let outcome = decide(stopped)
         return NeuralTurnOutline(
             id: first.id, stepCount: stepCount, anchor: (firstMember ?? firstStep)?.id,
             anchorMessageID: (firstMember ?? firstStep)?.message, answerPartIDs: answers,

@@ -578,8 +578,12 @@ public struct NeuralStageMetrics: Sendable, Equatable {
         textScale: Double = 1
     ) -> NeuralStageMetrics {
         let width = max(rawWidth, 0)
-        let card = makeCard(width: width, density: density, minHeight: cardMinHeight)
-        if phone, input == .touch, width < splitBreakpoint {
+        let compactStage = phone && input == .touch && width < splitBreakpoint
+        let card =
+            compactStage && cardLayout(width: width) == .narrow
+            ? makePhoneCard(density: density, width: width, minHeight: cardMinHeight)
+            : makeCard(width: width, density: density, minHeight: cardMinHeight)
+        if compactStage {
             return makePhone(
                 width: width, density: density, card: card, rows: rows, textScale: textScale)
         }
@@ -720,6 +724,29 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     public var pinnedRowHeight: Double {
         arrangement == .split || isPhone ? rowHeight : rowHeight + accordionContentMaxHeight
     }
+
+    /// The collapsed card on a phone's narrow row: two lines of words beside a smaller head, with
+    /// Replay, Rows and Open tucked into the first line's end instead of a line of their own, so a
+    /// turn costs a third less of a screen than the card a wide row draws.
+    private static func makePhoneCard(density: ChatDensity, width: Double, minHeight: Double) -> Card {
+        let comfortable = density == .comfortable
+        let height = max(comfortable ? phoneCardHeightComfortable : phoneCardHeightCompact, minHeight.rounded(.up))
+        let pictureWidth: Double = comfortable ? 84 : 74
+        let pictureHeight: Double = comfortable ? 60 : 53
+        let edge = 3.0
+        let inset: Double = comfortable ? 12 : 10
+        let picture = NeuralRect(
+            x: edge + inset, y: ((height - pictureHeight) / 2).rounded(.down),
+            width: pictureWidth, height: pictureHeight)
+        let textX = picture.maxX + inset + 2
+        let text = NeuralRect(
+            x: textX, y: 0, width: max(width - textX - inset, 0), height: height)
+        return Card(
+            layout: .narrow, height: height, edge: edge, inset: inset, picture: picture, text: text)
+    }
+
+    public static let phoneCardHeightCompact = 60.0
+    public static let phoneCardHeightComfortable = 70.0
 
     private static func makeCard(width: Double, density: ChatDensity, minHeight: Double) -> Card {
         let layout = cardLayout(width: width)

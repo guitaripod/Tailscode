@@ -18,6 +18,7 @@ extension BrainCardView {
         var open: CGRect
         var narrow: Bool
         var wordmark = CGRect.zero
+        var tucked = false
     }
 
     /// What the card needs in height at this width: the metrics' height, or more when the reader's
@@ -48,6 +49,7 @@ extension BrainCardView {
                 chips: [], third: .zero, now: .zero, trailing: .zero, quote: .zero, replay: .zero,
                 rows: .zero, open: .zero, narrow: false)
         }
+        if isTucked { return tuckedLayout(width: width, metrics: metrics, card: card) }
         let geometry = metrics.card
         let narrow = geometry.layout == .narrow
         let textX = CGFloat(geometry.text.x)
@@ -59,12 +61,6 @@ extension BrainCardView {
         let sizes = buttonSet.map { $0.fitted(height: buttonHeight) }
         let buttonsWidth = sizes.reduce(0) { $0 + $1.width } + CGFloat(max(0, sizes.count - 1)) * 6
         let gap: CGFloat = isCompact ? 4 : 6
-        func lineSize(_ label: UILabel, width limit: CGFloat) -> CGSize {
-            guard let text = label.attributedText, text.length > 0 else { return .zero }
-            return CGSize(
-                width: ceil(text.size().width),
-                height: BrainText.height(text, width: max(limit, 1), lines: label.numberOfLines))
-        }
         func buttonFrames(origin: CGPoint) -> (replay: CGRect, second: CGRect) {
             let first = CGRect(origin: origin, size: sizes[0])
             let second = CGRect(
@@ -191,6 +187,75 @@ extension BrainCardView {
         return layout
     }
 
+    private func lineSize(_ label: UILabel, width limit: CGFloat) -> CGSize {
+        guard let text = label.attributedText, text.length > 0 else { return .zero }
+        return CGSize(
+            width: ceil(text.size().width),
+            height: BrainText.height(text, width: max(limit, 1), lines: label.numberOfLines))
+    }
+
+    /// A phone's narrow card: two lines of words and nothing else. The buttons are icons at the
+    /// first line's end (Open while the turn runs, Replay and Rows once it has), the first line is
+    /// the verdict and its counts or the headline, and the second is the step in flight or what
+    /// the turn came to, at the card's full width.
+    private func tuckedLayout(
+        width: CGFloat, metrics: NeuralStageMetrics, card: NeuralBrainCard
+    ) -> Layout {
+        let geometry = metrics.card
+        let textX = CGFloat(geometry.text.x)
+        let textWidth = max(0, width - textX - 12)
+        let live = card.live != nil
+        let buttonHeight: CGFloat = isCompact ? 26 : 28
+        let buttonSet: [CardButton] = live ? [open] : [replay, rows]
+        let sizes = buttonSet.map { $0.fitted(height: buttonHeight) }
+        let buttonsWidth = sizes.reduce(0) { $0 + $1.width } + CGFloat(sizes.count - 1) * 4
+        let lineWidth = max(0, textWidth - buttonsWidth - 8)
+        let verdictHeight = live ? lineSize(liveHeadline, width: lineWidth).height : lineSize(headline, width: lineWidth).height
+        let countsHeight = live ? lineSize(liveCounts, width: lineWidth).height : 0
+        let firstHeight = max(buttonHeight, verdictHeight, countsHeight)
+        let secondHeight = max(
+            live
+                ? max(lineSize(nowLabel, width: textWidth).height, lineSize(quoteLabel, width: textWidth).height, 16)
+                : lineSize(clauses, width: textWidth).height, 0)
+        let total = firstHeight + (secondHeight > 0 ? 2 + secondHeight : 0)
+        let rest: CGFloat = isCompact ? 4 : 6
+        let height = max(CGFloat(geometry.height), total + rest * 2)
+        let top = ((height - total) / 2).rounded(.down)
+        let secondY = top + firstHeight + 2
+        var layout = Layout(
+            height: height, headline: .zero, clauses: .zero, liveHeadline: .zero, liveCounts: .zero,
+            chips: [], third: .zero, now: .zero, trailing: .zero, quote: .zero, replay: .zero,
+            rows: .zero, open: .zero, narrow: true)
+        layout.tucked = true
+        let buttonY = top + ((firstHeight - buttonHeight) / 2).rounded(.down)
+        var x = width - 12 - buttonsWidth
+        let buttonsLeft = x
+        var frames: [CGRect] = []
+        for size in sizes {
+            frames.append(CGRect(x: x, y: buttonY, width: size.width, height: size.height))
+            x += size.width + 4
+        }
+        if live {
+            layout.open = frames[0]
+            let verdictWidth = min(ceil(liveHeadline.attributedText?.size().width ?? 0) + 8, lineWidth)
+            layout.liveHeadline = CGRect(x: textX, y: top, width: verdictWidth, height: firstHeight)
+            layout.liveCounts = CGRect(
+                x: textX + verdictWidth, y: top, width: max(0, lineWidth - verdictWidth), height: firstHeight)
+            layout.now = CGRect(x: textX, y: secondY, width: textWidth, height: secondHeight)
+            layout.quote = layout.now
+        } else {
+            layout.replay = frames[0]
+            layout.rows = frames[1]
+            layout.headline = CGRect(x: textX, y: top, width: lineWidth, height: firstHeight)
+            layout.liveHeadline = layout.headline
+            if secondHeight > 0 {
+                layout.clauses = CGRect(x: textX, y: secondY, width: textWidth, height: secondHeight)
+            }
+        }
+        layout.wordmark = wordmarkFrame(layout, width: width, right: buttonsLeft - 4, live: live)
+        return layout
+    }
+
     /// Where Megatron's name goes: the right end of the headline's line, on the headline's own
     /// baseline, when Core's rule says the headline's words leave it room; zero when they do not.
     /// A label of the card like the others, so it is drawn with them and costs no pass of its own.
@@ -204,7 +269,7 @@ extension BrainCardView {
             lead = Theme.Ramp.font(.cardTitle)
             end += extent(liveHeadline.attributedText)
             if !layout.narrow { end += 10 + extent(liveCounts.attributedText) }
-            else if isCompact { end += 8 + extent(liveCounts.attributedText) }
+            else if isCompact || layout.tucked { end += 8 + extent(liveCounts.attributedText) }
         } else {
             lead = Theme.Ramp.font(.metricLarge)
             end += extent(layout.narrow ? narrowMain : wideHeadline)
