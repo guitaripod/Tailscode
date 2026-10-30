@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-    container: swift:6.2-noble
+    container: swift:6.4-noble
     steps:
       - uses: actions/checkout@v4
 

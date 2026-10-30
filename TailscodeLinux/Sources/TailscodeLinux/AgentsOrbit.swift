@@ -26,7 +26,8 @@ enum AgentsOrbit {
     /// Where light `index` of `count` sits, in radians from the right, the first starting at the top.
     static func angle(index: Int, count: Int, mood: AgentsMood, time: Double, animated: Bool) -> Double {
         let phase = animated ? (time.truncatingRemainder(dividingBy: period(mood))) / period(mood) : 0
-        return -.pi / 2 + 2 * .pi * (Double(index) / Double(max(1, count)) + phase)
+        let turn: Double = Double(index) / Double(max(1, count)) + phase
+        return -Double.pi / 2 + 2 * Double.pi * turn
     }
 
     /// Paints the track, the lights and the plus mark, and says how many lights it drew.
