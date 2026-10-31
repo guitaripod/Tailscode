@@ -8,11 +8,11 @@
       "highlight": "Dans votre poche."
     },
     {
-      "master": "07-home",
-      "slug": "02-one-board",
-      "headline": "Chaque machine,\nun seul tableau",
-      "subline": "En cours, récents et terminés, sur chaque ordinateur que vous utilisez.",
-      "highlight": "un seul tableau"
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Laissez-le allumé.\nVoyez-les travailler.",
+      "subline": "Chaque agent et assistant en direct, en plein écran. Maintenez pour approuver.",
+      "highlight": "Voyez-les travailler."
     },
     {
       "master": "fl-models",
@@ -80,60 +80,60 @@
       "highlight": "Un seul écran."
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Laissez-le allumé.\nVoyez-les travailler.",
+      "subline": "Chaque agent et assistant en direct, en plein écran. Maintenez pour approuver.",
+      "highlight": "Voyez-les travailler."
+    },
+    {
       "master": "fl-hour",
-      "slug": "02-the-hour",
+      "slug": "03-the-hour",
       "headline": "La dernière heure,\nvoie par voie",
       "subline": "Ce que chaque agent a fait pendant votre absence.",
       "highlight": "voie par voie"
     },
     {
       "master": "01-live",
-      "slug": "03-every-step",
+      "slug": "04-every-step",
       "headline": "Chaque étape,\nen direct",
       "subline": "Réflexion, outils et diff au fil de leur apparition.",
       "highlight": "en direct"
     },
     {
       "master": "fl-models",
-      "slug": "04-any-model",
+      "slug": "05-any-model",
       "headline": "Tout modèle.\nMême votre GPU.",
       "subline": "Un modèle cloud ou local sur votre machine, par chat.",
       "highlight": "Même votre GPU."
     },
     {
       "master": "fl-gpu",
-      "slug": "05-ask-anything",
+      "slug": "06-ask-anything",
       "headline": "Demandez à vos machines\nn'importe quoi",
       "subline": "Pas que du code : demandez ce qui consomme le GPU.",
       "highlight": "n'importe quoi"
     },
     {
       "master": "03-approval",
-      "slug": "06-approve",
+      "slug": "07-approve",
       "headline": "Approuvez avec la\nliste visible",
       "subline": "Autorisez ou refusez en plein tour sans perdre votre place.",
       "highlight": "liste visible"
     },
     {
       "master": "08-usage",
-      "slug": "07-limits",
+      "slug": "08-limits",
       "headline": "Toutes les limites,\nsur un seul écran",
       "subline": "La fenêtre la plus serrée et son horloge, lues sur vos machines.",
       "highlight": "sur un seul écran"
     },
     {
       "master": "14-analytics",
-      "slug": "08-costs",
+      "slug": "09-costs",
       "headline": "Voyez ce que\nça coûte",
       "subline": "Chaque tour chiffré, chaque mois additionné entre vos machines.",
       "highlight": "ça coûte"
-    },
-    {
-      "master": "whole",
-      "slug": "09-room-to-read",
-      "headline": "Longues réponses,\nplace pour lire",
-      "subline": "Tableaux, code et explications en pleine largeur.",
-      "highlight": "place pour lire"
     },
     {
       "master": "fl-party",

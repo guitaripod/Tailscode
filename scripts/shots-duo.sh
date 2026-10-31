@@ -11,6 +11,7 @@
 #   scripts/shots-duo.sh                       # en-US
 #   scripts/shots-duo.sh de-DE ja              # these locales
 #   scripts/shots-duo.sh --all                 # every caption locale
+#   TAILSCODE_DUO_SLUGS="02-the-wall" scripts/shots-duo.sh --all   # retake only these slugs
 #
 # The app must be linked against the iOS 27.1 SDK or the Duo never adapts (a black rail); the script
 # refuses a binary that vtool does not stamp 27.1. TAILSCODE_DUO_CAPTURE is the iphone-duo skill's
@@ -101,21 +102,25 @@ screen_env() {
     gpu) echo "TAILSCODE_OPEN_SESSION=demo-o5,TAILSCODE_INSPECT=tool" ;;
     carry) echo "TAILSCODE_OPEN_SESSION=demo-o6" ;;
     party) echo "TAILSCODE_OPEN_SESSION=demo-c2,TAILSCODE_DIAL=fleetparty" ;;
+    wall) echo "TAILSCODE_WATCH=squad,TAILSCODE_WATCH_EVENTS=1,TAILSCODE_HIDE_DEMO_BADGE=1" ;;
   esac
 }
 
-# Prints "slug screen state" for every slug of the Duo table.
+# Prints "slug screen state" for every slug of the Duo table, or only for the slugs named in
+# TAILSCODE_DUO_SLUGS (space separated) when a run retakes some of them.
 table_rows() {
-  "$PYTHON" -I - "$TABLE" <<'PY'
+  "$PYTHON" -I - "$TABLE" "${TAILSCODE_DUO_SLUGS:-}" <<'PY'
 import json, sys
+wanted = set(sys.argv[2].split())
 for slug, e in json.load(open(sys.argv[1]))["duo"].items():
-    print(slug, e["screen"], e["state"])
+    if not wanted or slug in wanted:
+        print(slug, e["screen"], e["state"])
 PY
 }
 
 refuse_unstamped_app() {
   local stamp
-  stamp=$(xcrun vtool -show-build "$APP/Tailscode.debug.dylib" | awk '$1 == "sdk" {print $2}')
+  stamp=$(xcrun vtool -show-build "$APP/Tailscode.debug.dylib" | awk '$1 == "sdk" {print $2; exit}')
   [ "$stamp" = "27.1" ] || { echo "the app is stamped sdk $stamp, not 27.1: it would never adapt" >&2; exit 1; }
 }
 
@@ -157,12 +162,18 @@ shoot_locale() {
   xcrun simctl ui "$UDID" appearance dark >/dev/null 2>&1 || true
   rm -rf "$run"
   mkdir -p "$run"
-  install_fresh
-  capture_cells "$run/main" "$locale" "$main" agents
-  install_fresh
-  capture_cells "$run/steer" "$locale" "$steer" agents
-  install_fresh
-  capture_cells "$run/setup" "$locale" "$setup" setup
+  if [ -n "$main" ]; then
+    install_fresh
+    capture_cells "$run/main" "$locale" "$main" agents
+  fi
+  if [ -n "$steer" ]; then
+    install_fresh
+    capture_cells "$run/steer" "$locale" "$steer" agents
+  fi
+  if [ -n "$setup" ]; then
+    install_fresh
+    capture_cells "$run/setup" "$locale" "$setup" setup
+  fi
   place_masters "$locale" "$run"
 }
 

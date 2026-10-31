@@ -8,11 +8,11 @@
       "highlight": "Num só bolso."
     },
     {
-      "master": "07-home",
-      "slug": "02-one-board",
-      "headline": "Cada máquina,\num só painel",
-      "subline": "Em andamento, recentes e concluídos, em cada computador que você usa.",
-      "highlight": "um só painel"
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Deixe ligado.\nVeja eles trabalharem.",
+      "subline": "Cada agente e ajudante ao vivo, em tela cheia. Segure para aprovar.",
+      "highlight": "Veja eles trabalharem."
     },
     {
       "master": "fl-models",
@@ -80,60 +80,60 @@
       "highlight": "Uma tela."
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Deixe ligado.\nVeja eles trabalharem.",
+      "subline": "Cada agente e ajudante ao vivo, em tela cheia. Segure para aprovar.",
+      "highlight": "Veja eles trabalharem."
+    },
+    {
       "master": "fl-hour",
-      "slug": "02-the-hour",
+      "slug": "03-the-hour",
       "headline": "A última hora,\nraia por raia",
       "subline": "O que cada agente fez enquanto você estava fora.",
       "highlight": "raia por raia"
     },
     {
       "master": "01-live",
-      "slug": "03-every-step",
+      "slug": "04-every-step",
       "headline": "Cada passo,\nao vivo",
       "subline": "Raciocínio, ferramentas e o diff conforme acontecem.",
       "highlight": "ao vivo"
     },
     {
       "master": "fl-models",
-      "slug": "04-any-model",
+      "slug": "05-any-model",
       "headline": "Qualquer modelo.\nAté sua própria GPU.",
       "subline": "Um modelo na nuvem ou um local na sua máquina, por chat.",
       "highlight": "Até sua própria GPU."
     },
     {
       "master": "fl-gpu",
-      "slug": "05-ask-anything",
+      "slug": "06-ask-anything",
       "headline": "Pergunte às máquinas\nqualquer coisa",
       "subline": "Não só código: pergunte o que está consumindo a GPU.",
       "highlight": "qualquer coisa"
     },
     {
       "master": "03-approval",
-      "slug": "06-approve",
+      "slug": "07-approve",
       "headline": "Aprove sem perder\nseu lugar",
       "subline": "Permita ou negue no meio do turno sem perder o contexto.",
       "highlight": "seu lugar"
     },
     {
       "master": "08-usage",
-      "slug": "07-limits",
+      "slug": "08-limits",
       "headline": "Todas as cotas,\nnuma só tela",
       "subline": "A janela mais apertada e o reset, lidos das suas máquinas.",
       "highlight": "numa só tela"
     },
     {
       "master": "14-analytics",
-      "slug": "08-costs",
+      "slug": "09-costs",
       "headline": "Veja quanto\nisso custa",
       "subline": "Cada turno com preço, cada mês somado entre as máquinas.",
       "highlight": "isso custa"
-    },
-    {
-      "master": "whole",
-      "slug": "09-room-to-read",
-      "headline": "Respostas longas,\nespaço para ler",
-      "subline": "Tabelas, código e explicações em largura total.",
-      "highlight": "espaço para ler"
     },
     {
       "master": "fl-party",

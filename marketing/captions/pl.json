@@ -8,11 +8,11 @@
       "highlight": "W kieszeni."
     },
     {
-      "master": "07-home",
-      "slug": "02-one-board",
-      "headline": "Każdy komputer,\njedna tablica",
-      "subline": "W toku, ostatnie i zakończone, na każdym komputerze, którego używasz.",
-      "highlight": "jedna tablica"
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Nie wyłączaj.\nPatrz, jak pracują.",
+      "subline": "Każdy agent i pomocnik na żywo, na pełnym ekranie. Przytrzymaj, aby zatwierdzić.",
+      "highlight": "Patrz, jak pracują."
     },
     {
       "master": "fl-models",
@@ -80,60 +80,60 @@
       "highlight": "Jeden ekran."
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Nie wyłączaj.\nPatrz, jak pracują.",
+      "subline": "Każdy agent i pomocnik na żywo, na pełnym ekranie. Przytrzymaj, aby zatwierdzić.",
+      "highlight": "Patrz, jak pracują."
+    },
+    {
       "master": "fl-hour",
-      "slug": "02-the-hour",
+      "slug": "03-the-hour",
       "headline": "Ostatnia godzina,\npas po pasie",
       "subline": "Co zrobił każdy agent, gdy cię nie było.",
       "highlight": "pas po pasie"
     },
     {
       "master": "01-live",
-      "slug": "03-every-step",
+      "slug": "04-every-step",
       "headline": "Każdy krok,\nna żywo",
       "subline": "Myślenie, narzędzia i diff, gdy się dzieją.",
       "highlight": "na żywo"
     },
     {
       "master": "fl-models",
-      "slug": "04-any-model",
+      "slug": "05-any-model",
       "headline": "Każdy model.\nNawet twoja GPU.",
       "subline": "Model w chmurze albo lokalny na twoim komputerze, dla każdego czatu.",
       "highlight": "Nawet twoja GPU."
     },
     {
       "master": "fl-gpu",
-      "slug": "05-ask-anything",
+      "slug": "06-ask-anything",
       "headline": "Pytaj komputery\no wszystko",
       "subline": "Nie tylko kod: zapytaj, co zjada kartę graficzną.",
       "highlight": "o wszystko"
     },
     {
       "master": "03-approval",
-      "slug": "06-approve",
+      "slug": "07-approve",
       "headline": "Zatwierdzaj z listą\nw zasięgu wzroku",
       "subline": "Zezwól lub odmów w trakcie tury, nie tracąc miejsca.",
       "highlight": "w zasięgu wzroku"
     },
     {
       "master": "08-usage",
-      "slug": "07-limits",
+      "slug": "08-limits",
       "headline": "Każdy limit,\nna jednym ekranie",
       "subline": "Najciaśniejsze okno i zegar resetu, odczytane z twoich komputerów.",
       "highlight": "na jednym ekranie"
     },
     {
       "master": "14-analytics",
-      "slug": "08-costs",
+      "slug": "09-costs",
       "headline": "Zobacz, ile\nto kosztuje",
       "subline": "Każda tura wyceniona, każdy miesiąc zsumowany ze wszystkich maszyn.",
       "highlight": "to kosztuje"
-    },
-    {
-      "master": "whole",
-      "slug": "09-room-to-read",
-      "headline": "Długie odpowiedzi,\nmiejsce na czytanie",
-      "subline": "Tabele, kod i wyjaśnienia na pełną szerokość.",
-      "highlight": "miejsce na czytanie"
     },
     {
       "master": "fl-party",

@@ -8,11 +8,11 @@
       "highlight": "One pocket."
     },
     {
-      "master": "07-home",
-      "slug": "02-one-board",
-      "headline": "Every machine,\none board",
-      "subline": "Working, recent and done, across every computer you run.",
-      "highlight": "one board"
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Leave it on.\nWatch them work.",
+      "subline": "Every agent and helper, live and full screen. Hold to approve.",
+      "highlight": "Watch them work."
     },
     {
       "master": "fl-models",
@@ -80,60 +80,60 @@
       "highlight": "One screen."
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Leave it on.\nWatch them work.",
+      "subline": "Every agent and helper, live and full screen. Hold to approve.",
+      "highlight": "Watch them work."
+    },
+    {
       "master": "fl-hour",
-      "slug": "02-the-hour",
+      "slug": "03-the-hour",
       "headline": "The last hour,\nlane by lane",
       "subline": "What each agent did while you were away.",
       "highlight": "lane by lane"
     },
     {
       "master": "01-live",
-      "slug": "03-every-step",
+      "slug": "04-every-step",
       "headline": "Every step,\nlive",
       "subline": "Thinking, tool runs and the diff as they happen.",
       "highlight": "live"
     },
     {
       "master": "fl-models",
-      "slug": "04-any-model",
+      "slug": "05-any-model",
       "headline": "Any model.\nEven your own GPU.",
       "subline": "A cloud model or a local one on your machine, per chat.",
       "highlight": "Even your own GPU."
     },
     {
       "master": "fl-gpu",
-      "slug": "05-ask-anything",
+      "slug": "06-ask-anything",
       "headline": "Ask your machines\nanything",
       "subline": "Not only code: ask what's eating the GPU.",
       "highlight": "anything"
     },
     {
       "master": "03-approval",
-      "slug": "06-approve",
+      "slug": "07-approve",
       "headline": "Approve with the\nlist in view",
       "subline": "Allow or deny mid-turn without losing your place.",
       "highlight": "list in view"
     },
     {
       "master": "08-usage",
-      "slug": "07-limits",
+      "slug": "08-limits",
       "headline": "Every quota,\non one screen",
       "subline": "Tightest window and reset clock, read from your machines.",
       "highlight": "on one screen"
     },
     {
       "master": "14-analytics",
-      "slug": "08-costs",
+      "slug": "09-costs",
       "headline": "See what\nit costs",
       "subline": "Every turn priced, every month totalled across machines.",
       "highlight": "it costs"
-    },
-    {
-      "master": "whole",
-      "slug": "09-room-to-read",
-      "headline": "Long answers,\nroom to read",
-      "subline": "Tables, code and explanations at full width.",
-      "highlight": "room to read"
     },
     {
       "master": "fl-party",

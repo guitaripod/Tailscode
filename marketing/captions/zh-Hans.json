@@ -8,11 +8,11 @@
       "highlight": "装进口袋"
     },
     {
-      "master": "07-home",
-      "slug": "02-one-board",
-      "headline": "每台机器\n一块面板",
-      "subline": "进行中、最近和已完成的，横跨你运行的每一台电脑。",
-      "highlight": "一块面板"
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "一直开着\n看它们工作",
+      "subline": "每个智能体和子智能体全屏实时呈现。长按即可批准。",
+      "highlight": "看它们工作"
     },
     {
       "master": "fl-models",
@@ -80,60 +80,60 @@
       "highlight": "一个屏幕"
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "一直开着\n看它们工作",
+      "subline": "每个智能体和子智能体全屏实时呈现。长按即可批准。",
+      "highlight": "看它们工作"
+    },
+    {
       "master": "fl-hour",
-      "slug": "02-the-hour",
+      "slug": "03-the-hour",
       "headline": "最近一小时\n逐条泳道",
       "subline": "离开时，每个智能体都做了什么。",
       "highlight": "逐条泳道"
     },
     {
       "master": "01-live",
-      "slug": "03-every-step",
+      "slug": "04-every-step",
       "headline": "每一步\n实时可见",
       "subline": "思考、工具运行和差异，随发生随呈现。",
       "highlight": "实时可见"
     },
     {
       "master": "fl-models",
-      "slug": "04-any-model",
+      "slug": "05-any-model",
       "headline": "任何模型\n包括你自己的显卡",
       "subline": "云端模型，或你机器上的本地模型，每个对话单独选择。",
       "highlight": "包括你自己的显卡"
     },
     {
       "master": "fl-gpu",
-      "slug": "05-ask-anything",
+      "slug": "06-ask-anything",
       "headline": "问你的机器\n任何事",
       "subline": "不只是代码：问问是什么在占用显卡。",
       "highlight": "任何事"
     },
     {
       "master": "03-approval",
-      "slug": "06-approve",
+      "slug": "07-approve",
       "headline": "批准时\n列表仍在视野中",
       "subline": "在一轮进行中允许或拒绝，不丢失你的位置。",
       "highlight": "列表仍在视野中"
     },
     {
       "master": "08-usage",
-      "slug": "07-limits",
+      "slug": "08-limits",
       "headline": "所有配额\n一屏看完",
       "subline": "最紧的时间窗口和重置时间，来自你的机器。",
       "highlight": "一屏看完"
     },
     {
       "master": "14-analytics",
-      "slug": "08-costs",
+      "slug": "09-costs",
       "headline": "看清\n花了多少",
       "subline": "每一轮都有价格，每月跨机器汇总。",
       "highlight": "花了多少"
-    },
-    {
-      "master": "whole",
-      "slug": "09-room-to-read",
-      "headline": "长回答也\n读得从容",
-      "subline": "表格、代码和解释全宽呈现。",
-      "highlight": "读得从容"
     },
     {
       "master": "fl-party",

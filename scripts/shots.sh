@@ -170,6 +170,7 @@ SHOTS=(
   "fl-gpu|--demo|TAILSCODE_OPEN_SESSION=demo-o5 TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_NEURAL_OPEN=1 TAILSCODE_NEURAL_WALK=7:rows|11"
   "fl-carry|--demo|TAILSCODE_OPEN_SESSION=demo-o6 TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_NEURAL_OPEN=first TAILSCODE_NEURAL_WALK=9:hover=1|20"
   "fl-party|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=fleetparty|14"
+  "fl-wall|--demo|TAILSCODE_WATCH=attention TAILSCODE_WATCH_EVENTS=1 TAILSCODE_HIDE_DEMO_BADGE=1|9"
 )
 
 # The iPad is photographed as the workspace it is, in landscape: the device boots upright and
@@ -197,6 +198,7 @@ if [ -n "${IPAD:-}" ]; then
     "fl-models|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-opencode/demo-o1 TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=12|22"
     "fl-gpu|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-opencode/demo-o5 TAILSCODE_NEURAL_OPEN=1 TAILSCODE_NEURAL_WALK=7:rows SHOT_CONTENT_SIZE=extra-extra-large|14"
     "fl-party|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2 TAILSCODE_DIAL=fleetparty SHOT_CONTENT_SIZE=extra-extra-large|20"
+    "fl-wall|--demo|TAILSCODE_WATCH=squad TAILSCODE_WATCH_EVENTS=1 TAILSCODE_HIDE_DEMO_BADGE=1|10"
   )
 fi
 

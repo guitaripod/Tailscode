@@ -8,11 +8,11 @@
       "highlight": "In deiner Tasche."
     },
     {
-      "master": "07-home",
-      "slug": "02-one-board",
-      "headline": "Jede Maschine,\nein Board",
-      "subline": "Laufend, zuletzt und fertig, über jeden Rechner, den du nutzt.",
-      "highlight": "ein Board"
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Lass sie laufen.\nSieh ihnen zu.",
+      "subline": "Jeder Agent und Helfer live im Vollbild. Halten zum Freigeben.",
+      "highlight": "Sieh ihnen zu."
     },
     {
       "master": "fl-models",
@@ -80,60 +80,60 @@
       "highlight": "In deiner Tasche."
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Lass sie laufen.\nSieh ihnen zu.",
+      "subline": "Jeder Agent und Helfer live im Vollbild. Halten zum Freigeben.",
+      "highlight": "Sieh ihnen zu."
+    },
+    {
       "master": "fl-hour",
-      "slug": "02-the-hour",
+      "slug": "03-the-hour",
       "headline": "Die letzte Stunde,\nSpur für Spur",
       "subline": "Was jeder Agent getan hat, während du weg warst.",
       "highlight": "Spur für Spur"
     },
     {
       "master": "01-live",
-      "slug": "03-every-step",
+      "slug": "04-every-step",
       "headline": "Jeder Schritt,\nlive",
       "subline": "Denken, Werkzeugläufe und der Diff, während sie passieren.",
       "highlight": "live"
     },
     {
       "master": "fl-models",
-      "slug": "04-any-model",
+      "slug": "05-any-model",
       "headline": "Jedes Modell.\nAuch deine GPU.",
       "subline": "Ein Cloud-Modell oder eins auf deinem Rechner, pro Chat.",
       "highlight": "Auch deine GPU."
     },
     {
       "master": "fl-gpu",
-      "slug": "05-ask-anything",
+      "slug": "06-ask-anything",
       "headline": "Frag deine Rechner\nalles",
       "subline": "Nicht nur Code: frag, was die Grafikkarte auslastet.",
       "highlight": "alles"
     },
     {
       "master": "03-approval",
-      "slug": "06-approve",
+      "slug": "07-approve",
       "headline": "Freigeben mit der\nListe im Blick",
       "subline": "Mitten im Lauf erlauben oder ablehnen, ohne den Faden zu verlieren.",
       "highlight": "Liste im Blick"
     },
     {
       "master": "08-usage",
-      "slug": "07-limits",
+      "slug": "08-limits",
       "headline": "Jedes Kontingent,\nein Bildschirm",
       "subline": "Engstes Fenster und Reset-Uhr, von deinen Rechnern gelesen.",
       "highlight": "ein Bildschirm"
     },
     {
       "master": "14-analytics",
-      "slug": "08-costs",
+      "slug": "09-costs",
       "headline": "Sieh, was es\nkostet",
       "subline": "Jeder Durchlauf bepreist, jeder Monat über alle Rechner summiert.",
       "highlight": "kostet"
-    },
-    {
-      "master": "whole",
-      "slug": "09-room-to-read",
-      "headline": "Lange Antworten,\nviel Platz zum Lesen",
-      "subline": "Tabellen, Code und Erklärungen in voller Breite.",
-      "highlight": "viel Platz zum Lesen"
     },
     {
       "master": "fl-party",

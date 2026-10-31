@@ -8,11 +8,11 @@
       "highlight": "ポケットひとつに。"
     },
     {
-      "master": "07-home",
-      "slug": "02-one-board",
-      "headline": "すべてのマシン、\nひとつのボードに",
-      "subline": "作業中、最近、完了を、使っているすべてのコンピューターで。",
-      "highlight": "ひとつのボード"
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "つけたままに。\n働く姿を見守る。",
+      "subline": "すべてのエージェントとヘルパーを全画面でライブ表示。長押しで承認。",
+      "highlight": "働く姿を見守る。"
     },
     {
       "master": "fl-models",
@@ -80,60 +80,60 @@
       "highlight": "画面ひとつ"
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "つけたままに。\n働く姿を見守る。",
+      "subline": "すべてのエージェントとヘルパーを全画面でライブ表示。長押しで承認。",
+      "highlight": "働く姿を見守る。"
+    },
+    {
       "master": "fl-hour",
-      "slug": "02-the-hour",
+      "slug": "03-the-hour",
       "headline": "直近の一時間を\nレーンごとに",
       "subline": "あなたが離れている間に、各エージェントが何をしたか。",
       "highlight": "レーンごとに"
     },
     {
       "master": "01-live",
-      "slug": "03-every-step",
+      "slug": "04-every-step",
       "headline": "すべてのステップを\nライブで",
       "subline": "思考、ツールの実行、diff を、起きたそばから。",
       "highlight": "ライブで"
     },
     {
       "master": "fl-models",
-      "slug": "04-any-model",
+      "slug": "05-any-model",
       "headline": "どんなモデルも、\n自分のGPUでも",
       "subline": "クラウドでもローカルでも、チャットごとに選べます。",
       "highlight": "自分のGPUでも"
     },
     {
       "master": "fl-gpu",
-      "slug": "05-ask-anything",
+      "slug": "06-ask-anything",
       "headline": "マシンに何でも\n聞いてみる",
       "subline": "コードだけじゃない。GPUを何が使っているかも聞けます。",
       "highlight": "聞いてみる"
     },
     {
       "master": "03-approval",
-      "slug": "06-approve",
+      "slug": "07-approve",
       "headline": "一覧を見たまま\n承認",
       "subline": "ターンの途中で、位置を失わずに許可または拒否。",
       "highlight": "承認"
     },
     {
       "master": "08-usage",
-      "slug": "07-limits",
+      "slug": "08-limits",
       "headline": "すべての上限を\n一画面で",
       "subline": "最も厳しい枠とリセット時刻を、マシンから読み取って表示。",
       "highlight": "一画面で"
     },
     {
       "master": "14-analytics",
-      "slug": "08-costs",
+      "slug": "09-costs",
       "headline": "いくらかかるか\n見える化",
       "subline": "ターンごとに価格を表示、月ごとに全マシン分を合計。",
       "highlight": "見える化"
-    },
-    {
-      "master": "whole",
-      "slug": "09-room-to-read",
-      "headline": "長い回答も、\nゆったり読める",
-      "subline": "表、コード、解説を幅いっぱいに表示。",
-      "highlight": "ゆったり読める"
     },
     {
       "master": "fl-party",

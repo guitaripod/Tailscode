@@ -42,7 +42,7 @@ STAGE = os.path.join(SCRATCH, "app")
 BUNDLE = "com.guitaripod.tailscode.panels"
 CONTAINER = os.path.expanduser(f"~/Library/Containers/{BUNDLE}/Data")
 OUT = os.path.join(ROOT, "marketing/appstore/mac-masters")
-SCREEN_NAME = "Tailscode Panels"
+SCREEN_NAME = f"Tailscode Panels {os.getpid()}"
 POINTS = (1280, 832)
 PIXELS = (POINTS[0] * 2, POINTS[1] * 2)
 
@@ -59,6 +59,8 @@ ZOOM = 1.4
 MASTERS = [
     {"name": "fl-agents", "session": "demo-c1", "args": ["--open", "agent-peek"], "delay": 18, "open_delay": 4,
      "hide_main": True, "scale": 1.0, "surface": "50,44,1180,760"},
+    {"name": "fl-wall", "session": "demo-c1", "args": ["--open", "agents-watch"], "delay": 18, "open_delay": 4,
+     "hide_main": True, "scale": 1.0, "surface": "16,38,1248,786"},
     {"name": "fl-party", "session": "demo-c1", "args": ["--open", "party"], "delay": 20, "open_delay": 5,
      "window": "20,40,1240,620", "scale": 1.2},
     {"name": "fl-carry", "session": "demo-o6", "args": [], "delay": 18, "window": "20,40,1240,780", "scale": 1.1},
@@ -135,7 +137,7 @@ class VirtualDisplay:
         descriptor.setSizeInMillimeters_((286, 186))
         descriptor.setProductID_(0x7777)
         descriptor.setVendorID_(0x7778)
-        descriptor.setSerialNum_(1)
+        descriptor.setSerialNum_(os.getpid())
         library = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
         queue = ctypes.addressof(ctypes.c_char.in_dll(library, "_dispatch_main_q"))
         descriptor.setQueue_(objc.objc_object(c_void_p=ctypes.c_void_p(queue)))
@@ -151,6 +153,11 @@ class VirtualDisplay:
         match = [s for s in AppKit.NSScreen.screens() if s.localizedName() == SCREEN_NAME]
         if not match or match[0].backingScaleFactor() != 2.0:
             sys.exit("the virtual display did not come up at 2x")
+
+    def release(self):
+        """Hands the display back before the process ends, so none is left behind on the desktop."""
+        self.display = None
+        self.spin(1.0)
 
     @staticmethod
     def spin(seconds):
@@ -397,6 +404,7 @@ def main():
         if wanted and master["name"] not in wanted:
             continue
         shoot(app, master, locale, display)
+    display.release()
 
 
 if __name__ == "__main__":

@@ -8,11 +8,11 @@
       "highlight": "주머니 하나에"
     },
     {
-      "master": "07-home",
-      "slug": "02-one-board",
-      "headline": "모든 머신,\n보드 하나에",
-      "subline": "작업 중, 최근, 완료된 것을 쓰는 모든 컴퓨터에서.",
-      "highlight": "보드 하나에"
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "켜 두고\n지켜보세요",
+      "subline": "모든 에이전트와 보조 에이전트를 전체 화면으로 실시간 표시. 길게 눌러 승인하세요.",
+      "highlight": "지켜보세요"
     },
     {
       "master": "fl-models",
@@ -80,60 +80,60 @@
       "highlight": "화면 하나에"
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "켜 두고\n지켜보세요",
+      "subline": "모든 에이전트와 보조 에이전트를 전체 화면으로 실시간 표시. 길게 눌러 승인하세요.",
+      "highlight": "지켜보세요"
+    },
+    {
       "master": "fl-hour",
-      "slug": "02-the-hour",
+      "slug": "03-the-hour",
       "headline": "지난 한 시간,\n레인별로",
       "subline": "내가 없는 동안 각 에이전트가 한 일.",
       "highlight": "레인별로"
     },
     {
       "master": "01-live",
-      "slug": "03-every-step",
+      "slug": "04-every-step",
       "headline": "모든 단계를,\n라이브로",
       "subline": "생각, 도구 실행, diff가 일어나는 순간 그대로.",
       "highlight": "라이브로"
     },
     {
       "master": "fl-models",
-      "slug": "04-any-model",
+      "slug": "05-any-model",
       "headline": "어떤 모델이든,\n내 GPU 위에서도",
       "subline": "클라우드 모델이든 내 기기의 로컬 모델이든, 채팅마다 선택.",
       "highlight": "내 GPU 위에서도"
     },
     {
       "master": "fl-gpu",
-      "slug": "05-ask-anything",
+      "slug": "06-ask-anything",
       "headline": "기기에 무엇이든\n물어보세요",
       "subline": "코드만이 아니에요. GPU를 뭐가 잡아먹는지도 물어보세요.",
       "highlight": "무엇이든"
     },
     {
       "master": "03-approval",
-      "slug": "06-approve",
+      "slug": "07-approve",
       "headline": "목록을 보며\n승인하세요",
       "subline": "작업 흐름을 잃지 않고 턴 중간에 허용 또는 거부.",
       "highlight": "승인하세요"
     },
     {
       "master": "08-usage",
-      "slug": "07-limits",
+      "slug": "08-limits",
       "headline": "모든 한도를\n한 화면에",
       "subline": "가장 빡빡한 구간과 초기화 시간, 기기에서 읽은 값.",
       "highlight": "한 화면에"
     },
     {
       "master": "14-analytics",
-      "slug": "08-costs",
+      "slug": "09-costs",
       "headline": "얼마나 드는지\n확인하세요",
       "subline": "턴마다 가격을 매기고, 매달 모든 기기 합계를 냅니다.",
       "highlight": "확인하세요"
-    },
-    {
-      "master": "whole",
-      "slug": "09-room-to-read",
-      "headline": "긴 답변도,\n여유 있게 읽기",
-      "subline": "표, 코드, 설명을 화면 너비 가득 표시.",
-      "highlight": "여유 있게 읽기"
     },
     {
       "master": "fl-party",

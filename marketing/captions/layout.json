@@ -5,8 +5,8 @@
       "fade": 26,
       "device_width": 1300
     },
-    "02-one-board": {
-      "crop": 0.135,
+    "02-the-wall": {
+      "crop": 0.06,
       "fade": 26,
       "device_width": 1300
     },
@@ -59,49 +59,52 @@
         0.07
       ]
     },
-    "02-the-hour": {
+    "02-the-wall": {
+      "device_width": 2060
+    },
+    "03-the-hour": {
       "scale": 1.75,
       "at": [
         0.21,
         0.0
       ]
     },
-    "03-every-step": {
+    "04-every-step": {
       "scale": 1.85,
       "at": [
         0.468,
         0.115
       ]
     },
-    "04-any-model": {
+    "05-any-model": {
       "scale": 1.4,
       "at": [
         0.148,
         0.43
       ]
     },
-    "05-ask-anything": {
+    "06-ask-anything": {
       "scale": 1.8,
       "at": [
         0.455,
         0.495
       ]
     },
-    "06-approve": {
+    "07-approve": {
       "scale": 1.75,
       "at": [
         0.458,
         0.522
       ]
     },
-    "07-limits": {
+    "08-limits": {
       "scale": 1.75,
       "at": [
         0.458,
         0.1
       ]
     },
-    "08-costs": {
+    "09-costs": {
       "scale": 1.8,
       "at": [
         0.465,
@@ -114,9 +117,6 @@
         0.075,
         0.365
       ]
-    },
-    "09-room-to-read": {
-      "device_width": 2500
     }
   },
   "duo": {
@@ -129,9 +129,9 @@
         2853
       ]
     },
-    "02-one-board": {
-      "master": "07-home",
-      "screen": "homeo1",
+    "02-the-wall": {
+      "master": "fl-wall",
+      "screen": "wall",
       "state": "inner-landscape",
       "size": [
         2853,

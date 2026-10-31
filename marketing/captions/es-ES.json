@@ -8,11 +8,11 @@
       "highlight": "En el bolsillo."
     },
     {
-      "master": "07-home",
-      "slug": "02-one-board",
-      "headline": "Cada máquina,\nun solo tablero",
-      "subline": "Trabajando, recientes y terminados, en cada ordenador que usas.",
-      "highlight": "un solo tablero"
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Déjalo puesto.\nMíralos trabajar.",
+      "subline": "Cada agente y ayudante en directo, a pantalla completa. Mantén pulsado para aprobar.",
+      "highlight": "Míralos trabajar."
     },
     {
       "master": "fl-models",
@@ -80,60 +80,60 @@
       "highlight": "Una sola pantalla."
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Déjalo puesto.\nMíralos trabajar.",
+      "subline": "Cada agente y ayudante en directo, a pantalla completa. Mantén pulsado para aprobar.",
+      "highlight": "Míralos trabajar."
+    },
+    {
       "master": "fl-hour",
-      "slug": "02-the-hour",
+      "slug": "03-the-hour",
       "headline": "La última hora,\ncarril a carril",
       "subline": "Lo que hizo cada agente mientras no estabas.",
       "highlight": "carril a carril"
     },
     {
       "master": "01-live",
-      "slug": "03-every-step",
+      "slug": "04-every-step",
       "headline": "Cada paso,\nen vivo",
       "subline": "Razonamiento, herramientas y diff según ocurren.",
       "highlight": "en vivo"
     },
     {
       "master": "fl-models",
-      "slug": "04-any-model",
+      "slug": "05-any-model",
       "headline": "Cualquier modelo.\nHasta tu propia GPU",
       "subline": "Un modelo en la nube o local en tu máquina, por chat.",
       "highlight": "Hasta tu propia GPU"
     },
     {
       "master": "fl-gpu",
-      "slug": "05-ask-anything",
+      "slug": "06-ask-anything",
       "headline": "Pregunta a tus máquinas\nlo que sea",
       "subline": "No solo código: pregunta qué se está comiendo la GPU.",
       "highlight": "lo que sea"
     },
     {
       "master": "03-approval",
-      "slug": "06-approve",
+      "slug": "07-approve",
       "headline": "Aprueba con la lista\na la vista",
       "subline": "Permite o deniega a mitad de turno sin perder tu lugar.",
       "highlight": "a la vista"
     },
     {
       "master": "08-usage",
-      "slug": "07-limits",
+      "slug": "08-limits",
       "headline": "Todos los límites,\nen una pantalla",
       "subline": "La ventana más ajustada y su reinicio, leídos de tus máquinas.",
       "highlight": "en una pantalla"
     },
     {
       "master": "14-analytics",
-      "slug": "08-costs",
+      "slug": "09-costs",
       "headline": "Mira lo que\ncuesta",
       "subline": "Cada turno con su precio, cada mes sumado entre máquinas.",
       "highlight": "cuesta"
-    },
-    {
-      "master": "whole",
-      "slug": "09-room-to-read",
-      "headline": "Respuestas largas,\nespacio para leer",
-      "subline": "Tablas, código y explicaciones a pleno ancho.",
-      "highlight": "espacio para leer"
     },
     {
       "master": "fl-party",
