@@ -152,60 +152,60 @@
       "highlight": "Ein Fenster."
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Lass sie laufen.\nSieh ihnen zu.",
+      "subline": "Jeder Agent und Helfer live, auf jedem Bildschirm. Halten zum Freigeben.",
+      "highlight": "Sieh ihnen zu."
+    },
+    {
       "master": "01-conversation",
-      "slug": "02-every-step",
+      "slug": "03-every-step",
       "headline": "Jeder Schritt,\nlive",
       "subline": "Denken, Werkzeugläufe und der Diff, während es passiert.",
       "highlight": "live"
     },
     {
       "master": "fl-party",
-      "slug": "03-party",
+      "slug": "04-party",
       "headline": "Sechs Modelle,\nein Klick entfernt",
       "subline": "Modell und Aufwand in jedem Platz. Ein Tastenkürzel zum Wechseln.",
       "highlight": "ein Klick entfernt"
     },
     {
       "master": "fl-carry",
-      "slug": "04-carry",
+      "slug": "05-carry",
       "headline": "Modell wechseln,\nder Faden bleibt",
       "subline": "Das nächste Modell bekommt eine kurze Zusammenfassung des Chats.",
       "highlight": "der Faden bleibt"
     },
     {
       "master": "02-split",
-      "slug": "05-two-machines",
+      "slug": "06-two-machines",
       "headline": "Zwei Rechner,\nnebeneinander",
       "subline": "Teile das Fenster und richte jeden Bereich auf einen anderen Server.",
       "highlight": "nebeneinander"
     },
     {
       "master": "fl-gpu",
-      "slug": "06-ask-anything",
+      "slug": "07-ask-anything",
       "headline": "Frag deine Rechner\nalles",
       "subline": "Nicht nur Code: frag, was die Grafikkarte auslastet.",
       "highlight": "alles"
     },
     {
       "master": "04-quickask",
-      "slug": "07-one-chord",
+      "slug": "08-one-chord",
       "headline": "Ein Kürzel\nvon überall",
       "subline": "Ruft das Fragefeld über jeder App auf, während der Agent arbeitet.",
       "highlight": "Ein Kürzel"
     },
     {
       "master": "06-analytics",
-      "slug": "08-the-month",
+      "slug": "09-the-month",
       "headline": "Der Monat\nin Zahlen",
       "subline": "Jeder Durchlauf bepreist, zusammengeführt über alle Server.",
       "highlight": "in Zahlen"
-    },
-    {
-      "master": "08-keyboard",
-      "slug": "09-keyboard",
-      "headline": "Tastatur\nzuerst",
-      "subline": "Kürzel für Bereiche, Chats und Modelle. Ein Composer im Vim-Modus.",
-      "highlight": "Tastatur"
     },
     {
       "master": "10-private",

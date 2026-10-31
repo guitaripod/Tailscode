@@ -152,60 +152,60 @@
       "highlight": "Una sola finestra."
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Sempre acceso.\nGuardali.",
+      "subline": "Ogni agente e aiutante dal vivo, su qualsiasi schermo. Tieni premuto per approvare.",
+      "highlight": "Guardali."
+    },
+    {
       "master": "01-conversation",
-      "slug": "02-every-step",
+      "slug": "03-every-step",
       "headline": "Ogni passo,\nin diretta",
       "subline": "Ragionamento, strumenti e diff, mentre accadono.",
       "highlight": "in diretta"
     },
     {
       "master": "fl-party",
-      "slug": "03-party",
+      "slug": "04-party",
       "headline": "Sei modelli,\na un clic",
       "subline": "Un modello e il suo impegno in ogni slot. Una scorciatoia per cambiare.",
       "highlight": "a un clic"
     },
     {
       "master": "fl-carry",
-      "slug": "04-carry",
+      "slug": "05-carry",
       "headline": "Cambia modello,\nil filo resta",
       "subline": "Il modello successivo riceve un breve riassunto della chat e prosegue.",
       "highlight": "il filo resta"
     },
     {
       "master": "02-split",
-      "slug": "05-two-machines",
+      "slug": "06-two-machines",
       "headline": "Due computer,\nfianco a fianco",
       "subline": "Dividi la finestra e collega ogni riquadro a un server diverso.",
       "highlight": "fianco a fianco"
     },
     {
       "master": "fl-gpu",
-      "slug": "06-ask-anything",
+      "slug": "07-ask-anything",
       "headline": "Chiedi ai computer\nqualsiasi cosa",
       "subline": "Non solo codice: chiedi cosa sta consumando la GPU.",
       "highlight": "qualsiasi cosa"
     },
     {
       "master": "04-quickask",
-      "slug": "07-one-chord",
+      "slug": "08-one-chord",
       "headline": "Una scorciatoia\nda ovunque",
       "subline": "Apri la casella di domanda sopra qualsiasi app mentre l'agente lavora.",
       "highlight": "Una scorciatoia"
     },
     {
       "master": "06-analytics",
-      "slug": "08-the-month",
+      "slug": "09-the-month",
       "headline": "Il mese\nin cifre",
       "subline": "Ogni turno prezzato, unito su tutti i server.",
       "highlight": "in cifre"
-    },
-    {
-      "master": "08-keyboard",
-      "slug": "09-keyboard",
-      "headline": "Prima\nla tastiera",
-      "subline": "Scorciatoie per riquadri, chat e modelli. Un compositore in modalità vim.",
-      "highlight": "la tastiera"
     },
     {
       "master": "10-private",

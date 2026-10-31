@@ -152,60 +152,60 @@
       "highlight": "Une seule fenêtre."
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Laissez-le allumé.\nVoyez-les travailler.",
+      "subline": "Chaque agent et assistant en direct, sur n'importe quel écran. Maintenez pour approuver.",
+      "highlight": "Voyez-les travailler."
+    },
+    {
       "master": "01-conversation",
-      "slug": "02-every-step",
+      "slug": "03-every-step",
       "headline": "Chaque étape,\nen direct",
       "subline": "Réflexion, outils et diff, au fur et à mesure.",
       "highlight": "en direct"
     },
     {
       "master": "fl-party",
-      "slug": "03-party",
+      "slug": "04-party",
       "headline": "Six modèles,\nà un clic",
       "subline": "Un modèle et son effort dans chaque case. Un raccourci pour changer.",
       "highlight": "à un clic"
     },
     {
       "master": "fl-carry",
-      "slug": "04-carry",
+      "slug": "05-carry",
       "headline": "Changez de modèle,\ngardez le fil",
       "subline": "Le modèle suivant reçoit un bref résumé du chat et poursuit.",
       "highlight": "gardez le fil"
     },
     {
       "master": "02-split",
-      "slug": "05-two-machines",
+      "slug": "06-two-machines",
       "headline": "Deux machines,\ncôte à côte",
       "subline": "Divisez la fenêtre et reliez chaque volet à un serveur différent.",
       "highlight": "côte à côte"
     },
     {
       "master": "fl-gpu",
-      "slug": "06-ask-anything",
+      "slug": "07-ask-anything",
       "headline": "Demandez à vos machines\nn'importe quoi",
       "subline": "Pas que du code : demandez ce qui consomme le GPU.",
       "highlight": "n'importe quoi"
     },
     {
       "master": "04-quickask",
-      "slug": "07-one-chord",
+      "slug": "08-one-chord",
       "headline": "Un raccourci\npartout",
       "subline": "Affiche la zone de question sur toute app pendant que l'agent travaille.",
       "highlight": "Un raccourci"
     },
     {
       "master": "06-analytics",
-      "slug": "08-the-month",
+      "slug": "09-the-month",
       "headline": "Le mois\nen chiffres",
       "subline": "Chaque tour chiffré, fusionné sur tous les serveurs.",
       "highlight": "en chiffres"
-    },
-    {
-      "master": "08-keyboard",
-      "slug": "09-keyboard",
-      "headline": "Le clavier\nd'abord",
-      "subline": "Raccourcis pour volets, chats et modèles. Un compositeur en mode vim.",
-      "highlight": "Le clavier"
     },
     {
       "master": "10-private",

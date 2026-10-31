@@ -152,60 +152,60 @@
       "highlight": "一個視窗"
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "一直開著\n看它們工作",
+      "subline": "每個代理和子代理，在任何螢幕上即時呈現。長按即可核准。",
+      "highlight": "看它們工作"
+    },
+    {
       "master": "01-conversation",
-      "slug": "02-every-step",
+      "slug": "03-every-step",
       "headline": "每一步\n即時可見",
       "subline": "思考、工具執行與差異，隨發生隨呈現。",
       "highlight": "即時可見"
     },
     {
       "master": "fl-party",
-      "slug": "03-party",
+      "slug": "04-party",
       "headline": "六個模型\n一鍵即達",
       "subline": "每個槽位一個模型及其強度，一個快捷鍵即可切換。",
       "highlight": "一鍵即達"
     },
     {
       "master": "fl-carry",
-      "slug": "04-carry",
+      "slug": "05-carry",
       "headline": "換模型\n不丟話題",
       "subline": "下一個模型會拿到對話簡要摘要，接著往下做。",
       "highlight": "不丟話題"
     },
     {
       "master": "02-split",
-      "slug": "05-two-machines",
+      "slug": "06-two-machines",
       "headline": "兩台機器\n並排顯示",
       "subline": "分割視窗，讓每個窗格指向不同的伺服器。",
       "highlight": "並排顯示"
     },
     {
       "master": "fl-gpu",
-      "slug": "06-ask-anything",
+      "slug": "07-ask-anything",
       "headline": "問你的機器\n任何事",
       "subline": "不只是程式碼：問問是什麼在吃掉顯示卡。",
       "highlight": "任何事"
     },
     {
       "master": "04-quickask",
-      "slug": "07-one-chord",
+      "slug": "08-one-chord",
       "headline": "一個快捷鍵\n隨時呼出",
       "subline": "智慧代理工作時，可在任何應用程式上方呼出提問框。",
       "highlight": "隨時呼出"
     },
     {
       "master": "06-analytics",
-      "slug": "08-the-month",
+      "slug": "09-the-month",
       "headline": "本月花費\n一目了然",
       "subline": "每次執行都計價，並跨所有伺服器彙總。",
       "highlight": "一目了然"
-    },
-    {
-      "master": "08-keyboard",
-      "slug": "09-keyboard",
-      "headline": "鍵盤\n優先",
-      "subline": "窗格、對話與模型的快捷鍵，還有 Vim 模式的輸入框。",
-      "highlight": "鍵盤"
     },
     {
       "master": "10-private",

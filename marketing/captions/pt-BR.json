@@ -152,60 +152,60 @@
       "highlight": "Uma só janela."
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Deixe ligado.\nVeja eles trabalharem.",
+      "subline": "Cada agente e ajudante ao vivo, em qualquer tela. Segure para aprovar.",
+      "highlight": "Veja eles trabalharem."
+    },
+    {
       "master": "01-conversation",
-      "slug": "02-every-step",
+      "slug": "03-every-step",
       "headline": "Cada passo,\nao vivo",
       "subline": "Raciocínio, ferramentas e o diff, enquanto acontecem.",
       "highlight": "ao vivo"
     },
     {
       "master": "fl-party",
-      "slug": "03-party",
+      "slug": "04-party",
       "headline": "Seis modelos,\num clique",
       "subline": "Um modelo e seu esforço em cada vaga. Um atalho para trocar.",
       "highlight": "um clique"
     },
     {
       "master": "fl-carry",
-      "slug": "04-carry",
+      "slug": "05-carry",
       "headline": "Troque de modelo,\nmantenha a conversa",
       "subline": "O próximo modelo recebe um breve resumo do chat e segue em frente.",
       "highlight": "mantenha a conversa"
     },
     {
       "master": "02-split",
-      "slug": "05-two-machines",
+      "slug": "06-two-machines",
       "headline": "Duas máquinas\nlado a lado",
       "subline": "Divida a janela e aponte cada painel para um servidor diferente.",
       "highlight": "lado a lado"
     },
     {
       "master": "fl-gpu",
-      "slug": "06-ask-anything",
+      "slug": "07-ask-anything",
       "headline": "Pergunte às máquinas\nqualquer coisa",
       "subline": "Não só código: pergunte o que está consumindo a GPU.",
       "highlight": "qualquer coisa"
     },
     {
       "master": "04-quickask",
-      "slug": "07-one-chord",
+      "slug": "08-one-chord",
       "headline": "Um atalho\nde qualquer lugar",
       "subline": "Abra a caixa de perguntas sobre qualquer app enquanto o agente trabalha.",
       "highlight": "Um atalho"
     },
     {
       "master": "06-analytics",
-      "slug": "08-the-month",
+      "slug": "09-the-month",
       "headline": "O mês\nem números",
       "subline": "Cada turno com preço, somado entre todos os servidores.",
       "highlight": "em números"
-    },
-    {
-      "master": "08-keyboard",
-      "slug": "09-keyboard",
-      "headline": "Teclado\nprimeiro",
-      "subline": "Atalhos para painéis, chats e modelos. Um editor em modo vim.",
-      "highlight": "Teclado"
     },
     {
       "master": "10-private",

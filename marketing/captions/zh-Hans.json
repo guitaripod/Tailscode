@@ -152,60 +152,60 @@
       "highlight": "一个窗口"
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "一直开着\n看它们工作",
+      "subline": "每个智能体和子智能体，在任何屏幕上实时呈现。长按即可批准。",
+      "highlight": "看它们工作"
+    },
+    {
       "master": "01-conversation",
-      "slug": "02-every-step",
+      "slug": "03-every-step",
       "headline": "每一步\n实时可见",
       "subline": "思考、工具运行与差异，随发生随呈现。",
       "highlight": "实时可见"
     },
     {
       "master": "fl-party",
-      "slug": "03-party",
+      "slug": "04-party",
       "headline": "六个模型\n一键即达",
       "subline": "每个槽位一个模型及其强度，一个快捷键即可切换。",
       "highlight": "一键即达"
     },
     {
       "master": "fl-carry",
-      "slug": "04-carry",
+      "slug": "05-carry",
       "headline": "换模型\n不丢话题",
       "subline": "下一个模型会拿到对话简要摘要，接着往下做。",
       "highlight": "不丢话题"
     },
     {
       "master": "02-split",
-      "slug": "05-two-machines",
+      "slug": "06-two-machines",
       "headline": "两台机器\n并排显示",
       "subline": "拆分窗口，让每个窗格指向不同的服务器。",
       "highlight": "并排显示"
     },
     {
       "master": "fl-gpu",
-      "slug": "06-ask-anything",
+      "slug": "07-ask-anything",
       "headline": "问你的机器\n任何事",
       "subline": "不只是代码：问问是什么在占用显卡。",
       "highlight": "任何事"
     },
     {
       "master": "04-quickask",
-      "slug": "07-one-chord",
+      "slug": "08-one-chord",
       "headline": "一个快捷键\n随时呼出",
       "subline": "智能体工作时，可在任何应用上方呼出提问框。",
       "highlight": "随时呼出"
     },
     {
       "master": "06-analytics",
-      "slug": "08-the-month",
+      "slug": "09-the-month",
       "headline": "本月花销\n一目了然",
       "subline": "每次运行都计价，并跨所有服务器汇总。",
       "highlight": "一目了然"
-    },
-    {
-      "master": "08-keyboard",
-      "slug": "09-keyboard",
-      "headline": "键盘\n优先",
-      "subline": "窗格、对话和模型的快捷键，还有 Vim 模式的输入框。",
-      "highlight": "键盘"
     },
     {
       "master": "10-private",

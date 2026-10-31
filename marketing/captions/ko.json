@@ -152,60 +152,60 @@
       "highlight": "창 하나에"
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "켜 두고\n지켜보세요",
+      "subline": "모든 에이전트와 보조 에이전트를 어떤 화면에서든 실시간으로. 길게 눌러 승인하세요.",
+      "highlight": "지켜보세요"
+    },
+    {
       "master": "01-conversation",
-      "slug": "02-every-step",
+      "slug": "03-every-step",
       "headline": "모든 단계를,\n실시간으로",
       "subline": "생각, 도구 실행, diff를 일어나는 순간 그대로 보여줘요.",
       "highlight": "실시간으로"
     },
     {
       "master": "fl-party",
-      "slug": "03-party",
+      "slug": "04-party",
       "headline": "여섯 개의 모델,\n원클릭이면 충분",
       "subline": "슬롯마다 모델과 추론 강도. 단축키 하나로 전환.",
       "highlight": "원클릭이면 충분"
     },
     {
       "master": "fl-carry",
-      "slug": "04-carry",
+      "slug": "05-carry",
       "headline": "모델을 바꿔도,\n대화는 이어져요",
       "subline": "다음 모델이 채팅 요약을 받아 이어서 답합니다.",
       "highlight": "대화는 이어져요"
     },
     {
       "master": "02-split",
-      "slug": "05-two-machines",
+      "slug": "06-two-machines",
       "headline": "두 대의 기기를\n나란히",
       "subline": "창을 나누고 각 패널을 서로 다른 서버에 연결하세요.",
       "highlight": "나란히"
     },
     {
       "master": "fl-gpu",
-      "slug": "06-ask-anything",
+      "slug": "07-ask-anything",
       "headline": "기기에 무엇이든\n물어보세요",
       "subline": "코드만이 아니에요. GPU를 뭐가 잡아먹는지도 물어보세요.",
       "highlight": "무엇이든"
     },
     {
       "master": "04-quickask",
-      "slug": "07-one-chord",
+      "slug": "08-one-chord",
       "headline": "어디서든\n단축키 하나",
       "subline": "에이전트가 일하는 동안 어떤 앱 위에서든 질문 창을 띄웁니다.",
       "highlight": "단축키 하나"
     },
     {
       "master": "06-analytics",
-      "slug": "08-the-month",
+      "slug": "09-the-month",
       "headline": "이번 달을\n숫자로",
       "subline": "모든 턴의 가격을 매기고, 모든 서버를 합산해요.",
       "highlight": "숫자로"
-    },
-    {
-      "master": "08-keyboard",
-      "slug": "09-keyboard",
-      "headline": "키보드가\n먼저예요",
-      "subline": "패널, 채팅, 모델을 위한 단축키. vim 모드 입력창도 있어요.",
-      "highlight": "키보드가"
     },
     {
       "master": "10-private",

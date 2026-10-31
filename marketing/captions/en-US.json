@@ -152,60 +152,60 @@
       "highlight": "One window."
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Leave it on.\nWatch them work.",
+      "subline": "Every agent and helper, live on any screen. Hold to approve.",
+      "highlight": "Watch them work."
+    },
+    {
       "master": "01-conversation",
-      "slug": "02-every-step",
+      "slug": "03-every-step",
       "headline": "Every step,\nlive",
       "subline": "Thinking, tool runs and the diff, as they happen.",
       "highlight": "live"
     },
     {
       "master": "fl-party",
-      "slug": "03-party",
+      "slug": "04-party",
       "headline": "Six models,\none click away",
       "subline": "A model and its effort in each slot. One chord to switch.",
       "highlight": "one click away"
     },
     {
       "master": "fl-carry",
-      "slug": "04-carry",
+      "slug": "05-carry",
       "headline": "Switch models,\nkeep the thread",
       "subline": "The next model gets a short brief of the chat and carries on.",
       "highlight": "keep the thread"
     },
     {
       "master": "02-split",
-      "slug": "05-two-machines",
+      "slug": "06-two-machines",
       "headline": "Two machines,\nside by side",
       "subline": "Split the window and point each pane at a different server.",
       "highlight": "side by side"
     },
     {
       "master": "fl-gpu",
-      "slug": "06-ask-anything",
+      "slug": "07-ask-anything",
       "headline": "Ask your machines\nanything",
       "subline": "Not only code: ask what's eating the GPU.",
       "highlight": "anything"
     },
     {
       "master": "04-quickask",
-      "slug": "07-one-chord",
+      "slug": "08-one-chord",
       "headline": "One chord\nfrom anywhere",
       "subline": "Summon the question box over any app while the agent works.",
       "highlight": "One chord"
     },
     {
       "master": "06-analytics",
-      "slug": "08-the-month",
+      "slug": "09-the-month",
       "headline": "The month\nin numbers",
       "subline": "Every transcript priced, merged across every server.",
       "highlight": "in numbers"
-    },
-    {
-      "master": "08-keyboard",
-      "slug": "09-keyboard",
-      "headline": "Keyboard\nfirst",
-      "subline": "Chords for panes, chats and models. A vim-mode composer.",
-      "highlight": "Keyboard"
     },
     {
       "master": "10-private",

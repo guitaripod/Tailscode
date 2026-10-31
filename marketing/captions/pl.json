@@ -152,60 +152,60 @@
       "highlight": "Jedno okno."
     },
     {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Nie wyłączaj.\nPatrz, jak pracują.",
+      "subline": "Każdy agent i pomocnik na żywo, na dowolnym ekranie. Przytrzymaj, aby zatwierdzić.",
+      "highlight": "Patrz, jak pracują."
+    },
+    {
       "master": "01-conversation",
-      "slug": "02-every-step",
+      "slug": "03-every-step",
       "headline": "Każdy krok,\nna żywo",
       "subline": "Myślenie, uruchomienia narzędzi i diff, w miarę jak się dzieje.",
       "highlight": "na żywo"
     },
     {
       "master": "fl-party",
-      "slug": "03-party",
+      "slug": "04-party",
       "headline": "Sześć modeli,\njeden klik",
       "subline": "Model i jego poziom w każdym miejscu. Skrót do przełączania.",
       "highlight": "jeden klik"
     },
     {
       "master": "fl-carry",
-      "slug": "04-carry",
+      "slug": "05-carry",
       "headline": "Zmień model,\nwątek zostaje",
       "subline": "Następny model dostaje krótkie streszczenie czatu i prowadzi dalej.",
       "highlight": "wątek zostaje"
     },
     {
       "master": "02-split",
-      "slug": "05-two-machines",
+      "slug": "06-two-machines",
       "headline": "Dwie maszyny,\nobok siebie",
       "subline": "Podziel okno i skieruj każdy panel na inny serwer.",
       "highlight": "obok siebie"
     },
     {
       "master": "fl-gpu",
-      "slug": "06-ask-anything",
+      "slug": "07-ask-anything",
       "headline": "Pytaj komputery\no wszystko",
       "subline": "Nie tylko kod: zapytaj, co zjada kartę graficzną.",
       "highlight": "o wszystko"
     },
     {
       "master": "04-quickask",
-      "slug": "07-one-chord",
+      "slug": "08-one-chord",
       "headline": "Jeden skrót\nz dowolnego miejsca",
       "subline": "Przywołaj okno pytań nad dowolną aplikacją, gdy agent pracuje.",
       "highlight": "Jeden skrót"
     },
     {
       "master": "06-analytics",
-      "slug": "08-the-month",
+      "slug": "09-the-month",
       "headline": "Miesiąc\nw liczbach",
       "subline": "Każda tura wyceniona, połączona ze wszystkich serwerów.",
       "highlight": "w liczbach"
-    },
-    {
-      "master": "08-keyboard",
-      "slug": "09-keyboard",
-      "headline": "Najpierw\nklawiatura",
-      "subline": "Skróty dla paneli, czatów i modeli. Edytor w trybie vim.",
-      "highlight": "klawiatura"
     },
     {
       "master": "10-private",
