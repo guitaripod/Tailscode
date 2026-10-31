@@ -54,6 +54,7 @@ final class AppActivityController {
     private var entries: [String: Entry] = [:]
     private var pendingWork: [String: Task<Void, Never>] = [:]
     private var pendingTokens: [String: UUID] = [:]
+    private var starting: [String: Deferred] = [:]
     /// Every surface showing a conversation and which one, held weakly and asked whether it is in
     /// a window when it matters, so a surface torn down without saying goodbye reads as gone.
     private let readers = NSMapTable<UIViewController, NSString>(
@@ -94,19 +95,15 @@ final class AppActivityController {
     /// is taken back rather than a second one stacked beside it, and a new one is asked for only
     /// when there is none. Starting one is the only thing ActivityKit allows solely in the
     /// foreground, which is why it happens at the send rather than when the server reports the
-    /// turn running.
-    @discardableResult
+    /// turn running. The platform is asked off the main thread, so the card exists a moment after
+    /// this returns; whatever the conversation says in that moment is held and said to it then.
     func start(
         sessionID: String, sessionTitle: String, serverName: String,
         onPushToken: PushTokenSink? = nil
-    ) -> Bool {
+    ) {
         guard AppPreferences.liveActivitiesEnabled else {
             MidgarLog.info("Live Activity disabled in settings", category: .chat)
-            return false
-        }
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            MidgarLog.info("Live Activity not authorized", category: .chat)
-            return false
+            return
         }
         if isTracking(sessionID), var entry = entries[sessionID] {
             let startedAt = Date()
@@ -124,8 +121,9 @@ final class AppActivityController {
                 Task { await sink(token, startedAt) }
             }
             MidgarLog.info("Live Activity taken back for \(sessionID)", category: .chat)
-            return true
+            return
         }
+        guard starting[sessionID] == nil else { return }
         if let lingering = entries[sessionID] {
             dismiss(sessionID, lingering)
         }
@@ -133,7 +131,7 @@ final class AppActivityController {
             let others = entries.filter { $0.key != sessionID && !$0.value.retired }
             guard others.allSatisfy({ current($0.key, $0.value).isSettled }) else {
                 MidgarLog.info("second concurrent Live Activity gated (free tier)", category: .chat)
-                return false
+                return
             }
             for (other, entry) in others { dismiss(other, entry) }
         }
@@ -144,33 +142,96 @@ final class AppActivityController {
         let startedAt = Date()
         let state = Self.liveState(
             LiveActivityReading(detail: .thinking), startedAt: startedAt, toolCount: 0, title: nil)
-        let content = Self.content(state)
-        let pushType: PushType? = onPushToken == nil ? nil : .token
-        let activity: Activity<ChatActivityAttributes>
+        let request = CardRequest(
+            attributes: attributes, content: Self.content(state),
+            pushType: onPushToken == nil ? nil : .token)
+        starting[sessionID] = Deferred()
+        Task {
+            await open(
+                sessionID, request, state: state, startedAt: startedAt, onPushToken: onPushToken)
+        }
+    }
+
+    /// What the platform is asked for when a card is started.
+    private struct CardRequest: @unchecked Sendable {
+        let attributes: ChatActivityAttributes
+        let content: ActivityContent<State>
+        let pushType: PushType?
+    }
+
+    private enum Asked: @unchecked Sendable {
+        case started(Activity<ChatActivityAttributes>)
+        case disabled
+        case refused(any Error)
+    }
+
+    private nonisolated static func ask(_ request: CardRequest) -> Asked {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return .disabled }
         do {
-            activity = try Activity.request(attributes: attributes, content: content, pushType: pushType)
+            return .started(
+                try Activity.request(
+                    attributes: request.attributes, content: request.content,
+                    pushType: request.pushType))
         } catch {
-            guard Self.isFull(error), let oldest = oldestSettled() else {
-                MidgarLog.error("Live Activity failed to start: \(error)", category: .chat)
-                return false
-            }
+            return .refused(error)
+        }
+    }
+
+    /// What the conversation did while its card was still being asked for, kept to be said to the
+    /// card the moment it exists: a turn that ended in the time the platform took to answer must
+    /// still settle the card it was about to get, and a conversation withdrawn in that time must
+    /// not be left with one.
+    private struct Deferred {
+        var update: (reading: LiveActivityReading, title: String?)?
+        var settle: (reading: LiveActivityReading, title: String?)?
+        var withdrawn = false
+    }
+
+    private func whileStarting(_ sessionID: String, _ note: (inout Deferred) -> Void) -> Bool {
+        guard entries[sessionID] == nil, var pending = starting[sessionID] else { return false }
+        note(&pending)
+        starting[sessionID] = pending
+        return true
+    }
+
+    /// Asks the platform for the card off the main thread — in the first minute after a boot its
+    /// daemon is not answering, and a main thread that waits on it is a main thread the watchdog
+    /// ends — and brings the controller up to date with whatever happened meanwhile.
+    private func open(
+        _ sessionID: String, _ request: CardRequest, state: State, startedAt: Date,
+        onPushToken: PushTokenSink?
+    ) async {
+        var answer = await Self.offMain("a new card") { Self.ask(request) }
+        if case .refused(let error) = answer, Self.isFull(error), let oldest = oldestSettled() {
             MidgarLog.info("Live Activity refused (\(error)); making room", category: .chat)
             dismiss(oldest, entries[oldest])
-            guard
-                let retried = try? Activity.request(
-                    attributes: attributes, content: content, pushType: pushType)
-            else {
-                MidgarLog.error("Live Activity failed to start: \(error)", category: .chat)
-                return false
-            }
-            activity = retried
+            let retried = await Self.offMain("a new card") { Self.ask(request) }
+            if case .started = retried { answer = retried }
         }
-        entries[sessionID] = Entry(
-            activity: activity, state: state, card: state, pushedAt: startedAt,
-            onPushToken: onPushToken)
-        watch(activity, sessionID: sessionID)
-        MidgarLog.info("Live Activity started for \(sessionID)", category: .chat)
-        return true
+        let deferred = starting.removeValue(forKey: sessionID)
+        switch answer {
+        case .disabled:
+            MidgarLog.info("Live Activity not authorized", category: .chat)
+        case .refused(let error):
+            MidgarLog.error("Live Activity failed to start: \(error)", category: .chat)
+        case .started(let activity):
+            guard AppPreferences.liveActivitiesEnabled, deferred?.withdrawn != true else {
+                let ending = Handles(activities: [activity])
+                Task.detached { await ending.endAll() }
+                return
+            }
+            entries[sessionID] = Entry(
+                activity: activity, state: state, card: state, pushedAt: startedAt,
+                onPushToken: onPushToken)
+            watch(activity, sessionID: sessionID)
+            MidgarLog.info("Live Activity started for \(sessionID)", category: .chat)
+            if let held = deferred?.update {
+                update(sessionID: sessionID, reading: held.reading, title: held.title)
+            }
+            if let held = deferred?.settle {
+                settle(sessionID: sessionID, reading: held.reading, title: held.title)
+            }
+        }
     }
 
     /// What a running turn is doing now. A card that had settled is taken back — its conversation
@@ -180,6 +241,7 @@ final class AppActivityController {
     /// slept, a resync replaying what it held — is not a new turn, and must not stand the card
     /// back up over an ending the bridge already told it about.
     func update(sessionID: String, reading: LiveActivityReading, title: String?) {
+        if whileStarting(sessionID, { $0.update = (reading, title) }) { return }
         guard isTracking(sessionID), var entry = entries[sessionID] else { return }
         if let title, !title.isEmpty { entry.title = title }
         let shown = current(sessionID, entry)
@@ -229,6 +291,7 @@ final class AppActivityController {
     /// with its conversation on screen has been read already, and one somebody stopped was never
     /// news; both go at once.
     func settle(sessionID: String, reading: LiveActivityReading, title: String?) {
+        if whileStarting(sessionID, { $0.settle = (reading, title) }) { return }
         guard isTracking(sessionID), var entry = entries[sessionID] else { return }
         if isBeingRead(sessionID) {
             MidgarLog.info("Live Activity read as it ended for \(sessionID)", category: .chat)
@@ -284,6 +347,7 @@ final class AppActivityController {
     /// Takes the conversation's card down at once, whatever it says — a send the person stopped
     /// before it went, or a conversation that no longer exists.
     func withdraw(_ sessionID: String) {
+        if whileStarting(sessionID, { $0.withdrawn = true }) { return }
         guard let entry = entries[sessionID] else { return }
         dismiss(sessionID, entry)
     }
@@ -291,6 +355,7 @@ final class AppActivityController {
     /// Takes every card down — Live Activities were just turned off in Settings, and a card left
     /// standing would go on following its conversation's turns regardless.
     func withdrawAll() {
+        for sessionID in starting.keys { starting[sessionID]?.withdrawn = true }
         for (sessionID, entry) in entries { dismiss(sessionID, entry) }
     }
 
