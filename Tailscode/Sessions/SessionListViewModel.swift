@@ -106,7 +106,7 @@ final class SessionListViewModel {
     private func apply(_ change: SessionListChange, profile: ConnectionProfile) {
         if case .invalidated = change {
             flushPending()
-            Task { [weak self] in await self?.load() }
+            Task { [weak self] in await self?.refetch(profile) }
             return
         }
         pendingChanges.append(PendingChange(change: change, profile: profile))
@@ -217,7 +217,7 @@ final class SessionListViewModel {
         guard let backend = backend(for: entry) else { return }
         do {
             try await backend.stopBackgroundWork(sessionID: entry.session.id)
-            await load()
+            await load(fresh: true)
         } catch {
             onError?(Self.readable(error))
         }
@@ -234,7 +234,7 @@ final class SessionListViewModel {
                 host: entry.host, backendType: entry.backendType, session: forked)
             adopt(new)
             onChange?()
-            Task { await load() }
+            Task { await load(fresh: true) }
             return new
         } catch {
             onError?(Self.readable(error))
@@ -246,7 +246,7 @@ final class SessionListViewModel {
         guard let backend = backend(for: entry) else { return }
         do {
             try await backend.renameSession(entry.session.id, title: title)
-            await load()
+            await load(fresh: true)
         } catch {
             onError?(Self.readable(error))
         }
@@ -266,14 +266,28 @@ final class SessionListViewModel {
 
     /// Re-reads the profile list on every load so servers added or removed
     /// in Settings appear without recreating this screen.
-    func load() async {
+    ///
+    /// A load joins any listing of a server that is already on its way, from this screen or any
+    /// other. A caller that has just changed what a listing holds passes `fresh`, because a
+    /// listing begun before its change would hand the old list back.
+    func load(fresh: Bool = false) async {
         if ConnectionController.shared.revision != sourcesRevision {
             sourcesRevision = ConnectionController.shared.revision
             sources = ConnectionController.shared.allBackends()
                 .map { Source(profile: $0.profile, backend: $0.backend) }
             startStreams()
         }
-        await refresh(sources, deadline: Self.sourceDeadline)
+        await refresh(sources, deadline: Self.sourceDeadline, fresh: fresh)
+        await syncBookmarks()
+    }
+
+    /// One server's stream lost its place, so that server is asked again and no other. A stream
+    /// says so every time it attaches — at launch, and again when a machine comes back from a
+    /// reboot — and four servers each asking all four of them what they already knew is how a
+    /// reconnect once cost sixteen listings of a few hundred kilobytes for four.
+    private func refetch(_ profile: ConnectionProfile) async {
+        guard let source = sources.first(where: { $0.profile.id == profile.id }) else { return }
+        await refresh([source], deadline: Self.sourceDeadline)
         await syncBookmarks()
     }
 
@@ -295,23 +309,26 @@ final class SessionListViewModel {
     /// already on screen, so a server that stayed silent keeps the sessions it
     /// last reported rather than blanking. Servers outside `targets` are left
     /// untouched, which is what lets a doubted server be re-checked on its own.
-    private func refresh(_ targets: [Source], deadline: Duration) async {
+    private func refresh(_ targets: [Source], deadline: Duration, fresh startsOwn: Bool = false)
+        async
+    {
         var fresh: [String: [SessionEntry]] = [:]
         rememberDirectories(entries.compactMap(\.session.directory))
         let directories = knownDirectories
         await withTaskGroup(of: (Source, Result<[AgentSession], Error>).self) { group in
             for source in targets {
                 group.addTask {
-                    do {
-                        return (
-                            source,
-                            .success(
+                    let key = ListingKey(profileID: source.profile.id, deadline: deadline)
+                    let result = await Self.listings.run(key, joining: !startsOwn) {
+                        do {
+                            return .success(
                                 try await Self.listWithDeadline(
                                     source, knownDirectories: directories, deadline: deadline))
-                        )
-                    } catch {
-                        return (source, .failure(error))
+                        } catch {
+                            return .failure(error)
+                        }
                     }
+                    return (source, result)
                 }
             }
             for await (source, result) in group {
@@ -458,7 +475,7 @@ final class SessionListViewModel {
             backendType: source.profile.backend, session: session)
         adopt(entry)
         onChange?()
-        Task { await load() }
+        Task { await load(fresh: true) }
         return .success(entry)
     }
 
@@ -472,7 +489,7 @@ final class SessionListViewModel {
                 backendType: source.profile.backend, session: session)
             adopt(entry)
             onChange?()
-            Task { await load() }
+            Task { await load(fresh: true) }
             return entry
         } catch {
             onError?(Self.readable(error))
@@ -494,7 +511,7 @@ final class SessionListViewModel {
             try await backend.deleteSession(entry.session.id)
         } catch {
             onError?(Self.readable(error))
-            await load()
+            await load(fresh: true)
         }
     }
 
@@ -529,7 +546,7 @@ final class SessionListViewModel {
             return collected.sorted { $0.0 < $1.0 }
         }
         let failures = results.compactMap(\.1)
-        if !failures.isEmpty { await load() }
+        if !failures.isEmpty { await load(fresh: true) }
         MidgarLog.info(
             "bulk delete: \(results.count - failures.count) removed, \(failures.count) failed", category: .session)
         return BulkChatOutcome(
@@ -552,6 +569,15 @@ final class SessionListViewModel {
         }
         MarkIntentStore.discard(sessionID: entry.session.id)
     }
+
+    private struct ListingKey: Hashable, Sendable {
+        let profileID: String
+        let deadline: Duration
+    }
+
+    /// Every screen keeps its own listing, and all of them ask the same servers the same question,
+    /// so the listings in the air are shared across them.
+    private static let listings = KeyedFlights<ListingKey, Result<[AgentSession], any Error>>()
 
     private struct SourceTimeout: LocalizedError {
         var errorDescription: String? { String(localized: "The server did not answer in time.") }
