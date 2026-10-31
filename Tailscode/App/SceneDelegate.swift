@@ -84,7 +84,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
-        AppActivityController.shared.retireExpired()
+        Task { await AppActivityController.shared.catchUp() }
         coordinator?.handleControlRouteIfNeeded()
         PushRegistrar.reregisterIfNeeded()
         UpdateMonitor.checkIfDue()

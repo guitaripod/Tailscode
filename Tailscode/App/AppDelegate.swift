@@ -39,7 +39,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         ) { _ in
             MainActor.assumeIsolated { TailscodeShortcuts.updateAppShortcutParameters() }
         }
-        AppActivityController.shared.adoptStanding()
+        Task { await AppActivityController.shared.adoptStanding() }
         TurnWaitCenter.shared.start()
         UsageBackgroundRefresh.register()
         UsageBackgroundRefresh.schedule()

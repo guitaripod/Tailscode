@@ -34,6 +34,12 @@ final class AppActivityController {
     private struct Entry {
         let activity: Activity<ChatActivityAttributes>
         var state: State
+        /// What the card last showed, kept here because ActivityKit answers a read by waiting on
+        /// its daemon, and a main thread that waits on a daemon still starting after a boot is a
+        /// main thread the watchdog ends. Moved by this process's own writes, by the card's
+        /// content stream, and by `catchUp` for whatever a push said while nothing was listening.
+        var card: State
+        var platform: ActivityState = .active
         var title: String?
         var pushedAt: Date
         var pushToken: String?
@@ -62,7 +68,7 @@ final class AppActivityController {
     /// Whether a card for the conversation is standing, live or settled.
     func isTracking(_ sessionID: String) -> Bool {
         guard var entry = entries[sessionID], !entry.retired else { return false }
-        guard Self.isStanding(entry.activity) else {
+        guard Self.isStanding(entry.platform) else {
             entry.retired = true
             entry.retirement?.cancel()
             entry.retirement = nil
@@ -160,7 +166,8 @@ final class AppActivityController {
             activity = retried
         }
         entries[sessionID] = Entry(
-            activity: activity, state: state, pushedAt: startedAt, onPushToken: onPushToken)
+            activity: activity, state: state, card: state, pushedAt: startedAt,
+            onPushToken: onPushToken)
         watch(activity, sessionID: sessionID)
         MidgarLog.info("Live Activity started for \(sessionID)", category: .chat)
         return true
@@ -340,41 +347,106 @@ final class AppActivityController {
         }
     }
 
+    /// What ActivityKit says about one standing card, read together so the daemon is asked once.
+    ///
+    /// `@unchecked` because ActivityKit's handle is not declared `Sendable`, though its reads are
+    /// made from any thread by design.
+    private struct Standing: @unchecked Sendable {
+        let activity: Activity<ChatActivityAttributes>
+        let sessionID: String
+        let state: State
+        let platform: ActivityState
+        let pushToken: String?
+    }
+
+    private struct Handles: @unchecked Sendable {
+        let activities: [Activity<ChatActivityAttributes>]
+
+        func endAll() async {
+            for activity in activities { await activity.end(nil, dismissalPolicy: .immediate) }
+        }
+    }
+
+    private struct Followed: @unchecked Sendable {
+        let cards: [(String, Activity<ChatActivityAttributes>)]
+
+        func read() -> [(String, String, State, ActivityState)] {
+            cards.map { ($0.0, $0.1.id, $0.1.content.state, $0.1.activityState) }
+        }
+    }
+
+    private nonisolated static func readStanding() -> [Standing] {
+        Activity<ChatActivityAttributes>.activities.compactMap { activity in
+            let platform = activity.activityState
+            guard platform != .dismissed else { return nil }
+            return Standing(
+                activity: activity, sessionID: activity.attributes.sessionID,
+                state: activity.content.state, platform: platform,
+                pushToken: activity.pushToken.map(hex))
+        }
+    }
+
+    /// Runs a read of ActivityKit off the main thread and says so when it was slow. Its reads are
+    /// synchronous waits on a daemon that is not always up — in the first minute after a boot it
+    /// is not — and the main thread is never allowed to be the one waiting.
+    private static func offMain<T: Sendable>(
+        _ what: String, _ read: @escaping @Sendable () -> T
+    ) async -> T {
+        let began = Date()
+        let value = await Task.detached(priority: .userInitiated, operation: read).value
+        let took = Date().timeIntervalSince(began)
+        if took > 1 {
+            MidgarLog.info(
+                "ActivityKit took \(Int(took * 1000)) ms to answer \(what)", category: .performance)
+        }
+        return value
+    }
+
     /// Takes up the cards a previous process left behind instead of sweeping them away: a turn
     /// that is still running keeps its card, and one that settled while nobody was here keeps
     /// waiting to be read. A second card for the same conversation — which only a crash between a
     /// request and its bookkeeping could leave — goes.
-    func adoptStanding() {
-        let visible = Activity<ChatActivityAttributes>.activities.filter {
-            $0.activityState != .dismissed
-        }
-        var extras = Set<String>()
-        for (sessionID, activities) in Dictionary(grouping: visible, by: \.attributes.sessionID)
+    func adoptStanding() async {
+        let visible = await Self.offMain("the standing cards") { Self.readStanding() }
+        var extras: [Activity<ChatActivityAttributes>] = []
+        for (sessionID, found) in Dictionary(grouping: visible, by: \.sessionID)
         where entries[sessionID] == nil {
-            let newestFirst = activities.sorted {
-                $0.content.state.startedAt > $1.content.state.startedAt
-            }
-            let standing = newestFirst.filter(Self.isStanding)
+            let newestFirst = found.sorted { $0.state.startedAt > $1.state.startedAt }
+            let standing = newestFirst.filter { Self.isStanding($0.platform) }
             guard let kept = standing.first ?? newestFirst.first else { continue }
-            extras.formUnion(activities.map(\.id).filter { $0 != kept.id })
-            let state = kept.content.state
+            extras += found.map(\.activity).filter { $0.id != kept.activity.id }
             entries[sessionID] = Entry(
-                activity: kept, state: state, title: state.title, pushedAt: .distantPast,
-                pushToken: kept.pushToken.map(Self.hex), retired: !Self.isStanding(kept))
-            watch(kept, sessionID: sessionID)
-            if Self.isStanding(kept), let endedAt = state.endedAt {
+                activity: kept.activity, state: kept.state, card: kept.state,
+                platform: kept.platform, title: kept.state.title, pushedAt: .distantPast,
+                pushToken: kept.pushToken, retired: !Self.isStanding(kept.platform))
+            watch(kept.activity, sessionID: sessionID)
+            if Self.isStanding(kept.platform), let endedAt = kept.state.endedAt {
                 scheduleRetirement(sessionID, settledAt: endedAt)
             }
             MidgarLog.info(
-                "Live Activity adopted for \(sessionID) (\(state.isSettled ? "settled" : "live"))", category: .chat)
+                "Live Activity adopted for \(sessionID) (\(kept.state.isSettled ? "settled" : "live"))",
+                category: .chat)
         }
         if !extras.isEmpty {
-            Task.detached {
-                for activity in Activity<ChatActivityAttributes>.activities
-                where extras.contains(activity.id) {
-                    await activity.end(nil, dismissalPolicy: .immediate)
-                }
-            }
+            let ending = Handles(activities: extras)
+            Task.detached { await ending.endAll() }
+        }
+        retireExpired()
+    }
+
+    /// Brings every card's mirror up to what the platform shows, then moves expired cards along.
+    /// Run whenever the app comes forward: a push may have changed a card while this process was
+    /// suspended and its streams were not being read.
+    func catchUp() async {
+        let tracked = Followed(cards: entries.map { ($0.key, $0.value.activity) })
+        let seen = await Self.offMain("the cards it follows") { tracked.read() }
+        for (sessionID, id, state, platform) in seen {
+            guard var entry = entries[sessionID], entry.activity.id == id,
+                pendingWork[sessionID] == nil
+            else { continue }
+            entry.card = state
+            entry.platform = platform
+            entries[sessionID] = entry
         }
         retireExpired()
     }
@@ -435,7 +507,7 @@ final class AppActivityController {
     /// What the card shows. While one of this process's own writes is on its way, that write is
     /// the truth; otherwise the card is, because a push may have changed it since.
     private func current(_ sessionID: String, _ entry: Entry) -> State {
-        pendingWork[sessionID] == nil ? entry.activity.content.state : entry.state
+        pendingWork[sessionID] == nil ? entry.card : entry.state
     }
 
     /// Follows the card's own life: a token the server needs to reach it, and the moment a person
@@ -457,11 +529,23 @@ final class AppActivityController {
                 }
             }
         }
+        let contents = Task { [weak self] in
+            for await content in activity.contentUpdates {
+                guard let self, var entry = self.entries[sessionID], entry.activity.id == id else {
+                    return
+                }
+                guard self.pendingWork[sessionID] == nil else { continue }
+                entry.card = content.state
+                self.entries[sessionID] = entry
+            }
+        }
         let lifecycle = Task { [weak self] in
             for await state in activity.activityStateUpdates {
                 guard let self, var entry = self.entries[sessionID], entry.activity.id == id else {
                     return
                 }
+                entry.platform = state
+                self.entries[sessionID] = entry
                 if state == .dismissed {
                     self.forget(sessionID)
                     return
@@ -473,7 +557,7 @@ final class AppActivityController {
                 self.entries[sessionID] = entry
             }
         }
-        entries[sessionID]?.watchers = [tokens, lifecycle]
+        entries[sessionID]?.watchers = [tokens, contents, lifecycle]
     }
 
     /// Whether the platform refused a card only because too many are standing — the one refusal
@@ -483,9 +567,8 @@ final class AppActivityController {
         return refusal == .targetMaximumExceeded || refusal == .globalMaximumExceeded
     }
 
-    private static func isStanding(_ activity: Activity<ChatActivityAttributes>) -> Bool {
-        let state = activity.activityState
-        return state == .active || state == .stale
+    private static func isStanding(_ platform: ActivityState) -> Bool {
+        platform == .active || platform == .stale
     }
 
     private static func liveState(
@@ -538,7 +621,7 @@ final class AppActivityController {
             relevanceScore: relevance)
     }
 
-    private static func hex(_ token: Data) -> String {
+    private nonisolated static func hex(_ token: Data) -> String {
         token.map { String(format: "%02x", $0) }.joined()
     }
 
@@ -548,6 +631,7 @@ final class AppActivityController {
     ) {
         let content = Self.content(state)
         let stamp = Date()
+        entries[sessionID]?.card = state
         enqueue(sessionID, activity) { act in
             await act.update(content, alertConfiguration: alert, timestamp: stamp)
         }
