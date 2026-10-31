@@ -108,8 +108,9 @@ final class WatchChromeView: UIView {
         let alignment: NSTextAlignment = layout.clockAlignment == .trailing ? .right : .left
         let clockRect = layout.clock.cgRect
         let clockSize = min(context.scale.type(7.2, floor: 28), clockRect.height / 1.18)
+        let time = timeFormat.string(from: context.now)
         clock.set(
-            timeFormat.string(from: context.now), font: WatchFont.digits(clockSize, .light),
+            time, font: Self.clockFont(for: time, size: clockSize, width: clockRect.width),
             ink: context.palette.text.color(), lines: 1, alignment: alignment)
         clock.frame = clockRect.rounded()
         let dateRect = layout.date.cgRect
@@ -118,6 +119,16 @@ final class WatchChromeView: UIView {
             dateFormat.string(from: context.now), font: WatchFont.text(dateSize),
             ink: context.palette.dim.color(), lines: 1, alignment: alignment)
         date.frame = dateRect.rounded()
+    }
+
+    /// The clock's face at `size`, or smaller until `time` fits `width`: a twelve-hour clock that
+    /// writes its period first in a wide script (오후 2:15, 下午 2:15) is longer than the room Core
+    /// keeps for the digits, and a clock is never cut short.
+    private static func clockFont(for time: String, size: CGFloat, width: CGFloat) -> UIFont {
+        let font = WatchFont.digits(size, .light)
+        let natural = ceil((time as NSString).size(withAttributes: [.font: font]).width)
+        guard natural > width, width > 0 else { return font }
+        return WatchFont.digits(max(12, floor(size * width / natural)), .light)
     }
 
     private func applyRibbon(_ context: WatchWordsContext) {
