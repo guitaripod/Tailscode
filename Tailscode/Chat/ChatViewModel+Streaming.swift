@@ -29,6 +29,7 @@ extension ChatViewModel {
                     self.cachedUsage = nil
                     self.refreshTitleFromServer()
                     self.refreshTitleFromServer(delay: .seconds(12))
+                    self.refreshTitleFromServer(delay: .seconds(40))
                     if self.ultracodeInFlight {
                         self.ultracodeInFlight = false
                         self.onModelChange?()
