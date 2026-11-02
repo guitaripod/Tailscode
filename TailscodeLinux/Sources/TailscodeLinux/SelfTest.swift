@@ -659,6 +659,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkMachine()
+            report("machine: \(checks) claims hold — agents read and proved, the registry, schedules soonest first, a carry across agents, Ask later and every window")
+        } catch {
+            report("machine: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkSidebar()
             report("sidebar: \(checks) claims hold — a burst of draws is two, the last request is drawn, a row with no parent is left alone")
         } catch {

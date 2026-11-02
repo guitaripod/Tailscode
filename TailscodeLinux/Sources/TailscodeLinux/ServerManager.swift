@@ -286,4 +286,7 @@ final class ServerRow {
     var address: UnsafeMutablePointer<GtkWidget>?
     var name: UnsafeMutablePointer<GtkWidget>?
     var password: UnsafeMutablePointer<GtkWidget>?
+    /// The machine's agents and its schedules, each shown once the machine says it keeps them.
+    var agents: UnsafeMutablePointer<GtkWidget>?
+    var scheduled: UnsafeMutablePointer<GtkWidget>?
 }

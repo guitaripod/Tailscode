@@ -289,7 +289,7 @@ extension ChatPane {
         }
         let sources = ModelFleet.sources(
             profiles: profiles, current: entry?.profileID, currentModels: models,
-            reachability: reachability)
+            reachability: reachability, engine: chatEngine)
         guard sources.isEmpty else { return sources }
         return [
             ModelSource(
@@ -357,4 +357,13 @@ extension ChatPane {
         editor.setAura(effort: chosenEffort, inFlight: ultracodeInFlight)
         if editor.auraActive != was { host?.refreshOrb() }
     }
+
+    /// Which agent this chat is with, so a pick of another one carries the conversation rather
+    /// than asking an agent to take over a session it never had. A chat that has said nothing yet
+    /// is open to any of them.
+    var chatEngine: ChatEngine {
+        let hasTurns = !(lastState?.messages.isEmpty ?? true)
+        return ChatEngine.of(agentID: entry?.session.agentID, hasTurns: hasTurns)
+    }
 }
+

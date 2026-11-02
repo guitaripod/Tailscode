@@ -188,6 +188,7 @@ extension ServerManager {
         slots.capabilities = capabilities
         adw_expander_row_add_row(ptr(row), capabilities.row)
         capabilities.start()
+        addMachineRows(to: row, profile: profile, slots: slots)
 
         let isDemo = profile.id.hasPrefix(DemoWorld.profilePrefix)
         let isEnvironment = profile.id == "environment"

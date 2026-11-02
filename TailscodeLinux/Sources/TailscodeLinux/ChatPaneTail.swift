@@ -454,6 +454,7 @@ extension ChatPane {
     func refreshPills() {
         let destination = [
             entry.map { ServerLabel.display(name: $0.profileName, backend: $0.backendType) },
+            entry?.session.agentName,
             entry?.session.directory.map { URL(fileURLWithPath: $0).lastPathComponent },
         ].compactMap { $0 }.joined(separator: " · ")
         let face = ModelDial.face(

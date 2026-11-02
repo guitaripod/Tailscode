@@ -207,6 +207,11 @@ enum SidebarRow {
             model.title, css: model.unread ? "row-title-unread" : "row-title", selectable: false)
         gtk_widget_set_hexpand(title, 1)
         gtk_box_append(ptr(titleRow), title)
+        if model.entry.session.isScheduled == true {
+            let clock = Gtk.label("◷", css: "dim-label", selectable: false)
+            gtk_widget_set_tooltip_text(clock, Localized.text("A schedule asks in this conversation"))
+            gtk_box_append(ptr(titleRow), clock)
+        }
         if let pill = model.state.pill {
             gtk_box_append(ptr(titleRow), makePill(pill.text, css: pill.css))
         }

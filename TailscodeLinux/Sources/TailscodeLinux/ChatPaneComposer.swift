@@ -10,6 +10,14 @@ extension ChatPane {
     /// can do. Picking one drops it into the composer so arguments can follow.
     func commandRows() -> [(String, String?, @Sendable () -> Void)] {
         var rows: [(String, String?, @Sendable () -> Void)] = []
+        if MachineFeatures.mayKeepSchedules(backend) {
+            rows.append(
+                (ScheduleWords.askLaterMenu, Localized.text("Have this machine ask it at a time, or every day  ·  alt+⏎"),
+                 { [weak self] in Gtk.onMain { [weak self] in
+                     guard let self else { return }
+                     self.host?.askLater(from: self)
+                 } }))
+        }
         rows.append(
             ("/compact", Localized.text("Trade the transcript for a summary — with a preflight"),
              { [weak self] in Gtk.onMain { [weak self] in
@@ -183,6 +191,10 @@ extension ChatPane {
         }
 
         let isReturn = keyval == Keymap.enter || keyval == Keymap.keypadEnter
+        if isReturn, state & KeyChord.altMask != 0 {
+            host?.askLater(from: self)
+            return true
+        }
         if isReturn, !shift, Preferences.sendOnReturn || control {
             sendFromComposer()
             return true

@@ -199,6 +199,19 @@ extension ChatPane {
             rows.append(
                 (Localized.text("Copy"), nil, { Gtk.onMain { Gtk.copyToClipboard(words) } }))
         }
+        let typed = CarryMark.split(words)?.rest ?? words
+        if message.role == .user, !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            MachineFeatures.mayKeepSchedules(backend)
+        {
+            rows.append(
+                (ScheduleWords.askAgain, Localized.text("Ask it on a schedule, in this conversation"),
+                 { [weak self] in
+                     Gtk.onMain { [weak self] in
+                         guard let self else { return }
+                         self.host?.askLater(from: self, text: typed, sessionID: self.sessionID)
+                     }
+                 }))
+        }
         Gtk.contextMenu(on: ptr(raw), x: x, y: y, rows: rows)
     }
 

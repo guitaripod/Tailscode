@@ -338,6 +338,20 @@ extension ChatPane {
         Gtk.connect(UnsafeMutableRawPointer(sendButton), "clicked") { [weak self] in
             self?.sendFromComposer()
         }
+        Gtk.onRightClick(sendButton) { [weak self] x, y in
+            Gtk.onMain { [weak self] in
+                guard let self, MachineFeatures.mayKeepSchedules(self.backend) else { return }
+                let later: @Sendable () -> Void = { [weak self] in
+                    Gtk.onMain { [weak self] in
+                        guard let self else { return }
+                        self.host?.askLater(from: self)
+                    }
+                }
+                Gtk.contextMenu(
+                    on: self.sendButton, x: x, y: y,
+                    rows: [(title: ScheduleWords.askLaterMenu, detail: Localized.text("alt+⏎"), action: later)])
+            }
+        }
         gtk_box_append(ptr(row), sendButton)
 
         let stop = ChatChips.content(glyph: "■", word: Localized.text("Stop"), tone: .danger)

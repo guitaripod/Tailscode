@@ -137,6 +137,7 @@ extension MainWindow {
         if !cachedEntries.isEmpty { applyEntries(cachedEntries, unreachable: [], fromNetwork: false) }
         startRefreshing()
         startUsagePolling()
+        startMachineWatch()
         observeUpdates()
         renderUpdates()
         UpdateWatch.start { [weak self] in self?.quitForUpdate() }

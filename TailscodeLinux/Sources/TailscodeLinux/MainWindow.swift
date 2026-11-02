@@ -136,6 +136,14 @@ final class MainWindow: @unchecked Sendable {
     /// The questions for later being asked right now, so a slow mint is never asked twice.
     var laterInFlight: Set<String> = []
     var laterWatch: NSObjectProtocol?
+    /// The sidebar's line for what the machines ask next, and the board it was read from.
+    let scheduleBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+    let scheduleLabel = Gtk.label("", css: "row-detail", selectable: false)
+    var scheduleBoard: ScheduleBoard?
+    var scheduleGeneration = 0
+    /// Machines that said this run that they keep no schedules, so a question for later stays on
+    /// this computer without the machine being asked again every beat.
+    var laterStaysHere: Set<String> = []
     var lastQuotas: [(String, UsageQuota)] = []
     /// The last good reading each machine gave for each account, served as cached while a poll
     /// fails and for no longer than ``QuotaFreshness/keptFor``.

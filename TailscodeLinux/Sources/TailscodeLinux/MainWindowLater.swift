@@ -30,6 +30,7 @@ extension MainWindow {
     /// minutes rather than on every beat.
     func askDueLater() {
         let now = Date()
+        handOffLater(now: now)
         for later in QuickAskLaterStore.due(now: now) where !laterInFlight.contains(later.id) {
             laterInFlight.insert(later.id)
             Task { [weak self] in
@@ -60,6 +61,43 @@ extension MainWindow {
                         AppLog.write(.session, "LATER failed id=\(later.id) \(failure.title)")
                         self.toast("\(failure.title) — \(later.headline)")
                     }
+                }
+            }
+        }
+    }
+
+    /// A question put off here goes to its machine when the machine keeps schedules, so it is
+    /// asked whether or not this computer is on; the copy here is let go once the machine has it.
+    /// One already due is asked here first, and the repeat that follows is handed over after.
+    func handOffLater(now: Date) {
+        for later in QuickAskLaterStore.all()
+        where later.dueAt > now && !laterInFlight.contains(later.id) && !laterStaysHere.contains(later.profileID) {
+            laterInFlight.insert(later.id)
+            Task { [weak self] in
+                let profiles = await ServerDirectory.shared.profiles()
+                guard let profile = profiles.first(where: { $0.id == later.profileID }),
+                    let backend = await ServerDirectory.shared.backend(for: profile)
+                else {
+                    Gtk.onMain { [weak self] in self?.laterInFlight.remove(later.id) }
+                    return
+                }
+                let keeps = await MachineFeatures.read(backend).schedules
+                let placed =
+                    keeps
+                    ? await QuickAskLaterHandoff.place(later, using: backend, device: MachineFeatures.deviceName)
+                    : false
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    self.laterInFlight.remove(later.id)
+                    guard placed else {
+                        if !keeps { self.laterStaysHere.insert(later.profileID) }
+                        return
+                    }
+                    QuickAskLaterStore.remove(id: later.id)
+                    AppLog.write(.session, "LATER handed id=\(later.id) server=\(profile.name)")
+                    self.toast(Localized.text("Handed to %@: %@", profile.name, later.headline))
+                    self.refreshScheduleLine()
+                    SchedulesWindow.refreshAll()
                 }
             }
         }

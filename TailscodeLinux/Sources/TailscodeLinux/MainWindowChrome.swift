@@ -65,6 +65,9 @@ extension MainWindow {
                 let delegate: @Sendable () -> Void = { [weak self] in
                     Gtk.onMain { [weak self] in self?.presentDelegate() }
                 }
+                let scheduled: @Sendable () -> Void = { [weak self] in
+                    Gtk.onMain { [weak self] in self?.presentScheduled() }
+                }
                 let archive: @Sendable () -> Void = { [weak self] in
                     Gtk.onMain { [weak self] in self?.setArchiveShown(true) }
                 }
@@ -77,6 +80,8 @@ extension MainWindow {
                     (ForgeEntryPoint.menuTitle,
                      ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil), forge),
                     (DelegateEntryPoint.menuTitle, DelegateEntryPoint.subtitle, delegate),
+                    (ScheduleWords.title + "…",
+                     Localized.text("What your machines ask on their own, and when"), scheduled),
                     (Localized.text("Settings…"),
                      Localized.text("Type sizes, the prompt box, vim mode, layout"), settings),
                     (Localized.text("Servers…"),
@@ -196,6 +201,7 @@ extension MainWindow {
         Gtk.onRightClick(orb.widget) { [weak self] _, _ in
             Gtk.onMain { [weak self] in self?.orbPressed(secondary: true) }
         }
+        gtk_box_append(ptr(column), makeScheduleLine())
         gtk_box_append(ptr(column), usageBox)
         gtk_box_append(ptr(column), orb.widget)
 
