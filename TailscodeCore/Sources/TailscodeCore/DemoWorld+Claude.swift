@@ -170,7 +170,10 @@ extension DemoWorld {
             "Sources/Pulse/Socket/Backoff.swift": demoBackoffPatch,
             "Tests/PulseTests/ReconnectTests.swift": demoReconnectTestsPatch,
             "Sources/Pulse/Socket/Jitter.swift": demoJitterPatch,
-        ])
+        ],
+        schedules: demoSchedules,
+        machineAgents: demoAgents,
+        agentRegistry: demoRegistry)
 
     private static var claudeLiveScript: [MockScriptStep] {
         [
