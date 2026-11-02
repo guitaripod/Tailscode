@@ -128,7 +128,7 @@ public enum QuickAskLaterChoice: String, Sendable, CaseIterable {
 public enum QuickAskLaterWords {
     public static var section: String { Localized.text("Later") }
     public static var reach: String {
-        Localized.text("Asked by this computer while Tailscode is open, or the next time it opens.")
+        Localized.text("Handed to the machine when it keeps schedules, so it asks whether or not this computer is on; otherwise asked by this computer while Tailscode is open.")
     }
 
     static func clock(hour: Int) -> String {
@@ -288,3 +288,49 @@ public enum QuickAskLaterRunner {
         return .success(session)
     }
 }
+
+/// A question put off on this desktop, handed to its machine when the machine keeps schedules —
+/// which every claude-bridge and omp-bridge does — so it is asked whether or not this computer is
+/// on. The desktop keeps asking it only for a machine that cannot (opencode).
+public enum QuickAskLaterHandoff {
+    /// The machine's rule for a question put off here: the moment for a single one, the same hour
+    /// every day or every week for a repeat, read in this device's zone.
+    public static func rule(for later: QuickAskLater, calendar: Calendar = .current) -> ScheduleRule {
+        let hour = calendar.component(.hour, from: later.fireAt)
+        let minute = calendar.component(.minute, from: later.fireAt)
+        switch later.repeats {
+        case .once: return .once(later.fireAt)
+        case .daily: return ScheduleRule(kind: .daily, hour: hour, minute: minute)
+        case .weekly:
+            return ScheduleRule(
+                kind: .weekly, hour: hour, minute: minute, weekday: calendar.component(.weekday, from: later.fireAt))
+        }
+    }
+
+    /// Whether this machine takes the question, so the desktop can let its own copy go.
+    public static func place(
+        _ later: QuickAskLater, using backend: any CodingAgentBackend, device: String? = nil,
+        now: Date = Date(), calendar: Calendar = .current
+    ) async -> Bool {
+        guard backend.capabilities.supportsSchedules,
+            let scheduling = backend as? any MachineScheduling
+        else { return false }
+        var rule = rule(for: later, calendar: calendar)
+        if rule.kind == .once, later.fireAt <= now { rule = .once(now.addingTimeInterval(60)) }
+        let model = later.model.flatMap(ModelSelection.init(string:))
+        let draft = ScheduleDraft(
+            text: later.text, model: model.map { wireModel($0, backend: backend) }, effort: later.effort,
+            rule: rule, timeZone: calendar.timeZone.identifier, thread: .continue,
+            quiet: rule.isRepeating, createdBy: device)
+        return (try? await scheduling.createSchedule(draft)) != nil
+    }
+
+    /// The model as the machine names it on the wire: an agent's model carries its agent.
+    public static func wireModel(_ selection: ModelSelection, backend: any CodingAgentBackend) -> String {
+        guard backend.capabilities.supportsMachineAgents, !selection.providerID.isEmpty,
+            selection.providerID != "anthropic", selection.providerID != "claude"
+        else { return selection.modelID }
+        return "\(selection.providerID)/\(selection.modelID)"
+    }
+}
+

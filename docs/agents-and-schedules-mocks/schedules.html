@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=1572">
+<title>Schedules, phone</title>
+<link rel="stylesheet" href="base.css">
+</head>
+<body>
+<script>document.documentElement.dataset.theme=location.hash==='#light'?'light':'dark'</script>
+<div class="page">
+
+<div class="fig">
+<div class="cap">1 · Ask later<span>long press on Send</span></div>
+<div class="phone">
+<div class="status"><span>9:41</span><span>●●● ▮</span></div>
+<div class="nav">New chat</div>
+<div class="col"></div>
+<div class="sheet">
+<div class="grab"></div>
+<div style="font:600 17px/22px inherit">Ask later</div>
+<div style="font-size:14px;line-height:19px;color:var(--ink2);margin-top:-6px">"What's new in AI today? Three lines, links."</div>
+<div class="chips">
+<span class="chip">In an hour</span><span class="chip">Tonight <small>21:00</small></span><span class="chip">Tomorrow <small>08:00</small></span><span class="chip">Every morning <small>08:00</small></span><span class="chip">Every Monday <small>08:00</small></span>
+</div>
+<div class="field"><span>weekdays 7:30</span></div>
+<div class="understood"><span style="color:var(--accent)">◷</span><div><b>Next: Tue 4 Nov 07:30</b><br>then every weekday · asked by arch · Opus</div></div>
+<div class="toggle"><div>One conversation<i>Each run sees what it said last time.</i></div><span class="sw"></span></div>
+<div class="toggle"><div>Quiet when nothing changed<i>No ping, not unread. Failures always speak.</i></div><span class="sw"></span></div>
+<div class="cta">Ask every weekday at 07:30</div>
+</div>
+</div>
+<div class="tot">The typed phrase wins over the chip; what it was understood as is always a date, shown before anything is saved. arch asks, whether or not this phone is on.</div>
+</div>
+
+<div class="fig">
+<div class="cap">2 · Home and Scheduled<span>coming up, every machine</span></div>
+<div class="phone">
+<div class="status"><span>9:41</span><span>●●● ▮</span></div>
+<div class="big" style="padding-top:8px">Home</div>
+<div class="col" style="gap:12px">
+<div class="home-status">
+<div class="lead"><span class="dot" style="background:var(--ok);width:9px;height:9px"></span>All quiet</div>
+<div class="sub">4 finished today · studio is down</div>
+<div class="next"><span class="clk">◷</span><span><b>Next:</b> "AI news" at 07:30 on arch</span><span class="chev" style="margin-left:auto">›</span></div>
+</div>
+<div style="font:700 22px/28px inherit;margin-top:6px">Scheduled</div>
+<div class="group">
+<div class="row"><div class="mark" style="background:var(--opus)">◷</div><div class="rt"><b>AI news</b><i>Weekdays 07:30 · arch</i></div><span style="font-size:12px;color:var(--ink3)">○ quiet</span><span class="chev">›</span></div>
+<div class="row"><div class="mark" style="background:var(--hermes)">◷</div><div class="rt"><b>Disk and GPU check</b><i>Every 6 hours · arch · Hermes</i></div><span style="font-size:12px;color:var(--ok)">● 03:00</span><span class="chev">›</span></div>
+<div class="row"><div class="mark" style="background:var(--qwen)">◷</div><div class="rt"><b>Benchmark the new quant</b><i>Tonight 21:00 · arch</i></div><span class="chev">›</span></div>
+<div class="row"><div class="mark" style="background:var(--fill2);color:var(--ink3)">◷</div><div class="rt"><b style="color:var(--ink2)">Weekly dependency audit</b><i>Paused · studio</i></div><span class="chev">›</span></div>
+</div>
+</div>
+</div>
+<div class="tot">Home grows one line only while something is scheduled. The desktops have Scheduled in the sidebar beside Usage.</div>
+</div>
+
+<div class="fig">
+<div class="cap">3 · A schedule<span>history that says the misses</span></div>
+<div class="phone">
+<div class="status"><span>9:41</span><span>●●● ▮</span></div>
+<div class="nav"><span class="back">‹ Scheduled</span>AI news<span class="act">Edit</span></div>
+<div class="col" style="gap:12px">
+<div class="group" style="padding:12px 14px;font-size:15px;line-height:20px">What's new in AI today? Three lines, links.<div style="font-size:12.5px;color:var(--ink2);margin-top:6px">Weekdays 07:30 · arch · Opus · one conversation · quiet</div></div>
+<div style="display:flex;gap:8px"><span class="btn fill" style="flex:1;text-align:center;height:36px;line-height:36px;border-radius:10px">Run now</span><span class="btn" style="flex:1;text-align:center;height:36px;line-height:36px;border-radius:10px">Pause</span></div>
+<div class="sh">History</div>
+<div class="group">
+<div class="run"><span class="g" style="color:var(--ink3)">○</span><div class="t">Quiet<i>nothing new</i></div><em>Mon 07:30</em></div>
+<div class="run"><span class="g" style="color:var(--ok)">●</span><div class="t">Answered<i>3 lines, 4 links</i></div><em>Fri 07:30</em></div>
+<div class="run"><span class="g" style="color:var(--warn)">◐</span><div class="t">Caught up at 09:12<i>missed 07:30 while arch was off</i></div><em>Thu</em></div>
+<div class="run"><span class="g" style="color:var(--bad)">●</span><div class="t">Failed<i>arch said: rate limited until 08:00</i></div><em>Wed 07:30</em></div>
+<div class="run"><span class="g" style="color:var(--ok)">●</span><div class="t">Answered</div><em>Tue 07:30</em></div>
+</div>
+<div style="color:var(--bad);font-size:15px;text-align:center">Delete schedule</div>
+</div>
+</div>
+<div class="tot">Every run is a real conversation, one tap away. Delete keeps the chats.</div>
+</div>
+
+<div class="fig">
+<div class="cap">4 · One conversation<span>the run that had nothing to say</span></div>
+<div class="phone">
+<div class="status"><span>9:41</span><span>●●● ▮</span></div>
+<div class="nav"><span class="back">‹</span>AI news ◷<small style="font-weight:400;color:var(--ink3);font-size:12px;margin-left:6px">arch</small></div>
+<div class="col" style="gap:12px">
+<div class="bubble">What's new in AI today? Three lines, links.</div>
+<div class="prose">1. ACP registry passes 44 agents; Junie and Kiro join.<br>2. Bolt 74B gets a 24 GB quant.<br>3. llama.cpp lands multi-token prediction.</div>
+<div class="bubble">What's new in AI today? Three lines, links.</div>
+<div class="prose" style="color:var(--ink2)">Nothing new since the last check.</div>
+<div class="bubble">What's new in AI today? Three lines, links.</div>
+<div class="prose">1. Hermes 0.19 adds secrets from 1Password.<br>2. …</div>
+</div>
+<div class="bar"><div class="inp"><span class="ph">Reply — the next run sees it</span><span class="send">↑</span></div></div>
+</div>
+<div class="tot">A reply joins the context the next run reads, so "skip crypto news" lasts. A quiet run's answer is one plain line and leaves the chat read.</div>
+</div>
+
+</div>
+</body></html>

@@ -45,13 +45,25 @@ extension ModelChooser {
                     == .orderedAscending
             }
             let name = entries.map(\.name).max { $0.count < $1.count } ?? first.id
+            let admitted = source.engine.admits(first)
             return ModelCandidate(
                 id: source.profileID.isEmpty ? key : "\(source.profileID)·\(key)",
                 name: name.isEmpty ? first.id : name,
-                family: ModelFamily.of(name: name, id: first.id, providerID: first.providerID), offers: offers,
-                profileID: source.profileID, serverName: source.name,
-                isElsewhere: !source.isCurrent)
+                family: first.agentName.map { ModelFamily.agent(id: first.providerID, name: $0) }
+                    ?? ModelFamily.of(name: name, id: first.id, providerID: first.providerID),
+                offers: offers,
+                profileID: source.profileID,
+                serverName: source.isCurrent && !admitted
+                    ? Self.engineWords(first, on: source) : source.name,
+                isElsewhere: !source.isCurrent || !admitted)
         }
+    }
+
+    /// Where a model runs when it is on the chat's own machine but with another agent: the
+    /// machine and the agent, so "Continue on arch with Hermes?" says what moves.
+    static func engineWords(_ model: ModelInfo, on source: ModelSource) -> String {
+        Localized.text(
+            "%@ with %@", source.name, model.agentName ?? source.backend.displayName)
     }
 
     /// Whether an offer's own catalog entry says anything about the model beyond its name. The
@@ -62,6 +74,9 @@ extension ModelChooser {
     }
 
     private static func identity(_ model: ModelInfo) -> String {
+        if model.agentName != nil {
+            return "agent:\(model.providerID):" + ModelFamily.tokens(model.name.isEmpty ? model.id : model.name).joined()
+        }
         let scope = ProviderIdentity.isLocal(model.providerID) ? "local:" : "hosted:"
         let name = ModelFamily.tokens(model.name).joined()
         guard name.isEmpty else { return scope + name }

@@ -60,8 +60,9 @@ public enum ModelBadge {
     /// one worth showing, the id with its packaging taken off otherwise, so a local build or a
     /// gateway id reads as what it is rather than as a Claude alias or a tail-truncated path.
     public static func word(for selection: ModelSelection, in models: [ModelInfo]) -> String {
-        let name = catalogRow(selection.modelID, providerID: selection.providerID, in: models)?.name
-        return shortName(selection.modelID, catalogName: name, providerID: selection.providerID)
+        let row = catalogRow(selection.modelID, providerID: selection.providerID, in: models)
+        if let row, let agent = row.agentName { return agentWord(agent: agent, model: row) }
+        return shortName(selection.modelID, catalogName: row?.name, providerID: selection.providerID)
     }
 
     /// The longest catalog name a pill wears whole; past it the cleaned id, which keeps the
@@ -141,9 +142,23 @@ public enum ModelBadge {
     ) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
+        if let row = catalogRow(trimmed, providerID: providerID, in: catalog), let agent = row.agentName {
+            return agentWord(agent: agent, model: row)
+        }
         return claudeWord(trimmed, providerID: providerID)
             ?? catalogWord(trimmed, providerID: providerID, catalog: catalog)
             ?? identityName(trimmed)
+    }
+
+    /// A model reached through an ACP agent wears the agent first — "Hermes · Bolt" — because the
+    /// agent is what answers, and the same Bolt through llama-swap is a different conversation.
+    /// An agent that offers no model of its own wears its name alone.
+    public static func agentWord(agent: String, model: ModelInfo) -> String {
+        guard model.id != "default" else { return agent }
+        let bare = model.id.hasPrefix("custom:") ? String(model.id.dropFirst("custom:".count)) : model.id
+        let name = model.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let word = !name.isEmpty && name.count <= catalogNameLimit ? name : identityName(bare)
+        return Localized.text("%@ · %@", agent, word)
     }
 
     /// The catalog's own name for an id when it is short enough for a chip and says more than the

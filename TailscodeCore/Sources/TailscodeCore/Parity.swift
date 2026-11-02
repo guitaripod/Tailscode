@@ -146,6 +146,8 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case serverAutoUpdate
     case serverRestart
     case serverRestartAll
+    case machineAgents
+    case machineSchedules
     case newChat
     case newChatDefaults
     case newChatFailure

@@ -165,6 +165,8 @@ enum ParityManifest {
         case .serverSelfUpdate: return .implemented("UpdatePress")
         case .serverRestart: return .implemented("restartTapped")
         case .serverRestartAll: return .implemented("restartEverything")
+        case .machineAgents: return .gap("being built")
+        case .machineSchedules: return .gap("being built")
         case .serverAutoUpdate: return .implemented("renderAutomation")
         case .newChat: return .implemented("NewChatSheet")
         case .newChatPathCompletion: return .implemented("NewChatSheet")

@@ -22,6 +22,13 @@ public struct ModelFamily: Sendable, Hashable, Comparable {
 
     static let other = ModelFamily(key: "·other", title: Localized.text("Other"), rank: 900)
 
+    /// An ACP agent's own section: its models are reached through the agent, which is the thing a
+    /// person is choosing, so they are listed under it rather than scattered among the houses.
+    /// Ranked with Claude at the top, because an agent is a choice of the same order as a CLI.
+    public static func agent(id: String, name: String) -> ModelFamily {
+        ModelFamily(key: "·agent·\(id)", title: name, rank: 0)
+    }
+
     /// The section is the house ``ModelNeedles`` reads, so the list and the pill's hue never
     /// disagree about whose a model is.
     public static func of(name: String, id: String) -> ModelFamily {
@@ -97,12 +104,17 @@ public struct ModelSource: Sendable, Equatable {
     /// nobody asked; `false` means the server refused and `models` is the last one known. A server
     /// that is down is a state, not an empty catalog, and the two must never read as one another.
     public let isReachable: Bool?
+    /// Which agent the chat the chooser was opened from is with. A conversation stays with the
+    /// agent that answered it — Hermes cannot take over Claude Code's session — so on the chat's
+    /// own machine only that agent's models apply directly, and the rest are a carry.
+    public let engine: ChatEngine
 
     public init(
         profileID: String, name: String, backend: AgentType, models: [ModelInfo],
         isCurrent: Bool, allowsServerDefault: Bool, acceptsAnyModelID: Bool,
-        isReachable: Bool? = nil
+        isReachable: Bool? = nil, engine: ChatEngine = .open
     ) {
+        self.engine = engine
         self.profileID = profileID
         self.name = name
         self.backend = backend
@@ -301,3 +313,29 @@ public struct ModelCandidate: Sendable, Hashable, Identifiable {
         return offers.contains { $0.selection == selection }
     }
 }
+
+/// The agent a chat is bound to, as the chooser reads it.
+public enum ChatEngine: Sendable, Hashable {
+    /// No conversation yet, or one that has not said a word: any agent may take it.
+    case open
+    /// The server's own agent — Claude Code on a claude-bridge.
+    case own
+    /// An ACP agent the server hosts, by its id.
+    case agent(String)
+
+    /// The engine of a chat that has a session, read from what the server said about it.
+    public static func of(agentID: String?, hasTurns: Bool) -> ChatEngine {
+        guard hasTurns else { return .open }
+        return agentID.map(ChatEngine.agent) ?? .own
+    }
+
+    /// Whether a pick of this model keeps the chat where it is.
+    public func admits(_ model: ModelInfo) -> Bool {
+        switch self {
+        case .open: return true
+        case .own: return model.agentName == nil
+        case .agent(let id): return model.agentName != nil && model.providerID == id
+        }
+    }
+}
+
