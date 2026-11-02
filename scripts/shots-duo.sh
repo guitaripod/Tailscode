@@ -96,7 +96,7 @@ screen_env() {
     agents | peek | costs) echo "TAILSCODE_DUO=1" ;;
     home) echo "TAILSCODE_DUO=1" ;;
     homeo1) echo "TAILSCODE_OPEN_SESSION=demo-o1" ;;
-    models) echo "TAILSCODE_OPEN_SESSION=demo-o1,TAILSCODE_OPEN_MODELS=1,TAILSCODE_MODELS_DELAY=8" ;;
+    models) echo "TAILSCODE_OPEN_SESSION=demo-c3,TAILSCODE_OPEN_MODELS=1,TAILSCODE_MODELS_DELAY=8" ;;
     setup) echo "TAILSCODE_OPEN_GUIDE=1,TAILSCODE_SETUP_AGENT=claude,TAILSCODE_SETUP_WAY=install,TAILSCODE_FAKE_TAILNET=up" ;;
     steer) echo "TAILSCODE_OPEN_SESSION=demo-c1,TAILSCODE_DIAL=level:max,TAILSCODE_AUTOSEND=also add a test for the jitter bound,TAILSCODE_NEURAL_OPEN=1" ;;
     gpu) echo "TAILSCODE_OPEN_SESSION=demo-o5,TAILSCODE_INSPECT=tool" ;;

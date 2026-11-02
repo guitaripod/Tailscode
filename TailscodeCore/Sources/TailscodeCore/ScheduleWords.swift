@@ -120,7 +120,7 @@ public enum ScheduleWords {
         return format.string(from: date)
     }
 
-    static func lowered(_ text: String) -> String {
+    public static func lowered(_ text: String) -> String {
         guard let first = text.first, first.isUppercase else { return text }
         return first.lowercased() + text.dropFirst()
     }

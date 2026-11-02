@@ -66,6 +66,8 @@ MASTERS = [
     {"name": "fl-carry", "session": "demo-o6", "args": [], "delay": 18, "window": "20,40,1240,780", "scale": 1.1},
     {"name": "fl-gpu", "session": "demo-o5", "args": [], "delay": 18, "window": "20,40,1240,780", "scale": 1.1,
      "drive": "8000:brain=rows"},
+    {"name": "fl-later", "session": "demo-c4", "args": ["--open", "ask-later"], "delay": 18, "open_delay": 5,
+     "window": "20,40,1240,780", "scale": 1.1},
     {"name": "01-conversation", "session": "demo-c1", "args": [], "delay": 20, "window": "20,40,1240,780",
      "scale": 1.1, "drive": "9000:brain=open"},
     {"name": "02-split", "session": "demo-c1", "args": ["--open", "split:demo-o2"], "delay": 32,

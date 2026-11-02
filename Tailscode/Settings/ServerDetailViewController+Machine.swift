@@ -69,7 +69,8 @@ extension ServerDetailViewController {
         if let next = board.next, let date = next.schedule.next {
             content.secondaryText = Localized.text(
                 "Next: \u{201C}%@\u{201D} %@", next.title,
-                ScheduleWords.moment(date, calendar: ScheduleDetailViewController.calendar(next.schedule)))
+                ScheduleWords.lowered(
+                    ScheduleWords.moment(date, calendar: ScheduleDetailViewController.calendar(next.schedule))))
         }
         content.secondaryTextProperties.color = Theme.Color.secondaryLabel
     }
