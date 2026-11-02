@@ -4,7 +4,7 @@
       "master": "fl-agents",
       "slug": "01-all-your-agents",
       "headline": "모든 에이전트,\n주머니 하나에",
-      "subline": "Claude Code, opencode, Oh My Pi를 내 컴퓨터에서 실행하세요.",
+      "subline": "Claude Code, Hermes, opencode, 그리고 모든 ACP 에이전트를 내 컴퓨터에서.",
       "highlight": "주머니 하나에"
     },
     {
@@ -17,9 +17,9 @@
     {
       "master": "fl-models",
       "slug": "03-any-model",
-      "headline": "어떤 모델이든,\n내 GPU 위에서도",
-      "subline": "클라우드 모델이든 내 기기의 로컬 모델이든, 채팅마다 선택.",
-      "highlight": "내 GPU 위에서도"
+      "headline": "어떤 에이전트든,\n어떤 모델이든.",
+      "subline": "Hermes나 Opus, 내 GPU 위의 모델도, 채팅마다.",
+      "highlight": "어떤 모델이든."
     },
     {
       "master": "fl-peek",
@@ -43,11 +43,11 @@
       "highlight": "조종하세요"
     },
     {
-      "master": "fl-gpu",
-      "slug": "07-ask-anything",
-      "headline": "기기에 무엇이든\n물어보세요",
-      "subline": "코드만이 아니에요. GPU를 뭐가 잡아먹는지도 물어보세요.",
-      "highlight": "무엇이든"
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "매일 아침 물어보고,\n기기가 대신해요.",
+      "subline": "시간은 평일 7:30. 휴대폰이 꺼져 있어도 물어봐요.",
+      "highlight": "기기가 대신해요."
     },
     {
       "master": "fl-carry",
@@ -103,16 +103,16 @@
     {
       "master": "fl-models",
       "slug": "05-any-model",
-      "headline": "어떤 모델이든,\n내 GPU 위에서도",
-      "subline": "클라우드 모델이든 내 기기의 로컬 모델이든, 채팅마다 선택.",
-      "highlight": "내 GPU 위에서도"
+      "headline": "어떤 에이전트든,\n어떤 모델이든.",
+      "subline": "Hermes나 Opus, 내 GPU 위의 모델도, 채팅마다.",
+      "highlight": "어떤 모델이든."
     },
     {
-      "master": "fl-gpu",
-      "slug": "06-ask-anything",
-      "headline": "기기에 무엇이든\n물어보세요",
-      "subline": "코드만이 아니에요. GPU를 뭐가 잡아먹는지도 물어보세요.",
-      "highlight": "무엇이든"
+      "master": "fl-later",
+      "slug": "06-every-morning",
+      "headline": "매일 아침 물어보고,\n기기가 대신해요.",
+      "subline": "시간은 평일 7:30. 휴대폰이 꺼져 있어도 물어봐요.",
+      "highlight": "기기가 대신해요."
     },
     {
       "master": "03-approval",
@@ -187,11 +187,11 @@
       "highlight": "나란히"
     },
     {
-      "master": "fl-gpu",
-      "slug": "07-ask-anything",
-      "headline": "기기에 무엇이든\n물어보세요",
-      "subline": "코드만이 아니에요. GPU를 뭐가 잡아먹는지도 물어보세요.",
-      "highlight": "무엇이든"
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "매일 아침 물어보고,\n기기가 대신해요.",
+      "subline": "시간은 평일 7:30. 휴대폰이 꺼져 있어도 물어봐요.",
+      "highlight": "기기가 대신해요."
     },
     {
       "master": "04-quickask",

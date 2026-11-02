@@ -100,6 +100,7 @@ screen_env() {
     setup) echo "TAILSCODE_OPEN_GUIDE=1,TAILSCODE_SETUP_AGENT=claude,TAILSCODE_SETUP_WAY=install,TAILSCODE_FAKE_TAILNET=up" ;;
     steer) echo "TAILSCODE_OPEN_SESSION=demo-c1,TAILSCODE_DIAL=level:max,TAILSCODE_AUTOSEND=also add a test for the jitter bound,TAILSCODE_NEURAL_OPEN=1" ;;
     gpu) echo "TAILSCODE_OPEN_SESSION=demo-o5,TAILSCODE_INSPECT=tool" ;;
+    later) echo "TAILSCODE_OPEN_SESSION=demo-c4,TAILSCODE_OPEN_ASK_LATER=1" ;;
     carry) echo "TAILSCODE_OPEN_SESSION=demo-o6" ;;
     party) echo "TAILSCODE_OPEN_SESSION=demo-c2,TAILSCODE_DIAL=fleetparty" ;;
     wall) echo "TAILSCODE_WATCH=squad,TAILSCODE_WATCH_EVENTS=1,TAILSCODE_HIDE_DEMO_BADGE=1" ;;

@@ -4,7 +4,7 @@
       "master": "fl-agents",
       "slug": "01-all-your-agents",
       "headline": "所有智能体\n装进口袋",
-      "subline": "Claude Code、opencode 和 Oh My Pi，在你自己的电脑上工作。",
+      "subline": "Claude Code、Hermes、opencode 和任何 ACP 智能体，都在你自己的电脑上。",
       "highlight": "装进口袋"
     },
     {
@@ -17,9 +17,9 @@
     {
       "master": "fl-models",
       "slug": "03-any-model",
-      "headline": "任何模型\n包括你自己的显卡",
-      "subline": "云端模型，或你机器上的本地模型，每个对话单独选择。",
-      "highlight": "包括你自己的显卡"
+      "headline": "任何智能体，\n任何模型。",
+      "subline": "Hermes 或 Opus，哪怕跑在你自己的显卡上，每个对话单独选。",
+      "highlight": "任何模型。"
     },
     {
       "master": "fl-peek",
@@ -43,11 +43,11 @@
       "highlight": "随时调整"
     },
     {
-      "master": "fl-gpu",
-      "slug": "07-ask-anything",
-      "headline": "问你的机器\n任何事",
-      "subline": "不只是代码：问问是什么在占用显卡。",
-      "highlight": "任何事"
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "每天早上问一次，\n你的机器来做。",
+      "subline": "时间设为工作日 7:30。即使手机关机，它也会来问。",
+      "highlight": "你的机器来做。"
     },
     {
       "master": "fl-carry",
@@ -103,16 +103,16 @@
     {
       "master": "fl-models",
       "slug": "05-any-model",
-      "headline": "任何模型\n包括你自己的显卡",
-      "subline": "云端模型，或你机器上的本地模型，每个对话单独选择。",
-      "highlight": "包括你自己的显卡"
+      "headline": "任何智能体，\n任何模型。",
+      "subline": "Hermes 或 Opus，哪怕跑在你自己的显卡上，每个对话单独选。",
+      "highlight": "任何模型。"
     },
     {
-      "master": "fl-gpu",
-      "slug": "06-ask-anything",
-      "headline": "问你的机器\n任何事",
-      "subline": "不只是代码：问问是什么在占用显卡。",
-      "highlight": "任何事"
+      "master": "fl-later",
+      "slug": "06-every-morning",
+      "headline": "每天早上问一次，\n你的机器来做。",
+      "subline": "时间设为工作日 7:30。即使手机关机，它也会来问。",
+      "highlight": "你的机器来做。"
     },
     {
       "master": "03-approval",
@@ -187,11 +187,11 @@
       "highlight": "并排显示"
     },
     {
-      "master": "fl-gpu",
-      "slug": "07-ask-anything",
-      "headline": "问你的机器\n任何事",
-      "subline": "不只是代码：问问是什么在占用显卡。",
-      "highlight": "任何事"
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "每天早上问一次，\n你的机器来做。",
+      "subline": "时间设为工作日 7:30。即使手机关机，它也会来问。",
+      "highlight": "你的机器来做。"
     },
     {
       "master": "04-quickask",

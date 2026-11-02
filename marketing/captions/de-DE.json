@@ -4,7 +4,7 @@
       "master": "fl-agents",
       "slug": "01-all-your-agents",
       "headline": "Alle deine Agenten.\nIn deiner Tasche.",
-      "subline": "Claude Code, opencode und Oh My Pi auf deinen eigenen Rechnern.",
+      "subline": "Claude Code, Hermes, opencode und jeder ACP-Agent, auf deinen eigenen Rechnern.",
       "highlight": "In deiner Tasche."
     },
     {
@@ -17,9 +17,9 @@
     {
       "master": "fl-models",
       "slug": "03-any-model",
-      "headline": "Jedes Modell.\nAuch deine GPU.",
-      "subline": "Ein Cloud-Modell oder eins auf deinem Rechner, pro Chat.",
-      "highlight": "Auch deine GPU."
+      "headline": "Jeder Agent.\nJedes Modell.",
+      "subline": "Hermes oder Opus, sogar auf deiner eigenen GPU, pro Chat.",
+      "highlight": "Jedes Modell."
     },
     {
       "master": "fl-peek",
@@ -43,11 +43,11 @@
       "highlight": "mitten im Lauf"
     },
     {
-      "master": "fl-gpu",
-      "slug": "07-ask-anything",
-      "headline": "Frag deine Rechner\nalles",
-      "subline": "Nicht nur Code: frag, was die Grafikkarte auslastet.",
-      "highlight": "alles"
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "Jeden Morgen fragen.\nDein Rechner übernimmt.",
+      "subline": "Wann: werktags 7:30. Er fragt, auch bei ausgeschaltetem Handy.",
+      "highlight": "Dein Rechner übernimmt."
     },
     {
       "master": "fl-carry",
@@ -103,16 +103,16 @@
     {
       "master": "fl-models",
       "slug": "05-any-model",
-      "headline": "Jedes Modell.\nAuch deine GPU.",
-      "subline": "Ein Cloud-Modell oder eins auf deinem Rechner, pro Chat.",
-      "highlight": "Auch deine GPU."
+      "headline": "Jeder Agent.\nJedes Modell.",
+      "subline": "Hermes oder Opus, sogar auf deiner eigenen GPU, pro Chat.",
+      "highlight": "Jedes Modell."
     },
     {
-      "master": "fl-gpu",
-      "slug": "06-ask-anything",
-      "headline": "Frag deine Rechner\nalles",
-      "subline": "Nicht nur Code: frag, was die Grafikkarte auslastet.",
-      "highlight": "alles"
+      "master": "fl-later",
+      "slug": "06-every-morning",
+      "headline": "Jeden Morgen fragen.\nDein Rechner übernimmt.",
+      "subline": "Wann: werktags 7:30. Er fragt, auch bei ausgeschaltetem Handy.",
+      "highlight": "Dein Rechner übernimmt."
     },
     {
       "master": "03-approval",
@@ -187,11 +187,11 @@
       "highlight": "nebeneinander"
     },
     {
-      "master": "fl-gpu",
-      "slug": "07-ask-anything",
-      "headline": "Frag deine Rechner\nalles",
-      "subline": "Nicht nur Code: frag, was die Grafikkarte auslastet.",
-      "highlight": "alles"
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "Jeden Morgen fragen.\nDein Rechner übernimmt.",
+      "subline": "Wann: werktags 7:30. Er fragt, auch bei ausgeschaltetem Handy.",
+      "highlight": "Dein Rechner übernimmt."
     },
     {
       "master": "04-quickask",

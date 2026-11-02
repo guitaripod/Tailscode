@@ -4,7 +4,7 @@
       "master": "fl-agents",
       "slug": "01-all-your-agents",
       "headline": "Todos tus agentes.\nEn el bolsillo.",
-      "subline": "Claude Code, opencode y Oh My Pi, en tus propios ordenadores.",
+      "subline": "Claude Code, Hermes, opencode y cualquier agente ACP, en tus propios ordenadores.",
       "highlight": "En el bolsillo."
     },
     {
@@ -17,9 +17,9 @@
     {
       "master": "fl-models",
       "slug": "03-any-model",
-      "headline": "Cualquier modelo.\nHasta tu propia GPU",
-      "subline": "Un modelo en la nube o uno local en tu máquina, por chat.",
-      "highlight": "Hasta tu propia GPU"
+      "headline": "Cualquier agente.\nCualquier modelo.",
+      "subline": "Hermes u Opus, incluso en tu propia GPU, por chat.",
+      "highlight": "Cualquier modelo."
     },
     {
       "master": "fl-peek",
@@ -43,11 +43,11 @@
       "highlight": "a mitad de ejecución"
     },
     {
-      "master": "fl-gpu",
-      "slug": "07-ask-anything",
-      "headline": "Pregunta a tus máquinas\nlo que sea",
-      "subline": "No solo código: pregunta qué se está comiendo la GPU.",
-      "highlight": "lo que sea"
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "Pregunta cada mañana.\nTu máquina lo hace.",
+      "subline": "Elige cuándo: laborables a las 7:30. Pregunta con el móvil apagado.",
+      "highlight": "Tu máquina lo hace."
     },
     {
       "master": "fl-carry",
@@ -103,16 +103,16 @@
     {
       "master": "fl-models",
       "slug": "05-any-model",
-      "headline": "Cualquier modelo.\nHasta tu propia GPU",
-      "subline": "Un modelo en la nube o local en tu máquina, por chat.",
-      "highlight": "Hasta tu propia GPU"
+      "headline": "Cualquier agente.\nCualquier modelo.",
+      "subline": "Hermes u Opus, incluso en tu propia GPU, por chat.",
+      "highlight": "Cualquier modelo."
     },
     {
-      "master": "fl-gpu",
-      "slug": "06-ask-anything",
-      "headline": "Pregunta a tus máquinas\nlo que sea",
-      "subline": "No solo código: pregunta qué se está comiendo la GPU.",
-      "highlight": "lo que sea"
+      "master": "fl-later",
+      "slug": "06-every-morning",
+      "headline": "Pregunta cada mañana.\nTu máquina lo hace.",
+      "subline": "Elige cuándo: laborables a las 7:30. Pregunta con el móvil apagado.",
+      "highlight": "Tu máquina lo hace."
     },
     {
       "master": "03-approval",
@@ -187,11 +187,11 @@
       "highlight": "una junto a otra"
     },
     {
-      "master": "fl-gpu",
-      "slug": "07-ask-anything",
-      "headline": "Pregunta a tus máquinas\nlo que sea",
-      "subline": "No solo código: pregunta qué se está comiendo la GPU.",
-      "highlight": "lo que sea"
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "Pregunta cada mañana.\nTu máquina lo hace.",
+      "subline": "Elige cuándo: laborables a las 7:30. Pregunta con el móvil apagado.",
+      "highlight": "Tu máquina lo hace."
     },
     {
       "master": "04-quickask",

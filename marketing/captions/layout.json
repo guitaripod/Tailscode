@@ -30,11 +30,6 @@
       "fade": 26,
       "device_width": 1480
     },
-    "07-ask-anything": {
-      "crop": 0.15,
-      "fade": 26,
-      "device_width": 1360
-    },
     "08-carry": {
       "crop": 0.165,
       "fade": 26,
@@ -49,6 +44,11 @@
       "crop": 0.12,
       "fade": 26,
       "device_width": 1300
+    },
+    "07-every-morning": {
+      "crop": 0.15,
+      "fade": 26,
+      "device_width": 1360
     }
   },
   "ipad": {
@@ -83,13 +83,6 @@
         0.43
       ]
     },
-    "06-ask-anything": {
-      "scale": 1.8,
-      "at": [
-        0.455,
-        0.495
-      ]
-    },
     "07-approve": {
       "scale": 1.75,
       "at": [
@@ -116,6 +109,13 @@
       "at": [
         0.075,
         0.365
+      ]
+    },
+    "06-every-morning": {
+      "scale": 1.8,
+      "at": [
+        0.455,
+        0.495
       ]
     }
   },
@@ -177,18 +177,6 @@
       ],
       "crop": 0.27
     },
-    "07-ask-anything": {
-      "master": "fl-gpu",
-      "screen": "gpu",
-      "state": "book-landscape",
-      "size": [
-        2853,
-        2007
-      ],
-      "device_width": 1.2,
-      "device_x": 0.425,
-      "device_top": -0.12
-    },
     "08-carry": {
       "master": "fl-carry",
       "screen": "carry",
@@ -216,6 +204,18 @@
         1398
       ],
       "device_width": 0.78
+    },
+    "07-every-morning": {
+      "master": "fl-later",
+      "screen": "later",
+      "state": "book-landscape",
+      "size": [
+        2853,
+        2007
+      ],
+      "device_width": 1.2,
+      "device_x": 0.425,
+      "device_top": -0.12
     }
   }
 }

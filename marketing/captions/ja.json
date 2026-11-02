@@ -4,7 +4,7 @@
       "master": "fl-agents",
       "slug": "01-all-your-agents",
       "headline": "すべてのエージェント。\nポケットひとつに。",
-      "subline": "Claude Code・opencode・Oh My Pi を、手元のマシンで。",
+      "subline": "Claude Code、Hermes、opencode、そしてあらゆるACPエージェントを、手元のマシンで。",
       "highlight": "ポケットひとつに。"
     },
     {
@@ -17,9 +17,9 @@
     {
       "master": "fl-models",
       "slug": "03-any-model",
-      "headline": "どんなモデルも、\n自分のGPUでも",
-      "subline": "クラウドでもローカルでも、チャットごとに選べます。",
-      "highlight": "自分のGPUでも"
+      "headline": "どんなエージェントも、\nどんなモデルも。",
+      "subline": "HermesでもOpusでも、自分のGPUのモデルでも。チャットごとに。",
+      "highlight": "どんなモデルも。"
     },
     {
       "master": "fl-peek",
@@ -43,11 +43,11 @@
       "highlight": "操作できる"
     },
     {
-      "master": "fl-gpu",
-      "slug": "07-ask-anything",
-      "headline": "マシンに何でも\n聞いてみる",
-      "subline": "コードだけじゃない。GPUを何が使っているかも聞けます。",
-      "highlight": "聞いてみる"
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "毎朝の質問は\nマシンにお任せ",
+      "subline": "時刻は平日7:30。スマホの電源が切れていても、マシンが聞きます。",
+      "highlight": "マシンにお任せ"
     },
     {
       "master": "fl-carry",
@@ -103,16 +103,16 @@
     {
       "master": "fl-models",
       "slug": "05-any-model",
-      "headline": "どんなモデルも、\n自分のGPUでも",
-      "subline": "クラウドでもローカルでも、チャットごとに選べます。",
-      "highlight": "自分のGPUでも"
+      "headline": "どんなエージェントも、\nどんなモデルも。",
+      "subline": "HermesでもOpusでも、自分のGPUのモデルでも。チャットごとに。",
+      "highlight": "どんなモデルも。"
     },
     {
-      "master": "fl-gpu",
-      "slug": "06-ask-anything",
-      "headline": "マシンに何でも\n聞いてみる",
-      "subline": "コードだけじゃない。GPUを何が使っているかも聞けます。",
-      "highlight": "聞いてみる"
+      "master": "fl-later",
+      "slug": "06-every-morning",
+      "headline": "毎朝の質問は\nマシンにお任せ",
+      "subline": "時刻は平日7:30。スマホの電源が切れていても、マシンが聞きます。",
+      "highlight": "マシンにお任せ"
     },
     {
       "master": "03-approval",
@@ -187,11 +187,11 @@
       "highlight": "並べて"
     },
     {
-      "master": "fl-gpu",
-      "slug": "07-ask-anything",
-      "headline": "マシンに何でも\n聞いてみる",
-      "subline": "コードだけじゃない。GPUを何が使っているかも聞けます。",
-      "highlight": "聞いてみる"
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "毎朝の質問は\nマシンにお任せ",
+      "subline": "時刻は平日7:30。スマホの電源が切れていても、マシンが聞きます。",
+      "highlight": "マシンにお任せ"
     },
     {
       "master": "04-quickask",

@@ -4,7 +4,7 @@
       "master": "fl-agents",
       "slug": "01-all-your-agents",
       "headline": "Wszystkie agenty.\nW kieszeni.",
-      "subline": "Claude Code, opencode i Oh My Pi na twoich własnych komputerach.",
+      "subline": "Claude Code, Hermes, opencode i każdy agent ACP, na twoich własnych komputerach.",
       "highlight": "W kieszeni."
     },
     {
@@ -17,9 +17,9 @@
     {
       "master": "fl-models",
       "slug": "03-any-model",
-      "headline": "Każdy model.\nNawet twoja GPU.",
-      "subline": "Model w chmurze albo lokalny na twoim komputerze, dla każdego czatu.",
-      "highlight": "Nawet twoja GPU."
+      "headline": "Każdy agent.\nKażdy model.",
+      "subline": "Hermes albo Opus, nawet na twojej GPU, dla każdego czatu.",
+      "highlight": "Każdy model."
     },
     {
       "master": "fl-peek",
@@ -43,11 +43,11 @@
       "highlight": "w biegu"
     },
     {
-      "master": "fl-gpu",
-      "slug": "07-ask-anything",
-      "headline": "Pytaj komputery\no wszystko",
-      "subline": "Nie tylko kod: zapytaj, co zjada kartę graficzną.",
-      "highlight": "o wszystko"
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "Pytaj każdego ranka.\nZajmie się tym komputer.",
+      "subline": "Ustaw godzinę: dni robocze 7:30. Pyta, nawet gdy telefon jest wyłączony.",
+      "highlight": "Zajmie się tym komputer."
     },
     {
       "master": "fl-carry",
@@ -103,16 +103,16 @@
     {
       "master": "fl-models",
       "slug": "05-any-model",
-      "headline": "Każdy model.\nNawet twoja GPU.",
-      "subline": "Model w chmurze albo lokalny na twoim komputerze, dla każdego czatu.",
-      "highlight": "Nawet twoja GPU."
+      "headline": "Każdy agent.\nKażdy model.",
+      "subline": "Hermes albo Opus, nawet na twojej GPU, dla każdego czatu.",
+      "highlight": "Każdy model."
     },
     {
-      "master": "fl-gpu",
-      "slug": "06-ask-anything",
-      "headline": "Pytaj komputery\no wszystko",
-      "subline": "Nie tylko kod: zapytaj, co zjada kartę graficzną.",
-      "highlight": "o wszystko"
+      "master": "fl-later",
+      "slug": "06-every-morning",
+      "headline": "Pytaj każdego ranka.\nZajmie się tym komputer.",
+      "subline": "Ustaw godzinę: dni robocze 7:30. Pyta, nawet gdy telefon jest wyłączony.",
+      "highlight": "Zajmie się tym komputer."
     },
     {
       "master": "03-approval",
@@ -187,11 +187,11 @@
       "highlight": "obok siebie"
     },
     {
-      "master": "fl-gpu",
-      "slug": "07-ask-anything",
-      "headline": "Pytaj komputery\no wszystko",
-      "subline": "Nie tylko kod: zapytaj, co zjada kartę graficzną.",
-      "highlight": "o wszystko"
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "Pytaj każdego ranka.\nZajmie się tym komputer.",
+      "subline": "Ustaw godzinę: dni robocze 7:30. Pyta, nawet gdy telefon jest wyłączony.",
+      "highlight": "Zajmie się tym komputer."
     },
     {
       "master": "04-quickask",
