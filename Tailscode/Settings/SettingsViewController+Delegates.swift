@@ -38,22 +38,27 @@ extension SettingsViewController: UICollectionViewDelegate {
             } else {
                 testAllConnections()
             }
+        case .profile(let profile) where facts.resting.contains(profile.id):
+            presentRestingChoices(for: profile, at: indexPath)
         case .profile(let profile):
             let detail = ServerDetailViewController(profile: profile)
             navigationController?.pushViewController(detail, animated: true)
         case .addConnection:
-            guard allowAnotherConnection() else { return }
-            let setup = ServerSetupViewController(mode: .addServer)
-            setup.onConnected = { [weak self] in
+            requestAnotherConnection { [weak self] in
                 guard let self else { return }
-                self.navigationController?.popToViewController(self, animated: true)
+                let setup = ServerSetupViewController(mode: .addServer)
+                setup.onConnected = { [weak self] in
+                    guard let self else { return }
+                    self.navigationController?.popToViewController(self, animated: true)
+                }
+                self.navigationController?.pushViewController(setup, animated: true)
             }
-            navigationController?.pushViewController(setup, animated: true)
         case .discover:
-            guard allowAnotherConnection() else { return }
-            let discovery = DiscoveryViewController()
-            navigationController?.present(
-                UINavigationController(rootViewController: discovery), animated: true)
+            requestAnotherConnection { [weak self] in
+                let discovery = DiscoveryViewController()
+                self?.navigationController?.present(
+                    UINavigationController(rootViewController: discovery), animated: true)
+            }
         case .leaveDemo:
             ConnectionController.shared.leaveDemoMode()
             Theme.Haptics.warning()

@@ -3,18 +3,24 @@ import TailscodeCore
 import UIKit
 
 /// The Pro unlock + tip jar sheet. Shown only when a gate is touched or the
-/// Settings row is tapped — never on launch, never on a timer.
+/// Settings row is tapped — never on launch, never on a timer. A copy that never had a Pro week is offered one here, as
+/// the primary action, with the purchase beside it; whichever the person takes, the thing that brought them here carries on.
 @MainActor
 final class ProUpgradeViewController: UIViewController {
     private let scroll = UIScrollView()
     private let stack = UIStackView()
-    private let purchaseButton = PrimaryButton(title: String(localized: "Unlock Pro"))
+    private let offersWeek = ProAccess.shared.canStartProWeek
+    private lazy var purchaseButton: UIButton & WorkingButton =
+        offersWeek
+        ? SecondaryButton(title: String(localized: "Unlock Pro")) : PrimaryButton(title: String(localized: "Unlock Pro"))
+    private let weekButton = PrimaryButton(title: ProWeek.startTitle)
     private let restoreButton = UIButton(type: .system)
     private let tipStack = UIStackView()
     private let tipHeader = UILabel()
     private let statusLabel = UILabel()
     private var proProduct: StoreProduct?
     private let lead: Lead
+    private let onAccess: (() -> Void)?
 
     /// Which perk brought somebody here, so the sheet leads with the thing they touched rather than
     /// the general case.
@@ -23,18 +29,22 @@ final class ProUpgradeViewController: UIViewController {
         case delegate
     }
 
-    init(lead: Lead = .general) {
+    /// - Parameter onAccess: What to carry on with once Pro is open, by the week, a purchase or a restore, run after the
+    ///   sheet has gone.
+    init(lead: Lead = .general, onAccess: (() -> Void)? = nil) {
         self.lead = lead
+        self.onAccess = onAccess
         super.init(nibName: nil, bundle: nil)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    static func present(from presenter: UIViewController, lead: Lead = .general) {
-        let nav = UINavigationController(rootViewController: ProUpgradeViewController(lead: lead))
+    static func present(from presenter: UIViewController, lead: Lead = .general, onAccess: (() -> Void)? = nil) {
+        let nav = UINavigationController(rootViewController: ProUpgradeViewController(lead: lead, onAccess: onAccess))
         if let sheet = nav.sheetPresentationController {
             sheet.detents = [.medium(), .large()]
             sheet.prefersGrabberVisible = true
+            if ProAccess.shared.canStartProWeek { sheet.selectedDetentIdentifier = .large }
         }
         presenter.present(nav, animated: true)
     }
@@ -60,6 +70,7 @@ final class ProUpgradeViewController: UIViewController {
         guard ProAccess.shared.isPro else { return }
         purchaseButton.setTitle(String(localized: "You're a supporter — thank you ♥"))
         purchaseButton.isEnabled = false
+        weekButton.isEnabled = false
         statusLabel.text = nil
     }
 
@@ -115,6 +126,16 @@ final class ProUpgradeViewController: UIViewController {
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.addArrangedSubview(heroContainer)
         stack.setCustomSpacing(Theme.Spacing.xl, after: heroContainer)
+        if let endsAt = ProAccess.shared.proWeekEndsAt {
+            let running = UILabel()
+            running.text = ProWeek.runningLine(endsAt: endsAt)
+            running.font = Theme.Ramp.font(.panelLabel)
+            running.textColor = Theme.Color.accent
+            running.textAlignment = .center
+            running.numberOfLines = 0
+            stack.addArrangedSubview(running)
+            stack.setCustomSpacing(Theme.Spacing.xl, after: running)
+        }
 
         let delegatePerk = (DelegateProGate.perk.symbol, DelegateProGate.perk.text)
         for (symbol, text) in [
@@ -141,6 +162,11 @@ final class ProUpgradeViewController: UIViewController {
 
         purchaseButton.addTarget(self, action: #selector(purchaseTapped), for: .touchUpInside)
         stack.setCustomSpacing(Theme.Spacing.xl, after: stack.arrangedSubviews.last!)
+        if offersWeek {
+            let card = weekCard()
+            stack.addArrangedSubview(card)
+            stack.setCustomSpacing(Theme.Spacing.m, after: card)
+        }
         stack.addArrangedSubview(purchaseButton)
 
         restoreButton.setTitle(String(localized: "Restore purchases"), for: .normal)
@@ -181,6 +207,51 @@ final class ProUpgradeViewController: UIViewController {
             stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
             stack.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor, constant: -2 * Theme.Spacing.l),
         ])
+    }
+
+    /// The week as its own card: what it opens, that it costs nothing and what happens after, then the button that starts it.
+    private func weekCard() -> UIView {
+        let title = UILabel()
+        title.text = ProWeek.offerTitle
+        title.font = Theme.Ramp.font(.cardTitle)
+        title.textAlignment = .center
+        title.numberOfLines = 0
+        title.accessibilityTraits = .header
+
+        let body = UILabel()
+        body.text = ProWeek.offerBody
+        body.font = Theme.Ramp.font(.panelFootnote)
+        body.textColor = Theme.Color.secondaryLabel
+        body.textAlignment = .center
+        body.numberOfLines = 0
+
+        weekButton.addTarget(self, action: #selector(startWeekTapped), for: .touchUpInside)
+        weekButton.accessibilityIdentifier = "pro.startWeek"
+
+        let column = UIStackView(arrangedSubviews: [title, body, weekButton])
+        column.axis = .vertical
+        column.spacing = Theme.Spacing.s
+        column.setCustomSpacing(Theme.Spacing.m, after: body)
+        column.isLayoutMarginsRelativeArrangement = true
+        column.directionalLayoutMargins = NSDirectionalEdgeInsets(
+            top: Theme.Spacing.l, leading: Theme.Spacing.l, bottom: Theme.Spacing.l, trailing: Theme.Spacing.l)
+        column.backgroundColor = Theme.Color.groupedSurface
+        column.layer.cornerRadius = Theme.Radius.card
+        column.layer.cornerCurve = .continuous
+        return column
+    }
+
+    @objc private func startWeekTapped() {
+        let servers = ConnectionController.shared.savedProfiles.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }.count
+        guard ProAccess.shared.startProWeek(servers: servers) else { return }
+        Theme.Haptics.success()
+        finishWithAccess()
+    }
+
+    /// Closes the sheet and carries on with whatever brought the person here.
+    private func finishWithAccess() {
+        let onAccess = onAccess
+        dismiss(animated: true) { onAccess?() }
     }
 
     private func featureRow(symbol: String, text: String) -> UIView {
@@ -258,7 +329,7 @@ final class ProUpgradeViewController: UIViewController {
                 switch try await ProAccess.shared.purchase(proProduct) {
                 case .success:
                     Theme.Haptics.success()
-                    dismiss(animated: true)
+                    finishWithAccess()
                 case .pending:
                     statusLabel.text = String(
                         localized: "Waiting for approval — Pro unlocks automatically once approved.")
@@ -310,7 +381,7 @@ final class ProUpgradeViewController: UIViewController {
                 switch try await ProAccess.shared.restore() {
                 case .restored:
                     Theme.Haptics.success()
-                    dismiss(animated: true)
+                    finishWithAccess()
                 case .nothingFound:
                     statusLabel.text = String(localized: "No previous purchase found for this Apple ID.")
                 case .cancelled:
@@ -324,3 +395,13 @@ final class ProUpgradeViewController: UIViewController {
 
     @objc private func close() { dismiss(animated: true) }
 }
+
+/// A button that can show it is working and change its title, whichever style it is drawn in.
+@MainActor
+protocol WorkingButton: UIButton {
+    func setLoading(_ loading: Bool)
+    func setTitle(_ title: String)
+}
+
+extension PrimaryButton: WorkingButton {}
+extension SecondaryButton: WorkingButton {}

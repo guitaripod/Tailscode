@@ -8,6 +8,7 @@ import TailscodeCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var main: MainWindowController?
+    private var proWeekObserver: NSObjectProtocol?
     private var menu: MainMenu?
     private var pendingLinks: [URL] = []
 
@@ -42,6 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MacGameCenter.shared.start()
         TailscodeMidgar.shared.start()
         ProAccess.shared.start()
+        proWeekObserver = NotificationCenter.default.addObserver(
+            forName: ProAccess.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.main?.presentProWeekEndIfDue() }
+        }
         MacSummon.shared.start { [weak controller] in controller?.summonQuickAsk() }
         MacNotifier.shared.activate()
         MacNotifier.shared.onOpen = { [weak controller] sessionID in
@@ -173,7 +179,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// A Mac that slept holds sockets that look alive and deliver nothing; coming back to the
     /// app is the moment to re-dial the stream and re-list the chats.
     func applicationDidBecomeActive(_ notification: Notification) {
+        ProAccess.shared.refreshProWeek()
         main?.handleDidBecomeActive()
+        main?.presentProWeekEndIfDue()
         MacReviewPrompt.shared.appDidBecomeActive()
     }
 

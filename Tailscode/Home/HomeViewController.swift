@@ -344,6 +344,7 @@ final class HomeViewController: UIViewController {
         super.viewDidAppear(animated)
         startLiveRefresh()
         DelegateGate.watchNotices()
+        presentProWeekEndIfDue()
         #if DEBUG
             DelegateGate.debugOpenIfAsked(from: self)
         #endif

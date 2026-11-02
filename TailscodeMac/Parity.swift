@@ -329,6 +329,11 @@ enum ParityManifest {
                 direct: .notApplicable("the direct build is unlocked and sells nothing"),
                 appStore: .implemented("SupporterCardView"),
                 because: "only the store build has a receipt to sell")
+        case .proWeek:
+            return .varies(
+                direct: .notApplicable("the direct build is unlocked and sells nothing, so it has no week to offer"),
+                appStore: .implemented("makeRestingRow"),
+                because: "the week is offered by the window that sells Pro, which only the store build has")
         case .proUnlock:
             return .varies(
                 direct: .notApplicable(

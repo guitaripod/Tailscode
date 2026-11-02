@@ -4,7 +4,8 @@ import TailscodeCore
 
 /// The Pro unlock and the tip jar, opened by hand — from the menu, or from the one gate in the app
 /// when somebody reaches for a second machine. Never on launch, never on a timer, and never in
-/// front of work: an open-source app that nags is a fork waiting to happen.
+/// front of work: an open-source app that nags is a fork waiting to happen. A copy that never had a
+/// Pro week is offered one here as the default button, with the purchase beside it.
 @MainActor
 final class ProWindowController: NSWindowController {
     private let column = FillingStack(views: [])
@@ -71,7 +72,25 @@ final class ProWindowController: NSWindowController {
                 color: MacTheme.Color.secondaryLabel))
         for perk in ProOffer.perks { column.addArrangedSubview(perkRow(perk)) }
 
-        purchase.keyEquivalent = "\r"
+        if ProAccess.shared.canStartProWeek {
+            column.addArrangedSubview(
+                RowKit.label(ProWeek.offerTitle, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label))
+            column.addArrangedSubview(
+                RowKit.wrapping(
+                    ProWeek.offerBody, font: MacTheme.Ramp.font(.cardBody), color: MacTheme.Color.secondaryLabel))
+            let week = RowKit.ActionButton(title: ProWeek.startTitle) { [weak self] in self?.startWeek() }
+            week.keyEquivalent = "\r"
+            column.addArrangedSubview(week)
+            purchase.keyEquivalent = ""
+        } else {
+            if let endsAt = ProAccess.shared.proWeekEndsAt {
+                column.addArrangedSubview(
+                    RowKit.wrapping(
+                        ProWeek.runningLine(endsAt: endsAt), font: MacTheme.Ramp.font(.cardBody),
+                        color: MacTheme.Color.accent))
+            }
+            purchase.keyEquivalent = "\r"
+        }
         column.addArrangedSubview(purchase)
         column.addArrangedSubview(status)
 
@@ -123,6 +142,13 @@ final class ProWindowController: NSWindowController {
         row.alignment = .firstBaseline
         row.spacing = MacTheme.Spacing.s
         return row
+    }
+
+    /// Starts the week with as many servers kept afterwards as are saved now, and redraws the page around it.
+    private func startWeek() {
+        let servers = ServerDirectory.shared.savedProfiles.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }.count
+        guard ProAccess.shared.startProWeek(servers: servers) else { return }
+        repaint()
     }
 
     @objc private func proChanged() {

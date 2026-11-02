@@ -7,7 +7,9 @@ import UIKit
 /// being configured reads this copy, because a row is configured on every frame a scroll needs one.
 @MainActor
 struct SettingsFacts {
+    /// Every saved server, the ones resting after the Pro week included.
     var profiles: [ConnectionProfile]
+    var resting: Set<String>
     var updates: UpdateRollup
     var tailnetKey: TailnetKey
     var hasOllamaKey: Bool
@@ -15,7 +17,9 @@ struct SettingsFacts {
 
     static func read() -> SettingsFacts {
         SettingsFacts(
-            profiles: ConnectionController.shared.profiles, updates: UpdateLedger.rollup(),
+            profiles: ConnectionController.shared.savedProfiles,
+            resting: Set(ConnectionController.shared.savedProfiles.map(\.id).filter(ConnectionController.shared.isResting)),
+            updates: UpdateLedger.rollup(),
             tailnetKey: TailnetCredentials.key,
             hasOllamaKey: OllamaCredentials.hasToken, hasDeepSeekKey: DeepSeekCredentials.hasToken)
     }
@@ -23,7 +27,8 @@ struct SettingsFacts {
     /// The facts a change in the profiles or the ledger moves, with the Keychain's left as read.
     func refreshingStores() -> SettingsFacts {
         var next = self
-        next.profiles = ConnectionController.shared.profiles
+        next.profiles = ConnectionController.shared.savedProfiles
+        next.resting = Set(next.profiles.map(\.id).filter(ConnectionController.shared.isResting))
         next.updates = UpdateLedger.rollup()
         return next
     }

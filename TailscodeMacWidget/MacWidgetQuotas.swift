@@ -21,8 +21,9 @@ enum MacWidgetQuotas {
         requestTimeout: .seconds(8), resourceTimeout: .seconds(12))
 
     static func fetch(deadline: TimeInterval) async -> [UsageQuota] {
-        guard let store = try? ConnectionProfileStore(),
-            let profiles = try? store.profiles(), !profiles.isEmpty
+        guard let store = try? ConnectionProfileStore() else { return [] }
+        let resting = RestingServersFile.read(in: store.directory)
+        guard let profiles = try? store.profiles().filter({ !resting.contains($0.id) }), !profiles.isEmpty
         else { return [] }
         let servers = profiles.enumerated().compactMap { index, profile in
             (try? store.makeBackend(profile, policy: policy)).map { (index, profile.name, $0) }

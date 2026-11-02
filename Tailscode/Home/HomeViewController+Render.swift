@@ -71,7 +71,7 @@ extension HomeViewController {
             snapshot.appendSections([.demoNudge])
             snapshot.appendItems([.demoNudge(DemoNudgeCard())], toSection: .demoNudge)
         }
-        if SupporterInvitation.isDue(isPro: ProAccess.shared.isPro) {
+        if SupporterInvitation.isDue(isPro: ProAccess.shared.hasProAccess) {
             snapshot.appendSections([.supporter])
             snapshot.appendItems([.supporter(SupporterCard(price: proPrice))], toSection: .supporter)
         }

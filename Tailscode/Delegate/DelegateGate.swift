@@ -12,7 +12,7 @@ enum DelegateGate {
     static let desk = DelegateDesk(secrets: KeychainSecretStore())
 
     static var isOpen: Bool {
-        DelegateProGate.allows(isPro: ProAccess.shared.isPro, sells: true, demo: ConnectionController.shared.isDemoMode)
+        DelegateProGate.allows(isPro: ProAccess.shared.hasProAccess, sells: true, demo: ConnectionController.shared.isDemoMode)
     }
 
     nonisolated(unsafe) private static var noticeWatcher: NSObjectProtocol?
@@ -44,7 +44,10 @@ enum DelegateGate {
         Theme.Haptics.tap()
         guard isOpen else {
             MidgarLog.info("delegate gated: free copy, presenting Pro", category: .ui)
-            ProUpgradeViewController.present(from: presenter, lead: .delegate)
+            ProUpgradeViewController.present(from: presenter, lead: .delegate) { [weak presenter] in
+                guard let presenter, isOpen else { return }
+                open(from: presenter, host: host, serverName: serverName)
+            }
             return
         }
         let board = DelegateBoardViewController(host: host, serverName: serverName)
@@ -63,7 +66,10 @@ enum DelegateGate {
         Theme.Haptics.tap()
         guard isOpen else {
             MidgarLog.info("delegate handoff gated: free copy, presenting Pro", category: .ui)
-            ProUpgradeViewController.present(from: presenter, lead: .delegate)
+            ProUpgradeViewController.present(from: presenter, lead: .delegate) { [weak presenter] in
+                guard let presenter, isOpen else { return }
+                compose(from: presenter, handoff: handoff)
+            }
             return
         }
         let board = desk.board(host: handoff.host, serverName: handoff.serverName)

@@ -84,6 +84,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
+        ProAccess.shared.refreshProWeek()
         Task { await AppActivityController.shared.catchUp() }
         coordinator?.handleControlRouteIfNeeded()
         PushRegistrar.reregisterIfNeeded()

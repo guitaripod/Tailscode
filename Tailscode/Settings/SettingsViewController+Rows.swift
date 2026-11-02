@@ -192,6 +192,14 @@ extension SettingsViewController {
                 systemName: tailnetDown ? "network.slash" : "exclamationmark.triangle")
             content.imageProperties.tintColor = Theme.Color.warning
             cell.accessories = [.disclosureIndicator()]
+        case .profile(let profile) where facts.resting.contains(profile.id):
+            content.text = profile.name
+            content.textProperties.color = Theme.Color.secondaryLabel
+            content.secondaryText = ProWeek.restingDetail
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "moon.zzz")
+            content.imageProperties.tintColor = Theme.Color.secondaryLabel
+            cell.accessories = [.disclosureIndicator()]
         case .profile(let profile):
             content.text = profile.name
             var detail = "\(profile.backend.displayName) · \(profile.baseURL.host ?? "")"
@@ -398,6 +406,10 @@ extension SettingsViewController {
                 content.secondaryText = String(localized: "Supporter — thank you ♥")
                 content.image = UIImage(systemName: "heart.fill")
                 content.imageProperties.tintColor = Theme.Color.danger
+            } else if let endsAt = ProAccess.shared.proWeekEndsAt {
+                content.secondaryText = ProWeek.daysLeftText(until: endsAt)
+                content.image = UIImage(systemName: "sparkles")
+                content.imageProperties.tintColor = Theme.Color.special
             } else {
                 content.secondaryText = String(
                     localized: "Unlimited servers, concurrent Live Activities, support development")

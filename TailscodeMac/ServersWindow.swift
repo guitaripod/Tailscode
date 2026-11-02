@@ -103,6 +103,12 @@ final class ServersWindow: NSWindowController {
             self, selector: #selector(updatesChanged), name: MacUpdateWatch.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowClosed), name: NSWindow.willCloseNotification, object: window)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(serversChanged), name: ServerDirectory.didChange, object: nil)
+    }
+
+    @objc private func serversChanged() {
+        renderList()
     }
 
     @objc private func windowClosed() {
@@ -268,14 +274,15 @@ final class ServersWindow: NSWindowController {
         capabilityViews = []
         listColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
         softwareCards = [:]
-        let profiles = ServerDirectory.shared.profiles
+        let profiles = ServerDirectory.shared.savedProfiles
         guard !profiles.isEmpty else {
             listColumn.addArrangedSubview(
                 MacDialogs.detailLabel(Localized.text("No servers yet.")))
             return
         }
         for profile in profiles {
-            listColumn.addArrangedSubview(makeRow(profile))
+            listColumn.addArrangedSubview(
+                ServerDirectory.shared.isResting(profile.id) ? makeRestingRow(profile) : makeRow(profile))
         }
         if window?.isVisible == true { capabilityViews.forEach { $0.start() } }
     }
@@ -381,6 +388,52 @@ final class ServersWindow: NSWindowController {
         return row
     }
 
+    /// A server resting after the Pro week: still saved, not connected, with the three ways on — keep it connected in
+    /// place of one that is, get Pro to keep every server connected, or remove it.
+    private func makeRestingRow(_ profile: ConnectionProfile) -> NSView {
+        let icon = NSImageView()
+        icon.image = NSImage(systemSymbolName: "moon.zzz", accessibilityDescription: ProWeek.restingTitle)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+        icon.contentTintColor = .secondaryLabelColor
+        icon.setContentHuggingPriority(.required, for: .horizontal)
+        let title = NSTextField(labelWithString: profile.name)
+        title.font = MacTheme.Ramp.font(.cardTitle)
+        title.textColor = .secondaryLabelColor
+        title.lineBreakMode = .byTruncatingTail
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let detail = MacDialogs.detailLabel(ProWeek.restingDetail, wraps: true)
+
+        let connected = ServerDirectory.shared.profiles.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }
+        var buttons: [NSView] = connected.map { other in
+            makeInlineButton(connected.count == 1 ? ProWeek.useInsteadTitle : ProWeek.useInsteadOf(other.name)) {
+                ServerDirectory.shared.keepConnected(profile.id, replacing: other.id)
+            }
+        }
+        buttons.append(
+            makeInlineButton(Localized.text("Get Tailscode Pro")) { [weak self] in
+                self?.onNeedsPro?()
+            })
+        let actions = NSStackView(views: buttons)
+        actions.orientation = .horizontal
+        actions.spacing = MacTheme.Spacing.s
+
+        let lines = FillingStack(views: [title, detail, actions])
+        lines.orientation = .vertical
+        lines.alignment = .leading
+        lines.spacing = 2
+
+        let remove = NSButton(title: Localized.text("Remove"), target: self, action: #selector(removeTapped))
+        remove.bezelStyle = .inline
+        remove.identifier = NSUserInterfaceItemIdentifier(profile.id)
+        remove.setContentHuggingPriority(.required, for: .horizontal)
+
+        let row = NSStackView(views: [icon, lines, Self.spacer(), remove])
+        row.orientation = .horizontal
+        row.alignment = .top
+        row.spacing = MacTheme.Spacing.s
+        return row
+    }
+
     /// The press states its cost first. opencode is handed the ask and forgotten: the connection it
     /// went over dies with the process it restarted, so the reconnect every screen already watches
     /// is what says the machine is back. A machine set up by hand refuses the restart, and the
@@ -389,7 +442,7 @@ final class ServersWindow: NSWindowController {
     /// the update window draws.
     @objc private func restartTapped(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue,
-            let profile = ServerDirectory.shared.profiles.first(where: { $0.id == id })
+            let profile = ServerDirectory.shared.savedProfiles.first(where: { $0.id == id })
         else { return }
         MacDialogs.confirm(
             on: window,

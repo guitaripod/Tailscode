@@ -1,6 +1,7 @@
 import CodingAgentKit
 import CodingAgentKitApple
 import Foundation
+import MidgarCore
 import TailscodeCore
 
 /// The servers this Mac knows about, and the backends that talk to them.
@@ -17,7 +18,17 @@ import TailscodeCore
 final class ServerDirectory {
     static let shared = ServerDirectory()
 
+    /// Posted when the servers this Mac connects change without anybody here saving or removing one: the Pro week ending,
+    /// Pro bought, a resting server kept in place of another.
+    static let didChange = Notification.Name("ServerDirectory.didChange")
+
+    /// The servers this Mac connects: every saved one except those resting after the Pro week. Every window that talks to
+    /// a server reads this; the servers window and the add gate read `savedProfiles`.
     private(set) var profiles: [ConnectionProfile] = []
+    /// Every saved server, the resting ones included, in the order they were saved.
+    private(set) var savedProfiles: [ConnectionProfile] = []
+    private(set) var restingIDs: Set<String> = []
+    private var proObserver: NSObjectProtocol?
     private(set) var isDemoMode = false
     private var backends: [String: any CodingAgentBackend] = [:]
     private var ephemeralPasswords: [String: String] = [:]
@@ -37,6 +48,28 @@ final class ServerDirectory {
         store = try? ConnectionProfileStore()
         importStagedSecrets()
         reload()
+        proObserver = NotificationCenter.default.addObserver(
+            forName: ProAccess.didChange, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { ServerDirectory.shared.restingMayHaveChanged() }
+        }
+    }
+
+    /// Re-reads the servers when the Pro week, the purchase or a pick changed which of them rest, and tells the windows.
+    private func restingMayHaveChanged() {
+        let before = restingIDs
+        reload()
+        guard restingIDs != before else { return }
+        MidgarLog.info("resting servers: \(restingIDs.count)", category: .connection)
+        NotificationCenter.default.post(name: Self.didChange, object: nil)
+    }
+
+    func isResting(_ id: String) -> Bool { restingIDs.contains(id) }
+
+    /// Keeps a resting server connected in place of `replacing`, which rests instead.
+    func keepConnected(_ id: String, replacing: String) {
+        let connected = profiles.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }.map(\.id)
+        ProAccess.shared.keepServer(id, replacing: replacing, connected: connected)
     }
 
     /// A store copy cannot read the unsandboxed profile file, so a one-time import drops passwords
@@ -70,6 +103,8 @@ final class ServerDirectory {
         }
         if let (profile, password) = Self.environmentProfile() {
             profiles = [profile]
+            savedProfiles = [profile]
+            restingIDs = []
             ephemeralPasswords = [profile.id: password].compactMapValues { $0 }
             isDemoMode = false
             return
@@ -80,7 +115,11 @@ final class ServerDirectory {
         if isDemoMode {
             listed.append(contentsOf: DemoWorld.profiles)
         }
-        profiles = listed
+        savedProfiles = listed
+        restingIDs = ProAccess.shared.restingServerIDs(
+            saved: listed.map(\.id).filter { !$0.hasPrefix(DemoWorld.profilePrefix) })
+        profiles = restingIDs.isEmpty ? listed : listed.filter { !restingIDs.contains($0.id) }
+        if let directory = store?.directory { RestingServersFile.write(restingIDs, in: directory) }
     }
 
     /// The backend for a profile named by id alone — what a stored intent carries, a listing
@@ -136,11 +175,12 @@ final class ServerDirectory {
         let isNew = !existing.contains { $0.id == profile.id }
         let real = existing.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }
         if isNew, ProAccess.shared.sellsPro,
-            !ProOffer.allowsAnotherServer(existing: real.count, isPro: ProAccess.shared.isPro)
+            !ProOffer.allowsAnotherServer(existing: real.count, isPro: ProAccess.shared.hasProAccess)
         {
             throw ProRequired()
         }
         try store.save(profile, password: password)
+        if isNew { ProAccess.shared.noteServerAdded(profile.id) }
         backends[profile.id] = nil
         if isDemoMode { leaveDemoMode() } else { reload() }
     }
@@ -153,6 +193,7 @@ final class ServerDirectory {
         guard let store else { throw AgentError.unsupported("no profile store") }
         defer { reload() }
         try store.delete(id: id)
+        ProAccess.shared.forgetServer(id)
     }
 
     /// Every session on every configured server, as one list — the same merge the Linux desktop

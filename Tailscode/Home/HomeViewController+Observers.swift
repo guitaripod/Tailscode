@@ -120,6 +120,7 @@ extension HomeViewController {
         guard ownsScene(note) else { return }
         Task { await load(.user) }
         startLiveRefresh()
+        presentProWeekEndIfDue()
     }
 
     @objc private func sceneWillResign(_ note: Notification) {
@@ -182,6 +183,7 @@ extension HomeViewController {
     @objc private func supporterDidChange() {
         if ProAccess.shared.isPro { SupporterInvitation.settle() }
         applySnapshot()
+        presentProWeekEndIfDue()
     }
 
     func openSupporterOffer() {

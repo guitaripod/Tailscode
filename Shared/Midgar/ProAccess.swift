@@ -20,6 +20,7 @@ import TailscodeCore
 /// - A cached flag, so a launch without a network still opens as Pro until the engine has answered.
 /// - A copy that sells nothing, the direct Mac build, which is unlocked rather than pretending to sell.
 /// - A developer unlock for debug builds on the phone, switched off by `--simulate-free`.
+/// - The Pro week (`ProWeek`): every gate reads `hasProAccess`, which it opens; only the purchase screens read `isPro`.
 @MainActor
 @Observable
 final class ProAccess {
@@ -34,7 +35,8 @@ final class ProAccess {
     static let shared = ProAccess(
         store: TailscodeMidgar.shared.store,
         sellsPro: TailscodeMidgar.sellsPro,
-        debugUnlock: debugUnlockByDefault)
+        debugUnlock: debugUnlockByDefault,
+        week: .live())
 
     static let didChange = Notification.Name("ProAccess.didChange")
 
@@ -46,10 +48,16 @@ final class ProAccess {
 
     private(set) var isPro: Bool
 
+    /// The Pro week as of the last check. `didChange` is posted when it begins and when it ends.
+    private(set) var proWeekPhase: ProWeek.Phase
+
     @ObservationIgnored private let store: MidgarStore?
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let debugUnlock: Bool
     @ObservationIgnored private var eventsTask: Task<Void, Never>?
+    @ObservationIgnored private let week: ProWeekStore
+    @ObservationIgnored private let now: () -> Date
+    @ObservationIgnored private var weekTimer: Task<Void, Never>?
 
     /// Debug builds on the phone are Pro by default so the developer's own device is never gated; pass
     /// `--simulate-free` to exercise the paywall and gates.
@@ -61,21 +69,122 @@ final class ProAccess {
         #endif
     }
 
+    /// - Parameters:
+    ///   - week: Where the Pro week is remembered. Only the shared instance passes the live store, keychain included;
+    ///     every other instance, as in tests, keeps the week in `defaults` alone.
+    ///   - now: The clock, injectable for tests.
     init(
         store: MidgarStore?, sellsPro: Bool, defaults: UserDefaults = .standard,
-        debugUnlock: Bool = false
+        debugUnlock: Bool = false, week: ProWeekStore? = nil, now: @escaping () -> Date = Date.init
     ) {
         self.store = store
         self.sellsPro = sellsPro
         self.defaults = defaults
         self.debugUnlock = debugUnlock
+        self.week = week ?? ProWeekStore(defaults: defaults, usesKeychain: false)
+        self.now = now
         isPro = debugUnlock || !sellsPro || defaults.bool(forKey: Self.cacheKey)
+        proWeekPhase = ProWeek.phase(start: self.week.start, now: now())
     }
+
+    /// Pro is held or the Pro week runs. Every gate reads this.
+    var hasProAccess: Bool { isPro || proWeekPhase.isActive }
+
+    /// When the Pro week ends, while it runs for a copy that has not bought Pro.
+    var proWeekEndsAt: Date? {
+        guard !isPro, case .active(let endsAt) = proWeekPhase else { return nil }
+        return endsAt
+    }
+
+    /// Whether the Pro sheet may offer the week: a copy that sells Pro, has not bought it and never had a week here.
+    var canStartProWeek: Bool { sellsPro && !isPro && proWeekPhase == .notStarted }
+
+    /// The week is over for a copy that did not buy Pro, and its note has not been shown.
+    var isProWeekEndNoticeDue: Bool { !isPro && proWeekPhase.hasEnded && !week.endNoticeShown }
+
+    func markProWeekEndNoticeShown() {
+        week.endNoticeShown = true
+    }
+
+    /// Starts the week for the person who asked for it. `servers` is how many servers are saved now, which is how many the
+    /// free copy keeps connected afterwards. Returns whether it started.
+    @discardableResult
+    func startProWeek(servers: Int) -> Bool {
+        guard canStartProWeek else { return false }
+        let start = now()
+        week.keeps = max(ProOffer.freeServerLimit, servers)
+        week.saveStart(start)
+        MidgarLog.info("pro week started, ends \(start.addingTimeInterval(ProWeek.length))", category: .commerce)
+        refreshProWeek()
+        return true
+    }
+
+    /// Brings the phase up to date, tells the screens when it changed, and wakes again when the week ends, so an app left
+    /// open closes the week on time.
+    func refreshProWeek() {
+        let current = now()
+        let phase = ProWeek.phase(start: week.start, now: current)
+        weekTimer?.cancel()
+        if case .active(let endsAt) = phase {
+            let delay = max(1, endsAt.timeIntervalSince(current))
+            weekTimer = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                self?.refreshProWeek()
+            }
+        }
+        guard phase != proWeekPhase else { return }
+        proWeekPhase = phase
+        MidgarLog.info("pro week -> \(phase)", category: .commerce)
+        NotificationCenter.default.post(name: Self.didChange, object: nil)
+    }
+
+    /// A server saved while the week runs is lent by it, and rests after the week unless Pro is bought.
+    func noteServerAdded(_ id: String) {
+        guard !isPro, proWeekPhase.isActive else { return }
+        week.lent = week.lent.union([id])
+    }
+
+    /// A deleted server is no longer lent or picked.
+    func forgetServer(_ id: String) {
+        week.lent = week.lent.subtracting([id])
+        week.picks = week.picks.filter { $0 != id }
+    }
+
+    /// The saved servers that rest now (`ServerAllowance`), from the ids of every saved server in the order they were saved.
+    func restingServerIDs(saved: [String]) -> Set<String> {
+        ServerAllowance.resting(
+            saved: saved, lent: week.lent, picks: week.picks, keeps: week.keeps, isPro: isPro, phase: proWeekPhase)
+    }
+
+    /// Keeps `id` connected in place of `replacing`, which rests instead.
+    func keepServer(_ id: String, replacing: String, connected: [String]) {
+        week.picks = ServerAllowance.keep(id, replacing: replacing, connected: connected)
+        NotificationCenter.default.post(name: Self.didChange, object: nil)
+    }
+
+    #if DEBUG
+        /// `TAILSCODE_PRO_WEEK=<days>` starts the week that many days ago with its note unseen and every saved server but the
+        /// first lent by it, so 8 shows the end note and a resting server; `none` forgets the week.
+        func stageProWeekIfAsked(savedServers: [String]) {
+            guard let value = ProcessInfo.processInfo.environment["TAILSCODE_PRO_WEEK"] else { return }
+            week.reset()
+            if let days = Double(value) {
+                week.saveStart(now().addingTimeInterval(-days * 86_400))
+                week.keeps = ProOffer.freeServerLimit
+                week.lent = Set(savedServers.dropFirst())
+            }
+            refreshProWeek()
+            NotificationCenter.default.post(name: Self.didChange, object: nil)
+            MidgarLog.info("debug: pro week staged \(value)", category: .commerce)
+        }
+    #endif
 
     /// Reads what the store holds at launch, reports the purchases made before the store existed to the
     /// ledger once, and follows the store from then on: an Ask to Buy approval, a refund and a purchase
     /// made on another device all arrive as events.
     func start() {
+        refreshProWeek()
         guard sellsPro, let store, eventsTask == nil else { return }
         eventsTask = Task { [weak self] in
             let events = await store.events()
@@ -88,6 +197,7 @@ final class ProAccess {
     }
 
     func refreshEntitlements() async {
+        refreshProWeek()
         guard sellsPro, let store else { return }
         await store.refresh()
         await adoptEntitlement(of: store)

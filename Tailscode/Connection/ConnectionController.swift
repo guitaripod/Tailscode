@@ -23,6 +23,11 @@ final class ConnectionController {
     /// can't.
     private(set) var revision = 0
 
+    /// The servers resting after the Pro week as of the last change, so a change in the week, the purchase or a pick is
+    /// told apart from no change at all.
+    private var restingIDs: Set<String> = []
+    private var proObserver: NSObjectProtocol?
+
     private func mutated() {
         revision += 1
         NotificationCenter.default.post(name: Self.didChange, object: nil)
@@ -52,6 +57,12 @@ final class ConnectionController {
         }
         if activeProfileID == nil, let first = profiles.first {
             assignActive(first.id)
+        }
+        restingIDs = computeResting(savedProfiles)
+        proObserver = NotificationCenter.default.addObserver(
+            forName: ProAccess.didChange, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { ConnectionController.shared.restingMayHaveChanged() }
         }
     }
 
@@ -113,7 +124,21 @@ final class ConnectionController {
         }
     }
 
+    /// The servers this copy connects: every saved one except those resting after the Pro week. Every screen that talks to
+    /// a server reads this; only Settings and the add-server gate read `savedProfiles`.
     var profiles: [ConnectionProfile] {
+        let saved = savedProfiles
+        let resting = computeResting(saved)
+        return resting.isEmpty ? saved : saved.filter { !resting.contains($0.id) }
+    }
+
+    /// Whether a saved server rests after the Pro week (`ServerAllowance`).
+    func isResting(_ id: String) -> Bool {
+        computeResting(savedProfiles).contains(id)
+    }
+
+    /// Every saved server, the resting ones included, in the order they were saved.
+    var savedProfiles: [ConnectionProfile] {
         var all = (try? store?.profiles()) ?? []
         #if DEBUG
             for profile in debugProfiles where !all.contains(where: { $0.id == profile.id }) {
@@ -154,7 +179,7 @@ final class ConnectionController {
     func save(_ profile: ConnectionProfile, password: String?, makeActive: Bool = true) throws {
         guard let store else { throw StoreUnavailable() }
         var profile = profile
-        let existing = profiles.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }
+        let existing = savedProfiles.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }
         if !existing.contains(where: { $0.id == profile.id }),
             let duplicate = existing.first(where: {
                 $0.backend == profile.backend
@@ -172,11 +197,12 @@ final class ConnectionController {
         let isNew = !existing.contains { $0.id == profile.id }
         let isDebugSeed = profile.id.hasPrefix("debug")
         if isNew, !isDebugSeed,
-            !ProOffer.allowsAnotherServer(existing: existing.count, isPro: ProAccess.shared.isPro)
+            !ProOffer.allowsAnotherServer(existing: existing.count, isPro: ProAccess.shared.hasProAccess)
         {
             throw ProRequired()
         }
         try store.save(profile, password: password)
+        if isNew, !isDebugSeed { ProAccess.shared.noteServerAdded(profile.id) }
         if isDemoMode { leaveDemoMode() }
         if makeActive { setActive(profile.id) }
         MidgarLog.info(
@@ -208,7 +234,7 @@ final class ConnectionController {
             return
         }
         guard let store else { throw StoreUnavailable() }
-        let deleted = profiles.first { $0.id == id }
+        let deleted = savedProfiles.first { $0.id == id }
         let pushBackend = deleted.flatMap { profile in
             profile.backend == .claudeCode ? makeBackend(for: profile) : nil
         }
@@ -225,6 +251,44 @@ final class ConnectionController {
                 from: pushBackend, baseURL: deleted.baseURL, name: deleted.name)
         }
         SavedChatStore.removeAll(profileID: id)
+        ProAccess.shared.forgetServer(id)
+        restingMayHaveChanged()
+        mutated()
+    }
+
+    /// Keeps a resting server connected in place of `replacing`, which rests instead.
+    func keepConnected(_ id: String, replacing: String) {
+        let connected = profiles.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }.map(\.id)
+        ProAccess.shared.keepServer(id, replacing: replacing, connected: connected)
+        MidgarLog.info("kept \(id) connected in place of \(replacing)", category: .connection)
+    }
+
+    private func computeResting(_ saved: [ConnectionProfile]) -> Set<String> {
+        let ids = saved.map(\.id).filter { !$0.hasPrefix(DemoWorld.profilePrefix) }
+        return ProAccess.shared.restingServerIDs(saved: ids)
+    }
+
+    /// Follows the Pro week, the purchase and the person's picks: a server that goes to rest stops receiving this
+    /// device's pushes and stops being the default, one that wakes gets them back, and every screen rebuilds.
+    private func restingMayHaveChanged() {
+        let saved = savedProfiles
+        let now = computeResting(saved)
+        guard now != restingIDs else { return }
+        let resting = now.subtracting(restingIDs)
+        let woken = restingIDs.subtracting(now)
+        restingIDs = now
+        let connected = saved.filter { !now.contains($0.id) }
+        for profile in saved where resting.contains(profile.id) && profile.backend == .claudeCode {
+            guard !connected.contains(where: { $0.backend == .claudeCode && $0.baseURL == profile.baseURL }),
+                let backend = makeBackend(for: profile)
+            else { continue }
+            PushRegistrar.unregister(from: backend, baseURL: profile.baseURL, name: profile.name)
+        }
+        if let active = activeProfileID, now.contains(active) {
+            assignActive(connected.first?.id)
+        }
+        if !woken.isEmpty { PushRegistrar.reregisterIfNeeded() }
+        MidgarLog.info("resting servers: \(now.count) (\(resting.count) went to rest, \(woken.count) woke)", category: .connection)
         mutated()
     }
 

@@ -236,6 +236,7 @@ enum ParityManifest {
         case .neuralTrace: return .implemented("NeuralBrainCell")
         case .proUnlock: return .implemented("ProAccess")
         case .supporterInvitation: return .implemented("SupporterCell")
+        case .proWeek: return .implemented("presentRestingChoices")
         case .reviewPrompt: return .implemented("ReviewPromptCoordinator")
         case .rateAndShare: return .implemented("AppStoreLinks")
         case .midgarPortal: return .implemented("MidgarEntryView")

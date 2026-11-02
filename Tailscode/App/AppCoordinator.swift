@@ -67,6 +67,10 @@ final class AppCoordinator: NSObject {
         }
         #if DEBUG
             seedDebugConnectionIfNeeded()
+            ProAccess.shared.stageProWeekIfAsked(
+                savedServers: ConnectionController.shared.savedProfiles.map(\.id).filter {
+                    !$0.hasPrefix(DemoWorld.profilePrefix)
+                })
             if ConnectionController.shared.isDemoMode { warmDemoCatalogs() }
             if DemoWorld.rangeDemoEnabled { seedDemoQuotasForRange() }
         #endif

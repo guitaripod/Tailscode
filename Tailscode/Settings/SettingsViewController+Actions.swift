@@ -25,17 +25,49 @@ extension SettingsViewController {
         present(alert, animated: true)
     }
 
-    /// The first server is free forever; additional saved servers are the
-    /// Pro gate. Returns false (and shows the paywall) when gated.
-    func allowAnotherConnection() -> Bool {
-        let realProfiles = ConnectionController.shared.profiles.filter {
+    /// The first server is free forever; additional saved servers are the Pro gate, counted over every saved server,
+    /// resting ones included. A gated copy meets the Pro sheet, and `proceed` runs once Pro is open, by the week or a
+    /// purchase, so adding the server carries on where it stopped.
+    func requestAnotherConnection(_ proceed: @escaping () -> Void) {
+        let realProfiles = ConnectionController.shared.savedProfiles.filter {
             !$0.id.hasPrefix(DemoWorld.profilePrefix)
         }
-        guard !ProAccess.shared.isPro, !realProfiles.isEmpty else {
-            return true
+        guard !ProAccess.shared.hasProAccess, !realProfiles.isEmpty else {
+            proceed()
+            return
         }
-        ProUpgradeViewController.present(from: self)
-        return false
+        ProUpgradeViewController.present(from: self, onAccess: proceed)
+    }
+
+    /// A resting server's choices: keep it connected in place of one that is, get Pro to keep every server connected, or
+    /// remove it.
+    func presentRestingChoices(for profile: ConnectionProfile, at indexPath: IndexPath) {
+        let connected = ConnectionController.shared.profiles.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }
+        let sheet = UIAlertController(title: profile.name, message: ProWeek.restingDetail, preferredStyle: .actionSheet)
+        for other in connected {
+            let title = connected.count == 1 ? ProWeek.useInsteadTitle : ProWeek.useInsteadOf(other.name)
+            sheet.addAction(
+                UIAlertAction(title: title, style: .default) { _ in
+                    Theme.Haptics.success()
+                    ConnectionController.shared.keepConnected(profile.id, replacing: other.id)
+                })
+        }
+        sheet.addAction(
+            UIAlertAction(title: String(localized: "Get Tailscode Pro"), style: .default) { [weak self] _ in
+                guard let self else { return }
+                ProUpgradeViewController.present(from: self)
+            })
+        sheet.addAction(
+            UIAlertAction(title: String(localized: "Remove"), style: .destructive) { [weak self] _ in
+                self?.removeProfile(profile)
+            })
+        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        if let popover = sheet.popoverPresentationController {
+            let cell = collectionView.cellForItem(at: indexPath)
+            popover.sourceView = cell ?? view
+            popover.sourceRect = cell?.bounds ?? CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+        }
+        present(sheet, animated: true)
     }
 
     /// Which notice to send to this phone, so each kind can be seen on the Lock Screen and pulled

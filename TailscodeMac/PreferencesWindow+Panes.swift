@@ -170,7 +170,8 @@ extension PreferencesWindow {
                     title: Localized.text("Tailscode Pro"),
                     subtitle: ProAccess.shared.isPro
                         ? Localized.text("Unlocked — thank you")
-                        : Localized.text("Unlimited servers, and delegation to cheaper models"),
+                        : ProAccess.shared.proWeekEndsAt.map { ProWeek.daysLeftText(until: $0) }
+                            ?? Localized.text("Unlimited servers, and delegation to cheaper models"),
                     button: pro))
         #endif
         return scrolled(column)

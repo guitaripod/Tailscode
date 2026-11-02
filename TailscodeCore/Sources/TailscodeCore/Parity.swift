@@ -218,6 +218,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case reviewPrompt
     case proUnlock
     case supporterInvitation
+    case proWeek
     case videoForge
     case forgeEntry
     case forgeSetup

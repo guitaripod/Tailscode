@@ -205,6 +205,7 @@ enum ParityManifest {
         case .chatDensity: return .implemented("TranscriptGaps")
         case .neuralTrace: return .implemented("BrainView")
         case .supporterInvitation: return .notApplicable("no store and no purchase on Linux — there is nothing to invite anyone to buy")
+        case .proWeek: return .notApplicable("Linux sells nothing and is whole, so there is no week to offer")
         case .proUnlock:
             return .notApplicable(
                 "there is no App Store on this desk to buy from, and the app is GPL-3.0 — this client is built from the source and is simply whole")

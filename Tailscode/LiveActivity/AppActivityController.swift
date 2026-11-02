@@ -127,7 +127,7 @@ final class AppActivityController {
         if let lingering = entries[sessionID] {
             dismiss(sessionID, lingering)
         }
-        if !ProAccess.shared.isPro {
+        if !ProAccess.shared.hasProAccess {
             let others = entries.filter { $0.key != sessionID && !$0.value.retired }
             guard others.allSatisfy({ current($0.key, $0.value).isSettled }) else {
                 MidgarLog.info("second concurrent Live Activity gated (free tier)", category: .chat)

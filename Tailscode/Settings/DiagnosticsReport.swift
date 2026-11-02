@@ -78,6 +78,7 @@ enum DiagnosticsReport {
         lines.append("")
         lines.append("[App]")
         lines.append("Pro: \(ProAccess.shared.isPro)")
+        lines.append("Pro week: \(ProAccess.shared.proWeekPhase)")
         lines.append("Appearance: \(AppPreferences.appearance.title)")
         lines.append("Theme: \(ThemeSelection.themeID)")
         lines.append("Compact agent steps: \(AppPreferences.compactActivity)")
