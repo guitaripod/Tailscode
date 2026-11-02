@@ -8,63 +8,6 @@ import TailscodeCore
 extension QuickAskWindow {
     var targetServer: ConnectionProfile { servers[targetIndex] }
 
-    static let aimStripCeiling = 5
-
-    /// Every machine the question could go to, as one row of linked toggles above the field —
-    /// each named with the agent that would answer, the aimed one pressed, the address a tooltip
-    /// away — so re-aiming is one click rather than a menu opened and read. A fleet too wide for
-    /// a row keeps the header's menu instead; one machine needs neither.
-    func buildAimStrip() {
-        guard (2...Self.aimStripCeiling).contains(servers.count) else {
-            gtk_widget_set_visible(aimStrip, 0)
-            gtk_widget_set_visible(target, servers.count > 1 ? 1 : 0)
-            return
-        }
-        gtk_widget_set_visible(target, 0)
-        var lead: UnsafeMutablePointer<GtkWidget>?
-        for (index, server) in servers.enumerated() {
-            let button = gtk_toggle_button_new()!
-            let name = ServerLabel.display(server)
-            let label = Gtk.label(name, wrap: true, selectable: false)
-            gtk_label_set_xalign(op(label), 0.5)
-            gtk_label_set_justify(op(label), GTK_JUSTIFY_CENTER)
-            Gtk.fitWrap(label, to: name, ceiling: 28)
-            gtk_button_set_child(ptr(button), label)
-            Gtk.addClass(button, "ask-aim-segment")
-            gtk_widget_set_tooltip_text(button, ServerLabel.address(server))
-            gtk_widget_set_hexpand(button, 1)
-            if let lead {
-                gtk_toggle_button_set_group(ptr(button), ptr(lead))
-            } else {
-                lead = button
-            }
-            if index == targetIndex { gtk_toggle_button_set_active(ptr(button), 1) }
-            let buttonHold = Gtk.WeakWidget(button)
-            Gtk.connect(UnsafeMutableRawPointer(button), "toggled") {
-                Gtk.onMain {
-                    guard let held = buttonHold.widget else { return }
-                    let toggle: UnsafeMutablePointer<GtkToggleButton> = ptr(held)
-                    guard gtk_toggle_button_get_active(toggle) != 0,
-                        let window = QuickAskWindow.open, !window.asking
-                    else { return }
-                    window.retarget(to: index)
-                }
-            }
-            aimToggles.append(button)
-            gtk_box_append(ptr(aimStrip), button)
-        }
-    }
-
-    /// The pressed segment follows the aim wherever it was moved from — Tab, the model chooser
-    /// landing on another machine — and a segment already pressed is left alone, since pressing
-    /// it again is what fires the retarget it would be answering.
-    func syncAimStrip() {
-        guard aimToggles.indices.contains(targetIndex) else { return }
-        let toggle: UnsafeMutablePointer<GtkToggleButton> = ptr(aimToggles[targetIndex])
-        guard gtk_toggle_button_get_active(toggle) == 0 else { return }
-        gtk_toggle_button_set_active(toggle, 1)
-    }
-
     var draftScope: DraftScope { .quickAsk(profileID: targetServer.id) }
 
     /// A question survives the surface it was being written in: the window is opened by a chord
@@ -330,10 +273,9 @@ extension QuickAskWindow {
 
     func refreshTarget() {
         let server = targetServer
-        syncAimStrip()
-        gtk_menu_button_set_label(op(target), server.name + " · " + ServerLabel.agent(server.backend))
-        adw_window_title_set_subtitle(
-            op(UnsafeMutableRawPointer(title)), Self.subtitle())
+        gtk_menu_button_set_label(op(target), "● " + ServerLabel.display(server))
+        gtk_widget_set_tooltip_text(target, ServerLabel.address(server))
+        gtk_widget_set_sensitive(target, servers.count > 1 && !asking ? 1 : 0)
         let levels = effortOptions()
         dropUnofferedEffort(on: server.id, options: levels)
         dial.render(
@@ -343,15 +285,15 @@ extension QuickAskWindow {
             modelTint: modelTintClass())
         refreshAura()
         let able = abilities
-        gtk_widget_set_visible(attach, able.attachments ? 1 : 0)
+        gtk_widget_set_visible(attach, able.attachments || isLocalAim ? 1 : 0)
+        gtk_widget_set_visible(screenChip, ScreenGrab.shared.isAvailable && able.vision ? 1 : 0)
         let kept = attachments.filter { able.accepts(mime: $0.mime) }
         let dropped = attachments.count - kept.count
         attachments = kept
         renderAttachments()
         renderStarters()
         refreshSend()
-        guard !asking else { return }
-        setHint(dropped > 0 ? QuickAskComposition.droppedNotice(count: dropped) : Self.keysHint(
-            machines: servers.count, party: QuickAskParty.targets(partyInputs().cards).count > 1))
+        guard !asking, dropped > 0 else { return }
+        setHint(QuickAskComposition.droppedNotice(count: dropped))
     }
 }

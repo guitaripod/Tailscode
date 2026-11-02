@@ -91,7 +91,8 @@ extension SelfTest {
         ask.run(handOn, copied: false)
         pump(0.2)
         try expect(ask.gathering?.awaiting == .session, "{session} waits for a chat")
-        try expect(gtk_widget_get_visible(ask.starters) != 0, "and the empty window lists them")
+        try expect(gtk_widget_get_visible(ask.body) != 0, "and the empty window lists them")
+        try expect(ask.menuItems.first.map { if case .session = $0.kind { true } else { false } } == true, "as chats to pick")
         ask.pick(at: 0)
         pump(0.2)
         try expect(ask.gathering == nil, "a pick finishes the gathering")
@@ -103,6 +104,25 @@ extension SelfTest {
         ask.cancelGathering()
         pump(0.2)
         try expect(ask.gathering == nil && QuickAskWindow.open === ask, "Esc's path sets the gathering aside and keeps the window")
+
+        ask.write("ipad mini rumours")
+        pump(0.2)
+        try expect(!ask.suggestions.isEmpty && gtk_widget_get_visible(ask.suggest) != 0, "typed words are offered verbs")
+        try expect(gtk_widget_get_visible(ask.body) == 0, "and the list steps aside for them")
+        guard let verb = ask.suggestions.firstIndex(where: { $0.id == "web" }) else {
+            throw SelfTestFailure("quick ask actions: the web search is offered as a verb")
+        }
+        ask.applySuggestion(at: verb)
+        pump(0.2)
+        try expect(
+            ask.editor.text.hasSuffix("ipad mini rumours") && ask.editor.text.count > "ipad mini rumours".count,
+            "a verb takes the typed words as what it is about: \(ask.editor.text)")
+        ask.write("")
+        pump(0.2)
+        ask.moveSelection(by: 1)
+        try expect(ask.menuCursor.index == 0, "an arrow walks into the list")
+        ask.moveSelection(by: -1)
+        try expect(ask.menuCursor.index == nil, "and back out of it")
 
         ask.write("Any iPad mini rumours?")
         ask.schedule(.everyMorning)

@@ -66,7 +66,9 @@ extension QuickAskWindow {
         Gtk.removeChildren(of: chips)
         gtk_widget_set_visible(chips, attachments.isEmpty ? 0 : 1)
         gtk_button_set_label(
-            ptr(attach), attachments.isEmpty ? "📎" : "📎 \(attachments.count)")
+            ptr(attach),
+            attachments.isEmpty
+                ? Localized.text("📎 Attach") : Localized.text("📎 %@ attached", "\(attachments.count)"))
         for attachment in attachments {
             let title = "\(attachment.name) · \(AttachmentIntake.sizeText(attachment.data.count))  ✕"
             let id = attachment.id
@@ -96,7 +98,7 @@ extension QuickAskWindow {
         editor.setSensitive(false)
         gtk_widget_set_sensitive(attach, 0)
         gtk_widget_set_sensitive(send, 0)
-        gtk_widget_set_sensitive(aimStrip, 0)
+        gtk_widget_set_sensitive(target, 0)
         refreshStarterVisibility()
         setHint(QuickAskComposition.waitingTitle(server: targetServer.name))
         let server = targetServer
@@ -120,7 +122,7 @@ extension QuickAskWindow {
                 self.asking = false
                 self.editor.setSensitive(true)
                 gtk_widget_set_sensitive(self.attach, 1)
-                gtk_widget_set_sensitive(self.aimStrip, 1)
+                gtk_widget_set_sensitive(self.target, self.servers.count > 1 ? 1 : 0)
                 self.refreshSend()
                 self.editor.focus()
                 self.setHint("\(failure.title) — \(failure.detail)")

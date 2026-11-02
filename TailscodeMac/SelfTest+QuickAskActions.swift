@@ -105,7 +105,7 @@ extension SelfTest {
         }
         panel.run(handOn, copied: false)
         try expect(panel.gathering?.awaiting == .session, "{session} waits for a chat")
-        try expect(!panel.starters.isHidden, "and the empty panel lists them")
+        try expect(!panel.listScroll.isHidden, "and the empty panel lists them")
         try dumpActions(panel, "quickask-actions-chats.png")
         panel.pick(at: 0)
         try expect(panel.gathering == nil, "a pick finishes the gathering")
@@ -123,6 +123,23 @@ extension SelfTest {
                 == .link("https://github.com/a/b"),
             "a copied address is a link")
 
+        panel.editor.setText("ipad mini rumours", caretAtEnd: true)
+        try expect(!panel.suggestions.isEmpty && !panel.suggest.isHidden, "typed words are offered verbs")
+        try expect(panel.listScroll.isHidden, "and the list steps aside for them")
+        guard let verb = panel.suggestions.firstIndex(where: { $0.id == "web" }) else {
+            throw SelfTestFailure("the web search is offered as a verb")
+        }
+        panel.applySuggestion(at: verb)
+        try expect(
+            panel.editor.text.hasSuffix("ipad mini rumours")
+                && panel.editor.text.count > "ipad mini rumours".count,
+            "a verb takes the typed words as what it is about: \(panel.editor.text)")
+        panel.editor.setText("", caretAtEnd: true)
+        panel.moveSelection(by: 1)
+        try expect(panel.menuCursor.index == 0, "an arrow walks into the list")
+        panel.cancelOperation(nil)
+        try expect(panel.menuCursor.index == nil && panel.isVisible, "Esc lets go of the line first")
+
         panel.editor.setText("Any iPad mini rumours?", caretAtEnd: true)
         panel.schedule(.everyMorning)
         let waiting = QuickAskLaterStore.all()
@@ -134,7 +151,7 @@ extension SelfTest {
 
     private static func dumpActions(_ panel: QuickAskPanel, _ name: String) throws {
         guard let directory = ProcessInfo.processInfo.environment["TAILSCODE_QUICKASK_OUT"],
-            let view = panel.contentView
+            let view = panel.card ?? panel.contentView
         else { return }
         view.layoutSubtreeIfNeeded()
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }

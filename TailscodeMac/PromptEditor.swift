@@ -63,6 +63,19 @@ final class PromptEditor: NSView {
         didSet { scheduleMeasure() }
     }
 
+    /// A box that is the largest thing on its surface — the quick ask's — draws no edge at rest
+    /// and sets its words a size up; the vim modes still colour the edge, since that is the mode
+    /// speaking rather than the box.
+    var isBare = false {
+        didSet {
+            applyRamp()
+            refreshMode()
+            scheduleMeasure()
+        }
+    }
+
+    private var resting: NSColor { isBare ? .clear : Self.restingBorder }
+
     init(placeholder: String) {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
@@ -118,7 +131,7 @@ final class PromptEditor: NSView {
         fieldContainer.wantsLayer = true
         fieldContainer.layer?.cornerRadius = MacTheme.Radius.control
         fieldContainer.layer?.borderWidth = 1
-        fieldContainer.layer?.borderColor = Self.restingBorder.cgColor
+        fieldContainer.layer?.borderColor = resting.cgColor
         fieldContainer.translatesAutoresizingMaskIntoConstraints = false
         fieldContainer.addSubview(scrollView)
         fieldContainer.addSubview(placeholderLabel)
@@ -149,8 +162,10 @@ final class PromptEditor: NSView {
     /// The ramp is read rather than remembered: the box is set in the role that exists for what a
     /// person types, and what that role is worth changes with the window's type scale.
     private func applyRamp() {
-        textView.font = MacTheme.Ramp.font(.composer)
-        placeholderLabel.font = MacTheme.Ramp.font(.composer)
+        let base = MacTheme.Ramp.font(.composer)
+        let font = isBare ? NSFont(descriptor: base.fontDescriptor, size: base.pointSize * 1.25) ?? base : base
+        textView.font = font
+        placeholderLabel.font = font
     }
 
     /// The edge of the field at rest. The box floats inside the composer's glass, and glass
@@ -288,13 +303,13 @@ final class PromptEditor: NSView {
     func refreshMode() {
         guard Self.vimPreferred else {
             textView.insertionPointColor = .textInsertionPointColor
-            fieldContainer.layer?.borderColor = Self.restingBorder.cgColor
+            fieldContainer.layer?.borderColor = resting.cgColor
             return
         }
         textView.insertionPointColor = vim.mode == .insert ? .textInsertionPointColor : .clear
         let border: NSColor =
             switch vim.mode {
-            case .insert: Self.restingBorder
+            case .insert: resting
             case .normal: MacTheme.Color.accent
             case .visual, .visualLine: MacTheme.Color.warning
             }

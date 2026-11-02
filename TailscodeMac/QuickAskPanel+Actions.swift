@@ -23,7 +23,7 @@ extension QuickAskPanel {
     /// draft, then whatever its template has to fetch, one thing at a time, and only then the
     /// words. A copied-thing action reads the pasteboard now — the card was drawn from its types
     /// alone — and a pasteboard that changed since then redraws the card instead.
-    func run(_ action: QuickAskAction, copied errand: Bool) {
+    func run(_ action: QuickAskAction, copied errand: Bool, typed: String? = nil) {
         guard !asking else { return }
         releaseHold()
         gathering = nil
@@ -41,6 +41,7 @@ extension QuickAskPanel {
         applyAim(of: action)
         var gathering = QuickAskGathering(action: action)
         gathering.fingerprint = fingerprint
+        gathering.fill.typed = typed
         if let offer {
             if action.offer == .files, isLocalAim, !offer.paths.isEmpty {
                 gathering.fill.clipboard = QuickAskLocal.mention(offer.paths)
@@ -271,12 +272,14 @@ extension QuickAskPanel {
         asking = true
         dismissCompletion()
         editor.isEditable = false
-        aimStrip.isEnabled = false
+        machinePill.isEnabled = false
         dialPopover?.close()
         partyPopover?.close()
         makeRoomPopover?.close()
         dialPill.isEnabled = false
         attachButton.isEnabled = false
+        screenButton.isEnabled = false
+        sendButton.isEnabled = false
         refreshStarterVisibility()
         setStatus(Localized.text("Asking the party — %@ models…", "\(seats.count)"))
         onAskParty(QuickAskPartySend(seats: seats, send: question, attachments: attachments)) {
@@ -290,9 +293,11 @@ extension QuickAskPanel {
             }
             self.asking = false
             self.editor.isEditable = true
-            self.aimStrip.isEnabled = true
+            self.machinePill.isEnabled = true
             self.dialPill.isEnabled = true
             self.attachButton.isEnabled = true
+            self.screenButton.isEnabled = true
+            self.refreshSend()
             self.setStatus("\(failure.title) — \(failure.detail)")
             self.refreshStarterVisibility()
             self.editor.focus()

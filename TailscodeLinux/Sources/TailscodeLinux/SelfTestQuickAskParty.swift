@@ -53,7 +53,7 @@ extension SelfTest {
             return focus == ask.editor.widget || gtk_widget_is_ancestor(focus, ask.editor.widget) != 0
         }
         func aimedStrip() -> Int? {
-            ask.aimToggles.firstIndex { gtk_toggle_button_get_active(ptr($0)) != 0 }
+            ask.servers.firstIndex { chip().contains(ServerLabel.display($0)) }
         }
 
         try expect(inUse() == [0], "the slot this ask runs is marked in use: \(inUse())")
@@ -77,8 +77,8 @@ extension SelfTest {
         try expect(
             QuickAskDefaults.model(forProfileID: "macbook")?.modelID == "qwen3-coder:30b",
             "and the model it names")
-        try expect(chip().hasPrefix("macbook"), "the target chip says so: \(chip())")
-        try expect(aimedStrip() == 1, "and so does the strip of machines: \(String(describing: aimedStrip()))")
+        try expect(chip().contains("macbook"), "the machine chip says so: \(chip())")
+        try expect(aimedStrip() == 1, "and names that machine with its agent: \(String(describing: aimedStrip()))")
         try expect(hint().contains("macbook"), "the hint names the machine: \(hint())")
         try expect(inUse() == [2], "the card in use follows the aim: \(inUse())")
         try expect(
@@ -105,7 +105,7 @@ extension SelfTest {
             QuickAskDefaults.model(forProfileID: "arch")?.modelID == "claude-sonnet-5"
                 && QuickAskDefaults.effort(forProfileID: "arch") == "low",
             "the second chord takes Sonnet at its own level: \(String(describing: QuickAskDefaults.effort(forProfileID: "arch")))")
-        try expect(aimedStrip() == 0 && chip().hasPrefix("arch"), "and stays on arch")
+        try expect(aimedStrip() == 0 && chip().contains("arch"), "and stays on arch")
 
         ask.stepPreset(by: 1)
         pump(0.3)
@@ -225,10 +225,12 @@ extension SelfTest {
             fit.ceiling.map { Int32($0) < monitorHeight } ?? true,
             "the party is never asked to be taller than the screen: \(String(describing: fit.ceiling))")
         let pill = Gtk.bounds(of: ask.dial.button, in: ask.window)
-        let right = (pill?.x ?? 0) + (pill?.width ?? 0) / 2 + Double(fit.shift) + Double(PartyPopover.width) / 2
+        let middle = (pill?.x ?? 0) + (pill?.width ?? 0) / 2 + Double(fit.shift)
+        let left = middle - Double(PartyPopover.width) / 2
+        let right = middle + Double(PartyPopover.width) / 2
         try expect(
-            right <= Double(gtk_widget_get_width(ask.window)) && fit.shift < 0,
-            "it is shifted until its edge is the window's: \(fit.shift) \(right)")
+            left >= 0 && right <= Double(gtk_widget_get_width(ask.window)),
+            "it is shifted until both its edges are inside the window: \(fit.shift) \(left) \(right)")
         press()
         try expect(
             Int32(gtk_widget_get_width(party.popover)) <= PartyPopover.width + 40

@@ -36,6 +36,7 @@ extension QuickAskPanel {
             let option = flags.contains(.option)
             let isReturn = event.keyCode == 36 || event.keyCode == 76
             if self.completion.isShowing, self.handleCompletionKey(event) { return nil }
+            if self.handleListKey(event) { return nil }
             if self.handleDialKey(event) { return nil }
             if self.handlePartyKey(event) { return nil }
             if event.keyCode == 48, !control, !flags.contains(.command), !option,
@@ -69,6 +70,32 @@ extension QuickAskPanel {
             }
             return event
         }
+    }
+
+    /// The list's keys while the box is empty: ↓ and ↑ (or ⌃N and ⌃P) walk it, Return runs the
+    /// line the keyboard stands on. With words typed, ⌥1… hands them to a verb.
+    private func handleListKey(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            .subtracting([.capsLock, .numericPad, .function])
+        let letter = event.charactersIgnoringModifiers?.lowercased()
+        if isListing {
+            let down = (flags.isEmpty && event.keyCode == 125) || (flags == .control && letter == "n")
+            let up = (flags.isEmpty && event.keyCode == 126) || (flags == .control && letter == "p")
+            if down || up {
+                moveSelection(by: down ? 1 : -1)
+                return true
+            }
+            if flags.isEmpty, event.keyCode == 36 || event.keyCode == 76, menuCursor.index != nil {
+                runSelected()
+                return true
+            }
+            return false
+        }
+        guard flags == .option, let digit = event.charactersIgnoringModifiers.flatMap({ Int($0) }),
+            (1...suggestions.count).contains(digit)
+        else { return false }
+        applySuggestion(at: digit - 1)
+        return true
     }
 
     /// ⌃⌥↑ hotter, ⌃⌥↓ colder, ⌥M or ⌥E the dial. A ⌘ chord is the menu bar's and a bare arrow

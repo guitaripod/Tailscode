@@ -5,23 +5,17 @@ import CodingAgentKitApple
 import Foundation
 import TailscodeCore
 
-/// The quick-ask surface, drawn: one entry, the aim it remembered, and what the aim can be
-/// handed. Enter is the whole ceremony — the words and anything attached to them go out as a new
-/// conversation with no project directory on the server named in the chip, and the window stays
-/// up only long enough for that server to answer, so a failed mint keeps the question in hand
-/// rather than swallowing it. The aim is both halves and both are the quick ask's own: tab or a
-/// click moves the machine, and the same dial the chat's composer wears — `alt+m`, `alt+e` or a
-/// press — names the model and how hard it is asked to think, the wheel over it stepping the
-/// level, and `QuickAskDefaults` remembers all three per server beside the composer's memory
-/// rather than inside it.
-///
-/// Owing no form is not the same as being able to do nothing. `alt+a` attaches a file and
-/// `alt+v` takes the clipboard's picture, offered only where the aim can read them; the empty
-/// window argues for itself with `QuickAskStarters` — `alt+1…9`, or a click — and hands back the
-/// last few questions asked on this machine, so the blank entry is a way into everything the
-/// agent can do instead of a text field with a placeholder. Something new on the clipboard leads
-/// the empty window as a card of its own (`QuickAskClipboard`), because a question summoned from
-/// anywhere is most often about the thing just copied.
+/// The quick-ask surface, drawn as a palette: a borderless card that arrives over whatever was in
+/// front, the question as its largest thing, and everything else in the order a hand reaches for
+/// it. Under the question one quiet row names where it goes — the machine, the model at its level,
+/// what can be handed over — and changes any of it in one press; under that, the list: what was just
+/// copied with what can be done with it, the person's actions, what is waiting for later, and what
+/// was asked here before, walked with the arrows and run with Enter, the first nine on
+/// `alt+1…9`. Typing turns the list into a row of verbs for the words typed (`alt+1…3` hands them
+/// to an action), and the foot of the card says, in one line of keys, what the keys do for the box
+/// as it is now. Enter is still the whole ceremony: the words and anything attached go out as a new
+/// conversation with no project on the machine named in the chip, and the card stays only long
+/// enough for that machine to answer, so a failed mint keeps the question in hand.
 final class QuickAskWindow: @unchecked Sendable {
     nonisolated(unsafe) static var open: QuickAskWindow?
 
@@ -54,16 +48,26 @@ final class QuickAskWindow: @unchecked Sendable {
 
     let window: UnsafeMutablePointer<GtkWidget>
     let editor: PromptEditor
-    let title: UnsafeMutablePointer<GtkWidget>
     let target: UnsafeMutablePointer<GtkWidget>
-    let aimStrip: UnsafeMutablePointer<GtkWidget>
-    var aimToggles: [UnsafeMutablePointer<GtkWidget>] = []
     let dial: DialPill
     let attach: UnsafeMutablePointer<GtkWidget>
+    let screenChip: UnsafeMutablePointer<GtkWidget>
     let send: UnsafeMutablePointer<GtkWidget>
     let chips: UnsafeMutablePointer<GtkWidget>
+    /// The verbs a typed question is offered, in place of the list while there are words.
+    let suggest: UnsafeMutablePointer<GtkWidget>
+    let body: UnsafeMutablePointer<GtkWidget>
     let starters: UnsafeMutablePointer<GtkWidget>
     let hint: UnsafeMutablePointer<GtkWidget>
+    let footKeys: UnsafeMutablePointer<GtkWidget>
+    let chord: UnsafeMutablePointer<GtkWidget>
+    var menuItems: [QuickAskMenuItem] = []
+    var menuRows: [UnsafeMutablePointer<GtkWidget>] = []
+    var menuCursor = QuickAskMenuCursor()
+    var suggestions: [QuickAskStarter] = []
+    /// Whether the card was last drawn for a typed box, so the verbs and the foot are redrawn
+    /// only when that flips.
+    var typingShown: Bool?
     let vimBadge = Gtk.label("", css: "vim-badge", selectable: false)
     var attachments: [PendingAttachment] = []
     var offered: [QuickAskStarter] = []
@@ -71,7 +75,8 @@ final class QuickAskWindow: @unchecked Sendable {
     /// what the card showed.
     var copiedOffer: ClipboardOffer?
     var copied: QuickAskCopied?
-    var picks: [Pick] = []
+    /// The lines a digit picks, in digit order.
+    var picks: [QuickAskMenuItem] = []
     var pastedImageCount = 0
     var asking = false
     var summonWatch: NSObjectProtocol?
@@ -133,15 +138,22 @@ final class QuickAskWindow: @unchecked Sendable {
         window = gtk_window_new()!
         gtk_window_set_title(ptr(window), Localized.text("Quick ask"))
         gtk_window_set_modal(ptr(window), 1)
-        gtk_window_set_default_size(ptr(window), 720, -1)
+        gtk_window_set_default_size(ptr(window), Self.width, -1)
+        Gtk.addClass(window, "qa-window")
         if let parent, let root = gtk_widget_get_root(parent) {
             gtk_window_set_transient_for(ptr(window), ptr(UnsafeMutableRawPointer(root)))
         }
+        /// An empty bar keeps the window client-decorated — rounded, shadowed, its own — without a
+        /// title strip: the card is the whole surface, and a name over a box that says what it is
+        /// would be the one thing on it nobody reads.
+        gtk_window_set_titlebar(ptr(window), Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0))
 
-        editor = PromptEditor(
-            css: "ask-entry", placeholder: Localized.text("Ask anything — no project, no setup"))
-        hint = Gtk.label("", css: "ask-hint", wrap: true, selectable: false)
-        target = Gtk.menuButton("", css: ["flat", "ask-chip"]) {
+        editor = PromptEditor(css: "ask-entry", placeholder: Localized.text("Ask anything…"))
+        Gtk.addClass(editor.widget, "qa-input")
+        hint = Gtk.label("", css: "qa-status", wrap: true, selectable: false)
+        gtk_label_set_xalign(op(hint), 0)
+        gtk_widget_set_visible(hint, 0)
+        target = Gtk.menuButton("", css: ["flat", "qa-chip", "qa-machine"]) {
             QuickAskWindow.open?.serverRows() ?? []
         }
         dial = DialPill(
@@ -166,56 +178,75 @@ final class QuickAskWindow: @unchecked Sendable {
         ) { delta in
             QuickAskWindow.open?.stepEffort(by: delta)
         }
-        attach = Gtk.button("📎", css: ["flat", "ask-chip"]) {
+        attach = Gtk.button(Localized.text("📎 Attach"), css: ["flat", "qa-chip"]) {
             Gtk.onMain { QuickAskWindow.open?.pickAttachments() }
         }
-        send = Gtk.button("↵", css: ["flat", "ask-send"]) {
+        screenChip = Gtk.button(Localized.text("⬚ Screen"), css: ["flat", "qa-chip"]) {
+            Gtk.onMain { QuickAskWindow.open?.grabScreen() }
+        }
+        send = Gtk.button("↵", css: ["flat", "ask-send", "qa-send"]) {
             Gtk.onMain { QuickAskWindow.open?.submit() }
         }
-        aimStrip = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        Gtk.addClass(aimStrip, "linked")
-        Gtk.addClass(aimStrip, "ask-aim")
-        gtk_widget_set_valign(send, GTK_ALIGN_END)
+        gtk_widget_set_valign(send, GTK_ALIGN_START)
         chips = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-        starters = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
+        suggest = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        Gtk.addClass(suggest, "qa-suggest")
+        starters = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
+        Gtk.addClass(starters, "qa-list")
+        body = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(body), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC)
+        gtk_scrolled_window_set_propagate_natural_height(op(body), 1)
+        gtk_scrolled_window_set_max_content_height(op(body), Self.listCeiling)
+        gtk_scrolled_window_set_child(op(body), starters)
+        Gtk.addClass(body, "qa-body")
+        footKeys = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 14)
+        chord = Gtk.label("", css: "qa-foot-word", selectable: false)
 
-        /// The window wears the desktop's own bar rather than a row of its own that has to be
-        /// read as one: the name of the thing is in the title, the machine it will ask is the
-        /// subtitle under it, and the two controls that change either sit where a header keeps
-        /// controls. Nothing in the body then competes with the question.
-        title = adw_window_title_new(Localized.text("Quick ask"), "")!
-        let header = adw_header_bar_new()!
-        adw_header_bar_set_title_widget(op(UnsafeMutableRawPointer(header)), title)
-        adw_header_bar_pack_start(op(UnsafeMutableRawPointer(header)), target)
-        adw_header_bar_pack_end(op(UnsafeMutableRawPointer(header)), attach)
-        adw_header_bar_pack_end(op(UnsafeMutableRawPointer(header)), dial.button)
-        gtk_window_set_titlebar(ptr(window), header)
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+        Gtk.addClass(card, "qa-card")
+        gtk_window_set_child(ptr(window), card)
 
-        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
-        Gtk.margins(column, top: 16, bottom: 14, leading: 16, trailing: 16)
-        gtk_window_set_child(ptr(window), column)
-
-        let caret = Gtk.label("›", css: "ask-caret", selectable: false)
+        let caret = Gtk.label("›", css: "qa-caret", selectable: false)
         gtk_widget_set_valign(caret, GTK_ALIGN_START)
-        Gtk.margins(caret, top: 8)
-        gtk_widget_set_valign(vimBadge, GTK_ALIGN_END)
         gtk_widget_set_visible(vimBadge, 0)
         gtk_label_set_ellipsize(op(vimBadge), PANGO_ELLIPSIZE_NONE)
-        let field = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        Gtk.addClass(field, "ask-field")
+        let field = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        Gtk.addClass(field, "qa-field")
         gtk_box_append(ptr(field), caret)
+        gtk_widget_set_hexpand(editor.widget, 1)
         gtk_box_append(ptr(field), editor.widget)
-        gtk_box_append(ptr(field), vimBadge)
         gtk_box_append(ptr(field), send)
         let frame = gtk_overlay_new()!
         gtk_overlay_set_child(op(frame), field)
         editor.wearAura(on: frame)
-        buildAimStrip()
-        gtk_box_append(ptr(column), aimStrip)
-        gtk_box_append(ptr(column), frame)
-        gtk_box_append(ptr(column), chips)
-        gtk_box_append(ptr(column), hint)
-        gtk_box_append(ptr(column), starters)
+
+        let aim = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        Gtk.addClass(aim, "qa-aim")
+        for chip in [target, dial.button, attach, screenChip] { gtk_box_append(ptr(aim), chip) }
+        let slack = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        gtk_widget_set_hexpand(slack, 1)
+        gtk_box_append(ptr(aim), slack)
+        gtk_widget_set_valign(vimBadge, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(aim), vimBadge)
+
+        let head = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
+        Gtk.addClass(head, "qa-head")
+        gtk_box_append(ptr(head), frame)
+        gtk_box_append(ptr(head), aim)
+        gtk_box_append(ptr(head), chips)
+        gtk_box_append(ptr(head), suggest)
+        gtk_box_append(ptr(head), hint)
+
+        let foot = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
+        Gtk.addClass(foot, "qa-foot")
+        let keysRoom = Gtk.shrinkable(footKeys)
+        gtk_widget_set_hexpand(keysRoom, 1)
+        gtk_box_append(ptr(foot), keysRoom)
+        gtk_box_append(ptr(foot), chord)
+
+        gtk_box_append(ptr(card), head)
+        gtk_box_append(ptr(card), body)
+        gtk_box_append(ptr(card), foot)
         editor.carryModeOn(field)
 
         let completion = SlashPopover(anchor: field)
@@ -228,18 +259,20 @@ final class QuickAskWindow: @unchecked Sendable {
         /// The whole surface takes a drop, not a button on it: something dragged out of a file
         /// manager is a question about that thing, and aiming it at a paperclip is not a gesture
         /// anybody should have to make.
-        Gtk.acceptFileDrops(on: column) { [weak self] paths in
+        Gtk.acceptFileDrops(on: card) { [weak self] paths in
             Gtk.onMain { [weak self] in self?.take(paths: paths) }
         }
 
         editor.onHeightChanged = { [weak self] in self?.fitToContents() }
         editor.onChanged = { [weak self] in
+            self?.clearHint()
             self?.releaseHoldIfEmptied()
             self?.stashDraft()
             self?.refreshStarterVisibility()
             self?.refreshSend()
             self?.refreshAura()
             self?.updateSlashCompletion()
+            self?.renderTyping()
         }
         Gtk.onKey(window) { [weak self] keyval, state in
             guard let self else { return false }
@@ -263,6 +296,23 @@ final class QuickAskWindow: @unchecked Sendable {
                 }
                 if keyval == Keymap.escape {
                     Gtk.onMain { [weak self] in self?.completion?.dismiss() }
+                    return true
+                }
+            }
+            if self.isListing, state & KeyChord.altMask == 0 {
+                let down = keyval == Keymap.down || (control && keyval == UInt32(UnicodeScalar("n").value))
+                let up = keyval == Keymap.up || (control && keyval == UInt32(UnicodeScalar("p").value))
+                if down || up {
+                    Gtk.onMain { [weak self] in self?.moveSelection(by: down ? 1 : -1) }
+                    return true
+                }
+                let isReturn = keyval == Keymap.enter || keyval == Keymap.keypadEnter
+                if isReturn, self.menuCursor.index != nil {
+                    Gtk.onMain { [weak self] in self?.runSelected() }
+                    return true
+                }
+                if keyval == Keymap.escape, self.menuCursor.index != nil {
+                    Gtk.onMain { [weak self] in self?.clearSelection() }
                     return true
                 }
             }
@@ -334,9 +384,12 @@ final class QuickAskWindow: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.offerLater() }
                 return true
             }
-            guard let digit = Keymap.digit(keyval), digit > 0,
-                gtk_widget_get_visible(self.starters) != 0
-            else { return false }
+            guard let digit = Keymap.digit(keyval), digit > 0 else { return false }
+            if !self.isListing {
+                guard digit <= self.suggestions.count else { return false }
+                Gtk.onMain { [weak self] in self?.applySuggestion(at: digit - 1) }
+                return true
+            }
             Gtk.onMain { [weak self] in self?.pick(at: digit - 1) }
             return true
         }
@@ -367,11 +420,7 @@ final class QuickAskWindow: @unchecked Sendable {
         summonWatch = NotificationCenter.default.addObserver(
             forName: Summon.didChange, object: nil, queue: nil
         ) { _ in
-            Gtk.onMain {
-                guard let open = QuickAskWindow.open else { return }
-                adw_window_title_set_subtitle(
-                    op(UnsafeMutableRawPointer(open.title)), Self.subtitle())
-            }
+            Gtk.onMain { QuickAskWindow.open?.renderFooter() }
         }
 
         /// A Wayland clipboard answers only a window that has the keyboard, and the chord that

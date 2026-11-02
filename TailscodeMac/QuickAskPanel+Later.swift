@@ -54,36 +54,4 @@ extension QuickAskPanel {
             Localized.text("Asks %@ on %@ — esc closes", QuickAskLaterWords.when(later), server.name))
         editor.focus()
     }
-
-    /// What is waiting, under the starters: each question with when it asks next, a click opening
-    /// what can be done with it, and one line saying who does the asking.
-    func laterRows() -> [NSView] {
-        let waiting = QuickAskLaterStore.all()
-        guard !waiting.isEmpty else { return [] }
-        var rows: [NSView] = []
-        for later in waiting {
-            let id = later.id
-            let menu = NSMenu()
-            menu.addItem(ClosureMenuItem(title: Localized.text("Ask now")) {
-                QuickAskLaterStore.askNow(id: id)
-            })
-            menu.addItem(ClosureMenuItem(title: Localized.text("Remove")) {
-                QuickAskLaterStore.remove(id: id)
-            })
-            var row: NSView?
-            row = QuickAskTiles.recent(
-                title: later.headline, age: QuickAskLaterWords.when(later), symbol: "clock"
-            ) {
-                guard let row else { return }
-                menu.popUp(positioning: nil, at: NSPoint(x: 0, y: row.bounds.height), in: row)
-            }
-            row?.menu = menu
-            if let row { rows.append(row) }
-        }
-        let reach = NSTextField(wrappingLabelWithString: QuickAskLaterWords.reach)
-        reach.font = MacTheme.Ramp.font(.panelFootnote)
-        reach.textColor = MacTheme.Color.secondaryLabel
-        rows.append(reach)
-        return rows
-    }
 }

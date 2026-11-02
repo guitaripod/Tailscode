@@ -46,10 +46,10 @@ extension QuickAskWindow {
         return party
     }
 
-    /// Where the party may stand: it hangs under a pill at the window's right edge, so it is shifted
-    /// until its own right edge is the window's, and it is never taller than the screen the window is
-    /// on less a margin, which the desktop can always honour by flipping it above the pill or
-    /// sliding it over the pill; anything taller scrolls.
+    /// Where the party may stand: it hangs under the model pill in the row beneath the question,
+    /// shifted until both its edges are inside the window, and it is never taller than the screen
+    /// the window is on less a margin, which the desktop can always honour by flipping it above
+    /// the pill or sliding it over the pill; anything taller scrolls.
     func partyFit() -> PartyFit {
         var width: Int32 = 0
         var height: Int32 = 0
@@ -58,10 +58,13 @@ extension QuickAskWindow {
         guard let box = Gtk.bounds(of: dial.button, in: window) else {
             return PartyFit(ceiling: ceiling, shift: 0)
         }
-        let edge = Double(gtk_widget_get_width(window)) - Double(Self.partyGutter)
+        let gutter = Double(Self.partyGutter)
+        let edge = Double(gtk_widget_get_width(window)) - gutter
         let center = box.x + box.width / 2
-        let wanted = edge - Double(PartyPopover.width) / 2
-        return PartyFit(ceiling: ceiling, shift: Int32(min(0, wanted - center)))
+        let half = Double(PartyPopover.width) / 2
+        var shift = min(0, edge - (center + half))
+        if center + shift - half < gutter { shift = gutter - (center - half) }
+        return PartyFit(ceiling: ceiling, shift: Int32(shift))
     }
 
     static let partyGutter: Int32 = 10

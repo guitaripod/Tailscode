@@ -310,7 +310,7 @@ enum ParityManifest {
                     "the trophy case renders and reports through the same coordinator as iOS, but neither copy of this app can authenticate GKLocalPlayer: the dogfood build is ad-hoc signed without the com.apple.developer.game-center entitlement, and the store target leaves that entitlement deliberately out of the first submission; the surface states the unavailability instead of hiding")
         case .projectBoard: return .implemented("toggleProjectScope")
         case .quickAsk: return .implemented("QuickAskPanel")
-        case .quickAskClipboard: return .implemented("QuickAskCopiedCard")
+        case .quickAskClipboard: return .implemented("copiedHeader")
         case .quickAskActions: return .implemented("QuickAskActionSheet")
         case .quickAskParty: return .implemented("mintParty")
         case .quickAskLater: return .implemented("askDueLater")

@@ -218,6 +218,7 @@ extension MatrixStylesheet {
             border: 1px solid alpha(\(textDim), 0.28);
         }
         .ask-chip:hover { color: \(accent); border-color: alpha(\(accent), 0.7); }
+        .qa-aim menubutton.ask-dial > button,
         headerbar menubutton.ask-dial > button {
             padding: 1px 9px 1px 8px;
             border-radius: 999px;
@@ -226,7 +227,9 @@ extension MatrixStylesheet {
             background-image: none;
             box-shadow: none;
         }
+        .qa-aim menubutton.ask-dial > button:hover,
         headerbar menubutton.ask-dial > button:hover { border-color: \(accent); }
+        .qa-aim menubutton.ask-dial.dial-pill-power > button,
         headerbar menubutton.ask-dial.dial-pill-power > button {
             background-image: \(rainbowWash(0.16));
             border-color: alpha(\(text), 0.3);
@@ -332,6 +335,137 @@ extension MatrixStylesheet {
         .ask-errand:active { background-color: alpha(\(accent), 0.22); }
         .ask-errand-glyph { color: \(accent); }
         .ask-errand .ask-keycap { padding: 0 4px; }
+
+        window.qa-window, window.qa-window.background {
+            background-color: \(canvas);
+            border-radius: 16px;
+        }
+        .qa-card { background-color: \(canvas); border-radius: 16px; }
+        .qa-head { padding: 16px 18px 12px 18px; }
+        .qa-field { padding: 2px 0; }
+        .qa-caret {
+            \(t(.composer))
+            font-size: 1.3em;
+            color: \(accent);
+            margin-top: 1px;
+        }
+        .qa-input, .qa-input textview, .qa-input textview text {
+            font-size: 1.12em;
+            min-height: 32px;
+        }
+        .qa-send {
+            min-width: 34px;
+            min-height: 34px;
+            padding: 0;
+            border-radius: 999px;
+        }
+        .ask-send-ready.qa-send { background-color: alpha(\(accent), 0.14); }
+        .qa-aim { margin-top: 2px; }
+        .qa-chip {
+            \(t(.chip))
+            color: \(textDim);
+            min-height: 0;
+            padding: 3px 11px;
+            border-radius: 999px;
+            border: 1px solid alpha(\(textDim), 0.24);
+            background-color: transparent;
+            background-image: none;
+            box-shadow: none;
+        }
+        .qa-chip:hover { color: \(accent); border-color: alpha(\(accent), 0.65); }
+        menubutton.qa-chip > button {
+            min-height: 0;
+            padding: 0;
+            border: none;
+            background: none;
+            box-shadow: none;
+        }
+        .qa-machine { color: \(text); }
+        .qa-suggest { margin-top: 2px; }
+        .qa-suggest-label { \(t(.hint)) color: \(textDim); opacity: 0.7; margin-right: 2px; }
+        .qa-suggest-chip {
+            \(t(.chip))
+            color: \(text);
+            padding: 3px 8px 3px 10px;
+            border-radius: 999px;
+            border: 1px solid alpha(\(accent), 0.30);
+            background-color: alpha(\(accent), 0.05);
+            background-image: none;
+            box-shadow: none;
+        }
+        .qa-suggest-chip:hover { border-color: \(accent); background-color: alpha(\(accent), 0.14); }
+        .qa-suggest-glyph { color: \(accent); }
+        .qa-suggest-chip .ask-keycap { padding: 0 4px; }
+        .qa-status { \(t(.hint)) color: \(accent); padding: 0 2px; }
+        .qa-body { border-top: 1px solid alpha(\(rule), 0.9); }
+        .qa-list { padding: 6px 10px 10px 10px; }
+        .qa-copied {
+            margin: 8px 2px 4px 2px;
+            padding: 8px 8px 6px 10px;
+            border-left: 3px solid \(accent);
+            border-radius: 4px;
+            background-color: alpha(\(accent), 0.06);
+        }
+        .qa-copied-head { \(t(.sectionLabel)) color: \(accent); }
+        .qa-copied-preview { \(t(.rowDetail)) color: \(text); opacity: 0.75; }
+        .qa-section {
+            \(t(.sectionLabel))
+            color: \(textDim);
+            opacity: 0.55;
+            padding: 12px 10px 4px 10px;
+        }
+        .qa-row {
+            min-height: 0;
+            padding: 6px 10px;
+            border: none;
+            border-radius: 9px;
+            background-color: transparent;
+            background-image: none;
+            box-shadow: none;
+            outline: none;
+        }
+        .qa-row:hover { background-color: alpha(\(text), 0.05); }
+        .qa-row-selected, .qa-row-selected:hover { background-color: alpha(\(accent), 0.16); }
+        .qa-row:active { background-color: alpha(\(accent), 0.22); }
+        .qa-row-glyph {
+            background-color: alpha(\(accent), 0.12);
+            border-radius: 7px;
+        }
+        .qa-row-glyph-mark { color: \(accent); font-size: 13px; line-height: 1; }
+        .qa-row-selected .qa-row-glyph { background-color: alpha(\(accent), 0.26); }
+        .qa-row-title { \(t(.rowTitleStrong)) color: \(text); }
+        .qa-row-detail { \(t(.rowDetail)) color: \(textDim); opacity: 0.65; }
+        .qa-row-badge {
+            \(t(.pill))
+            color: \(accent);
+            border: 1px solid alpha(\(accent), 0.35);
+            border-radius: 999px;
+            padding: 0 8px;
+        }
+        .qa-row .ask-keycap { opacity: 0.55; }
+        .qa-row:hover .ask-keycap, .qa-row-selected .ask-keycap {
+            color: \(accent);
+            border-color: alpha(\(accent), 0.55);
+            opacity: 1;
+        }
+        .qa-row-quiet .qa-row-title { color: \(textDim); }
+        .qa-row-quiet .qa-row-glyph { background-color: transparent; border: 1px dashed alpha(\(textDim), 0.45); color: \(textDim); }
+        .qa-note { \(t(.hint)) color: \(textDim); opacity: 0.6; padding: 2px 10px 4px 46px; }
+        .qa-foot {
+            padding: 9px 18px 10px 18px;
+            border-top: 1px solid alpha(\(rule), 0.9);
+            background-color: alpha(\(text), 0.025);
+            border-radius: 0 0 16px 16px;
+        }
+        .qa-foot-key {
+            \(t(.pill))
+            color: \(text);
+            border: 1px solid alpha(\(textDim), 0.30);
+            border-radius: 5px;
+            padding: 0 5px;
+            opacity: 0.85;
+        }
+        .qa-foot-word { \(t(.hint)) color: \(textDim); opacity: 0.75; }
 
         .tree-row { \(t(.treeRow)) color: \(text); }
         .tree-dir { color: \(info); \(t(.treeRow)) }

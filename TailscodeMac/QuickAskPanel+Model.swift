@@ -294,41 +294,24 @@ extension QuickAskPanel {
         return ModelAbilities.resolve(supportsAttachments: true, model: capabilities)
     }
 
-    /// The strip and the dial name what the question will actually run on, and the line under
-    /// them says how to send — with one server that line also names the machine, which the hidden
-    /// strip no longer can.
+    /// The machine pill and the dial name what the question will actually run on; the foot says
+    /// what the keys do, and the line under the question is kept for what just happened.
     func refreshAim() {
         let server = targetServer
-        aimStrip.select(id: server.id)
+        machinePill.select(id: server.id)
         watchCatalog()
         refreshEffort()
         if let partyPopover, partyPopover.isShown { partyPopover.panel.reload() }
         let able = abilities
-        attachButton.isHidden = !able.attachments
+        attachButton.isHidden = !(able.attachments || isLocalAim)
+        screenButton.isHidden = !(MacScreenGrab.isAvailable && able.vision)
         refreshAura()
         let kept = attachments.filter { able.accepts(mime: $0.mime) }
         let dropped = attachments.count - kept.count
         attachments = kept
         syncAttachments()
         renderStarters()
-        guard !asking else { return }
-        setStatus(
-            dropped > 0
-                ? QuickAskComposition.droppedNotice(count: dropped)
-                : (servers.count < 2
-                    ? Localized.text("Asks %@ — enter sends, esc closes", server.name)
-                    : Localized.text("Enter sends, tab switches server, esc closes"))
-                    + (QuickAskParty.targets(partyCards()).count > 1
-                        ? Localized.text(" · ⌥↩ asks the party") : "")
-                    + Localized.text(" · ⌘L asks later"))
-    }
-
-    /// What a number chord picks, in the order the picks are drawn: the copied thing's errands
-    /// first, because a summon with something new on the pasteboard is most likely about it, and
-    /// the starters after them.
-    enum Pick {
-        case errand(QuickAskClipboardErrand)
-        case starter(Int)
-        case session(SessionEntry)
+        guard !asking, dropped > 0 else { return }
+        setStatus(QuickAskComposition.droppedNotice(count: dropped))
     }
 }

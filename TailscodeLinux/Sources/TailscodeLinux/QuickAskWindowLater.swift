@@ -52,44 +52,4 @@ extension QuickAskWindow {
         AppLog.write(.ui, "ASK later id=\(later.id) repeats=\(later.repeats.rawValue)")
         editor.focus()
     }
-
-    /// What is waiting, under the starters: each question with when it asks next, a click opening
-    /// what can be done with it, and one line saying who does the asking.
-    func renderLater() {
-        let waiting = QuickAskLaterStore.all()
-        guard !waiting.isEmpty else { return }
-        gtk_box_append(ptr(starters), section(QuickAskLaterWords.section))
-        for later in waiting {
-            let row = laterRow(later)
-            gtk_box_append(ptr(starters), row)
-        }
-        let reach = Gtk.label(QuickAskLaterWords.reach, css: "ask-hint", wrap: true, selectable: false)
-        gtk_label_set_xalign(op(reach), 0)
-        gtk_box_append(ptr(starters), reach)
-    }
-
-    private func laterRow(_ later: QuickAskLater) -> UnsafeMutablePointer<GtkWidget> {
-        let id = later.id
-        let row = recentRow(title: later.headline, age: QuickAskLaterWords.when(later), glyph: "◷") {}
-        let hold = Gtk.WeakWidget(row)
-        let menu: @Sendable (Double, Double) -> Void = { x, y in
-            Gtk.onMain {
-                guard let held = hold.widget else { return }
-                Gtk.contextMenu(
-                    on: held, x: x, y: y,
-                    rows: [
-                        (Localized.text("Ask now"), nil, { Gtk.onMain { QuickAskLaterStore.askNow(id: id) } }),
-                        (Localized.text("Remove"), nil, { Gtk.onMain { QuickAskLaterStore.remove(id: id) } }),
-                    ])
-            }
-        }
-        Gtk.connect(UnsafeMutableRawPointer(row), "clicked") {
-            Gtk.onMain {
-                guard let held = hold.widget else { return }
-                menu(Double(gtk_widget_get_width(held)) / 2, Double(gtk_widget_get_height(held)))
-            }
-        }
-        Gtk.onRightClick(row, menu)
-        return row
-    }
 }

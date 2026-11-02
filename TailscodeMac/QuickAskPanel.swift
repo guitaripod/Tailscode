@@ -3,27 +3,19 @@ import CodingAgentKit
 import CodingAgentKitApple
 import TailscodeCore
 
-/// The quick-ask surface, drawn: one field, the aim it remembered, and what the aim can be
-/// handed. Enter is the whole ceremony — the words and anything attached to them go out as a new
-/// conversation with no project directory on the server named in the popup, and the panel stays
-/// up only long enough for that server to answer, so a failed mint keeps the question in hand
-/// rather than swallowing it. The aim is both halves and both are the quick ask's own:
-/// `QuickAskDefaults` remembers where the last ask went and which model answered it, per server
-/// and beside the composer's memory rather than inside it.
-///
-/// Owing no form is not the same as being able to do nothing. A file is attached from the button,
-/// the pasteboard's picture with ⌘⇧V, and anything dropped on the panel lands in the strip —
-/// offered only where the aim can read it. The empty panel argues for itself with
-/// `QuickAskStarters` (⌘1…⌘9, or a click) and hands back the last few questions asked on this
-/// machine, so the blank field is a way into everything the agent can do instead of a text box.
-/// Something newly copied leads the empty panel as a card of its own (`QuickAskClipboard`),
-/// because a question summoned from anywhere is most often about the thing just copied.
-///
-/// Which machine answers is the first thing on the panel rather than a chip found by hovering:
-/// every server is a segment of one strip, named and wearing its agent's symbol, the aimed one
-/// selected, and a click or Tab — the key the Linux window spends on the same move — re-aims the
-/// question without a menu in between. A fleet too wide for segments becomes one popup, still a
-/// single click to the list.
+/// The quick-ask surface, drawn as a palette: a borderless sheet of glass that arrives over whatever
+/// was in front, the question as its largest thing, and everything else in the order a hand
+/// reaches for it. Under the question one row of pills names where it goes — the machine, the
+/// model at its level, what can be handed over — and changes any of it in one press; under that,
+/// the list (`QuickAskMenu`): what was just copied with its errands, the person's actions, what is
+/// waiting for later and what was asked here, walked with ↑↓ and run with Return, the first nine
+/// on ⌘1…⌘9. Typing turns the list into a row of verbs for the words typed (⌥1… hands them to an
+/// action), and the foot says in one line of keys what the keys do for the box as it is now.
+/// Return is still the whole ceremony: the words and anything attached go out as a new
+/// conversation with no project on the machine named in the pill, and the panel stays only long
+/// enough for that machine to answer, so a failed mint keeps the question in hand. The aim is the
+/// quick ask's own: `QuickAskDefaults` remembers where the last ask went and which model answered,
+/// per server and beside the composer's memory rather than inside it.
 ///
 /// It is a composer, so a slash means here what it means in a chat: the aimed machine's own
 /// catalog, minus the commands that read a transcript the mint has yet to write, ranked and walked
@@ -42,14 +34,34 @@ import TailscodeCore
 final class QuickAskPanel: NSPanel {
     private(set) static weak var frontmost: QuickAskPanel?
 
-    let editor = PromptEditor(
-        placeholder: Localized.text("Ask anything — no project, no setup"))
-    let aimStrip: QuickAskAimStrip
+    static let width: CGFloat = 640
+    static let listCeiling: CGFloat = 440
+
+    let editor = PromptEditor(placeholder: Localized.text("Ask anything…"))
+    let machinePill: QuickAskMachinePill
     let dialPill = DialPill()
     let attachButton = NSButton()
+    let screenButton = NSButton()
+    let sendButton = NSButton()
     let chips = AttachmentChips()
     let status = NSTextField(wrappingLabelWithString: "")
+    let suggest = NSStackView()
     let starters = NSStackView()
+    let listScroll = NSScrollView()
+    let listRule = NSBox()
+    let footKeys = NSStackView()
+    let chordLabel = NSTextField(labelWithString: "")
+    var listHeight: NSLayoutConstraint?
+    /// The card inside the glass, measured for the panel's size: the glass reports no height of its
+    /// own for what it holds.
+    var card: NSView?
+    var menuItems: [QuickAskMenuItem] = []
+    var menuRows: [QuickAskRowView] = []
+    var menuCursor = QuickAskMenuCursor()
+    var suggestions: [QuickAskStarter] = []
+    /// Whether the panel was last drawn for a typed box, so the verbs and the foot are redrawn
+    /// only when that flips.
+    var typingShown: Bool?
     let completion = CompletionPopover()
     let servers: [ConnectionProfile]
     let recents: [SessionEntry]
@@ -59,7 +71,7 @@ final class QuickAskPanel: NSPanel {
     /// and the change count that names it.
     var clipboard: (holding: QuickAskClipboardHolding, fingerprint: String)?
     var copied: QuickAskCopied?
-    var picks: [Pick] = []
+    var picks: [QuickAskMenuItem] = []
     var commands: [AgentCommand] = []
     var completionMatches: [SlashMatch] = []
     var completionCursor = 0
@@ -131,29 +143,41 @@ final class QuickAskPanel: NSPanel {
         self.onAsk = onAsk
         self.onResume = onResume
         self.onAskParty = onAskParty
-        self.aimStrip = QuickAskAimStrip(servers: servers)
+        self.machinePill = QuickAskMachinePill(servers: servers)
         super.init(
-            contentRect: .zero, styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            contentRect: .zero, styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered, defer: false)
         title = Localized.text("Quick ask")
+        titleVisibility = .hidden
+        titlebarAppearsTransparent = true
+        for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            standardWindowButton(kind)?.isHidden = true
+        }
+        isMovableByWindowBackground = true
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
         isFloatingPanel = true
         isReleasedWhenClosed = false
         collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
 
-        editor.widthAnchor.constraint(greaterThanOrEqualToConstant: 600).isActive = true
+        editor.isBare = true
         editor.onChanged = { [weak self] in
+            if let self, !self.asking, !self.status.isHidden { self.setStatus("") }
             self?.releaseHoldIfEmptied()
             self?.stashDraft()
             self?.refreshStarterVisibility()
             self?.updateSlashCompletion()
             self?.refreshAura()
+            self?.renderTyping()
+            self?.refreshSend()
             self?.resize()
         }
         editor.onPaste = { [weak self] in self?.takeClipboard() ?? false }
 
         aimedServerID = QuickAskDefaults.target(
             among: servers.map(\.id), fallback: preferredServer)
-        aimStrip.isHidden = servers.count < 2
-        aimStrip.onPick = { [weak self] id in
+        machinePill.onPick = { [weak self] id in
             guard let self, id != self.aimedServerID else { return }
             self.aim(at: id)
             self.refreshAim()
@@ -165,20 +189,60 @@ final class QuickAskPanel: NSPanel {
         dialPill.usage = Localized.text(
             "The model the question runs on and how hard it thinks — scroll to step the effort")
 
-        attachButton.bezelStyle = .rounded
-        attachButton.controlSize = .small
-        attachButton.title = Localized.text("Attach…")
-        attachButton.target = self
-        attachButton.action = #selector(pickAttachments)
+        for (button, title, symbol, action) in [
+            (attachButton, Localized.text("Attach"), "paperclip", #selector(pickAttachments)),
+            (screenButton, Localized.text("Screen"), "rectangle.dashed", #selector(grabScreenPressed)),
+        ] {
+            button.bezelStyle = .rounded
+            button.controlSize = .regular
+            button.font = MacTheme.Ramp.font(.control)
+            button.title = title
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 11, weight: .medium))
+            button.imagePosition = .imageLeading
+            button.target = self
+            button.action = action
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        }
+        screenButton.toolTip = Localized.text("Drag over part of the screen — ⌘⇧S")
+
+        sendButton.bezelStyle = .circular
+        sendButton.image = NSImage(systemSymbolName: "arrow.up", accessibilityDescription: Localized.text("Send"))?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .bold))
+        sendButton.imagePosition = .imageOnly
+        sendButton.target = self
+        sendButton.action = #selector(submit)
+        sendButton.setContentHuggingPriority(.required, for: .horizontal)
 
         status.font = MacTheme.Ramp.font(.panelFootnote)
-        status.textColor = MacTheme.Color.secondaryLabel
+        status.textColor = MacTheme.Color.accent
         status.isSelectable = false
         status.maximumNumberOfLines = 0
+        status.isHidden = true
 
         starters.orientation = .vertical
         starters.alignment = .leading
-        starters.spacing = QuickAskTiles.spacing
+        starters.spacing = 1
+        starters.edgeInsets = NSEdgeInsets(top: 4, left: 10, bottom: 10, right: 10)
+        starters.translatesAutoresizingMaskIntoConstraints = false
+        listScroll.contentView = QuickAskTopClip()
+        listScroll.documentView = starters
+        listScroll.drawsBackground = false
+        listScroll.hasVerticalScroller = true
+        listScroll.autohidesScrollers = true
+        listScroll.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            starters.leadingAnchor.constraint(equalTo: listScroll.contentView.leadingAnchor),
+            starters.trailingAnchor.constraint(equalTo: listScroll.contentView.trailingAnchor),
+            starters.topAnchor.constraint(equalTo: listScroll.contentView.topAnchor),
+        ])
+        let listHeight = listScroll.heightAnchor.constraint(equalToConstant: 0)
+        listHeight.isActive = true
+        self.listHeight = listHeight
+
+        suggest.orientation = .horizontal
+        suggest.spacing = 6
+        suggest.isHidden = true
 
         chips.onRemove = { [weak self] id in
             guard let self else { return }
@@ -189,25 +253,59 @@ final class QuickAskPanel: NSPanel {
         completion.hasProject = false
         completion.onPick = { [weak self] command in self?.accept(command) }
 
+        let spark = NSImageView(
+            image: NSImage(systemSymbolName: "sparkle", accessibilityDescription: nil) ?? NSImage())
+        spark.symbolConfiguration = .init(pointSize: 17, weight: .semibold)
+        spark.contentTintColor = MacTheme.Color.accent
+        spark.setContentHuggingPriority(.required, for: .horizontal)
+        let field = NSStackView(views: [spark, editor, sendButton])
+        field.orientation = .horizontal
+        field.alignment = .top
+        field.spacing = 10
+
         let slack = NSView()
         slack.setContentHuggingPriority(.init(1), for: .horizontal)
         slack.setContentCompressionResistancePriority(.init(1), for: .horizontal)
-        let aim = NSStackView(views: [dialPill, attachButton, slack])
+        let aim = NSStackView(views: [machinePill, dialPill, attachButton, screenButton, slack])
         aim.orientation = .horizontal
-        aim.distribution = .fill
-        aim.spacing = 8
-        let column = QuickAskDropView(views: [
-            aimStrip, editor, completion, chips, aim, status, starters,
-        ])
+        aim.spacing = 6
+
+        let head = NSStackView(views: [field, completion, aim, chips, suggest, status])
+        head.orientation = .vertical
+        head.alignment = .leading
+        head.spacing = 10
+        head.edgeInsets = NSEdgeInsets(top: 18, left: 18, bottom: 14, right: 18)
+
+        listRule.boxType = .separator
+        let footRule = NSBox()
+        footRule.boxType = .separator
+        footKeys.orientation = .horizontal
+        footKeys.spacing = 12
+        chordLabel.font = MacTheme.Ramp.font(.panelFootnote)
+        chordLabel.textColor = MacTheme.Color.tertiaryLabel
+        let footSlack = NSView()
+        footSlack.setContentHuggingPriority(.init(1), for: .horizontal)
+        let foot = NSStackView(views: [footKeys, footSlack, chordLabel])
+        foot.orientation = .horizontal
+        foot.edgeInsets = NSEdgeInsets(top: 9, left: 18, bottom: 11, right: 18)
+
+        let column = QuickAskDropView(views: [head, listRule, listScroll, footRule, foot])
         column.orientation = .vertical
         column.alignment = .leading
-        column.spacing = 8
-        column.edgeInsets = NSEdgeInsets(top: 14, left: 14, bottom: 12, right: 14)
+        column.spacing = 0
         column.onDrop = { [weak self] urls in self?.attach(paths: urls.map(\.path)) }
         column.onDropImage = { [weak self] data in self?.addPastedImage(data) }
         column.registerForDraggedTypes([.fileURL, .png, .tiff])
-        contentView = column
-        status.widthAnchor.constraint(equalTo: editor.widthAnchor).isActive = true
+        for view in [head, listRule, listScroll, footRule, foot] {
+            view.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        }
+        for view in [field, aim, status, suggest] {
+            view.widthAnchor.constraint(equalTo: head.widthAnchor, constant: -36).isActive = true
+        }
+        starters.widthAnchor.constraint(equalTo: listScroll.widthAnchor).isActive = true
+        column.widthAnchor.constraint(equalToConstant: Self.width).isActive = true
+        card = column
+        contentView = MacTheme.glass(around: column, cornerRadius: 20)
         clipboard = Self.detectClipboard()
         refreshAim()
         refreshCommands()
@@ -242,11 +340,19 @@ final class QuickAskPanel: NSPanel {
     }
 
     override func cancelOperation(_ sender: Any?) {
+        if menuCursor.index != nil {
+            clearSelection()
+            return
+        }
         if gathering != nil {
             cancelGathering()
             return
         }
         close()
+    }
+
+    @objc func grabScreenPressed() {
+        grabScreen()
     }
 
     /// A question is only ever lost in the moment nobody thought to save it, and a panel dismissed
@@ -337,7 +443,7 @@ final class QuickAskPanel: NSPanel {
             if event.modifierFlags.contains(.shift) { grabScreen() } else { saveAsAction() }
             return true
         }
-        guard !starters.isHidden, let characters = event.charactersIgnoringModifiers,
+        guard isListing, let characters = event.charactersIgnoringModifiers,
             let digit = Int(characters), digit > 0
         else { return super.performKeyEquivalent(with: event) }
         pick(at: digit - 1)
@@ -365,12 +471,14 @@ final class QuickAskPanel: NSPanel {
         asking = true
         dismissCompletion()
         editor.isEditable = false
-        aimStrip.isEnabled = false
+        machinePill.isEnabled = false
         dialPopover?.close()
         partyPopover?.close()
         makeRoomPopover?.close()
         dialPill.isEnabled = false
         attachButton.isEnabled = false
+        screenButton.isEnabled = false
+        sendButton.isEnabled = false
         refreshStarterVisibility()
         setStatus(QuickAskComposition.waitingTitle(server: server.name))
         onAsk(server.id, send, attachments) { [weak self] failure in
@@ -385,9 +493,11 @@ final class QuickAskPanel: NSPanel {
             }
             self.asking = false
             self.editor.isEditable = true
-            self.aimStrip.isEnabled = true
+            self.machinePill.isEnabled = true
             self.dialPill.isEnabled = true
             self.attachButton.isEnabled = true
+            self.screenButton.isEnabled = true
+            self.refreshSend()
             self.setStatus("\(failure.title) — \(failure.detail)")
             self.refreshStarterVisibility()
             self.editor.focus()
@@ -395,6 +505,13 @@ final class QuickAskPanel: NSPanel {
     }
 }
 
+
+/// The list's clip, flipped so the list reads from its top: an unflipped clip shows the bottom of a
+/// list taller than the panel lets it be.
+@MainActor
+final class QuickAskTopClip: NSClipView {
+    override var isFlipped: Bool { true }
+}
 
 /// The panel's body, which is also where a picture lands. A drop is taken anywhere on the surface
 /// rather than on a button: something dragged from a browser or the Finder is a question about

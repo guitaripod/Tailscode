@@ -6,28 +6,12 @@ import Foundation
 import TailscodeCore
 
 extension QuickAskWindow {
-    /// What the keys do, said once under the box. Which key sends is the person's own setting, so
-    /// the line reads it rather than asserting Enter — and it always names the one that writes a
-    /// line break, because a box that grows is worth nothing to somebody who does not know how to
-    /// put a paragraph in it. The picks wear only their digit, so the modifier is said here once.
-    static func keysHint(machines: Int, party: Bool = false) -> String {
-        let sending =
-            (Preferences.sendOnReturn
-                ? Localized.text("Enter sends · shift+enter for a new line")
-                : Localized.text("Ctrl+enter sends · enter for a new line"))
-            + (party ? Localized.text(" · alt+enter asks the party") : "")
-        let picking = Localized.text(" · alt+number picks") + Localized.text(" · alt+l asks later")
-        guard machines > 1 else {
-            return sending + picking + Localized.text(" · esc closes")
-        }
-        return sending + Localized.text(" · tab moves the machine") + picking
-            + Localized.text(" · esc closes")
-    }
+    static let width: Int32 = 680
+    static let listCeiling: Int32 = 440
 
-    /// The bar's second line teaches the thing a person cannot discover from inside this window:
-    /// that it can be opened without the app in front of them. The machine it will ask is already
-    /// the chip beside it, so saying that here too would spend the line on something visible.
-    static func subtitle() -> String {
+    /// The far end of the foot teaches the one thing nothing inside the card can: that it opens
+    /// without the app in front.
+    static func chordNote() -> String {
         let state = Summon.shared.state
         guard state.isLive, let chord = state.chord else { return "" }
         return Localized.text("%@ from anywhere", chord.display(on: .linux))
@@ -133,296 +117,349 @@ extension QuickAskWindow {
             effort: QuickAskDefaults.effort(forProfileID: targetServer.id), inFlight: false)
     }
 
+    /// The line under the box is for what just happened — a refusal, a notice, a level that moved —
+    /// and it is gone when there is nothing to say, so the card never carries an empty row.
     func setHint(_ text: String) {
         gtk_label_set_text(op(hint), text)
+        gtk_widget_set_visible(hint, text.isEmpty ? 0 : 1)
+        fitToContents()
     }
 
-    /// What a number chord picks, in the order the picks are drawn: the copied thing's errands
-    /// first, because a summon with something new on the clipboard is most likely about it, and the
-    /// starters after them.
-    enum Pick {
-        case errand(QuickAskClipboardErrand)
-        case starter(Int)
-        case session(SessionEntry)
+    /// A notice is about the moment it was said in; the next keystroke is a new moment.
+    func clearHint() {
+        guard !asking, gtk_widget_get_visible(hint) != 0 else { return }
+        setHint("")
     }
 
-    /// The empty window's argument for itself: what was just copied and what can be done with it,
-    /// what this thing can be asked to do, offered against what the aim can take, and the last few
-    /// questions asked here. It gets out of the way the moment there is a question and comes back
-    /// if the entry is emptied again.
+    /// The list is what the keyboard walks while the box is empty, and while a template is waiting
+    /// for a chat to hand on.
+    var isListing: Bool {
+        gathering?.awaiting == .session || (editor.text.isEmpty && attachments.isEmpty)
+    }
+
+    /// The card below the question: what was just copied with what can be done with it, then
+    /// Core's sections — the person's actions, what is waiting for later, what was asked here — or,
+    /// while `{session}` waits, the chats to hand on. A redraw keeps the keyboard on the line it
+    /// was on.
     func renderStarters() {
+        let selected = menuCursor.index.flatMap {
+            menuItems.indices.contains($0) ? menuItems[$0].id : nil
+        }
         Gtk.removeChildren(of: starters)
+        menuRows = []
+        let sections: [QuickAskMenuSection]
         if gathering?.awaiting == .session {
-            renderSessionPicker()
-            return
+            sections = QuickAskMenu.sessions(QuickAskSessionReference.candidates(among: recents))
+        } else {
+            offered = QuickAskStarters.offered(for: abilities, surface: surface)
+            copied = copiedOffer.flatMap(reading)
+            sections = QuickAskMenu.sections(
+                copied: copied, starters: offered, later: QuickAskLaterStore.all(),
+                recents: QuickAskRecents.asks(among: recents, profileID: targetServer.id),
+                aimWords: { [weak self] aim in self?.aimBadge(aim) })
         }
-        let surface = self.surface
-        offered = QuickAskStarters.offered(for: abilities, surface: surface)
-        copied = copiedOffer.flatMap(reading)
-        let errands = copied?.errands ?? []
-        picks = errands.map(Pick.errand) + offered.indices.map(Pick.starter)
-        if let copied { gtk_box_append(ptr(starters), renderCopied(copied)) }
-        gtk_box_append(ptr(starters), section(QuickAskWords.offer))
-        let grid = gtk_grid_new()!
-        gtk_grid_set_column_homogeneous(ptr(grid), 1)
-        gtk_grid_set_row_homogeneous(ptr(grid), 1)
-        gtk_grid_set_row_spacing(ptr(grid), 6)
-        gtk_grid_set_column_spacing(ptr(grid), 6)
-        for (index, starter) in offered.enumerated() {
-            let tile = self.tile(starter, keycap: Self.keycap(at: errands.count + index)) {
-                [weak self] in
-                Gtk.onMain { [weak self] in self?.pickStarter(at: index) }
+        menuItems = QuickAskMenu.items(sections)
+        picks = menuItems.filter { $0.digit != nil }
+        for section in sections {
+            gtk_box_append(ptr(starters), section.isCopied ? copiedHeader(section) : self.section(section.title))
+            for item in section.items {
+                let row = menuRow(item)
+                menuRows.append(row)
+                gtk_box_append(ptr(starters), row)
             }
-            let action = starter.action
-            let tileHold = Gtk.WeakWidget(tile)
-            Gtk.onRightClick(tile) { x, y in
-                Gtk.onMain {
-                    guard let held = tileHold.widget else { return }
-                    QuickAskWindow.open?.showActionMenu(for: action, on: held, x: x, y: y)
-                }
+            if section.id == "later" {
+                let reach = Gtk.label(
+                    QuickAskLaterWords.reach, css: "qa-note", wrap: true, selectable: false)
+                gtk_label_set_xalign(op(reach), 0)
+                gtk_box_append(ptr(starters), reach)
             }
-            gtk_grid_attach(ptr(grid), tile, Int32(index % 2), Int32(index / 2), 1, 1)
         }
-        let more = addTile()
-        gtk_grid_attach(ptr(grid), more, Int32(offered.count % 2), Int32(offered.count / 2), 1, 1)
-        gtk_box_append(ptr(starters), grid)
-        if QuickAskActions.unreadable > 0 {
-            let unread = QuickAskActions.unreadable
+        let unread = QuickAskActions.unreadable
+        if unread > 0 {
             let note = Gtk.label(
                 unread == 1
                     ? Localized.text("1 entry in quick-actions.json could not be read")
                     : Localized.text("%@ entries in quick-actions.json could not be read", "\(unread)"),
-                css: "ask-hint", wrap: true, selectable: false)
+                css: "qa-note", wrap: true, selectable: false)
             gtk_label_set_xalign(op(note), 0)
             gtk_box_append(ptr(starters), note)
         }
-        renderLater()
-        let asked = QuickAskRecents.asks(among: recents, profileID: targetServer.id)
-        guard !asked.isEmpty else {
-            refreshStarterVisibility()
-            return
-        }
-        gtk_box_append(ptr(starters), section(QuickAskWords.asked))
-        for entry in asked {
-            let title = AgentSession.isPlaceholderTitle(entry.session.title)
-                ? QuickAskWords.untitled : entry.session.title
-            gtk_box_append(
-                ptr(starters),
-                recentRow(
-                    title: title,
-                    age: Localized.text(
-                        "asked %@ ago", SessionRowModel.age(of: entry.session.updatedAt))
-                ) { [weak self] in
-                    Gtk.onMain { [weak self] in self?.resume(entry) }
-                })
-        }
+        menuCursor.follow(id: selected, in: menuItems)
+        sizeList()
+        paintSelection()
+        renderTyping(force: true)
         refreshStarterVisibility()
     }
 
-    /// The last tile is the way to make one: the menu every tile carries, opened by a click.
-    func addTile() -> UnsafeMutablePointer<GtkWidget> {
+    /// A scrolled list asks for almost nothing on its own, so the card would open as a sliver: the
+    /// list is held at the height its lines want, up to the ceiling past which it scrolls.
+    func sizeList() {
+        var minimum: Int32 = 0
+        var natural: Int32 = 0
+        gtk_widget_measure(starters, GTK_ORIENTATION_VERTICAL, Self.width, &minimum, &natural, nil, nil)
+        gtk_scrolled_window_set_min_content_height(op(body), min(natural, Self.listCeiling))
+    }
+
+    /// Where an action asks when it asks somewhere of its own, said as short as it can be: the
+    /// model's word where it names one, the machine's name otherwise.
+    func aimBadge(_ aim: QuickAskActionAim) -> String? {
+        let profileID = aim.profileID(among: servers)
+        if let selection = aim.selection {
+            return ModelBadge.word(
+                for: selection, in: ModelCatalogStore.cached(profileID ?? targetServer.id))
+        }
+        return servers.first { $0.id == profileID }?.name ?? aim.server
+    }
+
+    /// One line: the glyph in its tinted square, the title, its quieter words, where it asks or
+    /// when, and the digit that picks it. A press runs it, a right press offers what can be done
+    /// with an action.
+    func menuRow(_ item: QuickAskMenuItem) -> UnsafeMutablePointer<GtkWidget> {
         let button = gtk_button_new()!
         Gtk.addClass(button, "flat")
-        Gtk.addClass(button, "ask-tile")
-        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
-        let mark = whole(Gtk.label("+", css: "ask-tile-glyph", selectable: false))
-        gtk_label_set_xalign(op(mark), 0.5)
-        gtk_widget_set_valign(mark, GTK_ALIGN_CENTER)
-        gtk_box_append(ptr(line), mark)
-        let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
-        gtk_widget_set_hexpand(words, 1)
-        gtk_widget_set_valign(words, GTK_ALIGN_CENTER)
-        let title = Gtk.label(Localized.text("New action"), css: "ask-tile-title", selectable: false)
+        Gtk.addClass(button, "qa-row")
+        if case .newAction = item.kind { Gtk.addClass(button, "qa-row-quiet") }
+        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        gtk_box_append(ptr(line), glyphTile(item.glyph))
+        let title = Gtk.label(item.title, css: "qa-row-title", selectable: false)
+        gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
         gtk_label_set_xalign(op(title), 0)
-        gtk_box_append(ptr(words), title)
-        let note = Gtk.label(
-            Localized.text("Right-click any tile to change it"), css: "ask-tile-detail",
-            selectable: false)
-        gtk_label_set_ellipsize(op(note), PANGO_ELLIPSIZE_END)
-        gtk_label_set_xalign(op(note), 0)
-        gtk_box_append(ptr(words), note)
-        gtk_box_append(ptr(line), words)
-        gtk_button_set_child(ptr(button), line)
-        gtk_widget_set_tooltip_text(button, Localized.text("Or type it and press ctrl+s"))
-        let hold = Gtk.WeakWidget(button)
-        Gtk.connect(UnsafeMutableRawPointer(button), "clicked") {
-            Gtk.onMain { QuickAskWindow.open?.newAction() }
+        gtk_box_append(ptr(line), title)
+        let detail = Gtk.label(item.detail, css: "qa-row-detail", selectable: false)
+        gtk_label_set_ellipsize(op(detail), PANGO_ELLIPSIZE_END)
+        gtk_label_set_xalign(op(detail), 0)
+        gtk_widget_set_hexpand(detail, 1)
+        gtk_box_append(ptr(line), detail)
+        if let badge = item.badge, !badge.isEmpty {
+            let pill = whole(Gtk.label(badge, css: "qa-row-badge", selectable: false))
+            gtk_widget_set_valign(pill, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(line), pill)
         }
+        if let digit = item.digit {
+            let cap = whole(Gtk.label("\(digit)", css: "ask-keycap", selectable: false))
+            gtk_widget_set_valign(cap, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(line), cap)
+        }
+        gtk_button_set_child(ptr(button), line)
+        if !item.detail.isEmpty { gtk_widget_set_tooltip_text(button, item.detail) }
+        let id = item.id
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked") {
+            Gtk.onMain { QuickAskWindow.open?.activate(id: id) }
+        }
+        let hold = Gtk.WeakWidget(button)
         Gtk.onRightClick(button) { x, y in
             Gtk.onMain {
-                guard let held = hold.widget else { return }
-                QuickAskWindow.open?.showActionMenu(for: nil, on: held, x: x, y: y)
+                guard let open = QuickAskWindow.open, let held = hold.widget,
+                    let item = open.menuItems.first(where: { $0.id == id })
+                else { return }
+                open.showMenu(for: item, on: held, x: x, y: y)
             }
         }
         return button
     }
 
-    /// `{session}` asks which chat: the recent ones on every machine, newest first, each said with
-    /// the agent and the machine that ran it. A number or a click hands it on; Esc sets the action
-    /// aside.
-    func renderSessionPicker() {
-        let candidates = QuickAskSessionReference.candidates(among: recents)
-        picks = candidates.map(Pick.session)
-        gtk_box_append(ptr(starters), section(Localized.text("Which chat?")))
-        guard !candidates.isEmpty else {
-            let empty = Gtk.label(
-                Localized.text("No chats yet on any machine."), css: "ask-hint", selectable: false)
-            gtk_label_set_xalign(op(empty), 0)
-            gtk_box_append(ptr(starters), empty)
-            gtk_widget_set_visible(starters, 1)
-            return
-        }
-        for (index, entry) in candidates.enumerated() {
-            let title = AgentSession.isPlaceholderTitle(entry.session.title)
-                ? QuickAskWords.untitled : entry.session.title
-            let detail = [
-                entry.backendType.displayName, entry.profileName,
-                SessionRowModel.age(of: entry.session.updatedAt),
-            ].joined(separator: " · ")
-            let row = recentRow(
-                title: (Self.keycap(at: index).map { $0 + "  " } ?? "") + title, age: detail
-            ) {
-                Gtk.onMain { QuickAskWindow.open?.pickSession(entry) }
+    /// A glyph in a square of its own size, whatever font the character falls back to: a symbol
+    /// from a taller face would otherwise make its line taller than its neighbours.
+    func glyphTile(_ glyph: String) -> UnsafeMutablePointer<GtkWidget> {
+        let tile = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+        Gtk.addClass(tile, "qa-row-glyph")
+        gtk_widget_set_size_request(tile, 26, 26)
+        gtk_widget_set_overflow(tile, GTK_OVERFLOW_HIDDEN)
+        gtk_widget_set_valign(tile, GTK_ALIGN_CENTER)
+        gtk_widget_set_halign(tile, GTK_ALIGN_START)
+        gtk_widget_set_hexpand(tile, 0)
+        let mark = whole(Gtk.label(glyph, css: "qa-row-glyph-mark", selectable: false))
+        gtk_widget_set_size_request(mark, 26, 26)
+        gtk_label_set_xalign(op(mark), 0.5)
+        gtk_widget_set_valign(mark, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(tile), mark)
+        return tile
+    }
+
+    /// The selected line wears the accent and is scrolled into the visible part of the list.
+    func paintSelection() {
+        for (index, row) in menuRows.enumerated() {
+            if index == menuCursor.index {
+                Gtk.addClass(row, "qa-row-selected")
+            } else {
+                gtk_widget_remove_css_class(row, "qa-row-selected")
             }
-            gtk_box_append(ptr(starters), row)
         }
-        gtk_widget_set_visible(starters, 1)
+        guard let index = menuCursor.index, menuRows.indices.contains(index),
+            let box = Gtk.bounds(of: menuRows[index], in: starters),
+            let adjustment = gtk_scrolled_window_get_vadjustment(op(body))
+        else { return }
+        let top = gtk_adjustment_get_value(adjustment)
+        let page = gtk_adjustment_get_page_size(adjustment)
+        if box.y < top {
+            gtk_adjustment_set_value(adjustment, max(0, box.y - 28))
+        } else if box.y + box.height > top + page {
+            gtk_adjustment_set_value(adjustment, box.y + box.height - page + 8)
+        }
     }
 
-    /// The number a pick answers to, worn on the pick itself. Only the digit: the footer of every
-    /// desktop surface already says which modifier, and nine copies of "alt+" are nine copies of
-    /// the same fact.
-    static func keycap(at index: Int) -> String? {
-        index < 9 ? "\(index + 1)" : nil
+    func moveSelection(by delta: Int) {
+        guard !asking else { return }
+        menuCursor.move(by: delta, count: menuItems.count)
+        paintSelection()
     }
 
-    /// What was copied, as one card above the starters: what it is, a glimpse of it, and a chip per
-    /// errand. The close button is how a person says the clipboard is not what this question is
-    /// about, and it is remembered, so the same thing is not offered again on the next summon.
-    func renderCopied(_ copied: QuickAskCopied) -> UnsafeMutablePointer<GtkWidget> {
-        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
-        Gtk.addClass(card, "ask-copied")
+    func clearSelection() {
+        menuCursor.clear()
+        paintSelection()
+    }
+
+    func runSelected() {
+        guard let index = menuCursor.index, menuItems.indices.contains(index) else { return }
+        activate(id: menuItems[index].id)
+    }
+
+    /// A line pressed, picked by its digit or run with Enter: an action runs, a waiting question
+    /// offers to be asked now or removed, a past question opens, a chat is handed on.
+    func activate(id: String) {
+        guard !asking, let index = menuItems.firstIndex(where: { $0.id == id }) else { return }
+        let item = menuItems[index]
+        switch item.kind {
+        case .errand(let errand):
+            menuCursor.clear()
+            pickErrand(errand)
+        case .starter(let starter):
+            guard gathering == nil, editor.text.isEmpty else { return }
+            AppLog.write(.ui, "ASK starter=\(starter.id)")
+            menuCursor.clear()
+            run(starter.action, copied: false)
+        case .later:
+            guard menuRows.indices.contains(index) else { return }
+            let row = menuRows[index]
+            showMenu(
+                for: item, on: row, x: Double(gtk_widget_get_width(row)) / 2,
+                y: Double(gtk_widget_get_height(row)))
+        case .recent(let entry):
+            resume(entry)
+        case .session(let entry):
+            menuCursor.clear()
+            pickSession(entry)
+        case .newAction:
+            newAction()
+        }
+    }
+
+    func showMenu(
+        for item: QuickAskMenuItem, on widget: UnsafeMutablePointer<GtkWidget>, x: Double, y: Double
+    ) {
+        switch item.kind {
+        case .starter(let starter): showActionMenu(for: starter.action, on: widget, x: x, y: y)
+        case .errand(let errand): showActionMenu(for: errand.action, on: widget, x: x, y: y)
+        case .newAction: showActionMenu(for: nil, on: widget, x: x, y: y)
+        case .later(let later):
+            let id = later.id
+            Gtk.contextMenu(
+                on: widget, x: x, y: y,
+                rows: [
+                    (Localized.text("Ask now"), nil, { Gtk.onMain { QuickAskLaterStore.askNow(id: id) } }),
+                    (Localized.text("Remove"), nil, { Gtk.onMain { QuickAskLaterStore.remove(id: id) } }),
+                ])
+        case .recent, .session: break
+        }
+    }
+
+    /// With words in the box the list steps aside for a row of verbs: the person's first few
+    /// actions, each taking the typed words as what it is about. The row and the foot are redrawn
+    /// only when the box crosses between empty and not, never on every keystroke.
+    func renderTyping(force: Bool = false) {
+        let typing = !isListing
+        guard force || typing != typingShown else { return }
+        typingShown = typing
+        Gtk.removeChildren(of: suggest)
+        suggestions = typing && gathering == nil ? QuickAskMenu.suggestions(offered) : []
+        if !suggestions.isEmpty {
+            let label = whole(Gtk.label(QuickAskMenuWords.suggest, css: "qa-suggest-label", selectable: false))
+            gtk_widget_set_valign(label, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(suggest), label)
+            for (index, starter) in suggestions.enumerated() {
+                let chip = gtk_button_new()!
+                Gtk.addClass(chip, "flat")
+                Gtk.addClass(chip, "qa-suggest-chip")
+                let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+                gtk_box_append(ptr(line), whole(Gtk.label(starter.glyph, css: "qa-suggest-glyph", selectable: false)))
+                let title = Gtk.label(starter.title, css: "qa-suggest-title", selectable: false)
+                gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
+                gtk_label_set_max_width_chars(op(title), 18)
+                gtk_box_append(ptr(line), title)
+                gtk_box_append(ptr(line), whole(Gtk.label("\(index + 1)", css: "ask-keycap", selectable: false)))
+                gtk_button_set_child(ptr(chip), line)
+                gtk_widget_set_tooltip_text(chip, starter.prompt)
+                Gtk.connect(UnsafeMutableRawPointer(chip), "clicked") {
+                    Gtk.onMain { QuickAskWindow.open?.applySuggestion(at: index) }
+                }
+                gtk_box_append(ptr(suggest), chip)
+            }
+        }
+        renderFooter()
+        refreshStarterVisibility()
+    }
+
+    /// The words typed so far, handed to an action as what it is about.
+    func applySuggestion(at index: Int) {
+        guard !asking, gathering == nil, suggestions.indices.contains(index) else { return }
+        let typed = editor.text
+        let action = suggestions[index].action
+        AppLog.write(.ui, "ASK suggestion=\(action.id)")
+        write("")
+        run(action, copied: false, typed: typed)
+    }
+
+    /// One line of keys for the box as it is, and on its far end the chord that opens the card
+    /// from anywhere.
+    func renderFooter() {
+        Gtk.removeChildren(of: footKeys)
+        let keys = QuickAskFooter.keys(
+            platform: .linux, typing: !isListing,
+            party: QuickAskParty.targets(partyInputs().cards).count > 1,
+            screen: surface.screen && abilities.vision, suggestions: suggestions.count)
+            + [QuickAskFooter.Key(keys: "esc", word: Localized.text("close"))]
+        for key in keys {
+            let pair = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 5)
+            gtk_box_append(ptr(pair), whole(Gtk.label(key.keys, css: "qa-foot-key", selectable: false)))
+            gtk_box_append(ptr(pair), whole(Gtk.label(key.word, css: "qa-foot-word", selectable: false)))
+            gtk_box_append(ptr(footKeys), pair)
+        }
+        gtk_label_set_text(op(chord), Self.chordNote())
+    }
+
+
+    /// What was copied heads its own section: what it is in the accent, a glimpse of it, and the
+    /// way to say it is not what this question is about — remembered, so the same thing is not
+    /// offered again on the next summon.
+    func copiedHeader(_ section: QuickAskMenuSection) -> UnsafeMutablePointer<GtkWidget> {
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
+        Gtk.addClass(column, "qa-copied")
         let head = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        let headline = whole(Gtk.label(copied.headline, css: "ask-copied-head", selectable: false))
-        gtk_widget_set_hexpand(headline, 1)
+        let headline = Gtk.label(section.title, css: "qa-copied-head", selectable: false)
+        gtk_label_set_ellipsize(op(headline), PANGO_ELLIPSIZE_END)
         gtk_label_set_xalign(op(headline), 0)
+        gtk_widget_set_hexpand(headline, 1)
         gtk_box_append(ptr(head), headline)
         let aside = Gtk.button("✕", css: ["flat", "ask-copied-close"]) {
             Gtk.onMain { QuickAskWindow.open?.setCopiedAside() }
         }
         gtk_widget_set_tooltip_text(aside, QuickAskWords.setAside)
         gtk_box_append(ptr(head), aside)
-        gtk_box_append(ptr(card), head)
-        if let preview = copied.preview {
-            let glimpse = Gtk.label(preview, css: "ask-copied-preview", wrap: true, selectable: false)
+        gtk_box_append(ptr(column), head)
+        if let note = section.note {
+            let glimpse = Gtk.label(note, css: "qa-copied-preview", wrap: true, selectable: false)
             gtk_label_set_lines(op(glimpse), 2)
             gtk_label_set_ellipsize(op(glimpse), PANGO_ELLIPSIZE_END)
             gtk_label_set_xalign(op(glimpse), 0)
-            gtk_box_append(ptr(card), glimpse)
+            gtk_box_append(ptr(column), glimpse)
         }
-        var chips: [UnsafeMutablePointer<GtkWidget>] = []
-        for (index, errand) in copied.errands.enumerated() {
-            let chip = errandChip(errand, keycap: Self.keycap(at: index)) {
-                Gtk.onMain { QuickAskWindow.open?.pickErrand(errand) }
-            }
-            let action = errand.action
-            let chipHold = Gtk.WeakWidget(chip)
-            Gtk.onRightClick(chip) { x, y in
-                Gtk.onMain {
-                    guard let held = chipHold.widget else { return }
-                    QuickAskWindow.open?.showActionMenu(for: action, on: held, x: x, y: y)
-                }
-            }
-            chips.append(chip)
-        }
-        gtk_box_append(ptr(card), Gtk.wrapRow(chips, spacing: 6))
-        return card
-    }
-
-    func errandChip(
-        _ errand: QuickAskClipboardErrand, keycap: String?,
-        onClick: @escaping @Sendable () -> Void
-    ) -> UnsafeMutablePointer<GtkWidget> {
-        let button = gtk_button_new()!
-        Gtk.addClass(button, "flat")
-        Gtk.addClass(button, "ask-errand")
-        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-        gtk_box_append(ptr(line), whole(Gtk.label(errand.glyph, css: "ask-errand-glyph", selectable: false)))
-        gtk_box_append(ptr(line), whole(Gtk.label(errand.title, css: "ask-errand-title", selectable: false)))
-        if let keycap {
-            gtk_box_append(ptr(line), whole(Gtk.label(keycap, css: "ask-keycap", selectable: false)))
-        }
-        gtk_button_set_child(ptr(button), line)
-        gtk_widget_set_tooltip_text(button, errand.prompt)
-        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onClick)
-        return button
+        return column
     }
 
     func section(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
-        let label = Gtk.label(text, css: "ask-section", selectable: false)
+        let label = Gtk.label(text, css: "qa-section", selectable: false)
         gtk_label_set_xalign(op(label), 0)
         return label
-    }
-
-    /// One starter as a tile of a two-column grid: the glyph set in a tinted square so the column
-    /// of them reads as a set of things to do, the title over its quieter detail, and the number
-    /// that picks it in the corner. Two columns hold the whole catalog in half the height a list
-    /// of rows took, which is the difference between a window that arrives over the work and one
-    /// that covers it.
-    func tile(
-        _ starter: QuickAskStarter, keycap: String?, onClick: @escaping @Sendable () -> Void
-    ) -> UnsafeMutablePointer<GtkWidget> {
-        let button = gtk_button_new()!
-        Gtk.addClass(button, "flat")
-        Gtk.addClass(button, "ask-tile")
-        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
-        let mark = whole(Gtk.label(starter.glyph, css: "ask-tile-glyph", selectable: false))
-        gtk_label_set_xalign(op(mark), 0.5)
-        gtk_widget_set_valign(mark, GTK_ALIGN_CENTER)
-        gtk_box_append(ptr(line), mark)
-        let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
-        gtk_widget_set_hexpand(words, 1)
-        gtk_widget_set_valign(words, GTK_ALIGN_CENTER)
-        let title = Gtk.label(starter.title, css: "ask-tile-title", selectable: false)
-        gtk_label_set_xalign(op(title), 0)
-        gtk_box_append(ptr(words), title)
-        let note = Gtk.label(starter.detail, css: "ask-tile-detail", selectable: false)
-        gtk_label_set_ellipsize(op(note), PANGO_ELLIPSIZE_END)
-        gtk_label_set_xalign(op(note), 0)
-        gtk_box_append(ptr(words), note)
-        gtk_box_append(ptr(line), words)
-        if let keycap {
-            let cap = whole(Gtk.label(keycap, css: "ask-keycap", selectable: false))
-            gtk_widget_set_valign(cap, GTK_ALIGN_START)
-            gtk_box_append(ptr(line), cap)
-        }
-        gtk_button_set_child(ptr(button), line)
-        gtk_widget_set_tooltip_text(button, starter.detail)
-        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onClick)
-        return button
-    }
-
-    /// A question already asked, on one line: what it was, and how long ago at the far end.
-    func recentRow(
-        title: String, age: String, glyph: String = "↻", onClick: @escaping @Sendable () -> Void
-    ) -> UnsafeMutablePointer<GtkWidget> {
-        let button = gtk_button_new()!
-        Gtk.addClass(button, "flat")
-        Gtk.addClass(button, "ask-row")
-        let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
-        let mark = whole(Gtk.label(glyph, css: "ask-glyph", selectable: false))
-        gtk_label_set_xalign(op(mark), 0.5)
-        gtk_label_set_width_chars(op(mark), 2)
-        gtk_box_append(ptr(line), mark)
-        let name = Gtk.label(title, css: "ask-row-title", selectable: false)
-        gtk_label_set_ellipsize(op(name), PANGO_ELLIPSIZE_END)
-        gtk_label_set_xalign(op(name), 0)
-        gtk_widget_set_hexpand(name, 1)
-        gtk_box_append(ptr(line), name)
-        gtk_box_append(ptr(line), whole(Gtk.label(age, css: "ask-row-detail", selectable: false)))
-        gtk_button_set_child(ptr(button), line)
-        Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onClick)
-        return button
     }
 
     /// A label that is never shortened. Every label in this app ellipsizes by default, which is
@@ -483,21 +520,19 @@ extension QuickAskWindow {
 
     func pick(at index: Int) {
         guard picks.indices.contains(index) else { return }
-        switch picks[index] {
-        case .errand(let errand): pickErrand(errand)
-        case .starter(let starter): pickStarter(at: starter)
-        case .session(let entry): pickSession(entry)
-        }
+        activate(id: picks[index].id)
     }
 
-    /// The rows are the empty state and nothing more, and a window that kept their height after
-    /// they left would be a pane of dead space under the question: the toplevel is asked for its
-    /// natural height again every time they come or go.
+    /// The list is the empty box's and the verbs are the typed box's, and a card that kept the
+    /// height of either after it left would be a pane of dead space under the question: the
+    /// toplevel is asked for its natural height again every time one comes or goes.
     func refreshStarterVisibility() {
-        let empty = (editor.text.isEmpty && attachments.isEmpty) || gathering?.awaiting == .session
-        let visible: Int32 = empty && !asking ? 1 : 0
-        guard gtk_widget_get_visible(starters) != visible else { return }
-        gtk_widget_set_visible(starters, visible)
+        let listing: Int32 = isListing && !asking ? 1 : 0
+        let verbs: Int32 = !isListing && !asking && !suggestions.isEmpty ? 1 : 0
+        guard gtk_widget_get_visible(body) != listing || gtk_widget_get_visible(suggest) != verbs
+        else { return }
+        gtk_widget_set_visible(body, listing)
+        gtk_widget_set_visible(suggest, verbs)
         fitToContents()
     }
 
@@ -508,18 +543,15 @@ extension QuickAskWindow {
     /// box under it shrank; asking for a single pixel lets the content's own minimum decide, in
     /// both directions, every time.
     func fitToContents() {
-        gtk_window_set_default_size(ptr(window), 720, 1)
+        gtk_window_set_default_size(ptr(window), Self.width, 1)
     }
 
     /// A starter is the first half of a sentence, never a question the app asked on somebody's
     /// behalf: the words land in the entry with the caret where the action left room, after
     /// whatever its template fetches — a chooser, a drag over the screen, a chat to hand on.
     func pickStarter(at index: Int) {
-        guard !asking, gathering == nil, offered.indices.contains(index), editor.text.isEmpty
-        else { return }
-        let action = offered[index].action
-        AppLog.write(.ui, "ASK starter=\(action.id)")
-        run(action, copied: false)
+        guard offered.indices.contains(index) else { return }
+        activate(id: "action:" + offered[index].id)
     }
 
     func resume(_ entry: SessionEntry) {

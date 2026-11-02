@@ -18,7 +18,7 @@ extension QuickAskWindow {
     /// draft, then whatever its template has to fetch, one thing at a time, and only then the
     /// words. A copied-thing action brings the clipboard along the way the composer's own paste
     /// would, or as paths when the files are on this machine.
-    func run(_ action: QuickAskAction, copied errand: Bool) {
+    func run(_ action: QuickAskAction, copied errand: Bool, typed: String? = nil) {
         guard !asking else { return }
         releaseHold()
         gathering = nil
@@ -26,6 +26,7 @@ extension QuickAskWindow {
         if errand, held.0 == nil || held.1 == nil { return }
         applyAim(of: action)
         var gathering = QuickAskGathering(action: action)
+        gathering.fill.typed = typed
         if errand, let copied = held.0, let offer = held.1 {
             gathering.fingerprint = copied.fingerprint
             if action.offer == .files, isLocalAim, !offer.paths.isEmpty {
@@ -258,7 +259,7 @@ extension QuickAskWindow {
         editor.setSensitive(false)
         gtk_widget_set_sensitive(attach, 0)
         gtk_widget_set_sensitive(send, 0)
-        gtk_widget_set_sensitive(aimStrip, 0)
+        gtk_widget_set_sensitive(target, 0)
         refreshStarterVisibility()
         setHint(Localized.text("Asking the party — %@ models…", "\(seats.count)"))
         let server = targetServer
@@ -277,7 +278,7 @@ extension QuickAskWindow {
                 self.asking = false
                 self.editor.setSensitive(true)
                 gtk_widget_set_sensitive(self.attach, 1)
-                gtk_widget_set_sensitive(self.aimStrip, 1)
+                gtk_widget_set_sensitive(self.target, self.servers.count > 1 ? 1 : 0)
                 self.refreshSend()
                 self.editor.focus()
                 self.setHint("\(failure.title) — \(failure.detail)")

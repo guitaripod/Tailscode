@@ -276,14 +276,19 @@ public struct QuickAskFill: Sendable, Equatable {
     public var session: String?
     /// Paths a `{file}` or `{photo}` picked on this machine, set where the token stands.
     public var files: String?
+    /// Words typed before the action was picked: the action is the verb, these are what it is
+    /// about. They go where `{cursor}` stands, or after the action's own words.
+    public var typed: String?
     public var date: Date
 
     public init(
-        clipboard: String? = nil, session: String? = nil, files: String? = nil, date: Date = Date()
+        clipboard: String? = nil, session: String? = nil, files: String? = nil,
+        typed: String? = nil, date: Date = Date()
     ) {
         self.clipboard = clipboard
         self.session = session
         self.files = files
+        self.typed = typed
         self.date = date
     }
 }
@@ -372,7 +377,16 @@ public enum QuickAskTemplate {
         if !placedClipboard, let copied = fill.clipboard, !copied.isEmpty, action.offer != .always {
             text += text.isEmpty ? copied : "\n\n" + copied
         }
-        return QuickAskComposed(text: text, caret: min(caret ?? text.count, text.count))
+        guard let typed = fill.typed?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !typed.isEmpty
+        else { return QuickAskComposed(text: text, caret: min(caret ?? text.count, text.count)) }
+        if let caret {
+            let at = text.index(text.startIndex, offsetBy: min(caret, text.count))
+            text.insert(contentsOf: typed, at: at)
+            return QuickAskComposed(text: text, caret: caret + typed.count)
+        }
+        let joined = text.isEmpty || text.last?.isWhitespace == true ? text + typed : text + " " + typed
+        return QuickAskComposed(text: joined, caret: joined.count)
     }
 
     private static func day(_ date: Date) -> String {

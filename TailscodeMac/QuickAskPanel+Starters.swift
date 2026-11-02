@@ -4,125 +4,229 @@ import CodingAgentKitApple
 import TailscodeCore
 
 extension QuickAskPanel {
-    /// The empty panel's argument for itself: what was just copied and what can be done with it,
-    /// what this thing can be asked to do, offered against what the aim can take, and the last few
-    /// questions asked here. It gets out of the way the moment there is a question and comes back
-    /// if the field is emptied again.
+    /// The list is what the keyboard walks while the box is empty, and while a template is waiting
+    /// for a chat to hand on.
+    var isListing: Bool {
+        gathering?.awaiting == .session
+            || (editor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && attachments.isEmpty)
+    }
+
+    /// The panel below the question: Core's sections — what was just copied with what can be done
+    /// with it, the person's actions, what is waiting for later, what was asked here — or, while
+    /// `{session}` waits, the chats to hand on. A redraw keeps the keyboard on the line it was on.
     func renderStarters() {
+        let selected = menuCursor.index.flatMap {
+            menuItems.indices.contains($0) ? menuItems[$0].id : nil
+        }
         starters.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        menuRows = []
+        let sections: [QuickAskMenuSection]
         if gathering?.awaiting == .session {
-            renderSessionPicker()
-            return
-        }
-        let surface = self.surface
-        offered = QuickAskStarters.offered(for: abilities, surface: surface)
-        copied = clipboard.flatMap {
-            QuickAskClipboard.reading(
-                holding: $0.holding, fingerprint: $0.fingerprint, abilities: abilities,
-                surface: surface)
-        }
-        let errands = copied?.errands ?? []
-        picks = errands.map(Pick.errand) + offered.indices.map(Pick.starter)
-        if let copied {
-            fill(
-                QuickAskCopiedCard(
-                    copied: copied, shortcuts: errands.indices.map(Self.shortcut),
-                    onErrand: { [weak self] errand in self?.pickErrand(errand) },
-                    onSetAside: { [weak self] in self?.setCopiedAside() },
-                    menu: { [weak self] errand in self?.actionMenu(for: errand.action) }))
-        }
-        starters.addArrangedSubview(sectionLabel(QuickAskWords.offer))
-        var tiles: [NSView] = offered.indices.map { index in
-            let tile = QuickAskTiles.tile(
-                offered[index], shortcut: Self.shortcut(at: errands.count + index)
-            ) { [weak self] in
-                self?.pickStarter(at: index)
+            sections = QuickAskMenu.sessions(QuickAskSessionReference.candidates(among: recents))
+        } else {
+            let surface = self.surface
+            offered = QuickAskStarters.offered(for: abilities, surface: surface)
+            copied = clipboard.flatMap {
+                QuickAskClipboard.reading(
+                    holding: $0.holding, fingerprint: $0.fingerprint, abilities: abilities,
+                    surface: surface)
             }
-            tile.menu = actionMenu(for: offered[index].action)
-            return tile
+            sections = QuickAskMenu.sections(
+                copied: copied, starters: offered, later: QuickAskLaterStore.all(),
+                recents: QuickAskRecents.asks(among: recents, profileID: targetServer.id),
+                aimWords: { [weak self] aim in self?.aimBadge(aim) })
         }
-        let more = QuickAskTiles.addTile { [weak self] in self?.newAction() }
-        more.menu = actionMenu(for: nil)
-        tiles.append(more)
-        for first in stride(from: 0, to: tiles.count, by: 2) {
-            let row = NSStackView()
-            row.orientation = .horizontal
-            row.distribution = .fillEqually
-            row.spacing = QuickAskTiles.spacing
-            for tile in tiles[first..<min(first + 2, tiles.count)] { row.addArrangedSubview(tile) }
-            if row.arrangedSubviews.count == 1 { row.addArrangedSubview(NSView()) }
-            fill(row)
+        menuItems = QuickAskMenu.items(sections)
+        picks = menuItems.filter { $0.digit != nil }
+        for section in sections {
+            fill(
+                section.isCopied
+                    ? QuickAskList.copiedHeader(section) { [weak self] in self?.setCopiedAside() }
+                    : QuickAskList.section(section.title))
+            for item in section.items {
+                let id = item.id
+                let row = QuickAskList.row(item) { [weak self] in self?.activate(id: id) }
+                row.menu = menu(for: item)
+                menuRows.append(row)
+                fill(row)
+            }
+            if section.id == "later" { fill(QuickAskList.note(QuickAskLaterWords.reach)) }
         }
         let unread = QuickAskActions.unreadable
         if unread > 0 {
-            let note = NSTextField(
-                wrappingLabelWithString: unread == 1
-                    ? Localized.text("1 entry in quick-actions.json could not be read")
-                    : Localized.text(
-                        "%@ entries in quick-actions.json could not be read", "\(unread)"))
-            note.font = MacTheme.Ramp.font(.panelFootnote)
-            note.textColor = MacTheme.Color.secondaryLabel
-            fill(note)
-        }
-        let waiting = laterRows()
-        if !waiting.isEmpty {
-            starters.addArrangedSubview(sectionLabel(QuickAskLaterWords.section))
-            waiting.forEach(fill)
-        }
-        let asked = QuickAskRecents.asks(among: recents, profileID: targetServer.id)
-        guard !asked.isEmpty else { return }
-        starters.addArrangedSubview(sectionLabel(QuickAskWords.asked))
-        for entry in asked {
-            let title = AgentSession.isPlaceholderTitle(entry.session.title)
-                ? QuickAskWords.untitled : entry.session.title
             fill(
-                QuickAskTiles.recent(
-                    title: title,
-                    age: Localized.text(
-                        "asked %@ ago", SessionRowModel.age(of: entry.session.updatedAt))
-                ) { [weak self] in
-                    self?.resume(entry)
-                })
+                QuickAskList.note(
+                    unread == 1
+                        ? Localized.text("1 entry in quick-actions.json could not be read")
+                        : Localized.text(
+                            "%@ entries in quick-actions.json could not be read", "\(unread)")))
+        }
+        menuCursor.follow(id: selected, in: menuItems)
+        paintSelection()
+        sizeList()
+        renderTyping(force: true)
+        refreshStarterVisibility()
+        resize()
+    }
+
+    /// Where an action asks when it asks somewhere of its own, said as short as it can be.
+    func aimBadge(_ aim: QuickAskActionAim) -> String? {
+        let profileID = aim.profileID(among: servers)
+        if let selection = aim.selection {
+            return ModelBadge.word(
+                for: selection, in: ModelCatalogStore.cached(profileID ?? targetServer.id))
+        }
+        return servers.first { $0.id == profileID }?.name ?? aim.server
+    }
+
+    private func menu(for item: QuickAskMenuItem) -> NSMenu? {
+        switch item.kind {
+        case .starter, .errand: return item.action.map { actionMenu(for: $0) }
+        case .newAction: return actionMenu(for: nil)
+        case .later(let later): return laterMenu(later)
+        case .recent, .session: return nil
         }
     }
 
-    /// Everything in the empty panel runs the field's full width, so the tiles, the card and the
-    /// rows line up under the box they are offering to fill.
+    private func laterMenu(_ later: QuickAskLater) -> NSMenu {
+        let id = later.id
+        let menu = NSMenu()
+        menu.addItem(ClosureMenuItem(title: Localized.text("Ask now")) {
+            QuickAskLaterStore.askNow(id: id)
+        })
+        menu.addItem(ClosureMenuItem(title: Localized.text("Remove")) {
+            QuickAskLaterStore.remove(id: id)
+        })
+        return menu
+    }
+
+    /// The list is held at the height its lines want, up to the ceiling past which it scrolls.
+    func sizeList() {
+        starters.layoutSubtreeIfNeeded()
+        listHeight?.constant = min(starters.fittingSize.height, Self.listCeiling)
+    }
+
+    func paintSelection() {
+        for (index, row) in menuRows.enumerated() { row.isSelected = index == menuCursor.index }
+        guard let index = menuCursor.index, menuRows.indices.contains(index) else { return }
+        menuRows[index].scrollToVisible(menuRows[index].bounds.insetBy(dx: 0, dy: -24))
+    }
+
+    func moveSelection(by delta: Int) {
+        guard !asking else { return }
+        menuCursor.move(by: delta, count: menuItems.count)
+        paintSelection()
+    }
+
+    func clearSelection() {
+        menuCursor.clear()
+        paintSelection()
+    }
+
+    func runSelected() {
+        guard let index = menuCursor.index, menuItems.indices.contains(index) else { return }
+        activate(id: menuItems[index].id)
+    }
+
+    /// A line pressed, picked by its chord or run with Return: an action runs, a waiting question
+    /// offers to be asked now or removed, a past question opens, a chat is handed on.
+    func activate(id: String) {
+        guard !asking, let index = menuItems.firstIndex(where: { $0.id == id }) else { return }
+        let item = menuItems[index]
+        switch item.kind {
+        case .errand(let errand):
+            menuCursor.clear()
+            pickErrand(errand)
+        case .starter(let starter):
+            guard gathering == nil, editor.text.isEmpty else { return }
+            menuCursor.clear()
+            run(starter.action, copied: false)
+        case .later(let later):
+            guard menuRows.indices.contains(index) else { return }
+            let row = menuRows[index]
+            laterMenu(later).popUp(positioning: nil, at: NSPoint(x: 40, y: row.bounds.height), in: row)
+        case .recent(let entry):
+            resume(entry)
+        case .session(let entry):
+            menuCursor.clear()
+            pickSession(entry)
+        case .newAction:
+            newAction()
+        }
+    }
+
+    /// With words in the box the list steps aside for a row of verbs: the person's first few
+    /// actions, each taking the typed words as what it is about. Redrawn only when the box crosses
+    /// between empty and not.
+    func renderTyping(force: Bool = false) {
+        let typing = !isListing
+        guard force || typing != typingShown else { return }
+        typingShown = typing
+        suggest.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        suggestions = typing && gathering == nil ? QuickAskMenu.suggestions(offered) : []
+        if !suggestions.isEmpty {
+            let label = NSTextField(labelWithString: QuickAskMenuWords.suggest)
+            label.font = MacTheme.Ramp.font(.panelFootnote)
+            label.textColor = MacTheme.Color.secondaryLabel
+            suggest.addArrangedSubview(label)
+            for (index, starter) in suggestions.enumerated() {
+                let button = RowKit.ActionButton(title: starter.title + "  ⌥\(index + 1)") {
+                    [weak self] in
+                    self?.applySuggestion(at: index)
+                }
+                button.image = NSImage(systemSymbolName: starter.symbol, accessibilityDescription: nil)
+                button.imagePosition = .imageLeading
+                button.controlSize = .small
+                button.font = MacTheme.Ramp.font(.control)
+                button.toolTip = starter.prompt
+                button.lineBreakMode = .byTruncatingTail
+                button.setContentCompressionResistancePriority(.init(250), for: .horizontal)
+                suggest.addArrangedSubview(button)
+            }
+        }
+        renderFooter()
+        refreshStarterVisibility()
+    }
+
+    /// The words typed so far, handed to an action as what it is about.
+    func applySuggestion(at index: Int) {
+        guard !asking, gathering == nil, suggestions.indices.contains(index) else { return }
+        let typed = editor.text
+        let action = suggestions[index].action
+        editor.setText("", caretAtEnd: true)
+        run(action, copied: false, typed: typed)
+    }
+
+    /// One line of keys for the box as it is, and on its far end the chord that opens the panel
+    /// from anywhere.
+    func renderFooter() {
+        footKeys.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let keys =
+            QuickAskFooter.keys(
+                platform: .apple, typing: !isListing,
+                party: QuickAskParty.targets(partyCards()).count > 1,
+                screen: surface.screen && abilities.vision, suggestions: suggestions.count)
+            + [QuickAskFooter.Key(keys: "esc", word: Localized.text("close"))]
+        for key in keys { footKeys.addArrangedSubview(QuickAskList.key(key)) }
+        let summon = MacSummon.shared.state
+        chordLabel.stringValue =
+            summon.isLive
+            ? summon.chord.map { Localized.text("%@ from anywhere", $0.display(on: .apple)) } ?? ""
+            : ""
+    }
+
+    /// The send arrow is lit by the same rule that lets Return through.
+    func refreshSend() {
+        let ready = QuickAskComposition.canSend(text: editor.text, attachments: attachments.count)
+        sendButton.isEnabled = ready && !asking
+        sendButton.contentTintColor = ready ? MacTheme.Color.accent : MacTheme.Color.tertiaryLabel
+    }
+
+    /// Everything in the list runs the list's full width, so the lines line up under the box.
     private func fill(_ view: NSView) {
         starters.addArrangedSubview(view)
-        view.widthAnchor.constraint(equalTo: editor.widthAnchor).isActive = true
-    }
-
-    /// `{session}` asks which chat: the recent ones on every machine, newest first, each said with
-    /// the agent and the machine that ran it. A number or a click hands it on; Escape sets the
-    /// action aside.
-    private func renderSessionPicker() {
-        let candidates = QuickAskSessionReference.candidates(among: recents)
-        picks = candidates.map(Pick.session)
-        starters.addArrangedSubview(sectionLabel(Localized.text("Which chat?")))
-        guard !candidates.isEmpty else {
-            starters.addArrangedSubview(
-                NSTextField(labelWithString: Localized.text("No chats yet on any machine.")))
-            return
-        }
-        for (index, entry) in candidates.enumerated() {
-            let title = AgentSession.isPlaceholderTitle(entry.session.title)
-                ? QuickAskWords.untitled : entry.session.title
-            let detail = [
-                entry.backendType.displayName, entry.profileName,
-                SessionRowModel.age(of: entry.session.updatedAt),
-            ].joined(separator: " · ")
-            fill(
-                QuickAskTiles.recent(
-                    title: (Self.shortcut(at: index).map { $0 + "  " } ?? "") + title, age: detail
-                ) { [weak self] in
-                    self?.pickSession(entry)
-                })
-        }
-    }
-
-    private static func shortcut(at index: Int) -> String? {
-        index < 9 ? "⌘\(index + 1)" : nil
+        view.widthAnchor.constraint(equalTo: starters.widthAnchor, constant: -20).isActive = true
     }
 
     static func pasteboardFingerprint() -> String {
@@ -173,7 +277,7 @@ extension QuickAskPanel {
     /// An errand is the first half of a sentence, the same as a starter: the instruction lands in
     /// the field and the pasteboard follows it through the paste the field already does, so a page
     /// of log still becomes the file it already is, and the person sends it.
-    private func pickErrand(_ errand: QuickAskClipboardErrand) {
+    func pickErrand(_ errand: QuickAskClipboardErrand) {
         guard !asking, gathering == nil, editor.text.isEmpty, attachments.isEmpty, copied != nil
         else { return }
         run(errand.action, copied: true)
@@ -189,31 +293,18 @@ extension QuickAskPanel {
 
     func pick(at index: Int) {
         guard picks.indices.contains(index) else { return }
-        switch picks[index] {
-        case .errand(let errand): pickErrand(errand)
-        case .starter(let starter): pickStarter(at: starter)
-        case .session(let entry): pickSession(entry)
-        }
+        activate(id: picks[index].id)
     }
 
-    /// The name of a group, set in the ramp's own answer for one — bold and tracked, against the
-    /// plain footnote its rows are set in, so the panel reads as two named groups rather than one
-    /// column of small grey text.
-    private func sectionLabel(_ text: String) -> NSTextField {
-        NSTextField(
-            labelWithAttributedString: NSAttributedString(
-                string: text,
-                attributes: MacTheme.Ramp.attributes(
-                    .sectionLabel, color: MacTheme.Color.secondaryLabel)))
-    }
-
+    /// The list is the empty box's and the verbs are the typed box's; the panel takes its new
+    /// height whenever one comes or goes.
     func refreshStarterVisibility() {
-        let empty =
-            (editor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                && attachments.isEmpty) || gathering?.awaiting == .session
-        let hidden = !(empty && !asking)
-        guard starters.isHidden != hidden else { return }
-        starters.isHidden = hidden
+        let listing = isListing && !asking
+        let verbs = !isListing && !asking && !suggestions.isEmpty
+        guard listScroll.isHidden == listing || suggest.isHidden == verbs else { return }
+        listScroll.isHidden = !listing
+        listRule.isHidden = !listing
+        suggest.isHidden = !verbs
         resize()
     }
 
@@ -223,14 +314,14 @@ extension QuickAskPanel {
     /// answered, so a question that wraps onto a second line is not one keystroke behind the
     /// window holding it.
     func resize() {
-        guard let content = contentView else { return }
+        guard let content = card ?? contentView else { return }
         setContentSize(content.fittingSize)
         guard !resizeScheduled else { return }
         resizeScheduled = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.resizeScheduled = false
-            guard let content = self.contentView else { return }
+            guard let content = self.card ?? self.contentView else { return }
             self.setContentSize(content.fittingSize)
         }
     }
@@ -240,16 +331,8 @@ extension QuickAskPanel {
     /// hold it rather than cut it off at the tail.
     func setStatus(_ text: String) {
         status.stringValue = text
+        status.isHidden = text.isEmpty
         resize()
-    }
-
-    /// A starter is the first half of a sentence, never a question the app asked on somebody's
-    /// behalf: the words land in the field with the caret where the action left room, after
-    /// whatever its template fetches — a chooser, a drag over the screen, a chat to hand on.
-    private func pickStarter(at index: Int) {
-        guard !asking, gathering == nil, offered.indices.contains(index), editor.text.isEmpty
-        else { return }
-        run(offered[index].action, copied: false)
     }
 
     private func resume(_ entry: SessionEntry) {
@@ -332,9 +415,9 @@ extension QuickAskPanel {
         chips.set(attachments)
         attachButton.title =
             attachments.isEmpty
-            ? Localized.text("Attach…")
-            : Localized.text("Attach… (%@)", "\(attachments.count)")
+            ? Localized.text("Attach") : Localized.text("%@ attached", "\(attachments.count)")
         refreshStarterVisibility()
+        refreshSend()
         resize()
     }
 }
