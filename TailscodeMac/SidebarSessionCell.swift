@@ -247,6 +247,16 @@ final class SidebarSessionCell: NSView {
             titleRow.addArrangedSubview(
                 Self.pill(Localized.text("SAVED"), tint: MacTheme.Color.mark))
         }
+        if model.entry.session.isScheduled == true {
+            let clock = NSImageView(
+                image: NSImage(systemSymbolName: "clock", accessibilityDescription: ScheduleWords.title)
+                    ?? NSImage())
+            clock.symbolConfiguration = NSImage.SymbolConfiguration(
+                pointSize: (10 * MacTheme.UIScale.factor).rounded(), weight: .semibold)
+            clock.contentTintColor = MacTheme.Color.secondaryLabel
+            clock.setAccessibilityLabel(ScheduleWords.title)
+            titleRow.addArrangedSubview(clock)
+        }
         if model.unread, model.state.pill == nil {
             let dot = NSTextField(labelWithString: "●")
             dot.font = MacTheme.Ramp.font(.badge)

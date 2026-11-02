@@ -52,6 +52,13 @@ final class ServersWindow: NSWindowController {
     var onNeedsPro: (@MainActor () -> Void)?
     /// What to open when somebody reaches past one server's own card to the whole picture.
     var onOpenUpdateCenter: (@MainActor () -> Void)?
+    /// A machine's agent pressed in its Agents section: the hub opens the agent's card.
+    var onOpenAgent: (@MainActor (ConnectionProfile, String) -> Void)?
+    /// More agents… pressed: the hub opens the registry for that machine.
+    var onOpenRegistry: (@MainActor (ConnectionProfile) -> Void)?
+    /// A machine's Scheduled line pressed: the hub opens Scheduled.
+    var onOpenScheduled: (@MainActor (String) -> Void)?
+    var onToast: (@MainActor (String) -> Void)?
     /// How many conversations the sidebar's listing says are working on one server right now —
     /// what a restart of that server would stop, and so what the confirmation owes the reader.
     var workingTurns: (@MainActor (String) -> Int)?
@@ -159,6 +166,7 @@ final class ServersWindow: NSWindowController {
         window?.makeKeyAndOrderFront(nil)
         capabilityViews.forEach { $0.start() }
         pollTailnet()
+        Task { await MachineDesk.shared.refresh() }
         Task {
             for profile in ServerDirectory.shared.profiles where profile.backend == .claudeCode {
                 await MacUpdateWatch.shared.check(.server(profileID: profile.id))
@@ -325,6 +333,13 @@ final class ServersWindow: NSWindowController {
         }
         capabilityViews.append(capabilities)
         lines.addArrangedSubview(capabilities)
+
+        let machine = MachineAgentsSection(profile: profile)
+        machine.onOpenAgent = { [weak self] profile, id in self?.onOpenAgent?(profile, id) }
+        machine.onOpenRegistry = { [weak self] profile in self?.onOpenRegistry?(profile) }
+        machine.onOpenScheduled = { [weak self] id in self?.onOpenScheduled?(id) }
+        machine.onToast = { [weak self] text in self?.onToast?(text) }
+        lines.addArrangedSubview(machine)
 
         if profile.backend == .claudeCode {
             let card = UpdateCardView(style: .embedded)

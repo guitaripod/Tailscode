@@ -176,6 +176,7 @@ final class MainMenu: NSObject {
         let menu = NSMenu(title: Localized.text("Chat"))
         menu.addItem(item(Localized.text("Send"), #selector(send), "\r"))
         menu.addItem(item(Localized.text("Stop Turn"), #selector(stop), "."))
+        menu.addItem(item(ScheduleWords.askLaterMenu, #selector(askLater), "\r", [.option]))
         menu.addItem(.separator())
         conversationChordItems = [
             (bound(Localized.text("Previous Prompt"), #selector(previousPrompt), .previousPrompt), .previousPrompt),
@@ -338,6 +339,7 @@ final class MainMenu: NSObject {
         let agents = bound(Localized.text("Show Agents"), #selector(toggleAgents), .toggleAgents)
         agentsItem = agents
         menu.addItem(agents)
+        menu.addItem(item(Localized.text("Show Scheduled"), #selector(showScheduled), ""))
         menu.addItem(videoForgeItem())
         menu.addItem(studioItem())
         menu.addItem(delegateItem())
@@ -614,6 +616,11 @@ final class MainMenu: NSObject {
     #endif
     @objc private func toggleArchiveView() { run(.toggleArchiveView) }
     @objc private func toggleAgents() { hub.toggleAgents() }
+    @objc private func showScheduled() { hub.presentScheduled() }
+    @objc private func askLater() {
+        if hub.window?.isVisible != true { hub.showWindow(nil) }
+        hub.presentAskLater()
+    }
     @objc private func toggleBrain() {
         ActivityStyleSetting.set(MacBrain.style == .brain ? .lines : .brain)
     }

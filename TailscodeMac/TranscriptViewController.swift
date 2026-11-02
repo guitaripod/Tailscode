@@ -333,6 +333,16 @@ final class TranscriptViewController: NSViewController {
         hoverBar.undo = { [weak self] id in self?.context.confirmUndo?(id) }
         hoverBar.offersBranch = { [weak self] id in self?.composer.offersBranch(from: id) ?? false }
         hoverBar.branch = { [weak self] id in self?.composer.openBranchChooser(from: id) }
+        hoverBar.offersAskAgain = { [weak self] _ in
+            guard let entry = self?.currentEntry else { return false }
+            return MachineDesk.shared.keepsSchedules(entry.profileID)
+        }
+        hoverBar.askAgain = { [weak self] id in
+            guard let self, let message = self.lastState?.messages.first(where: { $0.id == id }),
+                let host = self.view.window?.windowController as? MainWindowController
+            else { return }
+            host.askAgain(MessageHoverBar.words(of: message), in: self)
+        }
         hoverBar.toast = { [weak self] text in self?.onToast?(text) }
         context.copyAnswer = { [weak self] rowKey in self?.copyAnswer(ofRowKey: rowKey) }
         hoverBar.locateCode = { [weak self] point in self?.codeTarget(at: point) }

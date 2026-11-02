@@ -102,6 +102,7 @@ extension MainWindowController {
         }
         sidebar.onAddMachine = { FirstRunWindow.present(way: nil) }
         sidebar.onOpenAgents = { [weak self] in self?.presentAgents() }
+        sidebar.onOpenScheduled = { [weak self] in self?.presentScheduled() }
         sidebar.onEntriesChanged = { [weak self] in
             guard let self else { return }
             self.refreshWelcome()

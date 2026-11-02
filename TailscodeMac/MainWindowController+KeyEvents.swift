@@ -242,6 +242,10 @@ extension MainWindowController {
         // worse bug by far.
         if event.keyCode == 126, !control, !shift, composer.takeBackQueued() { return true }
 
+        if isReturn, event.modifierFlags.contains(.option), !shift, !control {
+            presentAskLater(from: pane)
+            return true
+        }
         if isReturn, !shift, ComposerView.sendOnReturn || control {
             composer.sendNow()
             return true

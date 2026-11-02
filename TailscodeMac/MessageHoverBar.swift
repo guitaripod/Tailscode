@@ -39,6 +39,9 @@ final class MessageHoverBar: NSResponder {
     var undo: ((String) -> Void)?
     var offersBranch: ((String) -> Bool)?
     var branch: ((String) -> Void)?
+    /// Whether a prompt can be asked again later by its machine, and the press that opens the sheet.
+    var offersAskAgain: ((String) -> Bool)?
+    var askAgain: ((String) -> Void)?
     var toast: ((String) -> Void)?
 
     private weak var host: NSView?
@@ -58,6 +61,7 @@ final class MessageHoverBar: NSResponder {
         var copy: Bool
         var undo: Bool
         var branch: Bool
+        var again: Bool
     }
     private var hideWork: DispatchWorkItem?
     private let codeTag = BarCapsule()
@@ -159,7 +163,8 @@ final class MessageHoverBar: NSResponder {
             copy: !Self.words(of: message).isEmpty,
             undo: target.isPrompt && offersUndo?(target.messageID) == true,
             branch: !target.isPrompt && !message.isStreaming
-                && offersBranch?(target.messageID) == true)
+                && offersBranch?(target.messageID) == true,
+            again: target.isPrompt && offersAskAgain?(target.messageID) == true)
         if !sameMessage || offer != offered {
             offered = offer
             stack.setViews(verbs(for: target, offer: offer), in: .leading)
@@ -231,6 +236,12 @@ final class MessageHoverBar: NSResponder {
             views.append(
                 Self.button(symbol: "arrow.triangle.branch", tip: Self.branchTitle) {
                     [weak self] in self?.branch?(id)
+                })
+        }
+        if offer.again {
+            views.append(
+                Self.button(symbol: "clock.arrow.circlepath", tip: ScheduleWords.askAgain) {
+                    [weak self] in self?.askAgain?(id)
                 })
         }
         return views

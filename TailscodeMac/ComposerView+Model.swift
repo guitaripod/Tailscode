@@ -123,7 +123,15 @@ extension ComposerView {
         ModelChooserSheet.fleetSources(
             profiles: ServerDirectory.shared.profiles, current: entry?.profileID,
             currentModels: models, backend: backend?.agentType, allowsServerDefault: true,
-            reachable: entry.flatMap { reachableByProfile[$0.profileID] })
+            reachable: entry.flatMap { reachableByProfile[$0.profileID] }, engine: chatEngine)
+    }
+
+    /// The agent this chat is with, once it has said something: another agent's model is then a
+    /// carry, because an agent cannot take over another's conversation.
+    var chatEngine: ChatEngine {
+        guard let entry else { return .open }
+        return ChatEngine.of(
+            agentID: entry.session.agentID, hasTurns: !(lastState?.messages.isEmpty ?? true))
     }
 
     func openModelChooser() {

@@ -150,6 +150,15 @@ enum SelfTest {
         }
 
         do {
+            let checks = try await checkMachine()
+            report(
+                "agents and schedules: \(checks) claims hold — the desk reads both, Scheduled lists and explains every run, Ask later shows the date before it saves and refuses what it cannot read, a schedule reaches the machine, the Agents section and cards draw the machine's checklist, the registry filters, news is said once")
+        } catch {
+            report("agents and schedules: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try await checkQuickAskActions()
             report(
                 "quick ask actions: \(checks) claims hold — written actions lead, an action's aim lasts one question, {session} lists the chats and names the pick")

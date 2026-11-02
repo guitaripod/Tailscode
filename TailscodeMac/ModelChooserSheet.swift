@@ -49,20 +49,20 @@ final class ModelChooserSheet: NSObject {
     /// to it, and a machine that did not answer reads as a state rather than as no models.
     static func fleetSources(
         profiles: [ConnectionProfile], current: String?, currentModels: [ModelInfo],
-        backend: AgentType?, allowsServerDefault: Bool, reachable: Bool?
+        backend: AgentType?, allowsServerDefault: Bool, reachable: Bool?, engine: ChatEngine = .open
     ) -> [ModelSource] {
         var reachability: [String: Bool] = [:]
         if let current, let reachable { reachability[current] = reachable }
         let sources = ModelFleet.sources(
             profiles: profiles, current: current, currentModels: currentModels,
-            allowsServerDefault: allowsServerDefault, reachability: reachability)
+            allowsServerDefault: allowsServerDefault, reachability: reachability, engine: engine)
         guard sources.isEmpty else { return sources }
         let agent = backend ?? .openCode
         return [
             ModelSource(
                 profileID: current ?? "", name: "", backend: agent, models: currentModels,
                 isCurrent: true, allowsServerDefault: allowsServerDefault,
-                acceptsAnyModelID: agent == .claudeCode, isReachable: reachable)
+                acceptsAnyModelID: agent == .claudeCode, isReachable: reachable, engine: engine)
         ]
     }
 

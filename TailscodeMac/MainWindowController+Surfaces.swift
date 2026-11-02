@@ -28,6 +28,8 @@ extension MainWindowController {
         case "typesize", "type": presentPreferences(typeSize: true)
         case "analytics": presentAnalytics()
         case "agents", "agents-watch", "agents-hour", "agent-peek", "agents-long", "agents-away": openAgentsFixture(parts.first ?? name)
+        case "scheduled", "schedule", "ask-later", "machine-agents", "agent", "agent-registry":
+            openMachineFixture(parts.first ?? name, detail: parts.count > 1 ? parts[1] : nil)
         case "usage", "quotas": presentUsageWindow()
         case "newchat": presentNewChat(browsing: parts.count > 1 && parts[1] == "browse")
         case "quickask":
@@ -253,6 +255,14 @@ extension MainWindowController {
                 Task { [weak self] in await self?.sidebar.refresh() }
             }
             serversWindow?.onNeedsPro = { [weak self] in self?.presentPro() }
+            serversWindow?.onOpenAgent = { [weak self] profile, id in
+                self?.presentAgentCard(profile: profile, agentID: id)
+            }
+            serversWindow?.onOpenRegistry = { [weak self] profile in
+                self?.presentAgentRegistry(profile: profile)
+            }
+            serversWindow?.onOpenScheduled = { [weak self] _ in self?.presentScheduled() }
+            serversWindow?.onToast = { [weak self] text in self?.toast(text) }
             serversWindow?.onOpenUpdateCenter = { [weak self] in self?.presentUpdates() }
             serversWindow?.workingTurns = { [weak self] profileID in
                 self?.sidebar.allEntries.filter {

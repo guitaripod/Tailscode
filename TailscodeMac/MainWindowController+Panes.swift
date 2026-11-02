@@ -226,7 +226,9 @@ extension MainWindowController {
         window?.title =
             entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
-        window?.subtitle = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
+        let server = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
+        window?.subtitle =
+            entry.session.agentName.map { Localized.text("%@ with %@", server, $0) } ?? server
     }
 
     /// A pane keeps the entry it was opened with, so a chat the server named after it arrived, or

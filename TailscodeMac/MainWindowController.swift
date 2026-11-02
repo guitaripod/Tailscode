@@ -79,6 +79,9 @@ final class MainWindowController: NSWindowController {
     var preferencesWindow: PreferencesWindow?
     var analyticsWindow: AnalyticsWindowController?
     var agentsWindow: AgentsWindowController?
+    var scheduledWindow: ScheduledWindow?
+    /// The window `--open machine-agents` draws the demo machine's section in.
+    var machineFixtureWindow: NSWindow?
     var updateWindow: UpdateWindowController?
     var proWindow: ProWindowController?
     var delegateWindow: DelegateWindowController?
@@ -123,6 +126,7 @@ final class MainWindowController: NSWindowController {
         }
         startUsagePolling()
         startAskingLater()
+        startMachineDesk()
         MacUpdateWatch.shared.start()
         NotificationCenter.default.addObserver(
             forName: MacTheme.Chrome.didRepaint, object: nil, queue: .main
