@@ -10,10 +10,16 @@ extension QuickAskPanel {
     /// if the field is emptied again.
     func renderStarters() {
         starters.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        offered = QuickAskStarters.offered(for: abilities)
+        if gathering?.awaiting == .session {
+            renderSessionPicker()
+            return
+        }
+        let surface = self.surface
+        offered = QuickAskStarters.offered(for: abilities, surface: surface)
         copied = clipboard.flatMap {
             QuickAskClipboard.reading(
-                holding: $0.holding, fingerprint: $0.fingerprint, abilities: abilities)
+                holding: $0.holding, fingerprint: $0.fingerprint, abilities: abilities,
+                surface: surface)
         }
         let errands = copied?.errands ?? []
         picks = errands.map(Pick.errand) + offered.indices.map(Pick.starter)
@@ -22,24 +28,46 @@ extension QuickAskPanel {
                 QuickAskCopiedCard(
                     copied: copied, shortcuts: errands.indices.map(Self.shortcut),
                     onErrand: { [weak self] errand in self?.pickErrand(errand) },
-                    onSetAside: { [weak self] in self?.setCopiedAside() }))
+                    onSetAside: { [weak self] in self?.setCopiedAside() },
+                    menu: { [weak self] errand in self?.actionMenu(for: errand.action) }))
         }
         starters.addArrangedSubview(sectionLabel(QuickAskWords.offer))
-        for first in stride(from: 0, to: offered.count, by: 2) {
+        var tiles: [NSView] = offered.indices.map { index in
+            let tile = QuickAskTiles.tile(
+                offered[index], shortcut: Self.shortcut(at: errands.count + index)
+            ) { [weak self] in
+                self?.pickStarter(at: index)
+            }
+            tile.menu = actionMenu(for: offered[index].action)
+            return tile
+        }
+        let more = QuickAskTiles.addTile { [weak self] in self?.newAction() }
+        more.menu = actionMenu(for: nil)
+        tiles.append(more)
+        for first in stride(from: 0, to: tiles.count, by: 2) {
             let row = NSStackView()
             row.orientation = .horizontal
             row.distribution = .fillEqually
             row.spacing = QuickAskTiles.spacing
-            for index in first..<min(first + 2, offered.count) {
-                row.addArrangedSubview(
-                    QuickAskTiles.tile(
-                        offered[index], shortcut: Self.shortcut(at: errands.count + index)
-                    ) { [weak self] in
-                        self?.pickStarter(at: index)
-                    })
-            }
+            for tile in tiles[first..<min(first + 2, tiles.count)] { row.addArrangedSubview(tile) }
             if row.arrangedSubviews.count == 1 { row.addArrangedSubview(NSView()) }
             fill(row)
+        }
+        let unread = QuickAskActions.unreadable
+        if unread > 0 {
+            let note = NSTextField(
+                wrappingLabelWithString: unread == 1
+                    ? Localized.text("1 entry in quick-actions.json could not be read")
+                    : Localized.text(
+                        "%@ entries in quick-actions.json could not be read", "\(unread)"))
+            note.font = MacTheme.Ramp.font(.panelFootnote)
+            note.textColor = MacTheme.Color.secondaryLabel
+            fill(note)
+        }
+        let waiting = laterRows()
+        if !waiting.isEmpty {
+            starters.addArrangedSubview(sectionLabel(QuickAskLaterWords.section))
+            waiting.forEach(fill)
         }
         let asked = QuickAskRecents.asks(among: recents, profileID: targetServer.id)
         guard !asked.isEmpty else { return }
@@ -65,11 +93,39 @@ extension QuickAskPanel {
         view.widthAnchor.constraint(equalTo: editor.widthAnchor).isActive = true
     }
 
+    /// `{session}` asks which chat: the recent ones on every machine, newest first, each said with
+    /// the agent and the machine that ran it. A number or a click hands it on; Escape sets the
+    /// action aside.
+    private func renderSessionPicker() {
+        let candidates = QuickAskSessionReference.candidates(among: recents)
+        picks = candidates.map(Pick.session)
+        starters.addArrangedSubview(sectionLabel(Localized.text("Which chat?")))
+        guard !candidates.isEmpty else {
+            starters.addArrangedSubview(
+                NSTextField(labelWithString: Localized.text("No chats yet on any machine.")))
+            return
+        }
+        for (index, entry) in candidates.enumerated() {
+            let title = AgentSession.isPlaceholderTitle(entry.session.title)
+                ? QuickAskWords.untitled : entry.session.title
+            let detail = [
+                entry.backendType.displayName, entry.profileName,
+                SessionRowModel.age(of: entry.session.updatedAt),
+            ].joined(separator: " · ")
+            fill(
+                QuickAskTiles.recent(
+                    title: (Self.shortcut(at: index).map { $0 + "  " } ?? "") + title, age: detail
+                ) { [weak self] in
+                    self?.pickSession(entry)
+                })
+        }
+    }
+
     private static func shortcut(at index: Int) -> String? {
         index < 9 ? "⌘\(index + 1)" : nil
     }
 
-    private static func pasteboardFingerprint() -> String {
+    static func pasteboardFingerprint() -> String {
         "pasteboard:\(NSPasteboard.general.changeCount)"
     }
 
@@ -91,10 +147,16 @@ extension QuickAskPanel {
             holding = .files([])
         } else if types.contains(.png) || types.contains(.tiff) {
             holding = .picture
-        } else if types.contains(.string) {
-            holding = .text(
-                pasteboard.accessBehavior == .alwaysAllow
-                    ? pasteboard.string(forType: .string) : nil)
+        } else if types.contains(.string) || types.contains(.URL) {
+            let readable = pasteboard.accessBehavior == .alwaysAllow
+            let words = readable ? pasteboard.string(forType: .string) : nil
+            if let address = words.flatMap(QuickAskClipboard.link(in:)) {
+                holding = .link(address)
+            } else if !readable, types.contains(.URL) {
+                holding = .link("")
+            } else {
+                holding = .text(words)
+            }
         } else {
             return nil
         }
@@ -110,29 +172,11 @@ extension QuickAskPanel {
 
     /// An errand is the first half of a sentence, the same as a starter: the instruction lands in
     /// the field and the pasteboard follows it through the paste the field already does, so a page
-    /// of log still becomes the file it already is, and the person sends it. A pasteboard that
-    /// changed since the card was drawn redraws the card instead of pasting something it never
-    /// showed.
+    /// of log still becomes the file it already is, and the person sends it.
     private func pickErrand(_ errand: QuickAskClipboardErrand) {
-        guard !asking, editor.text.isEmpty, attachments.isEmpty, let copied else { return }
-        guard copied.fingerprint == Self.pasteboardFingerprint() else {
-            readCopied()
-            return
-        }
-        QuickAskClipboardMemory.settle(copied.fingerprint)
-        let plan = PasteIntake.plan(
-            for: pasteboardOffer(), abilities: abilities, alreadyNamed: pastedImageCount)
-        pastedImageCount = plan.named
-        editor.setText(errand.opening + (plan.text ?? ""), caretAtEnd: true)
-        if !plan.attachments.isEmpty {
-            attachments.append(contentsOf: plan.attachments)
-            syncAttachments()
-        }
-        if let notice = plan.notices.first { setStatus(notice) }
-        renderStarters()
-        refreshStarterVisibility()
-        editor.focus()
-        resize()
+        guard !asking, gathering == nil, editor.text.isEmpty, attachments.isEmpty, copied != nil
+        else { return }
+        run(errand.action, copied: true)
     }
 
     private func setCopiedAside() {
@@ -148,6 +192,7 @@ extension QuickAskPanel {
         switch picks[index] {
         case .errand(let errand): pickErrand(errand)
         case .starter(let starter): pickStarter(at: starter)
+        case .session(let entry): pickSession(entry)
         }
     }
 
@@ -164,8 +209,8 @@ extension QuickAskPanel {
 
     func refreshStarterVisibility() {
         let empty =
-            editor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && attachments.isEmpty
+            (editor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && attachments.isEmpty) || gathering?.awaiting == .session
         let hidden = !(empty && !asking)
         guard starters.isHidden != hidden else { return }
         starters.isHidden = hidden
@@ -199,19 +244,12 @@ extension QuickAskPanel {
     }
 
     /// A starter is the first half of a sentence, never a question the app asked on somebody's
-    /// behalf: the words land in the field with the caret at their end, and a row that needs a
-    /// file opens the chooser for it in the same gesture.
+    /// behalf: the words land in the field with the caret where the action left room, after
+    /// whatever its template fetches — a chooser, a drag over the screen, a chat to hand on.
     private func pickStarter(at index: Int) {
-        guard !asking, offered.indices.contains(index) else { return }
-        let starter = offered[index]
-        QuickAskStarterRecents.record(starter.id)
-        if editor.text.isEmpty { editor.setText(starter.prompt, caretAtEnd: true) }
-        editor.focus()
-        refreshStarterVisibility()
-        switch starter.opens {
-        case .files, .photos: pickAttachments()
-        case .camera, .none: break
-        }
+        guard !asking, gathering == nil, offered.indices.contains(index), editor.text.isEmpty
+        else { return }
+        run(offered[index].action, copied: false)
     }
 
     private func resume(_ entry: SessionEntry) {
@@ -222,7 +260,7 @@ extension QuickAskPanel {
     }
 
     @objc func pickAttachments() {
-        guard !asking, abilities.attachments else { return }
+        guard !asking, abilities.attachments || isLocalAim else { return }
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
@@ -234,7 +272,14 @@ extension QuickAskPanel {
 
     /// Read fully at pick time, so a file edited or deleted between picking and sending still
     /// sends the bytes that were chosen; a refusal names its reason instead of shrinking a file.
+    /// When the machine asked is this Mac, the files go by their paths instead: the agent opens
+    /// them where they are, and nothing is capped.
     func attach(paths: [String]) {
+        if isLocalAim, !paths.isEmpty {
+            editor.insertAtCaret(QuickAskLocal.mention(paths) + "\n")
+            setStatus(Localized.text("This machine is the one asked, so the files go by their paths."))
+            return
+        }
         let able = abilities
         for path in paths {
             switch AttachmentIntake.read(path: path) {

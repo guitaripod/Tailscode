@@ -144,6 +144,7 @@ extension SelfTest {
             switch name {
             case "party": report("party: \(try checkPartyCards()) claims hold")
             case "quickask": report("quick ask party: \(try checkQuickAskParty()) claims hold")
+            case "quickaskactions": report("quick ask actions: \(try checkQuickAskActions()) claims hold")
             case "keyboard": report("keyboard: \(try checkKeyboardRebind()) claims hold")
             case "carry": report("model seam and carry: \(try checkModelSeamAndCarry()) claims hold")
             case "call": report("call: \(try checkCall()) claims hold")

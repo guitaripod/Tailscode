@@ -133,6 +133,9 @@ final class MainWindow: @unchecked Sendable {
     var watchSummary: WatchSummary?
     var watchCheckedAt: Date?
     var watchCheck: Task<Void, Never>?
+    /// The questions for later being asked right now, so a slow mint is never asked twice.
+    var laterInFlight: Set<String> = []
+    var laterWatch: NSObjectProtocol?
     var lastQuotas: [(String, UsageQuota)] = []
     /// The last good reading each machine gave for each account, served as cached while a poll
     /// fails and for no longer than ``QuotaFreshness/keptFor``.

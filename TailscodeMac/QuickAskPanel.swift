@@ -82,6 +82,14 @@ final class QuickAskPanel: NSPanel {
         (String, QuickAskSend, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void)
             -> Void
     let onResume: (SessionEntry) -> Void
+    let onAskParty: (QuickAskPartySend, @escaping @MainActor (NewChatFailure?) -> Void) -> Void
+    /// The aim an action moved for one question, put back once the question has left.
+    var hold: QuickAskAimHold?
+    /// An action part way through fetching what its template names.
+    var gathering: QuickAskGathering?
+    var actionsObserver: NSObjectProtocol?
+    var laterObserver: NSObjectProtocol?
+    var actionSheet: QuickAskActionSheet?
 
     static func present(
         over window: NSWindow?, servers: [ConnectionProfile], preferredServer: String?,
@@ -89,13 +97,15 @@ final class QuickAskPanel: NSPanel {
         onAsk: @escaping (
             String, QuickAskSend, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void
         ) -> Void,
-        onResume: @escaping (SessionEntry) -> Void
+        onResume: @escaping (SessionEntry) -> Void,
+        onAskParty: @escaping (QuickAskPartySend, @escaping @MainActor (NewChatFailure?) -> Void)
+            -> Void
     ) {
         guard !servers.isEmpty else { return }
         frontmost?.close()
         let panel = QuickAskPanel(
             servers: servers, preferredServer: preferredServer, recents: recents, onAsk: onAsk,
-            onResume: onResume)
+            onResume: onResume, onAskParty: onAskParty)
         if let frame = window?.frame {
             let size = panel.frame.size
             panel.setFrameOrigin(
@@ -112,12 +122,15 @@ final class QuickAskPanel: NSPanel {
         onAsk: @escaping (
             String, QuickAskSend, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void
         ) -> Void,
-        onResume: @escaping (SessionEntry) -> Void
+        onResume: @escaping (SessionEntry) -> Void,
+        onAskParty: @escaping (QuickAskPartySend, @escaping @MainActor (NewChatFailure?) -> Void)
+            -> Void
     ) {
         self.servers = servers
         self.recents = recents
         self.onAsk = onAsk
         self.onResume = onResume
+        self.onAskParty = onAskParty
         self.aimStrip = QuickAskAimStrip(servers: servers)
         super.init(
             contentRect: .zero, styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -128,6 +141,7 @@ final class QuickAskPanel: NSPanel {
 
         editor.widthAnchor.constraint(greaterThanOrEqualToConstant: 600).isActive = true
         editor.onChanged = { [weak self] in
+            self?.releaseHoldIfEmptied()
             self?.stashDraft()
             self?.refreshStarterVisibility()
             self?.updateSlashCompletion()
@@ -198,6 +212,23 @@ final class QuickAskPanel: NSPanel {
         refreshAim()
         refreshCommands()
         installMonitor()
+        actionsObserver = NotificationCenter.default.addObserver(
+            forName: QuickAskActions.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.renderStarters()
+                self?.resize()
+            }
+        }
+        laterObserver = NotificationCenter.default.addObserver(
+            forName: QuickAskLaterStore.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.asking else { return }
+                self.renderStarters()
+                self.resize()
+            }
+        }
         resize()
     }
 
@@ -211,12 +242,23 @@ final class QuickAskPanel: NSPanel {
     }
 
     override func cancelOperation(_ sender: Any?) {
+        if gathering != nil {
+            cancelGathering()
+            return
+        }
         close()
     }
 
     /// A question is only ever lost in the moment nobody thought to save it, and a panel dismissed
     /// with escape is exactly that moment.
     override func close() {
+        releaseHold(retargeting: false)
+        gathering = nil
+        actionSheet?.dismiss()
+        if let actionsObserver { NotificationCenter.default.removeObserver(actionsObserver) }
+        actionsObserver = nil
+        if let laterObserver { NotificationCenter.default.removeObserver(laterObserver) }
+        laterObserver = nil
         stashDraft()
         DraftStore.flush()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
@@ -282,6 +324,19 @@ final class QuickAskPanel: NSPanel {
             pasteImageAttachment()
             return true
         }
+        if event.charactersIgnoringModifiers?.lowercased() == "l",
+            !event.modifierFlags.contains(.option), !event.modifierFlags.contains(.control),
+            !event.modifierFlags.contains(.shift)
+        {
+            offerLater()
+            return true
+        }
+        if event.charactersIgnoringModifiers?.lowercased() == "s",
+            !event.modifierFlags.contains(.option), !event.modifierFlags.contains(.control)
+        {
+            if event.modifierFlags.contains(.shift) { grabScreen() } else { saveAsAction() }
+            return true
+        }
         guard !starters.isHidden, let characters = event.charactersIgnoringModifiers,
             let digit = Int(characters), digit > 0
         else { return super.performKeyEquivalent(with: event) }
@@ -322,6 +377,7 @@ final class QuickAskPanel: NSPanel {
             guard let self else { return }
             guard let failure else {
                 QuickAskDefaults.record(profileID: server.id)
+                self.releaseHold(retargeting: false)
                 if let onOffer { QuickAskClipboardMemory.settle(onOffer) }
                 DraftStore.clear(.quickAsk(profileID: server.id))
                 self.close()

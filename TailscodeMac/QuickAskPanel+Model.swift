@@ -317,7 +317,10 @@ extension QuickAskPanel {
                 ? QuickAskComposition.droppedNotice(count: dropped)
                 : (servers.count < 2
                     ? Localized.text("Asks %@ — enter sends, esc closes", server.name)
-                    : Localized.text("Enter sends, tab switches server, esc closes")))
+                    : Localized.text("Enter sends, tab switches server, esc closes"))
+                    + (QuickAskParty.targets(partyCards()).count > 1
+                        ? Localized.text(" · ⌥↩ asks the party") : "")
+                    + Localized.text(" · ⌘L asks later"))
     }
 
     /// What a number chord picks, in the order the picks are drawn: the copied thing's errands
@@ -326,5 +329,6 @@ extension QuickAskPanel {
     enum Pick {
         case errand(QuickAskClipboardErrand)
         case starter(Int)
+        case session(SessionEntry)
     }
 }

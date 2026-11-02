@@ -111,6 +111,15 @@ final class PromptEditor: @unchecked Sendable {
         gtk_text_buffer_place_cursor(buffer, &end)
     }
 
+    /// Puts the caret at a character offset, for words written with a place left for the person.
+    func placeCaret(at offset: Int) {
+        let buffer = gtk_text_view_get_buffer(ptr(textView))
+        var iter = GtkTextIter()
+        gtk_text_buffer_get_iter_at_offset(buffer, &iter, gint(offset))
+        gtk_text_buffer_place_cursor(buffer, &iter)
+        vim.reset(to: text, cursor: cursor, mode: vim.mode)
+    }
+
     func insertAtEnd(_ text: String) {
         let buffer = gtk_text_view_get_buffer(ptr(textView))
         var end = GtkTextIter()

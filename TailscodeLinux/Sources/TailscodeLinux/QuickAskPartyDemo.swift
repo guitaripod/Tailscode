@@ -51,7 +51,8 @@ enum QuickAskPartyDemo {
         QuickAskWindow.present(
             servers: profiles, agentEfforts: [:], promptTextGrammar: [:], preferredServer: id,
             recents: [], parent: parent,
-            onAsk: { _, _, _, done in done(nil) }, onResume: { _ in })
+            onAsk: { _, _, _, done in done(nil) }, onResume: { _ in },
+            onAskParty: { _, done in done(nil) })
         return QuickAskWindow.open
     }
 

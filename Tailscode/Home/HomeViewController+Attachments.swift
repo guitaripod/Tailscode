@@ -31,12 +31,15 @@ extension HomeViewController {
 
     /// A starter is the first half of a sentence, never a question the app asked on somebody's
     /// behalf: the words land in the box with the caret at their end, and a row that needs a
-    /// picture or a file opens the picker for it in the same touch.
+    /// picture or a file opens the picker for it in the same touch. The template's own tokens are
+    /// the phone's to fill: the picker the row opens is what `{photo}`, `{camera}` and `{file}`
+    /// ask for, so they leave no words behind.
     func pickStarter(_ starter: QuickAskStarter) {
         Theme.Haptics.tap()
         QuickAskStarterRecents.record(starter.id)
         if composerBar.currentText.isEmpty {
-            composerBar.setDraft(starter.prompt, focus: true)
+            composerBar.setDraft(
+                QuickAskTemplate.compose(starter.action, fill: QuickAskFill()).text, focus: true)
         } else {
             composerBar.focus()
         }

@@ -184,6 +184,11 @@ extension MainWindow {
                             pane.open(entry)
                             self.renderSidebar()
                         }
+                    },
+                    onAskParty: { [weak self] party, done in
+                        Gtk.onMain { [weak self] in
+                            self?.askParty(party, from: pane, done: done)
+                        }
                     })
             }
         }

@@ -46,6 +46,11 @@ final class QuickAskWindow: @unchecked Sendable {
         @Sendable (String, QuickAskSend, [PendingAttachment], @escaping @Sendable (NewChatFailure?)
             -> Void) -> Void
     let onResume: @Sendable (SessionEntry) -> Void
+    let onAskParty: @Sendable (QuickAskPartySend, @escaping @Sendable (NewChatFailure?) -> Void) -> Void
+    /// The aim an action moved for one question, put back once the question has left.
+    var hold: QuickAskAimHold?
+    /// An action part way through fetching what its template names.
+    var gathering: QuickAskGathering?
 
     let window: UnsafeMutablePointer<GtkWidget>
     let editor: PromptEditor
@@ -70,6 +75,8 @@ final class QuickAskWindow: @unchecked Sendable {
     var pastedImageCount = 0
     var asking = false
     var summonWatch: NSObjectProtocol?
+    var actionsWatch: NSObjectProtocol?
+    var laterWatch: NSObjectProtocol?
     var completion: SlashPopover?
 
     /// - Parameter onAsk: mints the conversation on the chosen server and answers with nothing
@@ -77,6 +84,7 @@ final class QuickAskWindow: @unchecked Sendable {
     ///   with the mint, so the caller owns getting them sent once the chat exists.
     /// - Parameter onResume: opens a question already asked on this machine rather than asking a
     ///   new one.
+    /// - Parameter onAskParty: mints one conversation per party slot and opens them side by side.
     static func present(
         servers: [ConnectionProfile], agentEfforts: [String: [String]] = [:],
         promptTextGrammar: [String: Bool] = [:],
@@ -85,14 +93,17 @@ final class QuickAskWindow: @unchecked Sendable {
         onAsk: @escaping @Sendable (
             String, QuickAskSend, [PendingAttachment], @escaping @Sendable (NewChatFailure?) -> Void
         ) -> Void,
-        onResume: @escaping @Sendable (SessionEntry) -> Void
+        onResume: @escaping @Sendable (SessionEntry) -> Void,
+        onAskParty: @escaping @Sendable (
+            QuickAskPartySend, @escaping @Sendable (NewChatFailure?) -> Void
+        ) -> Void
     ) {
         guard !servers.isEmpty else { return }
         open?.close()
         open = QuickAskWindow(
             servers: servers, agentEfforts: agentEfforts, promptTextGrammar: promptTextGrammar,
             preferredServer: preferredServer, recents: recents, parent: parent, onAsk: onAsk,
-            onResume: onResume)
+            onResume: onResume, onAskParty: onAskParty)
     }
 
     init(
@@ -103,9 +114,13 @@ final class QuickAskWindow: @unchecked Sendable {
         onAsk: @escaping @Sendable (
             String, QuickAskSend, [PendingAttachment], @escaping @Sendable (NewChatFailure?) -> Void
         ) -> Void,
-        onResume: @escaping @Sendable (SessionEntry) -> Void
+        onResume: @escaping @Sendable (SessionEntry) -> Void,
+        onAskParty: @escaping @Sendable (
+            QuickAskPartySend, @escaping @Sendable (NewChatFailure?) -> Void
+        ) -> Void
     ) {
         self.servers = servers
+        self.onAskParty = onAskParty
         self.agentEfforts = agentEfforts
         self.promptTextGrammar = promptTextGrammar
         self.recents = recents
@@ -219,6 +234,7 @@ final class QuickAskWindow: @unchecked Sendable {
 
         editor.onHeightChanged = { [weak self] in self?.fitToContents() }
         editor.onChanged = { [weak self] in
+            self?.releaseHoldIfEmptied()
             self?.stashDraft()
             self?.refreshStarterVisibility()
             self?.refreshSend()
@@ -252,7 +268,10 @@ final class QuickAskWindow: @unchecked Sendable {
             }
             if let claimed = self.vimKey(keyval: keyval, state: state) { return claimed }
             if keyval == Keymap.escape {
-                Gtk.onMain { [weak self] in self?.close() }
+                Gtk.onMain { [weak self] in
+                    guard let self else { return }
+                    if self.gathering != nil { self.cancelGathering() } else { self.close() }
+                }
                 return true
             }
             if keyval == Keymap.tab {
@@ -263,10 +282,18 @@ final class QuickAskWindow: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.pasteFromClipboard() }
                 return true
             }
+            if control, state & KeyChord.altMask == 0, keyval == UInt32(UnicodeScalar("s").value) {
+                Gtk.onMain { [weak self] in self?.saveAsAction() }
+                return true
+            }
             /// Return is the send unless the settings say otherwise, and shift always writes the
             /// line break — the same bargain the chat's own box makes, so a question with a
             /// paragraph in it is typed the way a prompt is.
             let isReturn = keyval == Keymap.enter || keyval == Keymap.keypadEnter
+            if isReturn, state & KeyChord.altMask != 0, !control {
+                Gtk.onMain { [weak self] in self?.submitToParty() }
+                return true
+            }
             if isReturn, !shift, Preferences.sendOnReturn || control {
                 Gtk.onMain { [weak self] in self?.submit() }
                 return true
@@ -299,6 +326,14 @@ final class QuickAskWindow: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.pasteFromClipboard() }
                 return true
             }
+            if keyval == UInt32(UnicodeScalar("s").value) {
+                Gtk.onMain { [weak self] in self?.grabScreen() }
+                return true
+            }
+            if keyval == UInt32(UnicodeScalar("l").value) {
+                Gtk.onMain { [weak self] in self?.offerLater() }
+                return true
+            }
             guard let digit = Keymap.digit(keyval), digit > 0,
                 gtk_widget_get_visible(self.starters) != 0
             else { return false }
@@ -307,6 +342,24 @@ final class QuickAskWindow: @unchecked Sendable {
         }
         Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [weak self] in
             if let self, QuickAskWindow.open === self { QuickAskWindow.open = nil }
+        }
+        laterWatch = NotificationCenter.default.addObserver(
+            forName: QuickAskLaterStore.didChange, object: nil, queue: nil
+        ) { _ in
+            Gtk.onMain {
+                guard let open = QuickAskWindow.open, !open.asking else { return }
+                open.renderStarters()
+                open.fitToContents()
+            }
+        }
+        actionsWatch = NotificationCenter.default.addObserver(
+            forName: QuickAskActions.didChange, object: nil, queue: nil
+        ) { _ in
+            Gtk.onMain {
+                guard let open = QuickAskWindow.open else { return }
+                open.renderStarters()
+                open.fitToContents()
+            }
         }
 
         /// The desktop answers about the chord seconds after the app starts, which is often after

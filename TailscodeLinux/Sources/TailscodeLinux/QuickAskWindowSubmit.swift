@@ -7,7 +7,7 @@ import TailscodeCore
 
 extension QuickAskWindow {
     func pickAttachments() {
-        guard !asking, abilities.attachments else { return }
+        guard !asking, abilities.attachments || isLocalAim else { return }
         Gtk.openFiles(parent: window) { [weak self] paths in
             self?.take(paths: paths)
         }
@@ -15,8 +15,16 @@ extension QuickAskWindow {
 
     /// Read fully at pick time, so a file edited or deleted between picking and sending still
     /// sends the bytes that were chosen; a refusal names its reason instead of shrinking a file.
+    /// When the machine asked is this one, the files go by their paths instead: the agent opens
+    /// them where they are, and nothing is capped.
     func take(paths: [String]) {
-        guard !asking, abilities.attachments else { return }
+        guard !asking else { return }
+        if isLocalAim, !paths.isEmpty {
+            editor.insertAtCaret(QuickAskLocal.mention(paths) + "\n")
+            setHint(Localized.text("This machine is the one asked, so the files go by their paths."))
+            return
+        }
+        guard abilities.attachments else { return }
         for path in paths {
             switch AttachmentIntake.read(path: path) {
             case .success(let attachment):
@@ -102,6 +110,7 @@ extension QuickAskWindow {
                 guard let self else { return }
                 guard let failure else {
                     QuickAskDefaults.record(profileID: server.id)
+                    self.releaseHold(retargeting: false)
                     if let onOffer { QuickAskClipboardMemory.settle(onOffer) }
                     DraftStore.clear(.quickAsk(profileID: server.id))
                     AppLog.write(.ui, "ASK sent server=\(server.name)")
@@ -138,6 +147,12 @@ extension QuickAskWindow {
     }
 
     func close() {
+        releaseHold(retargeting: false)
+        gathering = nil
+        if let actionsWatch { NotificationCenter.default.removeObserver(actionsWatch) }
+        actionsWatch = nil
+        if let laterWatch { NotificationCenter.default.removeObserver(laterWatch) }
+        laterWatch = nil
         stashDraft()
         DraftStore.flush()
         completion?.tearDown()

@@ -59,6 +59,10 @@ extension QuickAskPanel {
                     return nil
                 }
             }
+            if isReturn, option, !control, !flags.contains(.command) {
+                self.submitToParty()
+                return nil
+            }
             if isReturn, !shift, PromptEditor.sendOnReturn || control {
                 self.submit()
                 return nil

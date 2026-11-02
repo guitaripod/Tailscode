@@ -21,12 +21,25 @@ enum QuickAskTiles {
         return surface
     }
 
+    /// The last tile is the way to make one: the menu every tile carries, opened by a click.
+    static func addTile(onPress: @escaping () -> Void) -> NSView {
+        let face = QuickAskTileFace(
+            symbol: "plus", title: Localized.text("New action"),
+            detail: Localized.text("Right-click any tile to change it"), shortcut: nil,
+            onPress: onPress)
+        let surface = PressSurface(content: face, outset: NSEdgeInsetsZero, radius: 10)
+        surface.onPress = onPress
+        surface.toolTip = Localized.text("Or type it and press ⌘S")
+        return surface
+    }
+
     /// A question already asked, on one line: what it was, and how long ago at the far end.
-    static func recent(title: String, age: String, onPress: @escaping () -> Void) -> NSView {
+    static func recent(
+        title: String, age: String, symbol: String = "arrow.counterclockwise",
+        onPress: @escaping () -> Void
+    ) -> NSView {
         let mark = NSImageView(
-            image: NSImage(
-                systemSymbolName: "arrow.counterclockwise", accessibilityDescription: nil)
-                ?? NSImage())
+            image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil) ?? NSImage())
         mark.symbolConfiguration = .init(pointSize: 11, weight: .semibold)
         mark.contentTintColor = MacTheme.Color.accent
         mark.setContentHuggingPriority(.required, for: .horizontal)
@@ -165,7 +178,8 @@ final class QuickAskCopiedCard: NSView {
     init(
         copied: QuickAskCopied, shortcuts: [String?],
         onErrand: @escaping (QuickAskClipboardErrand) -> Void,
-        onSetAside: @escaping () -> Void
+        onSetAside: @escaping () -> Void,
+        menu: @escaping (QuickAskClipboardErrand) -> NSMenu? = { _ in nil }
     ) {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
@@ -208,19 +222,27 @@ final class QuickAskCopiedCard: NSView {
             glimpse.setContentCompressionResistancePriority(.init(1), for: .horizontal)
             rows.append(glimpse)
         }
+        let buttons: [NSView] = copied.errands.enumerated().map { index, errand in
+            let button = RowKit.ActionButton(title: errand.title) { onErrand(errand) }
+            button.image = NSImage(
+                systemSymbolName: errand.symbol, accessibilityDescription: nil)
+            button.imagePosition = .imageLeading
+            button.controlSize = .small
+            button.font = MacTheme.Ramp.font(.control)
+            let shortcut = shortcuts.indices.contains(index) ? shortcuts[index] : nil
+            button.toolTip = [errand.prompt, shortcut].compactMap { $0 }.joined(separator: "  ")
+            button.menu = menu(errand)
+            return button
+        }
         let errands = NSStackView(
-            views: copied.errands.enumerated().map { index, errand in
-                let button = RowKit.ActionButton(title: errand.title) { onErrand(errand) }
-                button.image = NSImage(
-                    systemSymbolName: errand.symbol, accessibilityDescription: nil)
-                button.imagePosition = .imageLeading
-                button.controlSize = .small
-                button.font = MacTheme.Ramp.font(.control)
-                let shortcut = shortcuts.indices.contains(index) ? shortcuts[index] : nil
-                button.toolTip = [errand.prompt, shortcut].compactMap { $0 }.joined(separator: "  ")
-                return button
+            views: stride(from: 0, to: buttons.count, by: 4).map { first in
+                let line = NSStackView(views: Array(buttons[first..<min(first + 4, buttons.count)]))
+                line.orientation = .horizontal
+                line.spacing = 6
+                return line
             })
-        errands.orientation = .horizontal
+        errands.orientation = .vertical
+        errands.alignment = .leading
         errands.spacing = 6
         rows.append(errands)
 

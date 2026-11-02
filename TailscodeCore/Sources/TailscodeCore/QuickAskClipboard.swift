@@ -8,44 +8,58 @@ import Foundation
 /// is a real answer: there is text, and nobody has looked at it yet.
 public enum QuickAskClipboardHolding: Sendable, Equatable {
     case text(String?)
+    /// Copied words that are one web address and nothing else: a page somebody wants something
+    /// from, which is a different errand from words somebody wants explained.
+    case link(String)
     case picture
     case files([String])
+
+    /// The site a copied link is on, without a leading `www.`.
+    public var host: String? {
+        guard case .link(let address) = self, let host = URL(string: address)?.host?.lowercased()
+        else { return nil }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
 }
 
 /// One thing the surface offers to do with what was copied. Like a starter, it is the first half of
 /// a sentence: picking it writes the words into the composer and hands the clipboard over through
-/// the composer's own paste, so the person still reads the whole question and presses send. A
-/// copied thing is never sent by touching it.
+/// the composer's own paste, so the person still reads the whole question and presses send — unless
+/// it is an action the person wrote to send at once.
 public struct QuickAskClipboardErrand: Sendable, Equatable, Identifiable {
     public enum Takes: String, Sendable, Equatable {
         case text
+        case link
         case picture
         case files
     }
 
-    public let id: String
-    public let symbol: String
-    public let glyph: String
-    public let title: String
-    public let prompt: String
-    public let takes: Takes
+    public let action: QuickAskAction
 
-    public init(
-        id: String, symbol: String, glyph: String, title: String, prompt: String, takes: Takes
-    ) {
-        self.id = id
-        self.symbol = symbol
-        self.glyph = glyph
-        self.title = title
-        self.prompt = prompt
-        self.takes = takes
+    public init(action: QuickAskAction) {
+        self.action = action
+    }
+
+    public var id: String { action.id }
+    public var symbol: String { action.symbol }
+    public var glyph: String { action.glyph }
+    public var title: String { action.title }
+    public var prompt: String { action.prompt }
+
+    public var takes: Takes {
+        switch action.offer {
+        case .link: return .link
+        case .picture: return .picture
+        case .files: return .files
+        case .text, .always: return .text
+        }
     }
 
     /// The words left in the composer before the clipboard is pasted after them. Copied words are
     /// set a blank line under the instruction so the two read as a heading over a quotation; a
     /// picture or a file rides as a chip, so the instruction is the whole of what is typed.
     public var opening: String {
-        takes == .text ? prompt + "\n\n" : prompt
+        takes == .text || takes == .link ? prompt + "\n\n" : prompt
     }
 }
 
@@ -63,71 +77,37 @@ public struct QuickAskCopied: Sendable, Equatable {
 public enum QuickAskClipboard {
     public static let previewLimit = 220
 
-    public static let all: [QuickAskClipboardErrand] = [
-        QuickAskClipboardErrand(
-            id: "copied.explain", symbol: "text.magnifyingglass", glyph: "?",
-            title: Localized.text("Explain"), prompt: Localized.text("Explain this:"),
-            takes: .text),
-        QuickAskClipboardErrand(
-            id: "copied.summarize", symbol: "list.bullet", glyph: "≡",
-            title: Localized.text("Summarize"), prompt: Localized.text("Summarize this:"),
-            takes: .text),
-        QuickAskClipboardErrand(
-            id: "copied.translate", symbol: "character.bubble", glyph: "⇄",
-            title: Localized.text("Translate"),
-            prompt: Localized.text("Translate this into English:"), takes: .text),
-        QuickAskClipboardErrand(
-            id: "copied.improve", symbol: "pencil", glyph: "✎",
-            title: Localized.text("Improve"),
-            prompt: Localized.text("Improve the writing of this, keeping its meaning:"),
-            takes: .text),
-        QuickAskClipboardErrand(
-            id: "copied.reply", symbol: "arrowshape.turn.up.left", glyph: "↩",
-            title: Localized.text("Reply"), prompt: Localized.text("Draft a reply to this:"),
-            takes: .text),
-        QuickAskClipboardErrand(
-            id: "copied.describe", symbol: "eye", glyph: "◉",
-            title: Localized.text("Describe"), prompt: Localized.text("What is in this picture?"),
-            takes: .picture),
-        QuickAskClipboardErrand(
-            id: "copied.transcribe", symbol: "text.viewfinder", glyph: "¶",
-            title: Localized.text("Read the text"),
-            prompt: Localized.text("Transcribe the text in this picture."), takes: .picture),
-        QuickAskClipboardErrand(
-            id: "copied.explainPicture", symbol: "questionmark.circle", glyph: "?",
-            title: Localized.text("Explain"), prompt: Localized.text("Explain what this shows."),
-            takes: .picture),
-        QuickAskClipboardErrand(
-            id: "copied.summarizeFile", symbol: "list.bullet", glyph: "≡",
-            title: Localized.text("Summarize"), prompt: Localized.text("Summarize this."),
-            takes: .files),
-        QuickAskClipboardErrand(
-            id: "copied.explainFile", symbol: "text.magnifyingglass", glyph: "?",
-            title: Localized.text("Explain"), prompt: Localized.text("Explain this."),
-            takes: .files),
-        QuickAskClipboardErrand(
-            id: "copied.reviewFile", symbol: "checkmark.circle", glyph: "✓",
-            title: Localized.text("Review"),
-            prompt: Localized.text("Review this and point out anything wrong."), takes: .files),
-    ]
+    /// The app's own errands, whatever the person has done with them.
+    public static var all: [QuickAskClipboardErrand] {
+        QuickAskBuiltIns.copied.map(QuickAskClipboardErrand.init(action:))
+    }
 
-    /// The errands this holding can be worked with on this aim. Words go to any model, because a
-    /// paste is words; a picture needs a model that sees, and a file one that can be handed files.
+    /// The errands this holding can be worked with on this aim, in the person's order. Words go to
+    /// any model, because a paste is words; a picture needs a model that sees, and a file one that
+    /// can be handed files. A link is offered its site's errands first and the ones for any page
+    /// after them.
     public static func errands(
-        for holding: QuickAskClipboardHolding, abilities: ModelAbilities
+        for holding: QuickAskClipboardHolding, abilities: ModelAbilities,
+        surface: QuickAskSurfaceAbilities = .phone,
+        actions: [QuickAskAction] = QuickAskActions.visible()
     ) -> [QuickAskClipboardErrand] {
+        let able = actions.filter { $0.isOffered(abilities: abilities, surface: surface) }
+        let chosen: [QuickAskAction]
         switch holding {
         case .text(let text):
             guard text.map({ !isBlank($0) }) ?? true else { return [] }
-            return all.filter { $0.takes == .text }
+            chosen = able.filter { $0.offer == .text }
+        case .link:
+            let host = holding.host ?? ""
+            let links = able.filter { $0.matches(host: host) }
+            chosen = links.filter { !$0.hosts.isEmpty } + links.filter { $0.hosts.isEmpty }
         case .picture:
-            return abilities.vision ? all.filter { $0.takes == .picture } : []
+            chosen = able.filter { $0.offer == .picture }
         case .files(let names):
-            guard abilities.attachments, names.isEmpty || !names.allSatisfy(isBlank) else {
-                return []
-            }
-            return all.filter { $0.takes == .files }
+            guard names.isEmpty || !names.allSatisfy(isBlank) else { return [] }
+            chosen = able.filter { $0.offer == .files }
         }
+        return chosen.map(QuickAskClipboardErrand.init(action:))
     }
 
     /// The card's name for what was copied, specific where it was read and plain where it was
@@ -140,6 +120,9 @@ public enum QuickAskClipboard {
             return words == 1
                 ? Localized.text("Copied text · 1 word")
                 : Localized.text("Copied text · %@ words", "\(words)")
+        case .link:
+            guard let host = holding.host else { return Localized.text("Copied link") }
+            return Localized.text("Copied link · %@", host)
         case .picture:
             return Localized.text("Copied picture")
         case .files(let names):
@@ -159,8 +142,13 @@ public enum QuickAskClipboard {
     public static func preview(for holding: QuickAskClipboardHolding, limit: Int = previewLimit)
         -> String?
     {
-        guard case .text(let text?) = holding else { return nil }
-        let flat = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let read: String
+        switch holding {
+        case .text(let text?): read = text
+        case .link(let address): read = address
+        default: return nil
+        }
+        let flat = read.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard !flat.isEmpty else { return nil }
         guard flat.count > limit else { return flat }
         let cut = flat.prefix(limit)
@@ -184,6 +172,7 @@ public enum QuickAskClipboard {
             return (.picture, fingerprint(kind: "picture", bytes: image))
         }
         if let text = offer.text, !isBlank(text) {
+            if let address = link(in: text) { return (.link(address), fingerprint(text: text)) }
             return (.text(text), fingerprint(text: text))
         }
         return nil
@@ -192,10 +181,11 @@ public enum QuickAskClipboard {
     /// The card, or nil when there is nothing worth offering: nothing copied, the same thing the
     /// surface already offered and somebody used or set aside, or a holding this model cannot take.
     public static func reading(
-        holding: QuickAskClipboardHolding, fingerprint: String, abilities: ModelAbilities
+        holding: QuickAskClipboardHolding, fingerprint: String, abilities: ModelAbilities,
+        surface: QuickAskSurfaceAbilities = .phone
     ) -> QuickAskCopied? {
         guard QuickAskClipboardMemory.isNews(fingerprint) else { return nil }
-        let offered = errands(for: holding, abilities: abilities)
+        let offered = errands(for: holding, abilities: abilities, surface: surface)
         guard !offered.isEmpty else { return nil }
         return QuickAskCopied(
             fingerprint: fingerprint, holding: holding, headline: headline(for: holding),
@@ -215,6 +205,17 @@ public enum QuickAskClipboard {
 
     public static func fingerprint(text: String) -> String {
         fingerprint(kind: "text", bytes: Data(text.utf8))
+    }
+
+    /// Copied words that are a single http(s) address and nothing else.
+    public static func link(in text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains(where: \.isWhitespace),
+            let url = URL(string: trimmed),
+            let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+            let host = url.host, host.contains(".")
+        else { return nil }
+        return trimmed
     }
 
     private static func isBlank(_ text: String) -> Bool {

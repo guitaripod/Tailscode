@@ -31,6 +31,9 @@ final class MainWindowController: NSWindowController {
     var sidebarItem: NSSplitViewItem?
     var terminalItem: NSSplitViewItem?
     var dividerSavingEnabled = false
+    /// The questions for later being asked right now, so a slow mint is never asked twice.
+    var laterInFlight: Set<String> = []
+    var laterBeat: Timer?
     /// Posted once the live shortcut set has been re-read, for what is drawn with a key's name on it.
     static let shortcutsDidReload = Notification.Name("tailscode.mac.shortcutsDidReload")
 
@@ -119,6 +122,7 @@ final class MainWindowController: NSWindowController {
             self?.resolvePendingBindings()
         }
         startUsagePolling()
+        startAskingLater()
         MacUpdateWatch.shared.start()
         NotificationCenter.default.addObserver(
             forName: MacTheme.Chrome.didRepaint, object: nil, queue: .main

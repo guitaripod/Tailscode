@@ -155,7 +155,8 @@ extension MainWindow {
     func createChat(
         onProfileID profileID: String, directory: String?, into pane: ChatPane? = nil,
         firstMessage: QuickAskSend? = nil, attachments: [PendingAttachment] = [],
-        quickAsk: Bool = false, carrying carry: CarryPlan? = nil,
+        quickAsk: Bool = false, seat: QuickAskPartySend.Seat? = nil,
+        carrying carry: CarryPlan? = nil,
         done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
     ) {
         Task { [weak self] in
@@ -167,8 +168,40 @@ extension MainWindow {
             Gtk.onMain { [weak self] in
                 self?.createChat(
                     on: profile, directory: directory, into: pane, firstMessage: firstMessage,
-                    attachments: attachments, quickAsk: quickAsk, carrying: carry, done: done)
+                    attachments: attachments, quickAsk: quickAsk, seat: seat, carrying: carry,
+                    done: done)
             }
+        }
+    }
+
+    /// One question to every party slot: the first seat opens in the pane the quick ask was
+    /// summoned over and each further one in a split beside the last, so the answers arrive side by
+    /// side. The surface is answered by the first mint, which is the one it is looking at. The
+    /// conversation is what sends the question, so a seat with no pane to open in is not asked:
+    /// once the window has no room for another split the tiling says so and the rest wait.
+    func askParty(
+        _ party: QuickAskPartySend, from pane: ChatPane,
+        done: @escaping @Sendable (NewChatFailure?) -> Void
+    ) {
+        var previous = pane
+        for (index, seat) in party.seats.enumerated() {
+            let target: ChatPane
+            if index == 0 {
+                target = pane
+            } else {
+                guard let split = splitHost.split(previous, edge: .right) else {
+                    AppLog.write(.ui, "ASK party stopped at seat \(index) of \(party.seats.count): no room")
+                    break
+                }
+                target = split
+            }
+            previous = target
+            var answered: @Sendable (NewChatFailure?) -> Void = { _ in }
+            if index == 0 { answered = done }
+            createChat(
+                onProfileID: seat.profileID, directory: nil, into: target,
+                firstMessage: party.send, attachments: party.attachments, seat: seat,
+                done: answered)
         }
     }
 
@@ -186,7 +219,8 @@ extension MainWindow {
     func createChat(
         on profile: ConnectionProfile, directory: String?, into pane: ChatPane? = nil,
         firstMessage: QuickAskSend? = nil, attachments: [PendingAttachment] = [],
-        quickAsk: Bool = false, carrying carry: CarryPlan? = nil,
+        quickAsk: Bool = false, seat: QuickAskPartySend.Seat? = nil,
+        carrying carry: CarryPlan? = nil,
         done: @escaping @Sendable (NewChatFailure?) -> Void = { _ in }
     ) {
         Trace.mark("createChat begin")
@@ -204,7 +238,11 @@ extension MainWindow {
                 return
             }
             Trace.mark("createChat session created")
-            if quickAsk {
+            if let seat {
+                QuickAskDefaults.stamp(
+                    profileID: profile.id, sessionID: session.id, model: seat.model,
+                    effort: seat.effort)
+            } else if quickAsk {
                 QuickAskDefaults.stamp(profileID: profile.id, sessionID: session.id)
             }
             let entry = SessionEntry(

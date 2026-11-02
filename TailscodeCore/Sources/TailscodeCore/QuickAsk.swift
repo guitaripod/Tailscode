@@ -107,6 +107,16 @@ public enum QuickAskDefaults {
         EffortPreferenceStore.setEffort(effort(forProfileID: profileID), forKey: key)
     }
 
+    /// A conversation asked of one party slot among several is stamped with that slot's model and
+    /// level, whatever the quick ask's own aim says.
+    public static func stamp(
+        profileID: String, sessionID: String, model: ModelSelection?, effort: String?
+    ) {
+        let key = sessionPreferenceKey(profileID: profileID, sessionID: sessionID)
+        ModelPreferenceStore.setModel(model, forKey: key)
+        EffortPreferenceStore.setEffort(effort, forKey: key)
+    }
+
     /// The key a conversation's own model and effort are filed under, spelled the same way on
     /// every client so a stamp made by one surface is read by any other.
     public static func sessionPreferenceKey(profileID: String, sessionID: String) -> String {
@@ -116,6 +126,162 @@ public enum QuickAskDefaults {
     private static func claimOwnAim(forProfileID profileID: String) {
         guard !hasOwnAim(forProfileID: profileID) else { return }
         defaults.set(true, forKey: ownAimPrefix + profileID)
+    }
+}
+
+/// An action's machine, model and level hold for one question. The aim the person had is read before
+/// the action moves it and put back after the question leaves — unless the person moved the aim
+/// again in between, in which case what they picked by hand is theirs and stays.
+public struct QuickAskAimHold: Sendable, Equatable {
+    struct Reading: Sendable, Equatable {
+        let server: String?
+        let ownAim: Bool
+        let model: ModelSelection?
+        let effort: String?
+
+        static func read(profileID: String) -> Reading {
+            let context = QuickAskDefaults.contextID(forProfileID: profileID)
+            return Reading(
+                server: QuickAskDefaults.lastProfileID,
+                ownAim: QuickAskDefaults.hasOwnAim(forProfileID: profileID),
+                model: ModelPreferenceStore.globalModel(forContextID: context),
+                effort: EffortPreferenceStore.globalEffort(forContextID: context))
+        }
+    }
+
+    let before: [String: Reading]
+    let server: String?
+    var after: [String: Reading] = [:]
+
+    /// Reads the aim on every machine the action may touch, before it touches any.
+    public static func begin(profileIDs: [String]) -> QuickAskAimHold {
+        var before: [String: Reading] = [:]
+        for id in Set(profileIDs) { before[id] = Reading.read(profileID: id) }
+        return QuickAskAimHold(before: before, server: QuickAskDefaults.lastProfileID)
+    }
+
+    /// Notes what the action set, which is what a later release compares against.
+    public mutating func settle() {
+        var after: [String: Reading] = [:]
+        for id in before.keys { after[id] = Reading.read(profileID: id) }
+        self.after = after
+    }
+
+    /// Whether the machine and model are still what the action left. The level is not compared:
+    /// a catalog arriving late can hand a level the model does not take back to the machine, and
+    /// that is the surface tidying up, not the person choosing.
+    public var isUntouched: Bool {
+        before.keys.allSatisfy { id in
+            let now = Reading.read(profileID: id)
+            guard let then = after[id] else { return false }
+            return now.server == then.server && now.ownAim == then.ownAim && now.model == then.model
+        }
+    }
+
+    /// Puts the person's aim back, once, if nobody moved it since the action did.
+    public func release() {
+        guard !after.isEmpty, isUntouched else { return }
+        for (id, reading) in before {
+            if reading.ownAim {
+                QuickAskDefaults.recordModel(reading.model, forProfileID: id)
+                QuickAskDefaults.recordEffort(reading.effort, forProfileID: id)
+            } else if QuickAskDefaults.hasOwnAim(forProfileID: id) {
+                QuickAskDefaults.clearOwnAim(forProfileID: id)
+            }
+        }
+        if let server { QuickAskDefaults.record(profileID: server) } else { QuickAskDefaults.clear() }
+    }
+}
+
+/// The question asked of the whole party at once: every filled slot that can answer, each its own
+/// conversation on the machine that runs it, so the answers can be read side by side.
+public enum QuickAskParty {
+    public struct Target: Sendable, Equatable {
+        public let profileID: String
+        public let preset: ModelPreset
+        public let word: String
+    }
+
+    /// The slots a party send reaches, in slot order. A slot nobody can run, a machine that is not
+    /// answering and an account whose window is spent are passed over rather than failed.
+    public static func targets(_ cards: [PartyCard]) -> [Target] {
+        var seen: [Target] = []
+        for card in cards {
+            guard let preset = card.resolved, let profileID = card.profileID, !card.isAway,
+                !card.isSpent
+            else { continue }
+            let target = Target(profileID: profileID, preset: preset, word: card.modelWord)
+            guard !seen.contains(target) else { continue }
+            seen.append(target)
+        }
+        return seen
+    }
+}
+
+/// One question on its way to several party slots: where each copy goes, on what, and what rides
+/// with every one of them.
+public struct QuickAskPartySend: Sendable {
+    public struct Seat: Sendable, Equatable {
+        public let profileID: String
+        public let model: ModelSelection
+        public let effort: String?
+        public let word: String
+
+        public init(profileID: String, model: ModelSelection, effort: String?, word: String) {
+            self.profileID = profileID
+            self.model = model
+            self.effort = effort
+            self.word = word
+        }
+    }
+
+    public let seats: [Seat]
+    public let send: QuickAskSend
+    public let attachments: [PendingAttachment]
+
+    public init(seats: [Seat], send: QuickAskSend, attachments: [PendingAttachment]) {
+        self.seats = seats
+        self.send = send
+        self.attachments = attachments
+    }
+}
+
+/// An action part way through: what it still has to fetch and what it has found so far. The
+/// surface walks `remaining` in order, one gather at a time, and composes once nothing is left.
+public struct QuickAskGathering: Sendable {
+    public let action: QuickAskAction
+    public var fill: QuickAskFill
+    public var remaining: [QuickAskGather]
+    public var attachments: [PendingAttachment]
+    /// Paths named by `{file}` while the aim is this machine, set where the token stands.
+    public var mentions: [String]
+    /// The clipboard's own attachments and notices, for an action picked from the copied card.
+    public var copiedAttachments: [PendingAttachment]
+    public var fingerprint: String?
+
+    public init(action: QuickAskAction, fill: QuickAskFill = QuickAskFill()) {
+        self.action = action
+        self.fill = fill
+        self.remaining = action.gathers
+        self.attachments = []
+        self.mentions = []
+        self.copiedAttachments = []
+        self.fingerprint = nil
+    }
+
+    public var awaiting: QuickAskGather? { remaining.first }
+
+    public mutating func advance() {
+        if !remaining.isEmpty { remaining.removeFirst() }
+    }
+
+    /// The words, with `{file}` paths set where the token stands.
+    public func composed(latest: (String) -> String? = QuickAskLocal.latestFile(in:))
+        -> QuickAskComposed
+    {
+        var fill = fill
+        if !mentions.isEmpty { fill.files = QuickAskLocal.mention(mentions) }
+        return QuickAskTemplate.compose(action, fill: fill, latest: latest)
     }
 }
 

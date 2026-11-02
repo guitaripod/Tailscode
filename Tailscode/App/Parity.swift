@@ -227,6 +227,13 @@ enum ParityManifest {
         case .projectBoard: return .implemented("openProjectBoard")
         case .quickAsk: return .implemented("HomeComposerBar")
         case .quickAskClipboard: return .notApplicable("the phone's quick ask is the Home composer's lane rather than a surface summoned over other apps, and iOS raises its paste alert for any read the person did not start, so copied things reach a question through the system's own paste menu")
+        case .quickAskActions:
+            return .partial(
+                "QuickAskTemplate.compose",
+                missing: "the phone offers the device's own actions against what it can gather — photos, the camera, files — but has no editor and no screen, chat or newest-file tokens; actions are written in a desktop quick ask")
+        case .quickAskParty: return .notApplicable("a phone has no splits to read several answers side by side in, so one question goes to one model")
+        case .quickAskLater: return .notApplicable("a phone app is not running at the hour and iOS gives it no clock to ask on; a desktop that is told asks at the hour and the answer reaches the phone's chat list")
+        case .quickAskScreen: return .notApplicable("an app on a phone cannot capture the screen another app is showing; a screenshot reaches a question through the photo picker")
         case .summonAnywhere: return .notApplicable("iOS gives no app a key from the whole system — there is no chord to claim and nothing to press it in, since another app is the whole screen; the phone's share of asking from outside the app is the icon's jump list and the Control Center tile, which quickAsk already carries, and Siri, Shortcuts and Vocal Shortcuts, which spokenAsk carries")
         case .spokenAsk: return .implemented("AskQuestionIntent")
         case .updateCenter: return .implemented("UpdateCenterViewController")

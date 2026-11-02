@@ -3,8 +3,9 @@ import Foundation
 
 /// One errand the empty surface offers. It is not a canned prompt so much as the first half of a
 /// sentence: the words land in the composer with the caret at their end, and the person finishes
-/// them. Nothing is ever sent by touching one — a question the app wrote and sent on its own
-/// behalf is the one thing a quick ask must never do.
+/// them. A built-in is never sent by touching it — a question the app wrote and sent on its own
+/// behalf is the one thing a quick ask must never do — while an action the person wrote may send
+/// at once, because then the words are theirs.
 public struct QuickAskStarter: Sendable, Equatable, Identifiable {
     /// What a row opens before the words are the person's again.
     public enum Opening: String, Sendable, Equatable {
@@ -22,108 +23,71 @@ public struct QuickAskStarter: Sendable, Equatable, Identifiable {
         case camera
     }
 
-    public let id: String
-    public let symbol: String
-    public let glyph: String
-    public let title: String
-    public let detail: String
-    public let prompt: String
-    public let opens: Opening
-    public let needs: Need
+    public let action: QuickAskAction
 
-    public init(
-        id: String, symbol: String, glyph: String, title: String, detail: String, prompt: String,
-        opens: Opening = .none, needs: Need = .nothing
-    ) {
-        self.id = id
-        self.symbol = symbol
-        self.glyph = glyph
-        self.title = title
-        self.detail = detail
-        self.prompt = prompt
-        self.opens = opens
-        self.needs = needs
+    public init(action: QuickAskAction) {
+        self.action = action
+    }
+
+    public var id: String { action.id }
+    public var symbol: String { action.symbol }
+    public var glyph: String { action.glyph }
+    public var title: String { action.title }
+    public var detail: String { action.detail }
+    public var prompt: String { action.prompt }
+
+    public var opens: Opening {
+        for gather in action.gathers {
+            switch gather {
+            case .photo: return .photos
+            case .camera: return .camera
+            case .file: return .files
+            case .session, .screen: continue
+            }
+        }
+        return .none
+    }
+
+    public var needs: Need {
+        switch opens {
+        case .photos: return .vision
+        case .camera: return .camera
+        case .files: return .attachments
+        case .none: return .nothing
+        }
     }
 }
 
 /// The empty surface's argument for itself. A composer with nothing in it and no explanation is a
 /// text box; these rows are what say that the thing on the other end reads pictures, makes them,
-/// searches, drafts and translates — that a quick ask is a way into everything the agent can do
-/// and not only a place to type a question. They are offered against what the current aim can
-/// take, so the list is never a menu of disappointments, and what this device reaches for floats
-/// to the top without ever hiding the rest.
+/// searches, fixes and fetches — that a quick ask is a way into everything the agent can do and
+/// not only a place to type a question. They are the person's actions (`QuickAskActions`), offered
+/// against what the current aim and surface can take, so the list is never a menu of
+/// disappointments, and what this device reaches for floats to the top without ever hiding the
+/// rest.
 public enum QuickAskStarters {
-    public static let all: [QuickAskStarter] = [
-        QuickAskStarter(
-            id: "explain", symbol: "text.magnifyingglass", glyph: "?",
-            title: Localized.text("Explain something"),
-            detail: Localized.text("A straight answer, no project"),
-            prompt: Localized.text("Explain ")),
-        QuickAskStarter(
-            id: "web", symbol: "globe", glyph: "⊕",
-            title: Localized.text("Search the web"),
-            detail: Localized.text("Checked now, not remembered"),
-            prompt: Localized.text("Search the web for ")),
-        QuickAskStarter(
-            id: "image", symbol: "wand.and.sparkles", glyph: "✦",
-            title: Localized.text("Make a picture"),
-            detail: Localized.text("It comes back in the transcript"),
-            prompt: Localized.text("Generate an image of ")),
-        QuickAskStarter(
-            id: "photo", symbol: "photo", glyph: "▣",
-            title: Localized.text("Ask about a picture"),
-            detail: Localized.text("Attach one and ask what it is"),
-            prompt: Localized.text("What is in this picture? "),
-            opens: .photos, needs: .vision),
-        QuickAskStarter(
-            id: "camera", symbol: "camera", glyph: "◉",
-            title: Localized.text("Point the camera at it"),
-            detail: Localized.text("Shoot it, then ask"),
-            prompt: Localized.text("What am I looking at? "),
-            opens: .camera, needs: .camera),
-        QuickAskStarter(
-            id: "file", symbol: "doc.text", glyph: "▤",
-            title: Localized.text("Read a file"),
-            detail: Localized.text("Up to 8 MB, sent with the question"),
-            prompt: Localized.text("Read this and tell me "),
-            opens: .files, needs: .attachments),
-        QuickAskStarter(
-            id: "draft", symbol: "square.and.pencil", glyph: "✎",
-            title: Localized.text("Draft a message"),
-            detail: Localized.text("Words meant for someone else"),
-            prompt: Localized.text("Draft a message that ")),
-        QuickAskStarter(
-            id: "translate", symbol: "character.bubble", glyph: "⇄",
-            title: Localized.text("Translate something"),
-            detail: Localized.text("Paste it under the line"),
-            prompt: Localized.text("Translate this into English:\n")),
-        QuickAskStarter(
-            id: "code", symbol: "chevron.left.forwardslash.chevron.right", glyph: "{}",
-            title: Localized.text("Write a snippet"),
-            detail: Localized.text("Small enough to read at a glance"),
-            prompt: Localized.text("Write a snippet that ")),
-    ]
+    /// The app's own rows, whatever the person has done with them.
+    public static var all: [QuickAskStarter] {
+        QuickAskBuiltIns.starters.map(QuickAskStarter.init(action:))
+    }
 
-    /// The rows this aim can honour, most recently used first and the catalog's own order behind
+    /// The rows this aim can honour, most recently used first and the person's own order behind
     /// them. A recent row that the current aim cannot carry out is dropped like any other: what
     /// this device reached for last is a preference, never a promise the model has to keep.
     public static func offered(
-        for abilities: ModelAbilities, recents: [String] = QuickAskStarterRecents.recent()
+        for abilities: ModelAbilities, surface: QuickAskSurfaceAbilities = .phone,
+        recents: [String] = QuickAskStarterRecents.recent(),
+        actions: [QuickAskAction] = QuickAskActions.visible()
     ) -> [QuickAskStarter] {
-        let capable = all.filter { starter in
-            switch starter.needs {
-            case .nothing: return true
-            case .attachments: return abilities.attachments
-            case .vision: return abilities.vision
-            case .camera: return abilities.camera
-            }
-        }
+        let capable = actions.filter {
+            $0.offer == .always && $0.isOffered(abilities: abilities, surface: surface)
+        }.map(QuickAskStarter.init(action:))
         let ranked = recents.compactMap { id in capable.first { $0.id == id } }
         return ranked + capable.filter { starter in !ranked.contains { $0.id == starter.id } }
     }
 
     public static func starter(id: String) -> QuickAskStarter? {
-        all.first { $0.id == id }
+        QuickAskActions.action(id: id).map(QuickAskStarter.init(action:))
     }
 }
 

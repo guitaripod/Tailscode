@@ -65,7 +65,8 @@ extension SelfTest {
 
         let panel = QuickAskPanel(
             servers: [arch, macbook], preferredServer: arch.id, recents: [],
-            onAsk: { _, _, _, done in done(nil) }, onResume: { _ in })
+            onAsk: { _, _, _, done in done(nil) }, onResume: { _ in },
+            onAskParty: { _, done in done(nil) })
         let screen = NSScreen.main
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         panel.setFrameOrigin(
@@ -206,7 +207,7 @@ extension SelfTest {
             charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode)!
     }
 
-    private static func settleQuickAsk(until done: (@MainActor () -> Bool)? = nil) async {
+    static func settleQuickAsk(until done: (@MainActor () -> Bool)? = nil) async {
         guard let done else {
             try? await Task.sleep(for: .milliseconds(400))
             return

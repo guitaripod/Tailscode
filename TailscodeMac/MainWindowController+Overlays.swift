@@ -57,7 +57,62 @@ extension MainWindowController {
                 self.mintQuickAsk(
                     on: profile, send: send, attachments: attachments, done: done)
             },
-            onResume: { [weak self] entry in self?.sidebar.open(entry) })
+            onResume: { [weak self] entry in self?.sidebar.open(entry) },
+            onAskParty: { [weak self] party, done in self?.mintParty(party, done: done) })
+    }
+
+    /// One question to every party slot: the panes are split first, beside the one in front and
+    /// each beside the last, so a window with no room for another says so before anything is
+    /// minted; then each seat is minted, stamped with its slot's model and level, and opened in
+    /// its own pane. The panel is answered by the first seat, which is the one in front.
+    private func mintParty(
+        _ party: QuickAskPartySend, done: @escaping @MainActor (NewChatFailure?) -> Void
+    ) {
+        var panes = [splitPanes.active]
+        for _ in party.seats.dropFirst() {
+            guard let last = panes.last, let fresh = splitPanes.split(last, edge: .right) else {
+                break
+            }
+            panes.append(fresh)
+        }
+        let seats = Array(party.seats.prefix(panes.count))
+        Task { [weak self] in
+            var answered = false
+            for (index, seat) in seats.enumerated() {
+                guard let self,
+                    let profile = ServerDirectory.shared.profiles.first(where: {
+                        $0.id == seat.profileID
+                    }), let backend = ServerDirectory.shared.backend(for: profile)
+                else { continue }
+                let minted = await NewChatAttempt.mint(
+                    using: backend, server: Self.newChatServer(profile), baseURL: profile.baseURL,
+                    password: ServerDirectory.shared.password(for: profile), directory: nil)
+                guard case .success(let session) = minted else {
+                    if !answered, index == seats.count - 1 { done(minted.failureValue) }
+                    continue
+                }
+                QuickAskDefaults.stamp(
+                    profileID: profile.id, sessionID: session.id, model: seat.model,
+                    effort: seat.effort)
+                let entry = SessionEntry(
+                    profileID: profile.id, profileName: profile.name,
+                    host: profile.baseURL.host ?? profile.name, backendType: profile.backend,
+                    session: session)
+                self.splitPanes.focus(panes[index], grabKeyboard: false)
+                self.transcript.queueFirstMessage(
+                    party.send, attachments: party.attachments, forSession: session.id)
+                SessionSeenStore.markSeen(session.id)
+                self.handleOpen(entry, backend: backend)
+                if !answered {
+                    answered = true
+                    done(nil)
+                }
+            }
+            guard let self else { return }
+            if let first = panes.first { self.splitPanes.focus(first, grabKeyboard: true) }
+            self.focusedPaneChanged()
+            await self.sidebar.refresh()
+        }
     }
 
     /// The quick-ask mint queues the words — keyed to the minted session — and opens the chat in

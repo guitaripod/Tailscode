@@ -208,6 +208,10 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case projectBoard
     case quickAsk
     case quickAskClipboard
+    case quickAskActions
+    case quickAskParty
+    case quickAskScreen
+    case quickAskLater
     case summonAnywhere
     case spokenAsk
     case updateCenter

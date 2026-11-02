@@ -352,6 +352,6 @@ extension QuickAskWindow {
         refreshSend()
         guard !asking else { return }
         setHint(dropped > 0 ? QuickAskComposition.droppedNotice(count: dropped) : Self.keysHint(
-            machines: servers.count))
+            machines: servers.count, party: QuickAskParty.targets(partyInputs().cards).count > 1))
     }
 }

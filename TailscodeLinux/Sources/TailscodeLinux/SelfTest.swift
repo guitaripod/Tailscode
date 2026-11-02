@@ -129,6 +129,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkQuickAskActions()
+            report("quick ask actions: \(checks) claims hold: written actions lead, an action's aim lasts one question, {session} lists the chats and names the pick, a question put off keeps its aim")
+        } catch {
+            report("quick ask actions: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkKeyboardRebind()
             report("keyboard: \(checks) claims hold: a pressed key resolves on the next load, restores clean, takes from its owner, never overwrites a file that is not JSON")
         } catch {

@@ -311,6 +311,14 @@ enum ParityManifest {
         case .projectBoard: return .implemented("toggleProjectScope")
         case .quickAsk: return .implemented("QuickAskPanel")
         case .quickAskClipboard: return .implemented("QuickAskCopiedCard")
+        case .quickAskActions: return .implemented("QuickAskActionSheet")
+        case .quickAskParty: return .implemented("mintParty")
+        case .quickAskLater: return .implemented("askDueLater")
+        case .quickAskScreen:
+            return .varies(
+                direct: .implemented("MacScreenGrab"),
+                appStore: .gap("the sandboxed store build may not run the system's interactive capture, so it is not offered there"),
+                because: "the drag is the system's screencapture tool, which a sandboxed app cannot launch")
         case .summonAnywhere: return .implemented("MacSummon")
         case .spokenAsk: return .gap("macOS has App Intents, Siri, Shortcuts and Vocal Shortcuts too, but TailscodeMac declares no App Shortcuts yet; QuickAskPanel would take a question the way the phone's Home box does")
         case .updateCenter:

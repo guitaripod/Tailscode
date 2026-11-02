@@ -150,6 +150,15 @@ enum SelfTest {
         }
 
         do {
+            let checks = try await checkQuickAskActions()
+            report(
+                "quick ask actions: \(checks) claims hold — written actions lead, an action's aim lasts one question, {session} lists the chats and names the pick")
+        } catch {
+            report("quick ask actions: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkTranscriptColumn()
             report("transcript column: \(checks) claims hold — rows stand alone and stack as a stack would")
         } catch {

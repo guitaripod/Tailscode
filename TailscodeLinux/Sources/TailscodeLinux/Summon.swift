@@ -594,7 +594,7 @@ enum AppActions {
 
 /// GVariant's own constructors are variadic, which Swift cannot call at all, so every value this
 /// file hands the bus is built out of the handful that are not.
-private func variantDictionary(_ entries: [String: OpaquePointer?]) -> OpaquePointer? {
+func variantDictionary(_ entries: [String: OpaquePointer?]) -> OpaquePointer? {
     guard let type = g_variant_type_new("a{sv}") else { return nil }
     defer { g_variant_type_free(type) }
     let builder = g_variant_builder_new(type)
@@ -609,14 +609,14 @@ private func variantDictionary(_ entries: [String: OpaquePointer?]) -> OpaquePoi
     return result
 }
 
-private func variantTuple(_ children: [OpaquePointer?]) -> OpaquePointer? {
+func variantTuple(_ children: [OpaquePointer?]) -> OpaquePointer? {
     var values = children
     return values.withUnsafeMutableBufferPointer { buffer in
         g_variant_new_tuple(buffer.baseAddress, gsize(buffer.count))
     }
 }
 
-private func variantArray(type: String, children: [OpaquePointer?]) -> OpaquePointer? {
+func variantArray(type: String, children: [OpaquePointer?]) -> OpaquePointer? {
     guard let variantType = g_variant_type_new(type) else { return nil }
     defer { g_variant_type_free(variantType) }
     let builder = g_variant_builder_new(variantType)

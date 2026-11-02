@@ -140,6 +140,7 @@ extension MainWindow {
         observeUpdates()
         renderUpdates()
         UpdateWatch.start { [weak self] in self?.quitForUpdate() }
+        startAskingLater()
         FirstRunDialog.onLanded = { [weak self] landing in
             Gtk.onMain { [weak self] in self?.land(on: landing) }
         }

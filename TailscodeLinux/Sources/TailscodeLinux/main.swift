@@ -12,6 +12,12 @@ _ = tailscode_crash_logger_install(AppLog.current.path, TailscodeVersion.current
 Trace.stamp("main")
 SettingsFile.load()
 
+/// The quick ask's actions live beside the settings file, where a hand or an agent can edit them.
+QuickAskActions.fileURL = SettingsFile.url.deletingLastPathComponent()
+    .appendingPathComponent("quick-actions.json")
+QuickAskLaterStore.fileURL = SettingsFile.url.deletingLastPathComponent()
+    .appendingPathComponent("quick-later.json")
+
 /// The retired "Tighter rows" switch becomes the chat density once, now that the file has been
 /// read back and before the first stylesheet is made from it.
 Preferences.migrateLegacyDensity()

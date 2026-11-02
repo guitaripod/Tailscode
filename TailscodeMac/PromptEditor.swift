@@ -223,6 +223,15 @@ final class PromptEditor: NSView {
         contentChanged()
     }
 
+    /// Puts the caret at a character offset, for words written with a place left for the person.
+    func placeCaret(at offset: Int) {
+        let text = textView.string
+        let index = text.index(text.startIndex, offsetBy: max(0, min(offset, text.count)))
+        let location = NSRange(index..<index, in: text).location
+        textView.setSelectedRange(NSRange(location: location, length: 0))
+        vim.reset(to: text, cursor: cursor, mode: vim.mode)
+    }
+
     /// A path clicked in the file tree, or a command picked from a menu, lands where the caret is
     /// standing rather than at the end of whatever sentence is half-written — and it goes through
     /// the text view, so it replaces the selection and joins AppKit's own undo.
