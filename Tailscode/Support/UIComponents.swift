@@ -8,7 +8,6 @@ final class PrimaryButton: UIButton {
         super.init(frame: .zero)
         var config = Theme.Glass.buttonConfiguration(prominent: true)
         config.title = title
-        config.baseBackgroundColor = Theme.Color.accent
         config.cornerStyle = .large
         config.buttonSize = .large
         configuration = config

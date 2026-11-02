@@ -412,26 +412,27 @@ enum Theme {
             view.effect = effect
         }
 
-        /// A capsule/rounded glass control button configuration on iOS 26, with a tinted
-        /// filled fallback for earlier systems.
+        /// A plain glass control button on iOS 26 (a tinted gray one before it), and for the one
+        /// prominent action a solid accent fill with the theme's on-accent ink in semibold.
         ///
-        /// A plain glass button is left entirely alone: it already reads the window's tint, which
-        /// is the theme's accent. Only the prominent one is given a colour, and only its fill —
-        /// the system maps a tint through the brightness behind the glass and picks the ink to
-        /// match, so a foreground chosen here against a flat swatch would be a guess about a
-        /// surface that does not exist yet.
+        /// A plain glass button is left alone: it already reads the window's tint, which is the
+        /// theme's accent. The prominent one is not glass, because prominent glass draws its title
+        /// through the material's vibrancy: on the system blue it came out pale cyan at about 3 to 1,
+        /// below what a label needs. A flat fill keeps the ink the palette promises, which its
+        /// contrast contract already holds against the accent.
         static func buttonConfiguration(prominent: Bool = false) -> UIButton.Configuration {
-            if #available(iOS 26.0, *) {
-                guard prominent else { return .glass() }
-                var config: UIButton.Configuration = .prominentGlass()
-                config.baseBackgroundColor = Theme.Color.accent
-                return config
-            }
+            if #available(iOS 26.0, *), !prominent { return .glass() }
             var config: UIButton.Configuration = prominent ? .filled() : .gray()
             config.cornerStyle = .capsule
             if prominent {
                 config.baseBackgroundColor = Theme.Color.accent
                 config.baseForegroundColor = Theme.Color.onAccent
+                config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+                    var outgoing = incoming
+                    outgoing.font = UIFontMetrics(forTextStyle: .headline).scaledFont(
+                        for: .systemFont(ofSize: 17, weight: .semibold))
+                    return outgoing
+                }
             } else {
                 config.baseForegroundColor = Theme.Color.accent
             }
