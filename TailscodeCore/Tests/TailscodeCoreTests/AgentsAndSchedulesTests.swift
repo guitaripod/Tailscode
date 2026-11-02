@@ -265,6 +265,13 @@ struct AgentModelChooserTests {
         #expect(ModelChooser.fold(source: open).allSatisfy { !$0.isElsewhere })
     }
 
+    @Test("An agent's model row never shows the agent's own custom: prefix")
+    func agentRowDetail() {
+        let chooser = ModelChooser(models: models, selected: nil, recents: [])
+        let rows = chooser.sections.flatMap(\.rows)
+        #expect(!rows.contains { $0.detail.contains("custom:") })
+    }
+
     @Test("A pill names the agent before its model")
     func badge() {
         let word = ModelBadge.word(for: ModelSelection(providerID: "hermes", modelID: "custom:bolt"), in: models)

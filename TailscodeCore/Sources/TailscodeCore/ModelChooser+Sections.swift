@@ -287,7 +287,9 @@ extension ModelChooser {
         } else if (showsProviders && namesProvider) || candidate.isLocal {
             parts.append(names.joined(separator: " · "))
         }
-        let id = candidate.primary.model.id
+        let model = candidate.primary.model
+        let id = model.agentName != nil && model.id.hasPrefix("custom:")
+            ? String(model.id.dropFirst("custom:".count)) : model.id
         if candidate.offers.count == 1, Self.saysMoreThanTheName(id, name: candidate.name) {
             parts.append(id)
         }
