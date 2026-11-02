@@ -51,6 +51,11 @@ final class ProUpgradeViewController: UIViewController {
         Task { await load() }
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        ReviewPromptPolicy.notePaywallShown()
+    }
+
     @objc private func proStateChanged() {
         guard ProAccess.shared.isPro else { return }
         purchaseButton.setTitle(String(localized: "You're a supporter — thank you ♥"))

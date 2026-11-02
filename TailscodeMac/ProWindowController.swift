@@ -48,6 +48,7 @@ final class ProWindowController: NSWindowController {
     }
 
     func present() {
+        ReviewPromptPolicy.notePaywallShown()
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         Task { await load() }

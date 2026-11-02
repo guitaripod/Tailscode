@@ -147,7 +147,8 @@ final class ProAccess {
 
     /// Runs one purchase on the store and turns what it ended in into the outcomes the screens show. A
     /// transaction that failed verification is an outcome, a dismissed sheet is a cancel, and every other
-    /// store failure is thrown as a sentence.
+    /// store failure is thrown as a sentence. A purchase that went through answers the Pro sheet, so the
+    /// review prompt may ask again (`ReviewPromptPolicy.notePurchase`).
     func settle(
         _ attempt: (MidgarStore) async throws -> MidgarPurchaseResult
     ) async throws -> PurchaseOutcome {
@@ -156,7 +157,9 @@ final class ProAccess {
             let result = try await attempt(store)
             await adoptEntitlement(of: store)
             switch result {
-            case .purchased: return .success
+            case .purchased:
+                ReviewPromptPolicy.notePurchase()
+                return .success
             case .pending: return .pending
             case .cancelled: return .cancelled
             }

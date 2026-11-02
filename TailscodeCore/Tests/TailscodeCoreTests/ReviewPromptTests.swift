@@ -29,6 +29,10 @@ extension DeviceStores {
             }
         }
 
+        private static let day: TimeInterval = 24 * 60 * 60
+        private static let insideCooldown = ReviewPromptPolicy.minimumIntervalBetweenAsks - day
+        private static let pastCooldown = ReviewPromptPolicy.minimumIntervalBetweenAsks + day
+
         private static func seed(successes: Int) {
             UserDefaults.standard.set(successes, forKey: ReviewPromptPolicy.successCountKey)
         }
@@ -50,7 +54,7 @@ extension DeviceStores {
             }
         }
 
-        @Test("No re-ask before fourteen days, even with successes to spare")
+        @Test("No re-ask inside the cooldown, even with successes to spare")
         func noReaskBeforeCooldown() {
             withCleanStore {
                 let now = Date()
@@ -58,21 +62,21 @@ extension DeviceStores {
                 ReviewPromptPolicy.markAsked(now: now)
                 #expect(
                     !ReviewPromptPolicy.recordSuccess(
-                        now: now.addingTimeInterval(13 * 24 * 60 * 60)))
+                        now: now.addingTimeInterval(Self.insideCooldown)))
                 Self.seed(successes: ReviewPromptPolicy.successCount + 10)
                 #expect(
                     !ReviewPromptPolicy.recordSuccess(
-                        now: now.addingTimeInterval(13 * 24 * 60 * 60)))
+                        now: now.addingTimeInterval(Self.insideCooldown)))
             }
         }
 
-        @Test("No re-ask before three fresh successes, even once fourteen days have passed")
+        @Test("No re-ask before three fresh successes, even once the cooldown has passed")
         func noReaskBeforeFreshSuccesses() {
             withCleanStore {
                 let now = Date()
                 Self.seed(successes: 2)
                 ReviewPromptPolicy.markAsked(now: now)
-                let later = now.addingTimeInterval(20 * 24 * 60 * 60)
+                let later = now.addingTimeInterval(Self.pastCooldown)
                 #expect(!ReviewPromptPolicy.recordSuccess(now: later))
                 #expect(!ReviewPromptPolicy.recordSuccess(now: later))
             }
@@ -84,10 +88,24 @@ extension DeviceStores {
                 let now = Date()
                 Self.seed(successes: 2)
                 ReviewPromptPolicy.markAsked(now: now)
-                let later = now.addingTimeInterval(15 * 24 * 60 * 60)
+                let later = now.addingTimeInterval(Self.pastCooldown)
                 #expect(!ReviewPromptPolicy.recordSuccess(now: later))
                 #expect(!ReviewPromptPolicy.recordSuccess(now: later))
                 #expect(ReviewPromptPolicy.recordSuccess(now: later))
+            }
+        }
+
+        @Test("Nothing is due in a run where the Pro sheet went unanswered, until a purchase")
+        func heldWhileThePaywallIsUnanswered() {
+            withCleanStore {
+                let now = Date()
+                Self.seed(successes: 1)
+                ReviewPromptPolicy.notePaywallShown()
+                defer { ReviewPromptPolicy.notePurchase() }
+                #expect(!ReviewPromptPolicy.recordSuccess(now: now))
+                #expect(!ReviewPromptPolicy.isDue(now: now))
+                ReviewPromptPolicy.notePurchase()
+                #expect(ReviewPromptPolicy.isDue(now: now))
             }
         }
 
@@ -101,7 +119,7 @@ extension DeviceStores {
 
                 var when = start
                 for _ in 0..<2 {
-                    when = when.addingTimeInterval(15 * 24 * 60 * 60)
+                    when = when.addingTimeInterval(Self.pastCooldown)
                     #expect(!ReviewPromptPolicy.recordSuccess(now: when))
                     #expect(!ReviewPromptPolicy.recordSuccess(now: when))
                     #expect(ReviewPromptPolicy.recordSuccess(now: when))
@@ -133,7 +151,7 @@ extension DeviceStores {
 
                 var when = start
                 for _ in 0..<2 {
-                    when = when.addingTimeInterval(15 * 24 * 60 * 60)
+                    when = when.addingTimeInterval(Self.pastCooldown)
                     #expect(!ReviewPromptPolicy.recordSuccess(now: when))
                     #expect(!ReviewPromptPolicy.recordSuccess(now: when))
                     #expect(ReviewPromptPolicy.recordSuccess(now: when))
@@ -185,7 +203,7 @@ extension DeviceStores {
         }
 
         /// The migrated ask is a real ask, not a fresh install's clean slate: ten days past it,
-        /// still inside the fourteen-day cooldown, nothing is due even with successes to spare.
+        /// still inside the cooldown, nothing is due even with successes to spare.
         private static func expectMigratedAskCountsTowardCooldown(askedAt: Date) {
             #expect(
                 !ReviewPromptPolicy.recordSuccess(now: askedAt.addingTimeInterval(10 * 24 * 60 * 60)))

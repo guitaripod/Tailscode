@@ -8,9 +8,12 @@ import Foundation
 /// A success is the app's core value moment — an agent turn finishing with an answer, in a
 /// session on a server this device is connected to — and nothing else feeds the count. The
 /// first ask is early, due the moment a second success lands, because getting real value twice
-/// already argues for itself. Every ask after the first waits for both a fortnight and three
-/// fresh successes since the one before it, and no ask is ever due once three already sit inside
-/// the trailing year — Apple's own ceiling on how often the system will even show the sheet.
+/// already argues for itself. Every ask after the first waits for both 120 days and three fresh
+/// successes since the one before it, so the three asks a year Apple allows are spread over a year
+/// of use rather than spent in its first weeks, and no ask is ever due once three already sit
+/// inside the trailing year — Apple's own ceiling on how often the system will even show the sheet.
+/// Nothing is due for the rest of a run in which the Pro sheet went unanswered: someone who just
+/// turned down paying is the wrong person to ask for stars.
 public enum ReviewPromptPolicy {
     nonisolated(unsafe) private static let defaults = UserDefaults.standard
 
@@ -28,12 +31,45 @@ public enum ReviewPromptPolicy {
     /// Every later ask needs this many successes since the one before it.
     public static let successesBetweenAsks = 3
 
-    /// Every later ask also needs this much calendar time since the one before it.
-    public static let minimumIntervalBetweenAsks: TimeInterval = 14 * 24 * 60 * 60
+    /// Every later ask also needs this much calendar time since the one before it, the interval
+    /// every Midgar app uses (`MidgarReviewPolicy`).
+    public static let minimumIntervalBetweenAsks: TimeInterval = 120 * 24 * 60 * 60
 
     /// Apple's own ceiling: never a fourth ask inside one rolling year.
     public static let maximumAsksPerRollingYear = 3
     public static let rollingYear: TimeInterval = 365 * 24 * 60 * 60
+
+    private static let paywall = PaywallSession()
+
+    /// Whether the Pro sheet came on screen in this run with no purchase since. Kept in memory
+    /// only, so every launch starts clear. Read and written under its lock.
+    private final class PaywallSession: @unchecked Sendable {
+        private let lock = NSLock()
+        private var unanswered = false
+
+        var isUnanswered: Bool {
+            get {
+                lock.lock()
+                defer { lock.unlock() }
+                return unanswered
+            }
+            set {
+                lock.lock()
+                defer { lock.unlock() }
+                unanswered = newValue
+            }
+        }
+    }
+
+    /// The Pro sheet is on screen: nothing is due again in this run unless a purchase follows.
+    public static func notePaywallShown() {
+        paywall.isUnanswered = true
+    }
+
+    /// A purchase or a tip went through, which answers the sheet.
+    public static func notePurchase() {
+        paywall.isUnanswered = false
+    }
 
     public static var successCount: Int {
         defaults.integer(forKey: successCountKey)
@@ -53,6 +89,7 @@ public enum ReviewPromptPolicy {
     public static func recordSuccess(now: Date = Date()) -> Bool {
         let count = successCount + 1
         defaults.set(count, forKey: successCountKey)
+        guard !paywall.isUnanswered else { return false }
         return isDue(
             successCount: count, askDates: askDates,
             successCountAtLastAsk: successCountAtLastAsk, now: now)
@@ -61,7 +98,8 @@ public enum ReviewPromptPolicy {
     /// Whether an ask is due right now, without recording a new success — the check a return to
     /// the foreground repeats for a success that landed while nobody was there to be asked.
     public static func isDue(now: Date = Date()) -> Bool {
-        isDue(
+        guard !paywall.isUnanswered else { return false }
+        return isDue(
             successCount: successCount, askDates: askDates,
             successCountAtLastAsk: successCountAtLastAsk, now: now)
     }
