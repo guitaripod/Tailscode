@@ -68,7 +68,7 @@ extension ServerDetailViewController {
             [ScheduleBoard.Source(profileID: profile.id, machine: profile.name, schedules: schedules)])
         if let next = board.next, let date = next.schedule.next {
             content.secondaryText = Localized.text(
-                "Next: \u{201C}%@\u{201D} %@", next.title,
+                "Next: “%@” %@", next.title,
                 ScheduleWords.lowered(
                     ScheduleWords.moment(date, calendar: ScheduleDetailViewController.calendar(next.schedule))))
         }

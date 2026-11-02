@@ -230,7 +230,7 @@ final class ScheduleDetailViewController: UIViewController {
 
     private func confirmDelete() {
         let alert = UIAlertController(
-            title: Localized.text("Delete \u{201C}%@\u{201D}?", schedule.title), message: ScheduleWords.deleteDetail,
+            title: Localized.text("Delete “%@”?", schedule.title), message: ScheduleWords.deleteDetail,
             preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: Localized.text("Cancel"), style: .cancel))
         alert.addAction(

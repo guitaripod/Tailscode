@@ -117,7 +117,7 @@ final class AgentRegistryWindow: MachineWindow, @unchecked Sendable {
         }
         let shown = self.shown
         if shown.isEmpty {
-            MachineRows.add(MachineRows.row(Localized.text("No agent matches \u{201C}%@\u{201D}", query)), to: group)
+            MachineRows.add(MachineRows.row(Localized.text("No agent matches “%@”", query)), to: group)
         }
         for agent in shown {
             let reading = MachineAgentReading.registryRow(agent, machine: profile.name)

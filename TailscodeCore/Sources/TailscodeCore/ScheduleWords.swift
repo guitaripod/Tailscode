@@ -9,7 +9,7 @@ public enum ScheduleWords {
     public static var askAgain: String { Localized.text("Ask this again…") }
     public static var sayWhen: String { Localized.text("Or say when: weekdays 7:30, every 2 hours, fri 17:00") }
     public static var notUnderstood: String {
-        Localized.text("That time was not understood. Try \u{201C}weekdays 7:30\u{201D} or \u{201C}in 20 min\u{201D}.")
+        Localized.text("That time was not understood. Try “weekdays 7:30” or “in 20 min”.")
     }
     public static var oneConversation: String { Localized.text("One conversation") }
     public static var oneConversationDetail: String { Localized.text("Each run sees what it said last time.") }

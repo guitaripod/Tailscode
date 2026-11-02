@@ -110,7 +110,7 @@ public struct ScheduleBoard: Sendable, Hashable {
         var zoned = calendar
         zoned.timeZone = TimeZone(identifier: next.schedule.timeZone) ?? calendar.timeZone
         return Localized.text(
-            "Next: \u{201C}%@\u{201D} %@ on %@", next.title,
+            "Next: “%@” %@ on %@", next.title,
             ScheduleWords.lowered(ScheduleWords.moment(date, calendar: zoned, now: now)), next.machine)
     }
 
