@@ -68,7 +68,8 @@ extension DemoWorld {
             supportsAbort: true, supportsSessionUsage: true, supportsUsageAnalytics: true,
             supportsQuestions: false,
             supportsRenaming: true, supportsSubagents: true, supportsCommands: true,
-            supportsGoals: true, supportsCompaction: true),
+            supportsGoals: true, supportsCompaction: true, supportsSchedules: true,
+            supportsMachineAgents: true),
         quota: UsageQuota(
             providerName: "Claude", subtitle: "Max 20×", source: "claude-bridge", live: true,
             gauges: [
