@@ -68,10 +68,15 @@ struct QuickAskMenuTests {
         #expect(items.first?.detail == "Claude Code · arch")
     }
 
-    @Test("A typed question is offered the first few actions, never the hand-on")
-    func suggestions() {
-        let starters = [starter("continue", prompt: "Read {session}"), starter("a"), starter("b"), starter("c"), starter("d"), starter("e")]
-        #expect(QuickAskMenu.suggestions(starters).map(\.id) == ["a", "b", "c"])
+    @Test("A typed question is offered every action that can take it, never the hand-on")
+    func verbs() {
+        let starters = [starter("continue", prompt: "Read {session}")] + (0..<11).map { starter("v\($0)") }
+        let sections = QuickAskMenu.verbs(starters)
+        #expect(sections.map(\.id) == ["verbs"])
+        let items = sections[0].items
+        #expect(items.count == 11 && items.first?.id == "verb:v0")
+        #expect(items[8].digit == 9 && items[9].digit == nil)
+        #expect(QuickAskMenu.verbs([starter("continue", prompt: "Read {session}")]).isEmpty)
     }
 
     @Test("The cursor waits for an arrow, stops at the ends and follows its line")
@@ -97,9 +102,9 @@ struct QuickAskMenuTests {
 
     @Test("The footer says what the keys do for the box as it is")
     func footer() {
-        let typing = QuickAskFooter.keys(platform: .linux, typing: true, party: true, screen: false, suggestions: 3)
-        #expect(typing.map(\.keys) == ["↵", "alt+1–3", "alt+↵", "alt+L"])
-        let empty = QuickAskFooter.keys(platform: .apple, typing: false, party: false, screen: true, suggestions: 0)
+        let typing = QuickAskFooter.keys(platform: .linux, typing: true, party: true, screen: false, verbs: 3)
+        #expect(typing.map(\.keys) == ["↵", "↓", "alt+↵", "alt+L"])
+        let empty = QuickAskFooter.keys(platform: .apple, typing: false, party: false, screen: true, verbs: 0)
         #expect(empty.map(\.keys) == ["↑↓", "↩", "⌘1–9", "⇥", "⌘⇧S"])
     }
 }

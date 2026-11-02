@@ -52,7 +52,9 @@ final class QuickAskActionEditor: @unchecked Sendable {
             ptr(window), isNew ? Localized.text("New action") : Localized.text("Edit action"))
         gtk_window_set_modal(ptr(window), 1)
         gtk_window_set_default_size(ptr(window), 560, -1)
-        gtk_window_set_transient_for(ptr(window), ptr(owner.window))
+        if let parent = owner.stage.dialogParent {
+            gtk_window_set_transient_for(ptr(window), ptr(parent))
+        }
 
         let header = adw_header_bar_new()!
         let cancel = Gtk.button(Localized.text("Cancel"), css: ["flat"]) {
@@ -158,6 +160,7 @@ final class QuickAskActionEditor: @unchecked Sendable {
             QuickAskActionEditor.current = nil
         }
         gtk_window_present(ptr(window))
+        owner.stage.stepAside(until: window)
         gtk_widget_grab_focus(original.title.isEmpty ? titleRow : prompt)
     }
 

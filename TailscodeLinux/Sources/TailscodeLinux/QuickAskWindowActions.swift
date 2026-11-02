@@ -97,7 +97,6 @@ extension QuickAskWindow {
         switch next {
         case .session:
             renderStarters()
-            fitToContents()
         case .screen:
             grab { [weak self] picture in
                 guard let self, var current = self.gathering else { return }
@@ -111,8 +110,10 @@ extension QuickAskWindow {
                 self.continueGathering()
             }
         case .file, .photo:
-            Gtk.openFiles(parent: window) { [weak self] paths in
+            stage.stepAside()
+            Gtk.openFiles(parent: stage.dialogParent) { [weak self] paths in
                 Gtk.onMain { [weak self] in
+                    self?.stage.stepBack()
                     guard let self, var current = self.gathering else { return }
                     guard !paths.isEmpty else {
                         self.cancelGathering()
@@ -168,7 +169,6 @@ extension QuickAskWindow {
         gathering = nil
         releaseHold()
         renderStarters()
-        fitToContents()
         editor.focus()
         setHint(Localized.text("Set aside — nothing was written."))
     }

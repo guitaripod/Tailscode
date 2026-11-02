@@ -124,12 +124,17 @@ extension SelfTest {
             "a copied address is a link")
 
         panel.editor.setText("ipad mini rumours", caretAtEnd: true)
-        try expect(!panel.suggestions.isEmpty && !panel.suggest.isHidden, "typed words are offered verbs")
-        try expect(panel.listScroll.isHidden, "and the list steps aside for them")
-        guard let verb = panel.suggestions.firstIndex(where: { $0.id == "web" }) else {
+        try expect(
+            panel.isTyping && !panel.menuItems.isEmpty
+                && panel.menuItems.allSatisfy { $0.id.hasPrefix("verb:") },
+            "typed words turn the list into verbs for them")
+        try expect(!panel.listScroll.isHidden, "and the list keeps its place")
+        guard panel.menuItems.contains(where: { $0.id == "verb:web" }) else {
             throw SelfTestFailure("the web search is offered as a verb")
         }
-        panel.applySuggestion(at: verb)
+        try expect(panel.walksList(down: true), "↓ from a one-line question steps into the verbs")
+        try expect(!panel.walksList(down: false), "and ↑ stays the box's")
+        panel.activate(id: "verb:web")
         try expect(
             panel.editor.text.hasSuffix("ipad mini rumours")
                 && panel.editor.text.count > "ipad mini rumours".count,
@@ -140,6 +145,8 @@ extension SelfTest {
         panel.cancelOperation(nil)
         try expect(panel.menuCursor.index == nil && panel.isVisible, "Esc lets go of the line first")
 
+        try checkPlacement(panel, expect)
+
         panel.editor.setText("Any iPad mini rumours?", caretAtEnd: true)
         panel.schedule(.everyMorning)
         let waiting = QuickAskLaterStore.all()
@@ -147,6 +154,75 @@ extension SelfTest {
         try expect(waiting[0].profileID == arch.id, "and with the machine showing")
         try expect(panel.editor.text.isEmpty, "and leaves the box empty")
         return checks
+    }
+
+    /// The panel is the person's size: the list takes the height a taller panel gives it, the
+    /// panel can be made no smaller than the card needs, and where it is left is what it opens at,
+    /// while a panel that never stood on a screen keeps its hands off what the person kept.
+    private static func checkPlacement(
+        _ panel: QuickAskPanel, _ expect: (Bool, String) throws -> Void
+    ) throws {
+        let kept = QuickAskPlacementStore.load()
+        defer {
+            if kept == QuickAskPlacement() { QuickAskPlacementStore.clear() } else {
+                QuickAskPlacementStore.save(kept)
+            }
+        }
+        try expect(panel.styleMask.contains(.resizable), "the panel can be resized")
+        panel.setContentSize(NSSize(width: 640, height: 480))
+        panel.contentView?.layoutSubtreeIfNeeded()
+        let short = panel.listScroll.frame.height
+        panel.setContentSize(NSSize(width: 720, height: 820))
+        panel.contentView?.layoutSubtreeIfNeeded()
+        let tall = panel.listScroll.frame.height
+        try expect(tall >= short + 300, "a taller panel is a taller list: \(short) → \(tall)")
+        try expect(
+            abs(panel.frame.height - 820) < 1 && abs(panel.frame.width - 720) < 1,
+            "and the panel keeps the size it was given: \(panel.frame.size)")
+        try expect(
+            panel.contentMinSize.width == QuickAskGeometry.minimumWidth
+                && panel.contentMinSize.height == QuickAskGeometry.minimumHeight,
+            "a hand can make it no smaller than the card's minimum")
+        panel.setContentSize(NSSize(width: 520, height: 330))
+        panel.sizeChosen()
+        panel.contentView?.layoutSubtreeIfNeeded()
+        panel.setStatus(
+            String(
+                repeating: "The machine refused the question because the model it was aimed at is not loaded there. ",
+                count: 24))
+        panel.contentView?.layoutSubtreeIfNeeded()
+        let grown = panel.frame.height
+        try expect(
+            grown > 420 && panel.listScroll.frame.height >= 63,
+            "a failure longer than the list can give way to grows the panel and keeps the list's floor: \(grown), list \(panel.listScroll.frame.height)")
+        panel.setStatus("")
+        panel.contentView?.layoutSubtreeIfNeeded()
+        try expect(
+            abs(panel.frame.height - 330) < 1, "and it goes back to the chosen size after: \(panel.frame.height)")
+
+        QuickAskPlacementStore.clear()
+        panel.remember()
+        try expect(QuickAskPlacementStore.load() == QuickAskPlacement(), "an unplaced panel remembers nothing")
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        panel.place(on: screen)
+        let area = screen.visibleFrame
+        panel.setFrame(
+            NSRect(x: area.minX + 120, y: area.maxY - 90 - 700, width: 760, height: 700), display: false)
+        panel.sizeChosen()
+        panel.remember()
+        let left = QuickAskPlacementStore.load()
+        try expect(
+            left.width == 760 && left.height == 700
+                && left.spots[screen.localizedName]?.x == 120
+                && left.spots[screen.localizedName]?.y == 90,
+            "the size and the place are kept as it was left: \(left)")
+        panel.setFrame(NSRect(x: area.midX, y: area.midY, width: 500, height: 400), display: false)
+        panel.place(on: screen)
+        try expect(
+            abs(panel.frame.minX - (area.minX + 120)) < 1 && abs(panel.frame.maxY - (area.maxY - 90)) < 1
+                && abs(panel.frame.width - 760) < 1,
+            "and it opens where it was left: \(panel.frame)")
+        panel.isPlaced = false
     }
 
     private static func dumpActions(_ panel: QuickAskPanel, _ name: String) throws {

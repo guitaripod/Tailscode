@@ -8,7 +8,7 @@ arch=('x86_64' 'aarch64')
 url="https://github.com/guitaripod/Tailscode"
 license=('GPL-3.0-or-later')
 depends=('gtk4' 'libadwaita' 'glib2' 'gdk-pixbuf2' 'libepoxy' 'vte4' 'mpv' 'webkitgtk-6.0' 'libpulse'
-         'curl')
+         'gtk4-layer-shell' 'curl')
 makedepends=('swift-bin' 'git')
 optdepends=('tailscale: reach the machine your agent runs on')
 provides=("$_pkgname")

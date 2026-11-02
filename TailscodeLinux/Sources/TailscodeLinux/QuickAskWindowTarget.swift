@@ -106,7 +106,7 @@ extension QuickAskWindow {
         let server = targetServer
         ModelChooserWindow.present(
             sources: ModelFleet.sources(profiles: servers, current: server.id),
-            selected: QuickAskDefaults.model(forProfileID: server.id), parent: window,
+            selected: QuickAskDefaults.model(forProfileID: server.id), parent: stage.dialogParent,
             onRefresh: { [weak self] in self?.refreshModelCatalog(for: server) },
             onAddToParty: { pick, anchor in
                 let bits = UInt(bitPattern: anchor)
@@ -127,6 +127,7 @@ extension QuickAskWindow {
                     Data("ASK model=\(self.targetServer.name)\n".utf8))
             }
         }
+        stage.stepAside(until: ModelChooserWindow.openWindow)
     }
 
     /// A press in the open chooser: this window draws the catalog out of the fleet's cache, which

@@ -17,6 +17,7 @@ pkgbase = tailscode
 	depends = mpv
 	depends = webkitgtk-6.0
 	depends = libpulse
+	depends = gtk4-layer-shell
 	depends = curl
 	optdepends = tailscale: reach the machine your agent runs on
 	source = tailscode-1.80.tar.gz::https://github.com/guitaripod/Tailscode/archive/refs/tags/v1.80.tar.gz

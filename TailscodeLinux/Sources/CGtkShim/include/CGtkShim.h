@@ -788,3 +788,4 @@ long tailscode_soak_rows(void);
 #include "meridian.h"
 #include "brain.h"
 #include "selfdiag.h"
+#include "stage.h"

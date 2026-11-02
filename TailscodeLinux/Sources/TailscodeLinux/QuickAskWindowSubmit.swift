@@ -8,7 +8,9 @@ import TailscodeCore
 extension QuickAskWindow {
     func pickAttachments() {
         guard !asking, abilities.attachments || isLocalAim else { return }
-        Gtk.openFiles(parent: window) { [weak self] paths in
+        stage.stepAside()
+        Gtk.openFiles(parent: stage.dialogParent) { [weak self] paths in
+            Gtk.onMain { [weak self] in self?.stage.stepBack() }
             self?.take(paths: paths)
         }
     }
@@ -149,6 +151,7 @@ extension QuickAskWindow {
     }
 
     func close() {
+        stage.remember()
         releaseHold(retargeting: false)
         gathering = nil
         if let actionsWatch { NotificationCenter.default.removeObserver(actionsWatch) }

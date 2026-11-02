@@ -9,8 +9,11 @@ import TailscodeCore
 /// model at its level, what can be handed over — and changes any of it in one press; under that,
 /// the list (`QuickAskMenu`): what was just copied with its errands, the person's actions, what is
 /// waiting for later and what was asked here, walked with ↑↓ and run with Return, the first nine
-/// on ⌘1…⌘9. Typing turns the list into a row of verbs for the words typed (⌥1… hands them to an
-/// action), and the foot says in one line of keys what the keys do for the box as it is now.
+/// on ⌘1…⌘9. Typing turns the list into the verbs for the words typed — ↓ from the last line steps
+/// into them, ⌘1… picks one — and the foot says in one line of keys what the keys do for the box
+/// as it is now. The panel is the person's to size and move: it opens at the size it was last
+/// given and the place it was last left on the screen in front (`QuickAskPlacementStore`), and
+/// the list takes whatever height the question and the foot leave it.
 /// Return is still the whole ceremony: the words and anything attached go out as a new
 /// conversation with no project on the machine named in the pill, and the panel stays only long
 /// enough for that machine to answer, so a failed mint keeps the question in hand. The aim is the
@@ -34,9 +37,6 @@ import TailscodeCore
 final class QuickAskPanel: NSPanel {
     private(set) static weak var frontmost: QuickAskPanel?
 
-    static let width: CGFloat = 640
-    static let listCeiling: CGFloat = 440
-
     let editor = PromptEditor(placeholder: Localized.text("Ask anything…"))
     let machinePill: QuickAskMachinePill
     let dialPill = DialPill()
@@ -45,22 +45,19 @@ final class QuickAskPanel: NSPanel {
     let sendButton = NSButton()
     let chips = AttachmentChips()
     let status = NSTextField(wrappingLabelWithString: "")
-    let suggest = NSStackView()
     let starters = NSStackView()
     let listScroll = NSScrollView()
     let listRule = NSBox()
     let footKeys = NSStackView()
     let chordLabel = NSTextField(labelWithString: "")
-    var listHeight: NSLayoutConstraint?
-    /// The card inside the glass, measured for the panel's size: the glass reports no height of its
-    /// own for what it holds.
+    /// The card inside the glass, pinned to it edge to edge, so the panel's size is the card's and
+    /// what the card needs at least is what the panel can be made no smaller than.
     var card: NSView?
     var menuItems: [QuickAskMenuItem] = []
     var menuRows: [QuickAskRowView] = []
     var menuCursor = QuickAskMenuCursor()
-    var suggestions: [QuickAskStarter] = []
-    /// Whether the panel was last drawn for a typed box, so the verbs and the foot are redrawn
-    /// only when that flips.
+    /// Whether the list was last drawn for a typed box, so it is redrawn as the verbs or as
+    /// everything only when that flips.
     var typingShown: Bool?
     let completion = CompletionPopover()
     let servers: [ConnectionProfile]
@@ -79,7 +76,12 @@ final class QuickAskPanel: NSPanel {
     var asking = false
     var draftProfileID: String?
     var keyMonitor: Any?
-    var resizeScheduled = false
+    /// Set once the panel has been put where it was left, so a panel that never stood on a screen —
+    /// one a self-test made — never overwrites where the person keeps it.
+    var isPlaced = false
+    var chosenSize: NSSize?
+    var roomScheduled = false
+    var liveResizeObserver: NSObjectProtocol?
     var modelSheet: ModelChooserSheet?
     var dialPopover: ModelDialPopover?
     var dialClosedAt: Date?
@@ -118,11 +120,7 @@ final class QuickAskPanel: NSPanel {
         let panel = QuickAskPanel(
             servers: servers, preferredServer: preferredServer, recents: recents, onAsk: onAsk,
             onResume: onResume, onAskParty: onAskParty)
-        if let frame = window?.frame {
-            let size = panel.frame.size
-            panel.setFrameOrigin(
-                NSPoint(x: frame.midX - size.width / 2, y: frame.midY - size.height / 2))
-        }
+        panel.place(on: QuickAskPanel.activeScreen(near: window))
         panel.restoreDraft()
         panel.makeKeyAndOrderFront(nil)
         panel.editor.focus()
@@ -145,7 +143,10 @@ final class QuickAskPanel: NSPanel {
         self.onAskParty = onAskParty
         self.machinePill = QuickAskMachinePill(servers: servers)
         super.init(
-            contentRect: .zero, styleMask: [.titled, .closable, .fullSizeContentView],
+            contentRect: NSRect(
+                x: 0, y: 0, width: QuickAskGeometry.defaultWidth,
+                height: QuickAskGeometry.defaultHeight),
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
         title = Localized.text("Quick ask")
         titleVisibility = .hidden
@@ -160,6 +161,8 @@ final class QuickAskPanel: NSPanel {
         isFloatingPanel = true
         isReleasedWhenClosed = false
         collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
+        contentMinSize = NSSize(
+            width: QuickAskGeometry.minimumWidth, height: QuickAskGeometry.minimumHeight)
 
         editor.isBare = true
         editor.onChanged = { [weak self] in
@@ -171,7 +174,7 @@ final class QuickAskPanel: NSPanel {
             self?.refreshAura()
             self?.renderTyping()
             self?.refreshSend()
-            self?.resize()
+            self?.makeRoom()
         }
         editor.onPaste = { [weak self] in self?.takeClipboard() ?? false }
 
@@ -236,13 +239,9 @@ final class QuickAskPanel: NSPanel {
             starters.trailingAnchor.constraint(equalTo: listScroll.contentView.trailingAnchor),
             starters.topAnchor.constraint(equalTo: listScroll.contentView.topAnchor),
         ])
-        let listHeight = listScroll.heightAnchor.constraint(equalToConstant: 0)
-        listHeight.isActive = true
-        self.listHeight = listHeight
-
-        suggest.orientation = .horizontal
-        suggest.spacing = 6
-        suggest.isHidden = true
+        listScroll.setContentHuggingPriority(.init(1), for: .vertical)
+        listScroll.setContentCompressionResistancePriority(.init(1), for: .vertical)
+        listScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 64).isActive = true
 
         chips.onRemove = { [weak self] id in
             guard let self else { return }
@@ -270,7 +269,7 @@ final class QuickAskPanel: NSPanel {
         aim.orientation = .horizontal
         aim.spacing = 6
 
-        let head = NSStackView(views: [field, completion, aim, chips, suggest, status])
+        let head = NSStackView(views: [field, completion, aim, chips, status])
         head.orientation = .vertical
         head.alignment = .leading
         head.spacing = 10
@@ -292,20 +291,32 @@ final class QuickAskPanel: NSPanel {
         let column = QuickAskDropView(views: [head, listRule, listScroll, footRule, foot])
         column.orientation = .vertical
         column.alignment = .leading
+        column.distribution = .fill
         column.spacing = 0
+        for view in [head, listRule, footRule, foot] {
+            view.setContentHuggingPriority(.defaultHigh, for: .vertical)
+            view.setContentCompressionResistancePriority(.required, for: .vertical)
+        }
         column.onDrop = { [weak self] urls in self?.attach(paths: urls.map(\.path)) }
         column.onDropImage = { [weak self] data in self?.addPastedImage(data) }
         column.registerForDraggedTypes([.fileURL, .png, .tiff])
         for view in [head, listRule, listScroll, footRule, foot] {
             view.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
         }
-        for view in [field, aim, status, suggest] {
+        for view in [field, aim, status] {
             view.widthAnchor.constraint(equalTo: head.widthAnchor, constant: -36).isActive = true
         }
         starters.widthAnchor.constraint(equalTo: listScroll.widthAnchor).isActive = true
-        column.widthAnchor.constraint(equalToConstant: Self.width).isActive = true
         card = column
-        contentView = MacTheme.glass(around: column, cornerRadius: 20)
+        let glass = MacTheme.glass(around: column, cornerRadius: 20)
+        column.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            column.leadingAnchor.constraint(equalTo: glass.leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: glass.trailingAnchor),
+            column.topAnchor.constraint(equalTo: glass.topAnchor),
+            column.bottomAnchor.constraint(equalTo: glass.bottomAnchor),
+        ])
+        contentView = glass
         clipboard = Self.detectClipboard()
         refreshAim()
         refreshCommands()
@@ -313,10 +324,12 @@ final class QuickAskPanel: NSPanel {
         actionsObserver = NotificationCenter.default.addObserver(
             forName: QuickAskActions.didChange, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.renderStarters()
-                self?.resize()
-            }
+            MainActor.assumeIsolated { self?.renderStarters() }
+        }
+        liveResizeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didEndLiveResizeNotification, object: self, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.sizeChosen() }
         }
         laterObserver = NotificationCenter.default.addObserver(
             forName: QuickAskLaterStore.didChange, object: nil, queue: .main
@@ -324,10 +337,8 @@ final class QuickAskPanel: NSPanel {
             MainActor.assumeIsolated {
                 guard let self, !self.asking else { return }
                 self.renderStarters()
-                self.resize()
             }
         }
-        resize()
     }
 
     override var canBecomeKey: Bool { true }
@@ -358,6 +369,7 @@ final class QuickAskPanel: NSPanel {
     /// A question is only ever lost in the moment nobody thought to save it, and a panel dismissed
     /// with escape is exactly that moment.
     override func close() {
+        remember()
         releaseHold(retargeting: false)
         gathering = nil
         actionSheet?.dismiss()
@@ -365,6 +377,8 @@ final class QuickAskPanel: NSPanel {
         actionsObserver = nil
         if let laterObserver { NotificationCenter.default.removeObserver(laterObserver) }
         laterObserver = nil
+        if let liveResizeObserver { NotificationCenter.default.removeObserver(liveResizeObserver) }
+        liveResizeObserver = nil
         stashDraft()
         DraftStore.flush()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
@@ -417,11 +431,10 @@ final class QuickAskPanel: NSPanel {
         return offer
     }
 
-    /// The panel's own chords: a number picks the errand under it, ⌘⇧V takes the pasteboard's
-    /// picture. Everything else belongs to the field, which is where the question is. A number is
-    /// claimed exactly while its list is on screen — with a question already typed there is no row
-    /// under ⌘4 to pick, and taking the chord anyway would open a file chooser over a panel with
-    /// nothing on it to say what asked.
+    /// The panel's own chords: a number picks the line wearing it — an errand or an action for an
+    /// empty box, a verb for a typed one — and ⌘⇧V takes the pasteboard's picture. Everything else
+    /// belongs to the field, which is where the question is. A number past the lines on show is
+    /// left alone rather than reaching for an action nobody can see.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard !asking, event.modifierFlags.contains(.command) else {
             return super.performKeyEquivalent(with: event)
@@ -443,8 +456,8 @@ final class QuickAskPanel: NSPanel {
             if event.modifierFlags.contains(.shift) { grabScreen() } else { saveAsAction() }
             return true
         }
-        guard isListing, let characters = event.charactersIgnoringModifiers,
-            let digit = Int(characters), digit > 0
+        guard let characters = event.charactersIgnoringModifiers, let digit = Int(characters),
+            digit > 0, digit <= picks.count
         else { return super.performKeyEquivalent(with: event) }
         pick(at: digit - 1)
         return true

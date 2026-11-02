@@ -6,9 +6,6 @@ import Foundation
 import TailscodeCore
 
 extension QuickAskWindow {
-    static let width: Int32 = 680
-    static let listCeiling: Int32 = 440
-
     /// The far end of the foot teaches the one thing nothing inside the card can: that it opens
     /// without the app in front.
     static func chordNote() -> String {
@@ -122,7 +119,6 @@ extension QuickAskWindow {
     func setHint(_ text: String) {
         gtk_label_set_text(op(hint), text)
         gtk_widget_set_visible(hint, text.isEmpty ? 0 : 1)
-        fitToContents()
     }
 
     /// A notice is about the moment it was said in; the next keystroke is a new moment.
@@ -131,10 +127,23 @@ extension QuickAskWindow {
         setHint("")
     }
 
-    /// The list is what the keyboard walks while the box is empty, and while a template is waiting
-    /// for a chat to hand on.
-    var isListing: Bool {
-        gathering?.awaiting == .session || (editor.text.isEmpty && attachments.isEmpty)
+    /// Words or things in the box, and no template waiting for a chat: the list is then the verbs
+    /// for what was typed rather than everything that can be done.
+    var isTyping: Bool {
+        gathering?.awaiting != .session && !(editor.text.isEmpty && attachments.isEmpty)
+    }
+
+    /// Whether an arrow is the list's rather than the box's. With the box empty every arrow walks
+    /// the list; with words in it ↓ steps into the list only from the box's last line, so a
+    /// question of several lines is still walked line by line, and ↑ is the list's only while a
+    /// line of it is held — from the first line it hands the keyboard back to the box.
+    func walksList(down: Bool) -> Bool {
+        guard isTyping else { return true }
+        if menuCursor.index != nil { return true }
+        guard down else { return false }
+        let text = editor.text
+        let caret = text.index(text.startIndex, offsetBy: min(editor.cursor, text.count))
+        return !text[caret...].contains("\n")
     }
 
     /// The card below the question: what was just copied with what can be done with it, then
@@ -147,9 +156,13 @@ extension QuickAskWindow {
         }
         Gtk.removeChildren(of: starters)
         menuRows = []
+        typingShown = isTyping
         let sections: [QuickAskMenuSection]
         if gathering?.awaiting == .session {
             sections = QuickAskMenu.sessions(QuickAskSessionReference.candidates(among: recents))
+        } else if isTyping {
+            offered = QuickAskStarters.offered(for: abilities, surface: surface)
+            sections = QuickAskMenu.verbs(offered, aimWords: { [weak self] aim in self?.aimBadge(aim) })
         } else {
             offered = QuickAskStarters.offered(for: abilities, surface: surface)
             copied = copiedOffer.flatMap(reading)
@@ -185,19 +198,9 @@ extension QuickAskWindow {
             gtk_box_append(ptr(starters), note)
         }
         menuCursor.follow(id: selected, in: menuItems)
-        sizeList()
         paintSelection()
-        renderTyping(force: true)
+        renderFooter()
         refreshStarterVisibility()
-    }
-
-    /// A scrolled list asks for almost nothing on its own, so the card would open as a sliver: the
-    /// list is held at the height its lines want, up to the ceiling past which it scrolls.
-    func sizeList() {
-        var minimum: Int32 = 0
-        var natural: Int32 = 0
-        gtk_widget_measure(starters, GTK_ORIENTATION_VERTICAL, Self.width, &minimum, &natural, nil, nil)
-        gtk_scrolled_window_set_min_content_height(op(body), min(natural, Self.listCeiling))
     }
 
     /// Where an action asks when it asks somewhere of its own, said as short as it can be: the
@@ -232,7 +235,10 @@ extension QuickAskWindow {
         gtk_box_append(ptr(line), detail)
         if let badge = item.badge, !badge.isEmpty {
             let pill = whole(Gtk.label(badge, css: "qa-row-badge", selectable: false))
+            gtk_label_set_ellipsize(op(pill), PANGO_ELLIPSIZE_MIDDLE)
+            gtk_label_set_max_width_chars(op(pill), 22)
             gtk_widget_set_valign(pill, GTK_ALIGN_CENTER)
+            gtk_widget_set_tooltip_text(pill, badge)
             gtk_box_append(ptr(line), pill)
         }
         if let digit = item.digit {
@@ -324,9 +330,13 @@ extension QuickAskWindow {
             menuCursor.clear()
             pickErrand(errand)
         case .starter(let starter):
-            guard gathering == nil, editor.text.isEmpty else { return }
-            AppLog.write(.ui, "ASK starter=\(starter.id)")
+            guard gathering == nil else { return }
             menuCursor.clear()
+            if isTyping {
+                applyVerb(starter)
+                return
+            }
+            AppLog.write(.ui, "ASK starter=\(starter.id)")
             run(starter.action, copied: false)
         case .later:
             guard menuRows.indices.contains(index) else { return }
@@ -363,50 +373,21 @@ extension QuickAskWindow {
         }
     }
 
-    /// With words in the box the list steps aside for a row of verbs: the person's first few
-    /// actions, each taking the typed words as what it is about. The row and the foot are redrawn
-    /// only when the box crosses between empty and not, never on every keystroke.
-    func renderTyping(force: Bool = false) {
-        let typing = !isListing
-        guard force || typing != typingShown else { return }
-        typingShown = typing
-        Gtk.removeChildren(of: suggest)
-        suggestions = typing && gathering == nil ? QuickAskMenu.suggestions(offered) : []
-        if !suggestions.isEmpty {
-            let label = whole(Gtk.label(QuickAskMenuWords.suggest, css: "qa-suggest-label", selectable: false))
-            gtk_widget_set_valign(label, GTK_ALIGN_CENTER)
-            gtk_box_append(ptr(suggest), label)
-            for (index, starter) in suggestions.enumerated() {
-                let chip = gtk_button_new()!
-                Gtk.addClass(chip, "flat")
-                Gtk.addClass(chip, "qa-suggest-chip")
-                let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-                gtk_box_append(ptr(line), whole(Gtk.label(starter.glyph, css: "qa-suggest-glyph", selectable: false)))
-                let title = Gtk.label(starter.title, css: "qa-suggest-title", selectable: false)
-                gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_END)
-                gtk_label_set_max_width_chars(op(title), 18)
-                gtk_box_append(ptr(line), title)
-                gtk_box_append(ptr(line), whole(Gtk.label("\(index + 1)", css: "ask-keycap", selectable: false)))
-                gtk_button_set_child(ptr(chip), line)
-                gtk_widget_set_tooltip_text(chip, starter.prompt)
-                Gtk.connect(UnsafeMutableRawPointer(chip), "clicked") {
-                    Gtk.onMain { QuickAskWindow.open?.applySuggestion(at: index) }
-                }
-                gtk_box_append(ptr(suggest), chip)
-            }
-        }
-        renderFooter()
-        refreshStarterVisibility()
+    /// The list is redrawn as the verbs, or back as everything, only when the box crosses between
+    /// empty and not — never on every keystroke.
+    func renderTyping() {
+        guard isTyping != typingShown else { return }
+        menuCursor.clear()
+        renderStarters()
     }
 
     /// The words typed so far, handed to an action as what it is about.
-    func applySuggestion(at index: Int) {
-        guard !asking, gathering == nil, suggestions.indices.contains(index) else { return }
+    func applyVerb(_ starter: QuickAskStarter) {
+        guard !asking, gathering == nil else { return }
         let typed = editor.text
-        let action = suggestions[index].action
-        AppLog.write(.ui, "ASK suggestion=\(action.id)")
+        AppLog.write(.ui, "ASK verb=\(starter.id)")
         write("")
-        run(action, copied: false, typed: typed)
+        run(starter.action, copied: false, typed: typed)
     }
 
     /// One line of keys for the box as it is, and on its far end the chord that opens the card
@@ -414,9 +395,9 @@ extension QuickAskWindow {
     func renderFooter() {
         Gtk.removeChildren(of: footKeys)
         let keys = QuickAskFooter.keys(
-            platform: .linux, typing: !isListing,
+            platform: .linux, typing: isTyping,
             party: QuickAskParty.targets(partyInputs().cards).count > 1,
-            screen: surface.screen && abilities.vision, suggestions: suggestions.count)
+            screen: surface.screen && abilities.vision, verbs: picks.count)
             + [QuickAskFooter.Key(keys: "esc", word: Localized.text("close"))]
         for key in keys {
             let pair = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 5)
@@ -493,7 +474,6 @@ extension QuickAskWindow {
                 let after = self.copiedOffer.flatMap(self.reading)?.fingerprint
                 guard before != after else { return }
                 self.renderStarters()
-                self.fitToContents()
             }
         }
     }
@@ -513,7 +493,6 @@ extension QuickAskWindow {
         guard let copied else { return }
         QuickAskClipboardMemory.settle(copied.fingerprint)
         renderStarters()
-        fitToContents()
         editor.focus()
         AppLog.write(.ui, "ASK copied set aside")
     }
@@ -523,27 +502,10 @@ extension QuickAskWindow {
         activate(id: picks[index].id)
     }
 
-    /// The list is the empty box's and the verbs are the typed box's, and a card that kept the
-    /// height of either after it left would be a pane of dead space under the question: the
-    /// toplevel is asked for its natural height again every time one comes or goes.
+    /// The list stays where it is whatever the box holds — the card never changes size under the
+    /// person — and only goes quiet while a question is on its way.
     func refreshStarterVisibility() {
-        let listing: Int32 = isListing && !asking ? 1 : 0
-        let verbs: Int32 = !isListing && !asking && !suggestions.isEmpty ? 1 : 0
-        guard gtk_widget_get_visible(body) != listing || gtk_widget_get_visible(suggest) != verbs
-        else { return }
-        gtk_widget_set_visible(body, listing)
-        gtk_widget_set_visible(suggest, verbs)
-        fitToContents()
-    }
-
-    /// The window is exactly as tall as what is in it, which means it has to be asked again every
-    /// time that changes: a box that grew inside a window that did not would write the question
-    /// off the bottom edge of its own surface. Asking for the natural height (-1) a second time is
-    /// no change at all to GTK, so a window that had grown kept its height after the card or the
-    /// box under it shrank; asking for a single pixel lets the content's own minimum decide, in
-    /// both directions, every time.
-    func fitToContents() {
-        gtk_window_set_default_size(ptr(window), Self.width, 1)
+        gtk_widget_set_sensitive(body, asking ? 0 : 1)
     }
 
     /// A starter is the first half of a sentence, never a question the app asked on somebody's

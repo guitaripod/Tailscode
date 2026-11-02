@@ -341,6 +341,11 @@ extension MatrixStylesheet {
             border-radius: 16px;
         }
         .qa-card { background-color: \(canvas); border-radius: 16px; }
+        window.qa-layer, window.qa-layer.background { background: transparent; box-shadow: none; }
+        .qa-floating {
+            border: 1px solid alpha(\(text), 0.12);
+            box-shadow: 0 18px 48px alpha(black, 0.38), 0 2px 8px alpha(black, 0.22);
+        }
         .qa-head { padding: 16px 18px 12px 18px; }
         .qa-field { padding: 2px 0; }
         .qa-caret {

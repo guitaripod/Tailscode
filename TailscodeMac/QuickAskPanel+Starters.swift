@@ -4,26 +4,45 @@ import CodingAgentKitApple
 import TailscodeCore
 
 extension QuickAskPanel {
-    /// The list is what the keyboard walks while the box is empty, and while a template is waiting
-    /// for a chat to hand on.
-    var isListing: Bool {
-        gathering?.awaiting == .session
-            || (editor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    /// Words or things in the box, and no template waiting for a chat: the list is then the verbs
+    /// for what was typed rather than everything that can be done.
+    var isTyping: Bool {
+        gathering?.awaiting != .session
+            && !(editor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && attachments.isEmpty)
     }
 
+    /// Whether an arrow is the list's rather than the box's. With the box empty every arrow walks
+    /// the list; with words in it ↓ steps into the list only from the box's last line, so a
+    /// question of several lines is still walked line by line, and ↑ is the list's only while a
+    /// line of it is held — from the first line it hands the keyboard back to the box.
+    func walksList(down: Bool) -> Bool {
+        guard isTyping else { return true }
+        if menuCursor.index != nil { return true }
+        guard down else { return false }
+        let text = editor.text
+        let caret = text.index(text.startIndex, offsetBy: min(max(editor.cursor, 0), text.count))
+        return !text[caret...].contains("\n")
+    }
+
     /// The panel below the question: Core's sections — what was just copied with what can be done
-    /// with it, the person's actions, what is waiting for later, what was asked here — or, while
-    /// `{session}` waits, the chats to hand on. A redraw keeps the keyboard on the line it was on.
+    /// with it, the person's actions, what is waiting for later, what was asked here — or, with
+    /// words typed, the verbs for them, or, while `{session}` waits, the chats to hand on. A redraw
+    /// keeps the keyboard on the line it was on.
     func renderStarters() {
         let selected = menuCursor.index.flatMap {
             menuItems.indices.contains($0) ? menuItems[$0].id : nil
         }
         starters.arrangedSubviews.forEach { $0.removeFromSuperview() }
         menuRows = []
+        typingShown = isTyping
         let sections: [QuickAskMenuSection]
         if gathering?.awaiting == .session {
             sections = QuickAskMenu.sessions(QuickAskSessionReference.candidates(among: recents))
+        } else if isTyping {
+            offered = QuickAskStarters.offered(for: abilities, surface: surface)
+            sections = QuickAskMenu.verbs(
+                offered, aimWords: { [weak self] aim in self?.aimBadge(aim) })
         } else {
             let surface = self.surface
             offered = QuickAskStarters.offered(for: abilities, surface: surface)
@@ -64,10 +83,8 @@ extension QuickAskPanel {
         }
         menuCursor.follow(id: selected, in: menuItems)
         paintSelection()
-        sizeList()
-        renderTyping(force: true)
+        renderFooter()
         refreshStarterVisibility()
-        resize()
     }
 
     /// Where an action asks when it asks somewhere of its own, said as short as it can be.
@@ -99,12 +116,6 @@ extension QuickAskPanel {
             QuickAskLaterStore.remove(id: id)
         })
         return menu
-    }
-
-    /// The list is held at the height its lines want, up to the ceiling past which it scrolls.
-    func sizeList() {
-        starters.layoutSubtreeIfNeeded()
-        listHeight?.constant = min(starters.fittingSize.height, Self.listCeiling)
     }
 
     func paintSelection() {
@@ -139,7 +150,13 @@ extension QuickAskPanel {
             menuCursor.clear()
             pickErrand(errand)
         case .starter(let starter):
-            guard gathering == nil, editor.text.isEmpty else { return }
+            guard gathering == nil else { return }
+            if isTyping {
+                menuCursor.clear()
+                applyVerb(starter)
+                return
+            }
+            guard editor.text.isEmpty else { return }
             menuCursor.clear()
             run(starter.action, copied: false)
         case .later(let later):
@@ -156,46 +173,20 @@ extension QuickAskPanel {
         }
     }
 
-    /// With words in the box the list steps aside for a row of verbs: the person's first few
-    /// actions, each taking the typed words as what it is about. Redrawn only when the box crosses
-    /// between empty and not.
-    func renderTyping(force: Bool = false) {
-        let typing = !isListing
-        guard force || typing != typingShown else { return }
-        typingShown = typing
-        suggest.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        suggestions = typing && gathering == nil ? QuickAskMenu.suggestions(offered) : []
-        if !suggestions.isEmpty {
-            let label = NSTextField(labelWithString: QuickAskMenuWords.suggest)
-            label.font = MacTheme.Ramp.font(.panelFootnote)
-            label.textColor = MacTheme.Color.secondaryLabel
-            suggest.addArrangedSubview(label)
-            for (index, starter) in suggestions.enumerated() {
-                let button = RowKit.ActionButton(title: starter.title + "  ⌥\(index + 1)") {
-                    [weak self] in
-                    self?.applySuggestion(at: index)
-                }
-                button.image = NSImage(systemSymbolName: starter.symbol, accessibilityDescription: nil)
-                button.imagePosition = .imageLeading
-                button.controlSize = .small
-                button.font = MacTheme.Ramp.font(.control)
-                button.toolTip = starter.prompt
-                button.lineBreakMode = .byTruncatingTail
-                button.setContentCompressionResistancePriority(.init(250), for: .horizontal)
-                suggest.addArrangedSubview(button)
-            }
-        }
-        renderFooter()
-        refreshStarterVisibility()
+    /// The list is redrawn as the verbs or as everything only when the box crosses between empty
+    /// and not, and a line held for the other list is let go.
+    func renderTyping() {
+        guard isTyping != typingShown else { return }
+        menuCursor.clear()
+        renderStarters()
     }
 
     /// The words typed so far, handed to an action as what it is about.
-    func applySuggestion(at index: Int) {
-        guard !asking, gathering == nil, suggestions.indices.contains(index) else { return }
+    func applyVerb(_ starter: QuickAskStarter) {
+        guard !asking, gathering == nil else { return }
         let typed = editor.text
-        let action = suggestions[index].action
         editor.setText("", caretAtEnd: true)
-        run(action, copied: false, typed: typed)
+        run(starter.action, copied: false, typed: typed)
     }
 
     /// One line of keys for the box as it is, and on its far end the chord that opens the panel
@@ -204,9 +195,9 @@ extension QuickAskPanel {
         footKeys.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let keys =
             QuickAskFooter.keys(
-                platform: .apple, typing: !isListing,
+                platform: .apple, typing: isTyping,
                 party: QuickAskParty.targets(partyCards()).count > 1,
-                screen: surface.screen && abilities.vision, suggestions: suggestions.count)
+                screen: surface.screen && abilities.vision, verbs: picks.count)
             + [QuickAskFooter.Key(keys: "esc", word: Localized.text("close"))]
         for key in keys { footKeys.addArrangedSubview(QuickAskList.key(key)) }
         let summon = MacSummon.shared.state
@@ -271,7 +262,6 @@ extension QuickAskPanel {
         guard !asking, clipboard?.fingerprint != Self.pasteboardFingerprint() else { return }
         clipboard = Self.detectClipboard()
         renderStarters()
-        resize()
     }
 
     /// An errand is the first half of a sentence, the same as a starter: the instruction lands in
@@ -287,7 +277,6 @@ extension QuickAskPanel {
         guard let copied else { return }
         QuickAskClipboardMemory.settle(copied.fingerprint)
         renderStarters()
-        resize()
         editor.focus()
     }
 
@@ -296,43 +285,19 @@ extension QuickAskPanel {
         activate(id: picks[index].id)
     }
 
-    /// The list is the empty box's and the verbs are the typed box's; the panel takes its new
-    /// height whenever one comes or goes.
+    /// The list stays where it is while a question is out, dimmed, since nothing on it can be run
+    /// until the machine has answered.
     func refreshStarterVisibility() {
-        let listing = isListing && !asking
-        let verbs = !isListing && !asking && !suggestions.isEmpty
-        guard listScroll.isHidden == listing || suggest.isHidden == verbs else { return }
-        listScroll.isHidden = !listing
-        listRule.isHidden = !listing
-        suggest.isHidden = !verbs
-        resize()
-    }
-
-    /// The box measures its own height one runloop pass after the keystroke that changed it, so
-    /// the size read here is still the previous line count. The panel takes that size now — the
-    /// first one is what places the window as it opens — and takes it again once the editor has
-    /// answered, so a question that wraps onto a second line is not one keystroke behind the
-    /// window holding it.
-    func resize() {
-        guard let content = card ?? contentView else { return }
-        setContentSize(content.fittingSize)
-        guard !resizeScheduled else { return }
-        resizeScheduled = true
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.resizeScheduled = false
-            guard let content = self.card ?? self.contentView else { return }
-            self.setContentSize(content.fittingSize)
-        }
+        listScroll.alphaValue = asking ? 0.45 : 1
     }
 
     /// Everything the panel says about itself goes through here, because the sentence is sometimes
-    /// a whole failure — what the other machine refused and why — and the panel has to grow to
-    /// hold it rather than cut it off at the tail.
+    /// a whole failure — what the other machine refused and why — and it is held whole: the list
+    /// gives up its height to it first, and the panel grows only past that.
     func setStatus(_ text: String) {
         status.stringValue = text
         status.isHidden = text.isEmpty
-        resize()
+        makeRoom()
     }
 
     private func resume(_ entry: SessionEntry) {
@@ -416,8 +381,8 @@ extension QuickAskPanel {
         attachButton.title =
             attachments.isEmpty
             ? Localized.text("Attach") : Localized.text("%@ attached", "\(attachments.count)")
-        refreshStarterVisibility()
+        renderTyping()
         refreshSend()
-        resize()
+        makeRoom()
     }
 }

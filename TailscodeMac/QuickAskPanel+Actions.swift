@@ -110,8 +110,6 @@ extension QuickAskPanel {
         switch next {
         case .session:
             renderStarters()
-            refreshStarterVisibility()
-            resize()
         case .screen:
             grab { [weak self] picture in
                 guard let self, var current = self.gathering else { return }
@@ -171,9 +169,7 @@ extension QuickAskPanel {
         }
         if let fingerprint = gathering.fingerprint { QuickAskClipboardMemory.settle(fingerprint) }
         renderStarters()
-        refreshStarterVisibility()
         editor.focus()
-        resize()
         guard gathering.action.sends,
             QuickAskComposition.canSend(text: editor.text, attachments: attachments.count)
         else { return }

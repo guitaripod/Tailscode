@@ -191,7 +191,7 @@ extension QuickAskWindow {
         }
         ModelChooserWindow.present(
             sources: sources, selected: QuickAskDefaults.model(forProfileID: server.id),
-            parent: window, context: .party,
+            parent: stage.dialogParent, context: .party,
             onRefresh: { [weak self] in self?.refreshModelCatalog(for: server) }
         ) { [weak self] pick in
             Gtk.onMain { [weak self] in
@@ -205,6 +205,7 @@ extension QuickAskWindow {
                 }
             }
         }
+        stage.stepAside(until: ModelChooserWindow.openWindow)
     }
 
     func openParty(announcing words: String? = nil) {

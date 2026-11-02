@@ -107,12 +107,16 @@ extension SelfTest {
 
         ask.write("ipad mini rumours")
         pump(0.2)
-        try expect(!ask.suggestions.isEmpty && gtk_widget_get_visible(ask.suggest) != 0, "typed words are offered verbs")
-        try expect(gtk_widget_get_visible(ask.body) == 0, "and the list steps aside for them")
-        guard let verb = ask.suggestions.firstIndex(where: { $0.id == "web" }) else {
+        try expect(
+            ask.isTyping && !ask.menuItems.isEmpty
+                && ask.menuItems.allSatisfy { $0.id.hasPrefix("verb:") },
+            "typed words turn the list into verbs for them")
+        try expect(gtk_widget_get_visible(ask.body) != 0, "and the list keeps its place")
+        guard ask.menuItems.contains(where: { $0.id == "verb:web" }) else {
             throw SelfTestFailure("quick ask actions: the web search is offered as a verb")
         }
-        ask.applySuggestion(at: verb)
+        try expect(ask.walksList(down: true), "↓ from a one-line question steps into the verbs")
+        ask.activate(id: "verb:web")
         pump(0.2)
         try expect(
             ask.editor.text.hasSuffix("ipad mini rumours") && ask.editor.text.count > "ipad mini rumours".count,

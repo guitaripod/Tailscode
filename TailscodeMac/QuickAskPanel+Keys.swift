@@ -72,30 +72,24 @@ extension QuickAskPanel {
         }
     }
 
-    /// The list's keys while the box is empty: ↓ and ↑ (or ⌃N and ⌃P) walk it, Return runs the
-    /// line the keyboard stands on. With words typed, ⌥1… hands them to a verb.
+    /// The list's keys: ↓ and ↑ (or ⌃N and ⌃P) walk it — with words typed, only from where
+    /// `walksList` says the box is done with the arrow — and Return runs the line the keyboard
+    /// stands on, which with words typed hands them to that verb.
     private func handleListKey(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             .subtracting([.capsLock, .numericPad, .function])
         let letter = event.charactersIgnoringModifiers?.lowercased()
-        if isListing {
-            let down = (flags.isEmpty && event.keyCode == 125) || (flags == .control && letter == "n")
-            let up = (flags.isEmpty && event.keyCode == 126) || (flags == .control && letter == "p")
-            if down || up {
-                moveSelection(by: down ? 1 : -1)
-                return true
-            }
-            if flags.isEmpty, event.keyCode == 36 || event.keyCode == 76, menuCursor.index != nil {
-                runSelected()
-                return true
-            }
-            return false
+        let down = (flags.isEmpty && event.keyCode == 125) || (flags == .control && letter == "n")
+        let up = (flags.isEmpty && event.keyCode == 126) || (flags == .control && letter == "p")
+        if down || up, walksList(down: down) {
+            moveSelection(by: down ? 1 : -1)
+            return true
         }
-        guard flags == .option, let digit = event.charactersIgnoringModifiers.flatMap({ Int($0) }),
-            (1...suggestions.count).contains(digit)
-        else { return false }
-        applySuggestion(at: digit - 1)
-        return true
+        if flags.isEmpty, event.keyCode == 36 || event.keyCode == 76, menuCursor.index != nil {
+            runSelected()
+            return true
+        }
+        return false
     }
 
     /// ⌃⌥↑ hotter, ⌃⌥↓ colder, ⌥M or ⌥E the dial. A ⌘ chord is the menu bar's and a bare arrow
@@ -221,12 +215,12 @@ extension QuickAskPanel {
             completionCursor =
                 previous.flatMap { id in matches.firstIndex { $0.command.id == id } } ?? 0
             completion.renderCompletion(presentation, cursor: completionCursor)
-            resize()
+            makeRoom()
         case .arguments, .noMatch:
             completionMatches = []
             completionCursor = 0
             completion.renderCompletion(presentation)
-            resize()
+            makeRoom()
         }
     }
 
@@ -235,7 +229,6 @@ extension QuickAskPanel {
         guard count > 0 else { return }
         completionCursor = ((completionCursor + delta) % count + count) % count
         completion.renderCompletion(.naming(matches: completionMatches), cursor: completionCursor)
-        resize()
     }
 
     private func acceptCompletion() {
@@ -260,6 +253,6 @@ extension QuickAskPanel {
         completionCursor = 0
         guard completion.isShowing else { return }
         completion.hide()
-        resize()
+        makeRoom()
     }
 }

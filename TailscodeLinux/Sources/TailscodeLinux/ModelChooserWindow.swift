@@ -962,4 +962,7 @@ extension ModelChooserWindow {
     static func choose(_ chosen: ModelPick) { open?.pick(chosen) }
 
     static func dismissOpen() { open?.close() }
+
+    /// The chooser's own window, for a surface that has to step aside while it is up.
+    static var openWindow: UnsafeMutablePointer<GtkWidget>? { open?.window }
 }

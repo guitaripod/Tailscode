@@ -54,15 +54,14 @@ public struct QuickAskMenuSection: Sendable, Identifiable {
     public var isCopied: Bool { id == "copied" }
 }
 
-/// What the empty quick ask lists and what a typed question is offered, decided once.
+/// What the quick ask lists, decided once: for an empty box what can be done, for a typed one the
+/// actions that can take the words.
 ///
 /// The list reads top to bottom as the order of likelihood: the actions the person reaches for,
 /// then what is waiting for later, then what was asked here before. Digits go to the copied card's
 /// errands first and then to the actions, so the nine fastest keys are always the nine most likely
 /// things.
 public enum QuickAskMenu {
-    public static let suggestionLimit = 3
-
     public static func sections(
         copied: QuickAskCopied? = nil, starters: [QuickAskStarter], later: [QuickAskLater],
         recents: [SessionEntry], aimWords: (QuickAskActionAim) -> String? = { _ in nil },
@@ -142,13 +141,25 @@ public enum QuickAskMenu {
         sections.flatMap(\.items)
     }
 
-    /// The actions a typed question is offered, as verbs for it: the first few of the person's own
-    /// order, which recency already leads with. Actions that ask for a chat to hand on are left
-    /// out, since the words typed are the question, not the chat.
-    public static func suggestions(_ starters: [QuickAskStarter], limit: Int = suggestionLimit)
-        -> [QuickAskStarter]
+    /// With words in the box the list becomes the verbs for them: every action that can take the
+    /// typed words as what it is about, in the person's order, the first nine on digits. Actions
+    /// that ask for a chat to hand on are left out, since the words typed are the question, not
+    /// the chat.
+    public static func verbs(_ starters: [QuickAskStarter], aimWords: (QuickAskActionAim) -> String? = { _ in nil })
+        -> [QuickAskMenuSection]
     {
-        Array(starters.filter { !$0.action.gathers.contains(.session) }.prefix(limit))
+        let usable = starters.filter { !$0.action.gathers.contains(.session) }
+        guard !usable.isEmpty else { return [] }
+        return [
+            QuickAskMenuSection(
+                id: "verbs", title: QuickAskMenuWords.verbs,
+                items: usable.enumerated().map { index, starter in
+                    QuickAskMenuItem(
+                        kind: .starter(starter), id: "verb:" + starter.id, glyph: starter.glyph,
+                        symbol: starter.symbol, title: starter.title, detail: starter.detail,
+                        badge: starter.action.aim.flatMap(aimWords), digit: digit(at: index))
+                })
+        ]
     }
 
     static func digit(at index: Int) -> Int? {
@@ -212,17 +223,14 @@ public enum QuickAskFooter {
     }
 
     public static func keys(
-        platform: SummonPlatform, typing: Bool, party: Bool, screen: Bool, suggestions: Int
+        platform: SummonPlatform, typing: Bool, party: Bool, screen: Bool, verbs: Int
     ) -> [Key] {
         let apple = platform == .apple
         var keys: [Key] = []
         if typing {
             keys.append(Key(keys: apple ? "↩" : "↵", word: Localized.text("ask")))
-            if suggestions > 0 {
-                keys.append(
-                    Key(
-                        keys: (apple ? "⌥" : "alt+") + "1–\(suggestions)",
-                        word: Localized.text("with an action")))
+            if verbs > 0 {
+                keys.append(Key(keys: "↓", word: Localized.text("with an action")))
             }
             if party { keys.append(Key(keys: apple ? "⌥↩" : "alt+↵", word: Localized.text("party"))) }
             keys.append(Key(keys: apple ? "⌘L" : "alt+L", word: Localized.text("later")))
@@ -242,5 +250,5 @@ public enum QuickAskMenuWords {
     public static var whichChat: String { Localized.text("Which chat?") }
     public static var newAction: String { Localized.text("New action") }
     public static var newActionDetail: String { Localized.text("Right-click any action to change it") }
-    public static var suggest: String { Localized.text("With") }
+    public static var verbs: String { Localized.text("Ask it with an action") }
 }

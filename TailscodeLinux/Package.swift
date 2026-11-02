@@ -18,6 +18,11 @@ let hasMpv = FileManager.default.fileExists(atPath: "/usr/include/mpv/render_gl.
 /// speakers (PipeWire answers it too). Optional on the same terms as the rest — a machine without
 /// it builds an app whose call answers that audio is unavailable rather than failing to compile.
 let hasPulse = FileManager.default.fileExists(atPath: "/usr/include/pulse/simple.h")
+/// The layer shell is what lets the quick ask stand where it was left and come back the size it
+/// was made: a desktop window cannot place itself on Wayland, but an overlay surface can place
+/// what it draws. Optional like the engines above; without it the quick ask is an ordinary window.
+let hasLayerShell = FileManager.default.fileExists(
+    atPath: "/usr/include/gtk4-layer-shell/gtk4-layer-shell.h")
 
 /// WebKitGTK is what makes the browser slot a pane rather than another window: the web view is a
 /// GtkWidget the tiling owns. Optional on the same terms as the rest — a machine without it builds
@@ -69,6 +74,15 @@ if hasPulse {
         .systemLibrary(
             name: "CPulse", pkgConfig: "libpulse-simple",
             providers: [.apt(["libpulse-dev"]), .yum(["pulseaudio-libs-devel"])]))
+}
+
+if hasLayerShell {
+    appDependencies.append("CLayerShell")
+    appSettings.append(.define("HAS_LAYER_SHELL"))
+    targets.append(
+        .systemLibrary(
+            name: "CLayerShell", pkgConfig: "gtk4-layer-shell-0",
+            providers: [.apt(["libgtk4-layer-shell-dev"])]))
 }
 
 if hasWebKit {
