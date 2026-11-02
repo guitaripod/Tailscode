@@ -72,7 +72,7 @@ public enum ProWeek {
         }
         return Localized.text(
             "Connected: %1$@. Resting until you get Pro: %2$@. Nothing is deleted, and you can choose which server stays connected.",
-            ListFormatter.localizedString(byJoining: kept), ListFormatter.localizedString(byJoining: resting))
+            kept.formatted(.list(type: .and)), resting.formatted(.list(type: .and)))
     }
 
     public static var restingTitle: String { Localized.text("Resting") }
