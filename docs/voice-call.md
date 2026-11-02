@@ -127,7 +127,9 @@ person is silent, the call chimes and the client plays its haptic.
 - Ignore the gateway's binary frames and its `say` frames, and read a phase of `speaking` as
   `listening` (`VoiceCallSession` does this unless it is built with `modelSpeaks`, which no client does).
 - Keep the screen on and the audio session alive for the length of the call (iOS: playAndRecord,
-  voiceChat mode, the audio background mode).
+  voiceChat mode). The app does not declare the `audio` background mode: App Review rejected 1.80
+  under guideline 2.5.4 because a reviewer cannot reach a voice gateway to see the call, so the call
+  lives while the app is in front and ends when it leaves.
 - Show what was heard (`user`) as it is heard, partial lines updated in place: the transcript row is the
   ordinary pending row once it is sent.
 - Never treat the gateway as the authority on the agent. `dispatch` goes through the app's send path
@@ -330,7 +332,9 @@ visible, so the person watches the agent work while talking.
   `VoiceCallDesk`. It mirrors reaches and report lines into values the main thread reads without
   waiting on an actor, keeps the screen awake for as long as any call is up and lets go on every end
   path, hangs the call up when the app leaves the front without the `audio` background mode declared
-  (the app declares it, so a call survives a locked screen) and when the app terminates, and hangs
+  (since 1.81 the app does not declare it, after the 2.5.4 rejection of 1.80, so leaving the app or
+  locking the screen ends the call; the call keeps the screen awake so it does not lock by itself) and
+  when the app terminates, and hangs
   it up when the chat it belongs to is left. A chat on a server with a gateway asks the desk to keep
   its reach fresh while it is on screen. `AppleVoiceIO.onInterruption` and `onFailure` hang up.
 - **The agent's account** is computed on every state the view model emits and on every change to what
@@ -365,8 +369,8 @@ been shown:
   default and at the largest type sizes; whether the face reads at a glance in sunlight; whether the
   caption line, which truncates at its head so the newest words stay visible, is readable at speed;
   that the sheen on the beta mark plays once and then stops;
-- that the screen stays on and the call survives a locked screen through the audio background mode,
-  and that a call the system suspends is ended rather than left half open;
+- that the screen stays on for the length of the call, and that leaving the app or locking the screen
+  ends the call rather than leaving it half open;
 - the microphone prompt on first use and the Settings road after a refusal;
 - that the transcript row for a spoken prompt rises and streams the way a typed one does;
 - that the chime is audible over the call's route.

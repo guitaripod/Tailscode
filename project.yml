@@ -248,7 +248,7 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
-        UIBackgroundModes: [fetch, remote-notification, audio]
+        UIBackgroundModes: [fetch, remote-notification]
         BGTaskSchedulerPermittedIdentifiers: [com.guitaripod.tailscode.usage-refresh]
     settings:
       base:
