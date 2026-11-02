@@ -7,6 +7,18 @@ extension ModelPickerViewController {
 
         func tourDoor(_ index: Int) { pickDoor(index) }
 
+        /// Scrolls the first agent's section to the top, so a photograph of the chooser shows the
+        /// agents a machine hosts beside its own models.
+        func tourAgentSection() {
+            let snapshot = dataSource.snapshot()
+            guard let section = snapshot.sectionIdentifiers.first(where: { $0.hasPrefix("·agent·") }),
+                let first = snapshot.itemIdentifiers(inSection: section).first,
+                let indexPath = dataSource.indexPath(for: first)
+            else { return }
+            collectionView.scrollToItem(at: indexPath, at: .top, animated: false)
+            collectionView.contentOffset.y -= 56
+        }
+
         func tourExpand() {
             guard let index = chooser.rows.firstIndex(where: { $0.canExpand && !$0.isExpanded })
             else { return }

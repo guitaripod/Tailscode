@@ -9,6 +9,7 @@ extension ServerDetailViewController {
         snapshot.appendSections(
             Section.allCases.filter {
                 ($0 != .permissions || showsPermissions) && ($0 != .preview || (isShowingPreviewHost && !isDemo))
+                    && ($0 != .agents || agentsReport != nil) && ($0 != .schedules || schedulesHere != nil)
             })
         var info: [Item] = [
             .value(label: String(localized: "Backend"), value: profile.backend.displayName),
@@ -39,6 +40,11 @@ extension ServerDetailViewController {
         }
         statusItems.append(.test)
         snapshot.appendItems(statusItems, toSection: .status)
+
+        if agentsReport != nil {
+            snapshot.appendItems(agentItems, toSection: .agents)
+        }
+        if schedulesHere != nil { snapshot.appendItems([.scheduled], toSection: .schedules) }
 
         if !capabilities.rows.isEmpty {
             snapshot.appendItems(capabilities.rows.map { .capability($0.capability) }, toSection: .capabilities)
@@ -121,6 +127,7 @@ extension ServerDetailViewController {
             if profile.backend == .openCode {
                 modelCount = try? await backend.availableModels().count
             }
+            await loadMachine(from: backend)
             if profile.backend == .claudeCode, !isDemo {
                 auth = try? await (backend as? any AuthenticatingBackend)?.authStatus()
                 permissions = try? await (backend as? any PermissionReportingBackend)?

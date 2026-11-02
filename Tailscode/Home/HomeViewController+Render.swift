@@ -52,6 +52,14 @@ extension HomeViewController {
                     quotas: quotas, board: QuotaBoardStore.current, trail: RangeStore.trail))
             snapshot.appendSections([.status])
             snapshot.appendItems([.status(HomeStatusCard(status: status))], toSection: .status)
+            if let line = scheduleLine {
+                snapshot.appendSections([.schedule])
+                snapshot.appendItems([.schedule(line)], toSection: .schedule)
+            }
+            if let news = agentNews {
+                snapshot.appendSections([.agentNews])
+                snapshot.appendItems([.agentNews(news)], toSection: .agentNews)
+            }
         }
         if !showsQuotaCards, !quotas.isEmpty {
             let glance = QuotaGlance.make(
@@ -150,7 +158,8 @@ extension HomeViewController {
         let rowItems = snapshot.itemIdentifiers.filter {
             switch $0 {
             case .chat, .ask, .saved, .placeholder: return true
-            case .status, .glance, .quota, .alert, .demoNudge, .supporter, .more: return false
+            case .status, .schedule, .agentNews, .glance, .quota, .alert, .demoNudge, .supporter, .more:
+                return false
             }
         }.count
         if stale.isEmpty, previous.sectionIdentifiers == snapshot.sectionIdentifiers,

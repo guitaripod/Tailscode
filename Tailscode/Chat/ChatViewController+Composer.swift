@@ -212,6 +212,10 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
     func composerDidLongPressSend(from view: UIView) {
         let text = composer.currentText
         guard !text.isEmpty else { return }
+        presentSendHold(text: text, from: view)
+    }
+
+    func enhanceFromHold(_ text: String) {
         MidgarLog.info(
             "enhance: long-press chars=\(text.count) available=\(enhancement.isAvailable) enhanceable=\(PromptEnhancementController.isEnhanceable(text))", category: .ui)
         enhancement.requestNow(for: text)
@@ -327,6 +331,16 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
                     self?.presentDocumentPicker()
                 })
         }
+        actions.append(
+            UIMenu(
+                options: .displayInline,
+                children: [
+                    UIAction(title: ScheduleWords.askLaterMenu, image: UIImage(systemName: "clock")) {
+                        [weak self] _ in
+                        guard let self else { return }
+                        self.askLater(text: self.composer.currentText, sessionID: nil)
+                    }
+                ]))
         return actions
     }
 

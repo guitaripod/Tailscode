@@ -37,7 +37,11 @@ struct ChatRowFacts: Equatable {
         self.unread = row.unread
         self.news = news
         self.chip = ModelBadge.chip(for: row.entry)
-        self.pieces = Self.pieces(of: facets)
+        var pieces = Self.pieces(of: facets)
+        if row.entry.session.isScheduled == true {
+            pieces.insert(Piece(text: "\u{25F7} " + ScheduleWords.title.lowercased(with: .current), isQuiet: false), at: 0)
+        }
+        self.pieces = pieces
         self.age = facets.age
         self.pinned = row.pinned
         self.dimmed = row.state == .offline

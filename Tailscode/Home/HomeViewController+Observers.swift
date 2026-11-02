@@ -26,6 +26,8 @@ extension HomeViewController {
             self, selector: #selector(activityDidChange),
             name: SessionActivity.didChange, object: nil)
         NotificationCenter.default.addObserver(
+            self, selector: #selector(machineDeskChanged), name: MachineDesk.didChange, object: nil)
+        NotificationCenter.default.addObserver(
             self, selector: #selector(savedDidChange),
             name: SavedChatStore.didChange, object: nil)
         NotificationCenter.default.addObserver(

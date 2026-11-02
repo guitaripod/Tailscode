@@ -512,6 +512,7 @@ final class WorkspaceSplitViewController: UISplitViewController {
         switch detailNav.topViewController {
         case is HomeViewController: return .home
         case is UsageViewController, is AnalyticsViewController: return .usage
+        case is SchedulesViewController, is ScheduleDetailViewController: return .schedules
         case is DelegateBoardViewController, is DelegateRunViewController: return .delegate
         default: return nil
         }

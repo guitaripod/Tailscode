@@ -11,7 +11,7 @@ enum SidebarScope: Hashable {
 /// A place that fills the conversation column, or opens over the window, rather than choosing
 /// what the list shows.
 enum SidebarPlace: Hashable {
-    case home, usage, delegate, video, images
+    case home, usage, schedules, delegate, video, images
 }
 
 /// Everything the chat list knows that the side of the window shows beside it, taken from the one
@@ -248,7 +248,7 @@ final class SidebarViewController: UIViewController {
     }
 
     private func sectionItems() -> [(Section, [Item])] {
-        var places: [Item] = [.place(.home), .place(.usage), .place(.delegate), .place(.video)]
+        var places: [Item] = [.place(.home), .place(.usage), .place(.schedules), .place(.delegate), .place(.video)]
         if ImageGenDoor.current().isOpen { places.append(.place(.images)) }
         var result: [(Section, [Item])] = [(.places, places)]
         var chats: [Item] = [.scope(.all), .scope(.live), .scope(.saved)]
@@ -412,6 +412,7 @@ final class SidebarViewController: UIViewController {
         switch place {
         case .home: return String(localized: "Home")
         case .usage: return String(localized: "Usage")
+        case .schedules: return ScheduleWords.title
         case .delegate: return DelegateEntryPoint.title
         case .video: return String(localized: "Video")
         case .images: return String(localized: "Images")
@@ -422,6 +423,7 @@ final class SidebarViewController: UIViewController {
         switch place {
         case .home: return "house"
         case .usage: return "gauge.with.dots.needle.33percent"
+        case .schedules: return "clock"
         case .delegate: return DelegateEntryPoint.symbol
         case .video: return "film"
         case .images: return "photo.on.rectangle"
@@ -457,6 +459,7 @@ final class SidebarViewController: UIViewController {
         switch place {
         case .home: workspace.showHome()
         case .usage: workspace.show(place: UsageViewController())
+        case .schedules: workspace.show(place: SchedulesViewController())
         case .video: workspace.home.presentVideo()
         case .images: workspace.home.presentImage()
         case .delegate: openDelegate(from: indexPath)

@@ -17,7 +17,7 @@ extension ChatViewController {
             profiles: ConnectionController.shared.profiles, current: viewModel.contextID,
             currentModels: viewModel.supportsModelSelection ? availableModels : [],
             allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend),
-            reachability: pickerReachability)
+            reachability: pickerReachability, engine: chatEngine)
     }
 
     /// The sheet the model pill opens. A slot on this machine is taken as a pinned pair is; a slot

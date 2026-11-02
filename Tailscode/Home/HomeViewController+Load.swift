@@ -116,6 +116,7 @@ extension HomeViewController {
         await viewModel.load()
         refreshControl.endRefreshing()
         hasLoadedOnce = true
+        MachineDesk.shared.refresh(force: reason == .user)
         HomeQuickActions.refresh(entries: viewModel.entries)
         updateComposer()
         applySnapshot()

@@ -371,6 +371,7 @@ final class ChatViewController: UIViewController {
                     }
                 }
             }
+            openAskLaterForVerification()
             if let draft = ProcessInfo.processInfo.environment["TAILSCODE_DRAFT"] {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
@@ -416,6 +417,9 @@ final class ChatViewController: UIViewController {
                     if let query = ProcessInfo.processInfo.environment["TAILSCODE_MODELS_SEARCH"] {
                         try? await Task.sleep(for: .seconds(1))
                         self?.modelPicker?.tourSearch(query)
+                    } else if self?.availableModels.contains(where: { $0.agentName != nil }) == true {
+                        try? await Task.sleep(for: .seconds(1))
+                        self?.modelPicker?.tourAgentSection()
                     }
                 }
             }

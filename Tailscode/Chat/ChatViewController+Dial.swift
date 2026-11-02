@@ -81,7 +81,8 @@ extension ChatViewController {
         guard let preset = viewModel.presetStep(by: delta) else {
             let away = viewModel.presetPlacement(
                 elsewhere: ModelFleet.sources(
-                    profiles: ConnectionController.shared.profiles, current: viewModel.contextID)
+                    profiles: ConnectionController.shared.profiles, current: viewModel.contextID,
+                    engine: chatEngine)
             ).awayNotice
             presentToast(away ?? String(localized: "Add a model to your party"))
             return
@@ -135,7 +136,7 @@ extension ChatViewController {
                     profiles: ConnectionController.shared.profiles,
                     current: viewModel.contextID, currentModels: availableModels,
                     allowsServerDefault: ChatModelResolver.honoursServerDefault(viewModel.backend),
-                    reachability: pickerReachability),
+                    reachability: pickerReachability, engine: chatEngine),
                 selected: viewModel.selectedModel,
                 quotas: QuotaSurface.relevantQuotas(
                     for: viewModel.backend.agentType, among: UsageWidgetStore.cachedQuotas()),
@@ -149,6 +150,7 @@ extension ChatViewController {
         }
         let contextID = viewModel.contextID
         let backend = viewModel.backend
+        let engine = chatEngine
         Task { @MainActor in
             let fresh = await ModelCatalog.fresh(for: contextID, backend: backend)
             picker.update(
@@ -156,7 +158,7 @@ extension ChatViewController {
                     profiles: ConnectionController.shared.profiles,
                     current: contextID, currentModels: fresh,
                     allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
-                    reachability: pickerReachability))
+                    reachability: pickerReachability, engine: engine))
         }
         pickerWatch?.cancel()
         pickerWatch = Task { [weak self, weak picker] in
@@ -170,7 +172,7 @@ extension ChatViewController {
                         profiles: ConnectionController.shared.profiles,
                         current: contextID, currentModels: reading.models,
                         allowsServerDefault: ChatModelResolver.honoursServerDefault(backend),
-                        reachability: self.pickerReachability))
+                        reachability: self.pickerReachability, engine: self.chatEngine))
             }
         }
         let nav = UINavigationController(rootViewController: picker)

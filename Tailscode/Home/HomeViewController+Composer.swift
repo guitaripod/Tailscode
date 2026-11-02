@@ -83,6 +83,18 @@ extension HomeViewController: HomeComposerBarDelegate {
                     image: UIImage(systemName: "doc.on.clipboard")
                 ) { [weak self] _ in self?.pasteFromClipboard() })
         }
+        if askLane == .chat || askLane == .ask {
+            actions.append(
+                UIMenu(
+                    options: .displayInline,
+                    children: [
+                        UIAction(title: ScheduleWords.askLaterMenu, image: UIImage(systemName: "clock")) {
+                            [weak self] _ in
+                            guard let self else { return }
+                            self.askLater(text: self.composerBar.currentText)
+                        }
+                    ]))
+        }
         return actions
     }
 
@@ -118,6 +130,11 @@ extension HomeViewController: HomeComposerBarDelegate {
     func homeComposerDidLongPressSend(from view: UIView) {
         let text = composerBar.currentText
         guard !text.isEmpty else { return }
+        guard askLane == .chat || askLane == .ask else { return enhanceFromHold(text) }
+        presentSendHold(text: text, from: view)
+    }
+
+    func enhanceFromHold(_ text: String) {
         enhancement.requestNow(for: text)
         presentEnhanceOverlay(original: text)
     }

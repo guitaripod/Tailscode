@@ -227,6 +227,14 @@ extension ServerDetailViewController: UICollectionViewDelegate {
         case .account(let signedIn):
             guard !signedIn else { break }
             presentSignIn()
+        case .agent(let id):
+            openAgent(id)
+        case .moreAgents:
+            openRegistry()
+        case .scheduled:
+            Theme.Haptics.tap()
+            navigationController?.pushViewController(
+                SchedulesViewController(profileID: profile.id), animated: true)
         default:
             break
         }

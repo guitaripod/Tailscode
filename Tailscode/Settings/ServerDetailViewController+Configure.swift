@@ -100,7 +100,9 @@ extension ServerDetailViewController {
             return DelegateEntryPoint.subtitle
         case .preview:
             return nil
-        case .info, .status, .actions:
+        case .agents:
+            return MachineAgentReading.permissionNote
+        case .info, .status, .schedules, .actions:
             return nil
         }
     }
@@ -114,6 +116,8 @@ extension ServerDetailViewController {
         case .capabilities: return SetupCapabilityRow.sectionTitle
         case .defaults: return String(localized: "Defaults")
         case .delegate: return DelegateEntryPoint.title
+        case .agents: return MachineAgentReading.section
+        case .schedules: return ScheduleWords.title
         case .preview, .actions, .none: return nil
         }
     }
@@ -224,6 +228,18 @@ extension ServerDetailViewController {
             content.textProperties.color = Theme.Color.accent
             content.image = UIImage(systemName: "pencil")
             content.imageProperties.tintColor = Theme.Color.accent
+            cell.accessories = [.disclosureIndicator()]
+        case .agent(let id):
+            configureAgent(&content, cell: cell, id: id)
+        case .moreAgents:
+            content.text = MachineAgentReading.moreAgents
+            content.textProperties.color = Theme.Color.accent
+            content.secondaryText = registryCount.map(MachineAgentReading.moreAgentsDetail)
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = AgentMark.image(initial: "+", color: Theme.Color.accent)
+            cell.accessories = [.disclosureIndicator()]
+        case .scheduled:
+            configureScheduled(&content)
             cell.accessories = [.disclosureIndicator()]
         case .remove:
             content.text =

@@ -7,7 +7,7 @@ import UIKit
 final class ServerDetailViewController: UIViewController {
     var profile: ConnectionProfile
 
-    enum Section: Int, CaseIterable { case info, status, capabilities, software, permissions, defaults, delegate, preview, actions }
+    enum Section: Int, CaseIterable { case info, status, agents, schedules, capabilities, software, permissions, defaults, delegate, preview, actions }
     enum Item: Hashable {
         case value(label: String, value: String)
         case status(String)
@@ -27,6 +27,9 @@ final class ServerDetailViewController: UIViewController {
         case restart
         case edit
         case remove
+        case agent(String)
+        case moreAgents
+        case scheduled
     }
 
     var collectionView: UICollectionView!
@@ -44,6 +47,9 @@ final class ServerDetailViewController: UIViewController {
     var permissionPollTask: Task<Void, Never>?
     var turnWaitAvailability: TurnWaitAvailability = .unknown
     var previewReach: PreviewReach = .unknown
+    var agentsReport: MachineAgentsReport?
+    var schedulesHere: [MachineSchedule]?
+    var registryCount: Int?
     var previewTask: Task<Void, Never>?
     lazy var capabilities: SetupCapabilitiesSection = {
         let section = SetupCapabilitiesSection(profileURL: profile.baseURL, profileID: profile.id)

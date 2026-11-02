@@ -73,6 +73,8 @@ extension ChatViewController: UICollectionViewDelegate {
         }
 
         let branchedAnswerID = answerOfferingBranch(rowID: id)
+        let asksAgain = rowsByID[id]?.role == .user
+        let sessionID = viewModel.session.id
 
         return UIContextMenuConfiguration(identifier: id as NSString, previewProvider: nil) {
             [weak self] _ in
@@ -129,6 +131,17 @@ extension ChatViewController: UICollectionViewDelegate {
                                 image: UIImage(systemName: "arrow.triangle.branch")
                             ) { _ in
                                 self?.tryWithAnotherModel(answerID: branchedAnswerID)
+                            }
+                        ]))
+            }
+            if asksAgain {
+                elements.append(
+                    UIMenu(
+                        options: .displayInline,
+                        children: [
+                            UIAction(title: ScheduleWords.askAgain, image: UIImage(systemName: "clock.arrow.circlepath")) {
+                                _ in
+                                self?.askLater(text: text, sessionID: sessionID)
                             }
                         ]))
             }

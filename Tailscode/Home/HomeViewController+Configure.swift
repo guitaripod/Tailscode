@@ -11,8 +11,10 @@ extension HomeViewController {
                 case .status: section = Self.plainSection(top: 0, bottom: Theme.Spacing.xs)
                 case .glance:
                     section = Self.plainSection(top: Theme.Spacing.s, bottom: Theme.Spacing.m)
-                case .alerts, .demoNudge, .supporter:
+                case .alerts, .demoNudge, .supporter, .agentNews:
                     section = Self.plainSection(top: 0, bottom: Theme.Spacing.m)
+                case .schedule:
+                    section = Self.plainSection(top: Theme.Spacing.s, bottom: Theme.Spacing.xs)
                 case .asks:
                     section = Self.headedSection(columns: 1, estimatedHeight: 190)
                 case .usage:
@@ -339,6 +341,15 @@ extension HomeViewController {
                 Task { await self?.load(.user) }
             }
         }
+        let scheduleCell = UICollectionView.CellRegistration<ScheduleLineCell, ScheduleLineCard> {
+            cell, _, card in cell.configure(card)
+        }
+        let newsCell = UICollectionView.CellRegistration<AgentNewsCell, AgentNewsCard> {
+            cell, _, card in
+            cell.configure(card)
+            cell.onAdd = { MachineDesk.shared.addNews() }
+            cell.onNotNow = { MachineDesk.shared.dismissNews() }
+        }
         let demoNudgeCell = UICollectionView.CellRegistration<DemoNudgeCell, DemoNudgeCard> {
             [weak self] cell, _, _ in
             cell.onSetUp = { [weak self] in self?.presentSetup() }
@@ -397,6 +408,12 @@ extension HomeViewController {
             case .demoNudge(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: demoNudgeCell, for: indexPath, item: card)
+            case .schedule(let card):
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: scheduleCell, for: indexPath, item: card)
+            case .agentNews(let card):
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: newsCell, for: indexPath, item: card)
             case .supporter(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: supporterCell, for: indexPath, item: card)
@@ -470,7 +487,7 @@ extension HomeViewController {
             ) { [weak self] in
                 self?.pushUsage()
             }
-        case .status, .glance, .alerts, .demoNudge, .supporter:
+        case .status, .schedule, .agentNews, .glance, .alerts, .demoNudge, .supporter:
             break
         }
     }
