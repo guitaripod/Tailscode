@@ -1,6 +1,6 @@
 # Tailscode
 
-**Your AI agents, anywhere.** A native remote for [Claude Code](https://github.com/guitaripod/claude-bridge), [Oh My Pi](https://github.com/guitaripod/omp-bridge) and [opencode](https://opencode.ai) running on your own machines: a universal iPhone and iPad app with the turn on your Lock Screen, and open-source desktop clients for Linux and the Mac. Point-to-point over your own [Tailscale](https://tailscale.com) tailnet — no relay, no account, no vendor backend. The transport's security is Tailscale's WireGuard, not something Tailscode implements. Screenshots, the full feature tour and pricing live at [midgarcorp.cc/tailscode](https://midgarcorp.cc/tailscode).
+**Your AI agents, anywhere.** A native remote for [Claude Code](https://github.com/guitaripod/claude-bridge), [Hermes](https://hermes-agent.nousresearch.com) and any [ACP](https://agentclientprotocol.com) agent, [Oh My Pi](https://github.com/guitaripod/omp-bridge) and [opencode](https://opencode.ai) running on your own machines: a universal iPhone and iPad app with the turn on your Lock Screen, and open-source desktop clients for Linux and the Mac. Point-to-point over your own [Tailscale](https://tailscale.com) tailnet — no relay, no account, no vendor backend. The transport's security is Tailscale's WireGuard, not something Tailscode implements. Screenshots, the full feature tour and pricing live at [midgarcorp.cc/tailscode](https://midgarcorp.cc/tailscode).
 
 <p align="center">
   <a href="https://apps.apple.com/app/tailscode/id6791660932"><b>iPhone, iPad &amp; Mac — App Store</b></a> ·
@@ -26,6 +26,8 @@ Free is the whole core with one server; **Pro** is a one-time $14.99 purchase fo
 
 ## What it does
 
+- **Hermes and any ACP agent** — Hermes, Gemini CLI, Codex, goose, Kimi, Qwen Code, Copilot and the rest of the [ACP registry](https://agentclientprotocol.com/get-started/registry) run through the claude-bridge already on your machine: it finds them, proves each with a real session, gives one with no model a brain from the model server the machine already runs (llama-swap, ollama, LM Studio, vLLM) in one tap, keeps keys on the machine, and puts them in the model pill beside Claude.
+- **The machine keeps the clock** — ask later or every morning (`weekdays 7:30`, `every 2 hours`); the bridge asks with every app closed, keeps one conversation that remembers, stays quiet when nothing changed, and says what it missed while the machine was off.
 - **Every turn, live** — thinking, tool calls, subagents in place, diffs in the code's own colours, pictures the agent looked at. Prose is written out at an even pace, never re-wrapping under you.
 - **Steer without leaving the chat** — allow once / always / deny cards, the agent's questions as a real form, follow-ups queued on the server while it works, stop server-side.
 - **Every machine, one list** — sessions across all your servers grouped by machine with live status, search inside transcripts, a tailnet radar, and an agents board (Now, Peek, Hour) that becomes a wall on a monitor left on; restart one server or all of them from their cards.
@@ -49,7 +51,7 @@ Free is the whole core with one server; **Pro** is a one-time $14.99 purchase fo
     curl -fsSL https://raw.githubusercontent.com/guitaripod/Tailscode/master/scripts/opencode-serve-install.sh | bash
     ```
 
-  - [claude-bridge](https://github.com/guitaripod/claude-bridge) in front of Claude Code (port 4098) — also what makes Live Activity pushes possible.
+  - [claude-bridge](https://github.com/guitaripod/claude-bridge) in front of Claude Code (port 4098) — also what makes Live Activity pushes possible. From 1.17 it also hosts Hermes and any ACP agent, and keeps schedules.
   - [omp-bridge](https://github.com/guitaripod/omp-bridge) in front of [Oh My Pi](https://github.com/can1357/oh-my-pi) (port 4099).
 - Optional: **ComfyUI** (port 8188) on the tailnet for image and video generation.
 
@@ -128,7 +130,8 @@ Exhaustiveness forces disclosure, not implementation — `.gap("later")` compile
 |---|---|
 | [CodingAgentKit](https://github.com/guitaripod/CodingAgentKit) | The engine: Swift 6 package, Linux + Apple, one client over opencode 1.x/2.x, claude-bridge and omp-bridge, SSE streaming, `MessageReducer`, mockable backends, a CLI |
 | [claude-bridge](https://github.com/guitaripod/claude-bridge) | Exposes Claude Code (`claude -p` stream-json) as HTTP sessions with SSE, subagents, compaction, spend, analytics, git and APNs pushes |
-| [omp-bridge](https://github.com/guitaripod/omp-bridge) | The same wire protocol over Oh My Pi |
+| [claude-bridge](https://github.com/guitaripod/claude-bridge) agents | Hermes, Gemini CLI, Codex and any ACP agent on the same port, and schedules the machine asks itself |
+| [omp-bridge](https://github.com/guitaripod/omp-bridge) | The same wire protocol over Oh My Pi, schedules included |
 | [delegate](https://github.com/guitaripod/delegate) | The daemon that runs packets down a ladder of cheaper models |
 
 ## License
