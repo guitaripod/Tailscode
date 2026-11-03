@@ -415076,7 +415076,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "工作日 %@ 詢問"
+            "value": "平日 %@ 詢問"
           }
         }
       }
@@ -416809,7 +416809,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tous les %@"
+            "value": "Chaque %@"
           }
         },
         "it": {
@@ -416821,37 +416821,37 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "毎 %@"
+            "value": "毎週%@"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "매 %@"
+            "value": "매주 %@"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Co %@"
+            "value": "%@, co tydzień"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Todo %@"
+            "value": "A cada %@"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "每 %@"
+            "value": "每%@"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "每 %@"
+            "value": "每%@"
           }
         }
       }
@@ -425483,19 +425483,19 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "その後は毎 %@"
+            "value": "その後は毎週%@"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "그다음은 매 %@"
+            "value": "그다음은 매주 %@"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "potem co %@"
+            "value": "potem co tydzień: %@"
           }
         },
         "pt-BR": {
@@ -425921,13 +425921,13 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pytaj w każdy %@ o %@"
+            "value": "Pytaj co tydzień: %@, %@"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Perguntar toda %@ às %@"
+            "value": "Perguntar a cada %@ às %@"
           }
         },
         "zh-Hans": {
@@ -425992,13 +425992,13 @@
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "W każdy %@ %@"
+            "value": "%@ %@, co tydzień"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Toda %@ %@"
+            "value": "A cada %@ %@"
           }
         },
         "zh-Hans": {
