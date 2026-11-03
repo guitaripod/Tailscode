@@ -45,9 +45,9 @@
     {
       "master": "fl-later",
       "slug": "07-every-morning",
-      "headline": "每天早上问一次，\n你的机器来做。",
-      "subline": "时间设为工作日 7:30。即使手机关机，它也会来问。",
-      "highlight": "你的机器来做。"
+      "headline": "每天早上的提问，\n交给你的机器。",
+      "subline": "写一句“工作日 7:30”就行。手机关机，机器也会按时提问。",
+      "highlight": "交给你的机器。"
     },
     {
       "master": "fl-carry",
@@ -110,9 +110,9 @@
     {
       "master": "fl-later",
       "slug": "06-every-morning",
-      "headline": "每天早上问一次，\n你的机器来做。",
-      "subline": "时间设为工作日 7:30。即使手机关机，它也会来问。",
-      "highlight": "你的机器来做。"
+      "headline": "每天早上的提问，\n交给你的机器。",
+      "subline": "写一句“工作日 7:30”就行。手机关机，机器也会按时提问。",
+      "highlight": "交给你的机器。"
     },
     {
       "master": "03-approval",
@@ -189,9 +189,9 @@
     {
       "master": "fl-later",
       "slug": "07-every-morning",
-      "headline": "每天早上问一次，\n你的机器来做。",
-      "subline": "时间设为工作日 7:30。即使手机关机，它也会来问。",
-      "highlight": "你的机器来做。"
+      "headline": "每天早上的提问，\n交给你的机器。",
+      "subline": "写一句“工作日 7:30”就行。手机关机，机器也会按时提问。",
+      "highlight": "交给你的机器。"
     },
     {
       "master": "04-quickask",

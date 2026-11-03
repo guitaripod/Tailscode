@@ -45,9 +45,9 @@
     {
       "master": "fl-later",
       "slug": "07-every-morning",
-      "headline": "每天早上問一次，\n你的機器來做。",
-      "subline": "時間設在工作日 7:30。即使手機關機，它也會來問。",
-      "highlight": "你的機器來做。"
+      "headline": "每天早上的提問，\n交給你的機器。",
+      "subline": "寫一句「平日 7:30」就好。手機關機，機器也會準時提問。",
+      "highlight": "交給你的機器。"
     },
     {
       "master": "fl-carry",
@@ -110,9 +110,9 @@
     {
       "master": "fl-later",
       "slug": "06-every-morning",
-      "headline": "每天早上問一次，\n你的機器來做。",
-      "subline": "時間設在工作日 7:30。即使手機關機，它也會來問。",
-      "highlight": "你的機器來做。"
+      "headline": "每天早上的提問，\n交給你的機器。",
+      "subline": "寫一句「平日 7:30」就好。手機關機，機器也會準時提問。",
+      "highlight": "交給你的機器。"
     },
     {
       "master": "03-approval",
@@ -189,9 +189,9 @@
     {
       "master": "fl-later",
       "slug": "07-every-morning",
-      "headline": "每天早上問一次，\n你的機器來做。",
-      "subline": "時間設在工作日 7:30。即使手機關機，它也會來問。",
-      "highlight": "你的機器來做。"
+      "headline": "每天早上的提問，\n交給你的機器。",
+      "subline": "寫一句「平日 7:30」就好。手機關機，機器也會準時提問。",
+      "highlight": "交給你的機器。"
     },
     {
       "master": "04-quickask",
