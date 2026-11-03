@@ -77,6 +77,83 @@ struct ScheduleSpeechTests {
         #expect(read("22:15")?.next == local("2026-11-02 22:15"))
     }
 
+    @Test("Every pattern in the phrasebook compiles")
+    func phrasebookCompiles() {
+        #expect(ScheduleSpeech.rewrites.count == ScheduleSpeech.phrasebook.count)
+    }
+
+    @Test(
+        "Each language's placeholder examples read as what they say",
+        arguments: [
+            ("werktags 7:30", "alle 2 Stunden", "Fr 17:00", "in 20 Min"),
+            ("entre semana 7:30", "cada 2 horas", "vie 17:00", "en 20 min"),
+            ("en semaine 7:30", "toutes les 2 heures", "ven. 17:00", "dans 20 min"),
+            ("nei giorni feriali 7:30", "ogni 2 ore", "ven 17:00", "tra 20 min"),
+            ("dias úteis 7:30", "a cada 2 horas", "sex 17:00", "em 20 min"),
+            ("dni robocze 7:30", "co 2 godziny", "pt 17:00", "za 20 min"),
+            ("平日 7:30", "2時間ごと", "金 17:00", "20分後"),
+            ("평일 7:30", "2시간마다", "금 17:00", "20분 뒤"),
+            ("工作日 7:30", "每 2 小时", "周五 17:00", "20 分钟后"),
+            ("平日 7:30", "每 2 小時", "週五 17:00", "20 分鐘後"),
+        ])
+    func placeholderExamples(weekdays: String, hours: String, friday: String, soon: String) throws {
+        #expect(read(weekdays)?.rule == ScheduleRule(kind: .weekdays, hour: 7, minute: 30), "\(weekdays)")
+        #expect(read(hours)?.rule == ScheduleRule(kind: .hours, hour: 21, minute: 0, every: 2), "\(hours)")
+        let once = try #require(read(friday), "\(friday)")
+        #expect(once.rule.kind == .once)
+        #expect(once.next == local("2026-11-06 17:00"), "\(friday)")
+        #expect(read(soon)?.next == local("2026-11-02 20:50"), "\(soon)")
+    }
+
+    @Test("Habits, days and clocks said the way each language says them")
+    func otherLanguages() {
+        let daily7 = ScheduleRule(kind: .daily, hour: 7, minute: 0)
+        let friday9 = ScheduleRule(kind: .weekly, hour: 9, minute: 0, weekday: 6)
+        #expect(read("毎朝7時")?.rule == daily7)
+        #expect(read("매일 아침 7시")?.rule == daily7)
+        #expect(read("每天早上7点")?.rule == daily7)
+        #expect(read("jeden Tag um 7 Uhr")?.rule == daily7)
+        #expect(read("tous les jours à 7h")?.rule == daily7)
+        #expect(read("todos los días a las 7")?.rule == daily7)
+        #expect(read("ogni giorno alle 7")?.rule == daily7)
+        #expect(read("codziennie o 7")?.rule == daily7)
+        #expect(read("freitags 9 Uhr")?.rule == friday9)
+        #expect(read("毎週金曜 9時")?.rule == friday9)
+        #expect(read("매주 금요일 9시")?.rule == friday9)
+        #expect(read("每周五 9点")?.rule == friday9)
+        #expect(read("toda sexta às 9")?.rule == friday9)
+        #expect(read("每天晚上9点")?.rule == ScheduleRule(kind: .daily, hour: 21, minute: 0))
+        #expect(read("7時半")?.next == local("2026-11-03 07:30"))
+        #expect(read("明日の朝")?.next == local("2026-11-03 08:00"))
+        #expect(read("morgen früh")?.next == local("2026-11-03 08:00"))
+        #expect(read("mañana a las 9")?.next == local("2026-11-03 09:00"))
+        #expect(read("demain 9h")?.next == local("2026-11-03 09:00"))
+        #expect(read("今晚")?.next == local("2026-11-02 21:00"))
+        #expect(read("ce soir")?.next == local("2026-11-02 21:00"))
+        #expect(read("in einer Stunde")?.next == local("2026-11-02 21:30"))
+        #expect(read("dentro de una hora")?.next == local("2026-11-02 21:30"))
+        #expect(read("tra mezz'ora")?.next == local("2026-11-02 21:00"))
+        #expect(read("１時間後")?.next == local("2026-11-02 21:30"))
+    }
+
+    @Test("The store captions' examples read as weekdays at 7:30 in every language")
+    func captionExamples() {
+        let weekdays = ScheduleRule(kind: .weekdays, hour: 7, minute: 30)
+        for phrase in [
+            "werktags 7:30", "laborables a las 7:30", "jours ouvrés à 7:30", "feriali alle 7:30",
+            "dni robocze 7:30", "dias úteis às 7:30", "平日 7:30", "평일 7:30", "工作日 7:30",
+        ] {
+            #expect(read(phrase)?.rule == weekdays, "\(phrase)")
+        }
+    }
+
+    @Test("English phrases read exactly as before")
+    func englishUntouched() {
+        for phrase in ["weekdays 7:30", "every 2 hours", "fri 17:00", "in 20 min", "every monday 9am", "tonight at 10", "tomorrow 9am", "in half an hour", "sat 10:00", "every evening"] {
+            #expect(ScheduleSpeech.english(phrase).split(separator: " ").joined(separator: " ") == phrase, "\(phrase)")
+        }
+    }
+
     @Test("A phrase with no time in it is not guessed")
     func unreadable() {
         #expect(read("whenever") == nil)

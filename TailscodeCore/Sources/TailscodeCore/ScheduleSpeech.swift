@@ -2,9 +2,9 @@ import CodingAgentKit
 import Foundation
 
 /// When a typed phrase says to ask: "weekdays 7:30", "every 2 hours", "fri 17:00", "in 20 min",
-/// "every morning at 6", "tonight", "tomorrow 9am". Read in English and in the device's own weekday
-/// names and clock, and always answered with a rule the machine keeps and the first moment it will
-/// ask — or with nothing, so a phrase that was not understood is said to be so rather than guessed.
+/// "every morning at 6", "tonight", "tomorrow 9am". Read in English and in every language the app
+/// speaks (`english(_:)`), and always answered with a rule the machine keeps and the first moment it
+/// will ask — or with nothing, so a phrase that was not understood is said to be so rather than guessed.
 public enum ScheduleSpeech {
     public struct Understanding: Sendable, Equatable {
         public let rule: ScheduleRule
@@ -25,7 +25,7 @@ public enum ScheduleSpeech {
     }
 
     static func tokens(_ phrase: String) -> [String] {
-        var text = phrase.lowercased()
+        var text = english(phrase)
         for (from, to) in [("a.m.", "am"), ("p.m.", "pm"), (",", " "), ("@", " at ")] {
             text = text.replacingOccurrences(of: from, with: to)
         }
