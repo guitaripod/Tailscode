@@ -8,6 +8,8 @@ public enum ScheduleWords {
     public static var askLaterMenu: String { Localized.text("Ask later…") }
     public static var askAgain: String { Localized.text("Ask this again…") }
     public static var sayWhen: String { Localized.text("Or say when: weekdays 7:30, every 2 hours, fri 17:00") }
+    /// The placeholder's first example on its own, in the reader's language: what a screenshot types.
+    public static var example: String { Localized.text("weekdays 7:30") }
     public static var notUnderstood: String {
         Localized.text("That time was not understood. Try “weekdays 7:30” or “in 20 min”.")
     }

@@ -56,7 +56,7 @@ extension ChatViewController {
         /// screenshot without a hand.
         func openAskLaterForVerification() {
             guard let raw = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_ASK_LATER"] else { return }
-            let phrase = raw == "1" ? "weekdays 7:30" : raw
+            let phrase = raw == "1" ? ScheduleWords.example : raw
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(3))
                 guard let self,

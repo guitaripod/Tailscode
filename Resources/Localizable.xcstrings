@@ -426156,6 +426156,77 @@
           }
         }
       }
+    },
+    "weekdays 7:30": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "weekdays 7:30"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "werktags 7:30"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "entre semana 7:30"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "en semaine 7:30"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "nei giorni feriali 7:30"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "平日 7:30"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "평일 7:30"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dni robocze 7:30"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dias úteis 7:30"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工作日 7:30"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "平日 7:30"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

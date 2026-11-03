@@ -144,7 +144,7 @@ extension MainWindowController {
                     effort: nil, directory: nil, sessionID: nil)
                 self.presentAskLater(
                     text: detail ?? "What's new in AI today? Three lines, links.", on: self.window,
-                    phrase: "weekdays 7:30", aim: aim)
+                    phrase: ScheduleWords.example, aim: aim)
             case "machine-agents":
                 self.presentMachineFixture()
             case "agent":
