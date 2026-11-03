@@ -45,9 +45,9 @@
     {
       "master": "fl-later",
       "slug": "07-every-morning",
-      "headline": "Demandez chaque matin.\nVotre machine s'en charge.",
+      "headline": "Chaque matin, votre\nmachine s'en charge.",
       "subline": "Un horaire : en semaine 7:30. Elle demande, téléphone éteint.",
-      "highlight": "Votre machine s'en charge."
+      "highlight": "machine s'en charge."
     },
     {
       "master": "fl-carry",
@@ -110,9 +110,9 @@
     {
       "master": "fl-later",
       "slug": "06-every-morning",
-      "headline": "Demandez chaque matin.\nVotre machine s'en charge.",
+      "headline": "Chaque matin, votre\nmachine s'en charge.",
       "subline": "Un horaire : en semaine 7:30. Elle demande, téléphone éteint.",
-      "highlight": "Votre machine s'en charge."
+      "highlight": "machine s'en charge."
     },
     {
       "master": "03-approval",
@@ -189,9 +189,9 @@
     {
       "master": "fl-later",
       "slug": "07-every-morning",
-      "headline": "Demandez chaque matin.\nVotre machine s'en charge.",
+      "headline": "Chaque matin, votre\nmachine s'en charge.",
       "subline": "Un horaire : en semaine 7:30. Elle demande, téléphone éteint.",
-      "highlight": "Votre machine s'en charge."
+      "highlight": "machine s'en charge."
     },
     {
       "master": "04-quickask",

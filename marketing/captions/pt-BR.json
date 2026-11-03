@@ -10,9 +10,9 @@
     {
       "master": "fl-wall",
       "slug": "02-the-wall",
-      "headline": "Deixe ligado.\nVeja eles trabalharem.",
+      "headline": "Deixe ligado.\nVeja-os trabalhar.",
       "subline": "Cada agente e ajudante ao vivo, em tela cheia. Segure para aprovar.",
-      "highlight": "Veja eles trabalharem."
+      "highlight": "Veja-os trabalhar."
     },
     {
       "master": "fl-models",
@@ -45,7 +45,7 @@
     {
       "master": "fl-later",
       "slug": "07-every-morning",
-      "headline": "Pergunte toda manhã.\nSua máquina faz isso.",
+      "headline": "Toda manhã.\nSua máquina faz isso.",
       "subline": "Defina o horário: dias úteis às 7:30. Ela pergunta com o celular desligado.",
       "highlight": "Sua máquina faz isso."
     },
@@ -82,9 +82,9 @@
     {
       "master": "fl-wall",
       "slug": "02-the-wall",
-      "headline": "Deixe ligado.\nVeja eles trabalharem.",
+      "headline": "Deixe ligado.\nVeja-os trabalhar.",
       "subline": "Cada agente e ajudante ao vivo, em tela cheia. Segure para aprovar.",
-      "highlight": "Veja eles trabalharem."
+      "highlight": "Veja-os trabalhar."
     },
     {
       "master": "fl-hour",
@@ -110,7 +110,7 @@
     {
       "master": "fl-later",
       "slug": "06-every-morning",
-      "headline": "Pergunte toda manhã.\nSua máquina faz isso.",
+      "headline": "Toda manhã.\nSua máquina faz isso.",
       "subline": "Defina o horário: dias úteis às 7:30. Ela pergunta com o celular desligado.",
       "highlight": "Sua máquina faz isso."
     },
@@ -154,9 +154,9 @@
     {
       "master": "fl-wall",
       "slug": "02-the-wall",
-      "headline": "Deixe ligado.\nVeja eles trabalharem.",
+      "headline": "Deixe ligado.\nVeja-os trabalhar.",
       "subline": "Cada agente e ajudante ao vivo, em qualquer tela. Segure para aprovar.",
-      "highlight": "Veja eles trabalharem."
+      "highlight": "Veja-os trabalhar."
     },
     {
       "master": "01-conversation",
@@ -189,7 +189,7 @@
     {
       "master": "fl-later",
       "slug": "07-every-morning",
-      "headline": "Pergunte toda manhã.\nSua máquina faz isso.",
+      "headline": "Toda manhã.\nSua máquina faz isso.",
       "subline": "Defina o horário: dias úteis às 7:30. Ela pergunta com o celular desligado.",
       "highlight": "Sua máquina faz isso."
     },

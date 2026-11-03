@@ -3,9 +3,9 @@
     {
       "master": "fl-agents",
       "slug": "01-all-your-agents",
-      "headline": "すべてのエージェント。\nポケットひとつに。",
+      "headline": "すべてのエージェント\nポケットひとつに",
       "subline": "Claude Code、Hermes、opencode、そしてあらゆるACPエージェントを、手元のマシンで。",
-      "highlight": "ポケットひとつに。"
+      "highlight": "ポケットひとつに"
     },
     {
       "master": "fl-wall",
@@ -17,9 +17,9 @@
     {
       "master": "fl-models",
       "slug": "03-any-model",
-      "headline": "どんなエージェントも、\nどんなモデルも。",
+      "headline": "どんなエージェントも\nどんなモデルも",
       "subline": "HermesでもOpusでも、自分のGPUのモデルでも。チャットごとに。",
-      "highlight": "どんなモデルも。"
+      "highlight": "どんなモデルも"
     },
     {
       "master": "fl-peek",
@@ -75,7 +75,7 @@
     {
       "master": "fl-agents",
       "slug": "01-all-your-agents",
-      "headline": "すべてのエージェント。\n画面ひとつ",
+      "headline": "すべてのエージェント\n画面ひとつ",
       "subline": "マシン全体で動いている全エージェントを、ライブで。",
       "highlight": "画面ひとつ"
     },
@@ -103,9 +103,9 @@
     {
       "master": "fl-models",
       "slug": "05-any-model",
-      "headline": "どんなエージェントも、\nどんなモデルも。",
+      "headline": "どんなエージェントも\nどんなモデルも",
       "subline": "HermesでもOpusでも、自分のGPUのモデルでも。チャットごとに。",
-      "highlight": "どんなモデルも。"
+      "highlight": "どんなモデルも"
     },
     {
       "master": "fl-later",
