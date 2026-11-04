@@ -21,13 +21,27 @@ extension ChatViewModel {
 
     var liveSubagentCount: Int { subagentPresence.liveCount }
 
-    /// Subagents belong to this conversation, so the chat owns their polling for
-    /// as long as it is on screen. The cadence follows the work: quick while an
-    /// agent is running or a card is open, slow once they have settled, and
-    /// slower still for the ordinary chat that never spawned one — opencode
-    /// answers this by listing every session, which is too costly to ask often.
+    /// Subagents belong to this conversation, so the chat owns their tracking for
+    /// as long as it is on screen. A server that pushes them (a bridge's stream) is
+    /// followed, and read outright only now and then in case a frame was lost.
+    /// Otherwise the cadence follows the work: quick while an agent is running or
+    /// a card is open, slow once they have settled, and slower still for the
+    /// ordinary chat that never spawned one — opencode answers this by listing
+    /// every session, which is too costly to ask often.
     func startSubagentTracking() {
         guard supportsSubagents, subagentTask == nil else { return }
+        let backend = backend
+        let sessionID = session.id
+        subagentStreamTask = Task { [weak self] in
+            guard let streaming = backend as? SubagentStreaming,
+                let changes = await streaming.subagentChanges(for: sessionID)
+            else { return }
+            self?.subagentsStreamed = true
+            for await agents in changes {
+                guard let self, !Task.isCancelled else { return }
+                await self.adoptSubagents(agents)
+            }
+        }
         subagentTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -38,6 +52,7 @@ extension ChatViewModel {
     }
 
     private var subagentPollInterval: Int {
+        if subagentsStreamed { return 30 }
         if liveSubagentCount > 0 || !expandedSubagents.isEmpty { return 4 }
         if state.status == .running { return 8 }
         return trackedSubagents.isEmpty ? 30 : 12
@@ -46,6 +61,9 @@ extension ChatViewModel {
     func stopSubagentTracking() {
         subagentTask?.cancel()
         subagentTask = nil
+        subagentStreamTask?.cancel()
+        subagentStreamTask = nil
+        subagentsStreamed = false
     }
 
     func isSubagentExpanded(_ agentID: String) -> Bool { expandedSubagents.contains(agentID) }
@@ -60,7 +78,11 @@ extension ChatViewModel {
     }
 
     private func refreshSubagents() async {
-        var fresh = await subagents()
+        await adoptSubagents(await subagents())
+    }
+
+    private func adoptSubagents(_ heard: [SubagentSummary]) async {
+        var fresh = heard
         #if DEBUG
             if let staged = Self.stagedAgents() { fresh = staged }
         #endif
