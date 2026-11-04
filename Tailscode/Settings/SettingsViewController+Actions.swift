@@ -36,7 +36,7 @@ extension SettingsViewController {
             proceed()
             return
         }
-        ProUpgradeViewController.present(from: self, onAccess: proceed)
+        ProUpgradeViewController.present(from: self, placement: .limit, onAccess: proceed)
     }
 
     /// A resting server's choices: keep it connected in place of one that is, get Pro to keep every server connected, or
@@ -55,7 +55,7 @@ extension SettingsViewController {
         sheet.addAction(
             UIAlertAction(title: String(localized: "Get Tailscode Pro"), style: .default) { [weak self] _ in
                 guard let self else { return }
-                ProUpgradeViewController.present(from: self)
+                ProUpgradeViewController.present(from: self, placement: .limit)
             })
         sheet.addAction(
             UIAlertAction(title: String(localized: "Remove"), style: .destructive) { [weak self] _ in

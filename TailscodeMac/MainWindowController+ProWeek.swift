@@ -22,7 +22,7 @@ extension MainWindowController {
         alert.addButton(withTitle: Localized.text("OK"))
         alert.beginSheetModal(for: window) { [weak self] response in
             switch response {
-            case .alertFirstButtonReturn: self?.presentPro()
+            case .alertFirstButtonReturn: self?.presentPro(placement: .moment)
             case .alertSecondButtonReturn where !resting.isEmpty: self?.presentServers()
             default: break
             }

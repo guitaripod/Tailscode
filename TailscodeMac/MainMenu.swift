@@ -588,7 +588,7 @@ final class MainMenu: NSObject {
     @objc private func privacy() { NSWorkspace.shared.open(Link.privacy) }
     @objc private func settings() { hub.presentPreferences() }
     @objc private func typeSize() { hub.presentPreferences(typeSize: true) }
-    @objc private func pro() { hub.presentPro() }
+    @objc private func pro() { hub.presentPro(placement: .settings) }
     @objc private func software() { hub.presentUpdates() }
     @objc private func newChat() { run(.newChat) }
     @objc private func find() { run(.findInConversation) }

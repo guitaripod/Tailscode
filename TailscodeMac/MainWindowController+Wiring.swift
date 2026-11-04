@@ -69,7 +69,7 @@ extension MainWindowController {
         sidebar.onNotice = { [weak self] text in self?.setNotice(text) }
         sidebar.onToast = { [weak self] text in self?.toast(text) }
         sidebar.onOpenUpdates = { [weak self] in self?.presentUpdates() }
-        sidebar.onOpenPro = { [weak self] in self?.presentPro() }
+        sidebar.onOpenPro = { [weak self] in self?.presentPro(placement: .entry) }
         sidebar.ultracodeSource = { [weak self] in
             var active = false
             self?.splitPanes.eachPane { active = active || $0.composer.auraActive }

@@ -14,7 +14,7 @@ packages:
     path: TailscodeMetal
   MidgarKit:
     url: https://github.com/guitaripod/MidgarKit
-    exactVersion: 4.4.0
+    exactVersion: 4.6.0
 targetTemplates:
   MacApp:
     type: application

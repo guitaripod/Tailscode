@@ -104,7 +104,7 @@ extension SettingsViewController: UICollectionViewDelegate {
             navigationController?.pushViewController(editor, animated: true)
         case .pro:
             Theme.Haptics.tap()
-            ProUpgradeViewController.present(from: self)
+            ProUpgradeViewController.present(from: self, placement: .settings)
         case .viewLogs:
             navigationController?.pushViewController(LogViewerViewController(), animated: true)
         case .testAll:

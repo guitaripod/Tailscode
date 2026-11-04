@@ -44,7 +44,7 @@ enum DelegateGate {
         Theme.Haptics.tap()
         guard isOpen else {
             MidgarLog.info("delegate gated: free copy, presenting Pro", category: .ui)
-            ProUpgradeViewController.present(from: presenter, lead: .delegate) { [weak presenter] in
+            ProUpgradeViewController.present(from: presenter, lead: .delegate, placement: .feature) { [weak presenter] in
                 guard let presenter, isOpen else { return }
                 open(from: presenter, host: host, serverName: serverName)
             }
@@ -66,7 +66,7 @@ enum DelegateGate {
         Theme.Haptics.tap()
         guard isOpen else {
             MidgarLog.info("delegate handoff gated: free copy, presenting Pro", category: .ui)
-            ProUpgradeViewController.present(from: presenter, lead: .delegate) { [weak presenter] in
+            ProUpgradeViewController.present(from: presenter, lead: .delegate, placement: .feature) { [weak presenter] in
                 guard let presenter, isOpen else { return }
                 compose(from: presenter, handoff: handoff)
             }

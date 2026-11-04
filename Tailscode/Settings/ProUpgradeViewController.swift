@@ -1,4 +1,5 @@
 import MidgarCommerce
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -20,6 +21,8 @@ final class ProUpgradeViewController: UIViewController {
     private let statusLabel = UILabel()
     private var proProduct: StoreProduct?
     private let lead: Lead
+    private let placement: MidgarSignal.Placement
+    private var hasReportedShown = false
     private let onAccess: (() -> Void)?
 
     /// Which perk brought somebody here, so the sheet leads with the thing they touched rather than
@@ -29,18 +32,25 @@ final class ProUpgradeViewController: UIViewController {
         case delegate
     }
 
-    /// - Parameter onAccess: What to carry on with once Pro is open, by the week, a purchase or a restore, run after the
-    ///   sheet has gone.
-    init(lead: Lead = .general, onAccess: (() -> Void)? = nil) {
+    /// - Parameters:
+    ///   - placement: Where the sheet was opened from, sent with `paywall.view`.
+    ///   - onAccess: What to carry on with once Pro is open, by the week, a purchase or a restore, run after the sheet
+    ///     has gone.
+    init(lead: Lead = .general, placement: MidgarSignal.Placement, onAccess: (() -> Void)? = nil) {
         self.lead = lead
+        self.placement = placement
         self.onAccess = onAccess
         super.init(nibName: nil, bundle: nil)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    static func present(from presenter: UIViewController, lead: Lead = .general, onAccess: (() -> Void)? = nil) {
-        let nav = UINavigationController(rootViewController: ProUpgradeViewController(lead: lead, onAccess: onAccess))
+    static func present(
+        from presenter: UIViewController, lead: Lead = .general, placement: MidgarSignal.Placement,
+        onAccess: (() -> Void)? = nil
+    ) {
+        let nav = UINavigationController(
+            rootViewController: ProUpgradeViewController(lead: lead, placement: placement, onAccess: onAccess))
         if let sheet = nav.sheetPresentationController {
             sheet.detents = [.medium(), .large()]
             sheet.prefersGrabberVisible = true
@@ -64,6 +74,15 @@ final class ProUpgradeViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         ReviewPromptPolicy.notePaywallShown()
+        reportShownOnce()
+    }
+
+    /// Sends `paywall.view` with where the sheet was opened from, once per sheet: a page pushed over it and popped
+    /// again is not a second view.
+    private func reportShownOnce() {
+        guard !hasReportedShown else { return }
+        hasReportedShown = true
+        MidgarPaywallMoments.noteShown(placement: placement)
     }
 
     @objc private func proStateChanged() {

@@ -35,7 +35,7 @@ enum SetupFixes {
             Theme.Haptics.success()
             copied(command)
         case .seePro:
-            ProUpgradeViewController.present(from: presenter)
+            ProUpgradeViewController.present(from: presenter, placement: .onboarding)
         }
     }
 

@@ -1,5 +1,6 @@
 import AppKit
 import MidgarCommerce
+import MidgarCore
 import TailscodeCore
 
 /// The Pro unlock and the tip jar, opened by hand — from the menu, or from the one gate in the app
@@ -48,8 +49,10 @@ final class ProWindowController: NSWindowController {
         status.textColor = MacTheme.Color.secondaryLabel
     }
 
-    func present() {
+    /// Brings the window forward and sends `paywall.view` with `placement`, where it was opened from.
+    func present(placement: MidgarSignal.Placement) {
         ReviewPromptPolicy.notePaywallShown()
+        MidgarPaywallMoments.noteShown(placement: placement)
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         Task { await load() }

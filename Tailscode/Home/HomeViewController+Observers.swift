@@ -190,7 +190,7 @@ extension HomeViewController {
 
     func openSupporterOffer() {
         Theme.Haptics.tap()
-        ProUpgradeViewController.present(from: self)
+        ProUpgradeViewController.present(from: self, placement: .entry)
     }
 
     func declineSupporterOffer() {

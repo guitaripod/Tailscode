@@ -1,6 +1,7 @@
 import AppKit
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 
 extension MainWindowController {
@@ -254,7 +255,7 @@ extension MainWindowController {
                 MacUpdateWatch.shared.noteProfilesChanged()
                 Task { [weak self] in await self?.sidebar.refresh() }
             }
-            serversWindow?.onNeedsPro = { [weak self] in self?.presentPro() }
+            serversWindow?.onNeedsPro = { [weak self] in self?.presentPro(placement: .limit) }
             serversWindow?.onOpenAgent = { [weak self] profile, id in
                 self?.presentAgentCard(profile: profile, agentID: id)
             }
@@ -292,7 +293,7 @@ extension MainWindowController {
     /// because delegation is the door the purchase is sold through.
     func presentDelegate(handoff: DelegateHandoff? = nil) {
         guard MacDelegateGate.isOpen else {
-            presentPro()
+            presentPro(placement: .feature)
             return
         }
         MacDelegateGate.watchNotices()
@@ -303,9 +304,9 @@ extension MainWindowController {
     }
 
     /// The unlock, opened by hand — from the menu, or from the one gate that asks for it.
-    func presentPro() {
+    func presentPro(placement: MidgarSignal.Placement) {
         if proWindow == nil { proWindow = ProWindowController() }
-        proWindow?.present()
+        proWindow?.present(placement: placement)
     }
 
     func selectSettingsPage(named name: String) {
@@ -327,7 +328,7 @@ extension MainWindowController {
             preferencesWindow?.actions = PreferencesWindow.Actions(
                 manageServers: { [weak self] in self?.presentServers() },
                 openUpdates: { [weak self] in self?.presentUpdates() },
-                openPro: { [weak self] in self?.presentPro() },
+                openPro: { [weak self] in self?.presentPro(placement: .settings) },
                 showCheatsheet: { [weak self] in self?.presentCheatsheet() },
                 isSidebarShown: { [weak self] in self?.sidebarShown ?? true },
                 setSidebarShown: { [weak self] shown in self?.setPane(.sidebar, shown: shown) },

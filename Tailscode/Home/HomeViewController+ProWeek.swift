@@ -20,7 +20,7 @@ extension HomeViewController {
             preferredStyle: .alert)
         let pro = UIAlertAction(title: String(localized: "Get Tailscode Pro"), style: .default) { [weak self] _ in
             guard let self else { return }
-            ProUpgradeViewController.present(from: self)
+            ProUpgradeViewController.present(from: self, placement: .moment)
         }
         alert.addAction(pro)
         if !resting.isEmpty {

@@ -92,7 +92,7 @@ extension HomeViewController {
                 guard let profile else { return }
                 NewChatFlow.begin(from: self, profile: profile, viewModel: viewModel) { _ in }
             case "proupgrade":
-                ProUpgradeViewController.present(from: self)
+                ProUpgradeViewController.present(from: self, placement: .settings)
             case "serveredit":
                 guard let profile else { return }
                 present(UINavigationController(rootViewController: ServerEditViewController(profile: profile)), animated: false)
