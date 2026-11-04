@@ -157,21 +157,19 @@ extension TranscriptViewController {
     }
 
     /// A once-a-second nudge while a turn runs, so elapsed time moves without any state event;
-    /// every fifth tick also re-asks the server for agents and cost.
+    /// now and then it also re-asks the server for agents and cost (see ``tickTurnFacts()``).
     func updateTicker(running: Bool) {
         let running = running || workflowRuns.contains(where: \.isLive)
         if running, tickerTask == nil {
             tickerTask = Task { [weak self] in
-                var tick = 0
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(1))
                     guard !Task.isCancelled, let self else { return }
-                    tick += 1
                     self.updateStatus()
                     self.brains.restateLive()
                     self.updateCompactingElapsed()
                     self.advanceWorkflowClock()
-                    if tick % 5 == 0 { self.refreshTurnFacts() }
+                    self.tickTurnFacts()
                 }
             }
         } else if !running, tickerTask != nil {
@@ -181,25 +179,46 @@ extension TranscriptViewController {
         }
     }
 
+    static let networkFactsInterval: TimeInterval = 15
+
+    static let gitFactsInterval: TimeInterval = 60
+
+    /// The ticker's share of the facts: cost and agents every fifteen seconds and the repository
+    /// every minute, and none of it for a window nobody can see. Asking every five seconds, git
+    /// included, for every open chat, hidden or not, was the most a client asked of its server.
+    func tickTurnFacts() {
+        guard let window = view.window, window.isVisible, window.occlusionState.contains(.visible)
+        else { return }
+        let now = Date()
+        let networkDue =
+            factsReadAt.map { now.timeIntervalSince($0) >= Self.networkFactsInterval } ?? true
+        let gitDue = gitReadAt.map { now.timeIntervalSince($0) >= Self.gitFactsInterval } ?? true
+        guard networkDue || gitDue else { return }
+        refreshTurnFacts(includeGit: gitDue)
+    }
+
     /// Subagents and cost are polled rather than streamed: the bridge reports both on request
     /// only, and a fan-out is worth watching while it runs. One final refresh after the turn
     /// stops settles the agents list on "done" instead of freezing mid-flight glyphs, and one
     /// when the chat opens: a conversation started on another machine is never running here, so
     /// waiting for a turn tick meant its account, its usage and its branch never arrived at all.
-    func refreshTurnFacts() {
+    func refreshTurnFacts(includeGit: Bool = true) {
         guard let backend, let entry else { return }
         factsReadAt = Date()
+        if includeGit { gitReadAt = Date() }
         startAgentStreamIfAvailable()
         let sessionID = entry.session.id
         let skipAgents = agentStreamSessionID == sessionID && agentStreamTask != nil
+        let wantGit = includeGit
         Task { [weak self] in
             let agents = skipAgents ? nil : ((try? await backend.subagents(for: sessionID)) ?? [])
             let usage = (try? await backend.sessionUsage(sessionID)) ?? nil
             let report = (try? await backend.sessionSpend(sessionID)) ?? nil
-            let repository = await Self.readGit(backend: backend, session: entry.session)
-            guard let self, self.entry?.session.id == sessionID else { return }
+            let repository =
+                wantGit ? await Self.readGit(backend: backend, session: entry.session) : nil
+                guard let self, self.entry?.session.id == sessionID else { return }
             self.usage = usage
-            self.git = repository.map { GitState(snapshot: $0) }
+            if wantGit { self.git = repository.map { GitState(snapshot: $0) } }
             self.spendReading.note(report: report, for: sessionID)
             self.spendReading.note(messages: self.lastState?.messages ?? [], for: sessionID)
             if let agents {

@@ -529,6 +529,7 @@ final class TranscriptViewController: NSViewController {
     /// app is also something a person does dozens of times an hour, so a fresh reading is left
     /// alone.
     var factsReadAt: Date?
+    var gitReadAt: Date?
 
     var isPreviewing: Bool { preview != nil }
     var previewTarget: PreviewTarget? { preview?.target }
