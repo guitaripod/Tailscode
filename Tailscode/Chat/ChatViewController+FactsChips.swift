@@ -298,6 +298,7 @@ extension ChatViewController {
                 }
             })
         rangeSheet = panel
+        refreshMeasuredContext()
         let nav = UINavigationController(rootViewController: panel)
         nav.modalPresentationStyle = .pageSheet
         nav.sheetPresentationController?.detents = [.medium(), .large()]
@@ -313,10 +314,25 @@ extension ChatViewController {
     private func rangeReading() -> RangeViewController.Reading {
         let selection = viewModel.displayedModel
         let state = viewModel.state
+        refreshMeasuredContext()
         let board = RangeBoard.read(
             messages: state.messages, fill: contextFill, quotas: rangeQuotas,
             model: selection?.modelID, selection: selection, isRunning: state.status == .running,
-            trail: RangeStore.trail)
+            trail: RangeStore.trail,
+            measured: MeasuredContextShelf.shared.value(for: viewModel.session.id))
         return RangeViewController.Reading(board: board, billing: contextFill)
+    }
+
+    /// Asks the agent what fills the window, at most every half minute while the sheet is open, and
+    /// reads the sheet again when a new measurement lands.
+    private func refreshMeasuredContext() {
+        let backend = viewModel.backend
+        let sessionID = viewModel.session.id
+        Task { [weak self] in
+            let before = MeasuredContextShelf.shared.value(for: sessionID)
+            await MeasuredContextShelf.shared.refresh(backend, sessionID: sessionID)
+            guard MeasuredContextShelf.shared.value(for: sessionID) != before else { return }
+            self?.rangeSheet?.refresh(force: true)
+        }
     }
 }

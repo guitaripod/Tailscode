@@ -354,7 +354,9 @@ final class RangeViewController: UIViewController {
     private func contentViews(_ composition: ContextComposition) -> [UIView] {
         var views: [UIView] = [
             label(
-                RangeSheetWords.compositionTotal(StatusFacts.tokens(composition.total)).uppercased(),
+                RangeSheetWords.compositionTotal(
+                    StatusFacts.tokens(composition.total), measured: composition.measured
+                ).uppercased(),
                 role: .sectionLabel, color: Theme.Color.tertiaryLabel)
         ]
         let slices = composition.slices.map { (Self.sliceColor($0.id), $0.share) }

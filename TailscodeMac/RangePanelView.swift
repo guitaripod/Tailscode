@@ -44,10 +44,15 @@ extension TranscriptViewController {
     /// pane already holds, so opening the popover asks nobody anything.
     func rangeSnapshot() -> RangeSnapshot? {
         guard let state = currentState else { return nil }
+        let sessionID = entry?.session.id
+        if let backend, let sessionID {
+            Task { await MeasuredContextShelf.shared.refresh(backend, sessionID: sessionID) }
+        }
         let board = RangeBoard.read(
             messages: state.messages, fill: contextFill, quotas: quotasForStatus?() ?? [],
             model: composer.activeModelID, selection: composer.activeSelection,
-            isRunning: state.status == .running, trail: RangeStore.trail)
+            isRunning: state.status == .running, trail: RangeStore.trail,
+            measured: sessionID.flatMap { MeasuredContextShelf.shared.value(for: $0) })
         return RangeSnapshot(board: board, fill: contextFill)
     }
 }
@@ -73,6 +78,8 @@ final class RangePanelViewController: NSViewController {
     private var lens = Lens.content
     private let column = FillingStack()
     private var timer: Timer?
+    /// Reads again the moment the agent's own measurement of the window lands.
+    private var measured: NSObjectProtocol?
     private var debounce: Task<Void, Never>?
     private var refreshedAt = Date()
 
@@ -162,12 +169,19 @@ final class RangePanelViewController: NSViewController {
         timer = Timer.scheduledTimer(withTimeInterval: Self.tick, repeats: true) { [weak self] _ in
             MainThread.call { self?.refresh() }
         }
+        measured = NotificationCenter.default.addObserver(
+            forName: MeasuredContextShelf.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainThread.call { self?.stateChanged() }
+        }
         refresh()
     }
 
     private func stop() {
         timer?.invalidate()
         timer = nil
+        if let measured { NotificationCenter.default.removeObserver(measured) }
+        measured = nil
         debounce?.cancel()
         debounce = nil
     }
@@ -358,7 +372,8 @@ final class RangePanelViewController: NSViewController {
     private func contentViews(_ content: ContextComposition) -> [NSView] {
         var views: [NSView] = [
             Self.words(
-                RangeSheetWords.compositionTotal(StatusFacts.tokens(content.total)),
+                RangeSheetWords.compositionTotal(
+                    StatusFacts.tokens(content.total), measured: content.measured),
                 role: .panelFootnote, color: MacTheme.Color.secondaryLabel),
             StackedBarView(
                 segments: content.slices.map { ($0.share, Self.sliceInk($0.id)) }),

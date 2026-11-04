@@ -254,7 +254,8 @@ final class RangePanel: @unchecked Sendable {
         let card = card(spacing: 8)
         let head = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         let caption = Gtk.label(
-            RangeSheetWords.compositionTotal(StatusFacts.tokens(composition.total)),
+            RangeSheetWords.compositionTotal(
+                StatusFacts.tokens(composition.total), measured: composition.measured),
             css: "spend-caption", wrap: true, selectable: false)
         gtk_widget_set_hexpand(caption, 1)
         gtk_box_append(ptr(head), caption)

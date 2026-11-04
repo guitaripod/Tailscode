@@ -30,9 +30,12 @@ public enum RangeSheetWords {
         Localized.text("of %@", size)
     }
 
-    /// What the content chart's total says it is: a measured figure whose shares are estimates.
-    public static func compositionTotal(_ tokens: String) -> String {
-        Localized.text("%@ tokens · estimated shares of a measured total", tokens)
+    /// What the content chart's total says it is: a measured figure whose shares are estimates,
+    /// or, where the agent counted the window itself, a measurement throughout.
+    public static func compositionTotal(_ tokens: String, measured: Bool = false) -> String {
+        measured
+            ? Localized.text("%@ tokens · measured by the agent", tokens)
+            : Localized.text("%@ tokens · estimated shares of a measured total", tokens)
     }
 }
 

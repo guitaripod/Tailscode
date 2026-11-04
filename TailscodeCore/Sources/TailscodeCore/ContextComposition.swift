@@ -38,6 +38,8 @@ public struct ContextComposition: Sendable, Equatable {
     public let total: Int
     public let slices: [Slice]
     public let items: [Item]
+    /// The agent counted the shares itself rather than the transcript's characters estimating them.
+    public var measured = false
 
     /// What the largest slice is made of, said once beside the chart: the system prompt, the tool
     /// definitions, memory files and the model's own thinking are in every request and in no
@@ -175,6 +177,71 @@ public struct ContextComposition: Sendable, Equatable {
             .prefix(namedItems)
         guard !slices.isEmpty else { return nil }
         return ContextComposition(total: total, slices: slices, items: Array(items))
+    }
+
+    /// The window as the agent itself counted it: the system prompt, the tool definitions, the
+    /// memory files and skills it loaded and each kind of message, every share a measurement. The
+    /// tool rows that name what took the room are still read from the transcript, scaled so they
+    /// add up to what the agent says tool calls and their results weigh.
+    public static func read(measured: MeasuredContext, messages: [ChatMessage]) -> ContextComposition? {
+        let used = measured.categories.filter(\.isUsed)
+        let total = used.reduce(0) { $0 + $1.tokens }
+        guard total > 0 else { return nil }
+        var rows: [(id: String, label: String, tokens: Int)] = []
+        func add(_ id: String, _ label: String, _ tokens: Int) {
+            guard tokens > 0 else { return }
+            if let index = rows.firstIndex(where: { $0.id == id }) {
+                rows[index].tokens += tokens
+            } else {
+                rows.append((id, label, tokens))
+            }
+        }
+        for category in used {
+            switch category.id {
+            case "system_prompt": add("system", Localized.text("System prompt"), category.tokens)
+            case "system_tools", "mcp_tools", "mcp_instructions":
+                add("tools-defined", Localized.text("Tools"), category.tokens)
+            case "memory_files": add("memory", Localized.text("Memory files"), category.tokens)
+            case "skills": add("skills", Localized.text("Skills"), category.tokens)
+            case "custom_agents": add("agents", Localized.text("Agents"), category.tokens)
+            case "messages":
+                guard let split = measured.messages else {
+                    add("messages", category.name, category.tokens)
+                    continue
+                }
+                add("you", Localized.text("You"), split.user)
+                add("answers", Localized.text("Answers"), split.assistant)
+                add("tools", Localized.text("Tool output"), split.toolCalls + split.toolResults)
+                add("attachments", Localized.text("Attachments"), split.attachments)
+                let named = split.user + split.assistant + split.toolCalls + split.toolResults + split.attachments
+                add("other", Localized.text("Other"), max(split.other, category.tokens - named))
+            default:
+                add(category.id, category.name, category.tokens)
+            }
+        }
+        let whole = Double(total)
+        let slices = rows.map { Slice(id: $0.id, label: $0.label, tokens: $0.tokens, share: Double($0.tokens) / whole) }
+        let toolTokens = measured.messages.map { $0.toolCalls + $0.toolResults } ?? 0
+        var weights = Weights()
+        var turn = messages[..<epochStart(in: messages)].filter { $0.role == .user }.count
+        for message in messages[epochStart(in: messages)...] {
+            if message.role == .user { turn += 1 }
+            weights.add(message, turn: turn)
+        }
+        let scale = weights.tools == 0 ? 0 : Double(toolTokens) / Double(weights.tools)
+        let items = weights.calls
+            .map { call in
+                Item(
+                    id: call.id, messageID: call.messageID, tool: call.tool, detail: call.detail,
+                    tokens: Int((Double(call.tokens) * scale).rounded()),
+                    share: Double(call.tokens) * scale / whole, turn: call.turn)
+            }
+            .filter { $0.share >= smallestItemShare }
+            .sorted { $0.tokens > $1.tokens }
+            .prefix(namedItems)
+        var composition = ContextComposition(total: total, slices: slices, items: Array(items))
+        composition.measured = true
+        return composition
     }
 
     fileprivate static func estimate(_ text: String) -> Int {

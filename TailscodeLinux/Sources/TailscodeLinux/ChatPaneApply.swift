@@ -492,10 +492,19 @@ extension ChatPane {
         guard let state = lastState else { return nil }
         let fill = contextFill?.rewindowed(
             model: activeModelID, providerID: activeSelection?.providerID, catalog: models)
+        if let backend, let sessionID {
+            Task {
+                let before = MeasuredContextShelf.shared.value(for: sessionID)
+                await MeasuredContextShelf.shared.refresh(backend, sessionID: sessionID)
+                guard MeasuredContextShelf.shared.value(for: sessionID) != before else { return }
+                Gtk.onMain { RangePanel.transcriptChanged() }
+            }
+        }
         let board = RangeBoard.read(
             messages: state.messages, fill: fill, quotas: host?.quotasForStatus() ?? [],
             model: activeModelID, selection: activeSelection,
-            isRunning: state.status == .running, trail: RangeStore.trail)
+            isRunning: state.status == .running, trail: RangeStore.trail,
+            measured: sessionID.flatMap { MeasuredContextShelf.shared.value(for: $0) })
         return RangePanel.Reading(board: board, fill: fill)
     }
 }

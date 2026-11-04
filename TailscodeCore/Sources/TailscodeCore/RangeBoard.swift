@@ -204,10 +204,13 @@ public struct RangeBoard: Sendable, Equatable {
     /// A turn is taken to last this long when only the order of two tanks is being decided.
     private static let turnPace: TimeInterval = 300
 
+    /// `measured` is the window as the agent itself counted it, where it could be asked; the chart
+    /// of what is in the window is then a measurement rather than an estimate from the transcript.
     public static func read(
         messages: [ChatMessage], fill: ContextFill?, quotas: [UsageQuota], model: String?,
         named name: String? = nil, selection: ModelSelection? = nil, isRunning: Bool = false,
-        trail: QuotaTrail? = nil, now: Date = Date(), clock: RangeClock = .current
+        trail: QuotaTrail? = nil, measured: MeasuredContext? = nil, now: Date = Date(),
+        clock: RangeClock = .current
     ) -> RangeBoard {
         let burn = fill.flatMap {
             ContextBurn.read(messages: messages, fill: $0, wholeConversation: true)
@@ -280,7 +283,8 @@ public struct RangeBoard: Sendable, Equatable {
         return RangeBoard(
             verdict: verdict(claims: claims, quiet: quiet, fill: fill),
             rows: rows, elsewhere: elsewhere, cache: cache.map(CacheRow.init),
-            composition: fill.flatMap { ContextComposition.read(messages: messages, fill: $0) },
+            composition: measured.flatMap { ContextComposition.read(measured: $0, messages: messages) }
+                ?? fill.flatMap { ContextComposition.read(messages: messages, fill: $0) },
             footprint: burn.flatMap { burn in
                 fill.flatMap { RangeFootprint.read(burn: burn, fill: $0) }
             },
