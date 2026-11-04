@@ -8,10 +8,18 @@ extension SidebarViewController {
         guard refreshTask == nil else { return }
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.refresh()
+                if self?.isOnScreen ?? false { await self?.refresh() }
                 try? await Task.sleep(for: .seconds(10))
             }
         }
+    }
+
+    /// Whether anybody can see the list. A window that is hidden, minimised or covered keeps its
+    /// streams, which cost nothing while nothing changes, and skips the poll, which asks every
+    /// server every ten seconds whether it is still there.
+    private var isOnScreen: Bool {
+        guard let window = view.window else { return false }
+        return window.isVisible && window.occlusionState.contains(.visible)
     }
 
     /// A proto-2 bridge pushes list changes the moment they happen; the 10-second poll survives
