@@ -15,7 +15,7 @@ extension TranscriptViewController {
             if view.window?.isKeyWindow == true, state.messages.last?.error == nil {
                 announce(Localized.text("Your agent finished."))
             }
-            if state.messages.last?.isAnswerless != true {
+            if TurnSuccessReading.succeeded(state) {
                 MacReviewPrompt.shared.turnCompleted()
                 SupporterInvitation.recordSuccessfulTurn()
             }

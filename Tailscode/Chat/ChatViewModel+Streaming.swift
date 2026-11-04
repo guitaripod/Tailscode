@@ -26,6 +26,10 @@ extension ChatViewModel {
                 if state.connection == .live { self.streamRestarts = 0 }
                 self.reconcileOptimisticState(with: state)
                 if self.state.status == .running, state.status != .running {
+                    if TurnSuccessReading.succeeded(state) {
+                        ReviewPromptCoordinator.shared.turnCompleted()
+                        SupporterInvitation.recordSuccessfulTurn()
+                    }
                     self.cachedUsage = nil
                     self.refreshTitleFromServer()
                     self.refreshTitleFromServer(delay: .seconds(12))

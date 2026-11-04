@@ -63,3 +63,14 @@ public enum FailedTurnReading {
         return String(words.prefix(longest)).trimmingCharacters(in: .whitespaces) + "…"
     }
 }
+
+/// Whether a turn that just settled went well enough to count: it answered something and recorded
+/// no failure. Read where a conversation's states arrive whether or not its screen is showing, so a
+/// turn that finishes after the person left the chat counts as much as one they watched.
+public enum TurnSuccessReading {
+    public static func succeeded(_ state: ConversationState) -> Bool {
+        guard state.status != .running, let last = state.messages.last else { return false }
+        if last.isAnswerless { return false }
+        return FailedTurnReading.read(last, prompt: nil) == nil
+    }
+}

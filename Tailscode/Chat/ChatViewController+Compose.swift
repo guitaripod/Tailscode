@@ -271,8 +271,6 @@ extension ChatViewController {
             } else {
                 Theme.Haptics.received()
                 announceTurnEnd()
-                ReviewPromptCoordinator.shared.turnCompleted()
-                SupporterInvitation.recordSuccessfulTurn()
                 NotificationManager.offerAfterFirstTurn(from: self)
             }
             refreshSpend()
