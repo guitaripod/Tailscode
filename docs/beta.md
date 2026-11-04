@@ -22,6 +22,37 @@ deleted, so every client loses the mark together.
 Nothing in a client spells a beta word. `BetaWords` holds the shared ones (`BETA`, "Got it",
 "Copy report", "Report copied", "Since you last looked").
 
+## Leaving beta
+
+A feature leaves beta when every line of its own exit list holds, checked on the build that drops
+the case, and the release that drops it says so in What's New. Nothing on a list is a feeling; each is
+something a person can check. A feature that has not met its list two releases after the last line
+that moved stays in beta and its card's "Still rough" says what is missing; one that cannot meet it
+is cut, never left wearing the mark for good.
+
+### Delegate
+
+- The packet, the ladder and every class's starting tier have not changed for two releases in a row.
+- Thirty consecutive runs on the author's machines across at least four classes, with no run whose
+  patch landed unverified and none that landed outside its task's files.
+- A run that fails at every tier says why in one sentence a person can act on, and a run against a
+  daemon that is down or too old says so before it starts.
+- The board, the server row and the report read the same on iPhone, iPad, Mac and Linux
+  (`scripts/parity.sh` answers `delegate` implemented on every column that sells it).
+- The dispatcher's log carries every field `BetaReport` asks for, so a report needs no follow-up
+  question.
+
+### Calls
+
+- A ten-minute call on the reference GPU loses no finished sentence and splits no request that has a
+  pause of under two seconds in it.
+- Fewer than one word in ten is misheard over fifty recorded English requests read the way a person
+  talks to an agent, and the strip shows what was heard before the sentence is sent.
+- The setup checklist proves every requirement (GPU memory, model files, the gateway's version) and a
+  missing one is a step, never a failed call.
+- A second language ships, or the card and the store copy both say English only.
+- A call never leaves the microphone open after it ends, on every client that offers one.
+
 ## The mark
 
 `BetaBadge(feature)` is the capsule beside a feature's title on every client. Its tap or hover opens the
