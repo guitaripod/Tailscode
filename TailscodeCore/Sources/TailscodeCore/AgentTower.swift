@@ -257,6 +257,16 @@ public actor AgentTower {
         let sessionID = entry.session.id
         let pollEvery = poll
         let agentsTask = Task { [weak self] in
+            if let streaming = backend as? SubagentStreaming,
+                let changes = await streaming.subagentChanges(for: sessionID)
+            {
+                await Self.follow(changes, backend: backend, sessionID: sessionID, tick: pollEvery) {
+                    [weak self] agents in await self?.hear(id, agents: agents)
+                } tick: { [weak self] in
+                    await self?.tick(id)
+                }
+                return
+            }
             while !Task.isCancelled {
                 if let agents = try? await backend.subagents(for: sessionID) {
                     await self?.hear(id, agents: agents)
@@ -285,7 +295,44 @@ public actor AgentTower {
             watch.agents = agents
             watches[id] = watch
         }
+        tick(id)
+    }
+
+    private func tick(_ id: String) {
         if let state = lastState[id] { absorb(id, state, quiet: true) }
+    }
+
+    /// How often a session whose agents arrive on the server's stream is still read outright. The
+    /// stream carries every change; the read is only there for a server whose stream cannot say,
+    /// and for a frame lost in a reconnect.
+    public static let agentReread: Duration = .seconds(30)
+
+    /// A session's agents from the server's own stream, which says the moment one starts, moves or
+    /// ends, instead of asking every few seconds whether anything did. The board's clock keeps
+    /// ticking on its own beat, and the agents are still read outright now and then.
+    private static func follow(
+        _ changes: AsyncStream<[SubagentSummary]>, backend: any CodingAgentBackend,
+        sessionID: String, tick beat: Duration,
+        hear: @escaping @Sendable ([SubagentSummary]) async -> Void,
+        tick: @escaping @Sendable () async -> Void
+    ) async {
+        let clock = Task {
+            var sinceRead = Duration.zero
+            while !Task.isCancelled {
+                if sinceRead == .zero, let agents = try? await backend.subagents(for: sessionID) {
+                    await hear(agents)
+                }
+                try? await Task.sleep(for: beat)
+                await tick()
+                sinceRead += beat
+                if sinceRead >= agentReread { sinceRead = .zero }
+            }
+        }
+        defer { clock.cancel() }
+        for await agents in changes {
+            if Task.isCancelled { break }
+            await hear(agents)
+        }
     }
 
     private var lastState: [String: ConversationState] = [:]
