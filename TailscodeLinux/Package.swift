@@ -178,7 +178,9 @@ enum Kit {
     /// 0.47.0 speaks a machine's schedules and the ACP agents a claude-bridge hosts.
     /// 0.48.0 reads a conversation once per refresh, a list that has not moved as a header, and a
     /// bridge's provider wait.
-    static let version = Version(0, 48, 0)
+    /// 0.48.1 reads a transcript held from before the sidecar again, and keeps opencode 2's cut-off
+    /// card when liveness could not be read.
+    static let version = Version(0, 48, 1)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
