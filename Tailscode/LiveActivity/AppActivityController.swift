@@ -44,6 +44,7 @@ final class AppActivityController {
         var pushedAt: Date
         var pushToken: String?
         var onPushToken: PushTokenSink?
+        var followsTokens = false
         /// Ended — by this process or by a push — and possibly still on the Lock Screen, where only
         /// a read takes it down early.
         var retired = false
@@ -54,6 +55,7 @@ final class AppActivityController {
     private var entries: [String: Entry] = [:]
     private var pendingWork: [String: Task<Void, Never>] = [:]
     private var pendingTokens: [String: UUID] = [:]
+    private var tokenHandoffs: [String: Task<Void, Never>] = [:]
     private var starting: [String: Deferred] = [:]
     /// Every surface showing a conversation and which one, held weakly and asked whether it is in
     /// a window when it matters, so a surface torn down without saying goodbye reads as gone.
@@ -118,8 +120,9 @@ final class AppActivityController {
             entries[sessionID] = entry
             write(sessionID, entry.activity, state)
             if let token = entry.pushToken, let sink = entry.onPushToken {
-                Task { await sink(token, startedAt) }
+                hand(token, startedAt: startedAt, to: sink, for: sessionID)
             }
+            followTokens(sessionID)
             MidgarLog.info("Live Activity taken back for \(sessionID)", category: .chat)
             return
         }
@@ -432,6 +435,10 @@ final class AppActivityController {
         }
     }
 
+    private struct Card: @unchecked Sendable {
+        let activity: Activity<ChatActivityAttributes>
+    }
+
     private struct Followed: @unchecked Sendable {
         let cards: [(String, Activity<ChatActivityAttributes>)]
 
@@ -575,54 +582,95 @@ final class AppActivityController {
         pendingWork[sessionID] == nil ? entry.card : entry.state
     }
 
-    /// Follows the card's own life: a token the server needs to reach it, and the moment a person
-    /// swipes it away or the platform ends it, after which it is nobody's to write to.
+    /// Follows the card's own life: what it shows, and the moment a person swipes it away or the
+    /// platform ends it, after which it is nobody's to write to. Every stream is subscribed off
+    /// the main thread, because subscribing waits on ActivityKit's own queue while holding a lock
+    /// that queue needs to hand an update over, and a main thread caught in that never returns.
     private func watch(_ activity: Activity<ChatActivityAttributes>, sessionID: String) {
+        let card = Card(activity: activity)
         let id = activity.id
-        let tokens = Task { [weak self] in
-            for await token in activity.pushTokenUpdates {
-                guard let self, var entry = self.entries[sessionID], entry.activity.id == id else {
-                    return
-                }
-                let hex = Self.hex(token)
-                guard hex != entry.pushToken else { continue }
-                entry.pushToken = hex
-                self.entries[sessionID] = entry
-                if let sink = entry.onPushToken {
-                    let startedAt = self.current(sessionID, entry).startedAt
-                    await sink(hex, startedAt)
-                }
+        let contents = Task.detached { [weak self] in
+            for await content in card.activity.contentUpdates {
+                guard let self, await self.cardShowed(content.state, sessionID: sessionID, id: id)
+                else { return }
             }
         }
-        let contents = Task { [weak self] in
-            for await content in activity.contentUpdates {
-                guard let self, var entry = self.entries[sessionID], entry.activity.id == id else {
-                    return
-                }
-                guard self.pendingWork[sessionID] == nil else { continue }
-                entry.card = content.state
-                self.entries[sessionID] = entry
+        let lifecycle = Task.detached { [weak self] in
+            for await state in card.activity.activityStateUpdates {
+                guard let self, await self.platformMoved(to: state, sessionID: sessionID, id: id)
+                else { return }
             }
         }
-        let lifecycle = Task { [weak self] in
-            for await state in activity.activityStateUpdates {
-                guard let self, var entry = self.entries[sessionID], entry.activity.id == id else {
-                    return
-                }
-                entry.platform = state
-                self.entries[sessionID] = entry
-                if state == .dismissed {
-                    self.forget(sessionID)
-                    return
-                }
-                guard state == .ended, !entry.retired else { continue }
-                entry.retired = true
-                entry.retirement?.cancel()
-                entry.retirement = nil
-                self.entries[sessionID] = entry
+        entries[sessionID]?.watchers = [contents, lifecycle]
+        followTokens(sessionID)
+    }
+
+    /// Listens for the tokens the server needs to reach the card, from the moment there is
+    /// somewhere to send them. A card taken up at launch has nowhere until its conversation takes
+    /// it back, and subscribing while ActivityKit is still handing the launch's tokens over is
+    /// exactly when its token queue deadlocks.
+    private func followTokens(_ sessionID: String) {
+        guard var entry = entries[sessionID], entry.onPushToken != nil, !entry.followsTokens
+        else { return }
+        let card = Card(activity: entry.activity)
+        let id = entry.activity.id
+        let tokens = Task.detached { [weak self] in
+            for await token in card.activity.pushTokenUpdates {
+                guard let self,
+                    await self.tokenArrived(Self.hex(token), sessionID: sessionID, id: id)
+                else { return }
             }
         }
-        entries[sessionID]?.watchers = [tokens, contents, lifecycle]
+        entry.followsTokens = true
+        entry.watchers.append(tokens)
+        entries[sessionID] = entry
+    }
+
+    private func tokenArrived(_ hex: String, sessionID: String, id: String) -> Bool {
+        guard var entry = entries[sessionID], entry.activity.id == id else { return false }
+        guard hex != entry.pushToken else { return true }
+        entry.pushToken = hex
+        entries[sessionID] = entry
+        if let sink = entry.onPushToken {
+            hand(hex, startedAt: current(sessionID, entry).startedAt, to: sink, for: sessionID)
+        }
+        return true
+    }
+
+    /// Gives the server a token only after every token handed to it before for the conversation,
+    /// so the one a card was given at launch can never land after the one that replaced it.
+    private func hand(
+        _ token: String, startedAt: Date, to sink: @escaping PushTokenSink, for sessionID: String
+    ) {
+        let previous = tokenHandoffs[sessionID]
+        tokenHandoffs[sessionID] = Task {
+            await previous?.value
+            await sink(token, startedAt)
+        }
+    }
+
+    private func cardShowed(_ state: State, sessionID: String, id: String) -> Bool {
+        guard var entry = entries[sessionID], entry.activity.id == id else { return false }
+        guard pendingWork[sessionID] == nil else { return true }
+        entry.card = state
+        entries[sessionID] = entry
+        return true
+    }
+
+    private func platformMoved(to state: ActivityState, sessionID: String, id: String) -> Bool {
+        guard var entry = entries[sessionID], entry.activity.id == id else { return false }
+        entry.platform = state
+        entries[sessionID] = entry
+        if state == .dismissed {
+            forget(sessionID)
+            return false
+        }
+        guard state == .ended, !entry.retired else { return true }
+        entry.retired = true
+        entry.retirement?.cancel()
+        entry.retirement = nil
+        entries[sessionID] = entry
+        return true
     }
 
     /// Whether the platform refused a card only because too many are standing — the one refusal
