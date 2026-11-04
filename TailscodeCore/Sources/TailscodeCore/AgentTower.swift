@@ -316,10 +316,14 @@ public actor AgentTower {
         hear: @escaping @Sendable ([SubagentSummary]) async -> Void,
         tick: @escaping @Sendable () async -> Void
     ) async {
+        let frames = FrameCount()
         let clock = Task {
             var sinceRead = Duration.zero
             while !Task.isCancelled {
-                if sinceRead == .zero, let agents = try? await backend.subagents(for: sessionID) {
+                let before = frames.value
+                if sinceRead == .zero, let agents = try? await backend.subagents(for: sessionID),
+                    frames.value == before
+                {
                     await hear(agents)
                 }
                 try? await Task.sleep(for: beat)
@@ -331,8 +335,18 @@ public actor AgentTower {
         defer { clock.cancel() }
         for await agents in changes {
             if Task.isCancelled { break }
+            frames.increment()
             await hear(agents)
         }
+    }
+
+    /// How many frames the stream has delivered, so a read that was out while one landed — and so
+    /// is older than what the frame said — is dropped rather than put over it.
+    private final class FrameCount: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        var value: Int { lock.withLock { count } }
+        func increment() { lock.withLock { count += 1 } }
     }
 
     private var lastState: [String: ConversationState] = [:]
