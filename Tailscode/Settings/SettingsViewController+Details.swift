@@ -47,6 +47,7 @@ extension SettingsViewController {
         switch state {
         case .registered: return String(localized: "Registered")
         case .unsupported: return String(localized: "Bridge too old")
+        case .notOffered: return String(localized: "Sends no pushes")
         case .failed: return String(localized: "Failed — tap to retry")
         case .unknown:
             if !AppPreferences.pushAlertsEnabled { return String(localized: "Turned off") }

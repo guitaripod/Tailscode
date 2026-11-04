@@ -302,6 +302,7 @@ extension ServerDetailViewController {
         switch state {
         case .registered: return String(localized: "Registered")
         case .unsupported: return String(localized: "Bridge too old for pushes")
+        case .notOffered: return String(localized: "This server sends no pushes")
         case .failed(let reason): return String(localized: "Failed — \(reason)")
         case .unknown:
             return AppPreferences.pushAlertsEnabled

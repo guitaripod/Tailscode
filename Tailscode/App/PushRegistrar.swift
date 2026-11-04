@@ -18,6 +18,9 @@ enum PushRegistrar {
         case unknown
         case registered
         case unsupported
+        /// The server is current and simply has nothing to send pushes with (omp-bridge holds no
+        /// APNs client), which no retry and no update changes.
+        case notOffered
         case failed(String)
 
         var label: String {
@@ -25,6 +28,7 @@ enum PushRegistrar {
             case .unknown: return "Not checked"
             case .registered: return "Registered"
             case .unsupported: return "Bridge too old"
+            case .notOffered: return "Sends no pushes"
             case .failed: return "Failed"
             }
         }
@@ -165,9 +169,13 @@ enum PushRegistrar {
     }
 
     /// A bridge that predates the push routes answers 404, which is a
-    /// deployment fact the user can fix, not a transient error.
+    /// deployment fact the user can fix, not a transient error. One that has the
+    /// routes and no way to send answers 501, which nothing on this side fixes.
     private static func classify(_ error: Error) -> State {
-        if case AgentError.http(let status, _) = error, status == 404 { return .unsupported }
+        if case AgentError.http(let status, _) = error {
+            if status == 404 { return .unsupported }
+            if status == 501 { return .notOffered }
+        }
         return .failed(SessionListViewModel.readable(error))
     }
 
