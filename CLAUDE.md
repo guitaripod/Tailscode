@@ -20,7 +20,7 @@ Author on Linux, build on the Mac over Tailscale:
 - `scripts/build-mac.sh` — rsync Kit + app to `macbook`, `xcodegen`, `xcodebuild` (simulator). Use to check compilation.
 - `scripts/run-mac.sh` — build + install on an iPhone simulator + capture screenshots to `/tmp/tailscode-*.png`. Targets a specific device UDID (never `booted`, which is ambiguous when a visionOS sim is also booted).
 - `--demo` launch arg → scripted conversation (no server), for screenshots. DEBUG env `TAILSCODE_HOST`/`TAILSCODE_PASSWORD` → auto-connect for a live session-list screenshot.
-- `scripts/install-macapp.sh` — release-build TailscodeMac and replace `/Applications/Tailscode.app`. **This is the last step of any Mac work**, the same way `scripts/install-linuxapp.sh` is for Linux: a build that only ever exists under `build-mac/` is a change nobody can use, and the app launched from the Dock is the one that has to have it. `--tree <path>` / `--tree-constraints` / `--open <surface>` write any window's real geometry and Auto Layout ambiguity to a file, which is how a layout is checked without a screen.
+- `scripts/install-macapp.sh` — release-build the ad-hoc TailscodeMac and replace `/Applications/Tailscode.app`, for people who build the Mac app themselves. **Never on the author's Macs**: they run only the internal TestFlight build, so Mac work ends with a TestFlight upload of `TailscodeMacStore` (the `app-store` skill), and a guard hook refuses the install script. Check a change with `scripts/build-macapp-isolated.sh --selftest`, where the binary's `--tree <path>` / `--tree-constraints` / `--open <surface>` write any window's real geometry and Auto Layout ambiguity to a file, which is how a layout is checked without a screen, then delete the build products.
 
 ## Develop the Linux client headlessly (never on the real desktop)
 
@@ -39,7 +39,7 @@ A change that only exists in a build directory has not been made. **Every task t
 - **Linux client → `scripts/install-linuxapp.sh`.** Builds release, installs, and restarts the app the person actually uses. Nothing else does this: the headless harness (`dev-linuxapp.sh`) and `swift build` both leave the installed binary untouched, so a passing selftest is not a shipped change.
 - **claude-bridge → `swift build -c release` in `~/Dev/swift/claude-bridge`, then `systemctl --user restart claude-bridge`.** Never from inside a session running on that bridge — the restart tears down its cgroup and kills every agent with it (see [[claude-bridge-cgroup-self-restart]]); hand the two commands over instead when work is in flight.
 - **Kit / Core** reach a client only through that client's own install, so a Kit fix is not delivered until the client carrying it has been reinstalled.
-- **iOS / macOS** cannot be installed from this machine — say so plainly and name what the person has to run, rather than letting a green build read as a delivered change.
+- **iOS / macOS → an internal TestFlight build** of the iPhone and Mac store targets (the `app-store` skill), verified `VALID` with `asc builds list`; the author installs it from TestFlight. No ad-hoc or dev build stays in `/Applications`, and every build product is deleted once the upload is in.
 
 Report the version and pid the install printed. If an install is deliberately skipped — the work is server-side only, or the person is mid-session on that very binary — say which and why in the same breath as reporting the work done.
 
