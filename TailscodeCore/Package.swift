@@ -79,7 +79,9 @@ enum Kit {
     /// 0.46.0 spaces the writes of a heavy transcript by what it weighs, so a long conversation
     /// stops rewriting tens of megabytes to the phone's flash every half minute.
     /// 0.47.0 speaks a machine's schedules and the ACP agents a claude-bridge hosts.
-    static let version = Version(0, 47, 0)
+    /// 0.48.0 reads a conversation once per refresh, a list that has not moved as a header, and a
+    /// bridge's provider wait.
+    static let version = Version(0, 48, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
