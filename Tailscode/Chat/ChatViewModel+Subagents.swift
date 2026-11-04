@@ -39,6 +39,7 @@ extension ChatViewModel {
             self?.subagentsStreamed = true
             for await agents in changes {
                 guard let self, !Task.isCancelled else { return }
+                self.subagentFrames += 1
                 await self.adoptSubagents(agents)
             }
         }
@@ -77,8 +78,14 @@ extension ChatViewModel {
         onSubagentsChange?()
     }
 
+    /// A read that failed says nothing about the agents, so the ones on screen stay; and a read the
+    /// stream overtook — a frame landed while it was out — is older than what is already shown.
     private func refreshSubagents() async {
-        await adoptSubagents(await subagents())
+        let framesBefore = subagentFrames
+        guard let fresh = try? await backend.subagents(for: session.id),
+            subagentFrames == framesBefore
+        else { return }
+        await adoptSubagents(fresh)
     }
 
     private func adoptSubagents(_ heard: [SubagentSummary]) async {

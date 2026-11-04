@@ -261,6 +261,7 @@ final class ChatViewModel {
     var subagentTask: Task<Void, Never>?
     var subagentStreamTask: Task<Void, Never>?
     var subagentsStreamed = false
+    var subagentFrames = 0
 
     var serverCommands: [AgentCommand] = []
     var onCommandsChange: (() -> Void)?
