@@ -50,9 +50,13 @@ final class ProWindowController: NSWindowController {
     }
 
     /// Brings the window forward and sends `paywall.view` with `placement`, where it was opened from.
+    /// A window already on screen is the same view brought forward, not a second one, so it is
+    /// counted once, as the iPhone's sheet is.
     func present(placement: MidgarSignal.Placement) {
-        ReviewPromptPolicy.notePaywallShown()
-        MidgarPaywallMoments.noteShown(placement: placement)
+        if window?.isVisible != true {
+            ReviewPromptPolicy.notePaywallShown()
+            MidgarPaywallMoments.noteShown(placement: placement)
+        }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         Task { await load() }
