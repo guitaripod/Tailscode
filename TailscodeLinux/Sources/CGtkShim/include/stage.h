@@ -23,5 +23,11 @@ void tailscode_stage_room_place(GtkWidget *room, double x, double y, double widt
 /// Called once, the first frame `widget` has a size.
 void tailscode_when_sized(GtkWidget *widget, void (*handler)(int width, int height, void *),
                           void *data);
+/// Called once with where the pointer stands on `widget`: on the first frame the desktop has said,
+/// or with `known` false once `wait_ms` have passed without a word, because a Wayland client hears
+/// where the pointer is only when it is over one of its own surfaces.
+void tailscode_when_pointed(GtkWidget *widget, unsigned wait_ms,
+                            void (*handler)(gboolean known, double x, double y, void *),
+                            void *data);
 
 #endif

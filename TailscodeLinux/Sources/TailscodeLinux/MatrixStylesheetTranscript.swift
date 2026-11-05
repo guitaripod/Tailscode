@@ -342,6 +342,7 @@ extension MatrixStylesheet {
         }
         .qa-card { background-color: \(canvas); border-radius: 16px; }
         window.qa-layer, window.qa-layer.background { background: transparent; box-shadow: none; }
+        window.qa-layer.qa-arriving { background: alpha(black, 0.004); }
         .qa-floating {
             border: 1px solid alpha(\(text), 0.12);
             box-shadow: 0 18px 48px alpha(black, 0.38), 0 2px 8px alpha(black, 0.22);

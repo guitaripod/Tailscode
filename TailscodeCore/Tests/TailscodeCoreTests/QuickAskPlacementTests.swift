@@ -43,6 +43,27 @@ extension DeviceStores {
             #expect(clamped.x == 1200 - 600 - 8 && clamped.y == 500 - 400 - 8)
         }
 
+        @Test("It opens with the head of the question box under the pointer, slid in from an edge")
+        func pointer() {
+            let anchor = (x: 28.0, y: 34.0)
+            let middle = QuickAskGeometry.origin(
+                pointer: (x: 900, y: 500), anchor: anchor, screenWidth: 2560, screenHeight: 1440,
+                width: 680, height: 600)
+            #expect(middle.x == 872 && middle.y == 466)
+            let corner = QuickAskGeometry.origin(
+                pointer: (x: 2550, y: 1430), anchor: anchor, screenWidth: 2560, screenHeight: 1440,
+                width: 680, height: 600)
+            #expect(corner.x == 2560 - 680 - 8 && corner.y == 1440 - 600 - 8)
+            let top = QuickAskGeometry.origin(
+                pointer: (x: 3, y: 2), anchor: anchor, screenWidth: 2560, screenHeight: 1440,
+                width: 680, height: 600)
+            #expect(top.x == 8 && top.y == 8)
+            let cramped = QuickAskGeometry.origin(
+                pointer: (x: 300, y: 200), anchor: anchor, screenWidth: 600, screenHeight: 400,
+                width: 680, height: 600)
+            #expect(cramped.x == 8 && cramped.y == 8)
+        }
+
         @Test("The border is held by edge and corner, never away from it")
         func edges() {
             #expect(QuickAskGeometry.edges(atX: 2, y: 300, width: 600, height: 500) == .left)

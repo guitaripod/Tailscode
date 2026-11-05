@@ -237,6 +237,55 @@ void tailscode_when_sized(GtkWidget *widget, void (*handler)(int width, int heig
 }
 
 typedef struct {
+    void (*handler)(gboolean known, double x, double y, void *);
+    void *data;
+    gint64 wait;
+    gint64 started;
+} TailscodePointed;
+
+/// Where the pointer is on `widget`, if the desktop has told its surface. GDK keeps what the last
+/// enter and motion said whoever was listening, so a pointer that arrived before anyone asked is
+/// still read.
+static gboolean tailscode_pointer_on(GtkWidget *widget, double *x, double *y) {
+    GtkNative *native = gtk_widget_get_native(widget);
+    GdkSurface *surface = native ? gtk_native_get_surface(native) : NULL;
+    GdkSeat *seat = gdk_display_get_default_seat(gtk_widget_get_display(widget));
+    GdkDevice *pointer = seat ? gdk_seat_get_pointer(seat) : NULL;
+    double sx = 0, sy = 0;
+    if (!surface || !pointer || !gdk_surface_get_device_position(surface, pointer, &sx, &sy, NULL))
+        return FALSE;
+    double dx = 0, dy = 0;
+    gtk_native_get_surface_transform(native, &dx, &dy);
+    graphene_point_t at = GRAPHENE_POINT_INIT((float)(sx - dx), (float)(sy - dy));
+    graphene_point_t out;
+    if (!gtk_widget_compute_point(GTK_WIDGET(native), widget, &at, &out)) return FALSE;
+    *x = out.x;
+    *y = out.y;
+    return TRUE;
+}
+
+static gboolean tailscode_pointed_tick(GtkWidget *widget, GdkFrameClock *clock, gpointer data) {
+    TailscodePointed *box = data;
+    gint64 now = gdk_frame_clock_get_frame_time(clock);
+    if (box->started == 0) box->started = now;
+    double x = 0, y = 0;
+    gboolean known = tailscode_pointer_on(widget, &x, &y);
+    if (!known && now - box->started < box->wait) return G_SOURCE_CONTINUE;
+    box->handler(known, x, y, box->data);
+    return G_SOURCE_REMOVE;
+}
+
+void tailscode_when_pointed(GtkWidget *widget, unsigned wait_ms,
+                            void (*handler)(gboolean known, double x, double y, void *),
+                            void *data) {
+    TailscodePointed *box = g_new0(TailscodePointed, 1);
+    box->handler = handler;
+    box->data = data;
+    box->wait = (gint64)wait_ms * 1000;
+    gtk_widget_add_tick_callback(widget, tailscode_pointed_tick, box, g_free);
+}
+
+typedef struct {
     double x, y, width, height;
 } TailscodeRoomRect;
 

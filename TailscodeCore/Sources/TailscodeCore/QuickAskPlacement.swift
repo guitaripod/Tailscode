@@ -2,12 +2,15 @@ import Foundation
 
 /// Where the quick ask stands and how big it is, remembered across summons.
 ///
-/// The size is one answer for every screen, because a person sizes the card for how much they
-/// want to see, not for a monitor. The place is remembered per screen, by the connector the
-/// desktop names it with, because the corner that suits a wide monitor is the wrong corner on a
-/// laptop panel; a screen with no place of its own gets the last place used anywhere, at the same
-/// share of the screen. Everything read back is clamped into the screen it opens on, so a monitor
-/// that shrank or went away never leaves the card off the edge.
+/// The card opens under the pointer, because the pointer is where the person already is
+/// (`QuickAskGeometry.origin(pointer:anchor:…)`); what is remembered is its size and, for a desktop
+/// that cannot say where the pointer is, its place. The size is one answer for every screen,
+/// because a person sizes the card for how much they want to see, not for a monitor. The place is
+/// remembered per screen, by the connector the desktop names it with, because the corner that
+/// suits a wide monitor is the wrong corner on a laptop panel; a screen with no place of its own
+/// gets the last place used anywhere, at the same share of the screen. Everything read back is
+/// clamped into the screen it opens on, so a monitor that shrank or went away never leaves the
+/// card off the edge.
 public struct QuickAskPlacement: Codable, Sendable, Equatable {
     public struct Spot: Codable, Sendable, Equatable {
         public var x: Double
@@ -103,9 +106,22 @@ public enum QuickAskGeometry {
         )
     }
 
-    /// Where the card's top-left corner goes on a screen: its own remembered place, else the last
-    /// place used on any screen at the same share of this one, else centred across and a little
-    /// above the middle, where a palette is expected.
+    /// Where the card's top-left corner goes for it to open under the pointer: the pointer lands on
+    /// `anchor`, a point of the card measured from its top-left corner — the mark at the head of the
+    /// question box, so what is typed starts right beside the pointer — and the card is then clamped
+    /// into the screen, sliding in from an edge rather than leaving any of itself past it.
+    public static func origin(
+        pointer: (x: Double, y: Double), anchor: (x: Double, y: Double), screenWidth: Double,
+        screenHeight: Double, width: Double, height: Double
+    ) -> (x: Double, y: Double) {
+        clampOrigin(
+            x: pointer.x - anchor.x, y: pointer.y - anchor.y, width: width, height: height,
+            screenWidth: screenWidth, screenHeight: screenHeight)
+    }
+
+    /// Where the card's top-left corner goes on a screen when the pointer cannot be read: its own
+    /// remembered place, else the last place used on any screen at the same share of this one, else
+    /// centred across and a little above the middle, where a palette is expected.
     public static func origin(
         _ placement: QuickAskPlacement, screen: String?, screenWidth: Double, screenHeight: Double,
         width: Double, height: Double

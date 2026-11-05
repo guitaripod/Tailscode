@@ -2,32 +2,32 @@ import AppKit
 import TailscodeCore
 
 extension QuickAskPanel {
-    /// The screen the quick ask opens on: the one the person is working on — the screen of the
-    /// window it was asked over, else the one holding the key window, else the one under the
-    /// pointer.
-    static func activeScreen(near window: NSWindow?) -> NSScreen? {
-        if let screen = window?.screen { return screen }
-        if let screen = NSScreen.main { return screen }
-        let pointer = NSEvent.mouseLocation
-        return NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) }
-            ?? NSScreen.screens.first
+    /// The screen the quick ask opens on: the one under the pointer, else the one the person is
+    /// working on — the screen of the window it was asked over, else the one holding the key window.
+    static func screen(under pointer: NSPoint, near window: NSWindow?) -> NSScreen? {
+        NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) }
+            ?? window?.screen ?? NSScreen.main ?? NSScreen.screens.first
     }
 
-    /// Opens at the size it was last given and where it was last left on this screen — or, on a
-    /// screen it never stood on, at the same share of it as where it was left last — measured
-    /// against the part of the screen the menu bar and the Dock leave, the way Core keeps it.
-    func place(on screen: NSScreen?) {
-        guard let screen else {
+    /// Opens under the pointer at the size it was last given: the head of the question box where
+    /// the pointer is, so what is typed starts beside it, and the panel slid in from any edge it
+    /// would cross — measured against the part of the screen the menu bar and the Dock leave, the
+    /// way Core keeps it.
+    func place(at pointer: NSPoint, near window: NSWindow?) {
+        guard let screen = Self.screen(under: pointer, near: window) else {
             center()
             return
         }
         let area = screen.visibleFrame
-        let placement = QuickAskPlacementStore.load()
         let size = QuickAskGeometry.size(
-            placement, screenWidth: area.width, screenHeight: area.height)
+            QuickAskPlacementStore.load(), screenWidth: area.width, screenHeight: area.height)
+        setFrame(
+            NSRect(x: area.minX, y: area.maxY - size.height, width: size.width, height: size.height),
+            display: false)
         let origin = QuickAskGeometry.origin(
-            placement, screen: screen.localizedName, screenWidth: area.width,
-            screenHeight: area.height, width: size.width, height: size.height)
+            pointer: (Double(pointer.x - area.minX), Double(area.maxY - pointer.y)),
+            anchor: questionAnchor(), screenWidth: area.width, screenHeight: area.height,
+            width: size.width, height: size.height)
         setFrame(
             NSRect(
                 x: area.minX + origin.x, y: area.maxY - origin.y - size.height,
@@ -35,6 +35,14 @@ extension QuickAskPanel {
             display: false)
         chosenSize = frame.size
         isPlaced = true
+    }
+
+    /// Where the mark at the head of the question box stands on the panel, from its top-left
+    /// corner, once the panel is laid out at the size it opens at.
+    func questionAnchor() -> (x: Double, y: Double) {
+        contentView?.layoutSubtreeIfNeeded()
+        let centre = spark.convert(NSPoint(x: spark.bounds.midX, y: spark.bounds.midY), to: nil)
+        return (Double(centre.x), Double(frame.height - centre.y))
     }
 
     /// The size the person last gave the panel by hand, which is the size it keeps and the size
@@ -47,8 +55,10 @@ extension QuickAskPanel {
     /// The panel is the person's size but never too small for the question: when the box, a
     /// failure, the attachments or the command list need more height than the list can give up,
     /// the panel grows down to hold them, and it goes back to the chosen size once they no longer
-    /// do. The box measures itself a runloop pass after the keystroke that changed it, so the room
-    /// is made now and once more after that pass.
+    /// do. A panel that would grow past the foot of the screen rises by only what it overflows, so
+    /// the question box stays as near the pointer as the screen allows. The box measures itself a
+    /// runloop pass after the keystroke that changed it, so the room is made now and once more after
+    /// that pass.
     func makeRoom() {
         fitHeight()
         guard !roomScheduled else { return }
@@ -76,21 +86,16 @@ extension QuickAskPanel {
         grown.origin.y = frame.maxY - height
         grown.size.height = height
         if let area = screen?.visibleFrame, grown.minY < area.minY {
-            grown.origin.y = max(area.minY, area.maxY - height)
+            grown.origin.y = min(area.minY, area.maxY - height)
         }
         setFrame(grown, display: true)
     }
 
-    /// What the person did to the panel is kept as it closes: its size, and its place on the screen
-    /// it stands on, measured from that screen's top-left so a taller or shorter screen keeps the
-    /// panel under the menu bar where it was.
+    /// What the person did to the panel is kept as it closes: its size. Its place is not, because
+    /// the panel opens under the pointer every time and the Mac always knows where that is.
     func remember() {
-        guard isPlaced, let screen = screen ?? Self.activeScreen(near: nil) else { return }
-        let area = screen.visibleFrame
+        guard isPlaced else { return }
         let size = chosenSize ?? frame.size
         QuickAskPlacementStore.recordSize(width: size.width, height: size.height)
-        QuickAskPlacementStore.recordSpot(
-            x: frame.minX - area.minX, y: area.maxY - frame.maxY, screen: screen.localizedName,
-            screenWidth: area.width, screenHeight: area.height)
     }
 }

@@ -157,8 +157,9 @@ extension SelfTest {
     }
 
     /// The panel is the person's size: the list takes the height a taller panel gives it, the
-    /// panel can be made no smaller than the card needs, and where it is left is what it opens at,
-    /// while a panel that never stood on a screen keeps its hands off what the person kept.
+    /// panel can be made no smaller than the card needs, and it opens with the head of the question
+    /// box under the pointer at the size it was left at, slid in from a corner, while a panel that
+    /// never stood on a screen keeps its hands off what the person kept.
     private static func checkPlacement(
         _ panel: QuickAskPanel, _ expect: (Bool, String) throws -> Void
     ) throws {
@@ -204,24 +205,29 @@ extension SelfTest {
         panel.remember()
         try expect(QuickAskPlacementStore.load() == QuickAskPlacement(), "an unplaced panel remembers nothing")
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
-        panel.place(on: screen)
         let area = screen.visibleFrame
+        let pointer = NSPoint(x: area.minX + 300, y: area.maxY - 240)
+        panel.place(at: pointer, near: nil)
+        let mark = panel.spark.convert(
+            NSPoint(x: panel.spark.bounds.midX, y: panel.spark.bounds.midY), to: nil)
+        let landed = panel.convertPoint(toScreen: mark)
+        try expect(
+            abs(landed.x - pointer.x) < 1 && abs(landed.y - pointer.y) < 1,
+            "it opens with the head of the question box under the pointer: \(landed) for \(pointer)")
         panel.setFrame(
             NSRect(x: area.minX + 120, y: area.maxY - 90 - 700, width: 760, height: 700), display: false)
         panel.sizeChosen()
         panel.remember()
         let left = QuickAskPlacementStore.load()
         try expect(
-            left.width == 760 && left.height == 700
-                && left.spots[screen.localizedName]?.x == 120
-                && left.spots[screen.localizedName]?.y == 90,
-            "the size and the place are kept as it was left: \(left)")
-        panel.setFrame(NSRect(x: area.midX, y: area.midY, width: 500, height: 400), display: false)
-        panel.place(on: screen)
+            left.width == 760 && left.height == 700 && left.spots.isEmpty,
+            "the size is kept as it was left, and the place is not: \(left)")
+        panel.place(at: NSPoint(x: area.maxX - 2, y: area.minY + 2), near: nil)
         try expect(
-            abs(panel.frame.minX - (area.minX + 120)) < 1 && abs(panel.frame.maxY - (area.maxY - 90)) < 1
+            abs(panel.frame.maxX - (area.maxX - QuickAskGeometry.inset)) < 1
+                && abs(panel.frame.minY - (area.minY + QuickAskGeometry.inset)) < 1
                 && abs(panel.frame.width - 760) < 1,
-            "and it opens where it was left: \(panel.frame)")
+            "and a pointer in a corner slides it in from the edges at that size: \(panel.frame)")
         panel.isPlaced = false
     }
 

@@ -235,7 +235,8 @@ final class QuickAskWindow: @unchecked Sendable {
         editor.carryModeOn(field)
         stage = QuickAskStage(window: window, card: card, parent: parent)
         stage.onBackdrop = { Gtk.onMain { QuickAskWindow.open?.close() } }
-        stage.onPlaced = { Gtk.onMain { QuickAskWindow.open?.editor.focus() } }
+        stage.anchor = caret
+        stage.onReady = { Gtk.onMain { QuickAskWindow.open?.editor.focus() } }
 
         let completion = SlashPopover(anchor: field)
         completion.hasProject = false

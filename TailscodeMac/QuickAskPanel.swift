@@ -11,9 +11,10 @@ import TailscodeCore
 /// waiting for later and what was asked here, walked with ↑↓ and run with Return, the first nine
 /// on ⌘1…⌘9. Typing turns the list into the verbs for the words typed — ↓ from the last line steps
 /// into them, ⌘1… picks one — and the foot says in one line of keys what the keys do for the box
-/// as it is now. The panel is the person's to size and move: it opens at the size it was last
-/// given and the place it was last left on the screen in front (`QuickAskPlacementStore`), and
-/// the list takes whatever height the question and the foot leave it.
+/// as it is now. The panel is the person's to size and move: it opens under the pointer, the head
+/// of the question box where the pointer is, at the size it was last given
+/// (`QuickAskPlacementStore`), and the list takes whatever height the question and the foot leave
+/// it.
 /// Return is still the whole ceremony: the words and anything attached go out as a new
 /// conversation with no project on the machine named in the pill, and the panel stays only long
 /// enough for that machine to answer, so a failed mint keeps the question in hand. The aim is the
@@ -38,6 +39,9 @@ final class QuickAskPanel: NSPanel {
     private(set) static weak var frontmost: QuickAskPanel?
 
     let editor = PromptEditor(placeholder: Localized.text("Ask anything…"))
+    /// The mark at the head of the question box: the point of the panel the pointer lands on.
+    let spark = NSImageView(
+        image: NSImage(systemSymbolName: "sparkle", accessibilityDescription: nil) ?? NSImage())
     let machinePill: QuickAskMachinePill
     let dialPill = DialPill()
     let attachButton = NSButton()
@@ -76,8 +80,8 @@ final class QuickAskPanel: NSPanel {
     var asking = false
     var draftProfileID: String?
     var keyMonitor: Any?
-    /// Set once the panel has been put where it was left, so a panel that never stood on a screen —
-    /// one a self-test made — never overwrites where the person keeps it.
+    /// Set once the panel has been put under the pointer, so a panel that never stood on a screen —
+    /// one a self-test made — never overwrites the size the person keeps it at.
     var isPlaced = false
     var chosenSize: NSSize?
     var roomScheduled = false
@@ -120,7 +124,7 @@ final class QuickAskPanel: NSPanel {
         let panel = QuickAskPanel(
             servers: servers, preferredServer: preferredServer, recents: recents, onAsk: onAsk,
             onResume: onResume, onAskParty: onAskParty)
-        panel.place(on: QuickAskPanel.activeScreen(near: window))
+        panel.place(at: NSEvent.mouseLocation, near: window)
         panel.restoreDraft()
         panel.makeKeyAndOrderFront(nil)
         panel.editor.focus()
@@ -252,8 +256,6 @@ final class QuickAskPanel: NSPanel {
         completion.hasProject = false
         completion.onPick = { [weak self] command in self?.accept(command) }
 
-        let spark = NSImageView(
-            image: NSImage(systemSymbolName: "sparkle", accessibilityDescription: nil) ?? NSImage())
         spark.symbolConfiguration = .init(pointSize: 17, weight: .semibold)
         spark.contentTintColor = MacTheme.Color.accent
         spark.setContentHuggingPriority(.required, for: .horizontal)
