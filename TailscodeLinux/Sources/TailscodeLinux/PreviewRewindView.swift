@@ -60,7 +60,7 @@ final class PreviewRewindView: PreviewLensView, @unchecked Sendable {
         gtk_widget_set_hexpand(frame, 1)
         gtk_widget_set_vexpand(frame, 1)
         Gtk.margins(frame, top: 10, bottom: 6, leading: 14, trailing: 14)
-        gtk_aspect_frame_set_child(op(frame), overlay)
+        gtk_aspect_frame_set_child(op(frame), Gtk.roomless(overlay))
 
         let previous = Gtk.button("◀", css: ["preview-chip"]) { [weak self] in
             Gtk.onMain { [weak self] in self?.step(-1) }

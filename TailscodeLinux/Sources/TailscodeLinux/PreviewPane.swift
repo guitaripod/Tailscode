@@ -253,7 +253,7 @@ final class PreviewPane: @unchecked Sendable {
         gtk_widget_set_hexpand(frame, 1)
         gtk_widget_set_vexpand(frame, 1)
         Gtk.margins(frame, top: 14, bottom: 6, leading: 14, trailing: 14)
-        gtk_aspect_frame_set_child(op(frame), overlay)
+        gtk_aspect_frame_set_child(op(frame), Gtk.roomless(overlay))
         gtk_box_append(ptr(stage), frame)
 
         let chips = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)

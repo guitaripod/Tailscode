@@ -185,7 +185,7 @@ final class ForgePane: @unchecked Sendable {
         gtk_overlay_add_overlay(op(emptyOverlay), column)
         emptyColumn = column
 
-        gtk_aspect_frame_set_child(op(frame), art)
+        gtk_aspect_frame_set_child(op(frame), Gtk.roomless(art))
         gtk_widget_set_hexpand(frame, 1)
         gtk_widget_set_vexpand(frame, 1)
         gtk_widget_set_hexpand(art, 1)

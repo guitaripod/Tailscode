@@ -71,6 +71,25 @@ extension Gtk {
         return frame
     }
 
+    /// A bin that asks for no room of its own in either direction and hands its one child
+    /// everything it is given, for the child of an aspect frame. `GtkAspectFrame` searches for the
+    /// smallest child rect of its ratio that still satisfies the child, and asserts that the
+    /// child's minimum shrinks with that ratio (`gtkaspectframe.c`, GTK 4.24): a portrait stage
+    /// whose child carries a button's constant chrome (24 px) does not, and the sheet takes the
+    /// window down with it. The frame still reports its natural size from the ratio and the
+    /// child's own, so the shape the stage reserves is unchanged.
+    static func roomless(_ child: UnsafeMutablePointer<GtkWidget>)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let bin = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_policy(op(bin), GTK_POLICY_EXTERNAL, GTK_POLICY_EXTERNAL)
+        gtk_scrolled_window_set_propagate_natural_width(op(bin), 1)
+        gtk_scrolled_window_set_propagate_natural_height(op(bin), 1)
+        gtk_widget_set_focusable(bin, 0)
+        gtk_scrolled_window_set_child(op(bin), child)
+        return bin
+    }
+
     /// Buttons side by side that fold onto further lines when the pane is too narrow for one,
     /// instead of asking the pane to be wider.
     static func wrapRow(_ children: [UnsafeMutablePointer<GtkWidget>], spacing: Int32 = 8)

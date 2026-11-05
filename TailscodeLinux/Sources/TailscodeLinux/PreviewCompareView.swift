@@ -68,7 +68,7 @@ final class PreviewCompareView: PreviewLensView, @unchecked Sendable {
         gtk_widget_set_hexpand(frame, 1)
         gtk_widget_set_vexpand(frame, 1)
         Gtk.margins(frame, top: 10, bottom: 6, leading: 12, trailing: 14)
-        gtk_aspect_frame_set_child(op(frame), overlay)
+        gtk_aspect_frame_set_child(op(frame), Gtk.roomless(overlay))
 
         gtk_label_set_justify(op(summaryLabel), GTK_JUSTIFY_CENTER)
         gtk_label_set_xalign(op(summaryLabel), 0.5)
