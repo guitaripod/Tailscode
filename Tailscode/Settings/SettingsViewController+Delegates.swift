@@ -19,19 +19,43 @@ extension SettingsViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt indexPath: IndexPath)
         -> Bool
     {
-        dataSource.itemIdentifier(for: indexPath) != .midgar
+        isSelectable(at: indexPath)
     }
 
     func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath)
         -> Bool
     {
-        dataSource.itemIdentifier(for: indexPath) != .midgar
+        isSelectable(at: indexPath)
+    }
+
+    /// A row that only states something does not light under a finger. A search result always does,
+    /// because every result opens the page it lives on.
+    private func isSelectable(at indexPath: IndexPath) -> Bool {
+        if case .results(let page)? = section(at: indexPath), page != .root { return true }
+        switch dataSource.itemIdentifier(for: indexPath) {
+        case .midgar, .toggle, .tailnetScan, .version, nil: return false
+        case .notificationPermission:
+            return notificationStatus == .notDetermined || notificationStatus == .denied
+        case .backgroundRefresh: return backgroundRefreshDetail().actionable
+        case .pushState(let id):
+            guard let profile = facts.profiles.first(where: { $0.id == id }) else { return false }
+            return PushRegistrar.state(for: profile.baseURL) != .registered
+        default: return true
+        }
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
+        if case .results(let page)? = section(at: indexPath), page != .root {
+            Theme.Haptics.tap()
+            open(page, highlighting: item, animated: true)
+            return
+        }
         switch item {
+        case .page(let page):
+            Theme.Haptics.tap()
+            open(page, animated: true)
         case .connectionAlert:
             if ServerHealthMonitor.verdict() == .tailnetDown {
                 TailnetStatus.openTailscaleApp()
@@ -81,7 +105,7 @@ extension SettingsViewController: UICollectionViewDelegate {
         case .testNotification:
             Theme.Haptics.tap()
             presentSamplePicker()
-        case .software:
+        case .software, .softwareUpdate:
             Theme.Haptics.tap()
             UpdateCenterViewController.present(from: self)
         case .usage:
@@ -141,15 +165,15 @@ extension SettingsViewController: UICollectionViewDelegate {
             let picker = ThemePickerViewController()
             navigationController?.pushViewController(picker, animated: true)
         case .noticeFinish:
-            chooseNoticeFinish(from: indexPath)
+            chooseNoticeFinish()
         case .noticeMinimum:
-            chooseNoticeMinimum(from: indexPath)
-        case .mutedChats:
+            chooseNoticeMinimum()
+        case .unmuteAll:
             confirmUnmuteAll(from: indexPath)
         case .chatDensity:
-            chooseDensity(from: indexPath)
+            chooseDensity()
         case .activityStyle:
-            chooseActivityStyle(from: indexPath)
+            chooseActivityStyle()
         case .midgar, .toggle, .version, .tailnetScan:
             break
         }

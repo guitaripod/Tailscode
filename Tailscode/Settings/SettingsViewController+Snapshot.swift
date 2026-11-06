@@ -2,49 +2,100 @@ import TailscodeCore
 import UIKit
 
 extension SettingsViewController {
-    private func allItems() -> [(Section, [Item])] {
-        var connectionItems: [Item] = []
-        if ServerHealthMonitor.verdict() != .fine { connectionItems.append(.connectionAlert) }
-        connectionItems += facts.profiles.map { Item.profile($0) }
-        connectionItems += [.addConnection, .discover]
-        if ConnectionController.shared.isDemoMode { connectionItems.append(.leaveDemo) }
+    /// What one page holds, group by group. Groups that would be empty are left for the snapshot to
+    /// drop, so a page reads the same whether or not a server is in trouble.
+    func sections(of page: Page) -> [(Section, [Item])] {
+        switch page {
+        case .root: return rootSections()
+        case .connections:
+            var demo: [Item] = []
+            if ConnectionController.shared.isDemoMode { demo.append(.leaveDemo) }
+            return [
+                (.alerts, alertItems),
+                (.servers, facts.profiles.map { Item.profile($0) }),
+                (.addServer, [.addConnection, .discover]),
+                (.demo, demo),
+                (.testServers, [.testAll]),
+            ]
+        case .tailnet:
+            return [
+                (.tailnetStatus, [.tailnetStatus]),
+                (.discovery, [.tailnetToken, .tailnetScan]),
+            ]
+        case .notifications:
+            var muted: [Item] = []
+            if !AppPreferences.noticeRules.muted.isEmpty { muted = [.unmuteAll] }
+            return [
+                (.permission, [.notificationPermission, .backgroundRefresh]),
+                (.finished, [.noticeFinish, .noticeMinimum]),
+                (.needsYou, [.toggle(.notifyApprovals)]),
+                (.muted, muted),
+                (.usageAlerts, [.toggle(.notifyUsage), .toggle(.notifyRunningLow)]),
+                (.liveActivities, [.toggle(.liveActivities)]),
+                (.push, [.toggle(.serverPush)] + pushCapableProfiles.map { Item.pushState($0.id) }),
+                (.testNotice, [.testNotification]),
+            ]
+        case .chat:
+            return [
+                (.composer, [.toggle(.sendOnReturn), .toggle(.promptEnhancement), .keyboardShortcuts]),
+                (
+                    .agentSteps,
+                    [.activityStyle, .toggle(.compactActivity), .toggle(.autoExpandThinking)]
+                ),
+                (.answers, [.streamRenderer, .toggle(.responseStats), .toggle(.linkEmbeds)]),
+                (.resume, [.toggle(.autoResume)]),
+            ]
+        case .appearance:
+            return [
+                (.theme, [.appearance]),
+                (.density, [.chatDensity]),
+                (.orb, [.toggle(.presenceOrb)]),
+            ]
+        case .keys:
+            return [(.keys, [.ollamaKey, .deepseekKey])]
+        case .diagnostics:
+            return [
+                (.logs, [.viewLogs]),
+                (.report, [.copyDiagnostics, .emailDiagnostics]),
+            ]
+        case .about:
+            return [
+                (.version, [.version]),
+                (.feedback, [.rate, .share]),
+                (.legal, [.source, .privacy, .support, .licenses]),
+            ]
+        }
+    }
 
-        var notificationItems: [Item] = [
-            .notificationPermission, .backgroundRefresh, .noticeFinish, .noticeMinimum,
-            .toggle(.notifyApprovals),
-        ]
-        if !AppPreferences.noticeRules.muted.isEmpty { notificationItems.append(.mutedChats) }
-        notificationItems += [
-            .toggle(.notifyUsage), .toggle(.notifyRunningLow), .toggle(.liveActivities),
-            .toggle(.serverPush),
-        ]
-        notificationItems += pushCapableProfiles.map { Item.pushState($0.id) }
-        notificationItems.append(.testNotification)
-
-        let usageItems: [Item] = [.usage, .ollamaKey, .deepseekKey]
-
+    private func rootSections() -> [(Section, [Item])] {
+        var alerts = alertItems
+        if !facts.updates.standing.isEmpty { alerts.append(.software) }
         return [
             (.midgar, [.midgar]),
-            (.connections, connectionItems),
-            (.software, [.software]),
-            (.tailnet, [.tailnetStatus, .tailnetToken, .tailnetScan]),
-            (.notifications, notificationItems),
-            (.usage, usageItems),
-            (
-                .chat,
-                [
-                    .toggle(.promptEnhancement), .toggle(.autoExpandThinking),
-                    .streamRenderer, .haptics,
-                    .toggle(.compactActivity), .toggle(.responseStats), .toggle(.linkEmbeds),
-                    .toggle(.sendOnReturn), .toggle(.autoResume),
-                    .keyboardShortcuts,
-                ]
-            ),
-            (.appearance, [.appearance, .chatDensity, .activityStyle, .toggle(.presenceOrb)]),
+            (.alerts, alerts),
+            (.network, [.page(.connections), .page(.tailnet), .softwareUpdate]),
+            (.experience, [.page(.notifications), .page(.chat), .page(.appearance), .haptics]),
+            (.accounts, [.usage, .page(.keys)]),
             (.pro, [.pro]),
-            (.diagnostics, [.viewLogs, .testAll, .copyDiagnostics, .emailDiagnostics]),
-            (.about, [.version, .rate, .share, .source, .privacy, .support, .licenses]),
+            (.support, [.page(.diagnostics), .page(.about)]),
         ]
+    }
+
+    private var alertItems: [Item] {
+        ServerHealthMonitor.verdict() == .fine ? [] : [.connectionAlert]
+    }
+
+    /// Every row a search can reach, each under the page it lives on and each once: the trouble
+    /// banner stands on the first page and on Servers, and the first page's is the one shown. The
+    /// Midgar card is a card, not a setting, and a search for it lists nothing.
+    private func searchResults() -> [(Section, [Item])] {
+        var seen: Set<Item> = [.midgar]
+        return Page.allCases.map { page in
+            let items = sections(of: page).flatMap(\.1).filter {
+                matches(query, $0) && seen.insert($0).inserted
+            }
+            return (Section.results(page), items)
+        }
     }
 
     /// A change that arrives from outside, such as a server answering a health probe or the update
@@ -76,16 +127,16 @@ extension SettingsViewController {
         hasDeferredSnapshot = false
         facts = facts.refreshingStores()
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
-        for (section, items) in allItems() {
-            let matching = items.filter { matches(query, $0) }
-            guard !matching.isEmpty else { continue }
+        for (section, items) in query.isEmpty ? sections(of: page) : searchResults() {
+            guard !items.isEmpty else { continue }
             snapshot.appendSections([section])
-            snapshot.appendItems(matching, toSection: section)
+            snapshot.appendItems(items, toSection: section)
         }
         let existing = Set(dataSource.snapshot().itemIdentifiers)
         let carried = snapshot.itemIdentifiers.filter { existing.contains($0) }
         if !carried.isEmpty { snapshot.reconfigureItems(carried) }
         dataSource.apply(snapshot, animatingDifferences: false)
+        refreshFooters()
         updateEmptyState(itemCount: snapshot.numberOfItems)
     }
 
@@ -105,40 +156,38 @@ extension SettingsViewController {
         guard !present.isEmpty else { return }
         snapshot.reconfigureItems(present)
         dataSource.apply(snapshot, animatingDifferences: false)
+        refreshFooters()
     }
 
-    /// Brings a section into view on an already-open Settings, clearing any
-    /// active search first — a deep link arriving while the user has the screen
-    /// filtered would otherwise appear to do nothing.
-    func reveal(section: Section) {
+    /// Opens a page on an already-open Settings, from its first page and with any search cleared:
+    /// a deep link arriving while the person has the screen filtered, or three pages in, would
+    /// otherwise appear to do nothing.
+    func reveal(page: Page) {
         if !query.isEmpty {
             navigationItem.searchController?.searchBar.text = ""
+            navigationItem.searchController?.isActive = false
             query = ""
             applySnapshot()
         }
-        scroll(to: section)
+        navigationController?.popToViewController(self, animated: false)
+        guard page != .root else { return }
+        open(page, animated: true)
     }
 
-    /// Lands on the section's header rather than its first row: scrolling the row
-    /// to the top parks the header underneath the pinned search bar, so a deep
-    /// link arrives with no visible indication of which section it chose.
-    func scroll(to section: Section) {
-        let snapshot = dataSource.snapshot()
-        guard let index = snapshot.sectionIdentifiers.firstIndex(of: section),
-            snapshot.numberOfItems(inSection: section) > 0
-        else { return }
-        let path = IndexPath(item: 0, section: index)
-        guard
-            let header = collectionView.layoutAttributesForSupplementaryElement(
-                ofKind: UICollectionView.elementKindSectionHeader, at: path)
-        else {
-            collectionView.scrollToItem(at: path, at: .top, animated: true)
-            return
+    func open(_ page: Page, highlighting item: Item? = nil, animated: Bool) {
+        let next = SettingsViewController(page: page, highlight: item)
+        navigationController?.pushViewController(next, animated: animated)
+    }
+
+    /// Puts the row a search led to in the middle of its page and lights it for a moment, the way
+    /// the iPhone's own Settings points at what was searched for.
+    func flash(_ item: Item) {
+        guard let path = dataSource.indexPath(for: item) else { return }
+        collectionView.scrollToItem(at: path, at: .centeredVertically, animated: false)
+        collectionView.selectItem(at: path, animated: false, scrollPosition: [])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
+            self?.collectionView.deselectItem(at: path, animated: true)
         }
-        let inset = collectionView.adjustedContentInset.top
-        let limit = collectionView.contentSize.height - collectionView.bounds.height + inset
-        let target = min(max(header.frame.minY - inset, -inset), max(limit, -inset))
-        collectionView.setContentOffset(CGPoint(x: 0, y: target), animated: true)
     }
 
     private func matches(_ query: String, _ item: Item) -> Bool {
@@ -148,6 +197,7 @@ extension SettingsViewController {
 
     private func keywords(for item: Item) -> String {
         switch item {
+        case .page(let page): return page.title
         case .midgar:
             return String(localized: "midgar apps portal more apps", comment: "search keywords")
         case .connectionAlert:
@@ -160,7 +210,7 @@ extension SettingsViewController {
         case .discover:
             return String(localized: "discover tailnet scan servers", comment: "search keywords")
         case .leaveDemo: return String(localized: "leave demo sample", comment: "search keywords")
-        case .software:
+        case .software, .softwareUpdate:
             return String(
                 localized: "update updates software version build bridge upgrade newest release",
                 comment: "search keywords")
@@ -181,7 +231,7 @@ extension SettingsViewController {
             return String(
                 localized: "background app refresh wait turn ends closed",
                 comment: "search keywords")
-        case .toggle(let toggle): return "\(toggle.title) \(toggle.subtitle ?? "")"
+        case .toggle(let toggle): return "\(toggle.title) \(toggle.keywords)"
         case .pushState(let id):
             let name = facts.profiles.first { $0.id == id }?.name ?? ""
             return String(localized: "push notifications bridge", comment: "search keywords")
@@ -225,7 +275,7 @@ extension SettingsViewController {
             return "\(NoticeRulesWords.minimumTitle) "
                 + String(
                     localized: "notifications minimum length long short quick", comment: "search keywords")
-        case .mutedChats:
+        case .unmuteAll:
             return "\(NoticeRulesWords.mutedTitle) "
                 + String(localized: "mute unmute silence chats quiet", comment: "search keywords")
         case .chatDensity:
@@ -277,7 +327,10 @@ extension SettingsViewController {
 
     static var copyright: String { "© 2026 Midgar Oy" }
 
+    /// A moment already past, never "in 0 seconds": a check that landed while this line was being
+    /// written is stamped a hair after the clock it is read against.
     static func relative(_ date: Date) -> String {
-        RelativeDateFormat.string(for: date, style: .full)
+        let now = Date()
+        return RelativeDateFormat.string(for: min(date, now), relativeTo: now, style: .full)
     }
 }

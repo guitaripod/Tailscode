@@ -3,25 +3,75 @@ import TailscodeCore
 import UIKit
 
 extension SettingsViewController {
-    /// Sections double as deep-link targets, so anything that spots a broken
-    /// setting can send the user straight at it: `tailscode://settings/notifications`.
-    enum Section: String, CaseIterable {
-        case midgar, connections, software, tailnet, notifications, usage, chat, appearance, pro,
-            diagnostics, about
+    /// Settings is the iPhone's own shape: a first page of rows that each open a page, and the
+    /// pages. A page doubles as a deep-link target, so anything that spots a broken setting can send
+    /// the person straight at it: `tailscode://settings/notifications`.
+    enum Page: String, CaseIterable {
+        case root, connections, tailnet, notifications, chat, appearance, keys, diagnostics, about
+
+        /// The slugs links were written with before Settings had pages: a section that became a
+        /// row on the first page opens the first page.
+        init?(slug: String) {
+            switch slug {
+            case "software", "pro", "midgar", "usage", "settings", "": self = .root
+            default:
+                guard let page = Page(rawValue: slug) else { return nil }
+                self = page
+            }
+        }
 
         var title: String {
             switch self {
-            case .midgar: return ""
-            case .connections: return String(localized: "Connections")
-            case .software: return String(localized: "Software")
-            case .tailnet: return String(localized: "Tailnet")
+            case .root: return String(localized: "Settings")
+            case .connections: return String(localized: "Servers")
+            case .tailnet: return "Tailscale"
             case .notifications: return String(localized: "Notifications")
-            case .usage: return String(localized: "Usage")
             case .chat: return String(localized: "Chat")
             case .appearance: return String(localized: "Appearance")
-            case .pro: return "Tailscode Pro"
+            case .keys: return String(localized: "API Keys")
             case .diagnostics: return String(localized: "Diagnostics")
             case .about: return String(localized: "About")
+            }
+        }
+
+        var tile: SettingsTile {
+            switch self {
+            case .root: return SettingsTile("gearshape.fill", .gray)
+            case .connections: return SettingsTile("server.rack", .blue)
+            case .tailnet: return SettingsTile("circle.grid.3x3.fill", .indigo)
+            case .notifications: return SettingsTile("bell.badge.fill", .red)
+            case .chat: return SettingsTile("bubble.left.and.text.bubble.right.fill", .green)
+            case .appearance: return SettingsTile("paintpalette.fill", .cyan)
+            case .keys: return SettingsTile("key.fill", .gray)
+            case .diagnostics: return SettingsTile("stethoscope", .gray)
+            case .about: return SettingsTile("info", .gray)
+            }
+        }
+    }
+
+    /// A group of rows on one page. Each page's groups are its own; `results` is the search, which
+    /// gathers what matched from every page under the name of the page it lives on.
+    enum Section: Hashable {
+        case midgar, alerts, network, experience, accounts, pro, support
+        case servers, addServer, demo, testServers
+        case tailnetStatus, discovery
+        case permission, finished, needsYou, muted, usageAlerts, liveActivities, push, testNotice
+        case composer, agentSteps, answers, resume
+        case theme, density, orb
+        case keys
+        case logs, report
+        case version, feedback, legal
+        case results(Page)
+
+        var header: String? {
+            switch self {
+            case .composer: return String(localized: "Composer")
+            case .agentSteps: return String(localized: "Agent steps")
+            case .muted: return NoticeRulesWords.mutedTitle
+            case .answers: return String(localized: "Answers")
+            case .usageAlerts: return String(localized: "Usage")
+            case .results(let page): return page.title
+            default: return nil
             }
         }
     }
@@ -52,7 +102,9 @@ extension SettingsViewController {
             }
         }
 
-        var subtitle: String? {
+        /// The words search reads beside the title, which the row itself no longer carries: on a
+        /// page they are the group's footer.
+        var keywords: String {
             switch self {
             case .autoExpandThinking:
                 return String(localized: "Show the agent's reasoning without tapping to unfold it")
@@ -85,42 +137,6 @@ extension SettingsViewController {
                     localized:
                         "Alpha — a GPU-rendered creature over Home that breathes what every conversation is doing; may cost battery"
                 )
-            }
-        }
-
-        var icon: String {
-            switch self {
-            case .autoExpandThinking: return "brain"
-            case .sendOnReturn: return "return"
-            case .promptEnhancement: return "sparkles"
-            case .compactActivity: return "rectangle.compress.vertical"
-            case .responseStats: return "gauge.with.dots.needle.67percent"
-            case .autoResume: return ResumeReading.symbol
-            case .linkEmbeds: return "globe"
-            case .notifyApprovals: return "hand.raised"
-            case .notifyUsage: return "gauge.with.needle"
-            case .notifyRunningLow: return "clock"
-            case .serverPush: return "antenna.radiowaves.left.and.right"
-            case .liveActivities: return "rectangle.inset.filled.badge.record"
-            case .presenceOrb: return "circle.hexagongrid.circle"
-            }
-        }
-
-        var tint: UIColor {
-            switch self {
-            case .autoExpandThinking: return ThemePalette.color(\.special, system: .systemPurple)
-            case .sendOnReturn: return ThemePalette.color(\.info, system: .systemTeal)
-            case .promptEnhancement: return Theme.Color.accent
-            case .compactActivity: return ThemePalette.color(\.info, system: .systemOrange)
-            case .responseStats: return Theme.Color.info
-            case .autoResume: return Theme.Color.warning
-            case .linkEmbeds: return Theme.Color.accent
-            case .notifyApprovals: return Theme.Color.warning
-            case .notifyUsage: return Theme.Color.info
-            case .notifyRunningLow: return Theme.Color.warning
-            case .serverPush: return Theme.Color.accent
-            case .liveActivities: return Theme.Color.special
-            case .presenceOrb: return Theme.Color.special
             }
         }
 
@@ -170,13 +186,15 @@ extension SettingsViewController {
     }
 
     enum Item: Hashable {
+        case page(Page)
         case midgar
         case connectionAlert
+        case software
+        case softwareUpdate
         case profile(ConnectionProfile)
         case addConnection
         case discover
         case leaveDemo
-        case software
         case tailnetStatus
         case tailnetToken
         case tailnetScan
@@ -196,7 +214,7 @@ extension SettingsViewController {
         case activityStyle
         case noticeFinish
         case noticeMinimum
-        case mutedChats
+        case unmuteAll
         case pro
         case viewLogs
         case testAll

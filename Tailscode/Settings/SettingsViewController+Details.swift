@@ -3,43 +3,32 @@ import TailscodeCore
 import UIKit
 
 extension SettingsViewController {
-    func permissionDetail() -> (String, UIColor, String) {
+    func permissionDetail() -> (String, UIColor) {
         switch notificationStatus {
         case .some(.authorized), .some(.provisional), .some(.ephemeral):
-            return (String(localized: "Allowed"), Theme.Color.secondaryLabel, "bell.badge.fill")
+            return (String(localized: "Allowed"), Theme.Color.secondaryLabel)
         case .some(.denied):
-            return (
-                String(localized: "Turned off — tap to open iOS Settings"), Theme.Color.danger,
-                "bell.slash.fill"
-            )
+            return (String(localized: "Turned off — tap to open iOS Settings"), Theme.Color.danger)
         case .some(.notDetermined):
-            return (
-                String(localized: "Not requested — tap to allow"), Theme.Color.warning, "bell.badge"
-            )
+            return (String(localized: "Not requested — tap to allow"), Theme.Color.warning)
         case .none:
-            return (String(localized: "Checking…"), Theme.Color.secondaryLabel, "bell.badge")
+            return (String(localized: "Checking…"), Theme.Color.secondaryLabel)
         default:
-            return (String(localized: "Unknown"), Theme.Color.secondaryLabel, "bell.badge")
+            return (String(localized: "Unknown"), Theme.Color.secondaryLabel)
         }
     }
 
     /// Whether this is a fact or a fault: on and available reads as plain status, denied or
     /// restricted is the one thing standing between a person and a wake this app cannot promise
     /// any other way, so it wears the warning tone and the tap that fixes it.
-    func backgroundRefreshDetail() -> (String, UIColor, String, actionable: Bool) {
+    func backgroundRefreshDetail() -> (String, UIColor, actionable: Bool) {
         switch UIApplication.shared.backgroundRefreshStatus {
         case .available:
-            return (
-                String(localized: "On"), Theme.Color.secondaryLabel,
-                "arrow.triangle.2.circlepath", false
-            )
+            return (String(localized: "On"), Theme.Color.secondaryLabel, false)
         case .denied, .restricted:
-            return (
-                String(localized: "Off — tap to open iOS Settings"), Theme.Color.warning,
-                "arrow.triangle.2.circlepath.circle.fill", true
-            )
+            return (String(localized: "Off — tap to open iOS Settings"), Theme.Color.warning, true)
         @unknown default:
-            return (String(localized: "Unknown"), Theme.Color.secondaryLabel, "questionmark.circle", false)
+            return (String(localized: "Unknown"), Theme.Color.secondaryLabel, false)
         }
     }
 
@@ -107,108 +96,64 @@ extension SettingsViewController {
         applySnapshot()
     }
 
-    /// The row states the strength it is set to, so the one number worth knowing does not
-    /// require opening the screen that owns it.
-    func strengthBadge() -> UICellAccessory {
-        let label = UILabel()
-        label.font = Theme.Ramp.font(.panelLabel)
-        label.textColor = Theme.Color.secondaryLabel
-        label.text =
-            AppPreferences.hapticsEnabled ? HapticStrength.label(AppPreferences.hapticIntensity) : ""
-        return .customView(configuration: .init(customView: label, placement: .trailing()))
+    /// The mark the writing hand wears while it is still being proven, carried on the row rather
+    /// than only on the screen behind it, so a setting that is alpha says so where it is switched
+    /// on from.
+    func alphaMark() -> [UICellAccessory] {
+        guard StreamRendererSetting.choice.isAlpha else { return [] }
+        return [.customView(configuration: .init(customView: AlphaBadge(), placement: .trailing()))]
     }
 
-    /// Which hand is writing, and the mark it wears while it is still being proven — carried on
-    /// the row rather than only on the screen behind it, so a setting that is alpha says so where
-    /// it is switched on from.
-    func rendererBadge() -> UICellAccessory {
-        let choice = StreamRendererSetting.choice
-        let name = UILabel()
-        name.font = Theme.Ramp.font(.panelLabel)
-        name.textColor = Theme.Color.secondaryLabel
-        name.text = choice.title
-        guard choice.isAlpha else {
-            return .customView(configuration: .init(customView: name, placement: .trailing()))
-        }
-        let row = UIStackView(arrangedSubviews: [name, AlphaBadge()])
-        row.axis = .horizontal
-        row.alignment = .center
-        row.spacing = Theme.Spacing.xs
-        return .customView(configuration: .init(customView: row, placement: .trailing()))
-    }
-
-    /// The two densities as a sheet over the row, the current one ticked: the choice is two
-    /// words, so it is made from the row that reads it rather than on a screen of its own.
-    func chooseDensity(from indexPath: IndexPath) {
+    /// The two densities as a page of their own, each with the sentence that says what it means.
+    func chooseDensity() {
         Theme.Haptics.tap()
-        let sheet = UIAlertController(
-            title: ChatDensitySetting.title, message: ChatDensitySetting.explanation,
-            preferredStyle: .actionSheet)
-        for density in ChatDensity.allCases {
-            let current = density == ChatDensitySetting.current
-            let action = UIAlertAction(
-                title: current ? density.title + " ✓" : density.title, style: .default
-            ) { [weak self] _ in
-                Theme.Haptics.selection()
-                ChatDensitySetting.set(density)
-                self?.reconfigure([.chatDensity])
-            }
-            sheet.addAction(action)
-        }
-        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
-        sheet.popoverPresentationController?.sourceView = collectionView
-        sheet.popoverPresentationController?.sourceRect =
-            collectionView.cellForItem(at: indexPath)?.frame ?? .zero
-        present(sheet, animated: true)
+        let densities = ChatDensity.allCases
+        push(
+            SettingsChoiceViewController(
+                title: ChatDensitySetting.title,
+                options: densities.map { .init(title: $0.title, detail: $0.explanation) },
+                selected: densities.firstIndex(of: ChatDensitySetting.current) ?? 0,
+                footer: ChatDensitySetting.explanation
+            ) { ChatDensitySetting.set(densities[$0]) })
     }
 
-    /// When finished work taps the shoulder, as a sheet over the row: four short answers, each
-    /// with the sentence that says what it means.
-    func chooseNoticeFinish(from indexPath: IndexPath) {
+    /// When finished work taps the shoulder: four short answers, each with the sentence that says
+    /// what it means.
+    func chooseNoticeFinish() {
         Theme.Haptics.tap()
-        let current = AppPreferences.noticeRules.finish
-        let sheet = UIAlertController(
-            title: NoticeRulesWords.finishTitle,
-            message: NoticeRules.Finish.allCases.map {
-                "\(NoticeRulesWords.title($0)): \(NoticeRulesWords.detail($0))"
-            }.joined(separator: "\n"),
-            preferredStyle: .actionSheet)
-        for finish in NoticeRules.Finish.allCases {
-            let title = NoticeRulesWords.title(finish)
-            sheet.addAction(
-                UIAlertAction(title: finish == current ? title + " ✓" : title, style: .default) {
-                    [weak self] _ in
-                    Theme.Haptics.selection()
-                    var rules = AppPreferences.noticeRules
-                    rules.finish = finish
-                    AppPreferences.noticeRules = rules
-                    self?.reconfigure([.noticeFinish])
-                })
-        }
-        present(sheet: sheet, over: indexPath)
+        let choices = NoticeRules.Finish.allCases
+        push(
+            SettingsChoiceViewController(
+                title: NoticeRulesWords.finishTitle,
+                options: choices.map {
+                    .init(title: NoticeRulesWords.title($0), detail: NoticeRulesWords.detail($0))
+                },
+                selected: choices.firstIndex(of: AppPreferences.noticeRules.finish) ?? 0,
+                footer: NoticeRulesWords.groupDescription
+            ) { index in
+                var rules = AppPreferences.noticeRules
+                rules.finish = choices[index]
+                AppPreferences.noticeRules = rules
+            })
     }
 
-    func chooseNoticeMinimum(from indexPath: IndexPath) {
+    func chooseNoticeMinimum() {
         Theme.Haptics.tap()
-        let current = AppPreferences.noticeRules.minimumWork
-        let sheet = UIAlertController(
-            title: NoticeRulesWords.minimumTitle, message: NoticeRulesWords.minimumSubtitle,
-            preferredStyle: .actionSheet)
-        for minimum in NoticeRules.minimumChoices {
-            let title = NoticeRulesWords.minimum(minimum)
-            sheet.addAction(
-                UIAlertAction(title: minimum == current ? title + " ✓" : title, style: .default) {
-                    [weak self] _ in
-                    Theme.Haptics.selection()
-                    var rules = AppPreferences.noticeRules
-                    rules.minimumWork = minimum
-                    AppPreferences.noticeRules = rules
-                    self?.reconfigure([.noticeMinimum])
-                })
-        }
-        present(sheet: sheet, over: indexPath)
+        let choices = NoticeRules.minimumChoices
+        push(
+            SettingsChoiceViewController(
+                title: NoticeRulesWords.minimumTitle,
+                options: choices.map { .init(title: NoticeRulesWords.minimum($0), detail: nil) },
+                selected: choices.firstIndex(of: AppPreferences.noticeRules.minimumWork) ?? 0,
+                footer: NoticeRulesWords.minimumSubtitle
+            ) { index in
+                var rules = AppPreferences.noticeRules
+                rules.minimumWork = choices[index]
+                AppPreferences.noticeRules = rules
+            })
     }
 
+    /// Unmuting every chat cannot be taken back in one tap, so it is asked once, from the row.
     func confirmUnmuteAll(from indexPath: IndexPath) {
         Theme.Haptics.tap()
         let sheet = UIAlertController(
@@ -223,10 +168,6 @@ extension SettingsViewController {
                 AppPreferences.noticeRules = rules
                 self?.applySnapshot()
             })
-        present(sheet: sheet, over: indexPath)
-    }
-
-    private func present(sheet: UIAlertController, over indexPath: IndexPath) {
         sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         sheet.popoverPresentationController?.sourceView = collectionView
         sheet.popoverPresentationController?.sourceRect =
@@ -234,28 +175,22 @@ extension SettingsViewController {
         present(sheet, animated: true)
     }
 
-    /// How a turn's work is drawn, as a sheet over the row for the same reason the density is: the
-    /// choice is two words. A chat left open behind this screen answers it at once.
-    func chooseActivityStyle(from indexPath: IndexPath) {
+    /// How a turn's work is drawn, as a page for the same reason the density is. A chat left open
+    /// behind this screen answers it at once.
+    func chooseActivityStyle() {
         Theme.Haptics.tap()
-        let sheet = UIAlertController(
-            title: ActivityStyleSetting.title, message: ActivityStyleSetting.explanation,
-            preferredStyle: .actionSheet)
-        for style in ActivityStyle.allCases {
-            let current = style == ActivityStyleSetting.current
-            sheet.addAction(
-                UIAlertAction(title: current ? style.title + " ✓" : style.title, style: .default) {
-                    [weak self] _ in
-                    Theme.Haptics.selection()
-                    ActivityStyleSetting.set(style)
-                    self?.reconfigure([.activityStyle])
-                })
-        }
-        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
-        sheet.popoverPresentationController?.sourceView = collectionView
-        sheet.popoverPresentationController?.sourceRect =
-            collectionView.cellForItem(at: indexPath)?.frame ?? .zero
-        present(sheet, animated: true)
+        let styles = ActivityStyle.allCases
+        push(
+            SettingsChoiceViewController(
+                title: ActivityStyleSetting.title,
+                options: styles.map { .init(title: $0.title, detail: $0.explanation) },
+                selected: styles.firstIndex(of: ActivityStyleSetting.current) ?? 0,
+                footer: ActivityStyleSetting.explanation
+            ) { ActivityStyleSetting.set(styles[$0]) })
+    }
+
+    private func push(_ choice: SettingsChoiceViewController) {
+        navigationController?.pushViewController(choice, animated: true)
     }
 
     /// The row states the choice rather than offering it: which identity, and which of its two

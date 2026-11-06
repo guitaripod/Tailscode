@@ -7,8 +7,9 @@
 
     /// Scrolls Settings from its first row to its last and back at one fixed speed, so a hitch
     /// trace of the screen is the same take every run: `--settingswalk` with `TAILSCODE_OPEN_SETTINGS`
-    /// set. The speed is a brisk flick, which is the speed at which a cell that does its work while
-    /// it is configured shows up as a dropped frame.
+    /// set, walking whichever page is on top, so `TAILSCODE_SETTINGS_SECTION=notifications` walks
+    /// that page. The speed is a brisk flick, which is the speed at which a cell that does its work
+    /// while it is configured shows up as a dropped frame.
     @MainActor
     final class SettingsWalk {
         private static var running: SettingsWalk?
@@ -150,7 +151,7 @@
             for _ in 0..<200 {
                 var top = window.rootViewController
                 while let presented = top?.presentedViewController { top = presented }
-                if let settings = (top as? UINavigationController)?.viewControllers.first
+                if let settings = (top as? UINavigationController)?.topViewController
                     as? SettingsViewController, settings.isViewLoaded, settings.view.window != nil
                 {
                     return settings

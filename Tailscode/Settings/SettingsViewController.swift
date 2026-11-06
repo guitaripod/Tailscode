@@ -14,7 +14,8 @@ final class SettingsViewController: UIViewController {
     /// down mid-interaction.
     var onFinish: (() -> Void)?
 
-    private let initialSection: Section?
+    let page: Page
+    private var highlight: Item?
     var collectionView: UICollectionView!
     var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
     var query = ""
@@ -23,10 +24,12 @@ final class SettingsViewController: UIViewController {
     var facts = SettingsFacts.read()
     var hasDeferredSnapshot = false
     var lastScrollAt: CFTimeInterval = 0
-    private var hasScrolledToInitialSection = false
 
-    init(initialSection: Section? = nil) {
-        self.initialSection = initialSection
+    /// A page of Settings, the first one unless told otherwise, optionally pointing at the row a
+    /// search led to.
+    init(page: Page = .root, highlight: Item? = nil) {
+        self.page = page
+        self.highlight = highlight
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -34,14 +37,20 @@ final class SettingsViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = String(localized: "Settings")
+        title = page.title
         view.backgroundColor = Theme.Color.groupedBackground
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .done, target: self, action: #selector(done))
-        configureSearch()
+        if page == .root {
+            navigationItem.largeTitleDisplayMode = .always
+            navigationItem.rightBarButtonItem = UIBarButtonItem(
+                barButtonSystemItem: .done, target: self, action: #selector(done))
+            configureSearch()
+        } else {
+            navigationItem.largeTitleDisplayMode = .never
+        }
         configure()
         applySnapshot()
         observe()
+        repaintTilesOnTraitChange()
         refreshEnvironment()
         Task { await ServerHealthMonitor.checkAll() }
         UpdateMonitor.checkIfDue()
@@ -67,9 +76,9 @@ final class SettingsViewController: UIViewController {
             }
             pushServerDetailForDebugIfNeeded()
         #endif
-        guard !hasScrolledToInitialSection, let initialSection else { return }
-        hasScrolledToInitialSection = true
-        scroll(to: initialSection)
+        guard let highlight else { return }
+        self.highlight = nil
+        flash(highlight)
     }
 
     #if DEBUG
@@ -77,7 +86,7 @@ final class SettingsViewController: UIViewController {
         /// without driving touches. The value is a name prefix; empty takes the
         /// first saved server.
         private func pushServerDetailForDebugIfNeeded() {
-            guard navigationController?.viewControllers.count == 1 else { return }
+            guard page == .root, navigationController?.viewControllers.count == 1 else { return }
             let environment = ProcessInfo.processInfo.environment
             if let wanted = environment["TAILSCODE_OPEN_SERVER"],
                 wanted.hasPrefix(UpdateFixtures.profilePrefix),
@@ -113,19 +122,10 @@ final class SettingsViewController: UIViewController {
             case "updates":
                 navigationController?.pushViewController(
                     UpdateCenterViewController(), animated: false)
-            case "about":
-                scrollToAbout()
+            case let screen?:
+                if let page = Page(rawValue: screen) { open(page, animated: false) }
             default:
                 break
-            }
-        }
-
-        /// Puts the About section on screen for a screenshot, which sits below a full page of
-        /// settings nobody can scroll to from a launch argument.
-        private func scrollToAbout() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                guard let self, let path = self.dataSource.indexPath(for: .version) else { return }
-                self.collectionView.scrollToItem(at: path, at: .top, animated: false)
             }
         }
     #endif
@@ -159,6 +159,15 @@ final class SettingsViewController: UIViewController {
         reconfigure([.appearance])
     }
 
+    /// The tiles are drawn in the theme's own colours and at the text size, so a window that
+    /// changes either repaints every row; light and dark need nothing, each tile carrying both.
+    private func repaintTilesOnTraitChange() {
+        registerForTraitChanges([ThemeIdentityTrait.self, UITraitPreferredContentSizeCategory.self]) {
+            (controller: SettingsViewController, _: UITraitCollection) in
+            controller.applySnapshot()
+        }
+    }
+
     /// The two facts that live outside the app — the system notification
     /// permission and whether the tailnet is up — and so can change while
     /// Settings is open.
@@ -168,7 +177,9 @@ final class SettingsViewController: UIViewController {
             let status = await NotificationManager.authorizationStatus()
             guard let self else { return }
             self.notificationStatus = status
-            self.reconfigure([.notificationPermission, .backgroundRefresh, .tailnetStatus])
+            self.reconfigure([
+                .notificationPermission, .backgroundRefresh, .tailnetStatus, .page(.tailnet),
+            ])
         }
     }
 

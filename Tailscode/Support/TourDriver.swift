@@ -377,7 +377,7 @@ import MidgarCore
         private func tailnet() async {
             home?.tourOpenSettings()
             await hold(2.2)
-            settings?.reveal(section: .tailnet)
+            settings?.reveal(page: .tailnet)
             await hold(3.0)
             await dismissPresented()
             await hold(1.4)

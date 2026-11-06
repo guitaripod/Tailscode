@@ -428996,6 +428996,787 @@
           }
         }
       }
+    },
+    "API Keys": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API Keys"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API-Schlüssel"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claves de API"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clés API"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiavi API"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API キー"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 키"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klucze API"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chaves de API"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 密钥"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 金鑰"
+          }
+        }
+      }
+    },
+    "Agent steps": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent steps"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agentenschritte"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pasos del agente"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Étapes de l’agent"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passaggi dell’agente"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントの手順"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트 단계"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kroki agenta"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Etapas do agente"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能体步骤"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代理步驟"
+          }
+        }
+      }
+    },
+    "Software Update": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Software Update"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Softwareupdate"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualización de software"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mise à jour logicielle"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiornamento software"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ソフトウェアアップデート"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "소프트웨어 업데이트"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktualizacje oprogramowania"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atualização de Software"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "软件更新"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "軟體更新"
+          }
+        }
+      }
+    },
+    "A plain-text report of this build, the tailnet, notifications, servers and usage, to send with a question to support.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A plain-text report of this build, the tailnet, notifications, servers and usage, to send with a question to support."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Klartextbericht zu diesem Build, dem Tailnet, den Mitteilungen, den Servern und der Nutzung, zum Senden mit einer Frage an den Support."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un informe en texto plano sobre esta compilación, la tailnet, las notificaciones, los servidores y el uso, para enviarlo con una pregunta a soporte."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un rapport en texte brut de cette version, du tailnet, des notifications, des serveurs et de l’usage, à joindre à une question adressée au support."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un rapporto in testo semplice su questa build, sul tailnet, sulle notifiche, sui server e sull’utilizzo, da inviare con una domanda al supporto."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このビルド、tailnet、通知、サーバ、使用状況についての平文のレポートです。サポートへの質問に添えて送信してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 빌드, tailnet, 알림, 서버, 사용량에 대한 일반 텍스트 보고서입니다. 지원팀에 문의할 때 함께 보내세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zwykłotekstowy raport tej wersji, tailnetu, powiadomień, serwerów i użycia, do wysłania z pytaniem do pomocy technicznej."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um relatório em texto simples desta compilação, da tailnet, das notificações, dos servidores e do uso, para enviar com uma pergunta ao suporte."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这份纯文本报告包含本版本、tailnet、通知、服务器和用量信息，可随问题一并发送给支持团队。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這份純文字報告包含本版本、tailnet、通知、伺服器和用量資訊，可隨問題一併傳送給支援團隊。"
+          }
+        }
+      }
+    },
+    "Alpha. A creature drawn on the GPU over Home that breathes what every conversation is doing. It may cost battery.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alpha. A creature drawn on the GPU over Home that breathes what every conversation is doing. It may cost battery."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alpha. Eine Kreatur, die per GPU über Home gezeichnet wird und atmet, was jeder Chat gerade tut. Sie kann den Akku belasten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alfa. Una criatura dibujada en la GPU sobre Inicio que respira con lo que hace cada chat. Puede gastar batería."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alpha. Une créature dessinée par le GPU au-dessus de l’écran Accueil, qui reflète l’activité de chaque conversation. Elle peut consommer de la batterie."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alpha. Una creatura disegnata dalla GPU sopra Home che respira con ciò che fa ogni chat. Può consumare la batteria."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アルファ版。ホーム画面の上に GPU で描かれる生き物で、すべての会話の様子を息づかいで表します。バッテリーを消費する場合があります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "알파. 홈 위에 GPU로 그려지는 생물로, 모든 대화가 하는 일을 숨결로 보여 줍니다. 배터리를 소모할 수 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alfa. Stworzenie rysowane przez GPU nad ekranem Start, które oddycha tym, co robi każda rozmowa. Może zużywać baterię."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alfa. Uma criatura desenhada pela GPU sobre o Início que respira com o que cada conversa está fazendo. Pode gastar bateria."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内测版。在主页上方由 GPU 绘制的一只生物，用呼吸般的起伏表现每段对话正在做什么。可能会消耗电量。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "內測版。在主頁上方由 GPU 繪製的一隻生物，用呼吸般的起伏表現每段對話正在做什麼。可能會消耗電量。"
+          }
+        }
+      }
+    },
+    "Hold Send to refine a draft with the on-device model. Keyboard shortcuts are for a hardware keyboard and use the same keys and rebinding file as the desktop apps.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hold Send to refine a draft with the on-device model. Keyboard shortcuts are for a hardware keyboard and use the same keys and rebinding file as the desktop apps."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Halte „Senden“ gedrückt, um einen Entwurf mit dem Modell auf dem Gerät zu verfeinern. Tastaturbefehle sind für eine Hardware-Tastatur gedacht und verwenden dieselben Tasten und dieselbe Datei mit den Tastenzuweisungen wie die Desktop-Apps."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantén pulsado Enviar para refinar un borrador con el modelo del dispositivo. Los atajos de teclado son para un teclado físico y usan las mismas teclas y el mismo archivo de reasignación que las apps de escritorio."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maintenez Envoyer pour affiner un brouillon avec le modèle sur l’appareil. Les raccourcis clavier sont destinés à un clavier physique et utilisent les mêmes touches et le même fichier de réaffectation que les applications de bureau."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tieni premuto Invia per rifinire una bozza con il modello sul dispositivo. Le scorciatoie da tastiera sono per una tastiera fisica e usano gli stessi tasti e lo stesso file di riassegnazione delle app per desktop."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "送信を長押しすると、デバイス上のモデルで下書きを推敲します。キーボードショートカットはハードウェアキーボード用で、デスクトップ版と同じキーと再割り当てファイルを使います。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보내기를 길게 누르면 온디바이스 모델로 초안을 다듬습니다. 키보드 단축키는 하드웨어 키보드용이며, 데스크톱 앱과 같은 키와 키 재설정 파일을 사용합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przytrzymaj Wyślij, aby dopracować szkic modelem na urządzeniu. Skróty klawiszowe są przeznaczone dla klawiatury sprzętowej i używają tych samych klawiszy oraz pliku przypisań klawiszy co aplikacje na komputer."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantenha Enviar pressionado para refinar um rascunho com o modelo no dispositivo. Os atalhos de teclado são para um teclado físico e usam as mesmas teclas e o mesmo arquivo de reatribuição dos apps de desktop."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "长按发送，用设备端模型润色草稿。键盘快捷键适用于外接硬件键盘，使用与桌面应用相同的按键和重新绑定文件。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "長按傳送，用裝置端模型潤飾草稿。鍵盤快速鍵適用於外接硬體鍵盤，使用與桌面版相同的按鍵和重新綁定檔案。"
+          }
+        }
+      }
+    },
+    "Keeps this device registered with claude-bridge, which pushes turn alerts and refreshes the usage widget while the app is closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keeps this device registered with claude-bridge, which pushes turn alerts and refreshes the usage widget while the app is closed."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hält dieses Gerät bei claude-bridge registriert, das Hinweise zu Zügen sendet und das Nutzungs-Widget aktualisiert, während die App geschlossen ist."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantiene este dispositivo registrado en claude-bridge, que envía avisos de cada turno y actualiza el widget de uso mientras la app está cerrada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maintient cet appareil enregistré auprès de claude-bridge, qui envoie les alertes de tour et actualise le widget d’usage pendant que l’app est fermée."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantiene questo dispositivo registrato presso claude-bridge, che invia gli avvisi di turno e aggiorna il widget di utilizzo mentre l’app è chiusa."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このデバイスを claude-bridge に登録したままにします。App を閉じていても、ターンの通知を送り、使用状況ウィジェットを更新します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기를 claude-bridge에 등록된 상태로 유지합니다. 앱이 닫혀 있어도 턴 알림을 보내고 사용량 위젯을 갱신합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utrzymuje to urządzenie zarejestrowane w claude-bridge, który wysyła alerty o turach i odświeża widżet użycia, gdy aplikacja jest zamknięta."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantém este dispositivo registrado no claude-bridge, que envia alertas de turno e atualiza o widget de uso enquanto o app está fechado."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "让此设备保持在 claude-bridge 注册状态，即使 App 关闭也能推送回合提醒并刷新用量小组件。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "讓此裝置保持在 claude-bridge 註冊狀態，即使 App 關閉也能推播回合提醒並更新用量小工具。"
+          }
+        }
+      }
+    },
+    "Shows a turn’s progress on the Lock Screen while it runs.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shows a turn’s progress on the Lock Screen while it runs."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zeigt den Fortschritt eines Zugs auf dem Sperrbildschirm, solange er läuft."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muestra el progreso de un turno en la pantalla bloqueada mientras se ejecuta."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affiche la progression d’un tour sur l’écran verrouillé pendant son exécution."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra l’avanzamento di un turno sulla schermata di blocco mentre è in esecuzione."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターンが実行中の進行状況を、ロック画面に表示します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "턴이 실행되는 동안 진행 상황을 잠금 화면에 표시합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pokazuje postęp tury na ekranie blokady, dopóki trwa."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra o progresso de um turno na Tela Bloqueada enquanto ele é executado."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在锁定屏幕上显示回合运行时的进度。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在鎖定畫面上顯示回合執行時的進度。"
+          }
+        }
+      }
+    },
+    "Tells you when an agent is waiting on you, even in a muted chat.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tells you when an agent is waiting on you, even in a muted chat."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Benachrichtigt dich, wenn ein Agent auf dich wartet, auch in einem stummgeschalteten Chat."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te avisa cuando un agente espera tu respuesta, incluso en un chat silenciado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous prévient lorsqu’un agent attend votre réponse, même dans une conversation désactivée."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ti avvisa quando un agente aspetta una tua risposta, anche in una chat disattivata."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントがあなたの返答を待っているときに、ミュート中のチャットでも通知します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트가 응답을 기다릴 때, 음소거된 채팅이라도 알려 줍니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Informuje, gdy agent czeka na Ciebie, nawet w wyciszonym czacie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avisa quando um agente está esperando por você, mesmo em uma conversa silenciada."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能体等你处理时通知你，即使是已静音的聊天。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代理等你處理時通知你，即使是已靜音的聊天。"
+          }
+        }
+      }
+    },
+    "Usage warnings come once per window when a plan limit passes 90%. Running low tells you when an account-wide window is on course to run out before it resets.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usage warnings come once per window when a plan limit passes 90%. Running low tells you when an account-wide window is on course to run out before it resets."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nutzungswarnungen erscheinen einmal pro Fenster, wenn eine Tarifgrenze 90% überschreitet. „Wird knapp“ meldet dir, wenn ein kontoweites Fenster vor seinem Zurücksetzen voraussichtlich aufgebraucht sein wird."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los avisos de uso llegan una vez por ventana cuando un límite del plan supera el 90%. «Se agota» te avisa cuando una ventana de la cuenta va camino de agotarse antes de reiniciarse."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les alertes d’usage arrivent une fois par fenêtre lorsqu’une limite du forfait dépasse 90%. « Presque épuisé » vous prévient lorsqu’une fenêtre du compte risque de s’épuiser avant sa réinitialisation."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gli avvisi di utilizzo arrivano una volta per finestra quando un limite del piano supera il 90%. «In esaurimento» ti avvisa quando una finestra dell’account sta per esaurirsi prima del ripristino."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用量の警告は、プランの上限が 90% を超えると、ウインドウごとに 1 回届きます。「残りわずか」は、アカウント全体のウインドウがリセット前に上限に達しそうなときに知らせます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "요금제 한도가 90%를 넘으면 사용량 경고는 구간마다 한 번 옵니다. ‘얼마 안 남음’은 계정 전체 구간이 초기화되기 전에 한도에 도달할 것으로 보이면 알려 줍니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ostrzeżenia o użyciu przychodzą raz na okno, gdy limit planu przekroczy 90%. Powiadomienie „Się kończy” informuje, gdy okno obejmujące całe konto zmierza do wyczerpania przed resetem."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os avisos de uso chegam uma vez por janela quando um limite do plano passa de 90%. «Acabando» avisa quando uma janela da conta está prestes a acabar antes de ser redefinida."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当套餐额度超过 90% 时，用量提醒每个周期只发一次。“即将用完”会在账户范围的周期将于重置前耗尽时提醒你。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "當方案額度超過 90% 時，用量提醒每個週期只發一次。「即將用完」會在帳戶範圍的週期將於重設前耗盡時提醒你。"
+          }
+        }
+      }
+    },
+    "Compact agent steps fold each step to a slim line you tap to unfold. Auto-expand thinking shows the agent’s reasoning without a tap.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compact agent steps fold each step to a slim line you tap to unfold. Auto-expand thinking shows the agent’s reasoning without a tap."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "„Agentenschritte kompakt anzeigen“ klappt jeden Schritt zu einer schmalen Zeile zusammen, die du zum Aufklappen antippst. „Denkschritte automatisch aufklappen“ zeigt das Denken des Agenten, ohne dass du tippen musst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«Mostrar pasos del agente de forma compacta» reduce cada paso a una línea delgada que tocas para desplegar. «Expandir el razonamiento automáticamente» muestra el razonamiento del agente sin tocar nada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "« Afficher les étapes de l’agent de façon compacte » réduit chaque étape à une fine ligne que vous touchez pour la déplier. « Déplier automatiquement le raisonnement » affiche le raisonnement de l’agent sans rien toucher."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«Mostra i passaggi dell’agente in modo compatto» riduce ogni passaggio a una riga sottile da toccare per aprirla. «Espandi il ragionamento automaticamente» mostra il ragionamento dell’agente senza bisogno di toccare."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「エージェントの手順をコンパクトに表示」をオンにすると、各手順が細い 1 行に折りたたまれ、タップで展開できます。「思考を自動展開」をオンにすると、タップしなくてもエージェントの思考が表示されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "‘에이전트 단계를 간략하게 표시’는 각 단계를 탭해서 펼칠 수 있는 얇은 한 줄로 접습니다. ‘생각 과정 자동 펼치기’는 탭하지 않아도 에이전트의 추론을 보여 줍니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "„Kompaktowe kroki agenta” zwija każdy krok do cienkiej linii, którą stukasz, by ją rozwinąć. „Automatycznie rozwijaj myślenie” pokazuje rozumowanie agenta bez stukania."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“Mostrar as etapas do agente de forma compacta” recolhe cada etapa para uma linha fina que você toca para expandir. “Expandir raciocínio automaticamente” mostra o raciocínio do agente sem precisar tocar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“紧凑显示智能体步骤”会把每个步骤收起为一条细线，轻点即可展开。“自动展开思考过程”无需轻点即可显示智能体的思考过程。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「簡潔顯示代理步驟」會把每個步驟收起為一條細線，輕點即可展開。「自動展開思考過程」無需輕點即可顯示代理的思考過程。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

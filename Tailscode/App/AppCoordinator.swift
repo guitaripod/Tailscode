@@ -188,11 +188,11 @@ final class AppCoordinator: NSObject {
     }
 
     #if DEBUG
-        /// Opens Settings scrolled to a section on launch, so each part of the
-        /// screen can be screenshotted without driving touches.
+        /// Opens Settings at a page on launch, so each page can be screenshotted
+        /// without driving touches.
         private func openSettingsForDebug(slug: String) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                self?.openSettings(section: SettingsViewController.Section(rawValue: slug))
+                self?.openSettings(page: SettingsViewController.Page(slug: slug))
             }
         }
 
@@ -473,7 +473,7 @@ final class AppCoordinator: NSObject {
     func handle(_ url: URL) {
         guard url.scheme == "tailscode" else { return }
         if url.host() == "settings" {
-            openSettings(section: SettingsViewController.Section(rawValue: url.lastPathComponent))
+            openSettings(page: SettingsViewController.Page(slug: url.lastPathComponent))
             return
         }
         if url.host() == "connect" {
@@ -690,20 +690,23 @@ final class AppCoordinator: NSObject {
         return SceneRouting.activity(for: url)
     }
 
-    /// Opens Settings at a given section, so anything that finds a broken setting
-    /// can point at the row that fixes it rather than describing where it lives.
-    func openSettings(section: SettingsViewController.Section?) {
+    /// Opens Settings at a given page, so anything that finds a broken setting
+    /// can point at the page that fixes it rather than describing where it lives.
+    func openSettings(page: SettingsViewController.Page?) {
         guard let home else { return }
         let presenter = home.navigationController ?? home
         if let nav = presenter.presentedViewController as? UINavigationController,
             let settings = nav.viewControllers.first as? SettingsViewController
         {
-            nav.popToRootViewController(animated: true)
-            if let section { settings.reveal(section: section) }
+            if let page {
+                settings.reveal(page: page)
+            } else {
+                nav.popToRootViewController(animated: true)
+            }
             return
         }
         guard presenter.presentedViewController == nil else { return }
-        presentSettings(from: presenter, section: section)
+        presentSettings(from: presenter, page: page)
     }
 
     private func route(animated: Bool) {
@@ -768,11 +771,14 @@ final class AppCoordinator: NSObject {
     }
 
     private func presentSettings(
-        from presenter: UIViewController, section: SettingsViewController.Section? = nil
+        from presenter: UIViewController, page: SettingsViewController.Page? = nil
     ) {
-        let settings = SettingsViewController(initialSection: section)
+        let settings = SettingsViewController()
         settings.onFinish = { [weak self] in self?.syncRootIfNeeded() }
         let nav = SettingsNavigationController(rootViewController: settings)
+        if let page, page != .root {
+            nav.pushViewController(SettingsViewController(page: page), animated: false)
+        }
         nav.onCover = { [weak home = mainHome] covered in home?.setUnderSettings(covered) }
         nav.presentationController?.delegate = self
         presenter.present(nav, animated: true)
