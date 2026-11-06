@@ -50,6 +50,7 @@ enum WallReading {
             unread: card.unread)
         made.workers = workers(
             under: card.id, children: card.children, state: state, now: now, previous: previous)
+        made.brief = card.isAway ? .empty : card.brief
         return made
     }
 
@@ -87,6 +88,7 @@ enum WallReading {
         made.rewritable = rewritable
         made.workers = workers(
             under: row.id, children: row.children, state: state, now: now, previous: previous)
+        made.brief = row.brief
         return made
     }
 
@@ -134,12 +136,14 @@ enum WallReading {
         }
         guard age < lasts else { return nil }
         let reason = outcome == .failed ? (finish.reason ?? finish.line) : nil
-        return WallTile(
+        var made = WallTile(
             id: finish.id, profileID: finish.profileID, sessionID: finish.sessionID,
             title: finish.title, machine: finish.machine, chip: nil, state: .finished(outcome),
             words: reason ?? finish.line, detail: reason, startedAt: nil, stateSince: finish.endedAt,
             ask: nil, beat: nil, contextShare: nil, children: [], steps: [],
             fade: outcome == .failed ? 0 : min(1, max(0, age / doneLasts)), unread: finish.unread)
+        made.brief = finish.brief
+        return made
     }
 
     /// A tile keeps the slot it first took for as long as it is on the wall: nothing about its

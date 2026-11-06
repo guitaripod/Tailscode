@@ -32,10 +32,13 @@ public enum AgentDemo {
             parts: [MessagePart(id: "p", kind: .text(text))], createdAt: now.addingTimeInterval(-ago))
     }
 
-    static func turn(_ calls: [ToolCall], now: Date, ago: TimeInterval) -> ChatMessage {
+    static func turn(
+        _ calls: [ToolCall], now: Date, ago: TimeInterval, saying words: String? = nil
+    ) -> ChatMessage {
         ChatMessage(
             id: "a-" + (calls.first?.id ?? "x"), role: .assistant, agentType: .claudeCode,
-            parts: calls.map { MessagePart(id: "p-" + $0.id, kind: .tool($0)) },
+            parts: (words.map { [MessagePart(id: "said", kind: .text($0))] } ?? [])
+                + calls.map { MessagePart(id: "p-" + $0.id, kind: .tool($0)) },
             createdAt: now.addingTimeInterval(-ago), isStreaming: true, providerID: "anthropic",
             modelID: "claude-opus-5", reasoningEffort: "xhigh")
     }
@@ -60,8 +63,29 @@ public enum AgentDemo {
                     "new_string": .string("1\n2\n3\n4\n5\n6\n7\n8\n9"),
                 ], .running),
         ]
+        let plan = call(
+            "plan", "TodoWrite",
+            [
+                "todos": .array(
+                    [
+                        ("Find where the reconnect test flakes", "Finding where the reconnect test flakes", "completed"),
+                        ("Fix the retry timer", "Fixing the retry timer", "in_progress"),
+                        ("Run the whole suite", "Running the whole suite", "pending"),
+                        ("Write down why it flaked", "Writing down why it flaked", "pending"),
+                    ].map {
+                        .object([
+                            "content": .string($0.0), "activeForm": .string($0.1), "status": .string($0.2),
+                        ])
+                    })
+            ], .completed)
         return ConversationState(
-            messages: [user("why does the reconnect test flake?", now: now, ago: 252), turn(calls, now: now, ago: 240)],
+            messages: [
+                user("plan the flake hunt", now: now, ago: 900), turn([plan], now: now, ago: 880),
+                user("why does the reconnect test flake?", now: now, ago: 252),
+                turn(
+                    calls, now: now, ago: 240,
+                    saying: "The flake is a race: the retry timer can fire after the socket is torn down. Making the backoff cancel it first."),
+            ],
             status: .running, hasLoadedTranscript: true,
             backgroundWork: BackgroundWork(tasks: 1, task: "swift test", since: now.addingTimeInterval(-120)))
     }
@@ -77,10 +101,13 @@ public enum AgentDemo {
 
     public static func facts(now: Date) -> AgentFacts {
         let stamps = (0..<40).map { now.addingTimeInterval(-Double($0) * 1.4) }
-        return AgentFacts.read(
-            state: state(now: now), agents: agents(now: now),
+        let state = state(now: now)
+        var facts = AgentFacts.read(
+            state: state, agents: agents(now: now),
             seen: ["c1": now.addingTimeInterval(-60), "c2": now.addingTimeInterval(-28), "c3": now.addingTimeInterval(-14), "c4": now.addingTimeInterval(-2)],
             stamps: stamps, now: now)
+        facts.plan = AgentLine.plan(in: state)
+        return facts
     }
 
     public static func board(now: Date) -> AgentBoard {

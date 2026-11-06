@@ -138,6 +138,13 @@ public struct AgentFacts: Sendable, Equatable {
     /// The turn in flight was summoned with ultracode by word, which the session's own effort
     /// does not say.
     public var ultracodeTurn = false
+    /// What the agent said last in the turn, plain.
+    public var said: String?
+    /// The files the turn changed, with their line counts.
+    public var edits: [WallFile] = []
+    /// The agent's own plan. Set by the watcher, which reads it only when the conversation moved,
+    /// since it reaches back past the turn.
+    public var plan: TaskBoard?
 
     public var isRunning: Bool {
         switch phase {
@@ -169,7 +176,7 @@ public struct AgentFacts: Sendable, Equatable {
             phase = .idle
         }
         let settled = phase == .idle ? LiveActivityReading.settled(from: state) : nil
-        var steps = AgentLine.steps(in: state)
+        var steps = AgentLine.steps(in: state, limit: AgentRow.stepCount)
         for index in steps.indices { steps[index].seen = seen[steps[index].id] }
         let assistant = state.messages.last { $0.role == .assistant }
         let selection = assistant?.modelID.map {
@@ -192,6 +199,8 @@ public struct AgentFacts: Sendable, Equatable {
             failed: state.lastFailure != nil,
             activity: phase == .idle ? nil : ActivityKind.inFlight(in: state))
         facts.ultracodeTurn = Ultracode.turnInvoked(state)
+        facts.said = AgentLine.said(in: state)
+        facts.edits = AgentLine.edits(in: state)
         return facts
     }
 

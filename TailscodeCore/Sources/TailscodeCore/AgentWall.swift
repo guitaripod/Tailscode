@@ -137,14 +137,18 @@ public struct WallTile: Sendable, Equatable, Identifiable {
     /// How far a finished tile has cooled, `0` lit to `1` gone; always 0 for anything else.
     public let fade: Double
     public let unread: Bool
+    /// What the tile says beyond its line when it has the room (`WallBriefFill`).
+    public internal(set) var brief: WallBrief = .empty
 
     /// The one plain word that says the state beside its glyph, counting from `now`.
     public func statusWord(at now: Date) -> String {
         switch state {
         case .working:
-            return Localized.text("Working")
+            guard let startedAt else { return Localized.text("Working") }
+            return Localized.text("Working · %@", AgentFinish.clock(max(0, now.timeIntervalSince(startedAt))))
         case .thinking:
-            return Localized.text("Thinking")
+            guard let startedAt else { return Localized.text("Thinking") }
+            return Localized.text("Thinking · %@", AgentFinish.clock(max(0, now.timeIntervalSince(startedAt))))
         case .needsYou:
             return Localized.text("waiting %@", AgentFinish.clock(max(0, now.timeIntervalSince(stateSince ?? now))))
         case .retrying(let attempt):

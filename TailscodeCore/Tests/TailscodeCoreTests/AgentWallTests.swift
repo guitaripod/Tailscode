@@ -131,7 +131,7 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
         #expect(one?.state == .thinking)
         #expect(one?.words == "Thinking")
         #expect(one?.detail == nil)
-        #expect(one?.statusWord(at: epoch) == "Thinking")
+        #expect(one?.statusWord(at: epoch) == "Thinking · 5m")
     }
 
     @Test func anApprovalCarriesTheWholeCommandAndTheWaitingVerb() {
@@ -224,7 +224,7 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
 }
 
 @Suite struct AgentWallRowTests {
-    @Test func aWatchedRowCarriesItsLastThreeStepsItsObjectAndItsContextShare() {
+    @Test func aWatchedRowCarriesItsLatestStepsItsObjectAndItsContextShare() {
         let calls = (1...5).map {
             ToolCall(
                 id: "c\($0)", name: "Read", status: .completed,
@@ -236,7 +236,10 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
         let source = AgentSource(entry: entry("w", active: true), facts: facts(state), reachable: true, unread: false)
         let board = AgentBoard.read(sources: [source], now: epoch)
         let row = board.working.first
-        #expect(row?.steps.map(\.words) == ["Editing Backoff.swift", "Read F5.swift", "Read F4.swift"])
+        #expect(
+            row?.steps.map(\.words)
+                == ["Editing Backoff.swift", "Read F5.swift", "Read F4.swift", "Read F3.swift",
+                    "Read F2.swift", "Read F1.swift"])
         #expect(row?.object == AgentObject(kind: .path, text: "/r/Backoff.swift", added: 2, removed: 1))
         #expect(row?.contextShare == 0.5)
         #expect(row?.activity == .usingTool(name: "Edit", kind: .fileEdit))

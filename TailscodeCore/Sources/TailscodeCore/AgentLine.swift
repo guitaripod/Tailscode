@@ -210,6 +210,61 @@ public enum AgentLine {
         }
     }
 
+    /// The files the latest turn changed, newest last, each once, with the lines its finished edits
+    /// and writes added and removed. A file is kept by its path, so two files that share a name are
+    /// two files; an edit that failed or has not run yet changed nothing and is not counted.
+    public static func edits(in state: ConversationState) -> [WallFile] {
+        var order: [String] = []
+        var counts: [String: (added: Int, removed: Int)] = [:]
+        for call in LiveActivityReading.turnCalls(in: state) where call.status == .completed {
+            switch call.summaryKind {
+            case .fileEdit, .fileWrite:
+                let summary = call.summary
+                guard let path = summary.filePath ?? summary.title else { continue }
+                if counts[path] == nil { order.append(path) }
+                counts[path, default: (0, 0)].added += summary.diffStats?.added ?? 0
+                counts[path, default: (0, 0)].removed += summary.diffStats?.removed ?? 0
+            default:
+                continue
+            }
+        }
+        return order.map {
+            WallFile(name: basename($0), added: counts[$0]?.added ?? 0, removed: counts[$0]?.removed ?? 0)
+        }
+    }
+
+    /// What the agent said last in the latest turn, in plain words and at most `limit` characters;
+    /// nil when it has said nothing since the person did.
+    public static func said(in state: ConversationState, limit: Int = 280) -> String? {
+        for message in state.messages.reversed() {
+            if message.role == .user { return nil }
+            guard message.role == .assistant else { continue }
+            for part in message.parts.reversed() {
+                guard case .text(let text) = part.kind else { continue }
+                let words = NoticeWords.plain(text).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !words.isEmpty { return NoticeWords.cut(words, to: limit) }
+            }
+        }
+        return nil
+    }
+
+    /// The agent's own plan, folded from the board calls in the conversation's latest messages.
+    /// Bounded by `window` messages so a long conversation costs the same as a short one; a plan
+    /// older than that has stopped being the work in hand.
+    public static func plan(in state: ConversationState, window: Int = 400) -> TaskBoard? {
+        var calls: [ToolCall] = []
+        for message in state.messages.suffix(window) where message.role == .assistant {
+            for part in message.parts {
+                if case .tool(let call) = part.kind, TaskBoard.isBoardCall(call.name) {
+                    calls.append(call)
+                }
+            }
+        }
+        guard !calls.isEmpty else { return nil }
+        let board = TaskBoard.fold(calls)
+        return board.isEmpty ? nil : board
+    }
+
     /// The files the latest turn changed, newest last, each once.
     public static func touched(in state: ConversationState, limit: Int = 12) -> [String] {
         var seen = Set<String>()

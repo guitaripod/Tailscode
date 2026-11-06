@@ -40,11 +40,12 @@ extension AgentDemo {
 
     private static func conversation(
         _ ask: String, _ calls: [ToolCall], status: BackendStatus = .running, now: Date,
-        permissions: [PermissionRequest] = [], retry: TurnRetry? = nil, fill: Double = 0.4
+        permissions: [PermissionRequest] = [], retry: TurnRetry? = nil, fill: Double = 0.4,
+        saying words: String? = nil
     ) -> ConversationState {
         var messages = [user(ask, now: now, ago: 400)]
-        if !calls.isEmpty {
-            var answer = turn(calls, now: now, ago: 380)
+        if !calls.isEmpty || words != nil {
+            var answer = turn(calls, now: now, ago: 380, saying: words)
             answer.context = MessageUsage(cacheRead: Int(fill * 200_000))
             messages.append(answer)
         }
@@ -62,8 +63,9 @@ extension AgentDemo {
         let entry = entry(
             id, title, profile: profile, machine: machine, now: anchor ?? now,
             active: state.status == .running, updated: idleFor, model: "claude-opus-5", effort: effort)
-        let facts = AgentFacts.read(
+        var facts = AgentFacts.read(
             state: state, agents: agents, seen: seen, stamps: beating ? pulse(now) : [], now: now)
+        facts.plan = AgentLine.plan(in: state)
         return AgentSource(entry: entry, facts: facts, reachable: reachable, unread: unread)
     }
 
@@ -79,10 +81,18 @@ extension AgentDemo {
         _ id: String, _ title: String, task: String, ago: TimeInterval, stalled: Bool = false,
         now: Date, anchor: Date
     ) -> AgentSource {
-        source(
+        var answer = turn(
+            [
+                call(id + "-b", "Bash", ["command": .string("swift build")], .completed),
+                call(id + "-t", "Bash", ["command": .string(task), "run_in_background": .bool(true)], .completed),
+            ], now: anchor, ago: ago + 30,
+            saying: "The build is clean. Started the whole suite in the background; I'll read the failures the moment it finishes.")
+        answer.isStreaming = false
+        answer.completedAt = anchor.addingTimeInterval(-ago)
+        return source(
             id, title,
             state: ConversationState(
-                messages: [user("run the whole suite", now: anchor, ago: ago + 60)], status: .idle,
+                messages: [user("run the whole suite", now: anchor, ago: ago + 60), answer], status: .idle,
                 hasLoadedTranscript: true,
                 backgroundWork: BackgroundWork(
                     tasks: 1, task: task, since: anchor.addingTimeInterval(-ago), stalled: stalled)),
@@ -114,13 +124,22 @@ extension AgentDemo {
         _ id: String, _ title: String, machine: String = "studio", _ outcome: AgentFinish.Outcome,
         at: Date, tools: Int = 9, reason: String? = nil
     ) -> AgentFinish {
-        AgentFinish(
+        var finish = AgentFinish(
             id: (machine == "homelab" ? homelab : studio) + "/" + id,
             profileID: machine == "homelab" ? homelab : studio, sessionID: id, title: title,
             machine: machine, outcome: outcome,
             line: AgentFinish.line(
                 outcome: outcome, duration: 372, tools: tools, files: 2, failure: reason),
             endedAt: at, unread: outcome != .stopped, reason: reason)
+        if outcome == .done {
+            finish.brief = WallBrief(
+                said: "Staging is on the new build and every health check passes. Nothing else needs doing.",
+                files: [
+                    WallFile(name: "deploy.yml", added: 4, removed: 1),
+                    WallFile(name: "Dockerfile", added: 2, removed: 2),
+                ])
+        }
+        return finish
     }
 
     private static func reading(_ path: String, _ id: String) -> ToolCall {
@@ -180,7 +199,12 @@ extension AgentDemo {
                     ], now: now, anchor: now),
                 source(
                     "t", "Draft changelog",
-                    state: conversation("draft the changelog", [], now: now), now: now),
+                    state: conversation(
+                        "draft the changelog", [
+                            call("t1", "Bash", ["command": .string("git log --oneline 1.80..HEAD")], .completed),
+                            call("t2", "Read", ["file_path": .string("/repo/CHANGELOG.md")], .completed),
+                        ], now: now,
+                        saying: "Forty-one commits since 1.80. Grouping them by what a person would notice, and leaving the refactors out."), now: now),
                 background(
                     "r", "Release notes", task: "swift test --parallel", ago: 1320, now: now, anchor: now),
             ], now: now)

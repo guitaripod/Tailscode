@@ -21,7 +21,7 @@ public struct AgentSource: Sendable {
 /// An agent working, or carrying work, with what is known of it.
 public struct AgentRow: Sendable, Equatable, Identifiable {
     /// How many of a watched row's steps it carries: what a wall tile has room to say.
-    public static let stepCount = 3
+    public static let stepCount = 8
 
     public let id: String
     public let profileID: String
@@ -54,6 +54,8 @@ public struct AgentRow: Sendable, Equatable, Identifiable {
     public var isStuck = false
     /// When the listing last saw the session move.
     public var lastActivity: Date?
+    /// What a wall tile with room says beyond the line.
+    public var brief: WallBrief = .empty
 }
 
 /// A session waiting on a person, with what it asks.
@@ -73,6 +75,7 @@ public struct AgentAskCard: Sendable, Equatable, Identifiable {
     public var contextShare: Double?
     public var unread = false
     public var lastActivity: Date?
+    public var brief: WallBrief = .empty
 }
 
 /// A turn that ended in the last hour.
@@ -96,6 +99,8 @@ public struct AgentFinish: Sendable, Equatable, Identifiable {
     public let unread: Bool
     /// Why a turn failed, in the server's own words, apart from the line that frames it.
     public let reason: String?
+    /// What the ending's tile says beyond its line: the agent's last words and the files changed.
+    public var brief: WallBrief = .empty
 
     public init(
         id: String, profileID: String, sessionID: String, title: String, machine: String,
@@ -201,7 +206,8 @@ public struct AgentBoard: Sendable, Equatable {
                             beat: facts.beat, children: facts.children,
                             steps: Array(facts.steps.prefix(AgentRow.stepCount)),
                             contextShare: facts.fill?.fraction, unread: source.unread,
-                            lastActivity: source.entry.session.updatedAt),
+                            lastActivity: source.entry.session.updatedAt,
+                            brief: WallBrief.read(facts)),
                         ask.since ?? now
                     ))
                 continue
@@ -305,7 +311,7 @@ public struct AgentBoard: Sendable, Equatable {
             word: work.stalled ? Localized.text("stuck") : nil,
             steps: Array((source.facts?.steps ?? []).prefix(AgentRow.stepCount)),
             contextShare: source.facts?.fill?.fraction, isStuck: work.stalled,
-            lastActivity: session.updatedAt)
+            lastActivity: session.updatedAt, brief: source.facts.map(WallBrief.read) ?? .empty)
     }
 
     private static func row(
@@ -325,7 +331,7 @@ public struct AgentBoard: Sendable, Equatable {
             steps: Array(facts.steps.prefix(AgentRow.stepCount)), object: facts.object,
             plain: facts.plain, contextShare: facts.fill?.fraction, activity: facts.activity,
             retryAttempt: attempt,
-            lastActivity: session.updatedAt)
+            lastActivity: session.updatedAt, brief: WallBrief.read(facts))
     }
 
     /// The last hour's endings: what this device watched end, then the sessions the listing says

@@ -36,6 +36,10 @@ public actor AgentTower {
         /// When the work this watch is following began: the first turn of it, not the last, so an
         /// ending that came after background work says how long the person was waited on.
         var workBegan: Date?
+        /// The agent's plan, read again only when the conversation moved: it reaches back past the
+        /// turn, and a streamed word changes nothing on it.
+        var plan: TaskBoard?
+        var planSignature: Int?
     }
 
     public static let linger: TimeInterval = 8
@@ -374,9 +378,14 @@ public actor AgentTower {
             watch.seen[ask] = now
         }
         let before = facts[id]
-        let after = AgentFacts.read(
+        var after = AgentFacts.read(
             state: state, agents: watch.agents, seen: watch.seen, stamps: watch.stamps, now: now,
             catalog: setup.catalog(entry.profileID))
+        if watch.planSignature != signature {
+            watch.plan = AgentLine.plan(in: state)
+            watch.planSignature = signature
+        }
+        after.plan = watch.plan
         if let before, before.isRunning, !after.isRunning {
             watch.endedAt = now
         } else if after.isRunning {
@@ -424,19 +433,22 @@ public actor AgentTower {
             state.lastFailure != nil ? .failed : (state.interruption != nil ? .stopped : .done)
         let id = key(entry)
         finished.removeAll { $0.id == id }
-        finished.append(
-            AgentFinish(
-                id: id, profileID: entry.profileID, sessionID: entry.session.id,
-                title: AgentSession.isPlaceholderTitle(entry.session.title)
-                    ? Localized.text("New chat") : entry.session.title,
-                machine: entry.profileName, outcome: outcome,
-                line: AgentFinish.line(
-                    outcome: outcome,
-                    duration: (began ?? before.startedAt).map { now.timeIntervalSince($0) },
-                    tools: before.toolCount, files: before.touched.count,
-                    failure: state.lastFailure?.message),
-                endedAt: now, unread: true,
-                reason: outcome == .failed ? state.lastFailure?.message : nil))
+        let edits = AgentLine.edits(in: state)
+        var finish = AgentFinish(
+            id: id, profileID: entry.profileID, sessionID: entry.session.id,
+            title: AgentSession.isPlaceholderTitle(entry.session.title)
+                ? Localized.text("New chat") : entry.session.title,
+            machine: entry.profileName, outcome: outcome,
+            line: AgentFinish.line(
+                outcome: outcome,
+                duration: (began ?? before.startedAt).map { now.timeIntervalSince($0) },
+                tools: before.toolCount, files: max(edits.count, before.touched.count),
+                failure: state.lastFailure?.message),
+            endedAt: now, unread: true,
+            reason: outcome == .failed ? state.lastFailure?.message : nil)
+        finish.brief = WallBrief(
+            said: outcome == .failed ? nil : AgentLine.said(in: state), files: edits)
+        finished.append(finish)
         finished = Array(
             finished.filter { now.timeIntervalSince($0.endedAt) < AgentBoard.finishedWindow }
                 .suffix(30))
