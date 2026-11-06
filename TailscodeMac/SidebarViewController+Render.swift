@@ -137,12 +137,9 @@ extension SidebarViewController {
         refreshAgentsEntry()
         selection.prune(to: models.map(\.entry))
         let observations = models.map {
-            ActivityObservation(
-                profileID: $0.entry.profileID, sessionID: $0.entry.session.id,
-                title: $0.title, isActive: $0.entry.session.isActive == true,
-                updatedAt: $0.entry.session.updatedAt)
+            ActivityObservation(profileID: $0.entry.profileID, session: $0.entry.session, title: $0.title)
         }
-        MacNotifier.shared.observeListing(observations, openSessionID: selectedID)
+        MacNotifier.shared.observeListing(observations)
         ActivityInbox.reconcile(
             observations,
             authoritativeProfileIDs: listedFromNetwork

@@ -149,8 +149,23 @@ extension PreferencesWindow {
         MacHaptics.shared.play(.send, strength: sender.doubleValue)
     }
 
-    @objc func notifyTurnsChanged(_ sender: NSButton) {
-        MacNotifier.setNotifyTurnComplete(sender.state == .on)
+    @objc func noticeFinishChanged(_ sender: NSPopUpButton) {
+        var rules = MacNotifier.rules
+        rules.finish = NoticeRules.Finish.allCases[sender.indexOfSelectedItem]
+        MacNotifier.setRules(rules)
+    }
+
+    @objc func noticeMinimumChanged(_ sender: NSPopUpButton) {
+        var rules = MacNotifier.rules
+        rules.minimumWork = NoticeRules.minimumChoices[sender.indexOfSelectedItem]
+        MacNotifier.setRules(rules)
+    }
+
+    @objc func unmuteAllChats(_ sender: NSButton) {
+        var rules = MacNotifier.rules
+        rules.muted = []
+        MacNotifier.setRules(rules)
+        sender.isEnabled = false
     }
 
     @objc func notifyNeedsChanged(_ sender: NSButton) {

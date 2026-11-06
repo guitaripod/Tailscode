@@ -343,18 +343,32 @@ extension PreferencesWindow {
                 title: Localized.text("Allowed by macOS"), button: permissionButton,
                 detail: permissionState, monospaced: false))
         renderNotificationPermission()
+        let rules = MacNotifier.rules
+        column.addArrangedSubview(
+            popUpRow(
+                title: NoticeRulesWords.finishTitle, subtitle: NoticeRulesWords.groupDescription,
+                options: NoticeRules.Finish.allCases.map(NoticeRulesWords.title),
+                selected: NoticeRules.Finish.allCases.firstIndex(of: rules.finish) ?? 0,
+                action: #selector(noticeFinishChanged)))
+        column.addArrangedSubview(
+            popUpRow(
+                title: NoticeRulesWords.minimumTitle, subtitle: NoticeRulesWords.minimumSubtitle,
+                options: NoticeRules.minimumChoices.map(NoticeRulesWords.minimum),
+                selected: NoticeRules.minimumChoices.firstIndex(of: rules.minimumWork) ?? 0,
+                action: #selector(noticeMinimumChanged)))
         column.addArrangedSubview(
             switchRow(
-                title: Localized.text("A turn finishes"),
-                subtitle: Localized.text(
-                    "Any chat, not only the open one — raised only while the app is in the background"),
-                value: MacNotifier.notifyTurnComplete, action: #selector(notifyTurnsChanged)))
-        column.addArrangedSubview(
-            switchRow(
-                title: Localized.text("An agent needs you"),
-                subtitle: Localized.text(
-                    "An approval to give or a question to answer; withdrawn once it is answered"),
-                value: MacNotifier.notifyNeedsYou, action: #selector(notifyNeedsChanged)))
+                title: NoticeRulesWords.needsYouTitle,
+                subtitle: NoticeRulesWords.needsYouSubtitle,
+                value: rules.needsYou, action: #selector(notifyNeedsChanged)))
+        if !rules.muted.isEmpty {
+            let unmute = NSButton(
+                title: NoticeRulesWords.unmuteAll, target: self, action: #selector(unmuteAllChats))
+            column.addArrangedSubview(
+                buttonRow(
+                    title: NoticeRulesWords.mutedTitle,
+                    subtitle: NoticeRulesWords.mutedCount(rules.muted.count), button: unmute))
+        }
         column.addArrangedSubview(
             switchRow(
                 title: Localized.text("Running low"),

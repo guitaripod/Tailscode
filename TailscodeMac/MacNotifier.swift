@@ -12,15 +12,30 @@ final class MacNotifier: NSObject {
 
     var onOpen: ((String) -> Void)?
     var onOpenUsage: (() -> Void)?
-    private var watch = ActivityWatch()
+    private var watch = ActivityWatch(rules: MacNotifier.rules)
+    private var dueTimer: Timer?
 
-    static var notifyTurnComplete: Bool {
-        UserDefaults.standard.object(forKey: "pref.notify.turnComplete") as? Bool ?? true
+    /// What the person asked to hear about, read from the same keys every client writes.
+    static var rules: NoticeRules {
+        NoticeRulesKeys.read { UserDefaults.standard.object(forKey: $0) }
     }
 
-    static var notifyNeedsYou: Bool {
-        UserDefaults.standard.object(forKey: "pref.notify.approvals") as? Bool ?? true
+    static func setRules(_ rules: NoticeRules) {
+        NoticeRulesKeys.write(rules) { key, value in
+            if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+        shared.watch.rules = rules
+        shared.armDue()
+        StoreNotice.post(NoticeRulesKeys.didChange)
     }
+
+    static var notifyTurnComplete: Bool { rules.finish != .never }
+
+    static var notifyNeedsYou: Bool { rules.needsYou }
+
+    static func isMuted(_ sessionID: String) -> Bool { rules.isMuted(sessionID) }
+
+    static func toggleMute(_ sessionID: String) { setRules(rules.togglingMute(sessionID)) }
 
     static var notifyRunningLow: Bool {
         UserDefaults.standard.object(forKey: "pref.notify.runningLow") as? Bool ?? true
@@ -30,12 +45,10 @@ final class MacNotifier: NSObject {
         UserDefaults.standard.set(value, forKey: "pref.notify.runningLow")
     }
 
-    static func setNotifyTurnComplete(_ value: Bool) {
-        UserDefaults.standard.set(value, forKey: "pref.notify.turnComplete")
-    }
-
     static func setNotifyNeedsYou(_ value: Bool) {
-        UserDefaults.standard.set(value, forKey: "pref.notify.approvals")
+        var next = rules
+        next.needsYou = value
+        setRules(next)
     }
 
     func activate() {
@@ -60,16 +73,19 @@ final class MacNotifier: NSObject {
         }
     }
 
-    /// Turn-end edges across the listing, skipping the open session — its own stream reports it.
-    func observeListing(_ rows: [ActivityObservation], openSessionID: String?) {
-        deliver(watch.observeListing(rows, openSessionID: openSessionID))
+    /// Work across the listing.
+    func observeListing(_ rows: [ActivityObservation]) {
+        deliver(watch.observeListing(rows))
+        armDue()
     }
 
     func observeConversation(
-        profileID: String, sessionID: String, title: String, state: ConversationState
+        profileID: String, sessionID: String, title: String, state: ConversationState,
+        heldQueue: Int = 0
     ) {
         let (alerts, withdrawals) = watch.observeConversation(
-            profileID: profileID, sessionID: sessionID, title: title, state: state)
+            profileID: profileID, sessionID: sessionID, title: title, state: state,
+            heldQueue: heldQueue)
         if !withdrawals.isEmpty {
             ActivityInbox.withdraw(withdrawals)
             let center = UNUserNotificationCenter.current()
@@ -77,6 +93,31 @@ final class MacNotifier: NSObject {
             center.removePendingNotificationRequests(withIdentifiers: withdrawals)
         }
         deliver(alerts)
+        armDue()
+    }
+
+    /// Lets the listing speak for a conversation nothing streams any more.
+    func releaseConversation(profileID: String, sessionID: String) {
+        watch.releaseConversation(profileID: profileID, sessionID: sessionID)
+    }
+
+    /// Sleeps until the next finished work is owed. One timer at a time, moved only when work is
+    /// owed sooner; a fire that finds the work started again raises nothing.
+    private func armDue() {
+        guard let next = watch.nextDue else { return }
+        if let timer = dueTimer, timer.isValid, timer.fireDate <= next { return }
+        dueTimer?.invalidate()
+        let timer = Timer(fire: next.addingTimeInterval(0.05), interval: 0, repeats: false) { _ in
+            MainActor.assumeIsolated { MacNotifier.shared.fireDue() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        dueTimer = timer
+    }
+
+    private func fireDue() {
+        dueTimer = nil
+        deliver(watch.due())
+        armDue()
     }
 
     /// Opening a conversation answers every notice about it, in both places a notice lives: the
@@ -101,12 +142,6 @@ final class MacNotifier: NSObject {
         guard !NSApp.isActive else { return }
         var raised: [ActivityAlert] = []
         for alert in alerts {
-            switch alert.reason {
-            case .turnEnded, .turnFailed:
-                guard Self.notifyTurnComplete else { continue }
-            case .needsApproval, .needsAnswer:
-                guard Self.notifyNeedsYou else { continue }
-            }
             send(alert)
             raised.append(alert)
         }

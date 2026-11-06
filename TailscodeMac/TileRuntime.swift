@@ -375,6 +375,7 @@ final class TileRuntime {
             edgeStates[key] = nil
             redialDelay[key] = nil
             edges.forget(key)
+            MacNotifier.shared.releaseConversation(profileID: key.profileID, sessionID: key.sessionID)
         }
     }
 
@@ -449,7 +450,7 @@ final class TileRuntime {
                     title: entry.session.title,
                     latestPrompt: state.messages.last { $0.role == .user }?
                         .parts.compactMap(\.text).joined(separator: "\n")),
-                state: state)
+                state: state, heldQueue: heldQueues[key]?.count ?? 0)
         }
         noteConnection(key, state)
         guard watches[key] != nil, paneCount(key) == 0 else { return }

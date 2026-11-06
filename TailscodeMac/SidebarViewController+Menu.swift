@@ -73,6 +73,12 @@ extension SidebarViewController: NSMenuDelegate {
                     ? Localized.text("Back into the recency order")
                     : Localized.text("Always at the top of the chat list"),
                 action: #selector(menuTogglePinned)))
+        let muted = MacNotifier.isMuted(entry.session.id)
+        menu.addItem(
+            menuItem(
+                NoticeRulesWords.muteTitle(muted: muted),
+                subtitle: NoticeRulesWords.muteDetail(muted: muted),
+                action: #selector(menuToggleMuted)))
         menu.addItem(
             menuItem(
                 model.unread
@@ -225,6 +231,11 @@ extension SidebarViewController: NSMenuDelegate {
     @objc private func menuTogglePinned() {
         guard let model = menuModel else { return }
         togglePinned(model.entry)
+    }
+
+    @objc private func menuToggleMuted() {
+        guard let model = menuModel else { return }
+        MacNotifier.toggleMute(model.entry.session.id)
     }
 
     @objc private func menuScopeProject() {

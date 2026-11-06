@@ -288,6 +288,8 @@ enum ParityManifest {
                     "All four of the other states are read out of the command line's own JSON, which a container may not run, so the store copy has exactly the one state that was written for it and none of the ones that need a subprocess.")
         case .demoMode: return .implemented("enterDemoMode")
         case .activityNotifications: return .implemented("MacNotifier")
+        case .noticeRules: return .implemented("MacNotifier.setRules")
+        case .chatMute: return .implemented("MacNotifier.toggleMute")
         case .hapticFeedback: return .partial("MacHaptics", missing: "the trackpad cannot compose: three canned patterns stand in for the recipes, so strength gates which beats survive but never how hard one lands, and a cue is felt only while a hand is on the trackpad")
         case .missedActivity: return .implemented("ActivityInbox.ordered")
         case .liveActivity: return .notApplicable("ActivityKit is the iPhone's: a Mac app has no Lock Screen card or Dynamic Island to publish into, and a turn ending on this desk is said by the notifier and the status band")
