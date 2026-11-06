@@ -84,6 +84,15 @@ For the commands no rule knows, a person may switch on a model they run themselv
 - Its lines carry a ✦ and say *written by a model* to a screen reader. Answers live in memory only, one request runs at a time, a failure is not retried for a minute, and with the switch off nothing is ever sent.
 - It is never the only thing standing between a person and a decision: approvals are rules-only.
 
+## 4c. A tile with room says more
+
+Asked for: "improve what each agent cell shows; utilize the space well." A large tile used to show its title, one line and three steps over a field of empty glass.
+
+- **The line still leads.** A tile first fits its title, state word, line, command and its latest steps, and takes the largest type at which they fit, exactly as before. Working and thinking now count their time beside the word (*Working · 4m*).
+- **What is left is filled, most useful first** (`WallBrief`, chosen by `WallBriefFill`, the same rule on every client): the counts of the work (*38 tools · edited 4 files +120 −35*), the agent's own plan (*Plan · 4 of 7*, then *▸ the item in hand* and *○ what is next*, folded from its to-do calls), what it last said as a short quote, up to eight earlier steps, and the files it changed with their lines. Each part takes as many whole lines as fit and is left out when not even its first does; nothing is cut mid-line to make room. The parts are then laid out in reading order: counts, plan, words, steps, files.
+- **Endings keep their story.** A finished tile keeps the agent's last words and the files it changed beside *Done in 6m · 14 tools*; a failure keeps its reason.
+- **Cost.** The counts, words and files are read from the turn; the plan reaches back past it, so the tower reads it only when the conversation moved (a new message or part), never per streamed word, and only from the last 400 messages.
+
 ## 5. Ambience
 
 - A very dark ground in the theme's own palette (the theme's dark variant when the current appearance is light), a faint grid, and **motes**: a few dozen tiny drifting points whose speed follows the busyness (calm: almost still; busy: a gentle current; attention: they drift toward the needs-you tile). Pre-allocated, no per-frame allocation.
