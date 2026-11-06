@@ -1,4 +1,6 @@
 #if DEBUG
+    import AgentTestSupport
+    import CodingAgentKit
     import MidgarCore
     import TailscodeCore
     import UIKit
@@ -22,6 +24,9 @@
         private var iterationSeconds: [Double] = []
         private var observers: [CFRunLoopObserver] = []
         private var storm: Timer?
+        private var liveTurn: Timer?
+        private var liveChat: ChatViewModel?
+        private var liveWords = 0
         private var budget: Double = 0
 
         private static let pointsPerSecond: CGFloat = 1600
@@ -44,6 +49,7 @@
             collectionView = settings.collectionView
             try? await Task.sleep(for: .seconds(2))
             MidgarLog.info("SETTINGS_WALK_COSTS \(Self.costs())", category: .ui)
+            if CommandLine.arguments.contains("--live") { await startLiveTurn() }
             MidgarLog.info("SETTINGS_WALK_BEGIN", category: .ui)
             watchRunLoop()
             if CommandLine.arguments.contains("--storm") { startStorm() }
@@ -82,6 +88,44 @@
                 NotificationCenter.default.post(name: UpdateMonitor.didChange, object: nil)
             }
         }
+
+        /// What Settings scrolls over while an agent works: a turn streaming into a chat the person
+        /// has left, its words arriving thirty times a second the way a bridge's deltas do, kept
+        /// alive by the same activity record a real one is. Only with `--live` in the demo world.
+        private func startLiveTurn() async {
+            let backend = DemoWorld.claude
+            let profile = DemoWorld.claudeProfile
+            guard let session = try? await backend.listSessions().first(where: { $0.id == Self.liveSessionID })
+            else {
+                MidgarLog.error("SETTINGS_WALK_NO_LIVE_SESSION", category: .ui)
+                return
+            }
+            let chat = ChatViewModel(
+                backend: backend, session: session, contextID: profile.id, serverName: profile.name)
+            chat.isBound = false
+            chat.start()
+            liveChat = chat
+            backend.say(
+                .partUpserted(messageID: Self.liveMessageID, MessagePart(id: Self.livePartID, kind: .text(""))),
+                in: session.id)
+            let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { _ in
+                MainActor.assumeIsolated { SettingsWalk.running?.speak() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            liveTurn = timer
+            try? await Task.sleep(for: .seconds(3))
+        }
+
+        private func speak() {
+            liveWords += 1
+            DemoWorld.claude.say(
+                .partTextDelta(messageID: Self.liveMessageID, partID: Self.livePartID, delta: "word\(liveWords) "),
+                in: Self.liveSessionID)
+        }
+
+        private static let liveSessionID = "demo-c1"
+        private static let liveMessageID = "c1a1"
+        private static let livePartID = "settings-walk-live"
 
         /// What one call costs on the main thread, in microseconds, of the things a Settings row has
         /// asked for while it was being configured.
@@ -164,6 +208,8 @@
             link = nil
             storm?.invalidate()
             storm = nil
+            liveTurn?.invalidate()
+            liveTurn = nil
             observers.forEach { CFRunLoopRemoveObserver(CFRunLoopGetMain(), $0, .commonModes) }
             MidgarLog.info("SETTINGS_WALK_END \(report())", category: .ui)
             Self.running = nil
