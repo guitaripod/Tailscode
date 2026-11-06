@@ -772,7 +772,8 @@ final class AppCoordinator: NSObject {
     ) {
         let settings = SettingsViewController(initialSection: section)
         settings.onFinish = { [weak self] in self?.syncRootIfNeeded() }
-        let nav = UINavigationController(rootViewController: settings)
+        let nav = SettingsNavigationController(rootViewController: settings)
+        nav.onCover = { [weak home = mainHome] covered in home?.setUnderSettings(covered) }
         nav.presentationController?.delegate = self
         presenter.present(nav, animated: true)
     }

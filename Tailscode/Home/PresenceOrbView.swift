@@ -33,6 +33,7 @@ final class PresenceOrbView: UIView {
     private var pipeline: MTLRenderPipelineState?
     private var field: PresenceField
     private(set) var signal = PresenceSignal()
+    private var isHeld = false
     var onTap: (() -> Void)?
     var onOpenAgents: (() -> Void)?
 
@@ -143,8 +144,15 @@ final class PresenceOrbView: UIView {
         if enabled { wake() } else { metalView.isPaused = true }
     }
 
+    /// Under a sheet that hides it the creature stops drawing, and picks up where its field says it
+    /// is the moment it is seen again: the field reads absolute time, so no frame is owed.
+    func setHeld(_ held: Bool) {
+        isHeld = held
+        if held { metalView.isPaused = true } else { wake() }
+    }
+
     private func wake() {
-        guard window != nil, !isHidden else { return }
+        guard window != nil, !isHidden, !isHeld else { return }
         metalView.isPaused = false
     }
 

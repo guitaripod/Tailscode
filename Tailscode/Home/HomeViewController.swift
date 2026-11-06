@@ -83,6 +83,7 @@ final class HomeViewController: UIViewController {
     private var appliedTodayState: String?
     var scheduledSnapshot = false
     var deferredSnapshot = false
+    var isUnderSettings = false
     /// What each card was last drawn from. A diffable identity says which card a row *is*, never
     /// whether anything on it moved, so reconfiguring everything that survived a diff redrew the
     /// whole board on a tick that changed one word.

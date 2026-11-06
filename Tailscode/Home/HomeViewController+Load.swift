@@ -28,7 +28,8 @@ extension HomeViewController {
     /// is genuinely counting: an unreachable host's frozen age has nothing to say every second, and
     /// a board of idle chats has no reason to wake the CPU at all.
     func startClockTick() {
-        guard clockTickTask == nil, viewIfLoaded?.window != nil, isSceneForeground else { return }
+        guard clockTickTask == nil, viewIfLoaded?.window != nil, isSceneForeground, !isUnderSettings
+        else { return }
         clockTickTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
@@ -54,7 +55,8 @@ extension HomeViewController {
 
     func startLiveRefresh() {
         startClockTick()
-        guard liveRefreshTask == nil, viewIfLoaded?.window != nil, isSceneForeground else { return }
+        guard liveRefreshTask == nil, viewIfLoaded?.window != nil, isSceneForeground, !isUnderSettings
+        else { return }
         liveRefreshTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let interval = self?.liveRefreshInterval else { return }
@@ -227,7 +229,7 @@ extension HomeViewController {
     /// costs what one change costs. The deep link is the exception on the off-screen path — it is
     /// parked with a deadline and a notification tap must not wait behind a screen coming back.
     func applySnapshot() {
-        guard viewIfLoaded?.window != nil else {
+        guard viewIfLoaded?.window != nil, !isUnderSettings else {
             deferredSnapshot = true
             consumePendingDeepLink()
             return
@@ -244,6 +246,23 @@ extension HomeViewController {
             self.scheduledSnapshot = false
             self.renderSnapshot()
         }
+    }
+
+    /// Settings is a full-height sheet over the phone's board, leaving a sliver of it at the top
+    /// edge and nothing a person reads, so Home holds still under it the way it does off screen: no
+    /// repaint, no clock, no poll and no orb, and every frame goes to the list being scrolled.
+    /// While an agent worked the clock alone rebuilt the whole board under the sheet once a second.
+    /// The sheet starting to leave is Home appearing again, so the board is current as it slides
+    /// out from under it.
+    func setUnderSettings(_ covered: Bool) {
+        guard covered != isUnderSettings else { return }
+        isUnderSettings = covered
+        orbView.setHeld(covered)
+        guard !covered else { return stopLiveRefresh() }
+        guard viewIfLoaded?.window != nil else { return }
+        if deferredSnapshot { renderSnapshot() }
+        Task { await load() }
+        startLiveRefresh()
     }
 
     func releaseDeferredSnapshotIfNeeded() {
