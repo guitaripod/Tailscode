@@ -22,7 +22,11 @@ extension WatchTileView {
         var words: CGRect?
         var detail: CGRect?
         var more: CGRect?
-        var steps: [CGRect?] = [nil, nil, nil]
+        var steps: [CGRect?] = Array(repeating: nil, count: AgentRow.stepCount)
+        var facts: CGRect?
+        var plan: [CGRect?] = Array(repeating: nil, count: WatchTileView.planLines)
+        var said: CGRect?
+        var files: [CGRect?] = Array(repeating: nil, count: WatchTileView.fileLines)
         var context: CGRect?
         var hold: CGRect?
         var deny: CGRect?
@@ -120,7 +124,7 @@ extension WatchTileView {
         detail.font = WatchFont.mono(scale.type((isAsk ? 2.5 : 2.0) * s, floor: 11), isAsk ? .medium : .regular)
         more.font = WatchFont.text(scale.type(1.5 * s, floor: 11))
         contextLabel.font = WatchFont.text(scale.type(1.5 * s, floor: 11))
-        let stepFont = WatchFont.text(scale.type(1.75 * s, floor: 11))
+        let stepFont = WatchFont.text(scale.type(1.8 * s, floor: 11))
         let columnWidth = max(20, geo.columnWidth)
         status.numberOfLines = s >= 0.9 ? 2 : 1
         setStatus(tile, now: context.now, context: context, action: action, lines: s >= 0.9 ? 2 : 1)
@@ -172,7 +176,7 @@ extension WatchTileView {
         let withDetail = wordsHeight + (hasDetail ? gap + detailNatural : 0)
         let allFit = withDetail + (stepsHeight > 0 ? gap + stepsHeight : 0) <= room
         let coreFit = withDetail <= room
-        if !allFit && !coreFit && !last { return nil }
+        if !allFit && !last { return nil }
         var y = top
         if coreFit {
             if wordsHeight > 0 {
@@ -188,15 +192,79 @@ extension WatchTileView {
         } else {
             y = cutWords(&fit, geo: geo, top: top, room: room, wordsHeight: wordsHeight, hasDetail: hasDetail)
         }
-        guard allFit else { return fit }
-        for (index, line) in lines.enumerated() {
-            let alpha: CGFloat = [0.95, 0.7, 0.45][index]
-            stepLabels[index].set(
-                "\(line.mark) \(line.words)", font: stepFont, ink: palette.dim.color(alpha), lines: 1)
-            fit.steps[index] = CGRect(x: geo.pad, y: y, width: width, height: stepHeight)
-            y += stepHeight + 3
-        }
+        guard coreFit else { return fit }
+        fillBrief(&fit, tile: tile, geo: geo, top: y, bottom: bottom, font: stepFont, palette: palette)
         return fit
+    }
+
+    /// Fills what the line, the command and the heartbeat leave with the brief, as `WallBriefFill`
+    /// chooses: the counts, the plan, the agent's last words, its steps and the files it changed,
+    /// each as many lines as there is room for, in reading order.
+    private func fillBrief(
+        _ fit: inout Fit, tile: WallTile, geo: Geo, top: CGFloat, bottom: CGFloat, font: UIFont,
+        palette: WallPalette
+    ) {
+        let width = geo.bodyWidth
+        let gap = geo.gap
+        let items = steps(of: tile)
+        let planLines = tile.brief.plan.map { [$0.headline] + $0.lines } ?? []
+        let fileLines = tile.brief.files.reversed().map(\.words)
+        let saidFont = WatchFont.text(font.pointSize * 1.06)
+        let filesFont = WatchFont.mono(font.pointSize * 0.94)
+        factsLabel.set(tile.brief.facts ?? "", font: font, ink: palette.dim.color(), lines: 1)
+        saidLabel.set(
+            tile.brief.said.map { "\u{201C}" + $0 + "\u{201D}" } ?? "", font: saidFont,
+            ink: palette.text.color(0.74), lines: 0)
+        let line = ceil(font.lineHeight)
+        let saidLine = ceil(saidFont.lineHeight)
+        let filesLine = ceil(filesFont.lineHeight)
+        let saidLines = saidLabel.text?.isEmpty == false
+            ? max(1, Int((saidLabel.height(forWidth: width) / saidLine).rounded())) : 0
+        let offers = [
+            WallBriefFill.Offer(part: .facts, lineHeight: line, lines: tile.brief.facts == nil ? 0 : 1),
+            WallBriefFill.Offer(part: .plan, lineHeight: line, lines: min(WatchTileView.planLines, planLines.count)),
+            WallBriefFill.Offer(part: .said, lineHeight: saidLine, lines: min(5, saidLines)),
+            WallBriefFill.Offer(part: .steps, lineHeight: line + 3, lines: items.count),
+            WallBriefFill.Offer(part: .files, lineHeight: filesLine, lines: min(WatchTileView.fileLines, fileLines.count)),
+        ]
+        let granted = WallBriefFill.choose(offers, room: Double(bottom - top), gap: Double(gap))
+        var y = top
+        if granted[.facts] != nil {
+            fit.facts = CGRect(x: geo.pad, y: y, width: width, height: line)
+            y += line + gap
+        }
+        if let count = granted[.plan] {
+            for (index, words) in planLines.prefix(count).enumerated() {
+                planLabels[index].set(
+                    words, font: index == 0 ? WatchFont.text(font.pointSize, .semibold) : font,
+                    ink: palette.text.color(index == 0 ? 0.9 : 0.78), lines: 1)
+                fit.plan[index] = CGRect(x: geo.pad, y: y, width: width, height: line)
+                y += line
+            }
+            y += gap
+        }
+        if let count = granted[.said] {
+            saidLabel.numberOfLines = count
+            fit.said = CGRect(x: geo.pad, y: y, width: width, height: CGFloat(count) * saidLine)
+            y += CGFloat(count) * saidLine + gap
+        }
+        if let count = granted[.steps] {
+            for (index, step) in items.prefix(count).enumerated() {
+                stepLabels[index].set(
+                    "\(step.mark) \(step.words)", font: font,
+                    ink: palette.dim.color(max(0.35, 0.95 - 0.1 * CGFloat(index))), lines: 1)
+                fit.steps[index] = CGRect(x: geo.pad, y: y, width: width, height: line)
+                y += line + 3
+            }
+            y += gap - 3
+        }
+        if let count = granted[.files] {
+            for (index, words) in fileLines.prefix(count).enumerated() {
+                fileLabels[index].set(words, font: filesFont, ink: palette.dim.color(), lines: 1)
+                fit.files[index] = CGRect(x: geo.pad, y: y, width: width, height: filesLine)
+                y += filesLine
+            }
+        }
     }
 
     /// The smallest level of an ask that still does not fit: the command is what a person decides on,
@@ -314,6 +382,10 @@ extension WatchTileView {
         show(detail, fit.detail)
         show(more, fit.more)
         for (index, label) in stepLabels.enumerated() { show(label, fit.steps[index]) }
+        show(factsLabel, fit.facts)
+        for (index, label) in planLabels.enumerated() { show(label, fit.plan[index]) }
+        show(saidLabel, fit.said)
+        for (index, label) in fileLabels.enumerated() { show(label, fit.files[index]) }
         show(contextLabel, fit.context)
         show(holdPill, fit.hold)
         show(denyPill, fit.deny)

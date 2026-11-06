@@ -15,7 +15,11 @@ final class WatchTileView: UIView {
     let words = WatchLabel()
     let detail = WatchLabel()
     let more = WatchLabel()
-    let stepLabels = (0..<3).map { _ in WatchLabel() }
+    let stepLabels = (0..<AgentRow.stepCount).map { _ in WatchLabel() }
+    let factsLabel = WatchLabel()
+    let planLabels = (0..<WatchTileView.planLines).map { _ in WatchLabel() }
+    let saidLabel = WatchLabel()
+    let fileLabels = (0..<WatchTileView.fileLines).map { _ in WatchLabel() }
     let contextLabel = WatchLabel()
     let holdPill = WatchPillView()
     let denyPill = WatchPillView()
@@ -36,7 +40,10 @@ final class WatchTileView: UIView {
         isAccessibilityElement = true
         accessibilityTraits = .button
         clipsToBounds = false
-        let all: [UIView] = [title, status, meta, words, detail, more] + stepLabels + [contextLabel, holdPill, denyPill, chatPill]
+        let all: [UIView] =
+            [title, status, meta, words, detail, more] + stepLabels
+            + [factsLabel, saidLabel] + planLabels + fileLabels
+            + [contextLabel, holdPill, denyPill, chatPill]
         for view in all { addSubview(view) }
         for label in [words, detail, more] { label.numberOfLines = 0 }
     }
@@ -44,6 +51,11 @@ final class WatchTileView: UIView {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     var isAsk: Bool { tile?.state.isNeedsYou == true && tile?.ask != nil }
+
+    /// The most lines a tile gives the plan and the files, each line a label of its own so a long
+    /// item is cut at its own end rather than wrapping the next one out of sight.
+    nonisolated static let planLines = 6
+    nonisolated static let fileLines = 6
 
     /// Which button of the tile a point in the wall's coordinates is on, if any.
     func pill(at point: CGPoint) -> Pill? {
