@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import Metal
+import TailscodeCore
 
 /// The wall's Metal Shading Language, kept as one string and compiled at runtime once per device, so
 /// the iPhone app and the Mac app never disagree about how a metallib is packaged.
@@ -18,9 +19,26 @@ enum WallShaders {
         return library
     }
 
+    /// `Ultracode.rainbowStops` as a shader function, written from the one list every client reads
+    /// so the ring on a tile is the rainbow the composer's aura and the orb wear.
+    static let rainbow: String = {
+        let stops = Ultracode.rainbowStops
+        let list = stops.map { "float3(\($0.red), \($0.green), \($0.blue))" }.joined(separator: ", ")
+        return """
+            constant float3 rainbowStops[\(stops.count)] = { \(list) };
+            static float3 rainbow(float t) {
+                float x = fract(t) * float(\(stops.count - 1));
+                int i = min(int(x), \(stops.count - 2));
+                return mix(rainbowStops[i], rainbowStops[i + 1], x - float(i));
+            }
+            """
+    }()
+
     static let source = #"""
         #include <metal_stdlib>
         using namespace metal;
+
+        \#(rainbow)
 
         struct Frame {
             float2 canvas;
@@ -165,6 +183,14 @@ enum WallShaders {
             float d = sdr(vP, c, hs, r);
             float aa = 0.8 / scale;
             float inside = 1.0 - smoothstep(-aa, aa, d);
+            if (vP2.w > 1.5) {
+                float bw = max(vP1.w, 1.0 / scale);
+                float line = 1.0 - smoothstep(bw * 0.5 - aa * 0.5, bw * 0.5 + aa * 0.5, abs(d + bw * 0.5));
+                float glow = (1.0 - smoothstep(0.0, 0.9 * U, -(d + bw))) * inside * 0.22;
+                float sweep = atan2(vP.y - c.y, vP.x - c.x) * 0.15915494 + 0.5;
+                float alpha = vP1.z * (line + glow) * vInk.a * f.dim;
+                return float4(rainbow(sweep + vP2.x) * alpha, alpha);
+            }
             float3 col = float3(0.0);
             float a = 0.0;
             if (vP2.w > 0.5) {

@@ -14,10 +14,14 @@ public struct WallPlate: Sendable, Equatable {
     public var borderWidth: Double
     public var hatch: Bool
     public var sheen: Double
+    /// Set on the ultracode ring: only the edge is drawn, in `Ultracode.rainbowStops` swept around
+    /// the plate's centre and turned by this much of a lap.
+    public var rainbow: Double?
 
     public init(
         rect: WallRect, corner: Double, ink: WallInk, opacity: Double, wash: Double = 0, flat: Double = 0,
-        borderAlpha: Double = 0.34, borderWidth: Double = 1, hatch: Bool = false, sheen: Double = 1
+        borderAlpha: Double = 0.34, borderWidth: Double = 1, hatch: Bool = false, sheen: Double = 1,
+        rainbow: Double? = nil
     ) {
         self.rect = rect
         self.corner = corner
@@ -29,6 +33,25 @@ public struct WallPlate: Sendable, Equatable {
         self.borderWidth = borderWidth
         self.hatch = hatch
         self.sheen = sheen
+        self.rainbow = rainbow
+    }
+
+    /// How strongly the ultracode ring is drawn, and how far inside the card's own edge it sits, in
+    /// units: under the state's border rather than over it, so a tile that needs you still says so
+    /// in its own colour and the ring stays a quiet second fact.
+    public static let auraAlpha = 0.5
+    public static let auraInset = 0.32
+
+    /// The ring a tile running at ultracode wears inside its card. It turns with the shared aura
+    /// clock while the work runs and holds still otherwise: a power is a fact, the travel is not.
+    public static func aura(
+        around card: WallRect, corner: Double, unit: Double, opacity: Double, phase: Double
+    ) -> WallPlate {
+        let inset = auraInset * unit
+        return WallPlate(
+            rect: card.inset(inset), corner: max(0, corner - inset), ink: WallInk(red: 1, green: 1, blue: 1),
+            opacity: opacity, borderAlpha: auraAlpha, borderWidth: max(1.5, 0.14 * unit), sheen: 0,
+            rainbow: phase)
     }
 }
 

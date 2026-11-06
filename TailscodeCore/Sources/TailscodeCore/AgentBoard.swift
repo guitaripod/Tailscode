@@ -196,7 +196,7 @@ public struct AgentBoard: Sendable, Equatable {
                             id: key, profileID: source.entry.profileID,
                             sessionID: source.entry.session.id, title: title(source),
                             machine: source.entry.profileName, ask: ask,
-                            chip: ModelBadge.chip(for: source.entry),
+                            chip: chip(source),
                             isAway: source.reachable == false, startedAt: facts.startedAt,
                             beat: facts.beat, children: facts.children,
                             steps: Array(facts.steps.prefix(AgentRow.stepCount)),
@@ -241,6 +241,14 @@ public struct AgentBoard: Sendable, Equatable {
         return AgentSession.isPlaceholderTitle(title) ? Localized.text("New chat") : title
     }
 
+    /// The session's model and effort, with a turn summoned by the word read as the ultracode it
+    /// runs at: the chat's own effort cannot say so, and the transcript can.
+    private static func chip(_ source: AgentSource) -> ModelChip? {
+        let chip = ModelBadge.chip(for: source.entry)
+        guard source.facts?.ultracodeTurn == true, let chip, !chip.isUltracode else { return chip }
+        return ModelChip(name: chip.name, family: chip.family, effort: Ultracode.effortLevel)
+    }
+
     private static func runningRow(_ source: AgentSource, now: Date) -> AgentRow? {
         let session = source.entry.session
         if let facts = source.facts {
@@ -259,7 +267,7 @@ public struct AgentBoard: Sendable, Equatable {
         return AgentRow(
             id: key(source), profileID: source.entry.profileID, sessionID: session.id,
             title: title(source), machine: source.entry.profileName,
-            chip: ModelBadge.chip(for: source.entry), tone: .live, motion: .working,
+            chip: chip(source), tone: .live, motion: .working,
             line: session.agentTask, startedAt: nil, beat: nil, children: [],
             listedAgents: session.activeAgents ?? 0, isWatched: false,
             isAway: source.reachable == false, unread: source.unread, word: nil,
@@ -290,7 +298,7 @@ public struct AgentBoard: Sendable, Equatable {
         return AgentRow(
             id: key(source), profileID: source.entry.profileID, sessionID: session.id,
             title: title(source), machine: source.entry.profileName,
-            chip: ModelBadge.chip(for: source.entry), tone: work.stalled ? .attention : .live,
+            chip: chip(source), tone: work.stalled ? .attention : .live,
             motion: work.stalled ? .still : .working, line: line, startedAt: work.since,
             beat: nil, children: watched ? children : [], listedAgents: 0, isWatched: watched,
             isAway: source.reachable == false, unread: source.unread,
@@ -310,7 +318,7 @@ public struct AgentBoard: Sendable, Equatable {
         return AgentRow(
             id: key(source), profileID: source.entry.profileID, sessionID: session.id,
             title: title(source), machine: source.entry.profileName,
-            chip: ModelBadge.chip(for: source.entry), tone: tone, motion: motion,
+            chip: chip(source), tone: tone, motion: motion,
             line: facts.doing, startedAt: facts.startedAt, beat: facts.beat,
             children: facts.children, listedAgents: 0, isWatched: true,
             isAway: source.reachable == false, unread: source.unread, word: word,

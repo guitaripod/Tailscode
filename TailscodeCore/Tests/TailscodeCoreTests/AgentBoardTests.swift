@@ -227,6 +227,25 @@ private func state(
         #expect(facts.children.first?.todos?.total == 6)
     }
 
+    @Test func aTurnWhoseAgentsStillWorkIsInTheBackgroundNotFinished() {
+        let agent = SubagentSummary(
+            id: "a1", title: "Explore", updatedAt: epoch, isActive: true,
+            startedAt: epoch.addingTimeInterval(-60))
+        let facts = AgentFacts.read(state: state([said("go")], status: .idle), agents: [agent], now: epoch)
+        #expect(facts.phase == .background(tasks: 1, stalled: false))
+        let carried = AgentFacts.read(
+            state: state([said("go")], status: .idle, work: BackgroundWork(tasks: 1)),
+            agents: [agent, agent], now: epoch)
+        #expect(carried.phase == .background(tasks: 2, stalled: false))
+    }
+
+    @Test func aTurnSummonedByTheWordWearsUltracode() {
+        let prompt = said("ultracode: fix the flaky test")
+        let facts = AgentFacts.read(state: state([prompt]), agents: [], now: epoch)
+        #expect(facts.ultracodeTurn)
+        #expect(!AgentFacts.read(state: state([said("go")]), agents: [], now: epoch).ultracodeTurn)
+    }
+
     @Test func aFailedTurnIsFlaggedAndIdle() {
         let facts = AgentFacts.read(
             state: state([said("go")], status: .idle, failure: BackendFailure(message: "boom", retryable: false)),
@@ -519,6 +538,43 @@ private final class TickingClock: @unchecked Sendable {
             hasLoadedTranscript: true)
         #expect(AgentAsk.reading(in: state)?.object == command)
         #expect(ApprovalAsk.reading(in: state)?.object == "ls")
+    }
+
+    @Test func anEndingIntoBackgroundWorkIsFiledOnlyOnceTheWorkStops() async throws {
+        var script = runningScript()
+        script.append(MockScriptStep(.backgroundWork(BackgroundWork(tasks: 1, task: "swift test")), delay: .milliseconds(300)))
+        script.append(MockScriptStep(.status(.idle)))
+        script.append(MockScriptStep(.backgroundWork(nil), delay: .milliseconds(1500)))
+        let backend = MockBackend(agentType: .claudeCode, script: script, interactive: true)
+        let tower = AgentTower(
+            setup: AgentTowerSetup(backend: { _ in backend }, catalog: { _ in [] }))
+        let session = AgentSession(
+            id: "s1", agentType: .claudeCode, title: "Run the suite", createdAt: Date(),
+            updatedAt: Date(), isActive: true)
+        let entry = SessionEntry(
+            profileID: "p1", profileName: "studio", host: "studio", backendType: .claudeCode,
+            session: session)
+        await tower.update(entries: [entry], reachability: ["p1": true], unread: [])
+        await tower.open()
+        var carrying = false
+        for _ in 0..<40 {
+            try await Task.sleep(for: .milliseconds(50))
+            if await !tower.current.background.isEmpty {
+                carrying = true
+                break
+            }
+        }
+        #expect(carrying)
+        #expect(await tower.current.finished.isEmpty)
+        var filed: AgentFinish?
+        for _ in 0..<60 {
+            try await Task.sleep(for: .milliseconds(100))
+            filed = await tower.current.finished.first
+            if filed != nil { break }
+        }
+        #expect(filed?.outcome == .done)
+        #expect(filed?.title == "Run the suite")
+        await tower.close()
     }
 
     @Test func nothingIsWatchedWhileTheBoardIsClosed() async throws {

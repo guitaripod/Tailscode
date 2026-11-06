@@ -264,7 +264,9 @@ final class WatchTileView: @unchecked Sendable {
         guard let tile else { return }
         WatchTilePaint.card(
             cr, width: width, height: height, unit: unit,
-            face: .init(state: tile.state, focused: focused, pulse: pulse),
+            face: .init(
+                state: tile.state, focused: focused, pulse: pulse,
+                ultracode: tile.chip?.isUltracode == true),
             palette: context.palette, t: context.seconds, animated: context.animated)
     }
 

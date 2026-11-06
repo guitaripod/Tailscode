@@ -12,11 +12,12 @@ public enum AgentDemo {
     static func entry(
         _ id: String, _ title: String, profile: String, machine: String, now: Date,
         active: Bool = false, agents: Int? = nil, task: String? = nil, work: BackgroundWork? = nil,
-        updated: TimeInterval = 0, model: String? = nil
+        updated: TimeInterval = 0, model: String? = nil, effort: String? = nil
     ) -> SessionEntry {
         var session = AgentSession(
             id: id, agentType: .claudeCode, title: title, createdAt: now.addingTimeInterval(-7200),
             updatedAt: now.addingTimeInterval(-updated), isActive: active, model: model)
+        session.reasoningEffort = effort
         session.activeAgents = agents
         session.agentTask = task
         session.backgroundWork = work
@@ -85,7 +86,7 @@ public enum AgentDemo {
     public static func board(now: Date) -> AgentBoard {
         let working = entry(
             "w", "Fix reconnect test", profile: studio, machine: "studio", now: now, active: true,
-            model: "claude-opus-5")
+            model: "claude-opus-5", effort: Ultracode.effortLevel)
         let asking = entry("ask", "CI migration", profile: homelab, machine: "homelab", now: now, active: true)
         let landing = entry(
             "l", "Landing page refresh", profile: homelab, machine: "homelab", now: now, active: true,

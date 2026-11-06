@@ -475,3 +475,25 @@ private let screens: [(String, Setup)] = [
         #expect(built.scene.dots.isEmpty)
     }
 }
+
+@Suite("An ultracode tile wears the rainbow")
+struct WallUltracodeTests {
+    @Test("The demo's ultracode session wears one ring inside its card, turning while it works and still when still")
+    func ring() {
+        let wall = AgentDemo.wallScenes(now: now).first { $0.name == "busy" }!.wall
+        guard let tile = wall.tiles.first(where: { $0.chip?.isUltracode == true }) else {
+            Issue.record("the busy demo has an ultracode tile")
+            return
+        }
+        let moving = build(wall).scene.plates.filter { $0.rainbow != nil }
+        #expect(moving.count == wall.tiles.filter { $0.chip?.isUltracode == true }.count)
+        #expect(moving.allSatisfy { $0.borderAlpha == WallPlate.auraAlpha })
+        let still = build(wall, Setup(animated: false)).scene.plates.filter { $0.rainbow != nil }
+        #expect(still.allSatisfy { $0.rainbow == 0 })
+        #expect(tile.state.auraTurns)
+        #expect(moving.first?.rainbow == Ultracode.aura(at: 12).phase)
+        #expect(!WallState.quiet(since: now).auraTurns)
+        #expect(!WallState.needsYou(.fresh).auraTurns)
+    }
+}
+

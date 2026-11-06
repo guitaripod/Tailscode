@@ -113,7 +113,11 @@ extension WallRenderer {
         set(p, plate.rect)
         set(p + 4, plate.ink, Float(plate.opacity))
         set(p + 8, Float(plate.corner), Float(plate.wash), Float(plate.borderAlpha), Float(plate.borderWidth))
-        set(p + 12, plate.hatch ? 1 : 0, Float(plate.flat), Float(plate.sheen), 0)
+        guard let rainbow = plate.rainbow else {
+            set(p + 12, plate.hatch ? 1 : 0, Float(plate.flat), Float(plate.sheen), 0)
+            return
+        }
+        set(p + 12, Float(rainbow), 0, 0, 2)
     }
 
     static func put(_ bar: WallBar, at p: UnsafeMutablePointer<Float>) {

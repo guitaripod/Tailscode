@@ -135,6 +135,9 @@ public struct AgentFacts: Sendable, Equatable {
     /// What the open turn is doing, nil when none is open: the reading that tells a turn thinking
     /// from one whose tool is out.
     public let activity: ActivityKind?
+    /// The turn in flight was summoned with ultracode by word, which the session's own effort
+    /// does not say.
+    public var ultracodeTurn = false
 
     public var isRunning: Bool {
         switch phase {
@@ -159,7 +162,9 @@ public struct AgentFacts: Sendable, Equatable {
         } else if state.status == .running || state.compaction?.isRunning == true {
             phase = .working
         } else if let work = state.backgroundWork {
-            phase = .background(tasks: work.tasks, stalled: work.stalled)
+            phase = .background(tasks: max(work.tasks, working(agents)), stalled: work.stalled)
+        } else if working(agents) > 0 {
+            phase = .background(tasks: working(agents), stalled: false)
         } else {
             phase = .idle
         }
@@ -173,7 +178,7 @@ public struct AgentFacts: Sendable, Equatable {
         let turn = turnMessages(in: state)
         let tokens = turn.compactMap { $0.usage?.total ?? $0.totalTokens }.reduce(0, +)
         let cost = turn.compactMap(\.costUSD).reduce(0, +)
-        return AgentFacts(
+        var facts = AgentFacts(
             phase: phase, detail: settled?.detail ?? live.detail,
             doing: phase == .idle ? nil : AgentLine.doing(in: state),
             plain: phase == .idle ? nil : AgentPlain.doing(in: state),
@@ -186,6 +191,14 @@ public struct AgentFacts: Sendable, Equatable {
             effort: assistant?.reasoningEffort, beat: AgentBeat.read(stamps: stamps, now: now),
             failed: state.lastFailure != nil,
             activity: phase == .idle ? nil : ActivityKind.inFlight(in: state))
+        facts.ultracodeTurn = Ultracode.turnInvoked(state)
+        return facts
+    }
+
+    /// Agents still at work after the turn that sent them closed. The session handed its work to
+    /// them, so it is not a session that finished.
+    private static func working(_ agents: [SubagentSummary]) -> Int {
+        agents.filter { $0.isActive && !$0.isCompleted }.count
     }
 
     private static func ask(since state: ConversationState, seen: [String: Date]) -> Date? {

@@ -86,6 +86,17 @@ public enum WallState: Sendable, Equatable {
         case .needsYou, .finished, .away: return false
         }
     }
+
+    /// Whether a tile's ultracode ring turns: only while the work visibly goes on. A tile waiting on
+    /// a person, gone quiet, stuck or done keeps its ring lit and still, the way every settled thing
+    /// on the wall holds still.
+    public var auraTurns: Bool {
+        switch self {
+        case .working, .thinking, .retrying: return true
+        case .background(let stuck): return !stuck
+        case .needsYou, .quiet, .finished, .away: return false
+        }
+    }
 }
 
 /// One agent on the wall, with everything its tile draws.

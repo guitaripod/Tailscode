@@ -33,6 +33,9 @@ public actor AgentTower {
         var agents: [SubagentSummary] = []
         var signature = 0
         var endedAt: Date?
+        /// When the work this watch is following began: the first turn of it, not the last, so an
+        /// ending that came after background work says how long the person was waited on.
+        var workBegan: Date?
     }
 
     public static let linger: TimeInterval = 8
@@ -229,8 +232,9 @@ public actor AgentTower {
             let held = watches[id] != nil
             let known = facts[id]
             let lingering = held && (watches[id]?.endedAt.map { now.timeIntervalSince($0) < Self.linger } ?? false)
+            let carrying = known.map { $0.phase != .idle } ?? false
             return AgentWatch.Candidate(
-                key: id, isRunning: entry.session.isWorking || known?.isRunning == true,
+                key: id, isRunning: entry.session.isWorking || carrying,
                 waiting: known?.ask != nil, updatedAt: entry.session.updatedAt, held: held,
                 pinned: pinned.contains(id), lingering: lingering)
         }
@@ -375,9 +379,15 @@ public actor AgentTower {
             catalog: setup.catalog(entry.profileID))
         if let before, before.isRunning, !after.isRunning {
             watch.endedAt = now
-            record(ending: entry, before: before, state: state, at: now)
         } else if after.isRunning {
             watch.endedAt = nil
+        }
+        let busy = after.phase != .idle || WorkSettle.Reading(state).isBusy
+        if busy, watch.workBegan == nil {
+            watch.workBegan = after.startedAt ?? now
+        } else if !busy, let began = watch.workBegan {
+            record(ending: entry, before: before ?? after, state: state, began: began, at: now)
+            watch.workBegan = nil
         }
         facts[id] = after
         watches[id] = watch
@@ -403,8 +413,12 @@ public actor AgentTower {
         return hasher.finalize()
     }
 
+    /// Writes down an ending once the work is over — the turn closed and nothing it started is
+    /// still running — so a session that handed its work to the background is never filed as done
+    /// while that work goes on.
     private func record(
-        ending entry: SessionEntry, before: AgentFacts, state: ConversationState, at now: Date
+        ending entry: SessionEntry, before: AgentFacts, state: ConversationState, began: Date?,
+        at now: Date
     ) {
         let outcome: AgentFinish.Outcome =
             state.lastFailure != nil ? .failed : (state.interruption != nil ? .stopped : .done)
@@ -417,7 +431,8 @@ public actor AgentTower {
                     ? Localized.text("New chat") : entry.session.title,
                 machine: entry.profileName, outcome: outcome,
                 line: AgentFinish.line(
-                    outcome: outcome, duration: before.startedAt.map { now.timeIntervalSince($0) },
+                    outcome: outcome,
+                    duration: (began ?? before.startedAt).map { now.timeIntervalSince($0) },
                     tools: before.toolCount, files: before.touched.count,
                     failure: state.lastFailure?.message),
                 endedAt: now, unread: true,

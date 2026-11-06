@@ -85,6 +85,13 @@ extension WallScene {
                     rect: main, corner: cornerRadius, ink: ink, opacity: opacity,
                     wash: look.wash + pulse * 0.03, flat: look.flat, borderAlpha: look.borderAlpha,
                     borderWidth: look.borderWidth, hatch: face == .away))
+            if tile.chip?.isUltracode == true {
+                let turning = animated && tile.state.auraTurns
+                scene.plates.append(
+                    WallPlate.aura(
+                        around: main, corner: cornerRadius, unit: unit, opacity: opacity,
+                        phase: turning ? Ultracode.aura(at: t).phase : 0))
+            }
             if input.style.light, scene.lights.count < WallScene.maxLights {
                 let strength = face.light * (0.75 + 0.5 * swell) * opacity
                 scene.lights.append(WallLight(rect: main, ink: ink, strength: strength))

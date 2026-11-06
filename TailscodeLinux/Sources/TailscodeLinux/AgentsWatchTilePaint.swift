@@ -11,6 +11,7 @@ enum WatchTilePaint {
         var state: WallState
         var focused: Bool
         var pulse = 0.0
+        var ultracode = false
     }
 
     static func breathPeriod(_ state: WallState) -> Double? {
@@ -61,7 +62,89 @@ enum WatchTilePaint {
         cairo_set_line_width(cr, line)
         cairo_stroke(cr)
         rim(cr, width: width, radius: radius)
+        if face.ultracode {
+            let phase = animated && face.state.auraTurns ? Ultracode.aura(at: t).phase : 0
+            aura(cr, width: width, height: height, unit: unit, radius: radius, phase: phase)
+        }
         if face.focused { focusRing(cr, width: width, height: height, unit: unit, radius: radius, palette: palette) }
+    }
+
+    /// The ultracode ring, the same one the Metal wall draws: `Ultracode.rainbowStops` swept around
+    /// the card's centre, a thin line just inside the state's own border with a faint glow inward,
+    /// turned by `phase` of a lap. Cairo has no conic gradient, so the sweep is a mesh of narrow
+    /// wedges from the centre, each one colour pair, and the ring is stroked through it once.
+    static func aura(
+        _ cr: OpaquePointer, width: Double, height: Double, unit: Double, radius: Double,
+        phase: Double
+    ) {
+        let inset = WallPlate.auraInset * unit
+        let corner = max(0, radius - inset)
+        let line = max(1.5, 0.14 * unit)
+        guard width > 2 * inset + line, height > 2 * inset + line,
+            let sweep = rainbowSweep(width: width, height: height, phase: phase)
+        else { return }
+        cairo_save(cr)
+        cairo_new_path(cr)
+        agentsRoundedRect(
+            cr, x: inset, y: inset, width: width - 2 * inset, height: height - 2 * inset,
+            radius: corner)
+        cairo_clip_preserve(cr)
+        cairo_push_group(cr)
+        cairo_set_source(cr, sweep)
+        cairo_set_line_width(cr, unit * 1.8)
+        cairo_stroke_preserve(cr)
+        cairo_pop_group_to_source(cr)
+        cairo_paint_with_alpha(cr, WallPlate.auraAlpha * 0.16)
+        cairo_push_group(cr)
+        cairo_set_source(cr, sweep)
+        cairo_set_line_width(cr, line * 2)
+        cairo_stroke(cr)
+        cairo_pop_group_to_source(cr)
+        cairo_paint_with_alpha(cr, WallPlate.auraAlpha)
+        cairo_restore(cr)
+        cairo_pattern_destroy(sweep)
+    }
+
+    private static let sweepWedges = 36
+
+    private static func rainbowSweep(width: Double, height: Double, phase: Double) -> OpaquePointer? {
+        guard let mesh = cairo_pattern_create_mesh() else { return nil }
+        let cx = width / 2
+        let cy = height / 2
+        let reach = (width + height)
+        func point(_ fraction: Double) -> (x: Double, y: Double) {
+            let angle = (fraction - 0.5) * 2 * Double.pi
+            return (cx + cos(angle) * reach, cy + sin(angle) * reach)
+        }
+        func colour(_ fraction: Double) -> (Double, Double, Double) {
+            let stops = Ultracode.rainbowStops
+            var t = (fraction + phase).truncatingRemainder(dividingBy: 1)
+            if t < 0 { t += 1 }
+            let position = t * Double(stops.count - 1)
+            let index = min(Int(position), stops.count - 2)
+            let mix = position - Double(index)
+            let from = stops[index]
+            let to = stops[index + 1]
+            return (
+                from.red + (to.red - from.red) * mix, from.green + (to.green - from.green) * mix,
+                from.blue + (to.blue - from.blue) * mix
+            )
+        }
+        for wedge in 0..<sweepWedges {
+            let start = Double(wedge) / Double(sweepWedges)
+            let end = Double(wedge + 1) / Double(sweepWedges)
+            let (a, b) = (point(start), point(end))
+            let (ca, cb) = (colour(start), colour(end))
+            cairo_mesh_pattern_begin_patch(mesh)
+            cairo_mesh_pattern_move_to(mesh, cx, cy)
+            cairo_mesh_pattern_line_to(mesh, a.x, a.y)
+            cairo_mesh_pattern_line_to(mesh, b.x, b.y)
+            cairo_mesh_pattern_set_corner_color_rgb(mesh, 0, (ca.0 + cb.0) / 2, (ca.1 + cb.1) / 2, (ca.2 + cb.2) / 2)
+            cairo_mesh_pattern_set_corner_color_rgb(mesh, 1, ca.0, ca.1, ca.2)
+            cairo_mesh_pattern_set_corner_color_rgb(mesh, 2, cb.0, cb.1, cb.2)
+            cairo_mesh_pattern_end_patch(mesh)
+        }
+        return mesh
     }
 
     private static func border(_ state: WallState, unit: Double, swell: Double) -> (Double, Double) {

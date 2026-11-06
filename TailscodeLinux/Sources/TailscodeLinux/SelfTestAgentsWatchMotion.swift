@@ -49,6 +49,27 @@ extension SelfTest {
             try check.expect(card(state, 0, false) == card(state, 19.7, false), "\(state)'s glass is still too")
             try check.expect((0..<8).contains { card(state, 0.6 * Double($0), true) != card(state, 0, true) }, "and breathes otherwise")
         }
+        func ringed(_ state: WallState, ultracode: Bool, _ t: Double, _ animated: Bool) -> [UInt8] {
+            pixels(120) { cr in
+                WatchTilePaint.card(
+                    cr, width: 120, height: 120, unit: 8,
+                    face: .init(state: state, focused: false, ultracode: ultracode),
+                    palette: palette, t: t, animated: animated)
+            }
+        }
+        let quiet = WallState.quiet(since: Date())
+        try check.expect(
+            ringed(.working, ultracode: true, 0, false) != ringed(.working, ultracode: false, 0, false),
+            "an ultracode tile wears its ring")
+        try check.expect(
+            ringed(quiet, ultracode: true, 0.3, true) == ringed(quiet, ultracode: true, 1.9, true),
+            "which holds still on a tile gone quiet")
+        try check.expect(
+            ringed(quiet, ultracode: true, 0.3, false) != ringed(quiet, ultracode: false, 0.3, false),
+            "and stays lit there")
+        try check.expect(
+            ringed(.working, ultracode: true, 0.3, true) != ringed(.working, ultracode: true, 1.9, true),
+            "and turns while the work moves")
         let motes = WatchMotes()
         func field(_ t: Double, _ animated: Bool) -> [UInt8] {
             pixels(160) { cr in motes.paint(cr, width: 160, height: 160, unit: 6, ink: palette.working, t: t, animated: animated, brightness: 1) }
@@ -69,6 +90,9 @@ extension SelfTest {
         let view = window.watchView
         view.startScene("busy")
         check.pump(0.4)
+        try check.expect(
+            view.wall.tiles.filter { $0.chip?.isUltracode == true }.count == 1,
+            "the busy wall's ultracode session is the one tile wearing the ring")
         try check.expect(view.isTurning, "a wall with things moving runs its frame clock")
         let frames = view.frames
         check.pump(0.7)

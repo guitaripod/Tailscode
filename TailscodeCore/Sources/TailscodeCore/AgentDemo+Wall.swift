@@ -57,11 +57,11 @@ extension AgentDemo {
         _ id: String, _ title: String, profile: String = studio, machine: String = "studio",
         state: ConversationState, agents: [SubagentSummary] = [], beating: Bool = true,
         seen: [String: Date] = [:], reachable: Bool = true, unread: Bool = false, idleFor: TimeInterval = 0,
-        now: Date, anchor: Date? = nil
+        effort: String? = nil, now: Date, anchor: Date? = nil
     ) -> AgentSource {
         let entry = entry(
             id, title, profile: profile, machine: machine, now: anchor ?? now,
-            active: state.status == .running, updated: idleFor, model: "claude-opus-5")
+            active: state.status == .running, updated: idleFor, model: "claude-opus-5", effort: effort)
         let facts = AgentFacts.read(
             state: state, agents: agents, seen: seen, stamps: beating ? pulse(now) : [], now: now)
         return AgentSource(entry: entry, facts: facts, reachable: reachable, unread: unread)
@@ -171,7 +171,7 @@ extension AgentDemo {
             [
                 source(
                     "w", "Fix reconnect test", state: fixing(now: now), agents: agents(now: now),
-                    now: now),
+                    effort: Ultracode.effortLevel, now: now),
                 working(
                     "l", "Landing page refresh", profile: homelab, machine: "homelab",
                     calls: [
