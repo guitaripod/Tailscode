@@ -150,9 +150,10 @@ final class ConnectionController {
     }
 
     /// Puts the app into the scripted no-server demo world. Exits automatically
-    /// the moment a real server is saved.
-    func enterDemoMode() {
-        DemoMode.enter()
+    /// the moment a real server is saved. `forThisLaunch` is `--demo`, which shares its defaults
+    /// with the app a person actually uses and so must leave nothing for the next launch to find.
+    func enterDemoMode(forThisLaunch: Bool = false) {
+        if forThisLaunch { DemoMode.enterForThisLaunch() } else { DemoMode.enter() }
         isDemoMode = true
         setActive(DemoWorld.claudeProfile.id)
         MidgarLog.info("entered demo mode", category: .connection)

@@ -63,7 +63,7 @@ final class AppCoordinator: NSObject {
             }
         #endif
         if CommandLine.arguments.contains("--demo"), !ConnectionController.shared.isDemoMode {
-            ConnectionController.shared.enterDemoMode()
+            ConnectionController.shared.enterDemoMode(forThisLaunch: true)
         }
         #if DEBUG
             seedDebugConnectionIfNeeded()
