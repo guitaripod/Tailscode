@@ -83,8 +83,8 @@ final class LiveEdgeService: LiveEdges, @unchecked Sendable {
         record.presence = reading
         var askDrain = false
         let now = Date()
-        if !record.drainAsked, !record.sending,
-            !SendQueueStore.queue(profileID: key.profileID, sessionID: key.sessionID).isEmpty,
+        let held = SendQueueStore.queue(profileID: key.profileID, sessionID: key.sessionID).count
+        if !record.drainAsked, !record.sending, held > 0,
             SendQueueDrain.mayDrain(state, handoff: record.handoff)
                 || now.timeIntervalSince(record.lastAsked) > Self.handOverInterval
         {
@@ -103,7 +103,7 @@ final class LiveEdgeService: LiveEdges, @unchecked Sendable {
                     title: entry.session.title,
                     latestPrompt: state.messages.last { $0.role == .user }?
                         .parts.compactMap(\.text).joined(separator: "\n")),
-                state: state)
+                state: state, heldQueue: held)
         }
         if watched, changed {
             Gtk.onMain { [weak self] in self?.window?.watchedPresenceChanged(key, reading) }
@@ -228,7 +228,14 @@ final class LiveEdgeService: LiveEdges, @unchecked Sendable {
     /// Forgets a conversation nothing holds any more.
     func forget(_ key: LiveKey) {
         lock.lock()
-        if let record = records[key], !record.watched, !record.sending { records[key] = nil }
+        var released = false
+        if let record = records[key], !record.watched, !record.sending {
+            records[key] = nil
+            released = true
+        }
         lock.unlock()
+        if released {
+            Notifier.shared.releaseConversation(profileID: key.profileID, sessionID: key.sessionID)
+        }
     }
 }

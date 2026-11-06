@@ -659,6 +659,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkNoticeRules()
+            report("notice rules: \(checks) claims hold — the choice is kept, a chat mutes, and work is one notice when it is over")
+        } catch {
+            report("notice rules: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkMachine()
             report("machine: \(checks) claims hold — agents read and proved, the registry, schedules soonest first, a carry across agents, Ask later and every window")
         } catch {

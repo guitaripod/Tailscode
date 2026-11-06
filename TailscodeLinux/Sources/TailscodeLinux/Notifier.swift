@@ -16,7 +16,9 @@ final class Notifier: @unchecked Sendable {
     static let shared = Notifier()
 
     private var appBits: UInt = 0
-    private var watch = ActivityWatch()
+    private var watch = ActivityWatch(rules: Notifier.rules)
+    /// When the next finished work is owed, as last asked of the GLib loop; main thread only.
+    private var dueFire: Date?
     /// The watch is read from the main loop for listings and from the conversation hub's stream
     /// task for conversations, so its state is held under a lock; delivery always hops to main.
     private let watchLock = NSLock()
@@ -76,22 +78,37 @@ final class Notifier: @unchecked Sendable {
         var urgency: UInt8
     }
 
-    static var notifyTurnComplete: Bool {
-        UserDefaults.standard.object(forKey: "pref.notify.turnComplete") as? Bool ?? true
+    /// What the person asked to hear about, from the settings file first: the defaults on Linux
+    /// are keyed to the executable, so a reinstall would otherwise forget a muted chat.
+    static var rules: NoticeRules {
+        NoticeRulesKeys.read { SettingsFile.stored(forKey: $0) ?? UserDefaults.standard.object(forKey: $0) }
     }
 
-    static var notifyNeedsYou: Bool {
-        UserDefaults.standard.object(forKey: "pref.notify.approvals") as? Bool ?? true
+    static func setRules(_ rules: NoticeRules) {
+        NoticeRulesKeys.write(rules) { SettingsFile.set($1, forKey: $0) }
+        shared.adopt(rules)
+        StoreNotice.post(NoticeRulesKeys.didChange)
     }
 
-    static func setNotifyTurnComplete(_ value: Bool) {
-        UserDefaults.standard.set(value, forKey: "pref.notify.turnComplete")
-        SettingsFile.capture()
-    }
+    static var notifyTurnComplete: Bool { rules.finish != .never }
+
+    static var notifyNeedsYou: Bool { rules.needsYou }
 
     static func setNotifyNeedsYou(_ value: Bool) {
-        UserDefaults.standard.set(value, forKey: "pref.notify.approvals")
-        SettingsFile.capture()
+        var next = rules
+        next.needsYou = value
+        setRules(next)
+    }
+
+    static func isMuted(_ sessionID: String) -> Bool { rules.isMuted(sessionID) }
+
+    static func toggleMute(_ sessionID: String) { setRules(rules.togglingMute(sessionID)) }
+
+    private func adopt(_ rules: NoticeRules) {
+        watchLock.lock()
+        watch.rules = rules
+        watchLock.unlock()
+        Gtk.onMain { [self] in armDue() }
     }
 
     static let runningLowKey = "tailscode.notify.runningLow"
@@ -244,13 +261,13 @@ final class Notifier: @unchecked Sendable {
         init(_ handle: @escaping @Sendable (String) -> Void) { self.handle = handle }
     }
 
-    /// Turn-end edges across the listing, skipping the open session: its own stream reports it.
-    func observeListing(_ rows: [ActivityObservation], openSessionID: String?, windowActive: Bool)
-    {
+    /// Work across the listing. Main thread.
+    func observeListing(_ rows: [ActivityObservation], windowActive: Bool) {
         watchLock.lock()
-        let alerts = watch.observeListing(rows, openSessionID: openSessionID)
+        let alerts = watch.observeListing(rows)
         watchLock.unlock()
         deliver(alerts, windowActive: windowActive)
+        armDue()
     }
 
     func observeConversation(
@@ -262,25 +279,85 @@ final class Notifier: @unchecked Sendable {
             profileID: profileID, sessionID: sessionID, title: title, state: state)
         watchLock.unlock()
         withdraw(withdrawals)
+        rememberPicture(in: state, profileID: profileID, sessionID: sessionID)
         deliver(alerts, picture: NotificationPlate.cachedPicture(in: state), windowActive: windowActive)
+        armDue()
     }
 
-    /// The same edges, from any thread: the conversation hub calls this once per state per
-    /// conversation, and only a state that raised or withdrew something reaches the main loop,
-    /// where whether a window of this app is the one being looked at is read at delivery.
+    /// The same, from any thread: the conversation hub calls this once per state per
+    /// conversation, and only a state that raised, withdrew or started settling something reaches
+    /// the main loop, where whether a window of this app is the one being looked at is read at
+    /// delivery.
     func observeConversationAnywhere(
-        profileID: String, sessionID: String, title: String, state: ConversationState
+        profileID: String, sessionID: String, title: String, state: ConversationState,
+        heldQueue: Int = 0
     ) {
         watchLock.lock()
+        let before = watch.nextDue
         let (alerts, withdrawals) = watch.observeConversation(
-            profileID: profileID, sessionID: sessionID, title: title, state: state)
+            profileID: profileID, sessionID: sessionID, title: title, state: state,
+            heldQueue: heldQueue)
+        let after = watch.nextDue
         watchLock.unlock()
-        guard !alerts.isEmpty || !withdrawals.isEmpty else { return }
+        guard !alerts.isEmpty || !withdrawals.isEmpty || before != after else { return }
         let picture = NotificationPlate.cachedPicture(in: state)
+        rememberPicture(picture, profileID: profileID, sessionID: sessionID)
         Gtk.onMain { [self] in
             withdraw(withdrawals)
             deliver(alerts, picture: picture, windowActive: Self.anyWindowActive)
+            armDue()
         }
+    }
+
+    /// Lets the listing speak for a conversation nothing streams any more.
+    func releaseConversation(profileID: String, sessionID: String) {
+        watchLock.lock()
+        watch.releaseConversation(profileID: profileID, sessionID: sessionID)
+        watchLock.unlock()
+        rememberPicture(nil, profileID: profileID, sessionID: sessionID)
+    }
+
+    private let picturesLock = NSLock()
+    private var pictures: [String: Data] = [:]
+
+    /// What a turn drew, kept until its work is over: finished work is raised a grace after the turn
+    /// that drew it, from a state the watch no longer holds. Each reading that moves the settle
+    /// replaces it, nothing included, so a later stretch never wears an earlier turn's picture, and
+    /// a conversation let go of takes its picture with it.
+    private func rememberPicture(_ picture: Data?, profileID: String, sessionID: String) {
+        picturesLock.withLock { pictures["\(profileID)/\(sessionID)"] = picture }
+    }
+
+    private func rememberPicture(in state: ConversationState, profileID: String, sessionID: String) {
+        rememberPicture(
+            NotificationPlate.cachedPicture(in: state), profileID: profileID, sessionID: sessionID)
+    }
+
+    /// Sleeps the GLib loop until the next finished work is owed. A timer that fires early raises
+    /// nothing and arms the next one; one that fires for work that started again finds nothing due.
+    /// Main thread.
+    private func armDue() {
+        watchLock.lock()
+        let next = watch.nextDue
+        watchLock.unlock()
+        guard let next else { return }
+        if let fire = dueFire, fire <= next, fire > Date() { return }
+        dueFire = next
+        let wait = max(0, next.timeIntervalSinceNow)
+        Gtk.after(UInt32((wait * 1000).rounded(.up)) + 50) { [self] in fireDue() }
+    }
+
+    private func fireDue() {
+        dueFire = nil
+        watchLock.lock()
+        let alerts = watch.due()
+        watchLock.unlock()
+        for alert in alerts {
+            let key = "\(alert.profileID)/\(alert.sessionID)"
+            let picture = picturesLock.withLock { pictures.removeValue(forKey: key) }
+            deliver([alert], picture: picture, windowActive: Self.anyWindowActive)
+        }
+        armDue()
     }
 
     /// Raised and written down in one step: a notice nobody happened to be at the screen for is
@@ -292,12 +369,6 @@ final class Notifier: @unchecked Sendable {
         guard !windowActive else { return }
         var raised: [ActivityAlert] = []
         for alert in alerts {
-            switch alert.reason {
-            case .turnEnded, .turnFailed:
-                guard Self.notifyTurnComplete else { continue }
-            case .needsApproval, .needsAnswer:
-                guard Self.notifyNeedsYou else { continue }
-            }
             if alert.notice == nil, standingIsRich(alert.identifier) { continue }
             let shot = (alert.reason == .turnEnded || alert.reason == .turnFailed) ? picture : nil
             publish(outgoing(alert, picture: shot))

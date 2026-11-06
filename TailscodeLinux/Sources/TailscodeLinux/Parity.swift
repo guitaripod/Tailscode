@@ -188,6 +188,8 @@ enum ParityManifest {
         case .tailscaleReadiness: return .implemented("TailscaleReading")
         case .demoMode: return .implemented("enterDemoMode")
         case .activityNotifications: return .implemented("Notifier")
+        case .noticeRules: return .implemented("Notifier.setRules")
+        case .chatMute: return .implemented("Notifier.toggleMute")
         case .hapticFeedback: return .notApplicable("nothing under a desktop vibrates; a keyboard and a monitor have no actuator to drive, and the cues a phone gives a hand are carried here by the status band and the notifier")
         case .missedActivity: return .implemented("ActivityInbox.ordered")
         case .liveActivity: return .notApplicable("a Linux desktop has no Lock Screen card or Dynamic Island an app publishes into; a turn ending on this desk is said by the notifier and the status band")

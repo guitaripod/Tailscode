@@ -154,6 +154,7 @@ extension SelfTest {
                 report("agents: \(try checkAgentsBoard()) claims hold")
                 report("agents watch: \(try checkAgentsWatch()) claims hold")
             case "clock": report("clock: \(try checkClock()) claims hold")
+            case "notices": report("notice rules: \(try checkNoticeRules()) claims hold")
             case "machine": report("machine: \(try checkMachine()) claims hold")
             case "shutdown": report("shutdown: \(try checkShutdown()) claims hold")
             case "share": report("analytics share: \(try checkAnalyticsShare()) claims hold")

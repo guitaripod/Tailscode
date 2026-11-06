@@ -257,6 +257,15 @@ extension MainWindow {
                  ? Localized.text("Back into the recency order")
                  : Localized.text("Always at the top of the chat list"),
              { [weak self] in Gtk.onMain { [weak self] in self?.togglePinned(entry) } }))
+        let muted = Notifier.isMuted(entry.session.id)
+        rows.append(
+            (NoticeRulesWords.muteTitle(muted: muted), NoticeRulesWords.muteDetail(muted: muted),
+             { [weak self] in
+                 Gtk.onMain { [weak self] in
+                     Notifier.toggleMute(entry.session.id)
+                     self?.renderSidebar()
+                 }
+             }))
         rows.append(
             (row.unread ? Localized.text("Mark as read") : Localized.text("Mark as unread"), nil,
              { [weak self] in

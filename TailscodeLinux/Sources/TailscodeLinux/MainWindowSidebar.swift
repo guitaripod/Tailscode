@@ -139,13 +139,9 @@ extension MainWindow {
         refreshOrb()
         refreshAgentsEntry(rows: rows)
         let observations = rows.map {
-            ActivityObservation(
-                profileID: $0.entry.profileID, sessionID: $0.entry.session.id,
-                title: $0.title, isActive: $0.entry.session.isActive == true,
-                updatedAt: $0.entry.session.updatedAt)
+            ActivityObservation(profileID: $0.entry.profileID, session: $0.entry.session, title: $0.title)
         }
-        Notifier.shared.observeListing(
-            observations, openSessionID: selectedID, windowActive: windowIsActive)
+        Notifier.shared.observeListing(observations, windowActive: windowIsActive)
         ActivityInbox.reconcile(
             observations,
             authoritativeProfileIDs: listedFromNetwork
