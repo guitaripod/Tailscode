@@ -103,7 +103,7 @@ targetTemplates:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
         MARKETING_VERSION: "1.81"
-        CURRENT_PROJECT_VERSION: "207"
+        CURRENT_PROJECT_VERSION: "208"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         SWIFT_EMIT_LOC_STRINGS: YES
@@ -254,7 +254,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
         MARKETING_VERSION: "1.82"
-        CURRENT_PROJECT_VERSION: "218"
+        CURRENT_PROJECT_VERSION: "219"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -341,7 +341,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.widget
         MARKETING_VERSION: "1.82"
-        CURRENT_PROJECT_VERSION: "218"
+        CURRENT_PROJECT_VERSION: "219"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -398,7 +398,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.nse
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) NOTICE_EXTENSION"
         MARKETING_VERSION: "1.82"
-        CURRENT_PROJECT_VERSION: "218"
+        CURRENT_PROJECT_VERSION: "219"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -461,7 +461,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.notificationui
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) NOTICE_EXTENSION"
         MARKETING_VERSION: "1.82"
-        CURRENT_PROJECT_VERSION: "218"
+        CURRENT_PROJECT_VERSION: "219"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -514,7 +514,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode.macwidget
         MARKETING_VERSION: "1.81"
-        CURRENT_PROJECT_VERSION: "207"
+        CURRENT_PROJECT_VERSION: "208"
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         SWIFT_VERSION: "6.0"
@@ -542,7 +542,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: Tailscode
-        CURRENT_PROJECT_VERSION: "207"
+        CURRENT_PROJECT_VERSION: "208"
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) TAILSCODE_MAS"
         CODE_SIGN_ENTITLEMENTS: TailscodeMac/TailscodeMac-Store.entitlements
         ENABLE_APP_SANDBOX: YES
