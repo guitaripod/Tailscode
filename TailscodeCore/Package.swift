@@ -85,7 +85,9 @@ enum Kit {
     /// card when liveness could not be read.
     /// 0.49.0 shares one event connection per opencode 2 server and asks a Claude conversation's
     /// agent what fills its window.
-    static let version = Version(0, 49, 0)
+    /// 0.50.0 hands a bridge the device's notification rules and holds a wait until the work
+    /// settles rather than the turn.
+    static let version = Version(0, 50, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
