@@ -19,7 +19,17 @@ final class WatchTileView: @unchecked Sendable {
     let words = WatchLabel()
     let detail = WatchLabel()
     let hint = WatchLabel()
-    let steps = WatchLabel()
+    let steps = WatchLabel(wrap: false)
+    let facts = WatchLabel(wrap: false)
+    let planList = WatchLabel(wrap: false)
+    let said = WatchLabel()
+    let files = WatchLabel(wrap: false)
+    /// Never shown: one line in a brief part's style, which is what that part's lines are measured by.
+    let ruler: WatchLabel = {
+        let label = WatchLabel(wrap: false)
+        label.set(text: "Ag")
+        return label
+    }()
     let deny: UnsafeMutablePointer<GtkWidget>
     let approve: UnsafeMutablePointer<GtkWidget>
     let chat: UnsafeMutablePointer<GtkWidget>
@@ -29,6 +39,12 @@ final class WatchTileView: @unchecked Sendable {
     let ring = AgentsCanvas(width: 1, height: 1)
     let detailClamp = tailscode_tile_clamp_new()!
     let stepsClamp = tailscode_tile_clamp_new()!
+    let saidClamp = tailscode_tile_clamp_new()!
+    /// The lines each part of the brief could show, newest first where that matters; the fit
+    /// decides how many of them the tile has room for.
+    var stepItems: [String] = []
+    var planItems: [String] = []
+    var fileItems: [String] = []
     let context: WatchContext
     var tile: WallTile?
     private(set) var shownWords = ""
@@ -74,11 +90,15 @@ final class WatchTileView: @unchecked Sendable {
         ring.paint = { [weak self] cr, width, _ in self?.paintRing(cr, width) }
         container.add(card.widget, layer: .panes)
         for canvas in [glyph, beatCanvas] { container.add(canvas.widget, layer: .dividers) }
-        for label in [title, status, meta, words, hint] { container.add(label.widget, layer: .dividers) }
+        for label in [title, status, meta, words, hint, facts, planList, files] {
+            container.add(label.widget, layer: .dividers)
+        }
         tailscode_tile_clamp_add(detailClamp, detail.widget)
         tailscode_tile_clamp_add(stepsClamp, steps.widget)
+        tailscode_tile_clamp_add(saidClamp, said.widget)
         container.add(detailClamp, layer: .dividers)
         container.add(stepsClamp, layer: .dividers)
+        container.add(saidClamp, layer: .dividers)
         buildButton(deny, label: denyLabel, ring: nil)
         buildButton(approve, label: approveLabel, ring: ring)
         buildButton(chat, label: chatLabel, ring: nil)
@@ -126,14 +146,19 @@ final class WatchTileView: @unchecked Sendable {
         words.set(text: line.text)
         detail.set(text: next.detail == next.words ? "" : (next.detail ?? ""))
         meta.set(text: Self.metaLine(next, countsWorkers: !context.style.showsSquads))
-        steps.set(text: Self.stepLines(next))
+        stepItems = Self.stepLines(next)
+        planItems = next.brief.plan.map { [$0.headline] + $0.lines } ?? []
+        fileItems = next.brief.files.reversed().map(\.words)
+        facts.set(text: next.brief.facts ?? "")
+        said.set(text: next.brief.said.map { "\u{201C}" + $0 + "\u{201D}" } ?? "")
         if let beat = next.beat, beat != self.beat {
             slideStart = Self.isShift(self.beat, beat) && context.animated ? context.seconds : nil
             self.beat = beat
         } else if next.beat == nil {
             beat = []
         }
-        let sign = "\(next.state.rank)|\(next.title)|\(line.text)|\(next.detail ?? "")|\(beat.isEmpty)|\(next.span)|\(next.ask?.id ?? "")"
+        let brief = [next.brief.facts ?? "", next.brief.said ?? ""] + stepItems + planItems + fileItems
+        let sign = "\(next.state.rank)|\(next.title)|\(line.text)|\(next.detail ?? "")|\(beat.isEmpty)|\(next.span)|\(next.ask?.id ?? "")|\(brief.joined(separator: "\u{1F}"))"
         if sign != signature {
             signature = sign
             container.invalidate()
@@ -162,9 +187,9 @@ final class WatchTileView: @unchecked Sendable {
         return (tile.words, false)
     }
 
-    static func stepLines(_ tile: WallTile) -> String {
-        tile.steps.map { ($0, $0.plain ?? $0.words) }.filter { $0.1 != tile.words }.prefix(3)
-            .map { AgentsParts.outcomeGlyph($0.0.outcome).glyph + " " + $0.1 }.joined(separator: "\n")
+    static func stepLines(_ tile: WallTile) -> [String] {
+        tile.steps.map { ($0, $0.plain ?? $0.words) }.filter { $0.1 != tile.words }
+            .map { AgentsParts.outcomeGlyph($0.0.outcome).glyph + " " + $0.1 }
     }
 
     static func metaLine(_ tile: WallTile, countsWorkers: Bool = false) -> String {

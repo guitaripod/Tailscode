@@ -36,6 +36,10 @@ extension WatchTileView {
         var chat: TileRect?
         var hint: TileRect?
         var steps: TileRect?
+        var facts: TileRect?
+        var planList: TileRect?
+        var said: TileRect?
+        var files: TileRect?
     }
 
     private var hintIsAdvice: Bool {
@@ -121,7 +125,7 @@ extension WatchTileView {
         if top > limit + 1 && !truncating { return nil }
         if text.isEmpty {
             detail.set(lines: 0)
-            addSteps(&plan, from: top, limit: limit, inner: inner, pad: pad)
+            fillBrief(&plan, from: top, limit: limit, inner: inner, pad: pad, level: level)
             return plan
         }
         let boost = asksForYou ? 1.32 : 1.0
@@ -131,7 +135,7 @@ extension WatchTileView {
         let room = limit - top
         if natural <= room {
             plan.detail = rect(pad, top, inner, natural)
-            addSteps(&plan, from: top + natural + gap, limit: limit, inner: inner, pad: pad)
+            fillBrief(&plan, from: top + natural + gap, limit: limit, inner: inner, pad: pad, level: level)
             return plan
         }
         guard truncating else { return nil }
@@ -158,12 +162,68 @@ extension WatchTileView {
         return max(1, (Double(height) / Double(count)).rounded(.up))
     }
 
-    private func addSteps(_ plan: inout Plan, from top: Double, limit: Double, inner: Double, pad: Double) {
-        guard !steps.text.isEmpty else { return }
-        steps.set(style: context.label(1.75, ink: context.palette.dim))
-        steps.set(lines: 0)
-        let height = steps.height(forWidth: inner)
-        if top + height <= limit { plan.steps = rect(pad, top, inner, height) }
+    /// Fills what the line, the command and the heartbeat leave of the tile with the brief, as
+    /// `WallBriefFill` chooses: the counts, the plan, the agent's last words, its steps and the
+    /// files, each as many lines as there is room for, in reading order.
+    private func fillBrief(
+        _ plan: inout Plan, from top: Double, limit: Double, inner: Double, pad: Double, level: Level
+    ) {
+        let palette = context.palette
+        let small = max(1.6, level.detail * 0.82)
+        facts.set(style: context.label(small, ink: palette.dim))
+        planList.set(style: context.label(small, ink: palette.text, alpha: 0.82))
+        said.set(style: context.label(small * 1.06, ink: palette.text, alpha: 0.74))
+        steps.set(style: context.label(small, ink: palette.dim))
+        files.set(style: context.label(small * 0.95, mono: true, ink: palette.dim))
+        said.set(lines: 0)
+        let saidLines = said.text.isEmpty ? 0 : lines(of: said, width: inner)
+        let offers = [
+            WallBriefFill.Offer(part: .facts, lineHeight: oneLine(facts), lines: facts.text.isEmpty ? 0 : 1),
+            WallBriefFill.Offer(part: .plan, lineHeight: oneLine(planList), lines: planItems.count),
+            WallBriefFill.Offer(part: .said, lineHeight: oneLine(said), lines: min(5, saidLines)),
+            WallBriefFill.Offer(part: .steps, lineHeight: oneLine(steps), lines: stepItems.count),
+            WallBriefFill.Offer(part: .files, lineHeight: oneLine(files), lines: min(6, fileItems.count)),
+        ]
+        let gap = 0.9 * unit
+        let granted = WallBriefFill.choose(offers, room: limit - top, gap: gap)
+        var y = top
+        func lay(_ part: WallBriefFill.Part, _ offer: WallBriefFill.Offer) -> TileRect? {
+            guard let lines = granted[part] else { return nil }
+            let height = Double(lines) * offer.lineHeight
+            defer { y += height + gap }
+            return rect(pad, y, inner, height)
+        }
+        for offer in offers {
+            switch offer.part {
+            case .facts: plan.facts = lay(.facts, offer)
+            case .plan:
+                planList.set(text: planItems.prefix(granted[.plan] ?? 0).joined(separator: "\n"))
+                plan.planList = lay(.plan, offer)
+            case .said:
+                said.set(lines: granted[.said] ?? 0)
+                plan.said = lay(.said, offer)
+            case .steps:
+                steps.set(text: stepItems.prefix(granted[.steps] ?? 0).joined(separator: "\n"))
+                plan.steps = lay(.steps, offer)
+            case .files:
+                files.set(text: fileItems.prefix(granted[.files] ?? 0).joined(separator: "\n"))
+                plan.files = lay(.files, offer)
+            }
+        }
+    }
+
+    /// What one line of a label takes at its style, measured on a ruler that holds one line in the
+    /// same style, since a label told to stop at some lines still measures all of them.
+    private func oneLine(_ label: WatchLabel) -> Double {
+        guard let style = label.style else { return 1 }
+        ruler.set(style: style)
+        return max(1, ruler.height(forWidth: 4000))
+    }
+
+    /// How many lines a wrapping label's words take at `width`.
+    private func lines(of label: WatchLabel, width: Double) -> Int {
+        let line = oneLine(label)
+        return max(1, Int((label.height(forWidth: width) / line).rounded()))
     }
 
     private func footerButtons(
@@ -215,6 +275,10 @@ extension WatchTileView {
         if let chat = plan.chat { sink.place(self.chat, chat) }
         if let hint = plan.hint { sink.place(self.hint.widget, hint) }
         if let steps = plan.steps { sink.place(stepsClamp, steps) }
+        if let facts = plan.facts { sink.place(self.facts.widget, facts) }
+        if let list = plan.planList { sink.place(planList.widget, list) }
+        if let said = plan.said { sink.place(saidClamp, said) }
+        if let files = plan.files { sink.place(self.files.widget, files) }
     }
 }
 

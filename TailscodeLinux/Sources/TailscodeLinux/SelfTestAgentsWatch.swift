@@ -108,6 +108,16 @@ extension SelfTest {
                     problems.append("\(scene) \(tile.title) \(name) leaves its tile")
                 }
             }
+            let brief: [(String, UnsafeMutablePointer<GtkWidget>)] = [
+                ("facts", view.facts.widget), ("plan", view.planList.widget), ("said", view.saidClamp),
+                ("steps", view.stepsClamp), ("files", view.files.widget),
+            ]
+            for (name, widget) in brief where gtk_widget_get_mapped(widget) != 0 {
+                guard let at = Gtk.bounds(of: widget, in: window.window) else { continue }
+                if at.x < box.x - 1 || at.x + at.width > box.x + box.width + 1 || at.y + at.height > box.y + box.height + 1 {
+                    problems.append("\(scene) \(tile.title) \(name) leaves its tile")
+                }
+            }
             if view.truncated { problems.append("\(scene) \(tile.title) cut its command") }
         }
         problems += squadProblems(window, scene: scene)
@@ -166,6 +176,18 @@ extension SelfTest {
         }
         try check.expect(seen > 40, "every scene's tiles were named: \(seen)")
         check.resize(window, 1920, 1080)
+        view.startScene("busy")
+        check.pump(0.4)
+        let roomy = view.wall.tiles.compactMap { view.tileView($0.id) }
+        try check.expect(
+            roomy.contains { gtk_widget_get_mapped($0.planList.widget) != 0 && $0.planList.text.contains("▸") },
+            "a roomy tile shows the agent's plan with the item it is on")
+        try check.expect(
+            roomy.contains { gtk_widget_get_mapped($0.saidClamp) != 0 && $0.said.text.hasPrefix("\u{201C}") },
+            "and one shows what the agent last said")
+        try check.expect(
+            roomy.contains { gtk_widget_get_mapped($0.facts.widget) != 0 && $0.facts.text.contains("tools") },
+            "and the counts of the work")
         view.startScene("alarm")
         check.pump(0.3)
         try check.expect(
