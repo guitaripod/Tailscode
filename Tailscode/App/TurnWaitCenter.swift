@@ -175,7 +175,10 @@ final class TurnWaitCenter {
             markUnsupported(profileID: profileID, support: support)
             return
         }
-        guard let request = try? await backend.turnWaitRequest(for: sessionID) else { return }
+        guard
+            let request = try? await backend.turnWaitRequest(
+                for: sessionID, until: Self.waitsForSettledWork ? .workSettles : .turnEnds)
+        else { return }
         guard armed[key] == nil else { return }
         start()
         let kind =
@@ -360,6 +363,20 @@ final class TurnWaitCenter {
         }
     }
 
+    /// Whether finished work is news only once it settles, which is what the person chose unless
+    /// they asked for every turn. A bridge that holds the wait for that answers when the work is
+    /// over; an older one answers at the turn's end, and when it says background work is still
+    /// running that answer is not news: the settled card says what the machine carries, and the
+    /// wait is not armed again, because such a bridge answers at once while the work runs.
+    private static var waitsForSettledWork: Bool {
+        switch AppPreferences.noticeRules.finish {
+        case .settled, .failures: return true
+        case .everyTurn, .never: return false
+        }
+    }
+
+
+
     private func complete(_ result: TurnWaitResult, info: TaskInfo, profile: ConnectionProfile) async {
         lastCompletion = (
             sessionID: info.sessionID, title: result.title, state: result.state.rawValue, at: Date()
@@ -379,6 +396,28 @@ final class TurnWaitCenter {
             title: result.title)
 
         let (kind, identifier, reason) = Self.notification(for: result, sessionID: info.sessionID)
+
+        if kind == .turnComplete, Self.waitsForSettledWork, result.settled == nil,
+            let carried = result.background, carried > 0
+        {
+            MidgarLog.info(
+                "turnwait profile=\(info.profileID) session=\(info.sessionID) ended a turn with \(carried) background task(s) still running on a bridge that cannot hold for the work; the card says so and nothing banners",
+                category: .lifecycle
+            )
+            return
+        }
+
+        if kind == .turnComplete,
+            !AppPreferences.noticeRules.admits(
+                failed: reason == .turnFailed, length: result.duration ?? 0,
+                sessionID: info.sessionID)
+        {
+            MidgarLog.info(
+                "turnwait \(result.state) profile=\(info.profileID) session=\(info.sessionID) ends quietly: the person's notification rules leave it out",
+                category: .lifecycle
+            )
+            return
+        }
 
         if Self.pushAlreadyCovers(profileID: info.profileID) {
             MidgarLog.info(

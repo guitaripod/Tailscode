@@ -30,7 +30,7 @@ extension SettingsViewController {
         case autoExpandThinking, sendOnReturn, promptEnhancement, compactActivity, responseStats
         case linkEmbeds
         case autoResume
-        case notifyTurnComplete, notifyApprovals, notifyUsage, notifyRunningLow, serverPush
+        case notifyApprovals, notifyUsage, notifyRunningLow, serverPush
         case liveActivities
         case presenceOrb
 
@@ -43,8 +43,7 @@ extension SettingsViewController {
             case .responseStats: return ResponseStatsSetting.title
             case .autoResume: return AutoResumeSetting.title
             case .linkEmbeds: return LinkEmbedsSetting.title
-            case .notifyTurnComplete: return String(localized: "Turn finished")
-            case .notifyApprovals: return String(localized: "Approvals and questions")
+            case .notifyApprovals: return NoticeRulesWords.needsYouTitle
             case .notifyUsage: return String(localized: "Usage warnings")
             case .notifyRunningLow: return String(localized: "Running low")
             case .serverPush: return String(localized: "Push from servers")
@@ -67,10 +66,7 @@ extension SettingsViewController {
             case .responseStats: return ResponseStatsSetting.explanation
             case .autoResume: return AutoResumeSetting.explanation
             case .linkEmbeds: return LinkEmbedsSetting.explanation
-            case .notifyTurnComplete:
-                return String(localized: "When an agent this device is watching goes idle")
-            case .notifyApprovals:
-                return String(localized: "When an agent stops to ask permission or a question")
+            case .notifyApprovals: return NoticeRulesWords.needsYouSubtitle
             case .notifyUsage:
                 return String(localized: "Once per window when a plan limit passes 90%")
             case .notifyRunningLow:
@@ -101,7 +97,6 @@ extension SettingsViewController {
             case .responseStats: return "gauge.with.dots.needle.67percent"
             case .autoResume: return ResumeReading.symbol
             case .linkEmbeds: return "globe"
-            case .notifyTurnComplete: return "checkmark.bubble"
             case .notifyApprovals: return "hand.raised"
             case .notifyUsage: return "gauge.with.needle"
             case .notifyRunningLow: return "clock"
@@ -120,7 +115,6 @@ extension SettingsViewController {
             case .responseStats: return Theme.Color.info
             case .autoResume: return Theme.Color.warning
             case .linkEmbeds: return Theme.Color.accent
-            case .notifyTurnComplete: return Theme.Color.success
             case .notifyApprovals: return Theme.Color.warning
             case .notifyUsage: return Theme.Color.info
             case .notifyRunningLow: return Theme.Color.warning
@@ -139,7 +133,6 @@ extension SettingsViewController {
             case .responseStats: return ResponseStatsSetting.isEnabled
             case .autoResume: return AutoResumeSetting.isEnabled
             case .linkEmbeds: return LinkEmbedsSetting.isEnabled
-            case .notifyTurnComplete: return AppPreferences.notifyTurnComplete
             case .notifyApprovals: return AppPreferences.notifyApprovals
             case .notifyUsage: return AppPreferences.notifyUsageWarnings
             case .notifyRunningLow: return AppPreferences.notifyRunningLow
@@ -159,8 +152,10 @@ extension SettingsViewController {
             case .responseStats: ResponseStatsSetting.setEnabled(value)
             case .autoResume: AutoResumeSetting.setEnabled(value)
             case .linkEmbeds: LinkEmbedsSetting.setEnabled(value)
-            case .notifyTurnComplete: AppPreferences.notifyTurnComplete = value
-            case .notifyApprovals: AppPreferences.notifyApprovals = value
+            case .notifyApprovals:
+                var rules = AppPreferences.noticeRules
+                rules.needsYou = value
+                AppPreferences.noticeRules = rules
             case .notifyUsage: AppPreferences.notifyUsageWarnings = value
             case .notifyRunningLow: AppPreferences.notifyRunningLow = value
             case .serverPush:
@@ -199,6 +194,9 @@ extension SettingsViewController {
         case appearance
         case chatDensity
         case activityStyle
+        case noticeFinish
+        case noticeMinimum
+        case mutedChats
         case pro
         case viewLogs
         case testAll

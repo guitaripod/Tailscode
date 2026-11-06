@@ -140,6 +140,12 @@ extension SettingsViewController: UICollectionViewDelegate {
             Theme.Haptics.tap()
             let picker = ThemePickerViewController()
             navigationController?.pushViewController(picker, animated: true)
+        case .noticeFinish:
+            chooseNoticeFinish(from: indexPath)
+        case .noticeMinimum:
+            chooseNoticeMinimum(from: indexPath)
+        case .mutedChats:
+            confirmUnmuteAll(from: indexPath)
         case .chatDensity:
             chooseDensity(from: indexPath)
         case .activityStyle:

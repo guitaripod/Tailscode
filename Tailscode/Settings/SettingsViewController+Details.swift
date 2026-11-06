@@ -162,6 +162,78 @@ extension SettingsViewController {
         present(sheet, animated: true)
     }
 
+    /// When finished work taps the shoulder, as a sheet over the row: four short answers, each
+    /// with the sentence that says what it means.
+    func chooseNoticeFinish(from indexPath: IndexPath) {
+        Theme.Haptics.tap()
+        let current = AppPreferences.noticeRules.finish
+        let sheet = UIAlertController(
+            title: NoticeRulesWords.finishTitle,
+            message: NoticeRules.Finish.allCases.map {
+                "\(NoticeRulesWords.title($0)): \(NoticeRulesWords.detail($0))"
+            }.joined(separator: "\n"),
+            preferredStyle: .actionSheet)
+        for finish in NoticeRules.Finish.allCases {
+            let title = NoticeRulesWords.title(finish)
+            sheet.addAction(
+                UIAlertAction(title: finish == current ? title + " ✓" : title, style: .default) {
+                    [weak self] _ in
+                    Theme.Haptics.selection()
+                    var rules = AppPreferences.noticeRules
+                    rules.finish = finish
+                    AppPreferences.noticeRules = rules
+                    self?.reconfigure([.noticeFinish])
+                })
+        }
+        present(sheet: sheet, over: indexPath)
+    }
+
+    func chooseNoticeMinimum(from indexPath: IndexPath) {
+        Theme.Haptics.tap()
+        let current = AppPreferences.noticeRules.minimumWork
+        let sheet = UIAlertController(
+            title: NoticeRulesWords.minimumTitle, message: NoticeRulesWords.minimumSubtitle,
+            preferredStyle: .actionSheet)
+        for minimum in NoticeRules.minimumChoices {
+            let title = NoticeRulesWords.minimum(minimum)
+            sheet.addAction(
+                UIAlertAction(title: minimum == current ? title + " ✓" : title, style: .default) {
+                    [weak self] _ in
+                    Theme.Haptics.selection()
+                    var rules = AppPreferences.noticeRules
+                    rules.minimumWork = minimum
+                    AppPreferences.noticeRules = rules
+                    self?.reconfigure([.noticeMinimum])
+                })
+        }
+        present(sheet: sheet, over: indexPath)
+    }
+
+    func confirmUnmuteAll(from indexPath: IndexPath) {
+        Theme.Haptics.tap()
+        let sheet = UIAlertController(
+            title: NoticeRulesWords.mutedTitle,
+            message: NoticeRulesWords.mutedCount(AppPreferences.noticeRules.muted.count),
+            preferredStyle: .actionSheet)
+        sheet.addAction(
+            UIAlertAction(title: NoticeRulesWords.unmuteAll, style: .default) { [weak self] _ in
+                Theme.Haptics.selection()
+                var rules = AppPreferences.noticeRules
+                rules.muted = []
+                AppPreferences.noticeRules = rules
+                self?.applySnapshot()
+            })
+        present(sheet: sheet, over: indexPath)
+    }
+
+    private func present(sheet: UIAlertController, over indexPath: IndexPath) {
+        sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
+        sheet.popoverPresentationController?.sourceView = collectionView
+        sheet.popoverPresentationController?.sourceRect =
+            collectionView.cellForItem(at: indexPath)?.frame ?? .zero
+        present(sheet, animated: true)
+    }
+
     /// How a turn's work is drawn, as a sheet over the row for the same reason the density is: the
     /// choice is two words. A chat left open behind this screen answers it at once.
     func chooseActivityStyle(from indexPath: IndexPath) {

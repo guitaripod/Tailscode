@@ -10,9 +10,13 @@ extension SettingsViewController {
         if ConnectionController.shared.isDemoMode { connectionItems.append(.leaveDemo) }
 
         var notificationItems: [Item] = [
-            .notificationPermission, .backgroundRefresh, .toggle(.notifyTurnComplete),
-            .toggle(.notifyApprovals), .toggle(.notifyUsage), .toggle(.notifyRunningLow),
-            .toggle(.liveActivities), .toggle(.serverPush),
+            .notificationPermission, .backgroundRefresh, .noticeFinish, .noticeMinimum,
+            .toggle(.notifyApprovals),
+        ]
+        if !AppPreferences.noticeRules.muted.isEmpty { notificationItems.append(.mutedChats) }
+        notificationItems += [
+            .toggle(.notifyUsage), .toggle(.notifyRunningLow), .toggle(.liveActivities),
+            .toggle(.serverPush),
         ]
         notificationItems += pushCapableProfiles.map { Item.pushState($0.id) }
         notificationItems.append(.testNotification)
@@ -212,6 +216,18 @@ extension SettingsViewController {
                 localized:
                     "theme appearance dark light mode colour color palette rose pine tokyo night everforest gruvbox nord solarized phosphor",
                 comment: "search keywords")
+        case .noticeFinish:
+            return "\(NoticeRulesWords.finishTitle) "
+                + String(
+                    localized: "notifications finished done turn ends spam background work every",
+                    comment: "search keywords")
+        case .noticeMinimum:
+            return "\(NoticeRulesWords.minimumTitle) "
+                + String(
+                    localized: "notifications minimum length long short quick", comment: "search keywords")
+        case .mutedChats:
+            return "\(NoticeRulesWords.mutedTitle) "
+                + String(localized: "mute unmute silence chats quiet", comment: "search keywords")
         case .chatDensity:
             return "\(ChatDensitySetting.title) "
                 + String(

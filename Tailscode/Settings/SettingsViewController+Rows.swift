@@ -382,6 +382,33 @@ extension SettingsViewController {
             content.image = UIImage(systemName: "paintpalette")
             content.imageProperties.tintColor = Theme.Color.special
             cell.accessories = [.disclosureIndicator()]
+        case .noticeFinish:
+            let rules = AppPreferences.noticeRules
+            content.text = NoticeRulesWords.finishTitle
+            content.secondaryText = NoticeRulesWords.detail(rules.finish)
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "checkmark.bubble")
+            content.imageProperties.tintColor = Theme.Color.success
+            cell.accessories = [
+                .label(text: NoticeRulesWords.title(rules.finish)), .disclosureIndicator(),
+            ]
+        case .noticeMinimum:
+            content.text = NoticeRulesWords.minimumTitle
+            content.secondaryText = NoticeRulesWords.minimumSubtitle
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "timer")
+            content.imageProperties.tintColor = Theme.Color.info
+            cell.accessories = [
+                .label(text: NoticeRulesWords.minimum(AppPreferences.noticeRules.minimumWork)),
+                .disclosureIndicator(),
+            ]
+        case .mutedChats:
+            content.text = NoticeRulesWords.mutedTitle
+            content.secondaryText = NoticeRulesWords.mutedCount(AppPreferences.noticeRules.muted.count)
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "bell.slash")
+            content.imageProperties.tintColor = Theme.Color.secondaryLabel
+            cell.accessories = [.label(text: NoticeRulesWords.unmuteAll), .disclosureIndicator()]
         case .chatDensity:
             content.text = ChatDensitySetting.title
             content.secondaryText = ChatDensitySetting.current.explanation

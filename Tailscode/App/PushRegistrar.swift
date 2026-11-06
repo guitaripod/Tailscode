@@ -75,6 +75,13 @@ enum PushRegistrar {
         upload(token)
     }
 
+    /// Hands every bridge the person's new notification rules. A push is decided on the server,
+    /// so a rule the server has not heard is a rule that does nothing to what reaches the phone.
+    static func rulesChanged() {
+        guard let token = UserDefaults.standard.string(forKey: tokenKey) else { return }
+        upload(token, skippingAcked: false)
+    }
+
     /// Applies the server-push preference: on, every bridge gets the token back;
     /// off, every bridge is told to forget it, which is the only thing that
     /// actually stops the pushes arriving.
@@ -137,10 +144,11 @@ enum PushRegistrar {
         }
     }
 
-    private static func upload(_ token: String) {
+    private static func upload(_ token: String, skippingAcked: Bool = true) {
         guard AppPreferences.pushAlertsEnabled else { return }
-        let registration = DevicePushRegistration(token: token, environment: environment)
-        let bridges = bridges(skippingAcked: true)
+        let registration = DevicePushRegistration(
+            token: token, environment: environment, rules: AppPreferences.noticeRules.wire())
+        let bridges = bridges(skippingAcked: skippingAcked)
         guard !bridges.isEmpty else { return }
         MidgarLog.info(
             "push: uploading device token to \(bridges.count) bridge(s)", category: .connection)

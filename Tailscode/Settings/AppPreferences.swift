@@ -105,17 +105,25 @@ enum AppPreferences {
         set { defaults.set(newValue, forKey: "pref.promptEnhancement") }
     }
 
-    /// A ping when a turn this device was watching reaches idle.
-    static var notifyTurnComplete: Bool {
-        get { flag("pref.notify.turnComplete", default: true) }
-        set { defaults.set(newValue, forKey: "pref.notify.turnComplete") }
+    /// What the person asked to hear about, under the keys every client and the bridge's
+    /// registration read. A change reaches the bridges this device registered with, because a
+    /// push is decided there and a local setting cannot take back one already sent.
+    static var noticeRules: NoticeRules {
+        get { NoticeRulesKeys.read { defaults.object(forKey: $0) } }
+        set {
+            NoticeRulesKeys.write(newValue) { key, value in
+                if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
+            }
+            StoreNotice.post(NoticeRulesKeys.didChange)
+            Task { @MainActor in PushRegistrar.rulesChanged() }
+        }
     }
 
+    /// Whether finished work can raise anything at all.
+    static var notifyTurnComplete: Bool { noticeRules.finish != .never }
+
     /// A ping when an agent stops to ask for permission or a decision.
-    static var notifyApprovals: Bool {
-        get { flag("pref.notify.approvals", default: true) }
-        set { defaults.set(newValue, forKey: "pref.notify.approvals") }
-    }
+    static var notifyApprovals: Bool { noticeRules.needsYou }
 
     /// A ping the first time a usage window crosses `UsageWarnings.threshold`
     /// within its reset period.

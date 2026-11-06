@@ -158,6 +158,7 @@ extension HomeViewController: UICollectionViewDelegate {
                     SessionPinStore.toggle(
                         profileID: entry.profileID, sessionID: entry.session.id)
                 })
+            actions.append(NoticeMute.action(sessionID: entry.session.id))
             let isUnread = SessionSeenStore.unreadEvaluator()(
                 entry.session.id, entry.session.updatedAt)
             actions.append(

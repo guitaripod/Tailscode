@@ -163,38 +163,80 @@ final class SessionActivity {
                 TurnWaitCenter.shared.arm(profileID: profileID, sessionID: sessionID, backend: keepAlive.backend)
             }
         }
+        follow(
+            sessionID: sessionID, profileID: profileID, title: title, keepAlive: keepAlive)
         guard previous != status else {
             if status != .idle { postLiveTick() }
             return
         }
         statuses[sessionID] = status
-        if status == .idle, previous != .idle {
-            TurnWaitCenter.shared.cancel(sessionID: sessionID)
-            let body = String(localized: "Your agent finished.")
-            if PushRegistrar.covers(profileID: profileID) {
-                recordMissed(
-                    identifier: "done:\(sessionID)", profileID: profileID, sessionID: sessionID,
-                    title: title, body: body)
-            } else if TurnEndGate.claim(profileID: profileID, sessionID: sessionID) {
-                let ended = keepAlive.state
-                let failed = ended.lastFailure != nil
-                let notice = (failed
-                    ? NoticeReader.wire(turnFailed: ended) : NoticeReader.wire(turnEnded: ended))
-                    .located(on: keepAlive.serverName, agent: keepAlive.backend.agentType.rawValue)
-                NotificationManager.notify(
-                    kind: .turnComplete,
-                    title: title, body: body,
-                    identifier: "done:\(sessionID)",
-                    sessionID: sessionID, profileID: profileID, notice: notice,
-                    activity: failed ? .turnFailed : .turnEnded)
-            } else {
-                MidgarLog.info(
-                    "turn ended locally but already claimed by the background wait; skipping duplicate banner for session=\(sessionID)",
-                    category: .lifecycle
-                )
-            }
-        }
         NotificationCenter.default.post(name: Self.didChange, object: nil)
+    }
+
+    private var settle = WorkSettle()
+
+    /// Folds the conversation into the settle and says what the person asked to hear: the work
+    /// ending, once nothing it started is still running and nothing has started again for the
+    /// grace, or every turn when they chose that. A settled ending is handed to the system to
+    /// deliver after the grace, so a phone the system suspends in the meantime still says it, and
+    /// is taken back the moment the work starts again.
+    private func follow(
+        sessionID: String, profileID: String, title: String, keepAlive: ChatViewModel
+    ) {
+        let rules = AppPreferences.noticeRules
+        let reading = WorkSettle.Reading(
+            keepAlive.state,
+            heldQueue: keepAlive.queueHeldAfterFailure ? 0 : keepAlive.queue.count)
+        let change = settle.observe("\(profileID)/\(sessionID)", reading, at: Date())
+        _ = settle.due(at: Date())
+        let identifier = "done:\(sessionID)"
+        if change.resumed {
+            NotificationManager.withdraw(identifiers: [identifier])
+            TurnEndGate.reset(profileID: profileID, sessionID: sessionID)
+        }
+        let ending: WorkSettle.Ending?
+        let delay: TimeInterval?
+        switch rules.finish {
+        case .everyTurn:
+            ending = change.turnEnded
+            delay = nil
+        case .settled, .failures:
+            ending = change.settling
+            delay = WorkSettle.grace
+        case .never:
+            ending = nil
+            delay = nil
+        }
+        guard let ending,
+            rules.admits(failed: ending.failed, length: ending.length, sessionID: sessionID)
+        else { return }
+        TurnWaitCenter.shared.cancel(sessionID: sessionID)
+        let body =
+            ending.failed
+            ? String(localized: "The turn failed.") : String(localized: "Your agent finished.")
+        if PushRegistrar.covers(profileID: profileID) {
+            recordMissed(
+                identifier: identifier, profileID: profileID, sessionID: sessionID,
+                title: title, body: body, failed: ending.failed)
+            return
+        }
+        guard TurnEndGate.claim(profileID: profileID, sessionID: sessionID) || change.settling?.failed == true
+        else {
+            MidgarLog.info(
+                "work ended locally but already claimed by the background wait; skipping duplicate banner for session=\(sessionID)",
+                category: .lifecycle
+            )
+            return
+        }
+        let ended = keepAlive.state
+        var notice = (ending.failed
+            ? NoticeReader.wire(turnFailed: ended) : NoticeReader.wire(turnEnded: ended))
+            .located(on: keepAlive.serverName, agent: keepAlive.backend.agentType.rawValue)
+        notice.seconds = Int(ending.length.rounded())
+        NotificationManager.notify(
+            kind: .turnComplete, title: title, body: body, identifier: identifier,
+            sessionID: sessionID, profileID: profileID, notice: notice,
+            activity: ending.failed ? .turnFailed : .turnEnded, after: delay)
     }
 
     /// Nil for a witness that has not been told anything yet — the one reading this list must not
@@ -215,15 +257,14 @@ final class SessionActivity {
     /// can be missed — the notification came from somewhere else, but it lasts exactly as long.
     /// Only while the app is away: a turn that ends under your eyes is not news.
     private func recordMissed(
-        identifier: String, profileID: String, sessionID: String, title: String, body: String
+        identifier: String, profileID: String, sessionID: String, title: String, body: String,
+        failed: Bool
     ) {
-        guard AppPreferences.notifyTurnComplete,
-            UIApplication.shared.applicationState != .active
-        else { return }
+        guard UIApplication.shared.applicationState != .active else { return }
         ActivityInbox.record([
             MissedActivity(
                 identifier: identifier, profileID: profileID, sessionID: sessionID, title: title,
-                body: body, reason: .turnEnded)
+                body: body, reason: failed ? .turnFailed : .turnEnded)
         ])
     }
 

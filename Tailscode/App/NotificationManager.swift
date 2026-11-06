@@ -255,11 +255,14 @@ enum NotificationManager {
     ///     is also a notice that can be missed — a banner lasts seconds whether or not anybody was
     ///     looking — so anything named here is written into `ActivityInbox` by the same decision
     ///     that banners it: suppressed by preference means never raised, so never missed.
+    ///   - delay: hands the notice to the system to deliver this much later, for an ending that is
+    ///     news only if nothing starts again first. The system delivers it whether or not this
+    ///     process is still running; `withdraw(identifiers:)` takes it back.
     static func notify(
         kind: Kind, title: String, body: String, identifier: String, sessionID: String? = nil,
         profileID: String? = nil, permission: PermissionRequest? = nil,
         question: QuestionRequest? = nil, notice: NoticeWire? = nil, picture: Data? = nil,
-        activity: MissedActivity.Reason? = nil
+        activity: MissedActivity.Reason? = nil, after delay: TimeInterval? = nil
     ) {
         guard kind.isEnabled else {
             MidgarLog.info(
@@ -311,7 +314,8 @@ enum NotificationManager {
         let pending = ActivityInbox.all().count
         if pending > 0 { content.badge = NSNumber(value: pending) }
         let request = UNNotificationRequest(
-            identifier: identifier, content: content, trigger: nil)
+            identifier: identifier, content: content,
+            trigger: delay.map { UNTimeIntervalNotificationTrigger(timeInterval: max(1, $0), repeats: false) })
         UNUserNotificationCenter.current().add(request)
     }
 
@@ -407,7 +411,15 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate, Send
         let sessionID = userInfo["sessionID"] as? String
         let waitsOnYou = NoticeWire(userInfo: userInfo).map { $0.kind == .question || $0.kind == .approval } ?? false
         nonisolated(unsafe) let complete = completionHandler
+        let identifier = notification.request.identifier
+        let deferredEnding = !isPush && notification.request.trigger is UNTimeIntervalNotificationTrigger
+            && identifier.hasPrefix("done:")
         DispatchQueue.main.async {
+            if deferredEnding, UIApplication.shared.applicationState == .active {
+                MainActor.assumeIsolated { NotificationManager.withdraw(identifiers: [identifier]) }
+                complete([])
+                return
+            }
             guard isPush else {
                 complete([.banner, .list, .sound])
                 return

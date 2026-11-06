@@ -213,6 +213,8 @@ enum ParityManifest {
                     + "so the four states collapse into two and the remedy is always the same tap")
         case .demoMode: return .implemented("enterDemoMode")
         case .activityNotifications: return .implemented("NotificationManager")
+        case .noticeRules: return .implemented("AppPreferences.noticeRules")
+        case .chatMute: return .implemented("NoticeMute.action")
         case .missedActivity:
             return .partial(
                 "ChatRowNews",
