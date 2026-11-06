@@ -49,6 +49,10 @@ final class WatchTileWordsView: WatchPassView {
         var detail: CGRect?
         var detailLines = 0
         var steps: [CGRect] = []
+        var facts: CGRect?
+        var plan: [CGRect] = []
+        var said: CGRect?
+        var files: [CGRect] = []
         var context: CGRect?
         var hint: CGRect?
         var approve: CGRect?
@@ -61,7 +65,13 @@ final class WatchTileWordsView: WatchPassView {
     let statusLabel = WatchLabel()
     let wordsLabel = WatchLabel(wrap: .words, lines: 3)
     let detailLabel = WatchLabel(wrap: .characters, lines: 99)
-    let stepLabels = (0..<3).map { _ in WatchLabel() }
+    let stepLabels = (0..<AgentRow.stepCount).map { _ in WatchLabel() }
+    let factsLabel = WatchLabel()
+    /// The plan and the files, a label per line so a long item is cut at its own end rather than
+    /// wrapping the next one out of sight.
+    let planLabels = (0..<6).map { _ in WatchLabel() }
+    let saidLabel = WatchLabel(wrap: .words, lines: 5)
+    let fileLabels = (0..<6).map { _ in WatchLabel() }
     let contextLabel = WatchLabel()
     let hintLabel = WatchLabel(wrap: .words, lines: 2)
     let approve = WatchPressView()
@@ -85,7 +95,10 @@ final class WatchTileWordsView: WatchPassView {
         self.face = face
         super.init(frame: .zero)
         wantsLayer = true
-        for label in [titleLabel, statusLabel, wordsLabel, detailLabel, contextLabel, hintLabel] + stepLabels {
+        for label in
+            [titleLabel, statusLabel, wordsLabel, detailLabel, contextLabel, hintLabel, factsLabel, saidLabel]
+            + stepLabels + planLabels + fileLabels
+        {
             addSubview(label)
         }
         for button in [deny, approve, chat] { addSubview(button) }
@@ -157,7 +170,7 @@ final class WatchTileWordsView: WatchPassView {
     static func stepLines(_ tile: WallTile) -> [(mark: String, words: String)] {
         tile.steps.map { ($0, $0.plain ?? $0.words) }
             .filter { $0.1 != tile.words && !$0.1.isEmpty }
-            .prefix(3).map { (mark(for: $0.0), $0.1) }
+            .map { (mark(for: $0.0), $0.1) }
     }
 
     private static func mark(for step: AgentStep) -> String { mark(step.outcome) }
@@ -185,8 +198,12 @@ final class WatchTileWordsView: WatchPassView {
         face = nextFace
         phase = nextPhase
         let steps = Self.stepLines(next).map { $0.mark + $0.words }.joined(separator: "|")
+        let brief = [
+            next.brief.facts ?? "", next.brief.said ?? "", next.brief.plan.map { $0.headline + $0.lines.joined() } ?? "",
+            next.brief.filesLine ?? "",
+        ].joined(separator: "|")
         signature = [
-            next.title, next.words, next.detail ?? "", Self.metaLine(next), steps,
+            next.title, next.words, next.detail ?? "", Self.metaLine(next), steps, brief,
             "\(next.state.rank)", next.ask?.id ?? "", "\(nextFace.type.unit)",
             "\(nextFace.style.approvals)", "\(next.contextShare.map { Int($0 * 100) } ?? -1)",
             "\(next.beat?.isEmpty == false)", "\(nextPhase)",

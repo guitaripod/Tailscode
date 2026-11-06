@@ -201,20 +201,75 @@ extension WatchTileWordsView {
         return true
     }
 
+    /// Fills what the line, the command and the heartbeat leave with the brief, as `WallBriefFill`
+    /// chooses: the counts, the plan, the agent's last words, its steps and the files it changed,
+    /// each as many lines as there is room for, in reading order.
     private func placeSteps(
         _ plan: inout Plan, tile: WallTile, level: Level, top: CGFloat, bottom: CGFloat, width: CGFloat,
         pad: CGFloat
     ) {
         guard level.steps > 0, !plan.truncated else { return }
-        let font = face.type.prose(level.steps)
-        let height = WatchText.lineHeight(font) + 2
+        let type = face.type
+        let palette = face.palette
+        let font = type.prose(level.steps)
+        let saidFont = type.prose(level.steps * 1.06)
+        let filesFont = type.mono(level.steps * 0.94)
+        let line = WatchText.lineHeight(font) + 2
+        let saidLine = WatchText.lineHeight(saidFont)
+        let filesLine = WatchText.lineHeight(filesFont)
+        let gap = CGFloat(max(0.7 * type.unit, 5))
+        let items = Self.stepLines(tile)
+        let planLines = tile.brief.plan.map { [$0.headline] + $0.lines } ?? []
+        let fileLines = tile.brief.files.reversed().map(\.words)
+        factsLabel.show(tile.brief.facts ?? "", font: font, ink: palette.dim.watchColor())
+        saidLabel.configure(wrap: .words, lines: 999)
+        saidLabel.show(
+            tile.brief.said.map { "\u{201C}" + $0 + "\u{201D}" } ?? "", font: saidFont,
+            ink: palette.text.watchColor(alpha: 0.74))
+        let saidLines = saidLabel.text.isEmpty ? 0 : saidLabel.naturalLines(forWidth: width)
+        let offers = [
+            WallBriefFill.Offer(part: .facts, lineHeight: Double(line), lines: tile.brief.facts == nil ? 0 : 1),
+            WallBriefFill.Offer(part: .plan, lineHeight: Double(line), lines: min(planLabels.count, planLines.count)),
+            WallBriefFill.Offer(part: .said, lineHeight: Double(saidLine), lines: min(5, saidLines)),
+            WallBriefFill.Offer(part: .steps, lineHeight: Double(line), lines: items.count),
+            WallBriefFill.Offer(part: .files, lineHeight: Double(filesLine + 2), lines: min(fileLabels.count, fileLines.count)),
+        ]
+        let granted = WallBriefFill.choose(offers, room: Double(bottom - top), gap: Double(gap))
         var y = top
-        for (index, step) in Self.stepLines(tile).enumerated() where index < stepLabels.count {
-            guard y + height <= bottom + 0.5 else { break }
-            let ink = face.palette.dim.watchColor(alpha: [1, 0.78, 0.58][index])
-            stepLabels[index].show(step.mark + "  " + step.words, font: font, ink: ink)
-            plan.steps.append(CGRect(x: pad, y: y, width: width, height: height))
-            y += height
+        if granted[.facts] != nil {
+            plan.facts = CGRect(x: pad, y: y, width: width, height: line)
+            y += line + gap
+        }
+        if let count = granted[.plan] {
+            for (index, words) in planLines.prefix(count).enumerated() {
+                planLabels[index].show(
+                    words, font: index == 0 ? type.prose(level.steps, weight: .semibold) : font,
+                    ink: palette.text.watchColor(alpha: index == 0 ? 0.9 : 0.78))
+                plan.plan.append(CGRect(x: pad, y: y, width: width, height: line))
+                y += line
+            }
+            y += gap
+        }
+        if let count = granted[.said] {
+            saidLabel.configure(wrap: .words, lines: count)
+            plan.said = CGRect(x: pad, y: y, width: width, height: CGFloat(count) * saidLine + 2)
+            y += CGFloat(count) * saidLine + 2 + gap
+        }
+        if let count = granted[.steps] {
+            for (index, step) in items.prefix(count).enumerated() where index < stepLabels.count {
+                let ink = palette.dim.watchColor(alpha: max(0.4, 1 - 0.11 * Double(index)))
+                stepLabels[index].show(step.mark + "  " + step.words, font: font, ink: ink)
+                plan.steps.append(CGRect(x: pad, y: y, width: width, height: line))
+                y += line
+            }
+            y += gap
+        }
+        if let count = granted[.files] {
+            for (index, words) in fileLines.prefix(count).enumerated() {
+                fileLabels[index].show(words, font: filesFont, ink: palette.dim.watchColor())
+                plan.files.append(CGRect(x: pad, y: y, width: width, height: filesLine + 2))
+                y += filesLine + 2
+            }
         }
     }
 
@@ -232,6 +287,16 @@ extension WatchTileWordsView {
         for (index, label) in stepLabels.enumerated() {
             label.isHidden = index >= plan.steps.count
             if index < plan.steps.count { label.frame = plan.steps[index].integral }
+        }
+        for (label, frame) in [(factsLabel, plan.facts), (saidLabel, plan.said)] {
+            label.isHidden = frame == nil
+            if let frame { label.frame = frame.integral }
+        }
+        for (labels, frames) in [(planLabels, plan.plan), (fileLabels, plan.files)] {
+            for (index, label) in labels.enumerated() {
+                label.isHidden = index >= frames.count
+                if index < frames.count { label.frame = frames[index].integral }
+            }
         }
         contextLabel.isHidden = plan.context == nil
         if let context = plan.context { contextLabel.frame = context.integral }
