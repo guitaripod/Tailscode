@@ -61,6 +61,19 @@ struct QuickAskMenuTests {
         #expect(empty.map(\.id) == ["actions"] && empty[0].items.count == 1)
     }
 
+    @Test("A list looks the same until something a line shows changes")
+    func look() {
+        let one = QuickAskMenu.sections(starters: [starter("a"), starter("b")], later: [], recents: [entry("x")])
+        let same = QuickAskMenu.sections(starters: [starter("a"), starter("b")], later: [], recents: [entry("x")])
+        #expect(QuickAskMenu.look(of: one, unread: 0) == QuickAskMenu.look(of: same, unread: 0))
+        let renamed = QuickAskMenu.sections(
+            starters: [starter("a"), starter("b")], later: [], recents: [entry("x", title: "Another chat")])
+        #expect(QuickAskMenu.look(of: one, unread: 0) != QuickAskMenu.look(of: renamed, unread: 0))
+        let reordered = QuickAskMenu.sections(starters: [starter("b"), starter("a")], later: [], recents: [entry("x")])
+        #expect(QuickAskMenu.look(of: one, unread: 0) != QuickAskMenu.look(of: reordered, unread: 0))
+        #expect(QuickAskMenu.look(of: one, unread: 0) != QuickAskMenu.look(of: one, unread: 1))
+    }
+
     @Test("Chats to hand on are numbered from one")
     func sessions() {
         let items = QuickAskMenu.items(QuickAskMenu.sessions((0..<11).map { entry("s\($0)") }))

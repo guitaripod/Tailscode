@@ -16,31 +16,36 @@ import TailscodeCore
 /// as it is now. Enter is still the whole ceremony: the words and anything attached go out as a new
 /// conversation with no project on the machine named in the chip, and the card stays only long
 /// enough for that machine to answer, so a failed mint keeps the question in hand.
+///
+/// The window is built once and kept: closing puts it away (`standby`) and the next summon brings
+/// it back with what that summon knows (`arrive`), so a chord costs a frame rather than a window.
 final class QuickAskWindow: @unchecked Sendable {
     nonisolated(unsafe) static var open: QuickAskWindow?
+    /// The window while it is put away, built and styled, waiting for the next summon.
+    nonisolated(unsafe) static var standby: QuickAskWindow?
 
-    let servers: [ConnectionProfile]
+    var servers: [ConnectionProfile]
     /// What each machine's agent takes as an effort level, read where a backend could be asked:
     /// this window holds profiles rather than connections, and a level it cannot offer honestly
     /// is one it must not offer at all.
-    let agentEfforts: [String: [String]]
+    var agentEfforts: [String: [String]]
     /// Which machines resolve their own slash words out of the prompt text. Read where a backend
     /// could be asked, for the same reason the effort levels are: this window holds profiles rather
     /// than connections, and the grammar belongs to the server the question is aimed at.
-    let promptTextGrammar: [String: Bool]
+    var promptTextGrammar: [String: Bool]
     /// What the aimed server can be told to do. Answered from what it last published so the first
     /// keystroke is never blank, and corrected by a fetch behind it.
     var commands: [AgentCommand] = []
-    let recents: [SessionEntry]
+    var recents: [SessionEntry]
     var catalogWatch: Task<Void, Never>?
     var targetIndex: Int
     var reachability: [String: Bool] = [:]
-    let shortcuts = ShortcutSet.load()
-    let onAsk:
+    var shortcuts = ShortcutSet.load()
+    var onAsk:
         @Sendable (String, QuickAskSend, [PendingAttachment], @escaping @Sendable (NewChatFailure?)
             -> Void) -> Void
-    let onResume: @Sendable (SessionEntry) -> Void
-    let onAskParty: @Sendable (QuickAskPartySend, @escaping @Sendable (NewChatFailure?) -> Void) -> Void
+    var onResume: @Sendable (SessionEntry) -> Void
+    var onAskParty: @Sendable (QuickAskPartySend, @escaping @Sendable (NewChatFailure?) -> Void) -> Void
     /// The aim an action moved for one question, put back once the question has left.
     var hold: QuickAskAimHold?
     /// An action part way through fetching what its template names.
@@ -63,6 +68,11 @@ final class QuickAskWindow: @unchecked Sendable {
     let chord: UnsafeMutablePointer<GtkWidget>
     var menuItems: [QuickAskMenuItem] = []
     var menuRows: [UnsafeMutablePointer<GtkWidget>] = []
+    /// The list as drawn for each state of the box on each machine, kept so going back to one costs
+    /// nothing.
+    var starterPages: [StarterPage.Key: StarterPage] = [:]
+    /// The keys the foot was last drawn with, so a redraw that says the same thing builds nothing.
+    var footShown: [QuickAskFooter.Key] = []
     var menuCursor = QuickAskMenuCursor()
     /// Whether the list was last drawn for a typed box, so it is redrawn as the verbs only when
     /// the box crosses between empty and not, never on every keystroke.
@@ -82,6 +92,9 @@ final class QuickAskWindow: @unchecked Sendable {
     var actionsWatch: NSObjectProtocol?
     var laterWatch: NSObjectProtocol?
     var completion: SlashPopover?
+    /// Which summon the window is serving. A mint answers long after its Enter, and the window it
+    /// answers may by then have been put away and brought back for another question.
+    var visit = 0
 
     /// - Parameter onAsk: mints the conversation on the chosen server and answers with nothing
     ///   when it worked, or with the reason it did not; the words and their attachments travel
@@ -102,37 +115,42 @@ final class QuickAskWindow: @unchecked Sendable {
             QuickAskPartySend, @escaping @Sendable (NewChatFailure?) -> Void
         ) -> Void
     ) {
-        guard !servers.isEmpty else { return }
-        open?.close()
-        open = QuickAskWindow(
-            servers: servers, agentEfforts: agentEfforts, promptTextGrammar: promptTextGrammar,
-            preferredServer: preferredServer, recents: recents, parent: parent, onAsk: onAsk,
-            onResume: onResume, onAskParty: onAskParty)
+        present(
+            QuickAskSetup(
+                servers: servers, agentEfforts: agentEfforts, promptTextGrammar: promptTextGrammar,
+                preferredServer: preferredServer, recents: recents, parent: parent, onAsk: onAsk,
+                onResume: onResume, onAskParty: onAskParty))
     }
 
-    init(
-        servers: [ConnectionProfile], agentEfforts: [String: [String]],
-        promptTextGrammar: [String: Bool],
-        preferredServer: String?, recents: [SessionEntry],
-        parent: UnsafeMutablePointer<GtkWidget>?,
-        onAsk: @escaping @Sendable (
-            String, QuickAskSend, [PendingAttachment], @escaping @Sendable (NewChatFailure?) -> Void
-        ) -> Void,
-        onResume: @escaping @Sendable (SessionEntry) -> Void,
-        onAskParty: @escaping @Sendable (
-            QuickAskPartySend, @escaping @Sendable (NewChatFailure?) -> Void
-        ) -> Void
-    ) {
-        self.servers = servers
-        self.onAskParty = onAskParty
-        self.agentEfforts = agentEfforts
-        self.promptTextGrammar = promptTextGrammar
-        self.recents = recents
-        self.onAsk = onAsk
-        self.onResume = onResume
-        let aimed = QuickAskDefaults.target(
-            among: servers.map(\.id), fallback: preferredServer)
-        targetIndex = servers.firstIndex { $0.id == aimed } ?? 0
+    static func present(_ setup: QuickAskSetup) {
+        guard !setup.servers.isEmpty else { return }
+        open?.close()
+        let window = standby ?? QuickAskWindow(setup)
+        standby = nil
+        open = window
+        window.arrive(setup)
+    }
+
+    /// Builds the window ahead of the first summon and keeps it out of sight, so the first chord
+    /// after the app starts costs what every later one does.
+    static func prepare(_ setup: QuickAskSetup) {
+        guard open == nil, standby == nil, !setup.servers.isEmpty else { return }
+        let window = QuickAskWindow(setup)
+        window.stage.settle()
+        standby = window
+        AppLog.write(.ui, "ASK prepared")
+    }
+
+    private init(_ setup: QuickAskSetup) {
+        servers = setup.servers
+        onAskParty = setup.onAskParty
+        agentEfforts = setup.agentEfforts
+        promptTextGrammar = setup.promptTextGrammar
+        recents = setup.recents
+        onAsk = setup.onAsk
+        onResume = setup.onResume
+        targetIndex = Self.aim(setup)
+        let parent = setup.parent
 
         window = gtk_window_new()!
         gtk_window_set_title(ptr(window), Localized.text("Quick ask"))
@@ -253,14 +271,17 @@ final class QuickAskWindow: @unchecked Sendable {
         }
 
         editor.onChanged = { [weak self] in
-            self?.clearHint()
-            self?.releaseHoldIfEmptied()
-            self?.stashDraft()
-            self?.refreshStarterVisibility()
-            self?.refreshSend()
-            self?.refreshAura()
-            self?.updateSlashCompletion()
-            self?.renderTyping()
+            guard let self else { return }
+            AskTimer.edit(in: self.window) {
+                self.clearHint()
+                self.releaseHoldIfEmptied()
+                self.stashDraft()
+                self.refreshStarterVisibility()
+                self.refreshSend()
+                self.refreshAura()
+                self.updateSlashCompletion()
+                self.renderTyping()
+            }
         }
         Gtk.onKey(window) { [weak self] keyval, state in
             guard let self else { return false }
@@ -381,6 +402,54 @@ final class QuickAskWindow: @unchecked Sendable {
         Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [weak self] in
             if let self, QuickAskWindow.open === self { QuickAskWindow.open = nil }
         }
+        /// A Wayland clipboard answers only a window that has the keyboard, and the chord that
+        /// opened this one often arrives a frame before the compositor hands it over, so the
+        /// clipboard is read again the moment the window is the active one.
+        Gtk.onNotify(UnsafeMutableRawPointer(window), property: "is-active") {
+            Gtk.onMain {
+                guard let open = QuickAskWindow.open, gtk_window_is_active(ptr(open.window)) != 0
+                else { return }
+                open.readCopied()
+            }
+        }
+
+        refreshTarget()
+    }
+
+    private static func aim(_ setup: QuickAskSetup) -> Int {
+        let aimed = QuickAskDefaults.target(
+            among: setup.servers.map(\.id), fallback: setup.preferredServer)
+        return setup.servers.firstIndex { $0.id == aimed } ?? 0
+    }
+
+    /// Brings the window up for one summon, with what that summon knows: the machines, the chats
+    /// it can reopen, what sending does, the draft filed under the machine it aims at, and whatever
+    /// was copied since it was last open.
+    func arrive(_ setup: QuickAskSetup) {
+        visit += 1
+        servers = setup.servers
+        agentEfforts = setup.agentEfforts
+        promptTextGrammar = setup.promptTextGrammar
+        recents = setup.recents
+        onAsk = setup.onAsk
+        onResume = setup.onResume
+        onAskParty = setup.onAskParty
+        targetIndex = Self.aim(setup)
+        stage.show()
+        shortcuts = ShortcutSet.load()
+        watch()
+        restoreDraft()
+        refreshTarget()
+        readCopied()
+        watchCatalog()
+        loadCommands()
+        AskTimer.note("arrived")
+        AppLog.write(.ui, "ASK shown target=\(servers[targetIndex].name)")
+    }
+
+    /// What changes elsewhere while the window is up and redraws it: the waiting questions, the
+    /// person's actions, and the chord the desktop granted.
+    func watch() {
         laterWatch = NotificationCenter.default.addObserver(
             forName: QuickAskLaterStore.didChange, object: nil, queue: nil
         ) { _ in
@@ -402,30 +471,25 @@ final class QuickAskWindow: @unchecked Sendable {
         ) { _ in
             Gtk.onMain { QuickAskWindow.open?.renderFooter() }
         }
-
-        /// A Wayland clipboard answers only a window that has the keyboard, and the chord that
-        /// opened this one often arrives a frame before the compositor hands it over, so the
-        /// clipboard is read again the moment the window is the active one.
-        Gtk.onNotify(UnsafeMutableRawPointer(window), property: "is-active") {
-            Gtk.onMain {
-                guard let open = QuickAskWindow.open, gtk_window_is_active(ptr(open.window)) != 0
-                else { return }
-                open.readCopied()
-            }
-        }
-
-        refreshTarget()
-        readCopied()
-        watchCatalog()
-        restoreDraft()
-        updateVimBadge()
-        loadCommands()
-        gtk_window_present(ptr(window))
-        editor.focus()
-        AppLog.write(.ui, "ASK shown target=\(servers[targetIndex].name)")
     }
 
     lazy var effortVoice = EffortVoice { [weak self] words in
         Gtk.onMain { [weak self] in self?.announceEffort(words) }
     }
+}
+
+/// What one summon hands the quick ask: the machines it can ask and what each takes, the chats it
+/// can reopen, the window it is asked over, and what sending, reopening and asking the party do.
+struct QuickAskSetup {
+    var servers: [ConnectionProfile]
+    var agentEfforts: [String: [String]] = [:]
+    var promptTextGrammar: [String: Bool] = [:]
+    var preferredServer: String?
+    var recents: [SessionEntry]
+    var parent: UnsafeMutablePointer<GtkWidget>?
+    var onAsk:
+        @Sendable (String, QuickAskSend, [PendingAttachment], @escaping @Sendable (NewChatFailure?) -> Void)
+            -> Void
+    var onResume: @Sendable (SessionEntry) -> Void
+    var onAskParty: @Sendable (QuickAskPartySend, @escaping @Sendable (NewChatFailure?) -> Void) -> Void
 }

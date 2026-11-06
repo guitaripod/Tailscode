@@ -264,22 +264,21 @@ extension QuickAskWindow {
         setHint(Localized.text("Asking the party — %@ models…", "\(seats.count)"))
         let server = targetServer
         let onOffer = copied?.fingerprint
+        let visit = visit
         onAskParty(QuickAskPartySend(seats: seats, send: question, attachments: attachments)) {
             [weak self] failure in
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                guard let failure else {
-                    if let onOffer { QuickAskClipboardMemory.settle(onOffer) }
-                    DraftStore.clear(.quickAsk(profileID: server.id))
+                if failure == nil {
+                    Self.sent(text, on: server.id, settling: onOffer)
                     AppLog.write(.ui, "ASK party seats=\(seats.count)")
+                }
+                guard self.isServing(visit) else { return }
+                guard let failure else {
                     self.close()
                     return
                 }
-                self.asking = false
-                self.editor.setSensitive(true)
-                gtk_widget_set_sensitive(self.attach, 1)
-                gtk_widget_set_sensitive(self.target, self.servers.count > 1 ? 1 : 0)
-                self.refreshSend()
+                self.unlock()
                 self.editor.focus()
                 self.setHint("\(failure.title) — \(failure.detail)")
                 self.refreshStarterVisibility()

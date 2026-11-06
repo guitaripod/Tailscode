@@ -49,9 +49,10 @@ extension QuickAskWindow {
         guard !asking else { return }
         let able = abilities
         let named = pastedImageCount
+        let visit = visit
         Gtk.readClipboard { offer in
             Gtk.onMain { [weak self] in
-                guard let self else { return }
+                guard let self, self.isServing(visit) else { return }
                 let plan = PasteIntake.plan(for: offer, abilities: able, alreadyNamed: named)
                 self.pastedImageCount = plan.named
                 if let text = plan.text, !text.isEmpty { self.editor.insertAtCaret(text) }
@@ -109,23 +110,22 @@ extension QuickAskWindow {
             text: text, commands: commands,
             resolvesFromPromptText: promptTextGrammar[server.id] == true)
         if case .command(let command, _) = send.kind { SlashRecents.record(command.name) }
+        let visit = visit
         onAsk(server.id, send, attachments) { [weak self] failure in
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                guard let failure else {
+                if failure == nil {
                     QuickAskDefaults.record(profileID: server.id)
-                    self.releaseHold(retargeting: false)
-                    if let onOffer { QuickAskClipboardMemory.settle(onOffer) }
-                    DraftStore.clear(.quickAsk(profileID: server.id))
+                    Self.sent(text, on: server.id, settling: onOffer)
                     AppLog.write(.ui, "ASK sent server=\(server.name)")
+                }
+                guard self.isServing(visit) else { return }
+                guard let failure else {
+                    self.releaseHold(retargeting: false)
                     self.close()
                     return
                 }
-                self.asking = false
-                self.editor.setSensitive(true)
-                gtk_widget_set_sensitive(self.attach, 1)
-                gtk_widget_set_sensitive(self.target, self.servers.count > 1 ? 1 : 0)
-                self.refreshSend()
+                self.unlock()
                 self.editor.focus()
                 self.setHint("\(failure.title) — \(failure.detail)")
                 self.refreshStarterVisibility()
@@ -150,21 +150,68 @@ extension QuickAskWindow {
         pick(at: index)
     }
 
+    /// What a question that went out leaves behind, whether or not the window is still up for it,
+    /// since it may have been put away while the machine was minting: what was copied is set
+    /// aside, and the words stop being a draft unless something new was written over them since.
+    static func sent(_ text: String, on profileID: String, settling offer: String?) {
+        if let offer { QuickAskClipboardMemory.settle(offer) }
+        let scope = DraftScope.quickAsk(profileID: profileID)
+        let filed = DraftStore.text(for: scope).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard filed == text else { return }
+        DraftStore.clear(scope)
+        guard let open, open.targetServer.id == profileID,
+            open.editor.text.trimmingCharacters(in: .whitespacesAndNewlines) == text
+        else { return }
+        open.write("")
+    }
+
+    /// Whether an answer that arrives now belongs to the question on screen: the one asked on this
+    /// visit, with the window still up for it.
+    func isServing(_ visit: Int) -> Bool {
+        Self.open === self && self.visit == visit
+    }
+
+    /// The box is the person's again after a send that did not go out, or one the window was put
+    /// away in the middle of.
+    func unlock() {
+        asking = false
+        editor.setSensitive(true)
+        gtk_widget_set_sensitive(attach, 1)
+        gtk_widget_set_sensitive(target, servers.count > 1 ? 1 : 0)
+        refreshSend()
+    }
+
+    /// Puts the window away for the next summon rather than destroying it. What was typed is filed
+    /// under its machine; what was in hand, what was copied, the line picked, a notice and the
+    /// pills' popovers are let go, so the window comes back the way a new one would.
     func close() {
-        stage.remember()
+        stage.putAway()
         releaseHold(retargeting: false)
         gathering = nil
         if let actionsWatch { NotificationCenter.default.removeObserver(actionsWatch) }
         actionsWatch = nil
         if let laterWatch { NotificationCenter.default.removeObserver(laterWatch) }
         laterWatch = nil
-        stashDraft()
-        DraftStore.flush()
-        completion?.tearDown()
-        completion = nil
         if let summonWatch { NotificationCenter.default.removeObserver(summonWatch) }
         summonWatch = nil
-        gtk_window_destroy(ptr(window))
+        stashDraft()
+        DraftStore.flush()
+        catalogWatch?.cancel()
+        catalogWatch = nil
+        completion?.dismiss()
+        gtk_menu_button_popdown(op(target))
+        gtk_menu_button_popdown(op(dial.button))
+        gtk_popover_popdown(ptr(dial.dial.popover))
+        if asking { unlock() }
+        copiedOffer = nil
+        copied = nil
+        attachments = []
+        pastedImageCount = 0
+        renderAttachments()
+        setHint("")
+        menuCursor.clear()
+        paintSelection()
         Self.open = nil
+        Self.standby = self
     }
 }

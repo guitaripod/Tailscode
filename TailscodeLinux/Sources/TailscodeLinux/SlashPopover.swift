@@ -50,17 +50,6 @@ final class SlashPopover: @unchecked Sendable {
         gtk_popover_popdown(ptr(popover))
     }
 
-    /// The widget is parented on the anchor rather than owned by it, so a surface that is destroyed
-    /// — the quick ask is, every time it closes — has to hand it back itself.
-    func tearDown() {
-        guard let popover else { return }
-        gtk_popover_popdown(ptr(popover))
-        gtk_widget_unparent(popover)
-        self.popover = nil
-        ranked = []
-        cursor = 0
-    }
-
     /// Argument stage, hints and no-match live here with the naming list — the greppable anchor for
     /// slashCompletion on Linux.
     ///

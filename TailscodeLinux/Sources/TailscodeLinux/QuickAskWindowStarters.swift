@@ -154,16 +154,18 @@ extension QuickAskWindow {
         let selected = menuCursor.index.flatMap {
             menuItems.indices.contains($0) ? menuItems[$0].id : nil
         }
-        Gtk.removeChildren(of: starters)
-        menuRows = []
         typingShown = isTyping
         let sections: [QuickAskMenuSection]
+        let state: StarterPage.State
         if gathering?.awaiting == .session {
+            state = .sessions
             sections = QuickAskMenu.sessions(QuickAskSessionReference.candidates(among: recents))
         } else if isTyping {
+            state = .typing
             offered = QuickAskStarters.offered(for: abilities, surface: surface)
             sections = QuickAskMenu.verbs(offered, aimWords: { [weak self] aim in self?.aimBadge(aim) })
         } else {
+            state = .resting
             offered = QuickAskStarters.offered(for: abilities, surface: surface)
             copied = copiedOffer.flatMap(reading)
             sections = QuickAskMenu.sections(
@@ -173,34 +175,57 @@ extension QuickAskWindow {
         }
         menuItems = QuickAskMenu.items(sections)
         picks = menuItems.filter { $0.digit != nil }
+        let unread = QuickAskActions.unreadable
+        let page = starterPage(StarterPage.Key(state: state, profileID: targetServer.id))
+        let look = QuickAskMenu.look(of: sections, unread: unread)
+        if page.look != look {
+            fill(page, with: sections, unread: unread)
+            page.look = look
+        }
+        for shown in starterPages.values {
+            gtk_widget_set_visible(shown.box, shown === page ? 1 : 0)
+        }
+        menuRows = page.rows
+        menuCursor.follow(id: selected, in: menuItems)
+        paintSelection()
+        renderFooter()
+        refreshStarterVisibility()
+    }
+
+    private func starterPage(_ key: StarterPage.Key) -> StarterPage {
+        if let page = starterPages[key] { return page }
+        let page = StarterPage(box: Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1))
+        gtk_box_append(ptr(starters), page.box)
+        starterPages[key] = page
+        return page
+    }
+
+    private func fill(_ page: StarterPage, with sections: [QuickAskMenuSection], unread: Int) {
+        Gtk.removeChildren(of: page.box)
+        page.rows = []
         for section in sections {
-            gtk_box_append(ptr(starters), section.isCopied ? copiedHeader(section) : self.section(section.title))
+            gtk_box_append(
+                ptr(page.box), section.isCopied ? copiedHeader(section) : self.section(section.title))
             for item in section.items {
                 let row = menuRow(item)
-                menuRows.append(row)
-                gtk_box_append(ptr(starters), row)
+                page.rows.append(row)
+                gtk_box_append(ptr(page.box), row)
             }
             if section.id == "later" {
                 let reach = Gtk.label(
                     QuickAskLaterWords.reach, css: "qa-note", wrap: true, selectable: false)
                 gtk_label_set_xalign(op(reach), 0)
-                gtk_box_append(ptr(starters), reach)
+                gtk_box_append(ptr(page.box), reach)
             }
         }
-        let unread = QuickAskActions.unreadable
-        if unread > 0 {
-            let note = Gtk.label(
-                unread == 1
-                    ? Localized.text("1 entry in quick-actions.json could not be read")
-                    : Localized.text("%@ entries in quick-actions.json could not be read", "\(unread)"),
-                css: "qa-note", wrap: true, selectable: false)
-            gtk_label_set_xalign(op(note), 0)
-            gtk_box_append(ptr(starters), note)
-        }
-        menuCursor.follow(id: selected, in: menuItems)
-        paintSelection()
-        renderFooter()
-        refreshStarterVisibility()
+        guard unread > 0 else { return }
+        let note = Gtk.label(
+            unread == 1
+                ? Localized.text("1 entry in quick-actions.json could not be read")
+                : Localized.text("%@ entries in quick-actions.json could not be read", "\(unread)"),
+            css: "qa-note", wrap: true, selectable: false)
+        gtk_label_set_xalign(op(note), 0)
+        gtk_box_append(ptr(page.box), note)
     }
 
     /// Where an action asks when it asks somewhere of its own, said as short as it can be: the
@@ -393,19 +418,21 @@ extension QuickAskWindow {
     /// One line of keys for the box as it is, and on its far end the chord that opens the card
     /// from anywhere.
     func renderFooter() {
-        Gtk.removeChildren(of: footKeys)
         let keys = QuickAskFooter.keys(
             platform: .linux, typing: isTyping,
             party: QuickAskParty.targets(partyInputs().cards).count > 1,
             screen: surface.screen && abilities.vision, verbs: picks.count)
             + [QuickAskFooter.Key(keys: "esc", word: Localized.text("close"))]
+        gtk_label_set_text(op(chord), Self.chordNote())
+        guard keys != footShown else { return }
+        footShown = keys
+        Gtk.removeChildren(of: footKeys)
         for key in keys {
             let pair = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 5)
             gtk_box_append(ptr(pair), whole(Gtk.label(key.keys, css: "qa-foot-key", selectable: false)))
             gtk_box_append(ptr(pair), whole(Gtk.label(key.word, css: "qa-foot-word", selectable: false)))
             gtk_box_append(ptr(footKeys), pair)
         }
-        gtk_label_set_text(op(chord), Self.chordNote())
     }
 
 
@@ -522,5 +549,30 @@ extension QuickAskWindow {
         let session = entry
         close()
         onResume(session)
+    }
+}
+
+/// The list drawn for one state of the box — resting, typing, choosing a chat — on one machine,
+/// with what it was drawn from. A list is rebuilt only when what it shows changed, so the box
+/// flipping between empty and typed, Tab coming back to a machine, a summon, or a clipboard read
+/// that found the same thing costs no rows.
+final class StarterPage {
+    enum State: Hashable {
+        case resting
+        case typing
+        case sessions
+    }
+
+    struct Key: Hashable {
+        let state: State
+        let profileID: String
+    }
+
+    let box: UnsafeMutablePointer<GtkWidget>
+    var look: [String] = []
+    var rows: [UnsafeMutablePointer<GtkWidget>] = []
+
+    init(box: UnsafeMutablePointer<GtkWidget>) {
+        self.box = box
     }
 }

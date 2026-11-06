@@ -62,6 +62,28 @@ public struct QuickAskMenuSection: Sendable, Identifiable {
 /// errands first and then to the actions, so the nine fastest keys are always the nine most likely
 /// things.
 public enum QuickAskMenu {
+    /// Everything a drawn list shows — each heading and its glimpse, each line's id, glyph, words,
+    /// badge, digit and quiet look, and the count of actions that could not be read — so a client
+    /// rebuilds its lines only when this changes. The list is redrawn on every summon, every flip
+    /// between an empty and a typed box and every clipboard read; most of those draw what is
+    /// already on screen.
+    public static func look(of sections: [QuickAskMenuSection], unread: Int) -> [String] {
+        var parts = ["unread \(unread)"]
+        for section in sections {
+            parts.append([section.id, section.title, section.note ?? ""].joined(separator: "\u{1F}"))
+            for item in section.items {
+                var quiet = false
+                if case .newAction = item.kind { quiet = true }
+                parts.append(
+                    [
+                        item.id, item.glyph, item.symbol, item.title, item.detail, item.badge ?? "",
+                        item.digit.map(String.init) ?? "", quiet ? "quiet" : "",
+                    ].joined(separator: "\u{1F}"))
+            }
+        }
+        return parts
+    }
+
     public static func sections(
         copied: QuickAskCopied? = nil, starters: [QuickAskStarter], later: [QuickAskLater],
         recents: [SessionEntry], aimWords: (QuickAskActionAim) -> String? = { _ in nil },

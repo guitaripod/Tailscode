@@ -20,14 +20,12 @@ void tailscode_stage_backdrop(GtkWidget *room, GtkWidget *card, void (*handler)(
 GtkWidget *tailscode_stage_room(void);
 void tailscode_stage_room_place(GtkWidget *room, double x, double y, double width,
                                 double height);
-/// Called once, the first frame `widget` has a size.
-void tailscode_when_sized(GtkWidget *widget, void (*handler)(int width, int height, void *),
-                          void *data);
 /// Called once with where the pointer stands on `widget`: on the first frame the desktop has said,
-/// or with `known` false once `wait_ms` have passed without a word, because a Wayland client hears
-/// where the pointer is only when it is over one of its own surfaces.
-void tailscode_when_pointed(GtkWidget *widget, unsigned wait_ms,
-                            void (*handler)(gboolean known, double x, double y, void *),
-                            void *data);
+/// or with `known` false once `wait_ms` have passed without a word since `widget` was first given
+/// a size, because a Wayland client hears where the pointer is only when it is over one of its own
+/// surfaces. Answers the tick, which `gtk_widget_remove_tick_callback` withdraws unanswered.
+guint tailscode_when_pointed(GtkWidget *widget, unsigned wait_ms,
+                             void (*handler)(gboolean known, double x, double y, void *),
+                             void *data);
 
 #endif

@@ -136,16 +136,38 @@ extension MainWindow {
     /// conversation with no project directory. The pane's queued first message goes out the
     /// moment the mint's own open() has built the conversation, and a mint that fails takes the
     /// words back so the next chat this pane opens cannot inherit them.
-    /// A question that arrived from somewhere else on the desktop. The window comes forward first
-    /// because the composer is inside it: a summon that opened a text field behind another app's
-    /// window would take the keystrokes that followed with it.
+    ///
+    /// The chord can come from anywhere on the desktop. An overlay stands above every window and
+    /// takes the keyboard on its own, so the app is raised first only for a quick ask that is a
+    /// window over it, which would otherwise open behind another app's window and lose the
+    /// keystrokes that followed; otherwise the app comes forward when a question opens a chat in it.
     func summonQuickAsk() {
-        raise()
+        AskTimer.begin()
+        if !QuickAskStage.layerAvailable { raise() }
         if QuickAskWindow.open != nil { return }
         presentQuickAsk()
     }
 
     func presentQuickAsk() {
+        gatherQuickAsk { setup in
+            guard !setup.servers.isEmpty else {
+                self.raise()
+                self.presentServers()
+                return
+            }
+            QuickAskWindow.present(setup)
+        }
+    }
+
+    /// Builds the quick ask out of sight a moment after the window is up, so the first chord costs
+    /// what every later one does.
+    func prepareQuickAsk() {
+        gatherQuickAsk { setup in QuickAskWindow.prepare(setup) }
+    }
+
+    /// What a quick ask opened now would be handed: every machine with what its agent takes, the
+    /// chats it can reopen, and sends that open their chat in the pane in front.
+    private func gatherQuickAsk(_ then: @escaping @Sendable (QuickAskSetup) -> Void) {
         let pane = activePane
         let fallback = pane.entry?.profileID
         Task { [weak self] in
@@ -159,38 +181,46 @@ extension MainWindow {
             }
             let efforts = gathered
             let promptTextGrammar = grammar
+            AskTimer.note("servers \(profiles.count)")
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                guard !profiles.isEmpty else {
-                    self.presentServers()
-                    return
-                }
-                QuickAskWindow.present(
-                    servers: profiles, agentEfforts: efforts,
-                    promptTextGrammar: promptTextGrammar, preferredServer: fallback,
-                    recents: self.entries,
-                    parent: self.window,
-                    onAsk: { [weak self] profileID, send, attachments, done in
-                        Gtk.onMain { [weak self] in
-                            self?.createChat(
-                                onProfileID: profileID, directory: nil, into: pane,
-                                firstMessage: send, attachments: attachments, quickAsk: true,
-                                done: done)
-                        }
-                    },
-                    onResume: { [weak self] entry in
-                        Gtk.onMain { [weak self] in
-                            guard let self else { return }
-                            pane.open(entry)
-                            self.renderSidebar()
-                        }
-                    },
-                    onAskParty: { [weak self] party, done in
-                        Gtk.onMain { [weak self] in
-                            self?.askParty(party, from: pane, done: done)
-                        }
-                    })
+                then(
+                    QuickAskSetup(
+                        servers: profiles, agentEfforts: efforts,
+                        promptTextGrammar: promptTextGrammar, preferredServer: fallback,
+                        recents: self.entries, parent: self.window,
+                        onAsk: { [weak self] profileID, send, attachments, done in
+                            Gtk.onMain { [weak self] in
+                                self?.createChat(
+                                    onProfileID: profileID, directory: nil, into: pane,
+                                    firstMessage: send, attachments: attachments, quickAsk: true,
+                                    done: Self.raising(after: done))
+                            }
+                        },
+                        onResume: { [weak self] entry in
+                            Gtk.onMain { [weak self] in
+                                guard let self else { return }
+                                pane.open(entry)
+                                self.renderSidebar()
+                                self.raise()
+                            }
+                        },
+                        onAskParty: { [weak self] party, done in
+                            Gtk.onMain { [weak self] in
+                                self?.askParty(party, from: pane, done: Self.raising(after: done))
+                            }
+                        }))
             }
+        }
+    }
+
+    /// A send that went out opens its chat here, so the app comes forward to show it.
+    private static func raising(
+        after done: @escaping @Sendable (NewChatFailure?) -> Void
+    ) -> @Sendable (NewChatFailure?) -> Void {
+        { failure in
+            if failure == nil { Gtk.onMain { mainWindow?.raise() } }
+            done(failure)
         }
     }
 

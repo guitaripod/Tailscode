@@ -214,29 +214,6 @@ void tailscode_stage_backdrop(GtkWidget *room, GtkWidget *card, void (*handler)(
 }
 
 typedef struct {
-    void (*handler)(int width, int height, void *);
-    void *data;
-} TailscodeSized;
-
-static gboolean tailscode_sized_tick(GtkWidget *widget, GdkFrameClock *clock, gpointer data) {
-    (void)clock;
-    TailscodeSized *box = data;
-    int width = gtk_widget_get_width(widget);
-    int height = gtk_widget_get_height(widget);
-    if (width <= 0 || height <= 0) return G_SOURCE_CONTINUE;
-    box->handler(width, height, box->data);
-    return G_SOURCE_REMOVE;
-}
-
-void tailscode_when_sized(GtkWidget *widget, void (*handler)(int width, int height, void *),
-                          void *data) {
-    TailscodeSized *box = g_new0(TailscodeSized, 1);
-    box->handler = handler;
-    box->data = data;
-    gtk_widget_add_tick_callback(widget, tailscode_sized_tick, box, g_free);
-}
-
-typedef struct {
     void (*handler)(gboolean known, double x, double y, void *);
     void *data;
     gint64 wait;
@@ -266,6 +243,8 @@ static gboolean tailscode_pointer_on(GtkWidget *widget, double *x, double *y) {
 
 static gboolean tailscode_pointed_tick(GtkWidget *widget, GdkFrameClock *clock, gpointer data) {
     TailscodePointed *box = data;
+    if (gtk_widget_get_width(widget) <= 0 || gtk_widget_get_height(widget) <= 0)
+        return G_SOURCE_CONTINUE;
     gint64 now = gdk_frame_clock_get_frame_time(clock);
     if (box->started == 0) box->started = now;
     double x = 0, y = 0;
@@ -275,14 +254,14 @@ static gboolean tailscode_pointed_tick(GtkWidget *widget, GdkFrameClock *clock, 
     return G_SOURCE_REMOVE;
 }
 
-void tailscode_when_pointed(GtkWidget *widget, unsigned wait_ms,
-                            void (*handler)(gboolean known, double x, double y, void *),
-                            void *data) {
+guint tailscode_when_pointed(GtkWidget *widget, unsigned wait_ms,
+                             void (*handler)(gboolean known, double x, double y, void *),
+                             void *data) {
     TailscodePointed *box = g_new0(TailscodePointed, 1);
     box->handler = handler;
     box->data = data;
     box->wait = (gint64)wait_ms * 1000;
-    gtk_widget_add_tick_callback(widget, tailscode_pointed_tick, box, g_free);
+    return gtk_widget_add_tick_callback(widget, tailscode_pointed_tick, box, g_free);
 }
 
 typedef struct {

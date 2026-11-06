@@ -21,6 +21,9 @@ import TailscodeCore
 /// (`QuickAskPlacementStore`), per screen for the place and once for the size. On a desktop without
 /// the layer shell, and on X11, it is an ordinary window over the app: the desktop places, moves
 /// and resizes it, its ground still drags it, and its size is remembered.
+///
+/// The surface is built once and put away rather than destroyed (`show` / `putAway`): a window
+/// made fresh for every chord paid for its widgets, its styles and its first frame each time.
 final class QuickAskStage: @unchecked Sendable {
     let window: UnsafeMutablePointer<GtkWidget>
     let card: UnsafeMutablePointer<GtkWidget>
@@ -29,17 +32,19 @@ final class QuickAskStage: @unchecked Sendable {
     private(set) var frame = QuickAskRect(
         x: 0, y: 0, width: QuickAskGeometry.defaultWidth, height: QuickAskGeometry.defaultHeight)
     private var screen: (name: String, width: Double, height: Double)?
-    /// When the overlay had its screen, so the log can say how long the pointer took to be heard.
-    private var stoodAt: Date?
+    /// When the overlay was shown, so the log can say how long the pointer took to be heard.
+    private var shownAt: Date?
+    /// The frame watch waiting for the pointer, withdrawn when the card is put away first.
+    private var pointerTick: guint = 0
     private var isPlaced = false
     private var dragStart: QuickAskRect?
     /// The mark at the head of the question box: the point of the card the pointer lands on.
     var anchor: UnsafeMutablePointer<GtkWidget>?
     /// A press beside the card, which dismisses it the way a press outside a palette does.
     var onBackdrop: (@Sendable () -> Void)?
-    /// The surface stands and takes the keyboard, so nothing typed straight after the chord is lost;
-    /// an overlay's card is held invisible until it has its place, so it never shows at a place it
-    /// is about to leave.
+    /// The surface is shown and takes the keyboard, so nothing typed straight after the chord is
+    /// lost; an overlay's card is held invisible until it has its place, so it never shows at a
+    /// place it is about to leave.
     var onReady: (@Sendable () -> Void)?
 
     /// How long the card waits, unseen, for the desktop to say where the pointer is before opening
@@ -96,7 +101,6 @@ final class QuickAskStage: @unchecked Sendable {
         gtk_window_set_child(ptr(window), room)
         let me = Unmanaged.passUnretained(self).toOpaque()
         tailscode_stage_backdrop(room, card, Self.backdrop, me)
-        tailscode_when_sized(room, Self.sized, me)
     }
 
     /// The overlay keeps a window group of its own. A dialog open over the app — the welcome, the
@@ -115,8 +119,10 @@ final class QuickAskStage: @unchecked Sendable {
         Gtk.addClass(window, "qa-arriving")
     }
 
-    /// An ordinary window opens at the size it was last given, clamped to the screen of the app
-    /// it is asked over, centred on that app by the desktop.
+    /// An ordinary window is built at the size it was last given, clamped to the screen of the app
+    /// it is asked over, and centred on that app by the desktop each time it is shown. GTK keeps
+    /// the default size in step with every resize, so a window shown again comes back the size it
+    /// was left at.
     private func mountWindow(parent: UnsafeMutablePointer<GtkWidget>?) {
         gtk_window_set_modal(ptr(window), 1)
         if let parent, let root = gtk_widget_get_root(parent) {
@@ -129,7 +135,51 @@ final class QuickAskStage: @unchecked Sendable {
         gtk_window_set_default_size(ptr(window), Int32(size.width), Int32(size.height))
         gtk_window_set_titlebar(ptr(window), Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0))
         gtk_window_set_child(ptr(window), card)
-        Gtk.onMain { [weak self] in self?.onReady?() }
+    }
+
+    /// Brings the surface up for a summon. An overlay takes the keyboard at once and its card waits,
+    /// unseen, for the desktop to say where the pointer is; an ordinary window is simply presented.
+    func show() {
+        guard let room else {
+            gtk_window_present(ptr(window))
+            onReady?()
+            AskTimer.shown(in: card)
+            return
+        }
+        withdrawPointerWait()
+        isPlaced = false
+        gtk_widget_set_opacity(card, 0)
+        holdOpen()
+        gtk_window_present(ptr(window))
+        shownAt = Date()
+        onReady?()
+        pointerTick = tailscode_when_pointed(
+            room, Self.pointerWait, Self.pointed, Unmanaged.passUnretained(self).toOpaque())
+    }
+
+    /// Works out the card's styles and the size of everything in it while nothing is on screen, so
+    /// the first frame it is shown in only has to place and draw it.
+    func settle() {
+        let size = QuickAskGeometry.size(
+            QuickAskPlacementStore.load(), screenWidth: 1920, screenHeight: 1080)
+        var minimum: Int32 = 0
+        var natural: Int32 = 0
+        gtk_widget_measure(
+            card, GTK_ORIENTATION_VERTICAL, Int32(size.width), &minimum, &natural, nil, nil)
+    }
+
+    /// Keeps what the person did to the card and takes the surface off the screen, ready to come
+    /// back as it was.
+    func putAway() {
+        withdrawPointerWait()
+        remember()
+        gtk_widget_set_visible(window, 0)
+    }
+
+    private func withdrawPointerWait() {
+        guard let room, pointerTick != 0 else { return }
+        gtk_widget_remove_tick_callback(room, pointerTick)
+        pointerTick = 0
     }
 
     private static func screenSize(near widget: UnsafeMutablePointer<GtkWidget>?)
@@ -144,9 +194,12 @@ final class QuickAskStage: @unchecked Sendable {
         return (Double(geometry.width), Double(geometry.height))
     }
 
-    /// The overlay has its screen: it takes the keyboard at once, and the card waits for the
-    /// pointer.
-    private func stand(width: Int32, height: Int32) {
+    /// The screen the overlay stands on now, named by its connector and measured by the room that
+    /// fills it: an overlay shown again may have been given another screen than the last time.
+    private func standing() -> (name: String, width: Double, height: Double)? {
+        guard let room, gtk_widget_get_width(room) > 0, gtk_widget_get_height(room) > 0 else {
+            return nil
+        }
         var name = "screen"
         if let native = gtk_widget_get_native(window), let surface = gtk_native_get_surface(native),
             let monitor = gdk_display_get_monitor_at_surface(gdk_display_get_default(), surface),
@@ -154,19 +207,16 @@ final class QuickAskStage: @unchecked Sendable {
         {
             name = String(cString: connector)
         }
-        screen = (name: name, width: Double(width), height: Double(height))
-        stoodAt = Date()
-        onReady?()
-        guard let room else { return }
-        tailscode_when_pointed(
-            room, Self.pointerWait, Self.pointed, Unmanaged.passUnretained(self).toOpaque())
+        return (name, Double(gtk_widget_get_width(room)), Double(gtk_widget_get_height(room)))
     }
 
     /// The card goes under the pointer, the head of its question box where the pointer is. When the
     /// desktop never said where the pointer is, it goes where it was left on this screen, or where
     /// it was last left anywhere at the same share of this screen, or where a palette is expected.
     private func place(pointer: (x: Double, y: Double)?) {
-        guard let screen else { return }
+        pointerTick = 0
+        guard let screen = standing() else { return }
+        self.screen = screen
         let placement = QuickAskPlacementStore.load()
         let size = QuickAskGeometry.size(
             placement, screenWidth: screen.width, screenHeight: screen.height)
@@ -184,7 +234,9 @@ final class QuickAskStage: @unchecked Sendable {
         isPlaced = true
         gtk_widget_remove_css_class(window, "qa-arriving")
         gtk_widget_set_opacity(card, 1)
-        let waited = stoodAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? 0
+        AskTimer.note("placed by \(pointer == nil ? "memory" : "pointer")")
+        AskTimer.shown(in: card)
+        let waited = shownAt.map { Int(Date().timeIntervalSince($0) * 1000) } ?? 0
         let by = pointer.map { "pointer=\(Int($0.x)),\(Int($0.y))" } ?? "memory"
         AppLog.write(.ui, "ASK placed screen=\(screen.name) by=\(by) after=\(waited)ms at=\(Int(origin.x)),\(Int(origin.y)) size=\(Int(size.width))x\(Int(size.height))")
     }
@@ -287,13 +339,6 @@ final class QuickAskStage: @unchecked Sendable {
     private static let backdrop: @convention(c) (UnsafeMutableRawPointer?) -> Void = { raw in
         guard let raw else { return }
         Unmanaged<QuickAskStage>.fromOpaque(raw).takeUnretainedValue().onBackdrop?()
-    }
-
-    private static let sized: @convention(c) (Int32, Int32, UnsafeMutableRawPointer?) -> Void = {
-        width, height, raw in
-        guard let raw else { return }
-        Unmanaged<QuickAskStage>.fromOpaque(raw).takeUnretainedValue()
-            .stand(width: width, height: height)
     }
 
     private static let pointed:

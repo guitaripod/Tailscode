@@ -166,6 +166,7 @@ Gtk.connect(UnsafeMutableRawPointer(app), "activate") {
         mainWindow = window
         window.present(in: app)
         Summon.shared.start { mainWindow?.summonQuickAsk() }
+        Gtk.after(1500) { Gtk.onMain { mainWindow?.prepareQuickAsk() } }
     }
     if wantsAsk {
         wantsAsk = false

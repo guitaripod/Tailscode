@@ -18,10 +18,9 @@ extension QuickAskWindow {
         DraftStore.record(editor.text, for: draftScope)
     }
 
+    /// The words filed under the machine aimed at, or an empty box where none are.
     func restoreDraft() {
-        let draft = DraftStore.text(for: draftScope)
-        guard !draft.isEmpty else { return }
-        write(draft)
+        write(DraftStore.text(for: draftScope))
     }
 
     /// Every path that puts words in the box lands here, so the vim document that shadows it is
@@ -259,14 +258,20 @@ extension QuickAskWindow {
             guard let profile = profiles.first(where: { $0.id == server.id }),
                 let backend = await ServerDirectory.shared.backend(for: profile)
             else { return }
+            var drawn = ModelCatalogStore.cached(server.id)
             for await reading in ModelCatalogWatch.readings(
                 profileID: server.id, backend: backend)
             {
                 guard let self, self.targetServer.id == server.id else { return }
+                let changed = reading.models != drawn
+                drawn = reading.models
                 ModelCatalogStore.store(reading.models, for: server.id)
                 Gtk.onMain { [weak self] in
-                    if let reachable = reading.reachable { self?.reachability[server.id] = reachable }
-                    self?.refreshTarget()
+                    guard let self else { return }
+                    let moved = reading.reachable.map { self.reachability[server.id] != $0 } ?? false
+                    if let reachable = reading.reachable { self.reachability[server.id] = reachable }
+                    guard changed || moved else { return }
+                    self.refreshTarget()
                 }
             }
         }
