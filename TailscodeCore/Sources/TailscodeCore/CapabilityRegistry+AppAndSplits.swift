@@ -148,7 +148,15 @@ extension CapabilityRegistry {
         CapabilityDefinition(
             id: .activityNotifications, area: "app", title: "The app taps your shoulder",
             spec:
-                "A turn ending or a needs-you state in an unfocused session raises a system notification that deep-links back to it, wearing the same face the chat's status badge raises so a stack of them separates the finished from the waiting before a word is read."),
+                "Finished work or a needs-you state in an unfocused session raises a system notification that deep-links back to it, wearing the same face the chat's status badge raises so a stack of them separates the finished from the waiting before a word is read. Finished means the work is over, not the turn: a turn that hands over to background tasks, agents or a workflow, or that a queued message or the machine itself follows, is one piece of work, and it is raised once when nothing is running, carried or queued and has stayed so for WorkSettle.grace (ActivityWatch over WorkSettle, the conversation's own stream the authority and the listing adding the agents it cannot see). claude-bridge applies the same rule to its pushes and to /sessions/:id/wait?until=settled."),
+        CapabilityDefinition(
+            id: .noticeRules, area: "app", title: "Notifications on your terms",
+            spec:
+                "One small set of choices decides what taps a person's shoulder, the same on every client and on the bridge that pushes (NoticeRules, NoticeRulesKeys, NoticeRulesWords): finished work — when it's done (the default: once the agent and everything it started have stopped), every turn (each turn as it closes, the old behaviour), only failures, or never; only for work longer than any length, 30 seconds, 2 minutes or 10 minutes, measured over the whole stretch of work and never applied to a failure; and approvals and questions on their own switch. The old finished-turn switch carries over (off reads as never) and is still written, so an older build agrees. A phone that registers for pushes hands every bridge its rules (DevicePushRules, muted chats included) and registers again whenever they change, and its own background wait asks to be held until the work settles (until=settled, answered with settled: true); a bridge too old to hold it answers at the turn\u{2019}s end as before, and the phone still applies the length, failure and mute rules to that answer."),
+        CapabilityDefinition(
+            id: .chatMute, area: "app", title: "Mute one chat",
+            spec:
+                "Any chat can be muted from its own menu (Mute Notifications / Unmute Notifications): its finished work and its failures end quietly on this device and in the pushes a bridge sends it, while its approvals and questions still reach the person, because an agent waiting on someone is not noise. The mute is the device's own, by session id (NoticeRules.muted), and Settings counts the muted chats with one press to unmute them all."),
         CapabilityDefinition(
             id: .missedActivity, area: "app", title: "What happened while you were away",
             spec:

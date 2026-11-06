@@ -239,10 +239,14 @@ struct NoticeReadingTests {
     @Test("A turn-end alert carries the notice read from the conversation it came from")
     func watchCarriesTurnEndNotice() {
         var watch = ActivityWatch()
+        let start = Date(timeIntervalSince1970: 1_000)
         let running = Self.state(
             .running, [Self.prompt(), Self.answer([Self.text("working")], done: false)])
+        _ = watch.observeConversation(
+            profileID: "p", sessionID: "s", title: "Chat", state: running, at: start)
         let opening = watch.observeConversation(
-            profileID: "p", sessionID: "s", title: "Chat", state: running)
+            profileID: "p", sessionID: "s", title: "Chat", state: running,
+            at: start.addingTimeInterval(1))
         #expect(opening.alerts.isEmpty)
         let settled = Self.state(
             .idle,
@@ -250,9 +254,12 @@ struct NoticeReadingTests {
                 Self.prompt(),
                 Self.answer([Self.call("r", "Read", .completed), Self.text("Done.")]),
             ])
-        let alerts = watch.observeConversation(
-            profileID: "p", sessionID: "s", title: "Chat", state: settled
+        let ended = start.addingTimeInterval(40)
+        let atTheEnd = watch.observeConversation(
+            profileID: "p", sessionID: "s", title: "Chat", state: settled, at: ended
         ).alerts
+        #expect(atTheEnd.isEmpty)
+        let alerts = watch.due(at: ended.addingTimeInterval(WorkSettle.grace))
         #expect(alerts.count == 1)
         guard let alert = alerts.first else { return }
         #expect(alert.reason == .turnEnded)

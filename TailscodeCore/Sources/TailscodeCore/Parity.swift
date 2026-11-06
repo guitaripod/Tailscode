@@ -185,6 +185,8 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case tailscaleReadiness
     case demoMode
     case activityNotifications
+    case noticeRules
+    case chatMute
     case missedActivity
     case liveActivity
     case turnEndWhileAway
