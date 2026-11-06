@@ -7,7 +7,7 @@ final class SettingsViewController: UIViewController {
     static let privacyURL = "https://midgarcorp.cc/tailscode/privacy"
     static let supportURL = "https://midgarcorp.cc/tailscode/support"
     static let sourceURL = "https://github.com/guitaripod/Tailscode"
-    static let supportEmail = "guitaripod@gmail.com"
+    static let supportEmail = "marcus@midgarcorp.cc"
 
     /// Called once Settings is off screen. Removing the last server has to change
     /// the app's root, and doing that while this screen is still up would tear it
