@@ -42,10 +42,26 @@ extension MainWindowController {
             presentServers()
             return
         }
-        QuickAskPanel.present(
-            over: window, servers: profiles, preferredServer: currentEntry?.profileID,
-            recents: sidebar.entries,
-            onAsk: { [weak self] profileID, send, attachments, done in
+        quickAsk(on: profiles, present: true)
+    }
+
+    /// Builds the quick ask out of sight a moment after launch, so the first chord costs what every
+    /// later one does. A run that only stages, photographs or checks the app builds nothing.
+    func prepareQuickAsk() {
+        let staged = ["--selftest", "--demo", "--shot", "--shot-live", "--bench", "--open", "--tree"]
+        guard !CommandLine.arguments.contains(where: staged.contains) else { return }
+        let profiles = ServerDirectory.shared.profiles
+        guard !profiles.isEmpty else { return }
+        quickAsk(on: profiles, present: false)
+    }
+
+    /// The quick ask over these machines, with sends that open their chat in the pane in front:
+    /// shown now, or only built and kept for the first summon.
+    private func quickAsk(on profiles: [ConnectionProfile], present: Bool) {
+        let open = present ? QuickAskPanel.present : QuickAskPanel.prepare
+        open(
+            window, profiles, currentEntry?.profileID, sidebar.entries,
+            { [weak self] profileID, send, attachments, done in
                 guard let self,
                     let profile = ServerDirectory.shared.profiles.first(where: {
                         $0.id == profileID
@@ -57,8 +73,8 @@ extension MainWindowController {
                 self.mintQuickAsk(
                     on: profile, send: send, attachments: attachments, done: done)
             },
-            onResume: { [weak self] entry in self?.sidebar.open(entry) },
-            onAskParty: { [weak self] party, done in self?.mintParty(party, done: done) })
+            { [weak self] entry in self?.sidebar.open(entry) },
+            { [weak self] party, done in self?.mintParty(party, done: done) })
     }
 
     /// One question to every party slot: the panes are split first, beside the one in front and

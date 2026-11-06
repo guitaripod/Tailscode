@@ -232,6 +232,15 @@ final class QuickAskRowView: NSView {
         }
     }
 
+    /// The line's menu of changes, made when it is asked for: a list redrawn on every keystroke that
+    /// built a menu for each of its lines up front, reading the actions file for each, spent about
+    /// 15 ms a line before anybody right-clicked anything.
+    var menuMaker: (() -> NSMenu?)?
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        menuMaker?() ?? super.menu(for: event)
+    }
+
     override func accessibilityPerformPress() -> Bool {
         onPress()
         return true

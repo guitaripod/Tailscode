@@ -278,22 +278,17 @@ extension QuickAskPanel {
         sendButton.isEnabled = false
         refreshStarterVisibility()
         setStatus(Localized.text("Asking the party — %@ models…", "\(seats.count)"))
+        let visit = visit
         onAskParty(QuickAskPartySend(seats: seats, send: question, attachments: attachments)) {
             [weak self] failure in
             guard let self else { return }
+            if failure == nil { Self.sent(text, on: server.id, settling: onOffer) }
+            guard self.isServing(visit) else { return }
             guard let failure else {
-                if let onOffer { QuickAskClipboardMemory.settle(onOffer) }
-                DraftStore.clear(.quickAsk(profileID: server.id))
                 self.close()
                 return
             }
-            self.asking = false
-            self.editor.isEditable = true
-            self.machinePill.isEnabled = true
-            self.dialPill.isEnabled = true
-            self.attachButton.isEnabled = true
-            self.screenButton.isEnabled = true
-            self.refreshSend()
+            self.unlock()
             self.setStatus("\(failure.title) — \(failure.detail)")
             self.refreshStarterVisibility()
             self.editor.focus()

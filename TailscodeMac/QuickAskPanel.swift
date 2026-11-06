@@ -34,9 +34,15 @@ import TailscodeCore
 /// decision; ⌃⌥1-6 and the ring do the same without opening it. ⌥-press or ⌥M/⌥E opens
 /// `ModelDialPopover` — the shortlist beside the ladder — over the quick ask's own memory rather
 /// than the server's.
+///
+/// The panel is built once and kept: closing puts it away (`standby`) and the next summon brings it
+/// back with what that summon knows (`arrive`), so a chord costs placing and showing a panel rather
+/// than building one.
 @MainActor
 final class QuickAskPanel: NSPanel {
     private(set) static weak var frontmost: QuickAskPanel?
+    /// The panel while it is put away, built and laid out, waiting for the next summon.
+    private static var standby: QuickAskPanel?
 
     let editor = PromptEditor(placeholder: Localized.text("Ask anything…"))
     /// The mark at the head of the question box: the point of the panel the pointer lands on.
@@ -59,13 +65,18 @@ final class QuickAskPanel: NSPanel {
     var card: NSView?
     var menuItems: [QuickAskMenuItem] = []
     var menuRows: [QuickAskRowView] = []
+    /// The list as drawn for each state of the box on each machine, kept so going back to one costs
+    /// nothing.
+    var starterPages: [QuickAskStarterPage.Key: QuickAskStarterPage] = [:]
+    /// The keys the foot was last drawn with, so a redraw that says the same thing builds nothing.
+    var footShown: [QuickAskFooter.Key] = []
     var menuCursor = QuickAskMenuCursor()
     /// Whether the list was last drawn for a typed box, so it is redrawn as the verbs or as
     /// everything only when that flips.
     var typingShown: Bool?
     let completion = CompletionPopover()
-    let servers: [ConnectionProfile]
-    let recents: [SessionEntry]
+    var servers: [ConnectionProfile]
+    var recents: [SessionEntry]
     var attachments: [PendingAttachment] = []
     var offered: [QuickAskStarter] = []
     /// What the pasteboard was last seen holding, as far as it could be told without reading it,
@@ -96,11 +107,14 @@ final class QuickAskPanel: NSPanel {
     var catalogWatch: Task<Void, Never>?
     var watchedServerID: String?
     var commandFetch: Task<Void, Never>?
-    private let onAsk:
+    private var onAsk:
         (String, QuickAskSend, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void)
             -> Void
-    let onResume: (SessionEntry) -> Void
-    let onAskParty: (QuickAskPartySend, @escaping @MainActor (NewChatFailure?) -> Void) -> Void
+    var onResume: (SessionEntry) -> Void
+    var onAskParty: (QuickAskPartySend, @escaping @MainActor (NewChatFailure?) -> Void) -> Void
+    /// Which summon the panel is serving. A mint answers long after its Return, and the panel it
+    /// answers may by then have been put away and brought back for another question.
+    var visit = 0
     /// The aim an action moved for one question, put back once the question has left.
     var hold: QuickAskAimHold?
     /// An action part way through fetching what its template names.
@@ -120,15 +134,70 @@ final class QuickAskPanel: NSPanel {
             -> Void
     ) {
         guard !servers.isEmpty else { return }
-        frontmost?.close()
-        let panel = QuickAskPanel(
+        if let frontmost, frontmost.isVisible { frontmost.close() }
+        let panel =
+            standby
+            ?? QuickAskPanel(
+                servers: servers, preferredServer: preferredServer, recents: recents, onAsk: onAsk,
+                onResume: onResume, onAskParty: onAskParty)
+        standby = nil
+        panel.arrive(
             servers: servers, preferredServer: preferredServer, recents: recents, onAsk: onAsk,
             onResume: onResume, onAskParty: onAskParty)
         panel.place(at: NSEvent.mouseLocation, near: window)
-        panel.restoreDraft()
         panel.makeKeyAndOrderFront(nil)
         panel.editor.focus()
         frontmost = panel
+    }
+
+    /// Builds the panel ahead of the first summon and keeps it out of sight.
+    static func prepare(
+        over window: NSWindow?, servers: [ConnectionProfile], preferredServer: String?,
+        recents: [SessionEntry],
+        onAsk: @escaping (
+            String, QuickAskSend, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void
+        ) -> Void,
+        onResume: @escaping (SessionEntry) -> Void,
+        onAskParty: @escaping (QuickAskPartySend, @escaping @MainActor (NewChatFailure?) -> Void)
+            -> Void
+    ) {
+        guard frontmost == nil, standby == nil, !servers.isEmpty else { return }
+        let panel = QuickAskPanel(
+            servers: servers, preferredServer: preferredServer, recents: recents, onAsk: onAsk,
+            onResume: onResume, onAskParty: onAskParty)
+        panel.unwatch()
+        panel.commandFetch?.cancel()
+        panel.catalogWatch?.cancel()
+        standby = panel
+    }
+
+    /// Brings the panel up for one summon, with what that summon knows: the machines, the chats it
+    /// can reopen, what sending does, the draft filed under the machine it aims at, and whatever
+    /// the pasteboard holds now.
+    private func arrive(
+        servers: [ConnectionProfile], preferredServer: String?, recents: [SessionEntry],
+        onAsk: @escaping (
+            String, QuickAskSend, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void
+        ) -> Void,
+        onResume: @escaping (SessionEntry) -> Void,
+        onAskParty: @escaping (QuickAskPartySend, @escaping @MainActor (NewChatFailure?) -> Void)
+            -> Void
+    ) {
+        visit += 1
+        self.servers = servers
+        self.recents = recents
+        self.onAsk = onAsk
+        self.onResume = onResume
+        self.onAskParty = onAskParty
+        aimedServerID = QuickAskDefaults.target(
+            among: servers.map(\.id), fallback: preferredServer)
+        machinePill.reload(servers: servers)
+        shortcuts = ShortcutSet.load()
+        watch()
+        restoreDraft()
+        clipboard = Self.detectClipboard()
+        refreshAim()
+        refreshCommands()
     }
 
     init(
@@ -322,6 +391,13 @@ final class QuickAskPanel: NSPanel {
         clipboard = Self.detectClipboard()
         refreshAim()
         refreshCommands()
+        watch()
+    }
+
+    /// What reaches into the panel while it is up: its keys, the person's actions and waiting
+    /// questions changing elsewhere, and a resize by hand finishing.
+    private func watch() {
+        unwatch()
         installMonitor()
         actionsObserver = NotificationCenter.default.addObserver(
             forName: QuickAskActions.didChange, object: nil, queue: .main
@@ -368,29 +444,80 @@ final class QuickAskPanel: NSPanel {
         grabScreen()
     }
 
-    /// A question is only ever lost in the moment nobody thought to save it, and a panel dismissed
-    /// with escape is exactly that moment.
-    override func close() {
-        remember()
-        releaseHold(retargeting: false)
-        gathering = nil
-        actionSheet?.dismiss()
+    private func unwatch() {
         if let actionsObserver { NotificationCenter.default.removeObserver(actionsObserver) }
         actionsObserver = nil
         if let laterObserver { NotificationCenter.default.removeObserver(laterObserver) }
         laterObserver = nil
         if let liveResizeObserver { NotificationCenter.default.removeObserver(liveResizeObserver) }
         liveResizeObserver = nil
-        stashDraft()
-        DraftStore.flush()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
+    }
+
+    /// A question is only ever lost in the moment nobody thought to save it, and a panel dismissed
+    /// with escape is exactly that moment. The panel a summon showed is then put away for the next
+    /// one rather than let go: what was typed is filed under its machine, and what was in hand,
+    /// what was copied, the line picked and a notice are let go, so it comes back the way a new one
+    /// would.
+    override func close() {
+        remember()
+        super.close()
+        releaseHold(retargeting: false)
+        gathering = nil
+        actionSheet?.dismiss()
+        unwatch()
+        stashDraft()
+        DraftStore.flush()
         dialPopover?.close()
         partyPopover?.close()
         makeRoomPopover?.close()
+        dismissCompletion()
         commandFetch?.cancel()
         catalogWatch?.cancel()
-        super.close()
+        if asking { unlock() }
+        clipboard = nil
+        copied = nil
+        attachments = []
+        pastedImageCount = 0
+        syncAttachments()
+        setStatus("")
+        menuCursor.clear()
+        paintSelection()
+        if Self.frontmost === self { Self.standby = self }
+    }
+
+    /// Whether an answer that arrives now belongs to the question on screen: the one asked on this
+    /// visit, with the panel still up for it.
+    func isServing(_ visit: Int) -> Bool {
+        Self.frontmost === self && isVisible && self.visit == visit
+    }
+
+    /// The box is the person's again after a send that did not go out, or one the panel was put
+    /// away in the middle of.
+    func unlock() {
+        asking = false
+        editor.isEditable = true
+        machinePill.isEnabled = true
+        dialPill.isEnabled = true
+        attachButton.isEnabled = true
+        screenButton.isEnabled = true
+        refreshSend()
+    }
+
+    /// What a question that went out leaves behind, whether or not the panel is still up for it,
+    /// since it may have been put away while the machine was minting: what was copied is set
+    /// aside, and the words stop being a draft unless something new was written over them since.
+    static func sent(_ text: String, on profileID: String, settling offer: String?) {
+        if let offer { QuickAskClipboardMemory.settle(offer) }
+        let scope = DraftScope.quickAsk(profileID: profileID)
+        let filed = DraftStore.text(for: scope).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard filed == text else { return }
+        DraftStore.clear(scope)
+        guard let open = frontmost, open.isVisible, open.targetServer.id == profileID,
+            open.editor.text.trimmingCharacters(in: .whitespacesAndNewlines) == text
+        else { return }
+        open.editor.setText("", caretAtEnd: true)
     }
 
     /// The powers are visibly on before the question is sent: the aim's own effort, or the word
@@ -496,23 +623,20 @@ final class QuickAskPanel: NSPanel {
         sendButton.isEnabled = false
         refreshStarterVisibility()
         setStatus(QuickAskComposition.waitingTitle(server: server.name))
+        let visit = visit
         onAsk(server.id, send, attachments) { [weak self] failure in
             guard let self else { return }
-            guard let failure else {
+            if failure == nil {
                 QuickAskDefaults.record(profileID: server.id)
+                Self.sent(text, on: server.id, settling: onOffer)
+            }
+            guard self.isServing(visit) else { return }
+            guard let failure else {
                 self.releaseHold(retargeting: false)
-                if let onOffer { QuickAskClipboardMemory.settle(onOffer) }
-                DraftStore.clear(.quickAsk(profileID: server.id))
                 self.close()
                 return
             }
-            self.asking = false
-            self.editor.isEditable = true
-            self.machinePill.isEnabled = true
-            self.dialPill.isEnabled = true
-            self.attachButton.isEnabled = true
-            self.screenButton.isEnabled = true
-            self.refreshSend()
+            self.unlock()
             self.setStatus("\(failure.title) — \(failure.detail)")
             self.refreshStarterVisibility()
             self.editor.focus()

@@ -9,7 +9,7 @@ import TailscodeCore
 @MainActor
 final class QuickAskMachinePill: NSView {
     var onPick: ((String) -> Void)?
-    private let servers: [ConnectionProfile]
+    private var servers: [ConnectionProfile]
     private let button = NSButton()
     private var selected: String?
 
@@ -42,6 +42,12 @@ final class QuickAskMachinePill: NSView {
     }
 
     var title: String { button.title }
+
+    /// The machines a summon offers, which can differ from the last summon's.
+    func reload(servers: [ConnectionProfile]) {
+        self.servers = servers
+        refreshEnabled()
+    }
 
     func select(id: String) {
         selected = id

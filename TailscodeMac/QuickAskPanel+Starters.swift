@@ -33,17 +33,19 @@ extension QuickAskPanel {
         let selected = menuCursor.index.flatMap {
             menuItems.indices.contains($0) ? menuItems[$0].id : nil
         }
-        starters.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        menuRows = []
         typingShown = isTyping
         let sections: [QuickAskMenuSection]
+        let state: QuickAskStarterPage.State
         if gathering?.awaiting == .session {
+            state = .sessions
             sections = QuickAskMenu.sessions(QuickAskSessionReference.candidates(among: recents))
         } else if isTyping {
+            state = .typing
             offered = QuickAskStarters.offered(for: abilities, surface: surface)
             sections = QuickAskMenu.verbs(
                 offered, aimWords: { [weak self] aim in self?.aimBadge(aim) })
         } else {
+            state = .resting
             let surface = self.surface
             offered = QuickAskStarters.offered(for: abilities, surface: surface)
             copied = clipboard.flatMap {
@@ -58,29 +60,15 @@ extension QuickAskPanel {
         }
         menuItems = QuickAskMenu.items(sections)
         picks = menuItems.filter { $0.digit != nil }
-        for section in sections {
-            fill(
-                section.isCopied
-                    ? QuickAskList.copiedHeader(section) { [weak self] in self?.setCopiedAside() }
-                    : QuickAskList.section(section.title))
-            for item in section.items {
-                let id = item.id
-                let row = QuickAskList.row(item) { [weak self] in self?.activate(id: id) }
-                row.menu = menu(for: item)
-                menuRows.append(row)
-                fill(row)
-            }
-            if section.id == "later" { fill(QuickAskList.note(QuickAskLaterWords.reach)) }
-        }
         let unread = QuickAskActions.unreadable
-        if unread > 0 {
-            fill(
-                QuickAskList.note(
-                    unread == 1
-                        ? Localized.text("1 entry in quick-actions.json could not be read")
-                        : Localized.text(
-                            "%@ entries in quick-actions.json could not be read", "\(unread)")))
+        let page = starterPage(.init(state: state, profileID: targetServer.id))
+        let look = QuickAskMenu.look(of: sections, unread: unread)
+        if page.look != look {
+            fill(page, with: sections, unread: unread)
+            page.look = look
         }
+        for shown in starterPages.values { shown.stack.isHidden = shown !== page }
+        menuRows = page.rows
         menuCursor.follow(id: selected, in: menuItems)
         paintSelection()
         renderFooter()
@@ -192,14 +180,17 @@ extension QuickAskPanel {
     /// One line of keys for the box as it is, and on its far end the chord that opens the panel
     /// from anywhere.
     func renderFooter() {
-        footKeys.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let keys =
             QuickAskFooter.keys(
                 platform: .apple, typing: isTyping,
                 party: QuickAskParty.targets(partyCards()).count > 1,
                 screen: surface.screen && abilities.vision, verbs: picks.count)
             + [QuickAskFooter.Key(keys: "esc", word: Localized.text("close"))]
-        for key in keys { footKeys.addArrangedSubview(QuickAskList.key(key)) }
+        if keys != footShown {
+            footShown = keys
+            footKeys.arrangedSubviews.forEach { $0.removeFromSuperview() }
+            for key in keys { footKeys.addArrangedSubview(QuickAskList.key(key)) }
+        }
         let summon = MacSummon.shared.state
         chordLabel.stringValue =
             summon.isLive
@@ -215,9 +206,39 @@ extension QuickAskPanel {
     }
 
     /// Everything in the list runs the list's full width, so the lines line up under the box.
-    private func fill(_ view: NSView) {
-        starters.addArrangedSubview(view)
-        view.widthAnchor.constraint(equalTo: starters.widthAnchor, constant: -20).isActive = true
+    private func starterPage(_ key: QuickAskStarterPage.Key) -> QuickAskStarterPage {
+        if let page = starterPages[key] { return page }
+        let page = QuickAskStarterPage()
+        starters.addArrangedSubview(page.stack)
+        page.stack.widthAnchor.constraint(equalTo: starters.widthAnchor, constant: -20).isActive = true
+        starterPages[key] = page
+        return page
+    }
+
+    private func fill(_ page: QuickAskStarterPage, with sections: [QuickAskMenuSection], unread: Int) {
+        page.stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        page.rows = []
+        for section in sections {
+            page.add(
+                section.isCopied
+                    ? QuickAskList.copiedHeader(section) { [weak self] in self?.setCopiedAside() }
+                    : QuickAskList.section(section.title))
+            for item in section.items {
+                let id = item.id
+                let row = QuickAskList.row(item) { [weak self] in self?.activate(id: id) }
+                row.menuMaker = { [weak self] in self?.menu(for: item) }
+                page.rows.append(row)
+                page.add(row)
+            }
+            if section.id == "later" { page.add(QuickAskList.note(QuickAskLaterWords.reach)) }
+        }
+        guard unread > 0 else { return }
+        page.add(
+            QuickAskList.note(
+                unread == 1
+                    ? Localized.text("1 entry in quick-actions.json could not be read")
+                    : Localized.text(
+                        "%@ entries in quick-actions.json could not be read", "\(unread)")))
     }
 
     static func pasteboardFingerprint() -> String {
@@ -384,5 +405,39 @@ extension QuickAskPanel {
         renderTyping()
         refreshSend()
         makeRoom()
+    }
+}
+
+/// The list drawn for one state of the box — resting, typing, choosing a chat — on one machine,
+/// with what it was drawn from (`QuickAskMenu.look`). A list is rebuilt only when what it shows
+/// changed, so the box flipping between empty and typed, a machine coming back, a summon, or a
+/// pasteboard that holds the same thing costs no rows.
+@MainActor
+final class QuickAskStarterPage {
+    enum State: Hashable {
+        case resting
+        case typing
+        case sessions
+    }
+
+    struct Key: Hashable {
+        let state: State
+        let profileID: String
+    }
+
+    let stack = NSStackView()
+    var look: [String] = []
+    var rows: [QuickAskRowView] = []
+
+    init() {
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 1
+        stack.translatesAutoresizingMaskIntoConstraints = false
+    }
+
+    func add(_ view: NSView) {
+        stack.addArrangedSubview(view)
+        view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     }
 }

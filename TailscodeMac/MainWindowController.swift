@@ -126,6 +126,9 @@ final class MainWindowController: NSWindowController {
         }
         startUsagePolling()
         startAskingLater()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.prepareQuickAsk()
+        }
         startMachineDesk()
         MacUpdateWatch.shared.start()
         NotificationCenter.default.addObserver(

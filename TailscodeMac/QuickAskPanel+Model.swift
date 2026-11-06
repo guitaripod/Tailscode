@@ -28,11 +28,10 @@ extension QuickAskPanel {
         DraftStore.record(editor.text, for: draftScope)
     }
 
+    /// The words filed under the machine aimed at, or an empty box where none are.
     func restoreDraft() {
         draftProfileID = targetServer.id
-        let draft = DraftStore.text(for: draftScope)
-        guard !draft.isEmpty else { return }
-        editor.setText(draft, caretAtEnd: true)
+        editor.setText(DraftStore.text(for: draftScope), caretAtEnd: true)
         refreshStarterVisibility()
     }
 
