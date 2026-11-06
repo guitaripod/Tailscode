@@ -8,12 +8,18 @@ import Foundation
 /// survives the app.
 public enum ModelCatalogStore {
     static let prefix = "tailscode.modelCatalog."
+    private static let decoded = DecodedCache<[ModelInfo]>()
 
+    /// What a server last reported. A catalog is read for every line, pill and chooser that names a
+    /// model, so it is read from the defaults once and kept in memory, which every write here
+    /// keeps current: a catalog of 450 models read for each of the quick ask's redraws cost it a
+    /// frame every time.
     public static func cached(_ profileID: String) -> [ModelInfo] {
+        if let models = decoded.value(for: profileID) { return models }
         guard let data = UserDefaults.standard.data(forKey: prefix + profileID),
             let models = try? JSONDecoder().decode([ModelInfo].self, from: data)
         else { return [] }
-        return models
+        return decoded.adopt(models, for: profileID)
     }
 
     /// Posted when a server's remembered catalog changes, so a list that wore a model's id because
@@ -22,11 +28,16 @@ public enum ModelCatalogStore {
     public static let didChange = Notification.Name("tailscode.modelCatalog.didChange")
 
     public static func store(_ models: [ModelInfo], for profileID: String) {
-        guard !models.isEmpty, let data = try? JSONEncoder().encode(models) else { return }
-        let key = prefix + profileID
-        guard UserDefaults.standard.data(forKey: key) != data else { return }
-        UserDefaults.standard.set(data, forKey: key)
+        guard !models.isEmpty, cached(profileID) != models else { return }
+        record(models, for: profileID)
         StoreNotice.post(didChange)
+    }
+
+    /// Writes a catalog without announcing it, for a client that announces catalogs its own way.
+    public static func record(_ models: [ModelInfo], for profileID: String) {
+        guard !models.isEmpty, let data = try? JSONEncoder().encode(models) else { return }
+        UserDefaults.standard.set(data, forKey: prefix + profileID)
+        decoded.keep(models, for: profileID)
     }
 
     /// Forgets one server's catalog — what a removed profile leaves behind, and what a test that
@@ -34,6 +45,7 @@ public enum ModelCatalogStore {
     /// the process that wrote it.
     public static func forget(_ profileID: String) {
         UserDefaults.standard.removeObject(forKey: prefix + profileID)
+        decoded.drop(profileID)
     }
 
     /// Asks a server what it runs and remembers the answer. Failure is silent on purpose: a server

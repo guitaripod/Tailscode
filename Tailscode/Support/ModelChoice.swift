@@ -71,9 +71,7 @@ enum ModelCatalog {
         }
         let changed = cached(for: profileID) != models
         memory[profileID] = models
-        if let data = try? JSONEncoder().encode(models) {
-            UserDefaults.standard.set(data, forKey: prefix + profileID)
-        }
+        ModelCatalogStore.record(models, for: profileID)
         if changed {
             NotificationCenter.default.post(
                 name: ModelCatalog.didChange, object: nil, userInfo: ["profileID": profileID])

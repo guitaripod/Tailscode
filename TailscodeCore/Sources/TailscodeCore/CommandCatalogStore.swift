@@ -9,21 +9,26 @@ import Foundation
 /// only ever corrects it.
 public enum CommandCatalogStore {
     static let prefix = "tailscode.commandCatalog."
+    private static let decoded = DecodedCache<[AgentCommand]>()
 
+    /// Read from the defaults once and kept in memory, which every write here keeps current.
     public static func cached(_ profileID: String) -> [AgentCommand] {
+        if let commands = decoded.value(for: profileID) { return commands }
         guard let data = UserDefaults.standard.data(forKey: prefix + profileID),
             let commands = try? JSONDecoder().decode([AgentCommand].self, from: data)
         else { return [] }
-        return commands
+        return decoded.adopt(commands, for: profileID)
     }
 
     public static func store(_ commands: [AgentCommand], for profileID: String) {
         guard !commands.isEmpty, let data = try? JSONEncoder().encode(commands) else { return }
         UserDefaults.standard.set(data, forKey: prefix + profileID)
+        decoded.keep(commands, for: profileID)
     }
 
     public static func forget(_ profileID: String) {
         UserDefaults.standard.removeObject(forKey: prefix + profileID)
+        decoded.drop(profileID)
     }
 
     /// Asks a server what it can be told to do and remembers the answer. Failure is silent: a
