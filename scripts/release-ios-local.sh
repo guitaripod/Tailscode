@@ -4,7 +4,8 @@
 # beta: a guest stamps a stable BuildMachineOSBuild, and a major-beta host stamps one Apple bounces
 # with ITMS-90111. The host rule is Marcus's: a point beta (27.2) builds and uploads locally. The
 # script prints the stamp and the SDK so the host line is read before anything is delivered, and
-# refuses a build number the iOS train already holds.
+# refuses a build number the iOS train already holds, or a version no higher than the newest one
+# Apple approved: that train is closed and the upload bounces with ITMS-90186 and ITMS-90062.
 #
 # Usage: scripts/release-ios-local.sh <build-number> <marketing-version> [--upload]
 # SKIP_ARCHIVE=1 reuses the archive of this build number after an export that failed.
@@ -46,9 +47,9 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
-python3 -I - "$BUILD" "$APP_ID" <<'PY'
-import subprocess, sys
-build, app = sys.argv[1], sys.argv[2]
+python3 -I - "$BUILD" "$MARKETING" "$APP_ID" <<'PY'
+import json, subprocess, sys
+build, marketing, app = sys.argv[1:4]
 out = subprocess.run(
     ["asc", "builds", "list", "--app", app, "--platform", "IOS", "--limit", "50", "--output", "table"],
     capture_output=True, text=True).stdout
@@ -57,6 +58,25 @@ if build in taken:
     print(f"build {build} is already on the iOS train", file=sys.stderr)
     sys.exit(1)
 print(f"build {build} is free on the iOS train")
+
+APPROVED = {
+    "ACCEPTED", "PENDING_APPLE_RELEASE", "PENDING_DEVELOPER_RELEASE", "PROCESSING_FOR_APP_STORE",
+    "PROCESSING_FOR_DISTRIBUTION", "READY_FOR_DISTRIBUTION", "READY_FOR_SALE",
+    "REPLACED_WITH_NEW_VERSION", "DEVELOPER_REMOVED_FROM_SALE", "REMOVED_FROM_SALE",
+}
+listing = subprocess.run(
+    ["asc", "versions", "list", "--app", app, "--platform", "IOS", "--paginate", "--output", "json"],
+    capture_output=True, text=True, check=True).stdout
+order = lambda version: tuple(int(part) for part in version.split("."))
+approved = [
+    entry["attributes"]["versionString"] for entry in json.loads(listing)["data"]
+    if {entry["attributes"].get("appStoreState"), entry["attributes"].get("appVersionState")} & APPROVED
+]
+newest = max(approved, key=order, default=None)
+if newest and order(marketing) <= order(newest):
+    print(f"version {marketing} is not above {newest}, the newest approved iOS version: its train is closed", file=sys.stderr)
+    sys.exit(1)
+print(f"version {marketing} is above {newest}, the newest approved iOS version")
 PY
 
 mkdir -p "$PROFILE_DIR" "$OUT"
