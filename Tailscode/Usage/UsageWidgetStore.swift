@@ -111,7 +111,7 @@ enum UsageWidgetStore {
             providers: [
                 UsageWidgetEntry.ProviderSnapshot(
                     providerName: "Claude Code",
-                    subtitle: "Max 20x",
+                    subtitle: "Ultra",
                     isLive: true,
                     gauges: [
                         previewGauge("Token input", 0.47, "47%", resetsIn: 4500, from: now),

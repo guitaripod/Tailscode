@@ -47,7 +47,7 @@ enum RangeDemo {
                 resetsAt: now.addingTimeInterval(resetsIn), trustedReset: true)
         }
         return UsageQuota(
-            providerName: "Claude", subtitle: "Max 5x", source: "api · live", live: true,
+            providerName: "Claude", subtitle: "Max", source: "api · live", live: true,
             gauges: [
                 gauge("session", "5-hour session", used: 0.62, resetsIn: 2 * hour + 47 * 60),
                 gauge("weekly_all", "Weekly · all models", used: 0.38, resetsIn: 63 * hour),

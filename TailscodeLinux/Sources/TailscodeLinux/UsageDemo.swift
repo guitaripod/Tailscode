@@ -55,7 +55,7 @@ enum UsageDemo {
         case "long":
             return QuotaGlance.make(
                 from: [
-                    ("arch", named("Anthropic Claude Max 20x", session: 0.99, weekly: 1.0, now: now))
+                    ("arch", named("Anthropic Claude Ultra", session: 0.99, weekly: 1.0, now: now))
                 ], answeredAt: now, now: now)
         default:
             return nil
@@ -70,7 +70,7 @@ enum UsageDemo {
         -> UsageQuota
     {
         UsageQuota(
-            providerName: provider, subtitle: "Max 20x", source: "claude.ai", live: true,
+            providerName: provider, subtitle: "Ultra", source: "claude.ai", live: true,
             gauges: [
                 UsageQuota.Gauge(
                     key: "session", label: "5-hour session", fraction: session,

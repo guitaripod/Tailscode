@@ -71,7 +71,7 @@ extension DemoWorld {
             supportsGoals: true, supportsCompaction: true, supportsSchedules: true,
             supportsMachineAgents: true),
         quota: UsageQuota(
-            providerName: "Claude", subtitle: "Max 20×", source: "claude-bridge", live: true,
+            providerName: "Claude", subtitle: "Ultra", source: "claude-bridge", live: true,
             gauges: [
                 UsageQuota.Gauge(
                     key: "session", label: "Session", fraction: 0.62,
@@ -84,7 +84,7 @@ extension DemoWorld {
                     resetsAt: hence(311_000), trustedReset: true),
             ],
             details: [
-                UsageQuota.Detail(key: "Plan", value: "Max 20×"),
+                UsageQuota.Detail(key: "Plan", value: "Ultra"),
                 UsageQuota.Detail(key: "Session window", value: "5h rolling"),
                 UsageQuota.Detail(key: "Most used model", value: "Fable 5"),
             ]),
