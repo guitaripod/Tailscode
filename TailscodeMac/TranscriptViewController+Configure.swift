@@ -151,6 +151,7 @@ extension TranscriptViewController {
         authGlass = auth
 
         calls.onEntryChanged = { [weak self] entry in self?.composer.setCallEntry(entry) }
+        calls.onLiveChanged = { [weak self] live in self?.composer.dictation.callLive = live }
         composer.onCall = { [weak self] in self?.calls.pressEntry() }
 
         let host = FillingStack(views: [auth, band, calls.glass, card])

@@ -227,6 +227,10 @@ final class PaneCallController {
             })
     }
 
+    /// Whether a call is live in this pane's chat, for the composer's microphone, which a call
+    /// replaces.
+    var onLiveChanged: ((Bool) -> Void)?
+
     private func activeChanged(_ call: ActiveCall?) {
         guard live, let call, call.chat == chatID, gate.isOwner(self) else { return }
         attach(call)
@@ -237,6 +241,7 @@ final class PaneCallController {
         detach()
         noticeClock?.cancel()
         attached = call
+        onLiveChanged?(true)
         snapshot = nil
         connected = false
         degraded = false
@@ -308,6 +313,7 @@ final class PaneCallController {
     private func finish(_ call: ActiveCall, _ last: VoiceCallSnapshot, _ end: VoiceCallEnd) {
         detach()
         attached = nil
+        onLiveChanged?(false)
         speaker.release()
         let line = last.endLine ?? VoiceCallReading.end(end, client: .mac)
         let settings = end == .microphoneDenied
@@ -352,6 +358,7 @@ final class PaneCallController {
         }
         detach()
         attached = nil
+        onLiveChanged?(false)
         let before = face
         snapshot = nil
         speaker.release()
@@ -481,6 +488,7 @@ final class PaneCallController {
         }
         let desk = gate.desk
         Task { [weak self] in
+            await DictationDesk.shared.finishAny()
             let result = await desk.start(
                 chat: chat, title: title, endpoint: endpoint, client: .mac, app: app,
                 audio: { try Self.makeAudio(speaker: speaker) }, send: send, stopTurn: stopTurn)

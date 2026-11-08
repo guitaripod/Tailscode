@@ -33,6 +33,7 @@ final class ComposerView: NSView {
     var onMoveToServer: ((String, CarryPlan?) -> Void)?
 
     let completion = CompletionPopover()
+    private(set) lazy var dictation = MacDictationController(host: self)
 
     var attachmentCount: Int { attachments.count }
     var availableCommands: [AgentCommand] {
@@ -203,6 +204,7 @@ final class ComposerView: NSView {
     /// what was in the composer and restores whatever was stashed for the chat being opened —
     /// along with that chat's own model choice, effort, commands and attachments-in-waiting.
     func prepare(for entry: SessionEntry, backend: any CodingAgentBackend) {
+        dictation.stopKeepingShown()
         stashDraft()
         self.entry = entry
         self.backend = backend
@@ -491,4 +493,38 @@ enum CarryShelf {
     static func brief(profileID: String, sessionID: String) -> ConversationBrief? {
         held[key(profileID, sessionID)]
     }
+}
+
+extension ComposerView: MacDictationHost {
+    var dictationEditor: PromptEditor { editor }
+
+    var dictationSendControl: NSView { sendButton }
+
+    var dictationKey: String { "pane-\(ObjectIdentifier(self).hashValue)" }
+
+    var dictationChord: String? { Self.dictationChordWords }
+
+    /// The chord as the Mac spells it, read once from the shortcut set the window resolves keys with.
+    private static let dictationChordWords: String? = {
+        guard let spec = ShortcutRegistry.definition("composer.dictate")?.defaults.first,
+            let chord = KeySpec.parse(spec)?.chords.first,
+            let scalar = Keymap.scalar(chord.keyval)
+        else { return nil }
+        guard ShortcutSet.load().effective["composer.dictate"]?.first == KeySpec.display([chord]) else { return nil }
+        var words = ""
+        if chord.control { words += "⌃" }
+        if chord.alt { words += "⌥" }
+        if chord.shift { words += "⇧" }
+        return words + String(scalar).uppercased()
+    }()
+
+    /// The words this chat knows, read from the tail of what it holds when the microphone opens.
+    func dictationVocabulary() -> DictationVocabulary {
+        let project = entry?.session.directory.map { ($0 as NSString).lastPathComponent }
+        return DictationVocabulary.read(
+            messages: lastState?.messages ?? [], project: project, commands: commands.map(\.name),
+            models: [chosenModel?.modelID].compactMap { $0 })
+    }
+
+    func dictationSend() { sendNow() }
 }

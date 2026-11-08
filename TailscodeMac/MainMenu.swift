@@ -182,6 +182,7 @@ final class MainMenu: NSObject {
             (bound(Localized.text("Previous Prompt"), #selector(previousPrompt), .previousPrompt), .previousPrompt),
             (bound(Localized.text("Next Prompt"), #selector(nextPrompt), .nextPrompt), .nextPrompt),
             (bound(Localized.text("Copy Last Answer"), #selector(copyLastAnswer), .copyLastAnswer), .copyLastAnswer),
+            (bound(DictationReading.name, #selector(dictate), .dictate), .dictate),
         ]
         for (entry, _) in conversationChordItems { menu.addItem(entry) }
         menu.addItem(.separator())
@@ -597,6 +598,7 @@ final class MainMenu: NSObject {
     @objc private func previousPrompt() { run(.previousPrompt) }
     @objc private func nextPrompt() { run(.nextPrompt) }
     @objc private func copyLastAnswer() { run(.copyLastAnswer) }
+    @objc private func dictate() { hub.transcript.composer.dictation.toggle() }
     @objc private func toggleSaved() { run(.toggleSaved) }
     @objc private func toggleArchived() { run(.archiveSelected) }
     @objc private func toggleUnread() { run(.toggleUnreadSelected) }

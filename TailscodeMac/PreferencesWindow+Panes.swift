@@ -300,6 +300,17 @@ extension PreferencesWindow {
                 action: #selector(linesChanged)))
 
         gap(column)
+        column.addArrangedSubview(MacDialogs.sectionHeader(DictationReading.settingsTitle))
+        column.addArrangedSubview(dictationLanguageRow())
+        column.addArrangedSubview(
+            switchRow(
+                title: DictationReading.chatWordsTitle, subtitle: DictationReading.chatWordsFooter,
+                value: DictationPreferences.usesChatWords, action: #selector(dictationChatWordsChanged)))
+        column.addArrangedSubview(
+            MacDialogs.detailLabel(
+                DictationReading.settingsFooter(device: "Mac", chord: "⌃⇧D", surface: .pointer), wraps: true))
+
+        gap(column)
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Transcript")))
         column.addArrangedSubview(
             switchRow(

@@ -32,6 +32,51 @@ extension PreferencesWindow {
         ActivityStyleSetting.set(ActivityStyle.allCases[sender.indexOfSelectedItem])
     }
 
+    /// Automatic follows the first preferred language; the transcriber's own list fills in once it
+    /// has been read, which is an asynchronous question the window does not wait on.
+    func dictationLanguageRow() -> NSView {
+        let current = DictationPreferences.language
+        let row = popUpRow(
+            title: DictationReading.languageTitle, subtitle: DictationReading.languageFooter(surface: .pointer),
+            options: [DictationReading.automatic] + [current.map(DictationReading.languageName)].compactMap { $0 },
+            selected: current == nil ? 0 : 1, action: #selector(dictationLanguageChanged))
+        guard let popUp = Self.popUp(in: row) else { return row }
+        Task { @MainActor in
+            let identifiers = await MacDictationEngines.shared.recognizer.languages()
+            let named = identifiers.map { ($0, DictationReading.languageName($0)) }
+                .sorted { $0.1.localizedCaseInsensitiveCompare($1.1) == .orderedAscending }
+            popUp.removeAllItems()
+            popUp.addItem(withTitle: DictationReading.automatic)
+            for (identifier, name) in named {
+                popUp.addItem(withTitle: name)
+                popUp.lastItem?.representedObject = identifier
+            }
+            if let current, let index = named.firstIndex(where: { $0.0 == current }) {
+                popUp.selectItem(at: index + 1)
+            } else {
+                popUp.selectItem(at: 0)
+            }
+        }
+        return row
+    }
+
+    private static func popUp(in view: NSView) -> NSPopUpButton? {
+        if let popUp = view as? NSPopUpButton { return popUp }
+        for child in view.subviews {
+            if let found = popUp(in: child) { return found }
+        }
+        return nil
+    }
+
+    @objc func dictationLanguageChanged(_ sender: NSPopUpButton) {
+        DictationPreferences.language = sender.selectedItem?.representedObject as? String
+        MacDictationEngines.shared.moved()
+    }
+
+    @objc func dictationChatWordsChanged(_ sender: NSButton) {
+        DictationPreferences.usesChatWords = sender.state == .on
+    }
+
     func popUpRow(
         title: String, subtitle: String, options: [String], selected: Int, action: Selector
     ) -> NSView {

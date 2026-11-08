@@ -14,6 +14,14 @@ extension MainWindowController {
             else { return event }
             return self.handle(event)
         }
+        releaseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyUp, .flagsChanged]) { [weak self] event in
+            guard let self, event.window === self.window else { return event }
+            let keyCode: UInt16? = event.type == .keyUp ? event.keyCode : nil
+            for pane in self.splitPanes.orderedPanes {
+                pane.composer.dictation.keyReleased(keyCode: keyCode, flags: event.modifierFlags)
+            }
+            return event
+        }
     }
 
     /// The pointer's own claim on the keyboard: a local monitor sees every button going down
@@ -108,12 +116,15 @@ extension MainWindowController {
             terminalPane.stopRunning()
         #endif
         MacVoiceCallGate.shared.prepareToQuit()
+        Task { await DictationDesk.shared.finishAny() }
         SessionListCache.flushPendingSave()
         splitPanes.flushPersistence()
         Seatbelts.shared.finish(panes: splitPanes.paneCount)
     }
 
     private func handle(_ event: NSEvent) -> NSEvent? {
+        lastKeyCode = event.keyCode
+        if splitPanes.orderedPanes.contains(where: { $0.composer.dictation.handleKey(event) }) { return nil }
         if window?.firstResponder is KeyboardPressable, [49, 36, 76].contains(event.keyCode) {
             return event
         }

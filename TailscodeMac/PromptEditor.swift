@@ -22,6 +22,12 @@ final class PromptEditor: NSView {
     var onPaste: (() -> Bool)?
     /// The mode the engine is in changed without a key: a press in the box meant typing.
     var onModeChanged: (() -> Void)?
+    /// The person changed the box with their own hands while a take was writing into it.
+    var onEditDuringDictation: (() -> Void)?
+    let dictationEdge = MacDictationEdge()
+    private(set) var dictating = false
+    private var writingDictation = false
+    private var restingPlaceholder = ""
 
     private let textView = PastingTextView()
     private let scrollView = NSScrollView()
@@ -136,6 +142,8 @@ final class PromptEditor: NSView {
         fieldContainer.addSubview(scrollView)
         fieldContainer.addSubview(placeholderLabel)
         addSubview(fieldContainer)
+        dictationEdge.cornerRadius = MacTheme.Radius.control
+        addSubview(dictationEdge)
 
         let height = fieldContainer.heightAnchor.constraint(equalToConstant: 34)
         fieldHeight = height
@@ -156,6 +164,10 @@ final class PromptEditor: NSView {
                 constant: -(MacTheme.Spacing.s + 5)),
             placeholderLabel.topAnchor.constraint(
                 equalTo: fieldContainer.topAnchor, constant: MacTheme.Spacing.s),
+            dictationEdge.leadingAnchor.constraint(equalTo: fieldContainer.leadingAnchor),
+            dictationEdge.trailingAnchor.constraint(equalTo: fieldContainer.trailingAnchor),
+            dictationEdge.topAnchor.constraint(equalTo: fieldContainer.topAnchor),
+            dictationEdge.bottomAnchor.constraint(equalTo: fieldContainer.bottomAnchor),
         ])
     }
 
@@ -187,11 +199,100 @@ final class PromptEditor: NSView {
     }
 
     var placeholder: String {
-        get { placeholderLabel.stringValue }
+        get { dictating ? restingPlaceholder : placeholderLabel.stringValue }
         set {
-            placeholderLabel.stringValue = newValue
+            restingPlaceholder = newValue
+            placeholderLabel.stringValue = dictating ? DictationReading.listeningPlaceholder : newValue
             textView.setAccessibilityLabel(newValue)
         }
+    }
+
+    /// Where a take's words would go: the text before the selection and the text after it, and the
+    /// selection itself so a cancel can put the caret back.
+    func dictationAnchor() -> (insertion: DictationInsertion, selection: NSRange) {
+        let text = textView.string as NSString
+        let range = textView.selectedRange()
+        let start = min(range.location, text.length)
+        let end = min(range.location + range.length, text.length)
+        return (DictationInsertion(before: text.substring(to: start), after: text.substring(from: end)), range)
+    }
+
+    /// Opens or closes the box to a take: the placeholder says it is listening, the ultracode
+    /// aura steps aside for the lit edge, and the words the take writes are not the person's typing.
+    func setDictating(_ value: Bool) {
+        guard value != dictating else { return }
+        if value { restingPlaceholder = placeholderLabel.stringValue }
+        dictating = value
+        placeholderLabel.stringValue = value ? DictationReading.listeningPlaceholder : restingPlaceholder
+        aura.setParked(value)
+    }
+
+    private var baseAttributes: [NSAttributedString.Key: Any] {
+        [.font: textView.font ?? MacTheme.Ramp.font(.composer), .foregroundColor: NSColor.textColor]
+    }
+
+    /// The box with a take in it, outside the undo history: only the take's last state becomes an
+    /// undo step, in `commitDictation`.
+    func showDictation(_ composition: DictationComposition, struck: Bool) {
+        writingDictation = true
+        let storage = textView.textStorage
+        let text = NSMutableAttributedString(string: composition.text, attributes: baseAttributes)
+        text.addAttribute(
+            .foregroundColor, value: MacTheme.Color.accent.withAlphaComponent(0.9), range: composition.heardUTF16)
+        if struck {
+            text.addAttributes(
+                [.foregroundColor: NSColor.tertiaryLabelColor, .strikethroughStyle: NSUnderlineStyle.single.rawValue],
+                range: composition.takeUTF16)
+        }
+        storage?.setAttributedString(text)
+        textView.typingAttributes = baseAttributes
+        textView.setSelectedRange(NSRange(location: composition.caretUTF16, length: 0))
+        textView.scrollRangeToVisible(textView.selectedRange())
+        writingDictation = false
+        contentChanged()
+    }
+
+    /// The take's words as one undo step back to the box as it was before the take.
+    func commitDictation(_ composition: DictationComposition, from original: String) {
+        writingDictation = true
+        textView.textStorage?.setAttributedString(NSAttributedString(string: original, attributes: baseAttributes))
+        let whole = NSRange(location: 0, length: (original as NSString).length)
+        if composition.text != original, textView.shouldChangeText(in: whole, replacementString: composition.text) {
+            textView.breakUndoCoalescing()
+            textView.textStorage?.replaceCharacters(
+                in: whole, with: NSAttributedString(string: composition.text, attributes: baseAttributes))
+            textView.didChangeText()
+            textView.undoManager?.setActionName(DictationReading.undoActionName)
+        }
+        textView.typingAttributes = baseAttributes
+        textView.setSelectedRange(NSRange(location: composition.caretUTF16, length: 0))
+        writingDictation = false
+        setDictating(false)
+        vim.reset(to: textView.string, cursor: cursor, mode: vim.mode)
+        contentChanged()
+    }
+
+    /// The box exactly as it was before a take that was thrown away.
+    func restoreDictation(_ original: String, selection: NSRange) {
+        writingDictation = true
+        textView.textStorage?.setAttributedString(NSAttributedString(string: original, attributes: baseAttributes))
+        let length = (original as NSString).length
+        let location = min(selection.location, length)
+        textView.setSelectedRange(NSRange(location: location, length: min(selection.length, length - location)))
+        textView.typingAttributes = baseAttributes
+        writingDictation = false
+        setDictating(false)
+        vim.reset(to: textView.string, cursor: cursor, mode: vim.mode)
+        contentChanged()
+    }
+
+    /// The words stay exactly as shown, in ink: a take stopped by typing or by leaving the chat.
+    func keepDictationAsShown() {
+        if let storage = textView.textStorage {
+            storage.setAttributes(baseAttributes, range: NSRange(location: 0, length: storage.length))
+        }
+        textView.typingAttributes = baseAttributes
+        setDictating(false)
     }
 
     var text: String { textView.string }
@@ -417,6 +518,13 @@ final class PromptEditor: NSView {
 extension PromptEditor: NSTextViewDelegate {
     func textDidChange(_ notification: Notification) {
         contentChanged()
+    }
+
+    func textView(
+        _ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?
+    ) -> Bool {
+        if dictating, !writingDictation { onEditDuringDictation?() }
+        return true
     }
 }
 

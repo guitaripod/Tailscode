@@ -20,13 +20,13 @@ extension ComposerView {
     }
 
     func configureLayout() {
-        let editorRow = NSStackView(views: [editor, sendButton])
+        let editorRow = NSStackView(views: [editor, dictation.button, sendButton])
         editorRow.orientation = .horizontal
         editorRow.alignment = .bottom
         editorRow.spacing = MacTheme.Spacing.s
         editorRow.translatesAutoresizingMaskIntoConstraints = false
 
-        let column = FillingStack(views: [chips, editorRow, pills])
+        let column = FillingStack(views: [chips, dictation.hint, editorRow, pills])
         column.spacing = MacTheme.Spacing.s
         column.translatesAutoresizingMaskIntoConstraints = false
         addSubview(column)
@@ -121,6 +121,7 @@ extension ComposerView {
     }
 
     @objc private func sendTapped() {
+        if dictation.stopAndSend() { return }
         sendNow()
     }
 }

@@ -367,6 +367,7 @@ enum ParityManifest {
         case .videoEstimate: return .implemented("expecting")
         case .videoLight: return .implemented("ForgeRingView")
         case .voiceCall: return .implemented("CallStripView")
+        case .dictation: return .implemented("MacDictationController")
         case .setupChecklist: return .implemented("SetupChecklistViewController")
         case .serverCapabilities: return .implemented("SetupCapabilitiesView")
         case .reviewPrompt: return .implemented("MacReviewPrompt")

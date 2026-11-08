@@ -209,6 +209,8 @@ extension MainWindowController {
             } else {
                 transcript.stopTurn()
             }
+        case .dictate:
+            transcript.composer.dictation.chordDown(keyCode: lastKeyCode)
         case .send:
             transcript.composer.sendNow()
         case .commandPalette:

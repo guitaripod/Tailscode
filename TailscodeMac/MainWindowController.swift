@@ -53,7 +53,10 @@ final class MainWindowController: NSWindowController {
     var restoreBanner: RestoreBannerView?
     var cheatsheet: NSPanel?
     var keyMonitor: Any?
+    var releaseMonitor: Any?
     var mouseMonitor: Any?
+    /// The key the last press was, so a hold of the dictation chord knows which key to watch rise.
+    var lastKeyCode: UInt16 = 0
     var usageTask: Task<Void, Never>?
     var usageWindow: UsageWindowController?
     var spendPopover: NSPopover?

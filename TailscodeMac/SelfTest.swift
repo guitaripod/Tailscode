@@ -168,6 +168,15 @@ enum SelfTest {
         }
 
         do {
+            let checks = try await checkDictation()
+            report(
+                "dictation: \(checks) claims hold — the control's faces, a click and a hold, words snapped into the box as one undo step, a drag that discards with Undo, Esc, Return that sends, a call that hides it")
+        } catch {
+            report("dictation: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkTranscriptColumn()
             report("transcript column: \(checks) claims hold — rows stand alone and stack as a stack would")
         } catch {
