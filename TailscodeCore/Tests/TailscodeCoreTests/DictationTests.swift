@@ -163,6 +163,19 @@ struct DictationVocabularyTests {
         #expect(!vocabulary.phrases.contains("ComposerView.swift"))
     }
 
+    @Test("A quick ask knows what is copied, its machine's commands and its model, with no transcript")
+    func notes() {
+        let vocabulary = DictationVocabulary.read(
+            messages: [], commands: ["review"], models: ["qwen3-coder:30b"],
+            notes: ["error: cannot find 'MacDictationHost' in scope at QuickAskPanel.swift:12"])
+        #expect(vocabulary.terms.contains("MacDictationHost"))
+        #expect(vocabulary.terms.contains("QuickAskPanel.swift"))
+        #expect(vocabulary.terms.contains("qwen3-coder:30b"))
+        #expect(vocabulary.commands == ["review"])
+        #expect(DictationVocabulary.read(messages: [], notes: [String(repeating: "Word ", count: 5_000) + "LateName"])
+            .terms.contains("LateName") == false)
+    }
+
     @Test("Only the tail is read, and Apple's engine gets at most a hundred phrases")
     func bounded() {
         let messages = (0..<200).map { index in message([.text("Symbol\(index)Name here")]) }

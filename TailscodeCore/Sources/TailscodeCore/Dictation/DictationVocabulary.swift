@@ -21,16 +21,23 @@ public struct DictationVocabulary: Sendable, Equatable {
 
     public static let empty = DictationVocabulary(terms: [])
 
-    /// Most recent first: a file the agent just edited outranks one it read an hour ago.
+    /// Most recent first: a file the agent just edited outranks one it read an hour ago. `notes` is
+    /// text in hand outside any transcript — what a quick ask has on offer from the pasteboard — and
+    /// is read ahead of the messages, out of the same budget.
     public static func read(
         messages: [ChatMessage], project: String? = nil, branch: String? = nil,
-        commands: [String] = [], models: [String] = []
+        commands: [String] = [], models: [String] = [], notes: [String] = []
     ) -> DictationVocabulary {
         var ranked = RankedTerms(limit: termLimit)
         for name in [project, branch].compactMap({ $0 }) {
             ranked.add(name)
         }
         var budget = textBudget
+        for note in notes where budget > 0 {
+            let slice = String(note.prefix(budget))
+            budget -= slice.count
+            for identifier in identifiers(in: slice) { ranked.add(identifier) }
+        }
         for message in messages.suffix(tailMessages).reversed() {
             for part in message.parts.reversed() {
                 switch part.kind {
