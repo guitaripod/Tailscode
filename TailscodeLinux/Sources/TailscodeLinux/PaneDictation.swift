@@ -442,6 +442,9 @@ final class PaneDictation: @unchecked Sendable {
         if case .blocked = face { Gtk.addClass(mic, "chip-tone-attention") } else { gtk_widget_remove_css_class(mic, "chip-tone-attention") }
         gtk_label_set_text(op(word), chipWord(face))
         gtk_widget_set_visible(word, compact ? 0 : 1)
+        if let send = host?.dictationSendTarget {
+            if case .listening(.held, .send) = face { Gtk.addClass(send, "chip-on") } else { gtk_widget_remove_css_class(send, "chip-on") }
+        }
         gtk_widget_set_tooltip_text(chip, DictationReading.tooltip(face, chord: chord))
         tailscode_set_accessible_label(chip, DictationReading.accessibilityLabel(face))
         drawHint(face)
