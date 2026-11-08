@@ -246,6 +246,150 @@ extension SelfTest {
         return checks
     }
 
+    /// The quick ask's microphone, in the real window over the scripted fleet with the scripted
+    /// engine: the chip stands between the box and Send with its hint under the field, the words it
+    /// knows include the model it would ask, the registry's chord tapped listens hands-free, Esc
+    /// throws the take away and leaves the window up, ⏎ settles and asks, the chip greys while the
+    /// question is out, Send mid-take settles first, and a window put away mid-take files what it
+    /// showed as the machine's draft.
+    static func checkQuickAskDictation() throws -> Int {
+        guard gtk_init_check() != 0 else { return 0 }
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("quick ask dictation: \(label)") }
+            checks += 1
+        }
+        func pump(_ seconds: Double, until done: () -> Bool = { false }) -> Bool {
+            let end = Date().addingTimeInterval(seconds)
+            while Date() < end {
+                while g_main_context_iteration(nil, 0) != 0 {}
+                if done() { return true }
+                usleep(4000)
+            }
+            return done()
+        }
+        func children(of box: UnsafeMutablePointer<GtkWidget>) -> [UnsafeMutablePointer<GtkWidget>] {
+            var out: [UnsafeMutablePointer<GtkWidget>] = []
+            var child = gtk_widget_get_first_child(box)
+            while let current = child {
+                out.append(current)
+                child = gtk_widget_get_next_sibling(current)
+            }
+            return out
+        }
+        final class Asked: @unchecked Sendable { var texts: [String] = [] }
+        MatrixTheme.install()
+        let scope = DraftScope.quickAsk(profileID: "arch")
+        let keptEngine = QuickAskWindow.dictationDemo
+        func discardWindows() {
+            QuickAskWindow.open?.close()
+            if let standby = QuickAskWindow.standby { gtk_window_destroy(ptr(standby.window)) }
+            QuickAskWindow.standby = nil
+        }
+        discardWindows()
+        QuickAskWindow.dictationDemo = (true, 0.05)
+        defer {
+            discardWindows()
+            QuickAskWindow.dictationDemo = keptEngine
+            DraftStore.clear(scope)
+            QuickAskPartyDemo.restore()
+            SettingsFile.capture()
+        }
+        DraftStore.clear(scope)
+        QuickAskPartyDemo.seed()
+        let asked = Asked()
+        QuickAskWindow.present(
+            servers: QuickAskPartyDemo.profiles, preferredServer: "arch", recents: [], parent: nil,
+            onAsk: { _, _, _, _ in asked.texts.append(QuickAskWindow.open?.editor.text ?? "") },
+            onResume: { _ in }, onAskParty: { _, _ in })
+        guard let ask = QuickAskWindow.open else { throw SelfTestFailure("quick ask dictation: no window") }
+        _ = pump(0.6)
+
+        guard let field = gtk_widget_get_parent(ask.editor.widget) else {
+            throw SelfTestFailure("quick ask dictation: the box has no field")
+        }
+        let row = children(of: field)
+        guard let box = row.firstIndex(of: ask.editor.widget), let mic = row.firstIndex(of: ask.dictation.chip),
+            let send = row.firstIndex(of: ask.send)
+        else { throw SelfTestFailure("quick ask dictation: the chip is in the field") }
+        try expect(box < mic && mic < send, "the chip stands between the box and Send")
+        try expect(gtk_widget_get_parent(ask.dictation.hint) != nil, "the hint has a place in the window")
+        try expect(gtk_widget_get_visible(ask.dictation.chip) != 0, "the chip shows")
+        try expect(ask.dictation.harnessFace == .ready, "and is ready")
+        guard let restingChip = Gtk.bounds(of: ask.dictation.chip, in: field),
+            let sendFrame = Gtk.bounds(of: ask.send, in: field)
+        else { throw SelfTestFailure("quick ask dictation: the chip and Send are laid out") }
+        let level = abs((restingChip.y + restingChip.height / 2) - (sendFrame.y + sendFrame.height / 2))
+        try expect(level <= 1.5, "the chip sits level with Send: \(restingChip) \(sendFrame)")
+        try expect(abs(restingChip.height - sendFrame.height) <= 1.5, "and is as tall as Send: \(restingChip) \(sendFrame)")
+        try expect(restingChip.width <= sendFrame.width + 8, "a resting chip is Send's round sibling, not a pill: \(restingChip)")
+        try expect(
+            ask.dictationVocabulary().terms.contains(ModelChooserDemo.selected.modelID),
+            "the words it knows include the model it would ask")
+
+        let shiftD = UInt32(UnicodeScalar("D").value)
+        try expect(
+            ask.handleDictationKey(keyval: shiftD, state: KeyChord.controlMask | Keymap.shift),
+            "the registry's chord is taken")
+        ask.dictation.keyReleased(keyval: shiftD)
+        try expect(pump(4) { ask.dictation.harnessSnapshot.wordCount > 3 }, "a tapped chord listens")
+        if case .listening(.handsFree, .none) = ask.dictation.harnessFace {
+            checks += 1
+        } else {
+            throw SelfTestFailure("quick ask dictation: a tap listens hands-free, got \(ask.dictation.harnessFace)")
+        }
+        try expect(ask.editor.edge.isLit, "the box's edge is lit")
+        _ = pump(0.3)
+        if let listening = Gtk.bounds(of: ask.dictation.chip, in: field),
+            let hint = Gtk.bounds(of: ask.dictation.hint, in: ask.window)
+        {
+            try expect(listening.width > restingChip.width + 10, "listening, the chip grows to hold its bars: \(listening)")
+            let fieldTop = Gtk.bounds(of: field, in: ask.window)?.y ?? .infinity
+            try expect(hint.y > fieldTop && hint.height > 0, "the hint shows under the field: \(hint)")
+        } else {
+            throw SelfTestFailure("quick ask dictation: the listening chip and its hint are laid out")
+        }
+        try expect(ask.handleDictationKey(keyval: Keymap.escape, state: 0), "Esc is the take's while it listens")
+        try expect(pump(3) { !ask.dictation.isOpen }, "Esc ends the take")
+        try expect(QuickAskWindow.open === ask, "and leaves the window up")
+        try expect(ask.editor.text.isEmpty, "with the words thrown away: \(ask.editor.text)")
+
+        let returnSends = Preferences.sendOnReturn
+        ask.dictation.harnessPress()
+        ask.dictation.harnessRelease()
+        try expect(pump(4) { ask.dictation.harnessSnapshot.wordCount > 4 }, "a tap on the chip listens")
+        try expect(
+            ask.handleDictationKey(keyval: Keymap.enter, state: returnSends ? 0 : KeyChord.controlMask),
+            "⏎ is the take's too")
+        try expect(pump(3) { asked.texts.count == 1 }, "⏎ settles the take and asks")
+        try expect(asked.texts.first?.hasPrefix("Rename") == true, "what was asked is what was said: \(asked.texts)")
+        try expect(gtk_widget_get_sensitive(ask.dictation.chip) == 0, "the chip greys while it asks")
+        _ = ask.handleDictationKey(keyval: shiftD, state: KeyChord.controlMask | Keymap.shift)
+        ask.dictation.keyReleased(keyval: shiftD)
+        try expect(!ask.dictation.isOpen, "and takes no chord")
+
+        ask.unlock()
+        ask.editor.clear()
+        try expect(gtk_widget_get_sensitive(ask.dictation.chip) != 0, "a question that came back hands the chip back")
+        ask.dictation.harnessPress()
+        ask.dictation.harnessRelease()
+        try expect(pump(4) { ask.dictation.harnessSnapshot.wordCount > 4 }, "it listens again")
+        ask.submit()
+        try expect(pump(3) { asked.texts.count == 2 }, "Send mid-take settles the words and asks")
+        try expect(asked.texts.last?.hasPrefix("Rename") == true, "with every word: \(asked.texts)")
+
+        ask.unlock()
+        ask.editor.clear()
+        ask.dictation.harnessPress()
+        ask.dictation.harnessRelease()
+        try expect(pump(4) { ask.dictation.harnessSnapshot.wordCount > 4 }, "a last tap listens")
+        let shown = ask.editor.text
+        ask.close()
+        try expect(!ask.dictation.isOpen, "putting the window away ends the take")
+        try expect(!shown.isEmpty && DraftStore.text(for: scope) == shown, "and files what it showed as the draft")
+        return checks
+    }
+
     /// The real engine on a recording: the model this machine downloaded hears a WAV played as the
     /// microphone and writes the words. `TAILSCODE_DICTATION_WAV` names the file and
     /// `TAILSCODE_DICTATION_EXPECT` a phrase that must be heard.

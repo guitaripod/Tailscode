@@ -95,6 +95,10 @@ final class QuickAskWindow: @unchecked Sendable {
     /// Which summon the window is serving. A mint answers long after its Enter, and the window it
     /// answers may by then have been put away and brought back for another question.
     var visit = 0
+    /// The engine a new window dictates with: the demo world's scripted one, or the real one.
+    nonisolated(unsafe) static var dictationDemo: (demo: Bool, wordDelay: TimeInterval) = (DemoMode.isActive, 0.22)
+    lazy var dictation = PaneDictation(
+        host: self, demo: Self.dictationDemo.demo, demoWordDelay: Self.dictationDemo.wordDelay)
 
     /// - Parameter onAsk: mints the conversation on the chosen server and answers with nothing
     ///   when it worked, or with the reason it did not; the words and their attachments travel
@@ -219,6 +223,10 @@ final class QuickAskWindow: @unchecked Sendable {
         gtk_box_append(ptr(field), caret)
         gtk_widget_set_hexpand(editor.widget, 1)
         gtk_box_append(ptr(field), editor.widget)
+        Gtk.addClass(dictation.chip, "qa-mic")
+        gtk_widget_set_valign(dictation.chip, GTK_ALIGN_START)
+        dictation.compact = true
+        gtk_box_append(ptr(field), dictation.chip)
         gtk_box_append(ptr(field), send)
         let frame = gtk_overlay_new()!
         gtk_overlay_set_child(op(frame), field)
@@ -236,6 +244,7 @@ final class QuickAskWindow: @unchecked Sendable {
         let head = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
         Gtk.addClass(head, "qa-head")
         gtk_box_append(ptr(head), frame)
+        gtk_box_append(ptr(head), dictation.hint)
         gtk_box_append(ptr(head), aim)
         gtk_box_append(ptr(head), chips)
         gtk_box_append(ptr(head), hint)
@@ -283,8 +292,12 @@ final class QuickAskWindow: @unchecked Sendable {
                 self.renderTyping()
             }
         }
+        Gtk.onKeyRelease(window) { [weak self] keyval, _ in
+            Gtk.onMain { [weak self] in self?.dictation.keyReleased(keyval: keyval) }
+        }
         Gtk.onKey(window) { [weak self] keyval, state in
             guard let self else { return false }
+            if self.handleDictationKey(keyval: keyval, state: state) { return true }
             let control = state & KeyChord.controlMask != 0
             let shift = state & Keymap.shift != 0
             if self.completion?.isShown == true {
@@ -400,6 +413,7 @@ final class QuickAskWindow: @unchecked Sendable {
             return true
         }
         Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [weak self] in
+            self?.dictation.shutdown()
             if let self, QuickAskWindow.open === self { QuickAskWindow.open = nil }
         }
         /// A Wayland clipboard answers only a window that has the keyboard, and the chord that

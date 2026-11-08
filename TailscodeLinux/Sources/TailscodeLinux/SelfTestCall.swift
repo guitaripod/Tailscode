@@ -149,6 +149,7 @@ extension SelfTest {
             case "carry": report("model seam and carry: \(try checkModelSeamAndCarry()) claims hold")
             case "call": report("call: \(try checkCall()) claims hold")
             case "dictation": report("dictation: \(try checkDictation()) claims hold")
+            case "quickaskdictation": report("quick ask dictation: \(try checkQuickAskDictation()) claims hold")
             case "dictationengine": report("dictation engine: \(try runBlocking { try await checkDictationEngine() }) claims hold")
             case "beta": report("beta: \(try checkBeta()) claims hold")
             case "sidebar": report("sidebar: \(try checkSidebar()) claims hold")

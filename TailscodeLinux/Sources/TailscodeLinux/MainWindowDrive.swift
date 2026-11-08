@@ -217,6 +217,9 @@ extension MainWindow {
         case "askpartyroom":
             guard DesktopGuard.isHarnessed else { break }
             QuickAskPartyDemo.offerToFullParty()
+        case "askdictate":
+            guard DesktopGuard.isHarnessed else { break }
+            QuickAskWindow.stageDictation(parent: self.window)
         case "askpartyclose":
             QuickAskWindow.open?.close()
             QuickAskPartyDemo.restore()

@@ -94,6 +94,7 @@ extension QuickAskWindow {
     /// pictures — back.
     func submit() {
         guard !asking else { return }
+        if dictation.stopAndSend() { return }
         let text = editor.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard QuickAskComposition.canSend(text: text, attachments: attachments.count) else { return }
         asking = true
@@ -102,6 +103,7 @@ extension QuickAskWindow {
         gtk_widget_set_sensitive(attach, 0)
         gtk_widget_set_sensitive(send, 0)
         gtk_widget_set_sensitive(target, 0)
+        dictation.waiting = true
         refreshStarterVisibility()
         setHint(QuickAskComposition.waitingTitle(server: targetServer.name))
         let server = targetServer
@@ -178,6 +180,7 @@ extension QuickAskWindow {
         editor.setSensitive(true)
         gtk_widget_set_sensitive(attach, 1)
         gtk_widget_set_sensitive(target, servers.count > 1 ? 1 : 0)
+        dictation.waiting = false
         refreshSend()
     }
 
@@ -185,6 +188,7 @@ extension QuickAskWindow {
     /// under its machine; what was in hand, what was copied, the line picked, a notice and the
     /// pills' popovers are let go, so the window comes back the way a new one would.
     func close() {
+        dictation.stopKeepingShown()
         stage.putAway()
         releaseHold(retargeting: false)
         gathering = nil

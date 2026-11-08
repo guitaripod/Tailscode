@@ -260,6 +260,7 @@ extension QuickAskWindow {
         gtk_widget_set_sensitive(attach, 0)
         gtk_widget_set_sensitive(send, 0)
         gtk_widget_set_sensitive(target, 0)
+        dictation.waiting = true
         refreshStarterVisibility()
         setHint(Localized.text("Asking the party — %@ models…", "\(seats.count)"))
         let server = targetServer

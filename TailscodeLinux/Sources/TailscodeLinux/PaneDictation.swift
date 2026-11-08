@@ -68,6 +68,15 @@ final class PaneDictation: @unchecked Sendable {
         didSet { if compact != oldValue { redraw() } }
     }
 
+    /// The composer is waiting on what it sent: the chip greys and takes no press until it answers.
+    var waiting = false {
+        didSet {
+            guard waiting != oldValue else { return }
+            if waiting { stopKeepingShown() }
+            gtk_widget_set_sensitive(chip, waiting ? 0 : 1)
+        }
+    }
+
     private final class TickLink: @unchecked Sendable {
         weak var owner: PaneDictation?
         init(_ owner: PaneDictation) { self.owner = owner }
@@ -170,6 +179,7 @@ final class PaneDictation: @unchecked Sendable {
 
     private func pointerDown(x: Double, y: Double) {
         lastPointerAt = Self.now
+        guard !waiting else { return }
         pressOrigin = (x, y)
         if !isOpen, !face.isTakeable {
             popoverOnRelease = true
@@ -203,7 +213,7 @@ final class PaneDictation: @unchecked Sendable {
     /// Space or Return on the focused chip. A pointer press also ends in the button's own click,
     /// which the press has already answered.
     private func keyboardActivated() {
-        guard Self.now - lastPointerAt > 0.6 else { return }
+        guard Self.now - lastPointerAt > 0.6, !waiting else { return }
         if isOpen {
             stop(sending: false)
         } else {
@@ -214,6 +224,7 @@ final class PaneDictation: @unchecked Sendable {
     /// The chord went down. Auto-repeat arrives as more presses while it is held and changes
     /// nothing.
     func chordDown(keyval: UInt32) {
+        guard !waiting else { return }
         if heldKeyval == nil { heldKeyval = UInt32(gdk_keyval_to_lower(guint(keyval))) }
         act(press.down(at: Self.now, listening: isOpen), mode: .held)
     }

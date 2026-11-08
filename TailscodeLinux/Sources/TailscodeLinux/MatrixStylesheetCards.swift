@@ -248,6 +248,27 @@ extension MatrixStylesheet {
             border-color: \(danger);
         }
         .dictation-hint { margin: 4px 14px 0 14px; }
+        .qa-head .dictation-hint { margin: 0 2px; }
+        button.chip-ctl.qa-mic {
+            min-width: 34px;
+            min-height: 34px;
+            padding: 0;
+            border-width: 0;
+            background-color: transparent;
+            color: \(textDim);
+        }
+        button.chip-ctl.qa-mic:hover { background-color: alpha(\(accent), 0.14); }
+        button.chip-ctl.qa-mic.chip-on, button.chip-ctl.qa-mic.chip-danger { padding: 0 10px; }
+        button.chip-ctl.qa-mic.chip-on, button.chip-ctl.qa-mic.chip-on:hover {
+            color: \(palette.onAccent);
+            background-color: \(accent);
+            border-color: \(accent);
+        }
+        button.chip-ctl.qa-mic.chip-danger, button.chip-ctl.qa-mic.chip-danger:hover {
+            color: \(palette.onAccent);
+            background-color: \(danger);
+            border-color: \(danger);
+        }
         .dictation-hint label { \(t(.chip)) }
         button.dictation-undo { min-height: 0; padding: 0 6px; color: \(accent); \(t(.chip)) }
         .dictation-popover-title { font-weight: 600; }

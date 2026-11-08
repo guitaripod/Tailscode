@@ -715,6 +715,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkQuickAskDictation()
+            report("quick ask dictation: \(checks) claims hold — the chip between the box and Send, the chord, Esc that keeps the window, ⏎ and Send that settle and ask, a grey chip while it asks, a draft kept when put away")
+        } catch {
+            report("quick ask dictation: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkSetup()
             report("setup: \(checks) claims hold — every checklist state, motion that means something, a job followed to its end, the server section, and the call's press")
         } catch {
