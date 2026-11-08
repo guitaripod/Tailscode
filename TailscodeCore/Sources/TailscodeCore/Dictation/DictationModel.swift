@@ -1,7 +1,7 @@
 import Foundation
 
-/// How a take was opened. A tap leaves the microphone open until it is tapped again; a press held
-/// past `DictationPress.holdThreshold` keeps it open only while held.
+/// How a take listens. Every take opens hands-free, open until it is pressed again; a press still
+/// down at `DictationPress.holdThreshold` makes it held, open only while held.
 public enum DictationMode: String, Sendable, Equatable {
     case handsFree
     case held
@@ -114,6 +114,17 @@ public struct DictationSnapshot: Sendable, Equatable {
     public var words: String { DictationText.join(settled, heard) }
 
     public var wordCount: Int { DictationText.wordCount(words) }
+
+    /// The take as the control shows it while a hand is on it: a hold that engaged and an arm the
+    /// hand slid to are laid over the session's own word, so the face, the status line and the
+    /// release never wait for the session to say back what the hand already did.
+    public func pressed(engaged: Bool, arm: DictationArm?) -> DictationSnapshot {
+        guard isOpen else { return self }
+        var value = self
+        if engaged || (arm ?? .none) != .none { value.mode = .held }
+        if let arm { value.arm = arm }
+        return value
+    }
 }
 
 /// The small text rules every engine and client share.

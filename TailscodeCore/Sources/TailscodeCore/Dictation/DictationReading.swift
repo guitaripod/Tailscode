@@ -6,7 +6,7 @@ public enum DictationSurface: Sendable, Equatable {
     case pointer
 }
 
-/// What the hint line above the box says, and whether it is a warning or offers Undo.
+/// What the status line inside the box says, and whether it is a warning or offers Undo.
 public struct DictationHint: Sendable, Equatable {
     public enum Style: Sendable, Equatable {
         case live
@@ -84,10 +84,11 @@ public enum DictationReading {
         }
     }
 
-    /// The hint over the box while a take runs or right after one ended.
+    /// The status line inside the box while a take runs or right after one ended. A hold made with
+    /// the keyboard's chord cannot be dragged, so its line says how a key ends it instead.
     public static func hint(
         face: DictationFace, snapshot: DictationSnapshot, now: TimeInterval, surface: DictationSurface,
-        chord: String?
+        chord: String?, heldByKey: Bool = false
     ) -> DictationHint? {
         switch face {
         case .preparing(let progress):
@@ -107,7 +108,10 @@ public enum DictationReading {
             return DictationHint(text: stop, timer: elapsed(snapshot, now), style: .live)
         case .listening(.held, .none):
             switch surface {
-            case .touch: return DictationHint(text: Localized.text("‹ Slide to cancel"), style: .plain)
+            case .touch:
+                return DictationHint(text: Localized.text("Release to keep · ‹ slide to cancel"), timer: elapsed(snapshot, now), style: .live)
+            case .pointer where heldByKey:
+                return DictationHint(text: Localized.text("Release to keep · esc cancels"), timer: elapsed(snapshot, now), style: .live)
             case .pointer:
                 return DictationHint(text: Localized.text("Release to keep · drag left to cancel"), timer: elapsed(snapshot, now), style: .live)
             }

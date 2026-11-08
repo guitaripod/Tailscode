@@ -19,7 +19,7 @@ public enum DictationFace: Sendable, Equatable {
         -> DictationFace
     {
         switch snapshot.phase {
-        case .waking: return .waking
+        case .waking: return snapshot.mode == .held ? .listening(.held, snapshot.arm) : .waking
         case .listening: return .listening(snapshot.mode, snapshot.arm)
         case .settling: return .settling
         case .idle: break

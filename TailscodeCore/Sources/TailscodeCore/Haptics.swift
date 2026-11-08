@@ -8,6 +8,7 @@ public enum HapticCue: String, Sendable, CaseIterable, Codable {
     case selection
     case notch
     case listen
+    case hold
     case listenEnd
     case step
     case send
@@ -36,7 +37,7 @@ public enum HapticCue: String, Sendable, CaseIterable, Codable {
         public var cues: [HapticCue] {
             switch self {
             case .waiting: return [.send, .step, .needsYou, .received]
-            case .everyday: return [.tap, .selection, .notch, .listen, .listenEnd]
+            case .everyday: return [.tap, .selection, .notch, .listen, .hold, .listenEnd]
             case .outcome: return [.success, .warning, .error]
             }
         }
@@ -48,6 +49,7 @@ public enum HapticCue: String, Sendable, CaseIterable, Codable {
         case .selection: return Localized.text("Selection")
         case .notch: return Localized.text("Level")
         case .listen: return Localized.text("Listening")
+        case .hold: return Localized.text("Holding to talk")
         case .listenEnd: return Localized.text("Listening ends")
         case .step: return Localized.text("Progress")
         case .send: return Localized.text("Sent")
@@ -65,6 +67,7 @@ public enum HapticCue: String, Sendable, CaseIterable, Codable {
         case .selection: return Localized.text("Pickers, expanding, unfolding")
         case .notch: return Localized.text("Sliding the effort rail from level to level")
         case .listen: return Localized.text("The microphone opens for dictation")
+        case .hold: return Localized.text("A long press holds the microphone open until you let go")
         case .listenEnd: return Localized.text("Dictation stops and your words settle")
         case .step: return Localized.text("A step of the work lands while you wait")
         case .send: return Localized.text("Your message leaves and the wait begins")
@@ -124,6 +127,11 @@ public enum HapticRecipe {
                 HapticBeat(intensity: 0.55, sharpness: 0.45),
                 HapticBeat(start: 0.02, duration: 0.07, intensity: 0.32, sharpness: 0.15, floor: 0.2),
             ]
+        case .hold:
+            return [
+                HapticBeat(intensity: 0.62, sharpness: 0.55),
+                HapticBeat(start: 0.012, duration: 0.04, intensity: 0.26, sharpness: 0.2, floor: 0.2),
+            ]
         case .listenEnd:
             return [
                 HapticBeat(duration: 0.06, intensity: 0.3, sharpness: 0.1),
@@ -172,7 +180,7 @@ public enum HapticRecipe {
         switch cue {
         case .step: return 0.5
         case .selection, .tap, .notch: return 0.03
-        case .listen, .listenEnd: return 0.12
+        case .listen, .hold, .listenEnd: return 0.12
         default: return 0.08
         }
     }
@@ -268,6 +276,7 @@ public enum HapticFallback: Sendable, Equatable {
         case .selection: return .selection
         case .notch: return .impact(style: .light, intensity: drive * 0.7)
         case .listen: return .impact(style: .rigid, intensity: drive * 0.75)
+        case .hold: return .impact(style: .medium, intensity: drive * 0.8)
         case .listenEnd: return .impact(style: .soft, intensity: drive * 0.8)
         case .step: return .impact(style: .soft, intensity: drive * 0.5)
         case .send: return .impact(style: .medium, intensity: drive * 0.85)

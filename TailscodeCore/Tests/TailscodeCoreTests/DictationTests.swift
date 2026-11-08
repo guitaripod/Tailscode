@@ -59,22 +59,76 @@ struct DictationInsertionTests {
 
 @Suite("Dictation: one control, two hands")
 struct DictationPressTests {
-    @Test("A tap opens the microphone and leaves it open; the next press stops it")
+    @Test("A tap opens the microphone hands-free and leaves it open; the next press stops it")
     func tap() {
         var press = DictationPress()
         #expect(press.down(at: 0, listening: false) == .open)
-        #expect(press.up(at: 0.1) == .becomeHandsFree)
+        #expect(press.tick(at: 0.1) == .none)
+        #expect(press.up(at: 0.1) == .none)
+        #expect(press.tick(at: 0.4) == .none)
         #expect(press.down(at: 2, listening: true) == .stop)
-        #expect(press.up(at: 2.05) == .none)
+        #expect(press.tick(at: 2.5) == .none)
+        #expect(press.up(at: 2.6) == .none)
     }
 
-    @Test("A hold keeps the microphone open only while held")
+    @Test("A press still down at the threshold engages its hold once, and letting go ends the take")
     func hold() {
         var press = DictationPress()
         #expect(press.down(at: 0, listening: false) == .open)
         #expect(!press.isHeld(at: 0.2))
-        #expect(press.isHeld(at: 0.3))
+        #expect(press.tick(at: 0.2) == .none)
+        #expect(!press.isEngaged)
+        #expect(press.tick(at: 0.29) == .becomeHeld)
+        #expect(press.isEngaged)
+        #expect(press.tick(at: 0.5) == .none)
+        #expect(press.isHeld(at: 0.5))
         #expect(press.up(at: 1.5) == .stop)
+        #expect(!press.isEngaged)
+    }
+
+    @Test("A press taken away ends the way a lifted one would: a tap's take stays, a hold's ends")
+    func abandon() {
+        var tap = DictationPress()
+        #expect(tap.down(at: 0, listening: false) == .open)
+        #expect(tap.abandon(at: 0.1) == .none)
+        var hold = DictationPress()
+        #expect(hold.down(at: 0, listening: false) == .open)
+        #expect(hold.tick(at: 0.3) == .becomeHeld)
+        #expect(hold.abandon(at: 0.5) == .stop)
+        #expect(!hold.isDown)
+    }
+
+    @Test("What the hand did shows before the session says it back")
+    func pressedOverlay() {
+        let open = DictationSnapshot(phase: .listening, mode: .handsFree)
+        #expect(open.pressed(engaged: true, arm: nil).mode == .held)
+        #expect(open.pressed(engaged: false, arm: .cancel).arm == .cancel)
+        #expect(open.pressed(engaged: false, arm: .cancel).mode == .held)
+        #expect(open.pressed(engaged: false, arm: nil) == open)
+        let ended = DictationSnapshot(phase: .settling, mode: .handsFree)
+        #expect(ended.pressed(engaged: true, arm: .send) == ended)
+    }
+
+    @Test("A hold that engages while the engine wakes already shows as held, and a chord hold is told how a key ends it")
+    func wakingHold() {
+        let waking = DictationSnapshot(phase: .waking, mode: .handsFree).pressed(engaged: true, arm: nil)
+        #expect(DictationFace.read(readiness: .ready, snapshot: waking) == .listening(.held, .none))
+        let held = DictationSnapshot(phase: .listening, mode: .held)
+        let byKey = DictationReading.hint(
+            face: .listening(.held, .none), snapshot: held, now: 0, surface: .pointer, chord: nil, heldByKey: true)
+        #expect(byKey?.text == "Release to keep · esc cancels")
+        let byPointer = DictationReading.hint(
+            face: .listening(.held, .none), snapshot: held, now: 0, surface: .pointer, chord: nil)
+        #expect(byPointer?.text == "Release to keep · drag left to cancel")
+        let byTouch = DictationReading.hint(face: .listening(.held, .none), snapshot: held, now: 0, surface: .touch, chord: nil)
+        #expect(byTouch?.text == "Release to keep · ‹ slide to cancel")
+    }
+
+    @Test("A hold whose tick came late still ends its take on release")
+    func lateTick() {
+        var press = DictationPress()
+        #expect(press.down(at: 0, listening: false) == .open)
+        #expect(press.up(at: 0.4) == .stop)
     }
 
     @Test("Auto-repeat is a press already down, and a lost press never leaves the microphone open")
@@ -82,8 +136,8 @@ struct DictationPressTests {
         var press = DictationPress()
         #expect(press.down(at: 0, listening: false) == .open)
         #expect(press.down(at: 0.05, listening: true) == .none)
-        #expect(press.abandon(at: 0.06) == .stop)
-        #expect(press.abandon(at: 0.07) == .none)
+        #expect(press.abandon(at: 0.4) == .stop)
+        #expect(press.abandon(at: 0.5) == .none)
         #expect(!press.isDown)
     }
 
@@ -236,6 +290,19 @@ struct DictationSessionTests {
         #expect(result == DictationTake(text: "", end: .discarded))
     }
 
+    @Test("A hands-free take arms nothing until its hold engages")
+    func armsOnlyWhenHeld() async {
+        let take = session()
+        await take.open(mode: .handsFree)
+        await take.setArm(.cancel)
+        #expect(await take.current().arm == .none)
+        await take.setMode(.held)
+        #expect(await take.current().mode == .held)
+        await take.setArm(.cancel)
+        #expect(await take.current().arm == .cancel)
+        _ = await take.cancel()
+    }
+
     @Test("A take with no words ends as nothing heard")
     func silence() async {
         let take = session(DictationDemoRecognizer(script: "", wordDelay: 0.01))
@@ -303,9 +370,9 @@ struct DictationSessionTests {
         #expect(DictationReading.announce(.kept(words: 1)) == "Added 1 word")
     }
 
-    @Test("The two new cues are felt and fall back to a canned impact")
+    @Test("The dictation cues are felt and fall back to a canned impact")
     func haptics() {
-        for cue in [HapticCue.listen, .listenEnd] {
+        for cue in [HapticCue.listen, .hold, .listenEnd] {
             #expect(!HapticRecipe.beats(for: cue).isEmpty)
             #expect(HapticFallback.of(cue, strength: 1) != nil)
             #expect(HapticCue.Group.everyday.cues.contains(cue))
