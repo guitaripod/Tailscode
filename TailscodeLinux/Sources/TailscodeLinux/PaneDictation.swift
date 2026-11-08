@@ -244,6 +244,13 @@ final class PaneDictation: @unchecked Sendable {
         return false
     }
 
+    /// Send pressed mid-take: the words settle first and then go, as ⏎ does.
+    func stopAndSend() -> Bool {
+        guard isOpen else { return false }
+        stop(sending: true)
+        return true
+    }
+
     private func act(_ action: DictationPress.Action, mode: DictationMode) {
         switch action {
         case .open: open(mode: mode)

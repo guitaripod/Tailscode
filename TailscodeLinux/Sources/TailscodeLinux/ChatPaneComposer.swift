@@ -411,6 +411,7 @@ extension ChatPane {
     /// The prompt is on screen before the server has heard of it: a busy bridge can take seconds
     /// to answer, and a composer that empties into silence reads as a hang.
     func sendFromComposer() {
+        if dictation.stopAndSend() { return }
         let text = composerText().trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoing = attachments
         // Emptying the box is how a message being rewritten is taken back, so a send with nothing
