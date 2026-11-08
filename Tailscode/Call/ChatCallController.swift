@@ -50,6 +50,8 @@ final class ChatCallController {
 
     let dock = CallDockView()
     let barItem: UIBarButtonItem
+    /// Whether a call is live in this chat, for the composer's microphone, which a call replaces.
+    var onLiveChanged: ((Bool) -> Void)?
 
     private let chatID: String
     private let endpoint: VoiceEndpoint?
@@ -167,6 +169,7 @@ final class ChatCallController {
         detach()
         noticeClock?.cancel()
         attached = call
+        onLiveChanged?(true)
         snapshot = nil
         connected = false
         degraded = false
@@ -237,6 +240,7 @@ final class ChatCallController {
     private func finish(_ call: ActiveCall, _ last: VoiceCallSnapshot, _ end: VoiceCallEnd) {
         detach()
         attached = nil
+        onLiveChanged?(false)
         speaker.release()
         let line = last.endLine ?? VoiceCallReading.end(end, client: .ios)
         let settings = end == .microphoneDenied
@@ -405,6 +409,7 @@ final class ChatCallController {
         }
         let desk = gate.desk
         Task { [weak self] in
+            await DictationDesk.shared.finishAny()
             let result = await desk.start(
                 chat: chat, title: title, endpoint: endpoint, client: .ios, app: app,
                 audio: { try Self.makeAudio(speaker: speaker) }, send: send, stopTurn: stopTurn)

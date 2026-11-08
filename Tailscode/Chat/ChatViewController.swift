@@ -268,6 +268,8 @@ final class ChatViewController: UIViewController {
         configureDataSource()
         callController.attach()
         composer.delegate = self
+        composer.dictation.vocabulary = { [weak self] in self?.dictationVocabulary() ?? .empty }
+        callController.onLiveChanged = { [weak self] live in self?.composer.dictation.callLive = live }
         composer.showsAttach = canAttachAnything
         enhancement.onStatusChange = { [weak self] status in
             self?.handleEnhancementStatus(status)
@@ -523,6 +525,7 @@ final class ChatViewController: UIViewController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        composer.dictation.stopKeepingShown()
         AppActivityController.shared.hidden(self)
         brainSearch.cancel()
         rangeClock?.cancel()

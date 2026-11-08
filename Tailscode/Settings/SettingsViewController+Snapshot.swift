@@ -4,6 +4,12 @@ import UIKit
 extension SettingsViewController {
     /// What one page holds, group by group. Groups that would be empty are left for the snapshot to
     /// drop, so a page reads the same whether or not a server is in trouble.
+    /// Dictation's rows, on a device whose engine exists: iOS 26 and later.
+    private var dictationSection: [(Section, [Item])] {
+        guard DictationEngines.shared.isSupported else { return [] }
+        return [(.dictation, [.dictationLanguage, .toggle(.dictationChatWords)])]
+    }
+
     func sections(of page: Page) -> [(Section, [Item])] {
         switch page {
         case .root: return rootSections()
@@ -38,6 +44,7 @@ extension SettingsViewController {
         case .chat:
             return [
                 (.composer, [.toggle(.sendOnReturn), .toggle(.promptEnhancement), .keyboardShortcuts]),
+            ] + dictationSection + [
                 (
                     .agentSteps,
                     [.activityStyle, .toggle(.compactActivity), .toggle(.autoExpandThinking)]
@@ -252,6 +259,9 @@ extension SettingsViewController {
             return String(
                 localized: "keyboard shortcuts keys hardware cheatsheet rebind",
                 comment: "search keywords")
+        case .dictationLanguage:
+            return "\(DictationReading.settingsTitle) \(DictationReading.languageTitle) "
+                + Localized.text("dictation dictate voice speech microphone mic talk language")
         case .streamRenderer:
             return String(
                 localized:

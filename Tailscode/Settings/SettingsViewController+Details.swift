@@ -105,6 +105,30 @@ extension SettingsViewController {
     }
 
     /// The two densities as a page of their own, each with the sentence that says what it means.
+    /// Automatic follows the keyboard's language; any other pick is held until changed back.
+    func chooseDictationLanguage() {
+        Theme.Haptics.tap()
+        Task { [weak self] in
+            let identifiers = await DictationEngines.shared.languages()
+            guard let self else { return }
+            let named = identifiers.map { ($0, DictationReading.languageName($0)) }
+                .sorted { $0.1.localizedCaseInsensitiveCompare($1.1) == .orderedAscending }
+            let current = DictationPreferences.language
+            let selected = current.flatMap { choice in named.firstIndex { $0.0 == choice }.map { $0 + 1 } } ?? 0
+            self.push(
+                SettingsChoiceViewController(
+                    title: DictationReading.languageTitle,
+                    options: [.init(title: DictationReading.automatic, detail: nil)]
+                        + named.map { .init(title: $0.1, detail: nil) },
+                    selected: selected,
+                    footer: DictationReading.languageFooter(surface: .touch)
+                ) { index in
+                    DictationPreferences.language = index == 0 ? nil : named[index - 1].0
+                    DictationEngines.shared.moved()
+                })
+        }
+    }
+
     func chooseDensity() {
         Theme.Haptics.tap()
         let densities = ChatDensity.allCases

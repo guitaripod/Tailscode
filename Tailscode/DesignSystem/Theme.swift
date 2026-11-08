@@ -367,6 +367,10 @@ enum Theme {
         static func selection() { HapticEngine.shared.play(.selection) }
         /// One soft tick for each rung a finger enters on the effort rail.
         static func notch() { HapticEngine.shared.play(.notch) }
+        /// The microphone opens for dictation: a click that blooms.
+        static func listen() { HapticEngine.shared.play(.listen) }
+        /// Dictation stops and the words settle: the inverse of the open, so the two read as a pair.
+        static func listenEnd() { HapticEngine.shared.play(.listenEnd) }
         static func success() { HapticEngine.shared.play(.success) }
         static func warning() { HapticEngine.shared.play(.warning) }
         static func error() { HapticEngine.shared.play(.error) }

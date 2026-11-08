@@ -98,7 +98,8 @@ targetTemplates:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         NSLocalNetworkUsageDescription: Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network.
-        NSMicrophoneUsageDescription: Talk to your coding agent out loud. Your voice goes over your tailnet to the server you chose, and nowhere else.
+        NSMicrophoneUsageDescription: Dictate prompts on this Mac, where your voice never leaves it, or talk to your agent in a call, where it goes over your tailnet to the server you chose and nowhere else.
+        NSSpeechRecognitionUsageDescription: Dictation turns your speech into text on this Mac. Nothing you say leaves it.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
@@ -241,7 +242,8 @@ targets:
         UIUserInterfaceStyle: Automatic
         NSPhotoLibraryUsageDescription: Attach images from your library to a prompt.
         NSCameraUsageDescription: Take a photo to ask your agent about it, or scan the code your computer prints to connect.
-        NSMicrophoneUsageDescription: Talk to your agent out loud. Your voice goes to the server you chose over your tailnet, and nowhere else.
+        NSMicrophoneUsageDescription: Dictate prompts on this device, where your voice never leaves it, or talk to your agent in a call, where it goes over your tailnet to the server you chose and nowhere else.
+        NSSpeechRecognitionUsageDescription: Dictation turns your speech into text on this device. Nothing you say leaves it.
         NSPhotoLibraryAddUsageDescription: Save pictures from a conversation to your photo library.
         NSFaceIDUsageDescription: Confirm it is you before approving a command an agent is waiting on.
         NSLocalNetworkUsageDescription: Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network.

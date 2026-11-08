@@ -153,6 +153,8 @@ extension SettingsViewController: UICollectionViewDelegate {
             navigationController?.pushViewController(LicensesViewController(), animated: true)
         case .keyboardShortcuts:
             ShortcutCheatsheetViewController.present(from: self)
+        case .dictationLanguage:
+            chooseDictationLanguage()
         case .streamRenderer:
             Theme.Haptics.tap()
             navigationController?.pushViewController(

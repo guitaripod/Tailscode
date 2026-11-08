@@ -370,4 +370,12 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
     /// each file's size — a picker that let someone choose thirty pictures would be offering a turn
     /// that cannot leave the phone.
     static let attachmentCountLimit = 10
+
+    /// The words this chat knows, read from the tail of what it holds when the microphone opens.
+    func dictationVocabulary() -> DictationVocabulary {
+        let project = viewModel.session.directory.map { ($0 as NSString).lastPathComponent }
+        return DictationVocabulary.read(
+            messages: viewModel.state.messages, project: project,
+            commands: viewModel.composerCommands.map(\.name))
+    }
 }

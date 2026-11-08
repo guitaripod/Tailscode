@@ -85,7 +85,9 @@ extension ChatViewController: KeyActionHost {
         case .insert:
             composer.focus()
         case .leaveInsert:
-            if findVisible {
+            if composer.dictation.escape() {
+                return true
+            } else if findVisible {
                 closeFind()
                 becomeFirstResponder()
             } else if composer.isEditing {
@@ -97,6 +99,8 @@ extension ChatViewController: KeyActionHost {
         case .send:
             guard composer.isEditing else { return false }
             composer.triggerSend()
+        case .dictate:
+            composer.dictation.toggleFromKeyboard()
         case .stop:
             guard viewModel.isBusy else { return false }
             composerDidTapStop()

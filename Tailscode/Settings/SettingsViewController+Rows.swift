@@ -132,7 +132,7 @@ extension SettingsViewController {
     private func hasFooter(_ section: Section) -> Bool {
         switch section {
         case .servers, .discovery, .permission, .finished, .needsYou, .muted, .usageAlerts,
-            .liveActivities, .push, .testNotice, .composer, .agentSteps, .answers, .resume, .density,
+            .liveActivities, .push, .testNotice, .composer, .dictation, .agentSteps, .answers, .resume, .density,
             .orb, .keys, .report, .legal:
             return true
         case .midgar, .alerts, .network, .experience, .accounts, .pro, .support, .addServer, .demo,
@@ -204,6 +204,10 @@ extension SettingsViewController {
                     "A bridge set up with a push key also sends its own alert, which travels through Apple like any push."
             )
             return "\(base) \(TurnWaitFooters.privacy) \(push) \(TurnWaitFooters.forceQuit)"
+        case .dictation:
+            let device = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
+            let chord = UIDevice.current.userInterfaceIdiom == .pad ? "⌃⇧D" : nil
+            return DictationReading.settingsFooter(device: device, chord: chord, surface: .touch)
         case .composer:
             return String(
                 localized:
@@ -438,6 +442,12 @@ extension SettingsViewController {
             cell.accessories = [.disclosureIndicator()]
         case .keyboardShortcuts:
             content.text = String(localized: "Keyboard shortcuts")
+            cell.accessories = [.disclosureIndicator()]
+        case .dictationLanguage:
+            content = quiet(.valueCell())
+            content.text = DictationReading.languageTitle
+            content.secondaryText =
+                DictationPreferences.language.map(DictationReading.languageName) ?? DictationReading.automatic
             cell.accessories = [.disclosureIndicator()]
         case .streamRenderer:
             content = quiet(.valueCell())

@@ -70,7 +70,8 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     var placeholderText: String {
         get { placeholder.text ?? "" }
         set {
-            placeholder.text = newValue
+            restingPlaceholder = newValue
+            placeholder.text = dictation.isOpen ? DictationReading.listeningPlaceholder : newValue
             textView.accessibilityLabel = newValue
         }
     }
@@ -88,6 +89,8 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     private var lastMeasuredWidth: CGFloat = 0
     private let auraHost = UIView()
     private lazy var aura = UltracodeAura(around: auraHost, cornerRadius: 23)
+    private(set) lazy var dictation = DictationController(host: self, key: "chat-\(ObjectIdentifier(self).hashValue)")
+    private var restingPlaceholder = String(localized: "Message your agent…")
 
     var ultracodeEffort: String? {
         didSet { refreshAura() }
@@ -188,6 +191,9 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         enhanceBadge.translatesAutoresizingMaskIntoConstraints = false
 
         [attachButton, textView, placeholder, sendButton, enhanceBadge].forEach(addSubview)
+        let mic = dictation.button
+        addSubview(mic)
+        insertSubview(dictation.edge, aboveSubview: auraHost)
 
         heightConstraint = textView.heightAnchor.constraint(equalToConstant: 22)
         let leading = textView.leadingAnchor.constraint(
@@ -197,7 +203,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             equalTo: bar.leadingAnchor, constant: Theme.Spacing.m)
 
         let textBottom = textView.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -11)
-        let sendLeading = sendButton.leadingAnchor.constraint(
+        let sendLeading = mic.leadingAnchor.constraint(
             equalTo: textView.trailingAnchor, constant: Theme.Spacing.xs)
         let placeholderCenter = placeholder.centerYAnchor.constraint(equalTo: attachButton.centerYAnchor)
         lineConstraints = [textBottom, sendLeading, placeholderCenter]
@@ -229,6 +235,12 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             heightConstraint,
 
             sendLeading,
+            mic.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -Theme.Spacing.xs),
+            mic.centerYAnchor.constraint(equalTo: sendButton.centerYAnchor),
+            dictation.edge.topAnchor.constraint(equalTo: bar.topAnchor),
+            dictation.edge.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
+            dictation.edge.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
+            dictation.edge.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
             sendButton.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -Theme.Spacing.xs),
             sendButton.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -5),
             sendButton.widthAnchor.constraint(equalToConstant: 34),
@@ -285,7 +297,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         accessoryConstraints = [
             accessory.centerYAnchor.constraint(equalTo: attachButton.centerYAnchor),
             accessory.trailingAnchor.constraint(
-                lessThanOrEqualTo: sendButton.leadingAnchor, constant: -Theme.Spacing.s),
+                lessThanOrEqualTo: dictation.button.leadingAnchor, constant: -Theme.Spacing.s),
         ]
     }
 
@@ -363,6 +375,13 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         UIAccessibility.post(notification: .layoutChanged, argument: nil)
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        #if DEBUG
+            if window != nil { dictation.stageIfAsked() }
+        #endif
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         aura.layout()
@@ -388,6 +407,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     func textView(
         _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String
     ) -> Bool {
+        dictation.userWillEdit()
         if text.count > 6000 {
             delegate?.composerDidPasteLargeText(text)
             return false
@@ -429,6 +449,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     func triggerSend() { sendTapped() }
 
     @objc private func sendTapped() {
+        if dictation.stopAndSend() { return }
         let text = trimmed
         // Emptying the box is how a message being rewritten is taken back, so a send with nothing
         // in it is a real action while one is open — and the stop button otherwise.
@@ -549,6 +570,31 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         resyncKeyboard()
         textView.becomeFirstResponder()
     }
+}
+
+extension ComposerView: DictationComposerHost {
+    var dictationTextView: UITextView { textView }
+    var dictationBox: UIView { bar }
+    var dictationSendControl: UIView { sendButton }
+
+    var dictationPresenter: UIViewController? {
+        var responder: UIResponder? = self
+        while let current = responder {
+            if let controller = current as? UIViewController { return controller }
+            responder = current.next
+        }
+        return nil
+    }
+
+    func dictationDidWrite() { textViewDidChange(textView) }
+
+    func dictationSend() { sendTapped() }
+
+    func dictationSetListening(_ listening: Bool) {
+        placeholder.text = listening ? DictationReading.listeningPlaceholder : restingPlaceholder
+        UIView.animate(withDuration: 0.2) { self.auraHost.alpha = listening ? 0 : 1 }
+    }
+
 }
 
 /// A text view that is asked about a paste before UIKit takes it. Only a pasteboard holding a

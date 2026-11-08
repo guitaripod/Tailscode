@@ -56,7 +56,7 @@ extension SettingsViewController {
         case servers, addServer, demo, testServers
         case tailnetStatus, discovery
         case permission, finished, needsYou, muted, usageAlerts, liveActivities, push, testNotice
-        case composer, agentSteps, answers, resume
+        case composer, dictation, agentSteps, answers, resume
         case theme, density, orb
         case keys
         case logs, report
@@ -66,6 +66,7 @@ extension SettingsViewController {
         var header: String? {
             switch self {
             case .composer: return String(localized: "Composer")
+            case .dictation: return DictationReading.settingsTitle
             case .agentSteps: return String(localized: "Agent steps")
             case .muted: return NoticeRulesWords.mutedTitle
             case .answers: return String(localized: "Answers")
@@ -80,6 +81,7 @@ extension SettingsViewController {
         case autoExpandThinking, sendOnReturn, promptEnhancement, compactActivity, responseStats
         case linkEmbeds
         case autoResume
+        case dictationChatWords
         case notifyApprovals, notifyUsage, notifyRunningLow, serverPush
         case liveActivities
         case presenceOrb
@@ -92,6 +94,7 @@ extension SettingsViewController {
             case .compactActivity: return String(localized: "Compact agent steps")
             case .responseStats: return ResponseStatsSetting.title
             case .autoResume: return AutoResumeSetting.title
+            case .dictationChatWords: return DictationReading.chatWordsTitle
             case .linkEmbeds: return LinkEmbedsSetting.title
             case .notifyApprovals: return NoticeRulesWords.needsYouTitle
             case .notifyUsage: return String(localized: "Usage warnings")
@@ -117,6 +120,7 @@ extension SettingsViewController {
                     localized: "Agent steps collapse to a slim line — tap to unfold the details")
             case .responseStats: return ResponseStatsSetting.explanation
             case .autoResume: return AutoResumeSetting.explanation
+            case .dictationChatWords: return DictationReading.chatWordsFooter
             case .linkEmbeds: return LinkEmbedsSetting.explanation
             case .notifyApprovals: return NoticeRulesWords.needsYouSubtitle
             case .notifyUsage:
@@ -148,6 +152,7 @@ extension SettingsViewController {
             case .compactActivity: return AppPreferences.compactActivity
             case .responseStats: return ResponseStatsSetting.isEnabled
             case .autoResume: return AutoResumeSetting.isEnabled
+            case .dictationChatWords: return DictationPreferences.usesChatWords
             case .linkEmbeds: return LinkEmbedsSetting.isEnabled
             case .notifyApprovals: return AppPreferences.notifyApprovals
             case .notifyUsage: return AppPreferences.notifyUsageWarnings
@@ -167,6 +172,7 @@ extension SettingsViewController {
             case .compactActivity: AppPreferences.compactActivity = value
             case .responseStats: ResponseStatsSetting.setEnabled(value)
             case .autoResume: AutoResumeSetting.setEnabled(value)
+            case .dictationChatWords: DictationPreferences.usesChatWords = value
             case .linkEmbeds: LinkEmbedsSetting.setEnabled(value)
             case .notifyApprovals:
                 var rules = AppPreferences.noticeRules
@@ -207,6 +213,7 @@ extension SettingsViewController {
         case ollamaKey
         case deepseekKey
         case keyboardShortcuts
+        case dictationLanguage
         case haptics
         case streamRenderer
         case appearance

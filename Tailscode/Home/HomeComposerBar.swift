@@ -57,6 +57,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     private(set) var isSending = false
     private let auraHost = UIView()
     private lazy var aura = UltracodeAura(around: auraHost, cornerRadius: 23)
+    private(set) lazy var dictation = DictationController(host: self, key: "home-\(ObjectIdentifier(self).hashValue)")
 
     /// Which lane the box is in. Setting it draws the switch and the placeholder; everything the
     /// lane implies about aim, drafts and destination belongs to the host.
@@ -263,6 +264,9 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
 
         [topRow, attachButton, textView, placeholder, sendButton, enhanceBadge]
             .forEach(addSubview)
+        let mic = dictation.button
+        addSubview(mic)
+        insertSubview(dictation.edge, aboveSubview: auraHost)
 
         heightConstraint = textView.heightAnchor.constraint(equalToConstant: 22)
         let toAttach = textView.leadingAnchor.constraint(
@@ -275,7 +279,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
 
         let textBottom = textView.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -11)
         let textTrailing = textView.trailingAnchor.constraint(
-            equalTo: sendButton.leadingAnchor, constant: -Theme.Spacing.xs)
+            equalTo: mic.leadingAnchor, constant: -Theme.Spacing.xs)
         lineConstraints = [textBottom, textTrailing]
         stackedConstraints = [
             textView.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: Theme.Spacing.m),
@@ -291,7 +295,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         dialConstraints = [
             dialPill.centerYAnchor.constraint(equalTo: sendButton.centerYAnchor),
             dialPill.trailingAnchor.constraint(
-                lessThanOrEqualTo: sendButton.leadingAnchor, constant: -Theme.Spacing.s),
+                lessThanOrEqualTo: mic.leadingAnchor, constant: -Theme.Spacing.s),
         ]
         dialPill.isHidden = true
 
@@ -321,6 +325,12 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
             textTrailing,
             heightConstraint,
 
+            mic.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -Theme.Spacing.xs),
+            mic.centerYAnchor.constraint(equalTo: sendButton.centerYAnchor),
+            dictation.edge.topAnchor.constraint(equalTo: bar.topAnchor),
+            dictation.edge.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
+            dictation.edge.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
+            dictation.edge.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
             sendButton.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -Theme.Spacing.xs),
             sendButton.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -5),
             sendButton.widthAnchor.constraint(equalToConstant: 34),
@@ -679,6 +689,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     }
 
     @objc private func sendTapped() {
+        if dictation.stopAndSend() { return }
         let text = trimmed
         guard !text.isEmpty || carriesAttachments, !isSending else { return }
         Theme.Haptics.send()
@@ -698,6 +709,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     func textView(
         _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String
     ) -> Bool {
+        dictation.userWillEdit()
         if text.count > 6000 {
             delegate?.homeComposerDidPasteLargeText(text)
             return false
@@ -731,5 +743,29 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
             CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude))
         heightConstraint.constant = min(max(22, size.height), 132)
         textView.isScrollEnabled = size.height > 132
+    }
+}
+
+extension HomeComposerBar: DictationComposerHost {
+    var dictationTextView: UITextView { textView }
+    var dictationBox: UIView { bar }
+    var dictationSendControl: UIView { sendButton }
+
+    var dictationPresenter: UIViewController? {
+        var responder: UIResponder? = self
+        while let current = responder {
+            if let controller = current as? UIViewController { return controller }
+            responder = current.next
+        }
+        return nil
+    }
+
+    func dictationDidWrite() { textViewDidChange(textView) }
+
+    func dictationSend() { sendTapped() }
+
+    func dictationSetListening(_ listening: Bool) {
+        placeholder.text = listening ? DictationReading.listeningPlaceholder : lane.placeholder
+        UIView.animate(withDuration: 0.2) { self.auraHost.alpha = listening ? 0 : 1 }
     }
 }
