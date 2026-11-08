@@ -33,6 +33,7 @@ final class SherpaDictationRecognizer: DictationRecognizer, @unchecked Sendable 
 
     func readiness(language: String) async -> DictationReadiness {
         guard DictationModelPack.isSupported else { return .unavailable(.engine("unsupported CPU")) }
+        store.revalidate()
         switch store.state {
         case .installed: return .ready
         case .installing(let download): return .downloading(download.fraction)

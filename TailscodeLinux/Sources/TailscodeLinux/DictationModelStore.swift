@@ -110,6 +110,19 @@ final class DictationModelStore: NSObject, @unchecked Sendable {
 
     var state: State { lock.withLock { current } }
 
+    /// Looks at the disk again when nothing is installing: a pack another run of the app put in
+    /// place, or one taken away by hand, is the truth rather than what this process last saw.
+    func revalidate() {
+        let (installing, was) = lock.withLock { (installTask != nil, current) }
+        guard !installing else { return }
+        let complete = isComplete
+        switch was {
+        case .absent, .failed: if complete { publish(.installed) }
+        case .installed: if !complete { publish(.absent) }
+        case .installing: break
+        }
+    }
+
     static var directory: URL {
         let environment = ProcessInfo.processInfo.environment
         let base =
