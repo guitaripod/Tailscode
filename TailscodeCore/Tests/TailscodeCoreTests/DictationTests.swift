@@ -271,6 +271,8 @@ struct DictationSessionTests {
         #expect(DictationFace.read(readiness: .downloading(0.3), snapshot: listening) == .preparing(0.3))
         #expect(DictationFace.read(readiness: .unavailable(.microphoneDenied), snapshot: listening).symbol == "mic.slash")
         #expect(DictationFace.read(readiness: .ready, snapshot: listening, available: false) == .hidden)
+        #expect(DictationFace.ready.isTakeable && !DictationFace.needsModel.isTakeable)
+        #expect(!DictationFace.blocked(.microphoneDenied).isTakeable && !DictationFace.preparing(0.4).isTakeable)
         #expect(DictationBars.heights(level: 0, time: 1).allSatisfy { $0 == DictationBars.floor })
         #expect(DictationBars.heights(level: 1, time: 1, reduceMotion: true)[2] == 1)
     }

@@ -98,6 +98,15 @@ public enum DictationFace: Sendable, Equatable {
     }
 
     public var isEnabled: Bool { self != .hidden }
+
+    /// A press here opens the microphone; anything else it opens is the sheet or popover that says
+    /// what stands in the way.
+    public var isTakeable: Bool {
+        switch self {
+        case .ready, .waking, .listening, .settling: return true
+        case .hidden, .needsModel, .preparing, .blocked: return false
+        }
+    }
 }
 
 /// The level bars, the same five on every desk: each bar's height in `0...1` from the smoothed
