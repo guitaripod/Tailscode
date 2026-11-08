@@ -28,6 +28,7 @@ enum SettingsFile {
     private static let capturedPrefixes = [
         "tailscode.saved.chats", "tailscode.saved.pending", "tailscode.seen.", "tailscode.selectedModel.",
         "tailscode.effort.", "tailscode.recentModels", "tailscode.favoriteModels", "tailscode.modelPresets", "tailscode.modelParty",
+        "tailscode.dictation.",
         "tailscode.modelCatalog.",
         "tailscode.archived.", "tailscode.pinned.", "tailscode.marks.", "tailscode.activity.missed", "tailscode.watch.",
         "tailscode.quickask.", "tailscode.updates.", "tailscode.commandCatalog.",

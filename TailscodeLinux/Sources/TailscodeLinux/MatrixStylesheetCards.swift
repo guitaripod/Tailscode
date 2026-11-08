@@ -242,6 +242,16 @@ extension MatrixStylesheet {
         .chip-tone-danger { color: \(danger); }
         .chip-tone-quiet { color: \(dimInk); }
         button.chip-ctl.chip-on .chip-glyph { color: \(palette.onAccent); }
+        button.chip-ctl.chip-danger, button.chip-ctl.chip-danger:hover {
+            color: \(palette.onAccent);
+            background-color: \(danger);
+            border-color: \(danger);
+        }
+        .dictation-hint { margin: 4px 14px 0 14px; }
+        .dictation-hint label { \(t(.chip)) }
+        button.dictation-undo { min-height: 0; padding: 0 6px; color: \(accent); \(t(.chip)) }
+        .dictation-popover-title { font-weight: 600; }
+        .dictation-facts { background-color: alpha(\(accent), 0.06); border-radius: 8px; padding: 8px 10px; }
         .pill-row arrow { -gtk-icon-size: 8px; opacity: 0.4; }
         popover contents { background-color: \(canvasRaised); border: 1px solid \(rule); }
 

@@ -184,7 +184,10 @@ final class PaneCall: @unchecked Sendable {
         case _ where reach.opensSetup:
             openSetup(endpoint: endpoint, key: key)
         default:
-            begin(entry: entry, endpoint: endpoint, key: key)
+            Task {
+                await DictationDesk.shared.finishAny()
+                Gtk.onMain { [weak self] in self?.begin(entry: entry, endpoint: endpoint, key: key) }
+            }
         }
     }
 

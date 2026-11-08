@@ -65,6 +65,29 @@ GtkListItemFactory *tailscode_make_factory(
 
 /// A key-press controller on `widget` forwarding to Swift. Returning true stops propagation, which
 /// is how a normal-mode binding keeps a letter from reaching a text view.
+/// A tag named `name` on `view`'s buffer, created on first use: its ink is `rgb` at `alpha`, struck
+/// through when `strike`. Calling it again restyles the same tag, so a theme change recolours text
+/// that is already tagged.
+void tailscode_text_tag_style(
+    GtkWidget *view, const char *name, double red, double green, double blue, double alpha, gboolean strike);
+
+/// Lays tag `name` over the characters `start` to `end` of `view`'s buffer after lifting it from
+/// everywhere else; an empty span only lifts it.
+void tailscode_text_tag_span(GtkWidget *view, const char *name, int start, int end);
+
+/// A key let go of anywhere in the window, in the capture phase: its keyval and the modifiers
+/// held as it rose. Hold-to-talk needs the release as much as the press, and the press arrives
+/// through `tailscode_connect_key`.
+void tailscode_connect_key_release(
+    GtkWidget *widget, void (*handler)(guint keyval, guint state, void *), void *data);
+
+/// A primary press on `widget` that may travel: `begin` where it lands, `update` with how far it
+/// has moved, `end` with the same when it lifts, and `cancel` when it was taken away. The press is
+/// claimed, so a button under it never also clicks; the keyboard still activates it.
+void tailscode_on_press_drag(
+    GtkWidget *widget, void (*begin)(double x, double y, void *), void (*update)(double dx, double dy, void *),
+    void (*end)(double dx, double dy, void *), void (*cancel)(void *), void *data);
+
 void tailscode_connect_key(
     GtkWidget *widget, gboolean (*handler)(guint keyval, guint state, void *), void *data);
 

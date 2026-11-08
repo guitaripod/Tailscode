@@ -231,6 +231,7 @@ enum ParityManifest {
         case .videoEstimate: return .implemented("expectation")
         case .videoLight: return .implemented("ForgeButtonRing")
         case .voiceCall: return .implemented("PaneCall")
+        case .dictation: return .implemented("PaneDictation")
         case .setupChecklist: return .implemented("SetupChecklistView")
         case .serverCapabilities: return .implemented("SetupCapabilitiesRows")
         case .reviewPrompt: return .notApplicable("there is no app store on Linux for a review to land in — no star-rating surface exists to open, and asking for one would be a dead button; the policy stays in Core only because the Apple clients share it")

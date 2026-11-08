@@ -12,11 +12,20 @@ extension MainWindow {
     /// the key acts — so typing into a pane and commanding it are never two different panes.
     func installKeymap(on window: UnsafeMutablePointer<GtkWidget>) {
         let root = UInt(bitPattern: window)
+        Gtk.onKeyRelease(window) { [weak self] keyval, _ in
+            Gtk.onMain { [weak self] in
+                self?.splitHost.orderedPanes.forEach { $0.dictation.keyReleased(keyval: keyval) }
+            }
+        }
         Gtk.onKey(window) { [weak self] keyval, state in
             guard let self, let base = UnsafeMutableRawPointer(bitPattern: root) else {
                 return false
             }
             let window: UnsafeMutablePointer<GtkWidget> = ptr(base)
+            self.lastKeyval = keyval
+            if self.splitHost.orderedPanes.contains(where: { $0.dictation.handleKey(keyval: keyval, state: state) }) {
+                return true
+            }
             if let taken = SheetStack.shared?.handleKey(keyval: keyval, state: state) {
                 return taken
             }
@@ -145,6 +154,7 @@ extension MainWindow {
             pane.setHelp(false)
         case .search: gtk_widget_grab_focus(searchEntry)
         case .send: activePane.sendFromComposer()
+        case .dictate: activePane.dictation.chordDown(keyval: lastKeyval)
         case .stop:
             if let window, let focused = tailscode_focused_widget(window),
                 let selection = tailscode_label_selection(focused)

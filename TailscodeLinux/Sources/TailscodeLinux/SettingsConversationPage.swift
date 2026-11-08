@@ -8,7 +8,29 @@ enum SettingsConversationPage {
     static func fill(_ page: UnsafeMutablePointer<GtkWidget>, _ context: SettingsContext) {
         let onLayoutChanged = context.onLayoutChanged
         addPromptBox(to: page, onLayoutChanged)
+        addDictation(to: page)
         addTranscript(to: page, onLayoutChanged)
+    }
+
+    /// Dictation: the one language this machine's model hears, whether the chat's own words bias
+    /// it, and the model on disk, with its size and a way to take it off again.
+    private static func addDictation(to page: UnsafeMutablePointer<GtkWidget>) {
+        let chord = ShortcutSet.load().effective["composer.dictate"]?.first
+        let group = SettingsRows.group(
+            DictationReading.settingsTitle, on: page,
+            description: DictationReading.settingsFooter(device: Localized.text("computer"), chord: chord, surface: .pointer))
+        SettingsRows.add(
+            SettingsRows.infoRow(
+                DictationReading.languageTitle, value: DictationReading.languageName(SherpaDictationRecognizer.language),
+                subtitle: DictationModelReading.englishOnly), to: group)
+        SettingsRows.add(
+            SettingsRows.switchRow(
+                title: DictationReading.chatWordsTitle, subtitle: DictationReading.chatWordsFooter,
+                value: DictationPreferences.usesChatWords
+            ) { DictationPreferences.usesChatWords = $0 }, to: group)
+        let row = DictationModelRow()
+        SettingsRows.add(row.widget, to: group)
+        SettingsRows.keep(row, alive: row.widget)
     }
 
     private static func addPromptBox(

@@ -21,11 +21,17 @@ final class PromptEditor: @unchecked Sendable {
 
     private let placeholder: UnsafeMutablePointer<GtkWidget>
     private let aura = AuraPainter()
+    let edge = ListeningEdge()
+    private var restingPlaceholder: String
+    private var writingDictation = false
+    private(set) var dictating = false
     private var modeFrame: UnsafeMutablePointer<GtkWidget>
     private var height: Int32 = 0
     private var measuring = false
 
     var onChanged: (@Sendable () -> Void)?
+    /// The person changed the box with their own hands while a take was writing into it.
+    var onEditDuringDictation: (@Sendable () -> Void)?
     /// Fired when the box actually took a new height. A surface whose window is sized to its
     /// contents has to ask for that size again, or the box grows inside a window that did not.
     var onHeightChanged: (@Sendable () -> Void)?
@@ -42,6 +48,7 @@ final class PromptEditor: @unchecked Sendable {
         Gtk.addClass(scroller, css)
         modeFrame = scroller
 
+        restingPlaceholder = text
         placeholder = Gtk.label(text, css: "composer-placeholder", selectable: false)
         gtk_widget_set_can_target(placeholder, 0)
         gtk_widget_set_halign(placeholder, GTK_ALIGN_START)
@@ -52,6 +59,7 @@ final class PromptEditor: @unchecked Sendable {
         gtk_overlay_set_child(op(overlay), scroller)
         gtk_overlay_add_overlay(op(overlay), placeholder)
         gtk_overlay_add_overlay(op(overlay), aura.widget)
+        gtk_overlay_add_overlay(op(overlay), edge.widget)
         gtk_widget_set_hexpand(overlay, 1)
         widget = overlay
 
@@ -61,6 +69,7 @@ final class PromptEditor: @unchecked Sendable {
             guard let self else { return }
             self.grow()
             self.refreshPlaceholder()
+            if self.dictating, !self.writingDictation { self.onEditDuringDictation?() }
             self.onChanged?()
         }
     }
@@ -78,11 +87,112 @@ final class PromptEditor: @unchecked Sendable {
     /// box, so a surface that frames the editor together with its buttons hands that frame's
     /// overlay over, and the ring goes around all of it instead of drawing a second box inside.
     func wearAura(on overlay: UnsafeMutablePointer<GtkWidget>) {
-        let ring = aura.widget
-        g_object_ref(UnsafeMutableRawPointer(ring))
-        gtk_overlay_remove_overlay(op(widget), ring)
-        gtk_overlay_add_overlay(op(overlay), ring)
-        g_object_unref(UnsafeMutableRawPointer(ring))
+        for ring in [aura.widget, edge.widget] {
+            g_object_ref(UnsafeMutableRawPointer(ring))
+            gtk_overlay_remove_overlay(op(widget), ring)
+            gtk_overlay_add_overlay(op(overlay), ring)
+            g_object_unref(UnsafeMutableRawPointer(ring))
+        }
+    }
+
+    /// Where a take's words would go: the text before the selection and the text after it.
+    func dictationAnchor() -> DictationInsertion {
+        let buffer = gtk_text_view_get_buffer(ptr(textView))
+        var start = GtkTextIter()
+        var end = GtkTextIter()
+        if gtk_text_buffer_get_selection_bounds(buffer, &start, &end) == 0 {
+            gtk_text_buffer_get_iter_at_mark(buffer, &start, gtk_text_buffer_get_insert(buffer))
+            end = start
+        }
+        var first = GtkTextIter()
+        var last = GtkTextIter()
+        gtk_text_buffer_get_bounds(buffer, &first, &last)
+        return DictationInsertion(before: slice(buffer, &first, &start), after: slice(buffer, &end, &last))
+    }
+
+    private func slice(
+        _ buffer: UnsafeMutablePointer<GtkTextBuffer>?, _ from: inout GtkTextIter, _ to: inout GtkTextIter
+    ) -> String {
+        guard let raw = gtk_text_buffer_get_text(buffer, &from, &to, 0) else { return "" }
+        defer { g_free(raw) }
+        return String(cString: raw)
+    }
+
+    /// Opens or closes the box to a take: the placeholder says it is listening, and the words the
+    /// take writes from here on are its own and not the person's typing.
+    func setDictating(_ value: Bool) {
+        dictating = value
+        gtk_label_set_text(op(placeholder), value ? DictationReading.listeningPlaceholder : restingPlaceholder)
+        if !value { tailscode_text_tag_span(textView, Self.heardTag, 0, 0) }
+        if !value { tailscode_text_tag_span(textView, Self.struckTag, 0, 0) }
+    }
+
+    static let heardTag = "dictation-heard"
+    static let struckTag = "dictation-struck"
+
+    /// The box with a take in it, written outside the undo history: only the take's last state
+    /// becomes one undo step, in `commitDictation`.
+    func showDictation(_ composition: DictationComposition, struck: Bool) {
+        let palette = MatrixTheme.palette
+        let accent = PartyInk(hex: palette.accent)
+        let dim = PartyInk(hex: palette.textDim)
+        tailscode_text_tag_style(textView, Self.heardTag, accent.red, accent.green, accent.blue, 0.9, 0)
+        tailscode_text_tag_style(textView, Self.struckTag, dim.red, dim.green, dim.blue, 0.8, 1)
+        let buffer = gtk_text_view_get_buffer(ptr(textView))
+        writingDictation = true
+        gtk_text_buffer_begin_irreversible_action(buffer)
+        if text != composition.text { gtk_text_buffer_set_text(buffer, composition.text, -1) }
+        gtk_text_buffer_end_irreversible_action(buffer)
+        writingDictation = false
+        let heard = composition.heardScalars
+        tailscode_text_tag_span(textView, Self.heardTag, Int32(heard.lowerBound), Int32(heard.upperBound))
+        let take = composition.takeScalars
+        tailscode_text_tag_span(
+            textView, Self.struckTag, struck ? Int32(take.lowerBound) : 0, struck ? Int32(take.upperBound) : 0)
+        var caret = GtkTextIter()
+        gtk_text_buffer_get_iter_at_offset(buffer, &caret, Int32(composition.caretScalars))
+        gtk_text_buffer_place_cursor(buffer, &caret)
+        gtk_text_view_scroll_to_mark(ptr(textView), gtk_text_buffer_get_insert(buffer), 0, 0, 0, 0)
+    }
+
+    /// The take's last words, written as one undo step from the box as it was before the take.
+    func commitDictation(_ composition: DictationComposition, from original: String) {
+        let buffer = gtk_text_view_get_buffer(ptr(textView))
+        writingDictation = true
+        gtk_text_buffer_begin_irreversible_action(buffer)
+        gtk_text_buffer_set_text(buffer, original, -1)
+        gtk_text_buffer_end_irreversible_action(buffer)
+        if composition.text != original {
+            gtk_text_buffer_begin_user_action(buffer)
+            var start = GtkTextIter()
+            var end = GtkTextIter()
+            gtk_text_buffer_get_bounds(buffer, &start, &end)
+            gtk_text_buffer_delete(buffer, &start, &end)
+            gtk_text_buffer_get_start_iter(buffer, &start)
+            gtk_text_buffer_insert(buffer, &start, composition.text, -1)
+            gtk_text_buffer_end_user_action(buffer)
+        }
+        writingDictation = false
+        setDictating(false)
+        var caret = GtkTextIter()
+        gtk_text_buffer_get_iter_at_offset(buffer, &caret, Int32(composition.caretScalars))
+        gtk_text_buffer_place_cursor(buffer, &caret)
+        vim.reset(to: text, cursor: cursor, mode: vim.mode)
+    }
+
+    /// The box exactly as it was before a take that was thrown away.
+    func restoreDictation(_ original: String, caret: Int) {
+        let buffer = gtk_text_view_get_buffer(ptr(textView))
+        writingDictation = true
+        gtk_text_buffer_begin_irreversible_action(buffer)
+        gtk_text_buffer_set_text(buffer, original, -1)
+        gtk_text_buffer_end_irreversible_action(buffer)
+        writingDictation = false
+        setDictating(false)
+        var iter = GtkTextIter()
+        gtk_text_buffer_get_iter_at_offset(buffer, &iter, Int32(caret))
+        gtk_text_buffer_place_cursor(buffer, &iter)
+        vim.reset(to: text, cursor: cursor, mode: vim.mode)
     }
 
     var text: String {

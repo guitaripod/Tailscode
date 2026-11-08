@@ -38,6 +38,7 @@ let hasWebKit =
 var appDependencies: [Target.Dependency] = [
     "CAdw",
     "CGtkShim",
+    "CSherpa",
     .product(name: "CodingAgentKit", package: "CodingAgentKit"),
     .product(name: "CodingAgentKitApple", package: "CodingAgentKit"),
     .product(name: "TailscodeCore", package: "TailscodeCore"),
@@ -109,6 +110,7 @@ targets += [
     .target(
         name: "CGtkShim", dependencies: shimDependencies, cSettings: shimSettings,
         linkerSettings: shimLinkerSettings),
+    .target(name: "CSherpa", linkerSettings: [.linkedLibrary("dl")]),
     .executableTarget(
         name: "TailscodeLinux",
         dependencies: appDependencies,

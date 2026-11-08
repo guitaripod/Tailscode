@@ -168,6 +168,9 @@ final class MainWindow: @unchecked Sendable {
     var searchRunning = false
     var searchTask: Task<Void, Never>?
     var pendingChords: [KeyChord] = []
+    /// The key the last press was, so an action that has to watch for the same key rising (hold to
+    /// talk) knows which one to watch.
+    var lastKeyval: UInt32 = 0
     var shortcuts = ShortcutSet.load()
     var focused: Pane = .chats
     /// The chat the person just started from the + button: known-empty, kept in the list by hand

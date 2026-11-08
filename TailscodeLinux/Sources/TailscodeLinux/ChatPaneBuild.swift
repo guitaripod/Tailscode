@@ -156,6 +156,7 @@ extension ChatPane {
         Gtk.margins(attachmentsBox, top: 4)
         gtk_box_append(ptr(root), attachmentsBox)
         gtk_box_append(ptr(root), call.strip.widget)
+        gtk_box_append(ptr(root), dictation.hint)
         gtk_box_append(ptr(root), makeComposer())
         gtk_box_append(ptr(root), makePillRow())
     }
@@ -323,6 +324,7 @@ extension ChatPane {
         tailscode_set_accessible_label(attach, Localized.text("Attach files"))
         attachButton = attach
         gtk_box_append(ptr(row), attach)
+        gtk_box_append(ptr(row), dictation.chip)
 
         let sendWords = [Localized.text("Send"), Localized.text("Queue")]
         let send = ChatChips.content(
@@ -453,6 +455,7 @@ extension ChatPane {
             for word in [sendWord, stopWord, call.chipParts.word] {
                 if let word { gtk_widget_set_visible(word, compactOn ? 0 : 1) }
             }
+            dictation.compact = compactOn
         }
         let showAttach = chosen.attach && attachAble
         if chosen.lanes != lanesShown { gtk_widget_set_visible(laneRow, chosen.lanes ? 1 : 0) }
@@ -487,6 +490,7 @@ extension ChatPane {
         if let sendWord { sendWordWidth = Self.naturalWidthWhileHidden(sendWord) + 5 }
         if let stopWord { stopWordWidth = Self.naturalWidthWhileHidden(stopWord) + 5 }
         if let word = call.chipParts.word { callWordWidth = Self.naturalWidthWhileHidden(word) + 5 }
+        dictationWordWidth = Self.naturalWidthWhileHidden(dictation.word) + 5
     }
 
     static func naturalWidthWhileHidden(_ widget: UnsafeMutablePointer<GtkWidget>) -> Int32 {
@@ -501,11 +505,13 @@ extension ChatPane {
         if let sendWord { sendWordWidth = Self.naturalWidth(sendWord) + 5 }
         if let stopWord { stopWordWidth = Self.naturalWidth(stopWord) + 5 }
         if let word = call.chipParts.word, call.chipVisible { callWordWidth = Self.naturalWidth(word) + 5 }
+        if gtk_widget_get_visible(dictation.chip) != 0 { dictationWordWidth = Self.naturalWidth(dictation.word) + 5 }
     }
 
     var wordWidths: Int32 {
         sendWordWidth + (gtk_widget_get_visible(stopButton) != 0 ? stopWordWidth : 0)
             + (call.chipVisible ? callWordWidth : 0)
+            + (gtk_widget_get_visible(dictation.chip) != 0 ? dictationWordWidth : 0)
     }
 
     static func naturalWidth(_ widget: UnsafeMutablePointer<GtkWidget>) -> Int32 {

@@ -148,6 +148,8 @@ extension SelfTest {
             case "keyboard": report("keyboard: \(try checkKeyboardRebind()) claims hold")
             case "carry": report("model seam and carry: \(try checkModelSeamAndCarry()) claims hold")
             case "call": report("call: \(try checkCall()) claims hold")
+            case "dictation": report("dictation: \(try checkDictation()) claims hold")
+            case "dictationengine": report("dictation engine: \(try runBlocking { try await checkDictationEngine() }) claims hold")
             case "beta": report("beta: \(try checkBeta()) claims hold")
             case "sidebar": report("sidebar: \(try checkSidebar()) claims hold")
             case "agents":

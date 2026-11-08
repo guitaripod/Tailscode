@@ -68,11 +68,13 @@ extension ChatPane {
         leaveFreshCanvas()
         freshlyCreatedID = freshlyCreated ? entry.session.id : nil
         if let previousEntry, let carry { carryStash[Self.preferenceKey(previousEntry)] = carry }
+        dictation.chatChanged()
         stashDraft()
         self.entry = entry
         brains.sessionKey = entry.session.id
         syncBrainSettings()
         call.chatChanged()
+        dictation.refresh()
         editingQueued = nil
         queue = ConversationQueue(profileID: entry.profileID, sessionID: entry.session.id)
         conversation = nil
@@ -357,6 +359,7 @@ extension ChatPane {
         catalogWatchTask = nil
         resumeTask?.cancel()
         resumeTask = nil
+        dictation.chatChanged()
         entry = nil
         call.chatChanged()
         clearComposer()
@@ -387,6 +390,7 @@ extension ChatPane {
     /// still in flight is handed to the background watcher first, so the row keeps its LIVE NOW
     /// seat until the turn settles.
     func shutdown() {
+        dictation.shutdown()
         stashDraft()
         call.shutdown()
         if let entry, presence.isInFlight { host?.keepWatching(entry) }

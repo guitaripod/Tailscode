@@ -306,6 +306,109 @@ void tailscode_connect_key(
     gtk_widget_add_controller(widget, controller);
 }
 
+void tailscode_text_tag_style(
+    GtkWidget *view, const char *name, double red, double green, double blue, double alpha, gboolean strike) {
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
+    GtkTextTagTable *table = gtk_text_buffer_get_tag_table(buffer);
+    GtkTextTag *tag = gtk_text_tag_table_lookup(table, name);
+    if (!tag) tag = gtk_text_buffer_create_tag(buffer, name, NULL);
+    GdkRGBA ink = {(float)red, (float)green, (float)blue, (float)alpha};
+    g_object_set(tag, "foreground-rgba", &ink, "strikethrough", strike, NULL);
+}
+
+void tailscode_text_tag_span(GtkWidget *view, const char *name, int start, int end) {
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
+    GtkTextIter first, last;
+    gtk_text_buffer_get_bounds(buffer, &first, &last);
+    gtk_text_buffer_remove_tag_by_name(buffer, name, &first, &last);
+    if (end <= start) return;
+    GtkTextIter from, to;
+    gtk_text_buffer_get_iter_at_offset(buffer, &from, start);
+    gtk_text_buffer_get_iter_at_offset(buffer, &to, end);
+    gtk_text_buffer_apply_tag_by_name(buffer, name, &from, &to);
+}
+
+typedef struct {
+    void (*handler)(guint keyval, guint state, void *);
+    void *data;
+} TailscodeKeyRelease;
+
+static void tailscode_key_release_trampoline(
+    GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state,
+    gpointer raw) {
+    (void)controller;
+    (void)keycode;
+    TailscodeKeyRelease *box = raw;
+    box->handler(keyval, (guint)state, box->data);
+}
+
+void tailscode_connect_key_release(
+    GtkWidget *widget, void (*handler)(guint keyval, guint state, void *), void *data) {
+    TailscodeKeyRelease *box = g_new0(TailscodeKeyRelease, 1);
+    box->handler = handler;
+    box->data = data;
+    GtkEventController *controller = gtk_event_controller_key_new();
+    gtk_event_controller_set_propagation_phase(controller, GTK_PHASE_CAPTURE);
+    g_signal_connect_data(
+        controller, "key-released", G_CALLBACK(tailscode_key_release_trampoline), box,
+        (GClosureNotify)(void (*)(void))g_free, 0);
+    gtk_widget_add_controller(widget, controller);
+}
+
+typedef struct {
+    void (*begin)(double, double, void *);
+    void (*update)(double, double, void *);
+    void (*end)(double, double, void *);
+    void (*cancel)(void *);
+    void *data;
+} TailscodePressDrag;
+
+static void tailscode_press_drag_begin(GtkGestureDrag *gesture, double x, double y, gpointer raw) {
+    gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+    TailscodePressDrag *box = raw;
+    box->begin(x, y, box->data);
+}
+
+static void tailscode_press_drag_update(GtkGestureDrag *gesture, double dx, double dy, gpointer raw) {
+    (void)gesture;
+    TailscodePressDrag *box = raw;
+    box->update(dx, dy, box->data);
+}
+
+static void tailscode_press_drag_end(GtkGestureDrag *gesture, double dx, double dy, gpointer raw) {
+    (void)gesture;
+    TailscodePressDrag *box = raw;
+    box->end(dx, dy, box->data);
+}
+
+static void tailscode_press_drag_cancel(GtkGesture *gesture, GdkEventSequence *sequence, gpointer raw) {
+    (void)gesture;
+    (void)sequence;
+    TailscodePressDrag *box = raw;
+    box->cancel(box->data);
+}
+
+void tailscode_on_press_drag(
+    GtkWidget *widget, void (*begin)(double x, double y, void *), void (*update)(double dx, double dy, void *),
+    void (*end)(double dx, double dy, void *), void (*cancel)(void *), void *data) {
+    TailscodePressDrag *box = g_new0(TailscodePressDrag, 1);
+    box->begin = begin;
+    box->update = update;
+    box->end = end;
+    box->cancel = cancel;
+    box->data = data;
+    GtkGesture *drag = gtk_gesture_drag_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(drag), GDK_BUTTON_PRIMARY);
+    gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(drag), GTK_PHASE_CAPTURE);
+    g_signal_connect(drag, "drag-begin", G_CALLBACK(tailscode_press_drag_begin), box);
+    g_signal_connect(drag, "drag-update", G_CALLBACK(tailscode_press_drag_update), box);
+    g_signal_connect(drag, "drag-end", G_CALLBACK(tailscode_press_drag_end), box);
+    g_signal_connect_data(
+        drag, "cancel", G_CALLBACK(tailscode_press_drag_cancel), box,
+        (GClosureNotify)(void (*)(void))g_free, 0);
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(drag));
+}
+
 typedef struct {
     gboolean (*handler)(double, void *);
     void *data;

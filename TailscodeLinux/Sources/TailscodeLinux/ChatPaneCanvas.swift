@@ -32,7 +32,10 @@ extension ChatPane {
 
     func callAnnounce(_ words: String) { announce(words) }
 
-    func callChipChanged() { queueLaneFit() }
+    func callChipChanged() {
+        queueLaneFit()
+        dictation.refresh()
+    }
 
     /// The prompt just sent rises to the top of the window and the answer streams onto the empty
     /// page under it. The room is made rather than found: the canvas is padded by what the

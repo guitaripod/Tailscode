@@ -201,7 +201,9 @@ final class ChatPane: @unchecked Sendable {
     /// This pane's part in a call: the control in the strip below the composer and the strip above
     /// it. A call is a state of the conversation the pane holds, not a window.
     lazy var call = PaneCall(host: self)
+    lazy var dictation = PaneDictation(host: self)
     var callWordWidth: Int32 = 0
+    var dictationWordWidth: Int32 = 0
     var composerScroller: UnsafeMutablePointer<GtkWidget> { editor.scroller }
     var vim: VimEngine { editor.vim }
     let vimBadge = Gtk.label("", css: "vim-badge", selectable: false)

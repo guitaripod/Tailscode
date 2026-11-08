@@ -707,6 +707,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkDictation()
+            report("dictation: \(checks) claims hold — the mic chip's faces, a tap and a hold, words snapped into the box as one undo step, a slide that discards with Undo, Esc, ⏎ that sends, and typing that keeps what is shown")
+        } catch {
+            report("dictation: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkSetup()
             report("setup: \(checks) claims hold — every checklist state, motion that means something, a job followed to its end, the server section, and the call's press")
         } catch {
