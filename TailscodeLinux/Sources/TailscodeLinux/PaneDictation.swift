@@ -99,7 +99,10 @@ final class PaneDictation: @unchecked Sendable {
         weak var owner: PaneDictation?
     }
 
+    private static let traced: Void = { DictationTrace.sink = { line in AppLog.write(.session, line) } }()
+
     init(host: any DictationPaneHost, demo: Bool = DemoMode.isActive, demoWordDelay: TimeInterval = 0.22) {
+        _ = Self.traced
         self.host = host
         self.demo = demo
         self.demoWordDelay = demoWordDelay

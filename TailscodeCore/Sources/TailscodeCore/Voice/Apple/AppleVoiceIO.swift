@@ -93,7 +93,7 @@
             await player.flush()
         }
 
-        private static func requireMicrophone() async throws {
+        static func requireMicrophone() async throws {
             switch AVAudioApplication.shared.recordPermission {
             case .granted:
                 return

@@ -213,6 +213,7 @@ public actor DictationSession {
         guard !closing else { return }
         if phase == .waking {
             phase = .listening
+            DictationTrace.note("take \(take) first sound after \(sinceStart) s")
             publish()
         }
         if engineReady {
@@ -228,6 +229,7 @@ public actor DictationSession {
 
     private func captureEnded() async {
         guard !closing else { return }
+        DictationTrace.note("take \(take) lost its microphone after \(sinceStart) s, engine \(engineReady ? "ready" : "waking"), \(words.isEmpty ? "no words" : "words kept")")
         let keep = !words.isEmpty
         if keep, engineReady {
             closing = true
@@ -248,6 +250,7 @@ public actor DictationSession {
             stream = try await recognizer.begin(language: language, vocabulary: vocabulary.phrases)
         } catch {
             engineFailed = true
+            DictationTrace.note("take \(take) engine did not begin: \(error)")
             guard !closing else { return }
             await close(as: .problem(Self.problem(error)))
             return
@@ -257,6 +260,7 @@ public actor DictationSession {
             return
         }
         engineReady = true
+        DictationTrace.note("take \(take) engine ready after \(sinceStart) s with \(pending.count) chunks waiting")
         let backlog = pending
         pending = []
         pendingBytes = 0
@@ -273,6 +277,7 @@ public actor DictationSession {
 
     private func apply(_ heard: DictationHeard) {
         guard finished == nil else { return }
+        if settledRaw.isEmpty, heardRaw.isEmpty { DictationTrace.note("take \(take) first words after \(sinceStart) s") }
         switch heard {
         case .volatile(let text):
             heardRaw = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -290,6 +295,7 @@ public actor DictationSession {
             waiter.resume()
         }
         guard let error, !closing else { return }
+        DictationTrace.note("take \(take) engine stopped: \(error)")
         await close(as: .problem(Self.problem(error)))
     }
 
@@ -360,6 +366,10 @@ public actor DictationSession {
 
     private func publish() {
         output.yield(snapshot())
+    }
+
+    private var sinceStart: String {
+        String(format: "%.2f", startedAt.map { clock.now() - $0 } ?? 0)
     }
 
     static func problem(_ error: Error) -> DictationProblem {

@@ -73,11 +73,11 @@ final class DictationEngines {
     static let didChange = Notification.Name("tailscode.dictation.engines.didChange")
 
     let demo = DemoMode.isActive
-    private lazy var io = AppleVoiceIO()
     private(set) var recognizer: (any DictationRecognizer)?
     private var known: [String: DictationReadiness] = [:]
 
     init() {
+        DictationTrace.sink = { line in MidgarLog.info(line, category: .chat) }
         if demo {
             recognizer = DictationDemoRecognizer()
         } else if #available(iOS 26, *) {
@@ -87,8 +87,9 @@ final class DictationEngines {
 
     var isSupported: Bool { recognizer != nil }
 
+    /// A microphone of its own for each take: the input as it comes, never the call's voice path.
     func capture() -> any VoiceAudioCapture {
-        demo ? DictationDemoCapture() : io.capture
+        demo ? DictationDemoCapture() : AppleDictationCapture()
     }
 
     /// The language a take would listen in and whether it can, for the person's choice and the

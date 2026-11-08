@@ -98,6 +98,7 @@
                 try? await analyzer.setContext(context)
             }
             try await analyzer.prepareToAnalyze(in: format)
+            DictationTrace.note("analyzer \(language) at \(Int(format.sampleRate)) Hz × \(format.channelCount), \(vocabulary.count) phrases")
             let (inputs, inputContinuation) = AsyncStream<AnalyzerInput>.makeStream()
             let (heard, heardContinuation) = AsyncThrowingStream<DictationHeard, Error>.makeStream()
             let results = Task {
@@ -108,6 +109,7 @@
                     }
                     heardContinuation.finish()
                 } catch {
+                    DictationTrace.note("transcriber results failed: \(error)")
                     heardContinuation.finish(throwing: DictationEngineError.failed(String(describing: error)))
                 }
             }

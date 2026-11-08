@@ -1,5 +1,6 @@
 import AVFAudio
 import AppKit
+import MidgarCore
 import TailscodeCore
 
 /// What a composer tells dictation about itself.
@@ -21,16 +22,17 @@ final class MacDictationEngines {
     static let didChange = Notification.Name("tailscode.dictation.mac.didChange")
 
     let demo: Bool
-    private lazy var io = AppleVoiceIO()
     let recognizer: any DictationRecognizer
 
     init(demo: Bool = DemoMode.isActive, wordDelay: TimeInterval = 0.22) {
         self.demo = demo
+        if !demo { DictationTrace.sink = { line in MidgarLog.info(line, category: .chat) } }
         recognizer = demo ? DictationDemoRecognizer(wordDelay: wordDelay) : AppleDictationRecognizer()
     }
 
+    /// A microphone of its own for each take: the input as it comes, never the call's voice path.
     func capture() -> any VoiceAudioCapture {
-        demo ? DictationDemoCapture() : io.capture
+        demo ? DictationDemoCapture() : AppleDictationCapture()
     }
 
     func readiness() async -> (DictationReadiness, String?) {
