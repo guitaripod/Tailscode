@@ -137,13 +137,16 @@ echo "installed $("$BIN_DIR/tailscode" --version 2>/dev/null || echo "$BIN_DIR/t
 # Optional engines are found at build time, so what was not on the machine is not in the binary.
 # Said here, once, rather than discovered as an empty pane: a browser slot and a design board
 # without WebKitGTK open in the desktop's browser instead, and a video slot without libmpv says so.
-if ! ldd "$BIN_DIR/tailscode" | grep -q libwebkitgtk-6.0; then
+# ldd's whole answer is read first: under pipefail, grep -q leaving early hands ldd a SIGPIPE and
+# the check would report every engine missing from a binary that links them all.
+LINKED=$(ldd "$BIN_DIR/tailscode" 2>/dev/null || true)
+if ! grep -q libwebkitgtk-6.0 <<<"$LINKED"; then
     echo "built WITHOUT WebKitGTK: no in-app browser slot or design board (pacman -S webkitgtk-6.0, then rerun)" >&2
 fi
-if ! ldd "$BIN_DIR/tailscode" | grep -q libmpv; then
+if ! grep -q libmpv <<<"$LINKED"; then
     echo "built WITHOUT libmpv: no in-app video slot (pacman -S mpv, then rerun)" >&2
 fi
-if ! ldd "$BIN_DIR/tailscode" | grep -q libpulse-simple; then
+if ! grep -q libpulse-simple <<<"$LINKED"; then
     echo "built WITHOUT libpulse: the voice call has no audio (pacman -S libpulse, then rerun)" >&2
 fi
 
