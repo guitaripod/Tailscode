@@ -240,6 +240,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case videoEstimate
     case videoLight
     case voiceCall
+    case dictation
     case setupChecklist
     case serverCapabilities
     case autoResume

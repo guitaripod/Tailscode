@@ -361,6 +361,10 @@ public enum ShortcutRegistry {
             id: "composer.send", title: Localized.text("Send"), category: .composer,
             action: .send, contexts: [.insert], defaults: ["ctrl+enter"]),
         .init(
+            id: "composer.dictate", title: Localized.text("Dictate: tap to start and stop, hold to talk while held"),
+            category: .composer, action: .dictate, contexts: [.normal, .insert],
+            defaults: ["ctrl+shift+d"]),
+        .init(
             id: "composer.effortHotter", title: Localized.text("More effort on the next send"),
             category: .composer, action: .effortHotter, contexts: [.normal, .insert],
             defaults: ["ctrl+alt+up"]),
@@ -783,6 +787,7 @@ public enum KeyAction: Equatable, Sendable {
     case search
     case send
     case stop
+    case dictate
     case toggleHelp
     case reload
     case allowOnce
