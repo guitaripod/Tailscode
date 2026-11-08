@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=1572">
+<title>Dictation, phone</title>
+<link rel="stylesheet" href="base.css">
+</head>
+<body>
+<script>document.documentElement.dataset.theme=location.hash==='#light'?'light':'dark'</script>
+<div class="page" id="page"></div>
+<script>
+const I={
+mic:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5v3.5"/></svg>',
+micslash:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5v3.5"/><path d="M3.5 3.5l17 17"/></svg>',
+bigmicslash:'<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5v3.5"/><path d="M3.5 3.5l17 17"/></svg>',
+up:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5.5 11.5L12 5l6.5 6.5"/></svg>',
+plus:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+down:'<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v14M6 12l6 6 6-6"/></svg>',
+trash:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
+wave:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>'
+};
+const chat=`
+<div class="tool"><i></i>Read ComposerView.swift · Edited DictationButton.swift</div>
+<div class="prose">The button now sits left of Send. The hold gesture still needs a cancel: right now <code>touchesMoved</code> is ignored, so sliding away does nothing.</div>
+<div class="bubble">What happens on release?</div>
+<div class="prose">Release keeps whatever was heard in the box. Nothing is sent until you send it.</div>`;
+function bars(h){return h.map(x=>`<b style="height:${x}px"></b>`).join('')}
+function phone({words='<span class="ph">Message your agent…</span>',lit='',mic=null,send='',hint='',finger=null,extra='',sweep=false}){
+  const micHTML=mic??`<div class="mic">${I.mic}</div>`;
+  return `<div class="phone">
+<div class="status"><span>9:41</span><span>●●● ▮</span></div>
+<div class="nav"><span class="back">‹</span>dictation button <small>· arch</small><span class="wave">${I.wave}</span></div>
+<div class="col">${chat}</div>
+<div class="dock">
+<div class="box ${lit}">${sweep?'<div class="sweep"></div>':''}${hint}
+<div class="words">${words}</div>
+<div class="row"><div class="plus">${I.plus}</div><div class="pill"><span class="d"></span>Opus 5.5 · High</div><div class="sp"></div>${micHTML}<div class="send ${send}">${I.up}</div></div>
+</div>
+${finger??''}
+</div>
+${extra}
+</div>`}
+const said='Rename the dictation button in <b style="font-weight:600">ComposerView.swift</b> so the hold';
+const figs=[
+{n:1,cap:'Ready',sub:'the mic beside Send',body:phone({}),tot:'A plain glyph in secondary ink with a 44 pt target, never a second filled circle beside Send. It does not raise the keyboard: you can talk to a chat while reading it.'},
+{n:2,cap:'Listening, hands-free',sub:'tapped',body:phone({lit:'lit',words:`${said} <span class="heard">gesture cancels when you slide</span>`,mic:`<div class="orb">${bars([7,13,17,10,5])}</div>`,send:'on',hint:'<div class="hint"><span class="dot"></span><span class="t">0:07</span><span class="sep">·</span>Tap to stop</div>'}),tot:'Settled words are ink and heard words are lit. <b>ComposerView.swift</b> was spoken as “composer view dot swift” and snapped from the chat’s own files. The mic has grown into a live capsule, so it never reads as a second Send. The edge breathes with your voice.',feel:'listen'},
+{n:3,cap:'Holding',sub:'push to talk',body:phone({lit:'lit',words:`${said} <span class="heard">gesture</span>`,mic:`<div class="orb big">${bars([10,16,19,8,6])}</div>`,send:'on drop',hint:'<div class="hint"><span class="chev">‹</span>Slide to cancel</div>',finger:'<div class="finger" style="right:69px;bottom:36px"></div>'}),tot:'Past 280 ms the press is a hold. Release keeps the words in the box. Send glows faintly: drop onto it to send.',feel:'listen'},
+{n:4,cap:'Release to cancel',sub:'slid 72 pt left',body:phone({lit:'lit bad',words:`<span class="struck">Rename the dictation button in ComposerView.swift so the hold gesture</span>`,mic:`<div class="orb bad">${bars([5,8,9,6,4])}</div>`,send:'',hint:'<div class="hint bad"><span>'+I.trash+'</span>Release to cancel</div>',finger:'<div class="trail" style="right:82px;bottom:58px;width:80px"></div><div class="finger" style="right:150px;bottom:36px"></div>'}),tot:'This take’s words dim and strike through: you see what release will throw away. Sliding back un-arms it.',feel:'notch'},
+{n:5,cap:'Release to send',sub:'slid onto Send',body:phone({lit:'lit',words:`${said} gesture cancels when you slide.`,mic:`<div class="orb" style="transform:scale(.86)">${bars([8,12,14,7,5])}</div>`,send:'armed',hint:'<div class="hint"><span class="dot"></span>Release to send</div>',finger:'<div class="finger" style="right:15px;bottom:36px"></div>'}),tot:'The only way dictation sends: a deliberate drop. It settles the last words (≤ 1.2 s) and goes through the normal send path, queueing while a turn runs.',feel:'notch → send'},
+{n:6,cap:'Getting ready',sub:'first use, assets missing',body:phone({mic:`<div class="mic" style="color:var(--accent)"><svg class="ring" viewBox="0 0 34 34" width="34" height="34"><circle cx="17" cy="17" r="15" fill="none" stroke="var(--fill2)" stroke-width="3"/><circle cx="17" cy="17" r="15" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-dasharray="${2*Math.PI*15*.34} 200" transform="rotate(-90 17 17)"/></svg>${I.mic}</div>`,hint:'<div class="hint"><span class="t">34%</span><span class="sep">·</span>Getting dictation ready</div>'}),tot:'Apple’s speech assets for the language download once, on the device. When done the mic pulses once and waits: a mic never opens without a press.',feel:'tap … success'},
+{n:7,cap:'Can’t hear you',sub:'microphone access off',body:phone({mic:`<div class="mic">${I.micslash}</div>`,extra:`<div class="scrim"></div><div class="sheet"><div class="ic">${I.bigmicslash}</div><h3>Tailscode can’t hear you</h3><p>Microphone access is off for Tailscode. Turn it on in Settings and the mic beside Send will listen.</p><div class="cta">Open Settings</div><div class="alt">Not now</div><div class="fine">Dictation runs on this iPhone. Nothing you say leaves it.</div></div>`}),tot:'Never a silent no-op. The glyph wears a slash before you press it, and the press explains and offers the one fix.'},
+{n:8,cap:'Discarded',sub:'after a cancel',body:phone({hint:'<div class="hint">Discarded<span class="sep">·</span><span class="undo">Undo</span></div>'}),tot:'The box returns to exactly what it held before the take. Undo brings the take back for five seconds, and ⌘Z or a shake brings it back after that.',feel:'tap'}
+];
+document.getElementById('page').innerHTML='<div class="title">Dictation · iPhone<span>the box is the surface; one control, two hands</span></div>'+figs.map(f=>`<div class="fig"><div class="cap"><span class="n">${f.n}</span>${f.cap}<span>${f.sub}</span></div>${f.body}<div class="tot">${f.tot}</div>${f.feel?`<div class="feel">◉ ${f.feel}</div>`:''}</div>`).join('');
+</script>
+</body></html>

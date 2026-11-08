@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=1572">
+<title>Dictation, desktop</title>
+<link rel="stylesheet" href="base.css">
+</head>
+<body>
+<script>document.documentElement.dataset.theme=location.hash==='#light'?'light':'dark'</script>
+<div class="page" id="page"></div>
+<script>
+const mic='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5v3.5"/></svg>';
+const up='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5.5 11.5L12 5l6.5 6.5"/></svg>';
+function bars(h){return h.map(x=>`<b style="height:${x}px"></b>`).join('')}
+const side=`<div class="wside"><div class="sel"><i></i>dictation button</div><div><i style="background:var(--ink3)"></i>parity sweep</div><div><i style="background:var(--ink3)"></i>release notes 1.83</div><div><i style="background:var(--warn)"></i>bridge restart</div><div><i style="background:var(--ink3)"></i>quota board</div></div>`;
+const tr=`<div class="wtr"><div style="color:var(--ink2);font-size:12px">Read DictationController.swift · Edited PromptEditor.swift</div><div>The edge is drawn by <code style="font-family:Adwaita Mono">PromptEditor</code>’s border layer, so the aura parks while you talk and returns when the take ends.</div><div class="bubble" style="align-self:flex-end">Does Esc still leave insert mode?</div><div>Only when nothing is listening. While a take is open, Esc cancels it and the box goes back to what it held.</div></div>`;
+const mac=`<div class="win" style="height:520px">
+<div class="tbar"><div class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>dictation button <span style="font-weight:400;color:var(--ink2)">· arch</span></div>
+<div class="wbody">${side}<div class="wmain">${tr}
+<div class="wcomp">
+<div class="hint" style="top:-24px;left:50%"><span class="dot"></span><span class="t">0:04</span><span class="sep">·</span><span class="kc">⌃⇧D</span> or click to stop<span class="sep">·</span><span class="kc">esc</span> cancels</div>
+<div class="editor lit">Make the hint capsule say the chord on the Mac and <span class="heard">keep it out of the way on Linux</span><span class="caret"></span></div>
+<div class="wrow"><div class="pill"><span class="d"></span>Opus 5.5 · High</div><div class="pill">~/Dev/iOS/Tailscode</div><div class="sp"></div><div class="orb" style="width:48px;height:28px">${bars([6,11,15,8,5])}</div><div class="send on" style="width:28px;height:28px">${up}</div></div>
+</div></div></div></div>`;
+const linux=`<div class="win" style="height:520px;background:var(--adw)">
+<div class="tbar" style="background:var(--adwhead);justify-content:center;position:relative">dictation button<span style="position:absolute;right:14px;display:flex;gap:8px;color:var(--ink2)">— ◻ ✕</span></div>
+<div class="wbody">${side}<div class="wmain">${tr}
+<div class="wcomp">
+<div class="pop" style="right:2px;bottom:58px">
+<h4>Dictation runs on this computer</h4>
+<p>It listens with a speech model on your own CPU. Nothing you say leaves arch.</p>
+<div class="facts"><div><span>Speech model</span>Nemotron · English</div><div><span>Download, once</span>474 MB</div><div><span>License</span>NVIDIA Open Model</div></div>
+<div class="bar"><i style="width:45%"></i></div>
+<div class="meta"><span>212 MB of 474 MB</span><span>40 s left</span></div>
+<div class="acts"><div class="btn">Cancel</div></div>
+</div>
+<div class="editor" style="border-radius:10px">Make the hint capsule say the chord on the Mac and keep it out of the way on Linux.</div>
+<div class="wrow"><div class="pill"><span class="d"></span>Opus 5.5 · High</div><div class="sp"></div><div class="mic" style="width:30px;height:30px;color:var(--accent);background:color-mix(in srgb,var(--accent) 18%,transparent)">${mic}</div><div class="send on" style="width:30px;height:30px">${up}</div></div>
+</div></div></div></div>`;
+const figs=[
+{n:9,cap:'Mac · listening from the keyboard',sub:'⌃⇧D held',body:mac,tot:'The same capsule and edge as the phone, with the chord in the hint. The ultracode aura parks while the edge is lit. Hold ⌃⇧D to talk while held, or tap it to toggle. Holding the mic button with the mouse and dragging left arms cancel, like the phone.',feel:'.levelChange (trackpad)'},
+{n:10,cap:'Linux · first press',sub:'the model, once',body:linux,tot:'No toast and no command to paste: the mic opens a popover that states the size, the license and where it runs, then downloads with a real bar. When done it reads “Ready. Click, or hold ⌃⇧D, to talk” and waits.'}
+];
+document.getElementById('page').innerHTML='<div class="title">Dictation · Mac and Linux<span>the chord is the button: tap toggles, hold talks</span></div>'+figs.map(f=>`<div class="wfig"><div class="cap"><span class="n">${f.n}</span>${f.cap}<span>${f.sub}</span></div>${f.body}<div class="tot">${f.tot}</div>${f.feel?`<div class="feel">◉ ${f.feel}</div>`:''}</div>`).join('');
+</script>
+</body></html>

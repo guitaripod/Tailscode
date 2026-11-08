@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=1572">
+<title>Dictation, states</title>
+<link rel="stylesheet" href="base.css">
+<style>
+.board{width:1540px;background:var(--canvas);border-radius:18px;box-shadow:0 0 0 1px var(--line);position:relative}
+svg text{font-family:"Adwaita Sans",Inter,sans-serif}
+.legend{display:flex;gap:18px;font-size:12.5px;color:var(--pageink);opacity:.85;margin-top:10px;flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:14px;height:14px;border-radius:4px;display:inline-block}
+</style>
+</head>
+<body>
+<script>document.documentElement.dataset.theme=location.hash==='#light'?'light':'dark'</script>
+<div class="page">
+<div class="title">Dictation · states, transitions, feel<span>one machine in Core, drawn the same on three desks</span></div>
+<div class="board"><svg id="d" width="1540" height="640" viewBox="0 0 1540 640"></svg></div>
+<div class="legend"><span><i style="background:var(--accent)"></i>microphone open (moves)</span><span><i style="background:var(--fill2)"></i>settled (still)</span><span><i style="background:var(--warn)"></i>needs you / taken</span><span><i style="background:var(--bad)"></i>armed to discard</span><span style="color:var(--note)">◉ haptic cue on the transition</span></div>
+<div class="board" style="margin-top:6px"><svg id="h" width="1540" height="300" viewBox="0 0 1540 300"></svg></div>
+</div>
+<script>
+const css=getComputedStyle(document.documentElement);const v=n=>css.getPropertyValue(n).trim();
+const C={acc:v('--accent'),ink:v('--ink'),ink2:v('--ink2'),ink3:v('--ink3'),fill:v('--fill2'),line:v('--line'),warn:v('--warn'),bad:v('--bad'),note:v('--note'),ok:v('--ok'),card:v('--card')};
+const d=document.getElementById('d');let s='';
+s+=`<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="${C.ink2}"/></marker></defs>`;
+const N={};
+function node(id,x,y,w,title,sub,kind){N[id]={x,y,w,h:58};const fill=kind==='live'?C.acc:kind==='bad'?C.bad:kind==='warn'?C.warn:C.fill;const ink=kind?'#fff':C.ink;const sink=kind?'rgba(255,255,255,.78)':C.ink2;
+s+=`<rect x="${x}" y="${y}" width="${w}" height="58" rx="14" fill="${fill}" ${kind==='live'?`style="filter:drop-shadow(0 0 10px ${C.acc}66)"`:''}/>`;
+s+=`<text x="${x+w/2}" y="${y+25}" text-anchor="middle" font-size="15" font-weight="600" fill="${ink}">${title}</text>`;
+s+=`<text x="${x+w/2}" y="${y+43}" text-anchor="middle" font-size="11.5" fill="${sink}">${sub}</text>`;}
+function edge(a,b,label,cue,opt={}){const A=N[a],B=N[b];let x1,y1,x2,y2;
+ if(opt.v){x1=A.x+A.w/2+(opt.dx||0);y1=opt.up?A.y:A.y+A.h;x2=B.x+B.w/2+(opt.dx2??opt.dx??0);y2=opt.up?B.y+B.h:B.y;}
+ else{x1=opt.back?A.x:A.x+A.w;y1=A.y+29+(opt.dy||0);x2=opt.back?B.x+B.w:B.x;y2=B.y+29+(opt.dy||0);}
+ const path=opt.curve?`M${x1} ${y1} C ${x1} ${opt.curve}, ${x2} ${opt.curve}, ${x2} ${y2}`:`M${x1} ${y1} L${x2} ${y2}`;
+ s+=`<path d="${path}" fill="none" stroke="${C.ink2}" stroke-width="1.5" ${opt.dash?'stroke-dasharray="4 4"':''} marker-end="url(#ar)"/>`;
+ const mx=opt.lx??(x1+x2)/2, my=opt.ly??((y1+y2)/2-8);
+ if(label)s+=`<text x="${mx}" y="${my}" text-anchor="middle" font-size="11.5" fill="${C.ink2}">${label}</text>`;
+ if(cue)s+=`<text x="${mx}" y="${my+15}" text-anchor="middle" font-size="11" font-weight="600" fill="${C.note}" font-family="Adwaita Mono">◉ ${cue}</text>`;}
+node('need',40,36,190,'Needs a model','mic + ↓ badge');
+node('get',300,36,190,'Getting ready','ring fills · 34%','live');
+node('deny',40,500,210,'Can’t hear you','mic.slash · sheet with the fix','warn');
+node('ready',40,250,190,'Ready','mic glyph');
+node('wake',300,250,190,'Waking','audio buffers · ≤0.4 s','live');
+node('free',600,170,200,'Listening, hands-free','0:12 · Tap to stop','live');
+node('held',600,330,200,'Listening, held','‹ Slide to cancel','live');
+node('cancel',600,500,200,'Release to cancel','words struck','bad');
+node('send',900,500,200,'Release to send','Send ringed','live');
+node('settle',900,250,190,'Settling','tail dries · ≤1.2 s');
+node('kept',1180,250,170,'Kept','words in the box');
+node('gone',300,500,190,'Discarded','· Undo for 5 s');
+node('sent',1210,500,170,'Sent','queued while busy');
+node('taken',1180,90,300,'Taken · Stopped · Time’s up','words kept · one warning flash','warn');
+edge('need','get','press','tap');
+edge('get','ready','done: one pulse, no listening','success',{v:1,curve:180,lx:270,ly:190,dx:-40});
+edge('ready','wake','touch-down / chord down','listen',{ly:248});
+edge('wake','free','lifted < 280 ms','',{lx:470,ly:222});
+edge('wake','held','still down at 280 ms','',{lx:455,ly:380});
+edge('free','settle','tap · chord · Send · ⏎','listenEnd',{lx:905,ly:214});
+edge('held','settle','release','listenEnd',{lx:885,ly:356});
+edge('settle','kept','','');
+edge('held','cancel','slide ≥ 72 pt left','notch',{v:1,lx:745,ly:432});
+edge('held','send','onto Send','notch',{lx:900,ly:432,v:1,dx:60,dx2:-40});
+edge('cancel','gone','release','tap',{back:1});
+edge('send','sent','release · settle','send',{lx:1155,ly:500});
+edge('free','taken','interrupted · failed · 10 min','warning',{lx:990,ly:118});
+edge('ready','deny','press, access off','warning',{v:1,lx:205,ly:420});
+s+=`<text x="40" y="620" font-size="12" fill="${C.ink2}">Hidden (not drawn): iOS below 26, the delegate packet, a live call on this chat. Esc, typing, leaving the chat, the app going away: stop and keep, except Esc, which discards.</text>`;
+d.innerHTML=s;
+const h=document.getElementById('h');let t='';
+function cue(x0,name,beats,desc){const W=520,H=150,y0=60;t+=`<text x="${x0}" y="34" font-size="16" font-weight="600" fill="${C.ink}" font-family="Adwaita Mono">${name}</text><text x="${x0+150}" y="34" font-size="12.5" fill="${C.ink2}">${desc}</text>`;
+ t+=`<line x1="${x0}" y1="${y0+H}" x2="${x0+W}" y2="${y0+H}" stroke="${C.line}"/>`;
+ for(let ms=0;ms<=150;ms+=25){const x=x0+ms/150*W;t+=`<line x1="${x}" y1="${y0+H}" x2="${x}" y2="${y0+H+5}" stroke="${C.ink3}"/><text x="${x}" y="${y0+H+19}" text-anchor="middle" font-size="10.5" fill="${C.ink3}" font-family="Adwaita Mono">${ms}</text>`;}
+ for(const b of beats){const x=x0+b.s/150*W;const hh=b.i*H;const col=`color-mix(in srgb, ${C.acc} ${Math.round(40+b.sh*60)}%, ${C.ok})`;
+  if(b.d){const w=b.d/150*W;t+=`<rect x="${x}" y="${y0+H-hh}" width="${w}" height="${hh}" rx="6" fill="${C.acc}" opacity=".35"/>`;}
+  else{t+=`<rect x="${x-3}" y="${y0+H-hh}" width="6" height="${hh}" rx="3" fill="${C.acc}"/>`;}
+  t+=`<text x="${x+(b.d?b.d/150*W/2:0)}" y="${y0+H-hh-7}" text-anchor="middle" font-size="10.5" fill="${C.ink2}" font-family="Adwaita Mono">${b.i} / ${b.sh}${b.f?' ⌊'+b.f:''}</text>`;}}
+cue(40,'listen',[{s:0,i:.55,sh:.45},{s:20,d:70,i:.32,sh:.15}],'the microphone opens: a click that blooms');
+cue(820,'listenEnd',[{s:0,d:60,i:.30,sh:.10},{s:50,i:.42,sh:.25,f:.2}],'your words settle: the inverse, so the two read as a pair');
+t+=`<text x="40" y="282" font-size="12" fill="${C.ink2}">Bars are transients (intensity / sharpness, ⌊floor below which a beat is dropped); blocks are continuous bodies. Scaled by the person’s haptic strength like every cue. No cue per word and none for loudness.</text>`;
+h.innerHTML=t;
+</script>
+</body></html>
