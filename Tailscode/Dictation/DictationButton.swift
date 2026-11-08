@@ -20,6 +20,10 @@ final class DictationButton: UIControl {
     private let ring = CAShapeLayer()
     private var bars: [CALayer] = []
     private(set) var face: DictationFace = .ready
+    private var hideToken = 0
+    private var flashToken = 0
+    private var flashing: UIColor?
+    var onActivate: (() -> Void)?
     private(set) lazy var widthConstraint = widthAnchor.constraint(equalToConstant: Self.restWidth)
 
     override init(frame: CGRect) {
@@ -63,7 +67,7 @@ final class DictationButton: UIControl {
             shape.fillColor = UIColor.clear.cgColor
             shape.lineWidth = 2.5
             shape.lineCap = .round
-            shape.isHidden = true
+            shape.opacity = 0
             layer.addSublayer(shape)
         }
 
@@ -71,7 +75,7 @@ final class DictationButton: UIControl {
             systemName: "arrow.down.circle.fill",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .bold))
         badge.isUserInteractionEnabled = false
-        badge.isHidden = true
+        badge.alpha = 0
         badge.translatesAutoresizingMaskIntoConstraints = false
         addSubview(badge)
 
@@ -98,6 +102,12 @@ final class DictationButton: UIControl {
         apply(.ready, animated: false)
     }
 
+    /// VoiceOver's double tap is a tap: it opens a take hands-free, or stops the one that is open.
+    override func accessibilityActivate() -> Bool {
+        onActivate?()
+        return true
+    }
+
     /// A finger needs 44 points; the glyph needs fewer.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         bounds.insetBy(dx: -6, dy: -6).contains(point)
@@ -110,6 +120,10 @@ final class DictationButton: UIControl {
             endAngle: .pi * 1.5, clockwise: true)
         track.path = circle.cgPath
         ring.path = circle.cgPath
+        for shape in [track, ring] {
+            shape.bounds = bounds
+            shape.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        }
         layoutBars(heights: currentHeights)
     }
 
@@ -144,61 +158,155 @@ final class DictationButton: UIControl {
         }
     }
 
-    /// Draws a face. Opening and closing animate the capsule's width and the glyph's crossfade;
-    /// the rest of a face is set at once, because a state is a fact rather than a flourish.
+    /// Draws a face by moving every property from where it stands to the face's target, so a state
+    /// that arrives mid-motion bends the motion rather than restarting it: the width springs, the
+    /// tints blend, the glyph is replaced as a symbol, the badge and the ring fade, a held take
+    /// lifts and a take armed to send leans toward Send.
     func apply(_ face: DictationFace, animated: Bool) {
-        let wasOpen = self.face.showsBars
+        let previous = self.face
         self.face = face
+        let reduce = UIAccessibility.isReduceMotionEnabled
+        let motion = animated && !reduce
         let open = face.showsBars
+        let opening = previous.showsBars != open
         widthConstraint.constant = face == .hidden ? 0 : (open ? Self.openWidth : Self.restWidth)
+        setHidden(face == .hidden, animated: animated)
         let changes = {
+            self.paintFills()
             self.capsule.alpha = open ? 1 : 0
             self.glyph.alpha = open ? 0 : 1
-            self.halo.alpha = open ? 0.5 : 0
-            self.capsule.transform = self.capsuleTransform(face)
+            if opening { self.halo.alpha = open ? 0.5 : 0 }
+            let lift = motion ? self.capsuleTransform(face) : .identity
+            self.capsule.transform = lift
+            self.halo.transform = lift
+            self.badge.alpha = face.wearsDownloadBadge ? 1 : 0
+            self.badge.transform =
+                face.wearsDownloadBadge || !motion ? .identity : CGAffineTransform(scaleX: 0.6, y: 0.6)
             self.superview?.layoutIfNeeded()
         }
-        paint()
-        if animated, wasOpen != open, !UIAccessibility.isReduceMotionEnabled {
+        if motion {
             UIView.animate(
-                withDuration: 0.32, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.4,
+                withDuration: 0.32, delay: 0, usingSpringWithDamping: 0.75, initialSpringVelocity: 0.3,
                 options: [.allowUserInteraction, .beginFromCurrentState], animations: changes)
         } else if animated {
-            UIView.animate(withDuration: 0.15, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState], animations: changes)
+            UIView.animate(
+                withDuration: 0.15, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState],
+                animations: changes)
         } else {
             changes()
         }
-        glyph.image = UIImage(
-            systemName: face.symbol,
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular))
-        badge.isHidden = !face.wearsDownloadBadge
+        tintGlyph(animated: animated)
+        let symbol = UIImage(
+            systemName: face.symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular))
+        if previous.symbol != face.symbol, motion, let symbol {
+            glyph.setSymbolImage(symbol, contentTransition: .replace)
+        } else {
+            glyph.image = symbol
+        }
+        drawRing(face, animated: animated, reduce: reduce)
+        if face == .settling { sinkBars(animated: motion) }
+        accessibilityLabel = DictationReading.accessibilityLabel(face)
+        accessibilityHint = DictationReading.accessibilityHint(face, surface: .touch)
+    }
+
+    /// The ring fades in at nothing, fills between readings, turns while the size is unknown and
+    /// eases back to the top when the first reading lands, then fades out once the model is in.
+    private func drawRing(_ face: DictationFace, animated: Bool, reduce: Bool) {
         let preparing = face.isPreparing
-        track.isHidden = !preparing
-        ring.isHidden = !preparing
-        if preparing {
-            if let progress = face.progress {
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(animated ? 0.25 : 0)
+        CATransaction.setDisableActions(!animated)
+        track.opacity = preparing ? 1 : 0
+        ring.opacity = preparing ? 1 : 0
+        CATransaction.commit()
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(reduce ? 0 : 0.25)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        if let progress = face.progress {
+            if ring.animation(forKey: "spin") != nil {
+                let angle = ring.presentation()?.value(forKeyPath: "transform.rotation.z") as? Double ?? 0
                 ring.removeAnimation(forKey: "spin")
-                ring.strokeStart = 0
-                ring.strokeEnd = CGFloat(max(0.02, progress))
-            } else if ring.animation(forKey: "spin") == nil {
-                ring.strokeStart = 0
-                ring.strokeEnd = 0.25
+                let back = CABasicAnimation(keyPath: "transform.rotation.z")
+                back.fromValue = angle
+                back.toValue = 0
+                back.duration = 0.25
+                ring.add(back, forKey: "settle")
+            }
+            ring.strokeEnd = CGFloat(max(0.02, progress))
+        } else if preparing {
+            ring.strokeEnd = 0.25
+            if !reduce, ring.animation(forKey: "spin") == nil {
                 let spin = CABasicAnimation(keyPath: "transform.rotation.z")
                 spin.fromValue = 0
                 spin.toValue = Double.pi * 2
                 spin.duration = 1.1
                 spin.repeatCount = .infinity
-                ring.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-                ring.frame = bounds
                 ring.add(spin, forKey: "spin")
             }
-        } else {
-            ring.removeAnimation(forKey: "spin")
+        } else if ring.animation(forKey: "spin") != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                guard let self, !self.face.isPreparing else { return }
+                self.ring.removeAnimation(forKey: "spin")
+            }
+        } else if ring.strokeEnd > 0.02, ring.strokeEnd < 1 {
+            ring.strokeEnd = 1
         }
-        if face == .settling { setLevels([Double](repeating: DictationBars.floor, count: DictationBars.count)) }
-        accessibilityLabel = DictationReading.accessibilityLabel(face)
-        accessibilityHint = DictationReading.accessibilityHint(face, surface: .touch)
-        isHidden = face == .hidden
+        CATransaction.commit()
+    }
+
+    /// The bars sink to the floor while the last words settle.
+    private func sinkBars(animated: Bool) {
+        currentHeights = [Double](repeating: DictationBars.floor, count: DictationBars.count)
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(animated ? 0.16 : 0)
+        CATransaction.setDisableActions(!animated)
+        layoutBars(heights: currentHeights)
+        CATransaction.commit()
+    }
+
+    /// Leaving and coming back fade with the width; the control leaves the layout only once faded.
+    private func setHidden(_ hidden: Bool, animated: Bool) {
+        hideToken += 1
+        let token = hideToken
+        if !hidden {
+            guard isHidden || alpha < 1 else { return }
+            if isHidden {
+                alpha = 0
+                isHidden = false
+            }
+            UIView.animate(withDuration: animated ? 0.22 : 0, delay: 0, options: [.beginFromCurrentState]) {
+                self.alpha = 1
+            }
+            return
+        }
+        guard !isHidden else { return }
+        UIView.animate(withDuration: animated ? 0.22 : 0, delay: 0, options: [.beginFromCurrentState]) {
+            self.alpha = 0
+        } completion: { _ in
+            guard self.hideToken == token, self.face == .hidden else { return }
+            self.isHidden = true
+        }
+    }
+
+    /// How a take ended, carried by the rest glyph for a moment: the accent for words kept or sent,
+    /// danger for a discard, the warning tone for a problem, then back to its own ink.
+    func flash(_ end: DictationEnd) {
+        let tone: UIColor
+        switch end {
+        case .kept, .sent: tone = Theme.Color.accent
+        case .discarded: tone = Theme.Color.danger
+        case .problem: tone = Theme.Color.warning
+        case .nothingHeard: return
+        }
+        flashToken += 1
+        let token = flashToken
+        flashing = tone
+        tintGlyph(animated: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self, self.flashToken == token else { return }
+            self.flashing = nil
+            self.tintGlyph(animated: true)
+        }
     }
 
     /// One pulse when a model has just landed: ready now, and still waiting for a press.
@@ -217,12 +325,19 @@ final class DictationButton: UIControl {
     private func capsuleTransform(_ face: DictationFace) -> CGAffineTransform {
         switch face {
         case .listening(.held, .send): return CGAffineTransform(scaleX: 0.86, y: 0.86)
-        case .listening(.held, _): return CGAffineTransform(scaleX: 1.06, y: 1.06)
+        case .listening(.held, .none): return CGAffineTransform(scaleX: 1.08, y: 1.08)
         default: return .identity
         }
     }
 
     private func paint() {
+        paintFills()
+        tintGlyph(animated: false)
+    }
+
+    /// The capsule, the halo, the bars and the ring take the face's tone; inside an animation block
+    /// the fills blend rather than snap.
+    private func paintFills() {
         let fill: UIColor = face.tone == .danger ? Theme.Color.danger : Theme.Color.accent
         capsule.backgroundColor = fill
         halo.backgroundColor = fill.withAlphaComponent(0.16)
@@ -231,14 +346,31 @@ final class DictationButton: UIControl {
         halo.layer.shadowOpacity = 0.5
         halo.layer.shadowOffset = .zero
         for bar in bars { bar.backgroundColor = Theme.Color.onAccent.cgColor }
-        switch face {
-        case .blocked: glyph.tintColor = Theme.Color.warning
-        case .preparing, .needsModel: glyph.tintColor = Theme.Color.accent
-        default: glyph.tintColor = Theme.Color.secondaryLabel
-        }
         badge.tintColor = Theme.Color.accent
         track.strokeColor = Theme.Color.separator.cgColor
         ring.strokeColor = Theme.Color.accent.cgColor
+    }
+
+    /// The glyph's ink, crossfaded when it changes: a tint is not animatable on an image view.
+    private func tintGlyph(animated: Bool) {
+        let tint: UIColor
+        if let flashing, !face.isOpen {
+            tint = flashing
+        } else {
+            switch face {
+            case .blocked: tint = Theme.Color.warning
+            case .preparing, .needsModel: tint = Theme.Color.accent
+            default: tint = Theme.Color.secondaryLabel
+            }
+        }
+        guard glyph.tintColor != tint else { return }
+        guard animated else {
+            glyph.tintColor = tint
+            return
+        }
+        UIView.transition(with: glyph, duration: 0.18, options: [.transitionCrossDissolve, .allowUserInteraction]) {
+            self.glyph.tintColor = tint
+        }
     }
 }
 
@@ -299,6 +431,7 @@ final class DictationEdge: UIView {
         isLit = lit
         if lit {
             isHidden = false
+            line.removeAnimation(forKey: "fade")
             line.opacity = 1
             guard animated, !UIAccessibility.isReduceMotionEnabled else {
                 line.strokeEnd = 1
@@ -340,13 +473,12 @@ final class DictationEdge: UIView {
     }
 }
 
-/// The capsule over the box that says what to do now: how long the take has run and how to stop
-/// it, where a held take will go, how far a model has come, or how a take ended, with Undo after a
-/// discard.
+/// The box's last line, in the seat of the row under the words, just left of the microphone: how
+/// long the take has run and how to stop it, where a held take will go, how far a model has come,
+/// or how a take ended, with Undo after a discard. Plain words on the box's own glass, never a
+/// glass of its own, and set in the reader's type size.
 @MainActor
 final class DictationHintView: UIView {
-    private let glass = Theme.Glass.view(interactive: false)
-    private let tint = UIView()
     private let dot = UIView()
     private let timer = UILabel()
     private let label = UILabel()
@@ -359,28 +491,24 @@ final class DictationHintView: UIView {
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false
         alpha = 0
-        isHidden = true
-        glass.translatesAutoresizingMaskIntoConstraints = false
-        glass.layer.cornerRadius = 15
-        glass.layer.cornerCurve = .continuous
-        glass.clipsToBounds = true
-        addSubview(glass)
-        tint.translatesAutoresizingMaskIntoConstraints = false
-        tint.layer.cornerRadius = 15
-        tint.layer.cornerCurve = .continuous
-        tint.isUserInteractionEnabled = false
-        addSubview(tint)
-
         dot.layer.cornerRadius = 3.5
         dot.translatesAutoresizingMaskIntoConstraints = false
         dot.widthAnchor.constraint(equalToConstant: 7).isActive = true
         dot.heightAnchor.constraint(equalToConstant: 7).isActive = true
-        timer.font = UIFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium)
+        let metrics = UIFontMetrics(forTextStyle: .footnote)
+        timer.font = metrics.scaledFont(for: UIFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium))
+        timer.adjustsFontForContentSizeCategory = true
         timer.textColor = Theme.Color.secondaryLabel
-        label.font = UIFont.systemFont(ofSize: 13.5, weight: .medium)
-        label.adjustsFontForContentSizeCategory = false
+        timer.setContentCompressionResistancePriority(.required, for: .horizontal)
+        label.font = metrics.scaledFont(for: UIFont.systemFont(ofSize: 13, weight: .medium))
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 2
+        label.lineBreakMode = .byTruncatingTail
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         undo.setTitle(DictationReading.undo, for: .normal)
-        undo.titleLabel?.font = UIFont.systemFont(ofSize: 13.5, weight: .semibold)
+        undo.titleLabel?.font = metrics.scaledFont(for: UIFont.systemFont(ofSize: 13, weight: .semibold))
+        undo.titleLabel?.adjustsFontForContentSizeCategory = true
+        undo.setContentCompressionResistancePriority(.required, for: .horizontal)
         undo.addAction(UIAction { [weak self] _ in self?.onUndo?() }, for: .primaryActionTriggered)
         stack.axis = .horizontal
         stack.alignment = .center
@@ -388,71 +516,72 @@ final class DictationHintView: UIView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         for view in [dot, timer, label, undo] { stack.addArrangedSubview(view) }
         addSubview(stack)
-
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 30),
-            glass.leadingAnchor.constraint(equalTo: leadingAnchor),
-            glass.trailingAnchor.constraint(equalTo: trailingAnchor),
-            glass.topAnchor.constraint(equalTo: topAnchor),
-            glass.bottomAnchor.constraint(equalTo: bottomAnchor),
-            tint.leadingAnchor.constraint(equalTo: leadingAnchor),
-            tint.trailingAnchor.constraint(equalTo: trailingAnchor),
-            tint.topAnchor.constraint(equalTo: topAnchor),
-            tint.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 13),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -13),
-            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
-        layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOpacity = 0.18
-        layer.shadowRadius = 8
-        layer.shadowOffset = CGSize(width: 0, height: 3)
+        isAccessibilityElement = false
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// Undo is a short word on a short line, so a finger is given 44 points around it.
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if let reach = undoReach, reach.contains(point) { return undo }
+        return super.hitTest(point, with: event)
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        super.point(inside: point, with: event) || undoReach?.contains(point) == true
+    }
+
+    private var undoReach: CGRect? {
+        guard alpha > 0.01, !undo.isHidden else { return nil }
+        let frame = undo.convert(undo.bounds, to: self)
+        return frame.insetBy(dx: min(0, (frame.width - 44) / 2), dy: min(0, (frame.height - 44) / 2))
+    }
+
+    /// Writes a line. Showing and hiding are the box's: it fades the line in its seat as it moves
+    /// the row's other tenants aside.
     func show(_ hint: DictationHint?, undoAvailable: Bool) {
         let changed = hint?.text != self.hint?.text || hint?.style != self.hint?.style
         self.hint = hint
         guard let hint else {
-            guard !isHidden else { return }
-            UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState]) {
-                self.alpha = 0
-            } completion: { _ in
-                if self.hint == nil { self.isHidden = true }
-            }
+            breathe(false)
             return
         }
-        timer.text = hint.timer
-        timer.isHidden = hint.timer == nil
-        label.text = hint.text
-        undo.isHidden = !(hint.offersUndo && undoAvailable)
-        let danger = hint.style == .danger
-        dot.isHidden = hint.style != .live
-        dot.backgroundColor = Theme.Color.accent
-        tint.backgroundColor = danger ? Theme.Color.danger : .clear
-        label.textColor = danger ? .white : (hint.style == .warning ? Theme.Color.warning : Theme.Color.label)
-        timer.textColor = danger ? .white : Theme.Color.secondaryLabel
-        undo.tintColor = Theme.Color.accent
-        accessibilityLabel = [hint.timer, hint.text].compactMap { $0 }.joined(separator: ", ")
+        let write = {
+            self.timer.text = hint.timer
+            self.timer.isHidden = hint.timer == nil
+            self.label.text = hint.text
+            self.undo.isHidden = !(hint.offersUndo && undoAvailable)
+            self.dot.isHidden = hint.style != .live
+            self.dot.backgroundColor = Theme.Color.accent
+            switch hint.style {
+            case .danger: self.label.textColor = Theme.Color.danger
+            case .warning: self.label.textColor = Theme.Color.warning
+            case .live, .plain: self.label.textColor = Theme.Color.secondaryLabel
+            }
+            self.undo.tintColor = Theme.Color.accent
+        }
+        if changed, alpha > 0, !UIAccessibility.isReduceMotionEnabled {
+            UIView.transition(with: stack, duration: 0.15, options: [.transitionCrossDissolve, .allowUserInteraction], animations: write)
+        } else {
+            write()
+        }
         breathe(hint.style == .live)
-        guard isHidden || alpha < 1 else {
-            if changed, !UIAccessibility.isReduceMotionEnabled {
-                UIView.transition(with: self, duration: 0.15, options: [.transitionCrossDissolve, .allowUserInteraction]) {}
-            }
-            return
-        }
-        isHidden = false
-        transform = UIAccessibility.isReduceMotionEnabled ? .identity : CGAffineTransform(translationX: 0, y: 6)
-        UIView.animate(withDuration: 0.22, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
-            self.alpha = 1
-            self.transform = .identity
-        }
     }
 
+    /// The live dot breathes for as long as the line is live; a new second or a new word leaves the
+    /// breath where it is.
     private func breathe(_ on: Bool) {
-        dot.layer.removeAnimation(forKey: "breath")
-        guard on, !UIAccessibility.isReduceMotionEnabled else { return }
+        guard on, !UIAccessibility.isReduceMotionEnabled else {
+            dot.layer.removeAnimation(forKey: "breath")
+            return
+        }
+        guard dot.layer.animation(forKey: "breath") == nil else { return }
         let breath = CABasicAnimation(keyPath: "opacity")
         breath.fromValue = 1
         breath.toValue = 0.35

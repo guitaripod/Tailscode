@@ -88,6 +88,9 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     private var dialConstraints: [NSLayoutConstraint] = []
     private var dialToAttach: NSLayoutConstraint?
     private var dialToBar: NSLayoutConstraint?
+    /// Whether a take's status line holds the row under the words, which makes the box its stacked
+    /// shape for as long as the line is there, even in a window too short to keep the pill.
+    private var statusShown = false
 
     /// Whether the host has a model and an effort to offer, which is a different question from
     /// whether there is room to show them: a window that is short — a phone on its side, the
@@ -115,12 +118,13 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     /// holding the paperclip, the pill and Send.
     private func applyDialLayout() {
         let leadings = [textViewLeadingToAttach, textViewLeadingToBar].compactMap { $0 }
-        if showsDial {
+        if showsDial || statusShown {
             NSLayoutConstraint.deactivate(lineConstraints + leadings)
             NSLayoutConstraint.activate(
                 stackedConstraints + dialConstraints
                     + [showsAttach ? dialToAttach : dialToBar].compactMap { $0 })
             NSLayoutConstraint.deactivate([showsAttach ? dialToBar : dialToAttach].compactMap { $0 })
+            dialPill.isHidden = !showsDial
         } else {
             NSLayoutConstraint.deactivate(
                 stackedConstraints + dialConstraints + [dialToAttach, dialToBar].compactMap { $0 })
@@ -767,5 +771,29 @@ extension HomeComposerBar: DictationComposerHost {
     func dictationSetListening(_ listening: Bool) {
         placeholder.text = listening ? DictationReading.listeningPlaceholder : lane.placeholder
         UIView.animate(withDuration: 0.2) { self.auraHost.alpha = listening ? 0 : 1 }
+    }
+
+    func dictationShowStatus(_ status: DictationHintView, shown: Bool) {
+        guard shown || status.superview === self else { return }
+        if status.superview !== self {
+            addSubview(status)
+            NSLayoutConstraint.activate([
+                status.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: Theme.Spacing.m),
+                status.centerYAnchor.constraint(equalTo: sendButton.centerYAnchor),
+                status.trailingAnchor.constraint(
+                    lessThanOrEqualTo: dictation.button.leadingAnchor, constant: -Theme.Spacing.s),
+            ])
+        }
+        guard shown != statusShown else { return }
+        statusShown = shown
+        dialPill.isUserInteractionEnabled = !shown
+        attachButton.isUserInteractionEnabled = !shown
+        DictationSeat.move {
+            self.applyDialLayout()
+            status.alpha = shown ? 1 : 0
+            self.dialPill.alpha = shown ? 0 : 1
+            self.attachButton.alpha = shown ? 0 : 1
+            self.superview?.layoutIfNeeded()
+        }
     }
 }

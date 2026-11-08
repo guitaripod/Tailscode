@@ -81,6 +81,9 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     private var lineConstraints: [NSLayoutConstraint] = []
     private var stackedConstraints: [NSLayoutConstraint] = []
     private var accessoryConstraints: [NSLayoutConstraint] = []
+    /// Whether a take's status line holds the row under the words, which makes the box its stacked
+    /// shape for as long as the line is there.
+    private var statusShown = false
     private lazy var stackedTextBottom = textView.bottomAnchor.constraint(
         equalTo: bar.bottomAnchor, constant: -(accessoryRowHeight + 10))
     private var accessoryToAttach: NSLayoutConstraint?
@@ -288,6 +291,8 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     private func installAccessory() {
         guard let accessory else { return }
         accessory.translatesAutoresizingMaskIntoConstraints = false
+        accessory.alpha = statusShown ? 0 : 1
+        accessory.isUserInteractionEnabled = !statusShown
         addSubview(accessory)
         stackedTextBottom.constant = -(accessoryRowHeight + 10)
         accessoryToAttach = accessory.leadingAnchor.constraint(
@@ -304,7 +309,8 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     /// One place decides which layout is live, so the box is never half of each: the single line
     /// it was, or the words over a row of controls.
     private func applyLayout() {
-        let stacked = accessory != nil
+        let stacked = accessory != nil || statusShown
+        stackedTextBottom.constant = -(accessoryRowHeight + 10)
         let off: [NSLayoutConstraint?] =
             stacked
             ? lineConstraints + [textViewLeadingToAttach, textViewLeadingToBar]
@@ -595,6 +601,29 @@ extension ComposerView: DictationComposerHost {
         UIView.animate(withDuration: 0.2) { self.auraHost.alpha = listening ? 0 : 1 }
     }
 
+    func dictationShowStatus(_ status: DictationHintView, shown: Bool) {
+        guard shown || status.superview === self else { return }
+        if status.superview !== self {
+            addSubview(status)
+            NSLayoutConstraint.activate([
+                status.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: Theme.Spacing.m),
+                status.centerYAnchor.constraint(equalTo: sendButton.centerYAnchor),
+                status.trailingAnchor.constraint(
+                    lessThanOrEqualTo: dictation.button.leadingAnchor, constant: -Theme.Spacing.s),
+            ])
+        }
+        guard shown != statusShown else { return }
+        statusShown = shown
+        accessory?.isUserInteractionEnabled = !shown
+        attachButton.isUserInteractionEnabled = !shown
+        DictationSeat.move {
+            self.applyLayout()
+            status.alpha = shown ? 1 : 0
+            self.accessory?.alpha = shown ? 0 : 1
+            self.attachButton.alpha = shown ? 0 : 1
+            self.superview?.layoutIfNeeded()
+        }
+    }
 }
 
 /// A text view that is asked about a paste before UIKit takes it. Only a pasteboard holding a

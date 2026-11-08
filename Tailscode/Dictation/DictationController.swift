@@ -4,8 +4,8 @@ import TailscodeCore
 import UIKit
 
 /// What a composer tells dictation about itself: its text view, the glass box the edge is drawn
-/// round and the hint floats over, its Send, who presents a sheet, and how it reacts when words
-/// are written into it.
+/// round, its Send, who presents a sheet, how it reacts when words are written into it, and how it
+/// seats the take's status line inside the box.
 @MainActor
 protocol DictationComposerHost: AnyObject {
     var dictationTextView: UITextView { get }
@@ -15,6 +15,9 @@ protocol DictationComposerHost: AnyObject {
     func dictationDidWrite()
     func dictationSend()
     func dictationSetListening(_ listening: Bool)
+    /// Seats the status line in the row under the words, just left of the microphone, or lets it
+    /// go: the row's other tenants step aside while it shows and a one-line box grows that row.
+    func dictationShowStatus(_ status: DictationHintView, shown: Bool)
 }
 
 /// How Send answers a held take: a faint glow says it is a place to drop onto, and a take armed
@@ -43,20 +46,21 @@ extension DictationComposerHost {
             withDuration: 0.22, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.4,
             options: [.allowUserInteraction, .beginFromCurrentState], animations: changes)
     }
+}
 
-    /// The hint floats over the box, above whatever sits on top of the composer — the facts and the
-    /// pickers — so it lives in the screen's own view rather than the composer's.
-    func dictationMount(_ hint: DictationHintView) {
-        let container = dictationPresenter?.view ?? dictationBox.superview
-        guard let container, hint.superview !== container else { return }
-        hint.removeFromSuperview()
-        container.addSubview(hint)
-        let box = dictationBox
-        NSLayoutConstraint.activate([
-            hint.centerXAnchor.constraint(equalTo: box.centerXAnchor),
-            hint.bottomAnchor.constraint(equalTo: box.topAnchor, constant: -Theme.Spacing.s),
-            hint.widthAnchor.constraint(lessThanOrEqualTo: box.widthAnchor, constant: -24),
-        ])
+/// How a composer moves its bottom row when a take's status line takes or leaves its seat: the same
+/// spring the capsule opens with, or a short crossfade under Reduced Motion.
+enum DictationSeat {
+    @MainActor
+    static func move(_ changes: @escaping () -> Void) {
+        if UIAccessibility.isReduceMotionEnabled {
+            UIView.animate(
+                withDuration: 0.15, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: changes)
+        } else {
+            UIView.animate(
+                withDuration: 0.32, delay: 0, usingSpringWithDamping: 0.75, initialSpringVelocity: 0.3,
+                options: [.beginFromCurrentState, .allowUserInteraction], animations: changes)
+        }
     }
 }
 
@@ -158,6 +162,9 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
     private var takes = 0
     private var openOnRelease = false
     private var lastTimer: String?
+    private var localArm: DictationArm?
+    private var notice: DictationHint?
+    private var noticeToken = 0
     private nonisolated(unsafe) var observers: [NSObjectProtocol] = []
     private var staged = false
     private var lastInvite = DictationSendInvite.none
@@ -172,6 +179,7 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
         gesture.delegate = self
         button.addGestureRecognizer(gesture)
         hint.onUndo = { [weak self] in self?.undoDiscard() }
+        button.onActivate = { [weak self] in self?.toggleFromKeyboard() }
         let center = NotificationCenter.default
         observers = [
             center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) {
@@ -200,8 +208,13 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
 
     private var face: DictationFace {
         DictationFace.read(
-            readiness: readiness, snapshot: snapshot, available: engines.isSupported && !callLive)
+            readiness: readiness, snapshot: seen, available: engines.isSupported && !callLive)
     }
+
+    /// The take with what the hand already did laid over it: an engaged hold and a slid arm show
+    /// and are felt at once, and the release decides from them rather than from the session's later
+    /// word.
+    private var seen: DictationSnapshot { snapshot.pressed(engaged: press.isEngaged, arm: localArm) }
 
     /// Asks the engine again: on appearing, coming back to the foreground, a language picked.
     func refresh() {
@@ -219,7 +232,7 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
     @objc private func pressed(_ gesture: UILongPressGestureRecognizer) {
         switch gesture.state {
         case .began:
-            pressOrigin = gesture.location(in: button)
+            pressOrigin = gesture.location(in: nil)
             down()
         case .changed:
             moved(gesture)
@@ -227,7 +240,7 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
             up()
         case .cancelled, .failed:
             openOnRelease = false
-            act(press.abandon(at: CACurrentMediaTime()), mode: .held)
+            act(press.abandon(at: CACurrentMediaTime()))
         default:
             break
         }
@@ -242,7 +255,7 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
             openOnRelease = true
             return
         }
-        act(press.down(at: CACurrentMediaTime(), listening: isOpen), mode: .held)
+        act(press.down(at: CACurrentMediaTime(), listening: isOpen))
     }
 
     private func up() {
@@ -251,20 +264,30 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
             pressedWhileNotReady()
             return
         }
-        act(press.up(at: CACurrentMediaTime()), mode: .held)
+        act(press.up(at: CACurrentMediaTime()))
     }
 
     private func moved(_ gesture: UILongPressGestureRecognizer) {
-        guard isOpen, press.isDown, snapshot.mode == .held || press.isHeld(at: CACurrentMediaTime()),
-            let session, let send = host?.dictationSendControl
-        else { return }
-        let point = gesture.location(in: button)
+        guard isOpen, press.isDown else { return }
+        if !press.isEngaged { act(press.tick(at: CACurrentMediaTime())) }
+        guard press.isEngaged, let send = host?.dictationSendControl else { return }
+        let point = gesture.location(in: nil)
         let overSend = send.bounds.insetBy(dx: -DictationSlide.sendSlop, dy: -DictationSlide.sendSlop)
             .contains(gesture.location(in: send))
         let arm = DictationSlide.arm(
             travelled: Double(point.x - pressOrigin.x), overSend: overSend,
             cancelDistance: DictationSlide.touchCancelDistance)
-        guard arm != snapshot.arm else { return }
+        setArm(arm)
+    }
+
+    /// The hand slid to an arm: felt, struck and drawn at once, and told to the take after
+    /// whatever it was already asked.
+    private func setArm(_ arm: DictationArm) {
+        guard let session, arm != seen.arm else { return }
+        arm == .none ? Theme.Haptics.selection() : Theme.Haptics.notch()
+        localArm = arm
+        render(anchor.compose(settled: snapshot.settled, heard: snapshot.heard), struck: arm == .cancel)
+        redraw(animated: true)
         enqueue { await session.setArm(arm) }
     }
 
@@ -296,23 +319,39 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
 
     /// The person is about to change the box with their own hands: the take stops where it stands.
     func userWillEdit() {
-        guard isOpen, !writing else { return }
+        guard !writing else { return }
+        guard isOpen else {
+            boxEdited()
+            return
+        }
         stopKeepingShown()
     }
 
-    private func act(_ action: DictationPress.Action, mode: DictationMode) {
+    private func act(_ action: DictationPress.Action) {
         switch action {
-        case .open: open(mode: mode)
-        case .becomeHandsFree:
+        case .open:
+            open(mode: .handsFree)
+            scheduleHoldTick()
+        case .becomeHeld:
             guard let session else { return }
-            enqueue { await session.setMode(.handsFree) }
+            Theme.Haptics.hold()
+            redraw(animated: true)
+            enqueue { await session.setMode(.held) }
         case .stop:
-            switch snapshot.arm {
+            switch localArm ?? snapshot.arm {
             case .cancel: cancel()
             case .send: stop(sending: true)
             case .none: stop(sending: false)
             }
         case .none: break
+        }
+    }
+
+    /// A press that is still down when the threshold passes engages its hold.
+    private func scheduleHoldTick() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + DictationPress.holdThreshold + 0.012) { [weak self] in
+            guard let self else { return }
+            self.act(self.press.tick(at: CACurrentMediaTime()))
         }
     }
 
@@ -348,9 +387,8 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
                 guard let self else { return }
                 self.preparing = nil
                 self.readiness = .needsDownload(bytes: nil)
-                self.ending = .problem(.engine(String(describing: error)))
                 Theme.Haptics.warning()
-                self.redraw(animated: true)
+                self.say(DictationHint(text: DictationModelReading.failed, style: .warning))
                 MidgarLog.error("dictation: asset install failed: \(error)", category: .chat)
             }
         }
@@ -367,6 +405,8 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
         let textView = host.dictationTextView
         let text = textView.text ?? ""
         let selection = textView.selectedRange
+        localArm = nil
+        notice = nil
         let ns = text as NSString
         let start = min(selection.location, ns.length)
         let end = min(selection.location + selection.length, ns.length)
@@ -407,13 +447,9 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
 
     private func apply(_ next: DictationSnapshot, from source: DictationSession) {
         guard source === session, !detached else { return }
-        let previousArm = snapshot.arm
         snapshot = next
-        if next.arm != previousArm {
-            next.arm == .none ? Theme.Haptics.selection() : Theme.Haptics.notch()
-        }
         if next.phase != .idle {
-            render(anchor.compose(settled: next.settled, heard: next.heard), struck: next.arm == .cancel)
+            render(anchor.compose(settled: next.settled, heard: next.heard), struck: seen.arm == .cancel)
         } else if let end = next.ended {
             land(DictationTake(text: next.settled, end: end), from: source, sending: false)
             return
@@ -543,8 +579,10 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
         session = nil
         press = DictationPress()
         snapshot = DictationSnapshot(ended: end, take: takes)
+        localArm = nil
         ending = end
         endingToken += 1
+        button.flash(end)
         stopFrames()
         host?.dictationSetListening(false)
         switch end {
@@ -582,6 +620,15 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
             textView.typingAttributes = baseAttributes
         }
         finish(as: .kept(words: snapshot.wordCount))
+    }
+
+    /// The person wrote in the box after a discard: Undo would write the old take over their words,
+    /// so it is no longer offered.
+    private func boxEdited() {
+        guard discarded != nil || ending == .discarded else { return }
+        discarded = nil
+        if ending == .discarded { ending = nil }
+        redraw(animated: true)
     }
 
     private func undoDiscard() {
@@ -624,17 +671,29 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
     }
 
     private func drawHint(_ face: DictationFace) {
-        var shown = snapshot
+        var shown = seen
         if !face.showsBars, let ending { shown.ended = ending }
-        let hint = DictationReading.hint(
+        let reading = DictationReading.hint(
             face: face, snapshot: shown, now: ProcessInfo.processInfo.systemUptime, surface: .touch, chord: nil)
-        let visible = face.showsBars || face.isPreparing || ending != nil
+        let live = face.showsBars || face.isPreparing || ending != nil ? reading : nil
+        let hint = live ?? notice
         lastTimer = hint?.timer
-        if visible, let host {
-            host.dictationMount(self.hint)
-            self.hint.superview?.bringSubviewToFront(self.hint)
+        self.hint.show(hint, undoAvailable: discarded != nil)
+        host?.dictationShowStatus(self.hint, shown: hint != nil)
+    }
+
+    /// A line that is about dictation rather than about a take — a speech model that did not
+    /// arrive — shown in the box for as long as a warning lingers.
+    private func say(_ line: DictationHint) {
+        notice = line
+        noticeToken += 1
+        let token = noticeToken
+        redraw(animated: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + line.lingers) { [weak self] in
+            guard let self, self.noticeToken == token else { return }
+            self.notice = nil
+            self.redraw(animated: true)
         }
-        self.hint.show(visible ? hint : nil, undoAvailable: discarded != nil)
     }
 
     private func startFrames() {
@@ -691,15 +750,14 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
             case "hands":
                 open(mode: .handsFree)
             default:
-                _ = press.down(at: CACurrentMediaTime(), listening: false)
-                open(mode: .held)
+                act(press.down(at: CACurrentMediaTime(), listening: false))
                 let arm: DictationArm? = stage == "cancel" ? .cancel : (stage == "send" ? .send : nil)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { [weak self] in
-                    guard let self, let session = self.session else { return }
+                    guard let self, self.session != nil else { return }
                     if stage == "discarded" {
                         self.cancel()
                     } else if let arm {
-                        self.enqueue { await session.setArm(arm) }
+                        self.setArm(arm)
                     }
                 }
             }

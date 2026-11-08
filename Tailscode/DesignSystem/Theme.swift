@@ -369,6 +369,8 @@ enum Theme {
         static func notch() { HapticEngine.shared.play(.notch) }
         /// The microphone opens for dictation: a click that blooms.
         static func listen() { HapticEngine.shared.play(.listen) }
+        /// A long press on the microphone has become a hold: a firm tick that says letting go ends it.
+        static func hold() { HapticEngine.shared.play(.hold) }
         /// Dictation stops and the words settle: the inverse of the open, so the two read as a pair.
         static func listenEnd() { HapticEngine.shared.play(.listenEnd) }
         static func success() { HapticEngine.shared.play(.success) }
