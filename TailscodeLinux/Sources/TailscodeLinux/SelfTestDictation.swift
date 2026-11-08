@@ -162,6 +162,10 @@ extension SelfTest {
             throw SelfTestFailure("dictation: a quick press listens hands-free, got \(dictation.harnessFace)")
         }
         try expect(dictation.harnessHint.contains("click to stop"), "the hint says how to stop: \(dictation.harnessHint)")
+        try expect(gtk_widget_is_ancestor(dictation.hint, host.editor.widget) != 0, "the status is inside the box, not a label outside it")
+        try expect(
+            pump(1) { gtk_text_view_get_bottom_margin(ptr(host.editor.textView)) >= 18 },
+            "and the words keep clear of it: \(gtk_text_view_get_bottom_margin(ptr(host.editor.textView)))")
         try expect(host.editor.edge.isLit, "the box's edge is lit while the microphone is open")
         dictation.harnessPress()
         dictation.harnessRelease()
@@ -179,7 +183,9 @@ extension SelfTest {
         host.editor.setText("Please")
         dictation.harnessPress()
         try expect(pump(3) { dictation.harnessSnapshot.wordCount > 3 }, "a hold listens")
-        _ = pump(0.4)
+        try expect(pump(1) { dictation.harnessSnapshot.mode == .held }, "the hold engages at 280 ms")
+        try expect(dictation.harnessHint.contains("Release to keep"), "and the box says how a hold ends: \(dictation.harnessHint)")
+        try expect(gtk_widget_has_css_class(dictation.chip, "chip-held") != 0, "the chip lifts")
         dictation.harnessSlide(dx: -80)
         try expect(pump(1) { dictation.harnessSnapshot.arm == .cancel }, "sliding left arms a cancel")
         try expect(dictation.harnessFace.tone == .danger, "an armed cancel wears the danger tone")
@@ -187,6 +193,8 @@ extension SelfTest {
         try expect(pump(3) { !dictation.isOpen }, "releasing an armed cancel ends the take")
         try expect(host.editor.text == "Please", "the box is exactly as it was: \(host.editor.text)")
         try expect(dictation.harnessHint == DictationReading.ending(.discarded)?.text, "the hint says Discarded")
+        gtk_text_buffer_insert_at_cursor(buffer, "!", -1)
+        try expect(pump(1) { dictation.harnessHint.isEmpty }, "typing after a discard takes Undo away, so it never writes over new words: \(dictation.harnessHint) · \(host.editor.dictating) · \(host.editor.text)")
 
         host.editor.setText("")
         dictation.harnessPress()
@@ -215,10 +223,13 @@ extension SelfTest {
 
         host.callLive = true
         dictation.refresh()
-        try expect(gtk_widget_get_visible(dictation.chip) == 0, "a live call on this chat hides the chip")
+        try expect(
+            pump(1) { gtk_widget_get_visible(dictation.chip) == 0 }, "a live call on this chat fades the chip out")
         host.callLive = false
         dictation.refresh()
-        try expect(gtk_widget_get_visible(dictation.chip) != 0, "and it comes back when the call ends")
+        try expect(
+            pump(1) { gtk_widget_get_visible(dictation.chip) != 0 && gtk_widget_has_css_class(dictation.chip, "chip-gone") == 0 },
+            "and fades back in when the call ends")
         try expect(host.announced.contains(DictationReading.announceOpen), "a screen reader hears Listening")
         dictation.shutdown()
 
@@ -247,7 +258,7 @@ extension SelfTest {
     }
 
     /// The quick ask's microphone, in the real window over the scripted fleet with the scripted
-    /// engine: the chip stands between the box and Send with its hint under the field, the words it
+    /// engine: the chip stands between the box and Send with its status inside the box, the words it
     /// knows include the model it would ask, the registry's chord tapped listens hands-free, Esc
     /// throws the take away and leaves the window up, ⏎ settles and asks, the chip greys while the
     /// question is out, Send mid-take settles first, and a window put away mid-take files what it
@@ -313,7 +324,7 @@ extension SelfTest {
             let send = row.firstIndex(of: ask.send)
         else { throw SelfTestFailure("quick ask dictation: the chip is in the field") }
         try expect(box < mic && mic < send, "the chip stands between the box and Send")
-        try expect(gtk_widget_get_parent(ask.dictation.hint) != nil, "the hint has a place in the window")
+        try expect(gtk_widget_is_ancestor(ask.dictation.hint, ask.editor.widget) != 0, "the status lives inside the box")
         try expect(gtk_widget_get_visible(ask.dictation.chip) != 0, "the chip shows")
         try expect(ask.dictation.harnessFace == .ready, "and is ready")
         guard let restingChip = Gtk.bounds(of: ask.dictation.chip, in: field),
@@ -341,11 +352,14 @@ extension SelfTest {
         try expect(ask.editor.edge.isLit, "the box's edge is lit")
         _ = pump(0.3)
         if let listening = Gtk.bounds(of: ask.dictation.chip, in: field),
-            let hint = Gtk.bounds(of: ask.dictation.hint, in: ask.window)
+            let hint = Gtk.bounds(of: ask.dictation.hint, in: ask.editor.widget),
+            let box = Gtk.bounds(of: ask.editor.widget, in: ask.editor.widget)
         {
             try expect(listening.width > restingChip.width + 10, "listening, the chip grows to hold its bars: \(listening)")
-            let fieldTop = Gtk.bounds(of: field, in: ask.window)?.y ?? .infinity
-            try expect(hint.y > fieldTop && hint.height > 0, "the hint shows under the field: \(hint)")
+            try expect(
+                hint.height > 0 && hint.y >= box.y && hint.y + hint.height <= box.y + box.height + 0.5
+                    && hint.x + hint.width <= box.x + box.width + 0.5,
+                "the status shows inside the box: \(hint) in \(box)")
         } else {
             throw SelfTestFailure("quick ask dictation: the listening chip and its hint are laid out")
         }

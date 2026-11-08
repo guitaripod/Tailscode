@@ -247,8 +247,17 @@ extension MatrixStylesheet {
             background-color: \(danger);
             border-color: \(danger);
         }
-        .dictation-hint { margin: 4px 14px 0 14px; }
-        .qa-head .dictation-hint { margin: 0 2px; }
+        .dictation-hint { margin: 0 10px 4px 10px; }
+        button.dictation-chip {
+            transition: color 180ms ease-out, background-color 180ms ease-out, border-color 180ms ease-out,
+                opacity 220ms ease-out, transform 260ms cubic-bezier(0.2, 0.9, 0.3, 1.25);
+        }
+        button.dictation-chip image, button.dictation-chip label { transition: color 180ms ease-out; }
+        button.dictation-chip.chip-held { transform: scale(1.08); }
+        button.dictation-chip.chip-to-send { transform: scale(0.86); }
+        button.dictation-chip.chip-gone { opacity: 0; }
+        button.dictation-invite { box-shadow: 0 0 0 2px alpha(\(accent), 0.35); }
+        button.dictation-invite, button.ask-send { transition: box-shadow 180ms ease-out, background-color 180ms ease-out; }
         button.chip-ctl.qa-mic {
             min-width: 34px;
             min-height: 34px;

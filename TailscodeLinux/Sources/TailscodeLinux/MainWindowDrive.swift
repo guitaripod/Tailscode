@@ -217,6 +217,20 @@ extension MainWindow {
         case "askpartyroom":
             guard DesktopGuard.isHarnessed else { break }
             QuickAskPartyDemo.offerToFullParty()
+        case "dictate":
+            guard DesktopGuard.isHarnessed else { break }
+            self.activePane.dictation.harnessUseDemo()
+            self.activePane.dictation.harnessPress()
+            if argument != "hold" { self.activePane.dictation.harnessRelease() }
+        case "clearbox":
+            guard DesktopGuard.isHarnessed else { break }
+            self.activePane.editor.clear()
+        case "dictateslide":
+            guard DesktopGuard.isHarnessed else { break }
+            self.activePane.dictation.harnessSlide(dx: Double(argument) ?? -80)
+        case "dictaterelease":
+            guard DesktopGuard.isHarnessed else { break }
+            self.activePane.dictation.harnessRelease()
         case "askdictate":
             guard DesktopGuard.isHarnessed else { break }
             QuickAskWindow.stageDictation(parent: self.window)

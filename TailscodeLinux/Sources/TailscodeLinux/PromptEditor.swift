@@ -28,10 +28,16 @@ final class PromptEditor: @unchecked Sendable {
     private var modeFrame: UnsafeMutablePointer<GtkWidget>
     private var height: Int32 = 0
     private var measuring = false
+    private var footer: UnsafeMutablePointer<GtkWidget>?
+    private var footerRoom = 0.0
+    private var footerTarget = 0.0
+    private var footerStepping = false
 
     var onChanged: (@Sendable () -> Void)?
     /// The person changed the box with their own hands while a take was writing into it.
     var onEditDuringDictation: (@Sendable () -> Void)?
+    /// The person changed the box with their own hands while no take was writing into it.
+    var onEditOutsideDictation: (@Sendable () -> Void)?
     /// Fired when the box actually took a new height. A surface whose window is sized to its
     /// contents has to ask for that size again, or the box grows inside a window that did not.
     var onHeightChanged: (@Sendable () -> Void)?
@@ -69,7 +75,9 @@ final class PromptEditor: @unchecked Sendable {
             guard let self else { return }
             self.grow()
             self.refreshPlaceholder()
-            if self.dictating, !self.writingDictation { self.onEditDuringDictation?() }
+            if !self.writingDictation {
+                if self.dictating { self.onEditDuringDictation?() } else { self.onEditOutsideDictation?() }
+            }
             self.onChanged?()
         }
     }
@@ -93,6 +101,62 @@ final class PromptEditor: @unchecked Sendable {
             gtk_overlay_add_overlay(op(overlay), ring)
             g_object_unref(UnsafeMutableRawPointer(ring))
         }
+    }
+
+    /// The box's last line: what a take says about itself, inside the box under the words rather
+    /// than a label outside it. It crossfades in and out, and the text keeps clear of it by the
+    /// line's height while it shows, so the caret and the last words are never under it.
+    func mountFooter(_ content: UnsafeMutablePointer<GtkWidget>) {
+        guard footer == nil else { return }
+        let revealer = gtk_revealer_new()!
+        gtk_revealer_set_transition_type(op(revealer), GTK_REVEALER_TRANSITION_TYPE_CROSSFADE)
+        gtk_revealer_set_transition_duration(op(revealer), Gtk.animationsAllowed ? 200 : 0)
+        gtk_revealer_set_child(op(revealer), content)
+        gtk_widget_set_halign(revealer, GTK_ALIGN_END)
+        gtk_widget_set_valign(revealer, GTK_ALIGN_END)
+        gtk_overlay_add_overlay(op(widget), revealer)
+        footer = revealer
+    }
+
+    var footerShown: Bool {
+        guard let footer else { return false }
+        return gtk_revealer_get_reveal_child(op(footer)) != 0
+    }
+
+    func setFooterShown(_ shown: Bool) {
+        guard let footer, footerShown != shown else { return }
+        gtk_revealer_set_reveal_child(op(footer), shown ? 1 : 0)
+        footerTarget = shown ? Self.footerLine : 0
+        stepFooterRoom()
+    }
+
+    private static var footerLine: Double { 22 * Preferences.scale(.chrome) }
+
+    /// Moves the room kept under the words toward its target a frame at a time, so the box grows
+    /// and shrinks with the line rather than jumping.
+    private func stepFooterRoom() {
+        guard !footerStepping else { return }
+        let gap = footerTarget - footerRoom
+        guard abs(gap) > 0.5, Gtk.animationsAllowed else {
+            footerRoom = footerTarget
+            applyFooterRoom()
+            return
+        }
+        footerRoom += gap * 0.32
+        applyFooterRoom()
+        footerStepping = true
+        Gtk.after(16) { [weak self] in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.footerStepping = false
+                self.stepFooterRoom()
+            }
+        }
+    }
+
+    private func applyFooterRoom() {
+        gtk_text_view_set_bottom_margin(ptr(textView), Int32(footerRoom.rounded()))
+        measure()
     }
 
     /// Where a take's words would go: the text before the selection and the text after it.
@@ -366,8 +430,9 @@ final class PromptEditor: @unchecked Sendable {
 
     private func measure() {
         let line = 20.0 * Preferences.scale(.mono)
-        let ceiling = Int32(line * Double(Preferences.composerLines) + 18)
-        let floor = Int32(line + 18)
+        let room = Int32(footerRoom.rounded())
+        let ceiling = Int32(line * Double(Preferences.composerLines) + 18) + room
+        let floor = Int32(line + 18) + room
         var minimum: Int32 = 0
         var natural: Int32 = 0
         let width = gtk_widget_get_width(textView)

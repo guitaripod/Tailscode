@@ -244,7 +244,6 @@ final class QuickAskWindow: @unchecked Sendable {
         let head = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
         Gtk.addClass(head, "qa-head")
         gtk_box_append(ptr(head), frame)
-        gtk_box_append(ptr(head), dictation.hint)
         gtk_box_append(ptr(head), aim)
         gtk_box_append(ptr(head), chips)
         gtk_box_append(ptr(head), hint)

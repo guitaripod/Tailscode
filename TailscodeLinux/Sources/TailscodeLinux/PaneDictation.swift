@@ -28,6 +28,19 @@ final class PaneDictation: @unchecked Sendable {
 
     private let mic = gtk_image_new_from_icon_name("audio-input-microphone-symbolic")!
     private let bars = DictationBarsView()
+    private let glyphs = gtk_stack_new()!
+    private let badgeReveal = gtk_revealer_new()!
+    private let wordReveal = gtk_revealer_new()!
+    private var flashToken = 0
+    private var localArm: DictationArm?
+    private var pressChipX: Double?
+
+    /// Where the chip stands in its window. A drag's offsets are in the chip's own space, and the chip
+    /// widens into the capsule under a still pointer, so the travel is read against the window.
+    private var chipX: Double? {
+        guard let window = host?.dictationWindow else { return nil }
+        return Gtk.bounds(of: chip, in: window)?.x
+    }
     let word = Gtk.label("", selectable: false)
     private let badge = Gtk.label("↓", css: "chip-tone-live", selectable: false)
     private let hintDot = Gtk.label("●", css: "chip-tone-live", selectable: false)
@@ -35,7 +48,7 @@ final class PaneDictation: @unchecked Sendable {
     private let hintText = Gtk.label("", css: "row-detail", selectable: false)
     private let hintUndo = gtk_button_new_with_label(DictationReading.undo)!
     private weak var host: (any DictationPaneHost)?
-    private let demo: Bool
+    private var demo: Bool
     private let demoWordDelay: TimeInterval
 
     private var readiness: DictationReadiness?
@@ -102,24 +115,41 @@ final class PaneDictation: @unchecked Sendable {
         Gtk.connect(UnsafeMutableRawPointer(chip), "clicked") { link.owner?.keyboardActivated() }
         Gtk.connect(UnsafeMutableRawPointer(hintUndo), "clicked") { link.owner?.undoDiscard() }
         host.dictationEditor.onEditDuringDictation = { Gtk.onMain { link.owner?.stopKeepingShown() } }
+        host.dictationEditor.onEditOutsideDictation = { Gtk.onMain { link.owner?.boxEdited() } }
+        host.dictationEditor.mountFooter(hint)
         storeWatch = DictationModelStore.shared.watch { _ in Gtk.onMain { link.owner?.refresh() } }
         refresh()
     }
 
     private func build() {
         Gtk.addClass(chip, "chip-ctl")
+        Gtk.addClass(chip, "dictation-chip")
         gtk_widget_set_valign(chip, GTK_ALIGN_CENTER)
         let content = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
         gtk_widget_set_valign(content, GTK_ALIGN_CENTER)
         gtk_image_set_pixel_size(op(mic), 14)
         gtk_widget_set_valign(mic, GTK_ALIGN_CENTER)
-        gtk_widget_set_visible(bars.widget, 0)
+        let motion: UInt32 = Gtk.animationsAllowed ? 180 : 0
+        gtk_stack_set_transition_type(op(glyphs), GTK_STACK_TRANSITION_TYPE_CROSSFADE)
+        gtk_stack_set_transition_duration(op(glyphs), motion)
+        gtk_stack_set_hhomogeneous(op(glyphs), 0)
+        gtk_stack_set_interpolate_size(op(glyphs), 1)
+        gtk_widget_set_valign(glyphs, GTK_ALIGN_CENTER)
+        gtk_stack_add_named(op(glyphs), mic, "mic")
+        gtk_stack_add_named(op(glyphs), bars.widget, "bars")
+        gtk_stack_set_visible_child_name(op(glyphs), "mic")
         Gtk.addClass(word, "chip-gap")
         gtk_label_set_width_chars(op(word), 4)
         gtk_label_set_xalign(op(word), 0)
         Gtk.addClass(badge, "chip-gap")
-        gtk_widget_set_visible(badge, 0)
-        for part in [mic, bars.widget, word, badge] { gtk_box_append(ptr(content), part) }
+        gtk_revealer_set_transition_type(op(badgeReveal), GTK_REVEALER_TRANSITION_TYPE_SLIDE_RIGHT)
+        gtk_revealer_set_transition_duration(op(badgeReveal), motion)
+        gtk_revealer_set_child(op(badgeReveal), badge)
+        gtk_revealer_set_transition_type(op(wordReveal), GTK_REVEALER_TRANSITION_TYPE_SLIDE_RIGHT)
+        gtk_revealer_set_transition_duration(op(wordReveal), motion)
+        gtk_revealer_set_child(op(wordReveal), word)
+        gtk_revealer_set_reveal_child(op(wordReveal), 1)
+        for part in [glyphs, wordReveal, badgeReveal] { gtk_box_append(ptr(content), part) }
         gtk_button_set_child(ptr(chip), content)
 
         Gtk.addClass(hint, "dictation-hint")
@@ -128,7 +158,6 @@ final class PaneDictation: @unchecked Sendable {
         Gtk.addClass(hintUndo, "flat")
         Gtk.addClass(hintUndo, "dictation-undo")
         for part in [hintDot, hintTimer, hintText, hintUndo] { gtk_box_append(ptr(hint), part) }
-        gtk_widget_set_visible(hint, 0)
     }
 
     var isOpen: Bool { session != nil && !detached }
@@ -136,8 +165,12 @@ final class PaneDictation: @unchecked Sendable {
     private var face: DictationFace {
         let available = PulseVoiceIO.isAvailable || demo
         let hidden = !available || (host?.dictationCallLive ?? false)
-        return DictationFace.read(readiness: demo ? .ready : readiness, snapshot: snapshot, available: !hidden)
+        return DictationFace.read(readiness: demo ? .ready : readiness, snapshot: seen, available: !hidden)
     }
+
+    /// The take with what the hand already did laid over it: an engaged hold and a slid arm show
+    /// at once, and the release decides from them rather than from the session's later word.
+    private var seen: DictationSnapshot { snapshot.pressed(engaged: press.isEngaged, arm: localArm) }
 
     private var chord: String? { host?.dictationShortcuts.effective["composer.dictate"]?.first }
 
@@ -181,37 +214,48 @@ final class PaneDictation: @unchecked Sendable {
         lastPointerAt = Self.now
         guard !waiting else { return }
         pressOrigin = (x, y)
+        pressChipX = chipX
         if !isOpen, !face.isTakeable {
             popoverOnRelease = true
             return
         }
-        act(press.down(at: Self.now, listening: isOpen), mode: .held)
+        act(press.down(at: Self.now, listening: isOpen))
     }
 
     private func pointerMoved(dx: Double, dy: Double) {
-        guard isOpen, press.isDown, snapshot.mode == .held || press.isHeld(at: Self.now) else { return }
+        guard isOpen, press.isDown else { return }
+        if !press.isEngaged { act(press.tick(at: Self.now)) }
+        guard press.isEngaged else { return }
+        let travelled = dx + ((chipX ?? 0) - (pressChipX ?? 0))
         let arm = DictationSlide.arm(
-            travelled: dx, overSend: overSend(dx: dx, dy: dy), cancelDistance: DictationSlide.pointerCancelDistance)
-        guard let session, arm != snapshot.arm else { return }
+            travelled: travelled, overSend: overSend(dx: dx, dy: dy), cancelDistance: DictationSlide.pointerCancelDistance)
+        guard let session, arm != seen.arm else { return }
+        localArm = arm
+        host?.dictationEditor.showDictation(
+            anchor.compose(settled: snapshot.settled, heard: snapshot.heard), struck: arm == .cancel)
+        redraw()
         enqueue { await session.setArm(arm) }
     }
 
     private func pointerUp(dx: Double, dy: Double) {
+        lastPointerAt = Self.now
         if popoverOnRelease {
             popoverOnRelease = false
             showPopover()
             return
         }
-        act(press.up(at: Self.now), mode: .held)
+        act(press.up(at: Self.now))
     }
 
     private func pointerAbandoned() {
+        lastPointerAt = Self.now
         popoverOnRelease = false
-        act(press.abandon(at: Self.now), mode: .held)
+        act(press.abandon(at: Self.now))
     }
 
     /// Space or Return on the focused chip. A pointer press also ends in the button's own click,
-    /// which the press has already answered.
+    /// which the press has already answered, so a click soon after a pointer went down or came up
+    /// is the press's own and is ignored: a long press never toggles a second time.
     private func keyboardActivated() {
         guard Self.now - lastPointerAt > 0.6, !waiting else { return }
         if isOpen {
@@ -224,9 +268,9 @@ final class PaneDictation: @unchecked Sendable {
     /// The chord went down. Auto-repeat arrives as more presses while it is held and changes
     /// nothing.
     func chordDown(keyval: UInt32) {
-        guard !waiting else { return }
-        if heldKeyval == nil { heldKeyval = UInt32(gdk_keyval_to_lower(guint(keyval))) }
-        act(press.down(at: Self.now, listening: isOpen), mode: .held)
+        guard !waiting, heldKeyval == nil else { return }
+        heldKeyval = UInt32(gdk_keyval_to_lower(guint(keyval)))
+        act(press.down(at: Self.now, listening: isOpen))
     }
 
     /// A key went up anywhere in the window. Letting go of any key of the chord ends a hold — its
@@ -237,7 +281,7 @@ final class PaneDictation: @unchecked Sendable {
         let lowered = UInt32(gdk_keyval_to_lower(guint(keyval)))
         guard lowered == held || Self.modifierKeys.contains(keyval) else { return }
         heldKeyval = nil
-        act(press.up(at: Self.now), mode: .held)
+        act(press.up(at: Self.now))
     }
 
     /// Esc throws an open take away and ⏎ settles it and sends; nothing else is taken from the box.
@@ -262,19 +306,34 @@ final class PaneDictation: @unchecked Sendable {
         return true
     }
 
-    private func act(_ action: DictationPress.Action, mode: DictationMode) {
+    private func act(_ action: DictationPress.Action) {
         switch action {
-        case .open: open(mode: mode)
-        case .becomeHandsFree:
+        case .open:
+            open(mode: .handsFree)
+            scheduleHoldTick()
+        case .becomeHeld:
             guard let session else { return }
-            enqueue { await session.setMode(.handsFree) }
+            redraw()
+            enqueue { await session.setMode(.held) }
         case .stop:
-            switch snapshot.arm {
+            switch localArm ?? snapshot.arm {
             case .cancel: cancel()
             case .send: stop(sending: true)
             case .none: stop(sending: false)
             }
         case .none: break
+        }
+    }
+
+    /// A press that is still down when the threshold passes engages its hold.
+    private func scheduleHoldTick() {
+        let link = Link()
+        link.owner = self
+        Gtk.after(UInt32((DictationPress.holdThreshold + 0.012) * 1000)) {
+            Gtk.onMain {
+                guard let owner = link.owner else { return }
+                owner.act(owner.press.tick(at: Self.now))
+            }
         }
     }
 
@@ -309,6 +368,7 @@ final class PaneDictation: @unchecked Sendable {
         originalCaret = editor.cursor
         discarded = nil
         ending = nil
+        localArm = nil
         detached = false
         takes += 1
         editor.setDictating(true)
@@ -345,7 +405,7 @@ final class PaneDictation: @unchecked Sendable {
         guard source === session, !detached, let editor = host?.dictationEditor else { return }
         snapshot = next
         if next.phase != .idle {
-            editor.showDictation(anchor.compose(settled: next.settled, heard: next.heard), struck: next.arm == .cancel)
+            editor.showDictation(anchor.compose(settled: next.settled, heard: next.heard), struck: seen.arm == .cancel)
         } else if let end = next.ended {
             land(DictationTake(text: next.settled, end: end), from: source, sending: false)
         }
@@ -406,12 +466,14 @@ final class PaneDictation: @unchecked Sendable {
         press = DictationPress()
         heldKeyval = nil
         snapshot = DictationSnapshot(ended: end, take: takes)
+        localArm = nil
         ending = end
         endingShownAt = Self.now
         stopTicking()
         host?.dictationEditor.edge.set(lit: false, tone: .live, glow: 0)
         host?.dictationAnnounce(DictationReading.announce(end))
         AppLog.write(.session, "dictation: take \(takes) ended \(end)")
+        flash(end)
         redraw()
         if let hint = DictationReading.ending(end) {
             let shown = endingShownAt
@@ -436,6 +498,15 @@ final class PaneDictation: @unchecked Sendable {
         finish(as: .kept(words: snapshot.wordCount))
     }
 
+    /// The person wrote in the box after a discard: Undo would write the old take over their words,
+    /// so it is no longer offered.
+    private func boxEdited() {
+        guard discarded != nil || ending == .discarded else { return }
+        discarded = nil
+        if ending == .discarded { ending = nil }
+        redraw()
+    }
+
     private func undoDiscard() {
         guard let discarded, let editor = host?.dictationEditor else { return }
         editor.commitDictation(
@@ -449,25 +520,94 @@ final class PaneDictation: @unchecked Sendable {
     private func redraw() {
         guard !gone else { return }
         let face = self.face
-        gtk_widget_set_visible(chip, face == .hidden ? 0 : 1)
+        showChip(face != .hidden)
         let open = face.showsBars
-        gtk_widget_set_visible(mic, open ? 0 : 1)
-        gtk_widget_set_visible(bars.widget, open ? 1 : 0)
-        gtk_widget_set_visible(badge, face.wearsDownloadBadge ? 1 : 0)
+        gtk_stack_set_visible_child_name(op(glyphs), open ? "bars" : "mic")
+        gtk_revealer_set_reveal_child(op(badgeReveal), face.wearsDownloadBadge ? 1 : 0)
         let armedCancel = face.tone == .danger
-        if open && !armedCancel { Gtk.addClass(chip, "chip-on") } else { gtk_widget_remove_css_class(chip, "chip-on") }
-        if armedCancel { Gtk.addClass(chip, "chip-danger") } else { gtk_widget_remove_css_class(chip, "chip-danger") }
-        if case .blocked = face { Gtk.addClass(mic, "chip-tone-attention") } else { gtk_widget_remove_css_class(mic, "chip-tone-attention") }
+        Self.mark(chip, "chip-on", open && !armedCancel)
+        Self.mark(chip, "chip-danger", armedCancel)
+        Self.mark(chip, "chip-held", face == .listening(.held, .none))
+        Self.mark(chip, "chip-to-send", face == .listening(.held, .send))
+        if case .blocked = face { Gtk.addClass(mic, "chip-tone-attention") } else if flashToken == 0 {
+            gtk_widget_remove_css_class(mic, "chip-tone-attention")
+        }
         gtk_label_set_text(op(word), chipWord(face))
-        gtk_widget_set_visible(word, compact ? 0 : 1)
+        gtk_revealer_set_reveal_child(op(wordReveal), !compact && !face.showsBars ? 1 : 0)
         if let send = host?.dictationSendTarget {
-            if case .listening(.held, .send) = face { Gtk.addClass(send, "chip-on") } else { gtk_widget_remove_css_class(send, "chip-on") }
+            Self.mark(send, "chip-on", face == .listening(.held, .send))
+            Self.mark(send, "dictation-invite", face == .listening(.held, .none))
         }
         gtk_widget_set_tooltip_text(chip, DictationReading.tooltip(face, chord: chord))
         tailscode_set_accessible_label(chip, DictationReading.accessibilityLabel(face))
         drawHint(face)
         host?.dictationEditor.edge.set(
             lit: face.litEdge, tone: face.tone == .danger ? .danger : .live, glow: DictationBars.edgeOpacity(level: level))
+    }
+
+    private static func mark(_ widget: UnsafeMutablePointer<GtkWidget>, _ name: String, _ on: Bool) {
+        if on { Gtk.addClass(widget, name) } else { gtk_widget_remove_css_class(widget, name) }
+    }
+
+    /// The chip leaves and comes back by fading rather than vanishing: a call taking the microphone,
+    /// or giving it back, is a change a person should see happen.
+    private func showChip(_ shown: Bool) {
+        let visible = gtk_widget_get_visible(chip) != 0
+        let leaving = gtk_widget_has_css_class(chip, "chip-gone") != 0
+        guard Gtk.animationsAllowed else {
+            gtk_widget_remove_css_class(chip, "chip-gone")
+            gtk_widget_set_visible(chip, shown ? 1 : 0)
+            return
+        }
+        let link = Link()
+        link.owner = self
+        if shown {
+            guard !visible || leaving else { return }
+            if !visible {
+                Gtk.addClass(chip, "chip-gone")
+                gtk_widget_set_visible(chip, 1)
+            }
+            Gtk.after(16) {
+                Gtk.onMain {
+                    guard let owner = link.owner, owner.face != .hidden else { return }
+                    gtk_widget_remove_css_class(owner.chip, "chip-gone")
+                }
+            }
+        } else {
+            guard visible else { return }
+            Gtk.addClass(chip, "chip-gone")
+            Gtk.after(220) {
+                Gtk.onMain {
+                    guard let owner = link.owner, owner.face == .hidden else { return }
+                    gtk_widget_set_visible(owner.chip, 0)
+                }
+            }
+        }
+    }
+
+    /// The rest glyph carries how a take ended for a moment — the accent for words kept or sent,
+    /// danger for a discard, the warning tone for a problem — and then fades back to its own ink.
+    private func flash(_ end: DictationEnd) {
+        let tone: String
+        switch end {
+        case .kept, .sent: tone = "chip-tone-live"
+        case .discarded: tone = "chip-tone-danger"
+        case .problem: tone = "chip-tone-attention"
+        case .nothingHeard: return
+        }
+        flashToken += 1
+        let token = flashToken
+        Gtk.addClass(mic, tone)
+        let link = Link()
+        link.owner = self
+        Gtk.after(600) {
+            Gtk.onMain {
+                guard let owner = link.owner, owner.flashToken == token else { return }
+                owner.flashToken = 0
+                for name in ["chip-tone-live", "chip-tone-danger"] { gtk_widget_remove_css_class(owner.mic, name) }
+                if case .blocked = owner.face {} else { gtk_widget_remove_css_class(owner.mic, "chip-tone-attention") }
+            }
+        }
     }
 
     private func chipWord(_ face: DictationFace) -> String {
@@ -482,15 +622,15 @@ final class PaneDictation: @unchecked Sendable {
     private var sessionNow: Double { ProcessInfo.processInfo.systemUptime }
 
     private func drawHint(_ face: DictationFace) {
-        var shown = snapshot
+        var shown = seen
         if !face.showsBars, let ending { shown.ended = ending }
         let hint = DictationReading.hint(
-            face: face, snapshot: shown, now: sessionNow, surface: .pointer, chord: chord)
+            face: face, snapshot: shown, now: sessionNow, surface: .pointer, chord: chord, heldByKey: heldKeyval != nil)
         guard let hint, face.showsBars || face.isPreparing || ending != nil else {
-            gtk_widget_set_visible(self.hint, 0)
+            host?.dictationEditor.setFooterShown(false)
             return
         }
-        gtk_widget_set_visible(self.hint, 1)
+        host?.dictationEditor.setFooterShown(true)
         gtk_widget_set_visible(hintDot, hint.style == .live ? 1 : 0)
         gtk_label_set_text(op(hintTimer), hint.timer ?? "")
         gtk_widget_set_visible(hintTimer, hint.timer == nil ? 0 : 1)
@@ -570,9 +710,15 @@ final class PaneDictation: @unchecked Sendable {
     var harnessFace: DictationFace { face }
     var harnessSnapshot: DictationSnapshot { snapshot }
     var harnessHint: String {
-        gtk_widget_get_visible(hint) == 0 ? "" : gtk_label_get_text(op(hintText)).map { String(cString: $0) } ?? ""
+        host?.dictationEditor.footerShown != true ? "" : gtk_label_get_text(op(hintText)).map { String(cString: $0) } ?? ""
     }
     func harnessPress() { pointerDown(x: 1, y: 1) }
+    /// The harness speaks the scripted take, never the desk's real microphone.
+    func harnessUseDemo() {
+        guard !isOpen else { return }
+        demo = true
+        redraw()
+    }
     func harnessRelease() { pointerUp(dx: 0, dy: 0) }
     func harnessSlide(dx: Double) { pointerMoved(dx: dx, dy: 0) }
     var harnessPopover: String { popover?.isShown == true ? popover?.harnessText ?? "" : "" }

@@ -156,7 +156,6 @@ extension ChatPane {
         Gtk.margins(attachmentsBox, top: 4)
         gtk_box_append(ptr(root), attachmentsBox)
         gtk_box_append(ptr(root), call.strip.widget)
-        gtk_box_append(ptr(root), dictation.hint)
         gtk_box_append(ptr(root), makeComposer())
         gtk_box_append(ptr(root), makePillRow())
     }
