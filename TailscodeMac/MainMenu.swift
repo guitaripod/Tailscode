@@ -598,7 +598,13 @@ final class MainMenu: NSObject {
     @objc private func previousPrompt() { run(.previousPrompt) }
     @objc private func nextPrompt() { run(.nextPrompt) }
     @objc private func copyLastAnswer() { run(.copyLastAnswer) }
-    @objc private func dictate() { hub.transcript.composer.dictation.toggle() }
+    @objc private func dictate() {
+        if let panel = NSApp.keyWindow as? QuickAskPanel {
+            panel.dictation.toggle()
+        } else {
+            hub.transcript.composer.dictation.toggle()
+        }
+    }
     @objc private func toggleSaved() { run(.toggleSaved) }
     @objc private func toggleArchived() { run(.archiveSelected) }
     @objc private func toggleUnread() { run(.toggleUnreadSelected) }

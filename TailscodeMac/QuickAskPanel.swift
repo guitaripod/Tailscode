@@ -91,6 +91,9 @@ final class QuickAskPanel: NSPanel {
     var asking = false
     var draftProfileID: String?
     var keyMonitor: Any?
+    var releaseMonitor: Any?
+    let dictationEngines: MacDictationEngines
+    private(set) lazy var dictation = MacDictationController(host: self, engines: dictationEngines)
     /// Set once the panel has been put under the pointer, so a panel that never stood on a screen —
     /// one a self-test made — never overwrites the size the person keeps it at.
     var isPlaced = false
@@ -207,8 +210,10 @@ final class QuickAskPanel: NSPanel {
         ) -> Void,
         onResume: @escaping (SessionEntry) -> Void,
         onAskParty: @escaping (QuickAskPartySend, @escaping @MainActor (NewChatFailure?) -> Void)
-            -> Void
+            -> Void,
+        dictationEngines: MacDictationEngines = .shared
     ) {
+        self.dictationEngines = dictationEngines
         self.servers = servers
         self.recents = recents
         self.onAsk = onAsk
@@ -328,7 +333,12 @@ final class QuickAskPanel: NSPanel {
         spark.symbolConfiguration = .init(pointSize: 17, weight: .semibold)
         spark.contentTintColor = MacTheme.Color.accent
         spark.setContentHuggingPriority(.required, for: .horizontal)
-        let field = NSStackView(views: [spark, editor, sendButton])
+        let actions = NSStackView(views: [dictation.button, sendButton])
+        actions.orientation = .horizontal
+        actions.alignment = .centerY
+        actions.spacing = 6
+        actions.setContentHuggingPriority(.required, for: .horizontal)
+        let field = NSStackView(views: [spark, editor, actions])
         field.orientation = .horizontal
         field.alignment = .top
         field.spacing = 10
@@ -340,7 +350,7 @@ final class QuickAskPanel: NSPanel {
         aim.orientation = .horizontal
         aim.spacing = 6
 
-        let head = NSStackView(views: [field, completion, aim, chips, status])
+        let head = NSStackView(views: [field, dictation.hint, completion, aim, chips, status])
         head.orientation = .vertical
         head.alignment = .leading
         head.spacing = 10
@@ -453,6 +463,8 @@ final class QuickAskPanel: NSPanel {
         liveResizeObserver = nil
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
+        if let releaseMonitor { NSEvent.removeMonitor(releaseMonitor) }
+        releaseMonitor = nil
     }
 
     /// A question is only ever lost in the moment nobody thought to save it, and a panel dismissed
@@ -461,6 +473,7 @@ final class QuickAskPanel: NSPanel {
     /// what was copied, the line picked and a notice are let go, so it comes back the way a new one
     /// would.
     override func close() {
+        dictation.stopKeepingShown()
         remember()
         super.close()
         releaseHold(retargeting: false)
@@ -502,6 +515,7 @@ final class QuickAskPanel: NSPanel {
         dialPill.isEnabled = true
         attachButton.isEnabled = true
         screenButton.isEnabled = true
+        dictation.waiting = false
         refreshSend()
     }
 
@@ -602,6 +616,7 @@ final class QuickAskPanel: NSPanel {
     /// pictures — back.
     @objc func submit() {
         guard !asking else { return }
+        if dictation.stopAndSend() { return }
         let text = editor.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard QuickAskComposition.canSend(text: text, attachments: attachments.count) else { return }
         let server = targetServer
@@ -621,6 +636,7 @@ final class QuickAskPanel: NSPanel {
         attachButton.isEnabled = false
         screenButton.isEnabled = false
         sendButton.isEnabled = false
+        dictation.waiting = true
         refreshStarterVisibility()
         setStatus(QuickAskComposition.waitingTitle(server: server.name))
         let visit = visit

@@ -64,6 +64,15 @@ final class MacDictationController {
         }
     }
 
+    /// The composer is waiting on what it sent: the control dims and takes no press until it answers.
+    var waiting = false {
+        didSet {
+            guard waiting != oldValue else { return }
+            if waiting { stopKeepingShown() }
+            button.alphaValue = waiting ? 0.4 : 1
+        }
+    }
+
     private weak var host: (any MacDictationHost)?
     private let engines: MacDictationEngines
     private var readiness: DictationReadiness?
@@ -133,6 +142,7 @@ final class MacDictationController {
     }
 
     private func down() {
+        guard !waiting else { return }
         if !isOpen, !face.isTakeable {
             openOnRelease = true
             return
@@ -164,6 +174,7 @@ final class MacDictationController {
     /// The chord went down: the key is remembered so its release, or the release of one of the
     /// chord's modifiers, ends a hold. Auto-repeat is a press already down.
     func chordDown(keyCode: UInt16) {
+        guard !waiting else { return }
         if heldKeyCode == nil { heldKeyCode = keyCode }
         if !isOpen, !face.isTakeable {
             press = DictationPress()
@@ -207,6 +218,7 @@ final class MacDictationController {
     }
 
     func toggle() {
+        guard !waiting else { return }
         if isOpen {
             stop(sending: false)
         } else if face.isTakeable {

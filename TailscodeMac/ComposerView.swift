@@ -505,7 +505,7 @@ extension ComposerView: MacDictationHost {
     var dictationChord: String? { Self.dictationChordWords }
 
     /// The chord as the Mac spells it, read once from the shortcut set the window resolves keys with.
-    private static let dictationChordWords: String? = {
+    static let dictationChordWords: String? = {
         guard let spec = ShortcutRegistry.definition("composer.dictate")?.defaults.first,
             let chord = KeySpec.parse(spec)?.chords.first,
             let scalar = Keymap.scalar(chord.keyval)

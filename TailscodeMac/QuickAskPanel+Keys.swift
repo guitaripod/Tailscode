@@ -35,6 +35,7 @@ extension QuickAskPanel {
             let shift = flags.contains(.shift)
             let option = flags.contains(.option)
             let isReturn = event.keyCode == 36 || event.keyCode == 76
+            if self.handleDictationKey(event, isReturn: isReturn, option: option) { return nil }
             if self.completion.isShowing, self.handleCompletionKey(event) { return nil }
             if self.handleListKey(event) { return nil }
             if self.handleDialKey(event) { return nil }
@@ -70,6 +71,29 @@ extension QuickAskPanel {
             }
             return event
         }
+        releaseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyUp, .flagsChanged]) { [weak self] event in
+            guard let self, event.window === self else { return event }
+            self.dictation.keyReleased(keyCode: event.type == .keyUp ? event.keyCode : nil, flags: event.modifierFlags)
+            return event
+        }
+    }
+
+    /// The microphone's keys come before every other: while a take is open Esc throws it away
+    /// rather than closing the panel, Return settles it and asks, and ⌥Return keeps what is shown
+    /// and asks the party. The dictation chord is the registry's, so a rebound chord is the one
+    /// that listens here too.
+    func handleDictationKey(_ event: NSEvent, isReturn: Bool, option: Bool) -> Bool {
+        if dictation.isOpen, isReturn, option {
+            dictation.stopKeepingShown()
+            submitToParty()
+            return true
+        }
+        if dictation.handleKey(event) { return true }
+        guard let chord = MacKeys.chord(for: event),
+            case .run(.dictate) = shortcuts.resolve(chord, context: .insert, pending: [], awaitingApproval: false)
+        else { return false }
+        dictation.chordDown(keyCode: event.keyCode)
+        return true
     }
 
     /// The list's keys: ↓ and ↑ (or ⌃N and ⌃P) walk it — with words typed, only from where

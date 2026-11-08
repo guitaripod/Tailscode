@@ -276,6 +276,7 @@ extension QuickAskPanel {
         attachButton.isEnabled = false
         screenButton.isEnabled = false
         sendButton.isEnabled = false
+        dictation.waiting = true
         refreshStarterVisibility()
         setStatus(Localized.text("Asking the party — %@ models…", "\(seats.count)"))
         let visit = visit

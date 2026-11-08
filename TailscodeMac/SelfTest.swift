@@ -177,6 +177,15 @@ enum SelfTest {
         }
 
         do {
+            let checks = try await checkQuickAskDictation()
+            report(
+                "quick ask dictation: \(checks) claims hold — the microphone between the box and Send, the chord, Esc that keeps the panel, Return that asks, a dim control while it asks, a draft kept when put away")
+        } catch {
+            report("quick ask dictation: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkTranscriptColumn()
             report("transcript column: \(checks) claims hold — rows stand alone and stack as a stack would")
         } catch {
