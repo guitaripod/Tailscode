@@ -24,6 +24,10 @@ final class PromptEditor: NSView {
     var onModeChanged: (() -> Void)?
     /// The person changed the box with their own hands while a take was writing into it.
     var onEditDuringDictation: (() -> Void)?
+    /// The person changed the box with their own hands while no take was writing into it.
+    var onEditOutsideDictation: (() -> Void)?
+    /// The field took a new height. A surface sized to its contents asks for that size again.
+    var onFieldHeightChanged: (() -> Void)?
     let dictationEdge = MacDictationEdge()
     private(set) var dictating = false
     private var writingDictation = false
@@ -35,6 +39,12 @@ final class PromptEditor: NSView {
     private let placeholderLabel = NSTextField(labelWithString: "")
     private var fieldHeight: NSLayoutConstraint?
     private var isMeasuring = false
+    private var scrollBottom: NSLayoutConstraint?
+    private var footer: NSView?
+    private var footerRoom: CGFloat = 0
+    private(set) var footerShown = false
+    private var footerToken = 0
+    static let footerHeight: CGFloat = 18
     private lazy var aura = UltracodeAura(
         around: fieldContainer, cornerRadius: MacTheme.Radius.control)
 
@@ -156,7 +166,7 @@ final class PromptEditor: NSView {
             scrollView.leadingAnchor.constraint(equalTo: fieldContainer.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: fieldContainer.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: fieldContainer.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: fieldContainer.bottomAnchor),
+            scrollBottomConstraint(),
             placeholderLabel.leadingAnchor.constraint(
                 equalTo: fieldContainer.leadingAnchor, constant: MacTheme.Spacing.s + 5),
             placeholderLabel.trailingAnchor.constraint(
@@ -441,6 +451,61 @@ final class PromptEditor: NSView {
         aura.setParked(parked)
     }
 
+    private func scrollBottomConstraint() -> NSLayoutConstraint {
+        let constraint = scrollView.bottomAnchor.constraint(equalTo: fieldContainer.bottomAnchor)
+        scrollBottom = constraint
+        return constraint
+    }
+
+    /// The box's last line: what a take says about itself, inside the field under the words rather
+    /// than a label outside it, set trailing so it ends beside the microphone. While it shows, the
+    /// words stop a line short of the field's bottom and the field grows by that line, so the caret
+    /// and the last words are never under it.
+    /// Types as a person would, through the text view's own path, for the self-test.
+    func harnessType(_ words: String) {
+        textView.insertText(words, replacementRange: textView.selectedRange())
+    }
+
+    func mountDictationFooter(_ view: NSView) {
+        guard footer == nil else { return }
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.alphaValue = 0
+        view.isHidden = true
+        fieldContainer.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.trailingAnchor.constraint(equalTo: fieldContainer.trailingAnchor, constant: -(MacTheme.Spacing.s + 2)),
+            view.leadingAnchor.constraint(greaterThanOrEqualTo: fieldContainer.leadingAnchor, constant: MacTheme.Spacing.s),
+            view.widthAnchor.constraint(
+                lessThanOrEqualTo: fieldContainer.widthAnchor, constant: -(MacTheme.Spacing.s * 2 + 2)),
+            view.bottomAnchor.constraint(equalTo: fieldContainer.bottomAnchor, constant: -3),
+            view.heightAnchor.constraint(equalToConstant: Self.footerHeight),
+        ])
+        footer = view
+    }
+
+    func setDictationFooterShown(_ shown: Bool, animated: Bool) {
+        guard let footer, shown != footerShown else { return }
+        footerShown = shown
+        footerToken += 1
+        let token = footerToken
+        footerRoom = shown ? Self.footerHeight + 3 : 0
+        if shown { footer.isHidden = false }
+        let motion = animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = animated ? (motion ? 0.2 : 0.12) : 0
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            context.allowsImplicitAnimation = true
+            footer.alphaValue = shown ? 1 : 0
+            self.scrollBottom?.constant = -self.footerRoom
+            self.measureField(animated: motion)
+        } completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.footerToken == token, !self.footerShown else { return }
+                footer.isHidden = true
+            }
+        }
+    }
+
     private func contentChanged() {
         placeholderLabel.isHidden = !textView.string.isEmpty
         scheduleMeasure()
@@ -462,11 +527,11 @@ final class PromptEditor: NSView {
         }
     }
 
-    private func measureField() {
+    private func measureField(animated: Bool = false) {
         guard let font = textView.font else { return }
         let line = ceil(font.ascender - font.descender + font.leading)
-        let inset = textView.textContainerInset.height * 2 + 2
-        let floor = max(line * CGFloat(max(1, minimumLines)) + inset, minimumHeight)
+        let inset = textView.textContainerInset.height * 2 + 2 + footerRoom
+        let floor = max(line * CGFloat(max(1, minimumLines)) + inset, minimumHeight + footerRoom)
         let ceiling = max(floor, line * CGFloat(maximumLines ?? Self.composerLines) + inset)
         var wanted = floor
         if !textView.string.isEmpty {
@@ -482,6 +547,8 @@ final class PromptEditor: NSView {
         }
         guard let fieldHeight, abs(fieldHeight.constant - wanted) > 0.5 else { return }
         fieldHeight.constant = wanted
+        if animated { superview?.layoutSubtreeIfNeeded() }
+        onFieldHeightChanged?()
     }
 
     /// One reading of a key press for the vim engine, shared by every surface that hands it
@@ -523,7 +590,9 @@ extension PromptEditor: NSTextViewDelegate {
     func textView(
         _ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?
     ) -> Bool {
-        if dictating, !writingDictation { onEditDuringDictation?() }
+        if !writingDictation {
+            if dictating { onEditDuringDictation?() } else { onEditOutsideDictation?() }
+        }
         return true
     }
 }
@@ -539,7 +608,7 @@ final class FocusingField: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let hit = super.hitTest(point) else { return nil }
-        return hit is NSScroller ? hit : target ?? hit
+        return hit is NSScroller || hit is NSButton ? hit : target ?? hit
     }
 }
 

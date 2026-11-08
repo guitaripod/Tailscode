@@ -25,6 +25,12 @@ final class MacDictationButton: NSView {
     private var bars: [CALayer] = []
     private var heights = [Double](repeating: DictationBars.floor, count: DictationBars.count)
     private var pressPoint: NSPoint = .zero
+    private var shownWidth: CGFloat = -1
+    private var shownGlyphAlpha: CGFloat = -1
+    private var shownBadgeAlpha: CGFloat = -1
+    private var hideToken = 0
+    private var flashToken = 0
+    private var flashing: NSColor?
     private(set) var face: DictationFace = .ready
     private(set) lazy var widthConstraint = widthAnchor.constraint(equalToConstant: Self.restWidth)
 
@@ -49,14 +55,14 @@ final class MacDictationButton: NSView {
         ring.fillColor = NSColor.clear.cgColor
         ring.lineWidth = 2
         ring.lineCap = .round
-        ring.isHidden = true
+        ring.opacity = 0
         layer?.addSublayer(ring)
         glyph.imageScaling = .scaleNone
         glyph.translatesAutoresizingMaskIntoConstraints = false
         addSubview(glyph)
         badge.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 8, weight: .bold))
-        badge.isHidden = true
+        badge.alphaValue = 0
         badge.translatesAutoresizingMaskIntoConstraints = false
         addSubview(badge)
         NSLayoutConstraint.activate([
@@ -84,14 +90,16 @@ final class MacDictationButton: NSView {
         return true
     }
 
+    /// The press is measured in the window, never in the control: the control widens into the
+    /// capsule under a still finger, and a distance read in its own coordinates would drift by
+    /// that growth.
     override func mouseDown(with event: NSEvent) {
-        pressPoint = convert(event.locationInWindow, from: nil)
-        onDown?(pressPoint)
+        pressPoint = event.locationInWindow
+        onDown?(convert(pressPoint, from: nil))
     }
 
     override func mouseDragged(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        onDrag?(point.x - pressPoint.x, event.locationInWindow)
+        onDrag?(event.locationInWindow.x - pressPoint.x, event.locationInWindow)
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -146,44 +154,226 @@ final class MacDictationButton: NSView {
         }
     }
 
+    /// Draws a face by moving every property from where it stands to the face's target, so a state
+    /// that arrives mid-motion bends the motion rather than restarting it: tints blend, the width
+    /// springs, the glyph is replaced as a symbol, the badge and the ring fade, a held take lifts.
     func apply(_ face: DictationFace, animated: Bool) {
-        let wasOpen = self.face.showsBars
+        let previous = self.face
         self.face = face
+        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let motion = animated && !reduce
         let open = face.showsBars
-        isHidden = face == .hidden
-        paint()
-        glyph.image = NSImage(systemSymbolName: face.symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
-        badge.isHidden = !face.wearsDownloadBadge
-        ring.isHidden = !face.isPreparing
-        ring.strokeEnd = CGFloat(max(0.03, face.progress ?? 0.25))
         let width = face == .hidden ? 0 : (open ? Self.openWidth : Self.restWidth)
-        let changes = {
-            self.widthConstraint.animator().constant = width
-            self.glyph.animator().alphaValue = open ? 0 : 1
-            self.superview?.layoutSubtreeIfNeeded()
-        }
+        setHidden(face == .hidden, animated: animated)
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(animated ? 0.18 : 0)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        CATransaction.setDisableActions(!animated)
+        paint()
         capsule.opacity = open ? 1 : 0
-        halo.opacity = open ? 0.5 : 0
-        if case .listening(.held, .send) = face {
-            capsule.setAffineTransform(CGAffineTransform(scaleX: 0.86, y: 0.86))
+        if previous.showsBars != open { halo.opacity = open ? 0.5 : 0 }
+        ring.opacity = face.isPreparing ? 1 : 0
+        CATransaction.commit()
+        drawRingFill(face, reduce: reduce)
+        lift(to: Self.scale(for: face), animated: motion)
+        let symbol = NSImage(systemSymbolName: face.symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
+        if previous.symbol != face.symbol, motion, let symbol {
+            glyph.setSymbolImage(symbol, contentTransition: .replace)
         } else {
-            capsule.setAffineTransform(.identity)
+            glyph.image = symbol
         }
-        if animated, wasOpen != open, NSWorkspace.shared.accessibilityDisplayShouldReduceMotion == false {
+        let glyphAlpha: CGFloat = open ? 0 : 1
+        let badgeAlpha: CGFloat = face.wearsDownloadBadge ? 1 : 0
+        if width != shownWidth || glyphAlpha != shownGlyphAlpha || badgeAlpha != shownBadgeAlpha {
+            shownWidth = width
+            shownGlyphAlpha = glyphAlpha
+            shownBadgeAlpha = badgeAlpha
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.28
-                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.3, 1.25, 0.5, 1)
+                context.duration = animated ? (motion && previous.showsBars != open ? 0.32 : 0.18) : 0
+                context.timingFunction =
+                    motion && previous.showsBars != open
+                    ? CAMediaTimingFunction(controlPoints: 0.3, 1.25, 0.5, 1) : CAMediaTimingFunction(name: .easeOut)
                 context.allowsImplicitAnimation = true
-                changes()
+                self.widthConstraint.constant = width
+                self.glyph.alphaValue = glyphAlpha
+                self.badge.alphaValue = badgeAlpha
+                self.superview?.layoutSubtreeIfNeeded()
             }
-        } else {
-            widthConstraint.constant = width
-            glyph.alphaValue = open ? 0 : 1
         }
-        if face == .settling { setLevels([Double](repeating: DictationBars.floor, count: DictationBars.count)) }
+        if face == .settling { sinkBars(animated: motion) }
         setAccessibilityLabel(DictationReading.accessibilityLabel(face))
         toolTip = DictationReading.tooltip(face, chord: chord)
+    }
+
+    private static func scale(for face: DictationFace) -> CGFloat {
+        switch face {
+        case .listening(.held, .send): return 0.86
+        case .listening(.held, .none): return 1.08
+        default: return 1
+        }
+    }
+
+    /// The capsule's scale follows the hand: lifted while a hold is engaged, shrunk toward Send
+    /// while armed to send, sprung from wherever it stands.
+    private func lift(to scale: CGFloat, animated: Bool) {
+        let target = CATransform3DMakeScale(scale, scale, 1)
+        guard !CATransform3DEqualToTransform(capsule.transform, target) else { return }
+        let from = capsule.presentation()?.transform ?? capsule.transform
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        capsule.transform = target
+        halo.transform = target
+        CATransaction.commit()
+        guard animated else { return }
+        for layer in [capsule, halo] {
+            let spring = CASpringAnimation(keyPath: "transform")
+            spring.fromValue = from
+            spring.toValue = target
+            spring.damping = 14
+            spring.stiffness = 260
+            spring.mass = 1
+            spring.duration = spring.settlingDuration
+            layer.add(spring, forKey: "lift")
+        }
+    }
+
+    /// The ring fills smoothly between readings whatever the redraw asked for, turns while the size
+    /// is unknown, eases back to the top when the first reading lands, and keeps turning while it
+    /// fades out, so it never snaps upright on its way out.
+    private func drawRingFill(_ face: DictationFace, reduce: Bool) {
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(reduce ? 0 : 0.25)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        if let progress = face.progress {
+            if ring.animation(forKey: "spin") != nil { settleSpin() }
+            ring.strokeEnd = CGFloat(max(0.03, progress))
+        } else if face.isPreparing {
+            ring.strokeEnd = 0.25
+            spin(reduce: reduce)
+        } else if ring.animation(forKey: "spin") != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                guard let self, !self.face.isPreparing else { return }
+                self.ring.removeAnimation(forKey: "spin")
+            }
+        } else if ring.strokeEnd > 0.03, ring.strokeEnd < 1 {
+            ring.strokeEnd = 1
+        }
+        CATransaction.commit()
+    }
+
+    /// An indeterminate wait turns the quarter arc; Reduced Motion holds it still.
+    private func spin(reduce: Bool) {
+        guard !reduce, ring.animation(forKey: "spin") == nil else { return }
+        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+        spin.fromValue = 0
+        spin.toValue = -Double.pi * 2
+        spin.duration = 1.1
+        spin.repeatCount = .infinity
+        ring.add(spin, forKey: "spin")
+    }
+
+    /// The first reading lands while the arc is turning: it eases back to the top from wherever it
+    /// stands rather than jumping, while the fill grows to the reading.
+    private func settleSpin() {
+        let angle = ring.presentation()?.value(forKeyPath: "transform.rotation.z") as? Double ?? 0
+        ring.removeAnimation(forKey: "spin")
+        let back = CABasicAnimation(keyPath: "transform.rotation.z")
+        back.fromValue = angle
+        back.toValue = 0
+        back.duration = 0.25
+        back.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        ring.add(back, forKey: "settle")
+    }
+
+    /// The bars sink to the floor while the last words settle, then the capsule narrows.
+    private func sinkBars(animated: Bool) {
+        heights = [Double](repeating: DictationBars.floor, count: DictationBars.count)
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(animated ? 0.16 : 0)
+        CATransaction.setDisableActions(!animated)
+        layoutBars()
+        CATransaction.commit()
+    }
+
+    /// Leaving and coming back fade with the width, and the control is taken out of the layout only
+    /// once it has faded.
+    private func setHidden(_ hidden: Bool, animated: Bool) {
+        hideToken += 1
+        let token = hideToken
+        if !hidden {
+            if isHidden {
+                alphaValue = 0
+                isHidden = false
+            }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = animated ? 0.22 : 0
+                context.allowsImplicitAnimation = true
+                self.alphaValue = 1
+            }
+            return
+        }
+        guard !isHidden else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = animated ? 0.22 : 0
+            context.allowsImplicitAnimation = true
+            self.alphaValue = 0
+        } completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.hideToken == token, self.face == .hidden else { return }
+                self.isHidden = true
+            }
+        }
+    }
+
+    /// How a take ended, carried by the rest glyph for a moment: the accent for words kept or sent,
+    /// danger for a discard, the warning tone for a problem, then back to its own ink.
+    func flash(_ end: DictationEnd) {
+        let tone: NSColor
+        switch end {
+        case .kept, .sent: tone = MacTheme.Color.accent
+        case .discarded: tone = MacTheme.Color.danger
+        case .problem: tone = MacTheme.Color.warning
+        case .nothingHeard: return
+        }
+        flashToken += 1
+        let token = flashToken
+        flashing = tone
+        paint()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self, self.flashToken == token else { return }
+            self.flashing = nil
+            self.paint()
+        }
+    }
+
+    /// The glyph's ink, crossfaded when it changes: an image view does not blend its tint.
+    private func setGlyphTint(_ tint: NSColor) {
+        guard glyph.contentTintColor != tint else { return }
+        if glyph.contentTintColor != nil, window != nil,
+            !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        {
+            let fade = CATransition()
+            fade.type = .fade
+            fade.duration = 0.18
+            glyph.layer?.add(fade, forKey: "tint")
+        }
+        glyph.contentTintColor = tint
+    }
+
+    /// One pulse when a speech model has just landed: ready now, and still waiting for a press.
+    func pulse() {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let layer = glyph.layer else { return }
+        let center = CGPoint(x: glyph.bounds.midX, y: glyph.bounds.midY)
+        var grown = CATransform3DMakeTranslation(center.x, center.y, 0)
+        grown = CATransform3DScale(grown, 1.12, 1.12, 1)
+        grown = CATransform3DTranslate(grown, -center.x, -center.y, 0)
+        let pulse = CAKeyframeAnimation(keyPath: "transform")
+        pulse.values = [CATransform3DIdentity, grown, CATransform3DIdentity]
+        pulse.keyTimes = [0, 0.35, 1]
+        pulse.duration = 0.45
+        pulse.timingFunctions = [CAMediaTimingFunction(name: .easeOut), CAMediaTimingFunction(name: .easeInEaseOut)]
+        layer.add(pulse, forKey: "pulse")
     }
 
     var chord: String?
@@ -196,11 +386,18 @@ final class MacDictationButton: NSView {
             for bar in bars { bar.backgroundColor = NSColor.white.cgColor }
             ring.strokeColor = MacTheme.Color.accent.cgColor
         }
-        switch face {
-        case .blocked: glyph.contentTintColor = MacTheme.Color.warning
-        case .needsModel, .preparing: glyph.contentTintColor = MacTheme.Color.accent
-        default: glyph.contentTintColor = .secondaryLabelColor
+        if let flashing, !face.isOpen {
+            setGlyphTint(flashing)
+            badge.contentTintColor = MacTheme.Color.accent
+            return
         }
+        let tint: NSColor
+        switch face {
+        case .blocked: tint = MacTheme.Color.warning
+        case .needsModel, .preparing: tint = MacTheme.Color.accent
+        default: tint = .secondaryLabelColor
+        }
+        setGlyphTint(tint)
         badge.contentTintColor = MacTheme.Color.accent
     }
 }
@@ -282,9 +479,8 @@ final class MacDictationEdge: NSView {
     }
 }
 
-/// The line over the box that says what to do now, inside the composer's own glass rather than on
-/// glass of its own: the timer and how to stop, where a held take will go, or how a take ended,
-/// with Undo after a discard.
+/// The box's last line, inside the field under the words: the timer and how to stop, where a held
+/// take will go, or how a take ended, with Undo after a discard. The field shows and hides it.
 @MainActor
 final class MacDictationHint: NSView {
     private let dot = NSTextField(labelWithString: "●")
@@ -318,11 +514,10 @@ final class MacDictationHint: NSView {
         addSubview(stack)
         NSLayoutConstraint.activate([
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
-            stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
-        isHidden = true
     }
 
     @available(*, unavailable)
@@ -330,14 +525,13 @@ final class MacDictationHint: NSView {
 
     @objc private func undoPressed() { onUndo?() }
 
-    var text: String { isHidden ? "" : label.stringValue }
+    private(set) var showing = false
+
+    var text: String { showing ? label.stringValue : "" }
 
     func show(_ hint: DictationHint?, undoAvailable: Bool) {
-        guard let hint else {
-            isHidden = true
-            return
-        }
-        isHidden = false
+        showing = hint != nil
+        guard let hint else { return }
         dot.isHidden = hint.style != .live
         timer.stringValue = hint.timer ?? ""
         timer.isHidden = hint.timer == nil

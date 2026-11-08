@@ -26,7 +26,7 @@ extension ComposerView {
         editorRow.spacing = MacTheme.Spacing.s
         editorRow.translatesAutoresizingMaskIntoConstraints = false
 
-        let column = FillingStack(views: [chips, dictation.hint, editorRow, pills])
+        let column = FillingStack(views: [chips, editorRow, pills])
         column.spacing = MacTheme.Spacing.s
         column.translatesAutoresizingMaskIntoConstraints = false
         addSubview(column)

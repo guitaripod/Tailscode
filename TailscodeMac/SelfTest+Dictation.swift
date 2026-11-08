@@ -47,7 +47,7 @@ extension SelfTest {
             defer: false)
         let row = NSStackView(views: [host.editor, controller.button, host.send])
         row.orientation = .horizontal
-        let column = NSStackView(views: [controller.hint, row])
+        let column = NSStackView(views: [row])
         column.orientation = .vertical
         window.contentView = column
         controller.harnessReadiness(.ready, language: "en-US")
@@ -60,8 +60,12 @@ extension SelfTest {
             throw SelfTestFailure("dictation: a quick click listens hands-free, got \(controller.harnessFace)")
         }
         try expect(controller.harnessHint.contains("⌃⇧D"), "the hint names the chord: \(controller.harnessHint)")
+        try expect(controller.hint.isDescendant(of: host.editor), "the status is inside the box, not a label outside it")
+        try expect(host.editor.footerShown, "and the field makes room for it")
         try expect(host.editor.dictationEdge.isLit, "the field's edge is lit")
-        try expect(controller.button.widthConstraint.constant == MacDictationButton.openWidth, "the control grew into the capsule")
+        try expect(
+            await settle(1) { controller.button.widthConstraint.constant == MacDictationButton.openWidth },
+            "the control grew into the capsule: \(controller.button.widthConstraint.constant)")
         controller.harnessDown()
         controller.harnessUp()
         try expect(await settle(3) { !controller.isOpen }, "the next click stops the take")
@@ -75,7 +79,8 @@ extension SelfTest {
         host.editor.setText("Please", caretAtEnd: true)
         controller.harnessDown()
         try expect(await settle(3) { controller.harnessSnapshot.wordCount > 3 }, "a hold listens")
-        try? await Task.sleep(nanoseconds: 350_000_000)
+        try expect(await settle(1) { controller.harnessSnapshot.mode == .held }, "the hold engages at 280 ms")
+        try expect(controller.harnessHint.contains("Release to keep"), "and the box says how a hold ends: \(controller.harnessHint)")
         controller.harnessSlide(dx: -80)
         try expect(await settle(1) { controller.harnessSnapshot.arm == .cancel }, "dragging left arms a cancel")
         try expect(controller.harnessFace.tone == .danger, "an armed cancel wears the danger tone")
@@ -83,6 +88,8 @@ extension SelfTest {
         try expect(await settle(3) { !controller.isOpen }, "releasing the armed cancel ends the take")
         try expect(host.editor.text == "Please", "the box is as it was: \(host.editor.text)")
         try expect(controller.harnessHint == DictationReading.ending(.discarded)?.text, "the hint says Discarded")
+        host.editor.harnessType("!")
+        try expect(await settle(1) { controller.harnessHint.isEmpty }, "typing after a discard takes Undo away, so it never writes over new words")
 
         host.editor.setText("", caretAtEnd: true)
         controller.toggle()
@@ -105,7 +112,7 @@ extension SelfTest {
         try expect(host.sent.first?.hasPrefix("Rename") == true, "what was sent is what was said: \(host.sent)")
 
         controller.callLive = true
-        try expect(controller.button.isHidden, "a live call hides the microphone")
+        try expect(await settle(1) { controller.button.isHidden }, "a live call fades the microphone out")
         controller.callLive = false
         try expect(!controller.button.isHidden, "and it comes back when the call ends")
 
@@ -178,7 +185,7 @@ extension SelfTest {
             let send = actions.arrangedSubviews.firstIndex(of: first.sendButton)
         else { throw SelfTestFailure("quick ask dictation: the microphone is in the field beside Send") }
         try expect(box < pair && mic < send, "the microphone stands between the box and Send")
-        try expect(first.dictation.hint.superview != nil, "the hint has a place in the panel")
+        try expect(first.dictation.hint.isDescendant(of: first.editor), "the status lives inside the box")
         try expect(first.dictation.harnessFace == .ready, "a ready Mac shows it")
         first.contentView?.layoutSubtreeIfNeeded()
         let restingMic = first.dictation.button.convert(first.dictation.button.bounds, to: nil)
@@ -194,11 +201,13 @@ extension SelfTest {
             throw SelfTestFailure("quick ask dictation: a tap listens hands-free, got \(first.dictation.harnessFace)")
         }
         try expect(first.editor.dictationEdge.isLit, "the field's edge is lit")
+        try? await Task.sleep(nanoseconds: 350_000_000)
         first.contentView?.layoutSubtreeIfNeeded()
         let hintFrame = first.dictation.hint.convert(first.dictation.hint.bounds, to: nil)
+        let boxFrame = first.editor.convert(first.editor.bounds, to: nil)
         try expect(
-            !first.dictation.hint.isHidden && hintFrame.maxY <= field.convert(field.bounds, to: nil).minY + 0.5,
-            "the hint shows under the field: \(hintFrame)")
+            first.editor.footerShown && first.dictation.hint.alphaValue > 0 && boxFrame.contains(hintFrame.insetBy(dx: 0.5, dy: 0.5)),
+            "the status shows inside the box: \(hintFrame) in \(boxFrame), shown \(first.editor.footerShown), alpha \(first.dictation.hint.alphaValue)")
         try expect(
             abs(first.dictation.button.convert(first.dictation.button.bounds, to: nil).midY - sendFrame.midY) <= 1.5,
             "the capsule stays level with Send")

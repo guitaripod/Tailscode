@@ -73,7 +73,7 @@ final class MacHaptics {
         switch cue {
         case .tap, .selection, .step, .notch: return .alignment
         case .send, .needsYou, .warning: return .generic
-        case .received, .success, .error, .listen, .listenEnd: return .levelChange
+        case .received, .success, .error, .listen, .hold, .listenEnd: return .levelChange
         }
     }
 }

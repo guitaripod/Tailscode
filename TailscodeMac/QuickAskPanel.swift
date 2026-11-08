@@ -255,6 +255,7 @@ final class QuickAskPanel: NSPanel {
             self?.makeRoom()
         }
         editor.onPaste = { [weak self] in self?.takeClipboard() ?? false }
+        editor.onFieldHeightChanged = { [weak self] in self?.makeRoom() }
 
         aimedServerID = QuickAskDefaults.target(
             among: servers.map(\.id), fallback: preferredServer)
@@ -350,7 +351,7 @@ final class QuickAskPanel: NSPanel {
         aim.orientation = .horizontal
         aim.spacing = 6
 
-        let head = NSStackView(views: [field, dictation.hint, completion, aim, chips, status])
+        let head = NSStackView(views: [field, completion, aim, chips, status])
         head.orientation = .vertical
         head.alignment = .leading
         head.spacing = 10

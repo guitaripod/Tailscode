@@ -94,6 +94,9 @@ final class MacDictationController {
     private var endingToken = 0
     private var takes = 0
     private var openOnRelease = false
+    private var localArm: DictationArm?
+    private var notice: DictationHint?
+    private var noticeToken = 0
     private var heldKeyCode: UInt16?
     private var lastTimer: String?
     private nonisolated(unsafe) var frameTimer: Timer?
@@ -108,11 +111,20 @@ final class MacDictationController {
         button.onActivate = { [weak self] in self?.toggle() }
         hint.onUndo = { [weak self] in self?.undoDiscard() }
         host.dictationEditor.onEditDuringDictation = { [weak self] in self?.stopKeepingShown() }
+        host.dictationEditor.onEditOutsideDictation = { [weak self] in self?.boxEdited() }
+        host.dictationEditor.mountDictationFooter(hint)
         let center = NotificationCenter.default
         for name in [DictationPreferences.didChange, MacDictationEngines.didChange, NSApplication.didBecomeActiveNotification] {
             observers.append(
                 center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                     MainActor.assumeIsolated { self?.refresh() }
+                })
+        }
+        for name in [NSApplication.didResignActiveNotification, NSWindow.didResignKeyNotification] {
+            observers.append(
+                center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                    let window = (note.object as? NSWindow).map(ObjectIdentifier.init)
+                    MainActor.assumeIsolated { self?.pressLost(window) }
                 })
         }
         redraw(animated: false)
@@ -127,7 +139,30 @@ final class MacDictationController {
     var isOpen: Bool { session != nil && !detached }
 
     private var face: DictationFace {
-        DictationFace.read(readiness: readiness, snapshot: snapshot, available: !callLive)
+        DictationFace.read(readiness: readiness, snapshot: seen, available: !callLive)
+    }
+
+    /// The take with what the hand already did laid over it: an engaged hold and a slid arm show
+    /// at once, and the release decides from them rather than from the session's later word.
+    private var seen: DictationSnapshot { snapshot.pressed(engaged: press.isEngaged, arm: localArm) }
+
+    /// The app or the window let go of the keyboard and the pointer mid-press: the release will
+    /// never come, so the press ends here the way a release would.
+    private func pressLost(_ window: ObjectIdentifier?) {
+        if let window, window != button.window.map(ObjectIdentifier.init) { return }
+        heldKeyCode = nil
+        openOnRelease = false
+        guard press.isDown else { return }
+        act(press.abandon(at: CACurrentMediaTime()))
+    }
+
+    /// The person wrote in the box after a discard: Undo would write the old take over their words,
+    /// so it is no longer offered.
+    private func boxEdited() {
+        guard discarded != nil || ending == .discarded else { return }
+        discarded = nil
+        if ending == .discarded { ending = nil }
+        redraw(animated: true)
     }
 
     func refresh() {
@@ -147,7 +182,7 @@ final class MacDictationController {
             openOnRelease = true
             return
         }
-        act(press.down(at: CACurrentMediaTime(), listening: isOpen), mode: .held)
+        act(press.down(at: CACurrentMediaTime(), listening: isOpen))
     }
 
     private func up() {
@@ -156,33 +191,37 @@ final class MacDictationController {
             pressedWhileNotReady()
             return
         }
-        act(press.up(at: CACurrentMediaTime()), mode: .held)
+        act(press.up(at: CACurrentMediaTime()))
     }
 
     private func dragged(dx: CGFloat, windowPoint: NSPoint) {
-        guard isOpen, press.isDown, snapshot.mode == .held || press.isHeld(at: CACurrentMediaTime()),
-            let session, let send = host?.dictationSendControl
-        else { return }
+        guard isOpen, press.isDown else { return }
+        if !press.isEngaged { act(press.tick(at: CACurrentMediaTime())) }
+        guard press.isEngaged, let session, let send = host?.dictationSendControl else { return }
         let local = send.convert(windowPoint, from: nil)
         let overSend = send.bounds.insetBy(dx: -DictationSlide.sendSlop, dy: -DictationSlide.sendSlop).contains(local)
         let arm = DictationSlide.arm(
             travelled: Double(dx), overSend: overSend, cancelDistance: DictationSlide.pointerCancelDistance)
-        guard arm != snapshot.arm else { return }
+        guard arm != seen.arm else { return }
+        MacHaptics.shared.play(arm == .none ? .selection : .notch)
+        localArm = arm
+        host?.dictationEditor.showDictation(
+            anchor.compose(settled: snapshot.settled, heard: snapshot.heard), struck: arm == .cancel)
+        redraw(animated: true)
         enqueue { await session.setArm(arm) }
     }
 
     /// The chord went down: the key is remembered so its release, or the release of one of the
     /// chord's modifiers, ends a hold. Auto-repeat is a press already down.
     func chordDown(keyCode: UInt16) {
-        guard !waiting else { return }
-        if heldKeyCode == nil { heldKeyCode = keyCode }
+        guard !waiting, heldKeyCode == nil else { return }
+        heldKeyCode = keyCode
         if !isOpen, !face.isTakeable {
             press = DictationPress()
-            heldKeyCode = nil
             pressedWhileNotReady()
             return
         }
-        act(press.down(at: CACurrentMediaTime(), listening: isOpen), mode: .held)
+        act(press.down(at: CACurrentMediaTime(), listening: isOpen))
     }
 
     /// A key rose, or the modifiers changed: a hold of the chord ends when any of its keys is let go.
@@ -192,7 +231,7 @@ final class MacDictationController {
         let modifiersUp = keyCode == nil && !(flags.contains(.control) && flags.contains(.shift))
         guard letterUp || modifiersUp else { return }
         heldKeyCode = nil
-        act(press.up(at: CACurrentMediaTime()), mode: .held)
+        act(press.up(at: CACurrentMediaTime()))
     }
 
     /// Esc throws an open take away and Return settles it and sends; nothing else is taken.
@@ -228,19 +267,31 @@ final class MacDictationController {
         }
     }
 
-    private func act(_ action: DictationPress.Action, mode: DictationMode) {
+    private func act(_ action: DictationPress.Action) {
         switch action {
-        case .open: open(mode: mode)
-        case .becomeHandsFree:
+        case .open:
+            open(mode: .handsFree)
+            scheduleHoldTick()
+        case .becomeHeld:
             guard let session else { return }
-            enqueue { await session.setMode(.handsFree) }
+            MacHaptics.shared.play(.hold)
+            redraw(animated: true)
+            enqueue { await session.setMode(.held) }
         case .stop:
-            switch snapshot.arm {
+            switch localArm ?? snapshot.arm {
             case .cancel: cancel()
             case .send: stop(sending: true)
             case .none: stop(sending: false)
             }
         case .none: break
+        }
+    }
+
+    /// A press that is still down when the threshold passes engages its hold.
+    private func scheduleHoldTick() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + DictationPress.holdThreshold + 0.012) { [weak self] in
+            guard let self else { return }
+            self.act(self.press.tick(at: CACurrentMediaTime()))
         }
     }
 
@@ -268,12 +319,13 @@ final class MacDictationController {
                 self.readiness = .ready
                 MacHaptics.shared.play(.success)
                 self.redraw(animated: true)
+                self.button.pulse()
             } catch {
                 guard let self else { return }
                 self.preparing = nil
                 self.readiness = .needsDownload(bytes: nil)
-                self.ending = .problem(.engine(String(describing: error)))
-                self.redraw(animated: true)
+                self.say(DictationHint(text: DictationModelReading.failed, style: .warning))
+                MacHaptics.shared.play(.warning)
             }
         }
     }
@@ -307,6 +359,8 @@ final class MacDictationController {
         anchor = anchored.insertion
         originalSelection = anchored.selection
         original = editor.text
+        localArm = nil
+        notice = nil
         discarded = nil
         ending = nil
         detached = false
@@ -341,11 +395,9 @@ final class MacDictationController {
 
     private func apply(_ next: DictationSnapshot, from source: DictationSession) {
         guard source === session, !detached, let editor = host?.dictationEditor else { return }
-        let previousArm = snapshot.arm
         snapshot = next
-        if next.arm != previousArm { MacHaptics.shared.play(next.arm == .none ? .selection : .notch) }
         if next.phase != .idle {
-            editor.showDictation(anchor.compose(settled: next.settled, heard: next.heard), struck: next.arm == .cancel)
+            editor.showDictation(anchor.compose(settled: next.settled, heard: next.heard), struck: seen.arm == .cancel)
         } else if let end = next.ended {
             land(DictationTake(text: next.settled, end: end), from: source, sending: false)
             return
@@ -395,8 +447,10 @@ final class MacDictationController {
         press = DictationPress()
         heldKeyCode = nil
         snapshot = DictationSnapshot(ended: end, take: takes)
+        localArm = nil
         ending = end
         endingToken += 1
+        button.flash(end)
         stopFrames()
         host?.dictationEditor.setDictating(false)
         if case .problem(.microphoneDenied) = end { readiness = .unavailable(.microphoneDenied) }
@@ -477,14 +531,30 @@ final class MacDictationController {
     }
 
     private func drawHint(_ face: DictationFace) {
-        var shown = snapshot
+        var shown = seen
         if !face.showsBars, let ending { shown.ended = ending }
-        let hint = DictationReading.hint(
+        let reading = DictationReading.hint(
             face: face, snapshot: shown, now: ProcessInfo.processInfo.systemUptime, surface: .pointer,
-            chord: host?.dictationChord)
-        let visible = face.showsBars || face.isPreparing || ending != nil
+            chord: host?.dictationChord, heldByKey: heldKeyCode != nil)
+        let live = face.showsBars || face.isPreparing || ending != nil ? reading : nil
+        let hint = live ?? notice
         lastTimer = hint?.timer
-        self.hint.show(visible ? hint : nil, undoAvailable: discarded != nil)
+        self.hint.show(hint, undoAvailable: discarded != nil)
+        host?.dictationEditor.setDictationFooterShown(hint != nil, animated: true)
+    }
+
+    /// A line that is about dictation rather than about a take — a speech model that did not
+    /// arrive — shown in the box for as long as a warning lingers.
+    private func say(_ line: DictationHint) {
+        notice = line
+        noticeToken += 1
+        let token = noticeToken
+        redraw(animated: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + line.lingers) { [weak self] in
+            guard let self, self.noticeToken == token else { return }
+            self.notice = nil
+            self.redraw(animated: true)
+        }
     }
 
     private func startFrames() {
@@ -524,9 +594,7 @@ final class MacDictationController {
     func harnessDown() { down() }
     func harnessUp() { up() }
     func harnessSlide(dx: CGFloat) {
-        guard let session, isOpen else { return }
-        let arm = DictationSlide.arm(travelled: Double(dx), overSend: false, cancelDistance: DictationSlide.pointerCancelDistance)
-        enqueue { await session.setArm(arm) }
+        dragged(dx: dx, windowPoint: NSPoint(x: -10_000, y: -10_000))
     }
     func harnessReadiness(_ value: DictationReadiness, language: String?) {
         readiness = value
