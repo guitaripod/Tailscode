@@ -205,6 +205,15 @@ public enum DictationReading {
         return Localized.text("Automatic · %@", languageName(resolved))
     }
 
+    public static func languageFooter(surface: DictationSurface) -> String {
+        switch surface {
+        case .touch:
+            return Localized.text("Automatic follows the keyboard you are typing with. Nothing you say leaves this device.")
+        case .pointer:
+            return Localized.text("Automatic follows the first language in your Mac's preferred list. Nothing you say leaves it.")
+        }
+    }
+
     public static var chatWordsTitle: String { Localized.text("Words from the chat") }
 
     public static var chatWordsFooter: String {
