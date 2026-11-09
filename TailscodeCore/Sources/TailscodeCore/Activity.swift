@@ -309,6 +309,8 @@ public enum StatusMark {
     public static let clock = "◷"
     /// A snowflake for a prompt cache that has lapsed.
     public static let cold = "❅"
+    /// A section sign for the chapters a conversation has been through.
+    public static let chapters = "§"
 }
 
 extension ToolStatus {

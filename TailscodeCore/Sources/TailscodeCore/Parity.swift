@@ -82,6 +82,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case taskBoard
     case questionCells
     case compactionSeam
+    case chapters
     case permissionCards
     case failureSurface
     case answerlessTurn

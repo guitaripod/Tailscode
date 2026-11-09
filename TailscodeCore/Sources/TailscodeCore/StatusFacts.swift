@@ -112,6 +112,9 @@ public struct StatusFacts: Sendable {
     public var goalFailed = false
     public var queued: Int = 0
     public var attachments: Int = 0
+    /// How many chapters the conversation has been through, where its server keeps them. Said only
+    /// from two: one chapter is only the title again.
+    public var chapters: Int = 0
     /// The moment these facts were read. Every duration the band states is measured against it
     /// rather than against whatever the clock says when a row happens to be built: a snapshot
     /// whose clocks keep running is not a snapshot, and a menu unfolded a minute after the segment
@@ -226,6 +229,7 @@ public struct StatusFacts: Sendable {
             facts.goalFailed = goal.didFail
         }
         facts.attachments = attachments
+        facts.chapters = state.chapters.count
         return facts
     }
 
@@ -452,6 +456,12 @@ public struct StatusFacts: Sendable {
         if attachments > 0 {
             result.append(Segment(id: "attach", text: Localized.text("%d attached", attachments), css: "seg-dim", kind: .plain))
         }
+        if chapters >= 2 {
+            result.append(
+                Segment(
+                    id: "chapters", text: StatusMark.chapters + " " + Localized.text("%d chapters", chapters),
+                    css: "seg-dim", kind: .act(.chapters)))
+        }
         return result
     }
 
@@ -616,5 +626,6 @@ public struct StatusFacts: Sendable {
         case scrollToAgents
         case reconnect
         case agent(String)
+        case chapters
     }
 }

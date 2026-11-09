@@ -345,6 +345,10 @@ public enum ShortcutRegistry {
             category: .conversation, action: .copyLastAnswer, contexts: [.normal],
             defaults: ["Y"]),
         .init(
+            id: "chat.chapters", title: Localized.text("How this chat got here"),
+            category: .conversation, action: .showChapters, contexts: [.normal],
+            defaults: ["g c"]),
+        .init(
             id: "find.open", title: Localized.text("Find in the conversation"),
             category: .conversation, action: .findInConversation, contexts: [.normal, .insert],
             defaults: ["normal:f", "ctrl+f"]),
@@ -781,6 +785,7 @@ public enum KeyAction: Equatable, Sendable {
     case scrollBottom
     case previousPrompt
     case nextPrompt
+    case showChapters
     case copyLastAnswer
     case insert
     case leaveInsert
