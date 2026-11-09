@@ -119,7 +119,7 @@ extension ServerDetailViewController {
                 health.healthy ? String(localized: "Healthy") : String(localized: "Unhealthy")
             serverVersion = health.version
             serverAccess = health.access
-            ServerHealthMonitor.record(health.healthy, for: profile.id)
+            ServerHealthMonitor.record(health.healthy, version: health.version, for: profile.id)
             sessionCount = (try? await backend.listAllSessions(knownDirectories: []))?.count
             if !isDemo {
                 turnWaitAvailability = .from(await backend.turnWaitSupport(), agent: profile.backend)

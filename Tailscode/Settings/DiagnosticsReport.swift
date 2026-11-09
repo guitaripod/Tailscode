@@ -56,7 +56,9 @@ enum DiagnosticsReport {
             var parts = ["\(profile.name) — \(profile.backend.displayName)"]
             parts.append(profile.baseURL.absoluteString)
             switch ServerHealthMonitor.entry(for: profile.id) {
-            case .some(let entry): parts.append(entry.reachable ? "reachable" : "unreachable")
+            case .some(let entry):
+                parts.append(entry.reachable ? "reachable" : "unreachable")
+                if let version = entry.version { parts.append("version \(version)") }
             case .none: parts.append("unchecked")
             }
             if profile.id == ConnectionController.shared.activeProfileID { parts.append("default") }

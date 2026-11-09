@@ -14,6 +14,7 @@ enum ServerHealthMonitor {
     struct Entry {
         let reachable: Bool
         let checkedAt: Date
+        let version: String?
     }
 
     private static var entries: [String: Entry] = [:]
@@ -27,8 +28,8 @@ enum ServerHealthMonitor {
 
     static var lastCheckedAt: Date? { entries.values.map(\.checkedAt).max() }
 
-    static func record(_ reachable: Bool, for id: String) {
-        entries[id] = Entry(reachable: reachable, checkedAt: Date())
+    static func record(_ reachable: Bool, version: String? = nil, for id: String) {
+        entries[id] = Entry(reachable: reachable, checkedAt: Date(), version: version)
         NotificationCenter.default.post(name: didChange, object: nil)
     }
 
@@ -69,7 +70,7 @@ enum ServerHealthMonitor {
             "health check starting for \(profiles.count) profiles (8s timeout)",
             category: .connection
         )
-        await withTaskGroup(of: (String, Bool).self) { group in
+        await withTaskGroup(of: (String, Bool, String?).self) { group in
             for profile in profiles {
                 group.addTask {
                     guard
@@ -78,20 +79,20 @@ enum ServerHealthMonitor {
                     else {
                         MidgarLog.info(
                             "health check \(profile.name): no backend", category: .connection)
-                        return (profile.id, false)
+                        return (profile.id, false, nil)
                     }
                     do {
                         let health = try await backend.health()
-                        return (profile.id, health.healthy)
+                        return (profile.id, health.healthy, health.version)
                     } catch {
                         MidgarLog.info(
                             "health check \(profile.name): error \(error.localizedDescription)", category: .connection)
-                        return (profile.id, false)
+                        return (profile.id, false, nil)
                     }
                 }
             }
-            for await (id, ok) in group {
-                record(ok, for: id)
+            for await (id, ok, version) in group {
+                record(ok, version: version, for: id)
                 MidgarLog.info(
                     "health check result id=\(id.prefix(8)) ok=\(ok)", category: .connection)
             }
