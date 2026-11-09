@@ -288,6 +288,118 @@ struct NeuralTurnTests {
         #expect(turn.answerPartIDs == ["m1:p0"])
     }
 
+    @Test("words the chat showed stay where they were read when the agent goes back to work")
+    func shownWordsStay() {
+        let written = String(repeating: "The server answers on 4096. ", count: 14)
+        var messages: [ChatMessage] = [
+            Fixtures.user(0),
+            Fixtures.message(1, [Fixtures.read("a/b/c.swift", out: ["10 lines"])]),
+            Fixtures.message(2, [.text(written)], streaming: true),
+        ]
+        var turn = NeuralTurns.partition(messages: messages, running: true)[0]
+        #expect(turn.answerPartIDs == ["m2:p0"])
+
+        messages[2] = Fixtures.message(
+            2, [.text(written), Fixtures.bash("swift build", status: .running)], streaming: true)
+        turn = NeuralTurns.partition(messages: messages, running: true)[0]
+        #expect(turn.answerPartIDs.isEmpty)
+        #expect(turn.steps.map(\.zone) == [.sense, .say, .shell])
+        #expect(turn.steps[1].inChat)
+        #expect(turn.steps[1].text == written)
+        #expect(!turn.memberPartIDs.contains("m2:p0"))
+        #expect(turn.memberPartIDs.contains("m2:p1"))
+        #expect(turn.anchor == "m1:p0")
+
+        let outline = NeuralTurns.outline(messages: Array(messages.dropFirst()), running: true)
+        #expect(!outline.consumes("m2:p0"))
+        #expect(outline.consumes("m2:p1"))
+        #expect(outline.stepCount == 3)
+        #expect(outline.anchor == "m1:p0")
+
+        messages.append(Fixtures.message(3, [.text("Built and installed.")]))
+        turn = NeuralTurns.partition(messages: messages, running: false)[0]
+        #expect(turn.answerPartIDs == ["m3:p0"])
+        #expect(!turn.memberPartIDs.contains("m2:p0"))
+        #expect(turn.steps.filter(\.inChat).map(\.id) == ["m2:p0"])
+    }
+
+    @Test("a short note after a step was never shown, so it goes into the brain unseen")
+    func heldNoteStaysInBrain() {
+        let messages: [ChatMessage] = [
+            Fixtures.user(0),
+            Fixtures.message(1, [Fixtures.read("a/b/c.swift", out: ["10 lines"])]),
+            Fixtures.message(2, [.text("Building it now."), Fixtures.bash("swift build")]),
+            Fixtures.message(3, [.text("Done.")]),
+        ]
+        let turn = NeuralTurns.partition(messages: messages, running: false)[0]
+        #expect(turn.steps.map(\.zone) == [.sense, .say, .shell])
+        #expect(!turn.steps[1].inChat)
+        #expect(turn.memberPartIDs.contains("m2:p0"))
+        let outline = NeuralTurns.outline(messages: Array(messages.dropFirst()), running: false)
+        #expect(outline.consumes("m2:p0"))
+    }
+
+    @Test("a turn's opening words stay above its brain, whatever their length")
+    func openingWordsStay() {
+        let messages: [ChatMessage] = [
+            Fixtures.user(0),
+            Fixtures.message(1, [.text("Yes, it is. Fixing the other one now."), Fixtures.bash("ls")]),
+            Fixtures.message(2, [.text("Fixed.")]),
+        ]
+        let turn = NeuralTurns.partition(messages: messages, running: false)[0]
+        #expect(turn.steps.map(\.zone) == [.say, .shell])
+        #expect(turn.steps[0].inChat)
+        #expect(!turn.memberPartIDs.contains("m1:p0"))
+        #expect(turn.anchor == "m1:p1")
+        #expect(turn.answerPartIDs == ["m2:p0"])
+
+        let outline = NeuralTurns.outline(messages: Array(messages.dropFirst()), running: false)
+        #expect(!outline.consumes("m1:p0"))
+        #expect(outline.anchor == "m1:p1")
+        #expect(outline.anchorMessageID == "m1")
+        #expect(turn.outline.keptPartIDs.contains("m1:p0"))
+        #expect(turn.outline.anchor == "m1:p1")
+    }
+
+    @Test("opening words before a card alone put the brain between them and the card")
+    func openingWordsBeforeCard() {
+        let task = Fixtures.tool(
+            "Task", ["description": .string("survey"), "prompt": .string("look")])
+        let messages: [ChatMessage] = [
+            Fixtures.user(0),
+            Fixtures.message(1, [.text("Sending a scout."), task]),
+        ]
+        let turn = NeuralTurns.partition(messages: messages, running: true)[0]
+        #expect(turn.steps.map(\.inChat) == [true, false])
+        #expect(turn.anchor == "m1:p1")
+        let outline = NeuralTurns.outline(messages: Array(messages.dropFirst()), running: true)
+        #expect(outline.anchor == "m1:p1")
+        #expect(!outline.consumes("m1:p0"))
+        #expect(!outline.consumes("m1:p1"))
+        #expect(NeuralRowPlan(turns: [turn]).anchors == ["m1:p1": turn.id])
+    }
+
+    @Test("the live card does not quote a note the chat already shows")
+    func liveCardSkipsShownNote() {
+        let written = String(repeating: "The server answers on 4096. ", count: 14)
+        let messages: [ChatMessage] = [
+            Fixtures.user(0),
+            Fixtures.message(1, [Fixtures.read("a/b/c.swift", out: ["10 lines"])]),
+            Fixtures.message(
+                2, [.text(written), Fixtures.bash("swift build", status: .running)],
+                streaming: true),
+        ]
+        let shown = NeuralTurns.partition(messages: messages, running: true)[0]
+        #expect(NeuralLiveCard(model: NeuralBrainModel(turn: shown)).quote == nil)
+
+        var held = messages
+        held[2] = Fixtures.message(
+            2, [.text("Building it."), Fixtures.bash("swift build", status: .running)],
+            streaming: true)
+        let unseen = NeuralTurns.partition(messages: held, running: true)[0]
+        #expect(NeuralLiveCard(model: NeuralBrainModel(turn: unseen)).quote?.words == "Building it.")
+    }
+
     @Test("the outline holds the same words the turn does, and releases them at the same size")
     func outlineHoldsToo() {
         let held = [

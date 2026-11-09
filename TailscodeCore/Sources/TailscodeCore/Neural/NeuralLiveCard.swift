@@ -119,7 +119,8 @@ public struct NeuralLiveCard: Sendable, Equatable {
     public let flight: Flight?
     /// The latest note the agent wrote: a client holds it on the line for four seconds from the
     /// moment it first saw this step id. Words still streaming at the end of the turn are the
-    /// answer, not a step, and are not quoted here.
+    /// answer, not a step, and are not quoted here; nor is a note the chat keeps showing, whose
+    /// whole text is already on the page.
     public let quote: Quote?
     /// A step is waiting on the person.
     public let isWaiting: Bool
@@ -159,7 +160,9 @@ public struct NeuralLiveCard: Sendable, Equatable {
         isRetrying = retrying
         flight = at.map { Self.flight(of: steps[$0], at: $0, steps: steps, readings: readings) }
         quote =
-            steps.last { NeuralReading.isNote($0) && !$0.text.isEmpty }.map {
+            steps.last { NeuralReading.isNote($0) && !$0.text.isEmpty }.flatMap {
+                $0.inChat ? nil : $0
+            }.map {
                 Quote(
                     stepID: $0.id, speaker: NeuralAccount.speakerName(modelID: turn.modelID),
                     words: NeuralReadoutText.oneLine($0.text, limit: 240))

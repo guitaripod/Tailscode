@@ -4,9 +4,9 @@ import Foundation
 /// walks the parts of its messages; at a part id found in `anchors` it emits that turn's brain row,
 /// and for a part id in `skip` it builds no row of its own, because the brain consumes it.
 public struct NeuralRowPlan: Sendable, Equatable {
-    /// The part id (`"messageID:partID"`) a turn's brain row goes before, to the turn's id. That is
-    /// the turn's first member part, or its first step where every step is one the client also
-    /// draws as a card.
+    /// The part id (`"messageID:partID"`) a turn's brain row goes before, to the turn's id: the
+    /// turn's own `anchor`, its first member part, else its first step the chat does not already
+    /// show, so a turn's opening words stand above its brain.
     public let anchors: [String: NeuralTurn.ID]
     /// Every part the brains consume. A client builds no row for these.
     public let skip: Set<String>
@@ -51,7 +51,7 @@ public struct NeuralRowPlan: Sendable, Equatable {
                 skip.insert(id)
                 owner[id] = turn.id
             }
-            if let anchor = Self.anchor(of: turn) { anchors[anchor] = turn.id }
+            if let anchor = turn.anchor { anchors[anchor] = turn.id }
         }
         self.init(anchors: anchors, skip: skip, turnForPart: owner, turns: turns, order: order)
     }
@@ -70,11 +70,4 @@ public struct NeuralRowPlan: Sendable, Equatable {
     public func skips(_ partID: String) -> Bool { skip.contains(partID) }
 
     public var isEmpty: Bool { order.isEmpty }
-
-    private static func anchor(of turn: NeuralTurn) -> String? {
-        if let first = turn.steps.first(where: { turn.memberPartIDs.contains($0.id) }) {
-            return first.id
-        }
-        return turn.steps.first?.id
-    }
 }

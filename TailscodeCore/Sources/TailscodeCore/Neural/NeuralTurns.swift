@@ -153,15 +153,7 @@ public enum NeuralTurns {
         var answers: [String] = []
         var members = Set<String>()
         var seenStepParts = 0
-        var trailingBytes = 0
-        for reading in readings {
-            for item in reading.items {
-                switch item.kind {
-                case .reasoning, .tool: trailingBytes = 0
-                case .text: trailingBytes += item.step.text.utf8.count
-                }
-            }
-        }
+        let (shown, trailingBytes) = shownNotes(in: readings)
         let holding = holdsTrailingWords(
             running: running, hasSteps: totalStepParts > 0, bytes: trailingBytes)
         for (group, reading) in readings.enumerated() {
@@ -172,7 +164,9 @@ public enum NeuralTurns {
                     append(item, group: group, to: &steps, members: &members)
                 case .text:
                     if seenStepParts < totalStepParts {
-                        append(item, group: group, to: &steps, members: &members)
+                        append(
+                            item, group: group, to: &steps, members: &members,
+                            inChat: shown.contains(item.step.id))
                     } else if !holding {
                         answers.append(item.step.id)
                     }
@@ -195,7 +189,7 @@ public enum NeuralTurns {
         for (messageIndex, message) in messages.enumerated() {
             for (partIndex, part) in message.parts.enumerated() {
                 let id = "\(message.id):\(part.id)"
-                if answersSet.contains(id) || cards.contains(id) { continue }
+                if answersSet.contains(id) || cards.contains(id) || shown.contains(id) { continue }
                 if case .file = part.kind,
                     lastAnswer.map({ (messageIndex, partIndex) > $0 }) ?? false
                 {
@@ -220,13 +214,50 @@ public enum NeuralTurns {
 
     private static func append(
         _ item: MessageReading.Item, group: Int, to steps: inout [NeuralStep],
-        members: inout Set<String>
+        members: inout Set<String>, inChat: Bool = false
     ) {
         var step = item.step
         step.index = steps.count
         step.group = group
-        if item.member { members.insert(step.id) }
+        step.inChat = inChat
+        if item.member, !inChat { members.insert(step.id) }
         steps.append(step)
+    }
+
+    /// The notes the chat has already shown, which it keeps showing where they were read, and the
+    /// size of the words after the turn's last step. Words before a turn's first step are shown at
+    /// once (nothing holds them), and words after a step are shown once they outgrow
+    /// `heldAnswerBytes`; either way a call that follows makes them a note, and taking a line
+    /// the person has read back into the brain is what reads as output that vanished. Shorter
+    /// words after a step were held and never shown, so they go into the brain unseen.
+    static func shownNotes(in readings: [MessageReading]) -> (ids: Set<String>, trailing: Int) {
+        var shown = Set<String>()
+        var run: [String] = []
+        var bytes = 0
+        var sawStep = false
+        for reading in readings {
+            for item in reading.items {
+                switch item.kind {
+                case .reasoning, .tool:
+                    if !run.isEmpty, wasShown(bytes: bytes, afterStep: sawStep) {
+                        shown.formUnion(run)
+                    }
+                    run.removeAll(keepingCapacity: true)
+                    bytes = 0
+                    sawStep = true
+                case .text:
+                    run.append(item.step.id)
+                    bytes += item.step.text.utf8.count
+                }
+            }
+        }
+        return (shown, bytes)
+    }
+
+    /// Whether a run of words that a step followed had reached the chat before that step came:
+    /// the opening words always had, later words only past `heldAnswerBytes`.
+    static func wasShown(bytes: Int, afterStep: Bool) -> Bool {
+        !afterStep || bytes >= heldAnswerBytes
     }
 
     private static func read(
@@ -247,7 +278,7 @@ public enum NeuralTurns {
     /// them at once is what put a line in the chat for as long as it took the next call to arrive
     /// and then took it away into the brain. Held words become the answer when they outgrow
     /// `heldAnswerBytes` or the turn ends, and a note when a call follows, and the steps only ever
-    /// grow.
+    /// grow. Words that were shown stay shown when a call follows (`shownNotes`).
     static func holdsTrailingWords(running: Bool, hasSteps: Bool, bytes: Int) -> Bool {
         running && hasSteps && bytes > 0 && bytes < heldAnswerBytes
     }

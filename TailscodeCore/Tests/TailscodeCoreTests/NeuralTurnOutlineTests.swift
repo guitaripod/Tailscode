@@ -62,7 +62,11 @@ enum OutlineFixtures {
                                 ToolCall(
                                     id: "c\(message)-\(part)", name: name, status: status,
                                     input: .object(input), output: random.below(2) == 0 ? "ok\nmore" : nil))))
-                case 4, 5: parts.append(MessagePart(id: id, kind: .text("words \(part)")))
+                case 4: parts.append(MessagePart(id: id, kind: .text("words \(part)")))
+                case 5:
+                    let size = [40, 200, 330][random.below(3)]
+                    parts.append(
+                        MessagePart(id: id, kind: .text(String(repeating: "w", count: size))))
                 case 6: parts.append(MessagePart(id: id, kind: .text(random.below(2) == 0 ? "" : "   ")))
                 default:
                     parts.append(
@@ -95,7 +99,9 @@ enum OutlineFixtures {
 
 enum OutlineAgreement {
     static func agrees(_ outline: NeuralTurnOutline, with turn: NeuralTurn, group: [ChatMessage]) -> Bool {
-        let anchored = turn.steps.first { turn.memberPartIDs.contains($0.id) } ?? turn.steps.first
+        let anchored =
+            turn.steps.first { turn.memberPartIDs.contains($0.id) }
+            ?? turn.steps.first { !$0.inChat } ?? turn.steps.first
         guard outline.id == turn.id, outline.stepCount == turn.steps.count,
             outline.anchor == anchored?.id, outline.anchorMessageID == anchored?.messageID,
             outline.answerPartIDs == turn.answerPartIDs,

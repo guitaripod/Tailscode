@@ -97,6 +97,10 @@ public struct NeuralStep: Identifiable, Sendable, Hashable {
     public var recovered: Bool
     /// The call also draws a card of its own (a subagent, a board), which the client keeps.
     public var isCard: Bool
+    /// A note the chat already showed and keeps showing where it was read: the turn's opening
+    /// words, or words that outgrew `NeuralTurns.heldAnswerBytes` before the next call. The brain
+    /// still counts it, and the client keeps its row.
+    public var inChat: Bool
     /// The tool call the step was read from; nil for a thought or a note. The readout reads the
     /// full output and an edit's strings from it.
     public var call: NeuralStepCall?
@@ -106,7 +110,7 @@ public struct NeuralStep: Identifiable, Sendable, Hashable {
         messageID: String, at: Date? = nil, title: String, detail: String = "", text: String = "",
         outputLines: [String] = [], added: Int? = nil, removed: Int? = nil, tieKey: String? = nil,
         tieIsCommand: Bool = false, mark: Character? = nil, recovered: Bool = false,
-        isCard: Bool = false, call: NeuralStepCall? = nil
+        isCard: Bool = false, inChat: Bool = false, call: NeuralStepCall? = nil
     ) {
         self.id = id
         self.index = index
@@ -126,6 +130,7 @@ public struct NeuralStep: Identifiable, Sendable, Hashable {
         self.mark = mark
         self.recovered = recovered
         self.isCard = isCard
+        self.inChat = inChat
         self.call = call
     }
 }

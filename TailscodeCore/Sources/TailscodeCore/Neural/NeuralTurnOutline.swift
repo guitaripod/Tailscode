@@ -70,12 +70,14 @@ public struct NeuralTurnOutline: Sendable, Hashable {
 }
 
 extension NeuralTurn {
-    /// The part this turn's brain row goes before: its first member step, or its first step when
-    /// every step is one the client also draws as a card.
+    /// The part this turn's brain row goes before: its first member step, or its first card when
+    /// every step is one the client also draws itself. A note the chat keeps is never the anchor,
+    /// so the turn's opening words stand above its brain.
     public var anchor: String? { anchorIndex.map { steps[$0].id } }
 
     private var anchorIndex: Int? {
-        steps.indices.first { memberPartIDs.contains(steps[$0].id) } ?? steps.indices.first
+        steps.indices.first { memberPartIDs.contains(steps[$0].id) }
+            ?? steps.indices.first { !steps[$0].inChat } ?? steps.indices.first
     }
 
     private var boardPartIDs: [String] {
@@ -93,18 +95,26 @@ extension NeuralTurn {
         return found
     }
 
+    private var inChatPartIDs: [String] {
+        var found: [String] = []
+        for index in steps.indices where steps[index].inChat { found.append(steps[index].id) }
+        return found
+    }
+
     /// The outline of a turn read without its messages, for a turn made by hand. Where the messages
     /// are held `NeuralTurns.outline(messages:outcome:)` knows the parts the turn does not name:
-    /// this one keeps the answer and the cards, and a file handed back after the answer is not
-    /// among them.
+    /// this one keeps the answer, the cards and the notes the chat showed, and a file handed back
+    /// after the answer is not among them.
     var outline: NeuralTurnOutline {
         let anchored = anchorIndex
+        let shown = inChatPartIDs
         return NeuralTurnOutline(
             id: id, stepCount: steps.count, anchor: anchored.map { steps[$0].id },
             anchorMessageID: anchored.map { steps[$0].messageID },
             answerPartIDs: answerPartIDs, boardPartIDs: boardPartIDs,
-            keptPartIDs: Set(answerPartIDs + cardPartIDs), messageIDs: Array(memberMessageIDs),
-            partCount: memberPartIDs.count + answerPartIDs.count + cardPartIDs.count,
+            keptPartIDs: Set(answerPartIDs + cardPartIDs + shown),
+            messageIDs: Array(memberMessageIDs),
+            partCount: memberPartIDs.count + answerPartIDs.count + cardPartIDs.count + shown.count,
             outcome: outcome, startedAt: startedAt, endedAt: endedAt, modelID: modelID,
             effort: effort)
     }
@@ -113,7 +123,7 @@ extension NeuralTurn {
 extension NeuralTurns {
     /// How a part counts toward the turn, found once and read twice.
     private enum Class: UInt8 {
-        case other, file, step, card, words
+        case other, file, step, card, words, shownWords
     }
 
     /// The outline of one turn's messages, in one pass over their parts.
@@ -140,6 +150,7 @@ extension NeuralTurns {
         var lastStep = -1
         var stopped = false
         var trailingBytes = 0
+        var run: [Int] = []
         for message in messages {
             for part in message.parts {
                 let found: Class
@@ -151,13 +162,20 @@ extension NeuralTurns {
                     found = isCard(call, kind: call.cachedKind, message: message) ? .card : .step
                 case .text(let words):
                     found = hasWords(words) ? .words : .other
-                    if found == .words { trailingBytes += words.utf8.count }
+                    if found == .words {
+                        trailingBytes += words.utf8.count
+                        run.append(classes.count)
+                    }
                 case .file:
                     found = .file
                 case .compaction, .note, .unknown:
                     found = .other
                 }
                 if found == .step || found == .card {
+                    if !run.isEmpty, wasShown(bytes: trailingBytes, afterStep: lastStep >= 0) {
+                        for position in run { classes[position] = .shownWords }
+                    }
+                    run.removeAll(keepingCapacity: true)
                     lastStep = classes.count
                     trailingBytes = 0
                 }
@@ -191,6 +209,9 @@ extension NeuralTurns {
                         }
                     }
                     noteStep(found == .card, message, part, &firstStep, &firstMember)
+                case .shownWords:
+                    stepCount += 1
+                    kept.insert(partID(message, part))
                 case .words:
                     if position < lastStep {
                         stepCount += 1

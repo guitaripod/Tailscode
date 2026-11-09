@@ -163,6 +163,59 @@ extension SelfTest {
         try expect(
             brainTurn(firstRows) != nil && brainTurn(firstRows) == brainTurn(lastRows),
             "and the turn that finished is handed back whole each time")
+        try checkShownWordsStay(expect)
+    }
+
+    /// Words the chat showed are never taken back into the brain: the turn's opening words stand
+    /// above its card, a note that grew past the hold before the next call stands below it, and a
+    /// short note after a step, which was never shown, is a node.
+    private static func checkShownWordsStay(_ expect: (Bool, String) throws -> Void) throws {
+        let long = String(repeating: "The server answers on 4096 and the logs are clean. ", count: 8)
+        func part(_ id: String, _ kind: MessagePart.Kind) -> MessagePart { MessagePart(id: id, kind: kind) }
+        func bash(_ id: String, _ command: String) -> MessagePart {
+            part(
+                id,
+                .tool(
+                    ToolCall(
+                        id: "call-\(id)", name: "Bash", status: .completed,
+                        input: .object(["command": .string(command)]), output: "ok")))
+        }
+        func message(_ id: String, _ role: MessageRole, _ parts: [MessagePart]) -> ChatMessage {
+            ChatMessage(
+                id: id, role: role, agentType: .claudeCode, parts: parts, createdAt: Date(),
+                completedAt: Date())
+        }
+        let messages = [
+            message("kq", .user, [part("t", .text("is the server up? then fix the build"))]),
+            message("k1", .assistant, [part("a", .text("Yes, checking first.")), bash("b", "curl :4096")]),
+            message("k2", .assistant, [part("a", .text(long)), bash("b", "swift build")]),
+            message("k3", .assistant, [part("a", .text("Rebuilding.")), bash("b", "swift build")]),
+            message("k4", .assistant, [part("a", .text("Fixed and built."))]),
+        ]
+        let rows = brainBuilder(style: .brain).rows(state: brainState(messages))
+        let prose = rows.enumerated().compactMap { index, row -> (Int, String)? in
+            if case .agentProse(let text, _) = row.kind { return (index, text) }
+            return nil
+        }
+        let brain = rows.firstIndex(where: isBrain) ?? -1
+        let opener = prose.first { $0.1.contains("Yes, checking first.") }?.0 ?? -1
+        let note = prose.first { $0.1.contains("The server answers on 4096") }?.0 ?? -1
+        let answer = prose.first { $0.1.contains("Fixed and built.") }?.0 ?? -1
+        try expect(
+            opener >= 0 && opener < brain,
+            "a turn's opening words stay in the chat above its brain (\(opener) vs \(brain))")
+        try expect(
+            note > brain && note < answer,
+            "a note that grew past the hold stays below the brain, before the answer")
+        try expect(
+            !prose.contains { $0.1.contains("Rebuilding.") },
+            "a short note after a step was never shown, so it is a node, not a paragraph")
+        guard case .brain(let row)? = rows.first(where: isBrain)?.kind else {
+            throw SelfTestFailure("kept notes: no brain")
+        }
+        try expect(
+            row.turn.steps.filter { $0.zone == .say }.map(\.inChat) == [true, true, false],
+            "every note is still a SAY node, the shown ones marked as in the chat")
     }
 
     private static func checkBrainFallbacks(_ expect: (Bool, String) throws -> Void) throws {
