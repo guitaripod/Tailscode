@@ -37,15 +37,20 @@ final class NewChatViewController: UIViewController {
         let path: String
     }
 
-    private let viewModel: SessionListViewModel
+    let viewModel: SessionListViewModel
     /// Folders already read off a server's disk, kept for the sheet's life so walking back up a
     /// path never asks the machine twice, and a folder it refused is refused from memory.
     private var listings: [NewChatListingRequest: NewChatListing] = [:]
     private var fetching: Set<NewChatListingRequest> = []
     private let purpose: NewChatPurpose
-    private var chooser: NewChatChooser
+    var chooser: NewChatChooser
     private let serverButton = UIButton(configuration: Theme.Glass.buttonConfiguration())
     private let defaultsLabel = UILabel()
+    /// The composer's own pill: the model the chat starts on and the level it starts at. The model
+    /// half opens the full chooser and the level half lifts the ladder, as they do in every
+    /// composer, so it sits at the foot of the sheet where the ladder has room to rise.
+    let dialPill = ModelDialPill()
+    private let modelRow = UIStackView()
     private let field = UITextField()
     private let hintLabel = UILabel()
     private let emptyLabel = UILabel()
@@ -74,7 +79,8 @@ final class NewChatViewController: UIViewController {
             servers: servers,
             directories: Self.directories(for: servers, entries: viewModel.entries),
             entries: viewModel.entries,
-            preferredServer: preferredServer ?? AppPreferences.lastComposeTarget?.profileID)
+            preferredServer: preferredServer ?? AppPreferences.lastComposeTarget?.profileID,
+            offersModel: purpose == .start)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -121,7 +127,18 @@ final class NewChatViewController: UIViewController {
 
         defaultsLabel.adjustsFontForContentSizeCategory = true
         defaultsLabel.numberOfLines = 1
-        defaultsLabel.translatesAutoresizingMaskIntoConstraints = false
+        defaultsLabel.font = Theme.Ramp.font(.panelDetail)
+        defaultsLabel.textColor = Theme.Color.secondaryLabel
+        defaultsLabel.setContentHuggingPriority(.required, for: .horizontal)
+        defaultsLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        modelRow.axis = .horizontal
+        modelRow.alignment = .center
+        modelRow.spacing = Theme.Spacing.s
+        modelRow.addArrangedSubview(defaultsLabel)
+        modelRow.addArrangedSubview(dialPill)
+        configureDialPill(below: modelRow)
+        modelRow.isHidden = purpose == .choose
+        modelRow.translatesAutoresizingMaskIntoConstraints = false
 
         field.borderStyle = .none
         field.backgroundColor = Theme.Color.secondaryBackground
@@ -163,7 +180,7 @@ final class NewChatViewController: UIViewController {
         statusView.isHidden = true
         statusView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(serverButton)
-        view.addSubview(defaultsLabel)
+        view.addSubview(modelRow)
         view.addSubview(field)
         view.addSubview(hintLabel)
         view.addSubview(statusView)
@@ -176,15 +193,15 @@ final class NewChatViewController: UIViewController {
             serverButton.trailingAnchor.constraint(
                 lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
 
-            defaultsLabel.topAnchor.constraint(
-                equalTo: serverButton.bottomAnchor, constant: Theme.Spacing.xs),
-            defaultsLabel.leadingAnchor.constraint(
+            modelRow.leadingAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
-            defaultsLabel.trailingAnchor.constraint(
+            modelRow.trailingAnchor.constraint(
                 lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
+            modelRow.bottomAnchor.constraint(
+                equalTo: hintLabel.topAnchor, constant: -Theme.Spacing.s),
 
             field.topAnchor.constraint(
-                equalTo: defaultsLabel.bottomAnchor,
+                equalTo: serverButton.bottomAnchor,
                 constant: Theme.Spacing.s),
             field.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
             field.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
@@ -224,7 +241,8 @@ final class NewChatViewController: UIViewController {
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             collectionView.bottomAnchor.constraint(
-                equalTo: hintLabel.topAnchor, constant: -Theme.Spacing.xs),
+                equalTo: purpose == .choose ? hintLabel.topAnchor : modelRow.topAnchor,
+                constant: -Theme.Spacing.xs),
             emptyLabel.centerYAnchor.constraint(equalTo: collectionView.centerYAnchor),
             emptyLabel.leadingAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.xl),
@@ -364,7 +382,7 @@ final class NewChatViewController: UIViewController {
         }
     }
 
-    private func reload() {
+    func reload() {
         if field.text != chooser.query { field.text = chooser.query }
         hintLabel.text = chooser.hint
         startItem.isEnabled = chooser.server != nil
@@ -420,24 +438,17 @@ final class NewChatViewController: UIViewController {
             })
     }
 
-    /// What the chat will start with, worn under the server's name: the model as the same
-    /// coloured chip the chat list wears, or the sentence that says the server decides. Re-read
-    /// on every reload so switching servers re-labels the chat before it exists.
+    /// What the chat will start with, as the composer's own pill beside a word that says it is
+    /// where the chat starts. Re-read on every reload so switching servers, or a pick made in the
+    /// chooser or on the ladder, re-labels the chat before it exists.
     private func renderDefaults() {
         guard let defaults = chooser.defaults else {
-            defaultsLabel.attributedText = nil
+            modelRow.isHidden = true
             return
         }
-        let font = Theme.Ramp.font(.panelDetail)
-        let line = NSMutableAttributedString(
-            string: defaults.line,
-            attributes: [.font: font, .foregroundColor: Theme.Color.secondaryLabel])
-        if let chip = defaults.chip {
-            line.append(NSAttributedString(string: " ", attributes: [.font: font]))
-            line.append(ModelChipText.runs(for: chip, size: font.pointSize))
-        }
-        defaultsLabel.attributedText = line
-        defaultsLabel.accessibilityLabel = defaults.sentence
+        modelRow.isHidden = purpose == .choose || phase != .asking
+        defaultsLabel.text = String(localized: "Starts with")
+        renderDial(defaults)
     }
 
     /// Moves keyboard focus to follow the chooser's mode. The field owning the letters and the
@@ -465,7 +476,7 @@ final class NewChatViewController: UIViewController {
     /// The shell half: whatever folder the chooser says it wants, answered from this sheet's own
     /// memory when it can be, and read off the server once when it cannot. A listing back for a
     /// query the person has already left is dropped by the chooser rather than rendered stale.
-    private func serviceListing() {
+    func serviceListing() {
         guard let request = chooser.wantedListing else { return }
         if let cached = listings[request] {
             chooser.offer(cached)
@@ -515,6 +526,8 @@ final class NewChatViewController: UIViewController {
             Theme.Haptics.selection()
             _ = FileBrowserFavorites.toggle(path, for: profileID)
             regather()
+        case .chooseModel:
+            presentModelChooser()
         case .dismiss:
             dismiss(animated: true)
         }
@@ -627,7 +640,7 @@ final class NewChatViewController: UIViewController {
         let asking = next == .asking
         field.isHidden = !asking
         serverButton.isHidden = !asking || chooser.server == nil
-        defaultsLabel.isHidden = !asking
+        modelRow.isHidden = !asking || purpose == .choose || chooser.server == nil
         collectionView.isHidden = !asking
         emptyLabel.isHidden = true
         statusView.isHidden = asking
@@ -704,7 +717,10 @@ final class NewChatViewController: UIViewController {
                 address: ServerLabel.address(profile),
                 reachable: !viewModel.unreachable.contains(profile.id),
                 canBrowse: backend is any FileBrowsingBackend
-                    && backend?.capabilities.supportsFileBrowsing == true)
+                    && backend?.capabilities.supportsFileBrowsing == true,
+                agentEfforts: backend.map {
+                    $0.capabilities.supportsReasoningEffort ? $0.reasoningEffortOptions : []
+                })
         }
     }
 
@@ -732,7 +748,7 @@ final class NewChatViewController: UIViewController {
             (Keymap.tab, KeyChord.shiftMask), (Keymap.escape, 0),
             (leftArrow, KeyChord.controlMask), (rightArrow, KeyChord.controlMask),
         ]
-        for letter in "npjkdusb" {
+        for letter in "npjkdusbm" {
             chords.append((letter.unicodeScalars.first?.value ?? 0, KeyChord.controlMask))
         }
         return chords.map { (keyval: $0.0, state: $0.1) }

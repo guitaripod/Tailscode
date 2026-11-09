@@ -469,6 +469,7 @@ final class SessionListViewModel {
         guard case .success(let session) = minted else {
             return .failure(minted.failureValue ?? NewChatDiagnosis.noSuchServer())
         }
+        stampStart(of: session, on: source)
         let entry = SessionEntry(
             profileID: source.profile.id, profileName: source.profile.name,
             host: source.profile.baseURL.host ?? source.profile.name,
@@ -479,10 +480,23 @@ final class SessionListViewModel {
         return .success(entry)
     }
 
+    /// A chat just minted opens on what the new-chat sheet showed for its server, never on the
+    /// server's record of its default model, which a fresh session carries and the chat would
+    /// otherwise read first. A surface with its own choice (Home's composer, a party seat) seeds
+    /// the chat after this, and its seed wins.
+    private func stampStart(of session: AgentSession, on source: Source) {
+        let backend = source.backend
+        NewChatDefaults.stampMinted(
+            profileID: source.profile.id, sessionID: session.id,
+            agentOptions: backend.capabilities.supportsReasoningEffort
+                ? backend.reasoningEffortOptions : [])
+    }
+
     func newSession(on profile: ConnectionProfile, directory: String? = nil) async -> SessionEntry? {
         guard let source = sources.first(where: { $0.profile.id == profile.id }) else { return nil }
         do {
             let session = try await source.backend.createSession(title: nil, directory: directory)
+            stampStart(of: session, on: source)
             let entry = SessionEntry(
                 profileID: source.profile.id, profileName: source.profile.name,
                 host: source.profile.baseURL.host ?? source.profile.name,

@@ -115,6 +115,13 @@ extension MainWindow {
         Task { [weak self, weak pane] in
             let profiles = await ServerDirectory.shared.profiles()
             let localAddresses = Self.localAddresses
+            var gathered: [String: [String]] = [:]
+            for profile in profiles {
+                if let backend = await ServerDirectory.shared.backend(for: profile) {
+                    gathered[profile.id] = backend.reasoningEffortOptions
+                }
+            }
+            let agentEfforts = gathered
             Gtk.onMain { [weak self, weak pane] in
                 guard let self else { return }
                 guard !profiles.isEmpty else {
@@ -125,6 +132,7 @@ extension MainWindow {
                     parent: self.window, profiles: profiles, entries: self.entries,
                     preferredServer: profile?.id ?? (pane ?? self.activePane).entry?.profileID,
                     localAddresses: localAddresses, unreachable: Set(self.unreachable),
+                    agentEfforts: agentEfforts,
                     onFix: { [weak self] fix, done in
                         Gtk.onMain { [weak self] in self?.applyNewChatFix(fix, done: done) }
                     }
@@ -215,7 +223,8 @@ extension MainWindow {
     ///   holds the moment it opens, so what travels is on screen before anything is sent.
     /// - Parameter quickAsk: stamps the minted conversation with the quick ask's own aim, so the
     ///   question runs on the model it was aimed at rather than on the server's own memory, which
-    ///   the aim deliberately left alone.
+    ///   the aim deliberately left alone. Every other new chat is stamped with what the new-chat
+    ///   modal shows for that server (`NewChatDefaults.stampMinted`).
     func createChat(
         on profile: ConnectionProfile, directory: String?, into pane: ChatPane? = nil,
         firstMessage: QuickAskSend? = nil, attachments: [PendingAttachment] = [],
@@ -238,13 +247,11 @@ extension MainWindow {
                 return
             }
             Trace.mark("createChat session created")
-            if let seat {
-                QuickAskDefaults.stamp(
-                    profileID: profile.id, sessionID: session.id, model: seat.model,
-                    effort: seat.effort)
-            } else if quickAsk {
-                QuickAskDefaults.stamp(profileID: profile.id, sessionID: session.id)
-            }
+            NewChatDefaults.stampMinted(
+                profileID: profile.id, sessionID: session.id,
+                agentOptions: backend.reasoningEffortOptions, quickAsk: quickAsk,
+                seat: seat.map { ($0.model, $0.effort) })
+            SettingsFile.capture()
             let entry = SessionEntry(
                 profileID: profile.id, profileName: profile.name,
                 host: profile.baseURL.host ?? profile.name,

@@ -434818,6 +434818,290 @@
           }
         }
       }
+    },
+    "⌃n/⌃p walk · tab completes · ⌃s server · ⌃m model · esc for keys": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p walk · tab completes · ⌃s server · ⌃m model · esc for keys"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p bewegt · tab vervollständigt · ⌃s Server · ⌃m Modell · esc für Tasten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p mueve · tab completa · ⌃s servidor · ⌃m modelo · esc para teclas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p déplace · tab complète · ⌃s serveur · ⌃m modèle · esc pour les touches"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p sposta · tab completa · ⌃s server · ⌃m modello · esc per i tasti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p で移動 · tab で補完 · ⌃s でサーバ · ⌃m でモデル · esc でキー一覧"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p 이동 · tab 자동완성 · ⌃s 서버 · ⌃m 모델 · esc 단축키"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p przesuwa · tab uzupełnia · ⌃s serwer · ⌃m model · esc pokazuje klawisze"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p move · tab completa · ⌃s servidor · ⌃m modelo · esc para teclas"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p 移动 · tab 补全 · ⌃s 服务器 · ⌃m 模型 · esc 查看按键"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p 移動 · tab 補全 · ⌃s 伺服器 · ⌃m 模型 · esc 查看按鍵"
+          }
+        }
+      }
+    },
+    "⌃n/⌃p walk · tab completes · ⌃m model · enter starts · esc for keys": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p walk · tab completes · ⌃m model · enter starts · esc for keys"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p bewegt · tab vervollständigt · ⌃m Modell · enter startet · esc für Tasten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p mueve · tab completa · ⌃m modelo · enter inicia · esc para teclas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p déplace · tab complète · ⌃m modèle · enter démarre · esc pour les touches"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p sposta · tab completa · ⌃m modello · enter avvia · esc per i tasti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p で移動 · tab で補完 · ⌃m でモデル · enter で開始 · esc でキー一覧"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p 이동 · tab 자동완성 · ⌃m 모델 · enter 시작 · esc 단축키"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p przesuwa · tab uzupełnia · ⌃m model · enter uruchamia · esc pokazuje klawisze"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p move · tab completa · ⌃m modelo · enter inicia · esc para teclas"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p 移动 · tab 补全 · ⌃m 模型 · enter 开始 · esc 查看按键"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌃n/⌃p 移動 · tab 補全 · ⌃m 模型 · enter 開始 · esc 查看按鍵"
+          }
+        }
+      }
+    },
+    "j/k · g/G · 1–9 picks · i types · f stars · m model · enter starts · esc closes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "j/k · g/G · 1–9 picks · i types · f stars · m model · enter starts · esc closes"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "j/k · g/G · 1–9 wählt · i tippt · f markiert · m Modell · enter startet · esc schließt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "j/k · g/G · 1–9 elige · i escribe · f marca como favorito · m modelo · enter inicia · esc cierra"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "j/k · g/G · 1–9 choisit · i saisit · f ajoute aux favoris · m modèle · enter démarre · esc ferme"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "j/k · g/G · 1–9 sceglie · i digita · f contrassegna · m modello · enter avvia · esc chiude"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "j/k · g/G · 1–9 で選択 · i で入力 · f でスター登録 · m でモデル · enter で開始 · esc で閉じる"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "j/k · g/G · 1–9 선택 · i 입력 · f 즐겨찾기 · m 모델 · enter 시작 · esc 닫기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "j/k · g/G · 1–9 wybiera · i wpisuje · f oznacza gwiazdką · m model · enter uruchamia · esc zamyka"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "j/k · g/G · 1–9 escolhe · i digita · f favorita · m modelo · enter inicia · esc fecha"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "j/k · g/G · 1–9 选择 · i 输入 · f 加星标 · m 模型 · enter 开始 · esc 关闭"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "j/k · g/G · 1–9 選擇 · i 輸入 · f 加星號 · m 模型 · enter 開始 · esc 關閉"
+          }
+        }
+      }
+    },
+    "The model and level this chat starts with": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model and level this chat starts with"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Modell und die Stufe, mit denen dieser Chat beginnt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El modelo y el nivel con los que empieza este chat"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le modèle et le niveau avec lesquels cette discussion commence"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il modello e il livello con cui inizia questa chat"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このチャットを始めるモデルとレベル"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 채팅을 시작할 모델과 레벨"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model i poziom, od których zaczyna się ta rozmowa"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O modelo e o nível com que esta conversa começa"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此聊天开始时使用的模型和级别"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此聊天開始時使用的模型和級別"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

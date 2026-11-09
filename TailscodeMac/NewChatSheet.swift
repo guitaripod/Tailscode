@@ -19,8 +19,8 @@ final class NewChatSheet: NSObject {
     /// rather than re-asked. Device-local, like every other `tailscode.*` preference.
     private static let preferredServerKey = "tailscode.newChat.server"
 
-    private let sheet: NSWindow
-    private let profiles: [ConnectionProfile]
+    let sheet: NSWindow
+    let profiles: [ConnectionProfile]
     private let entries: [SessionEntry]
     private let onCreate:
         @MainActor (ConnectionProfile, String?, @escaping @MainActor (NewChatFailure?) -> Void) ->
@@ -38,9 +38,15 @@ final class NewChatSheet: NSObject {
     private let status = NewChatStatusView()
     private let cancel = NSButton()
     private let start = NSButton()
-    private var chooser: NewChatChooser
+    var chooser: NewChatChooser
     private let heading = NSTextField(labelWithString: "")
     private let defaultsLabel = NSTextField(labelWithString: "")
+    /// The composer's own pill: the model the chat starts on and the level it starts at, a press
+    /// away from the same dial and the same full chooser behind it.
+    let dialPill = DialPill()
+    private let defaultsRow = NSStackView()
+    var dialPopover: ModelDialPopover?
+    var dialClosedAt: Date?
     private let field = NSTextField()
     private let table = NSTableView()
     private let scroll = NSScrollView()
@@ -152,8 +158,16 @@ final class NewChatSheet: NSObject {
         defaultsLabel.font = MacTheme.Ramp.font(.panelFootnote)
         defaultsLabel.textColor = MacTheme.Color.secondaryLabel
         defaultsLabel.lineBreakMode = .byTruncatingTail
-        defaultsLabel.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(defaultsLabel)
+        defaultsLabel.setContentHuggingPriority(.required, for: .horizontal)
+        dialPill.onPress = { [weak self] in self?.openModelDial() }
+        dialPill.onStep = { [weak self] delta in self?.stepEffort(by: delta) }
+        dialPill.usage = Localized.text("The model and level this chat starts with")
+        defaultsRow.orientation = .horizontal
+        defaultsRow.alignment = .centerY
+        defaultsRow.spacing = MacTheme.Spacing.s
+        defaultsRow.setViews([defaultsLabel, dialPill], in: .leading)
+        defaultsRow.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(defaultsRow)
 
         field.placeholderString = Localized.text("Where the agent works, e.g. ~/Dev/thing")
         field.font = MacTheme.Ramp.font(.code)
@@ -218,12 +232,12 @@ final class NewChatSheet: NSObject {
             heading.topAnchor.constraint(equalTo: content.topAnchor, constant: inset),
             heading.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
             heading.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
-            defaultsLabel.topAnchor.constraint(
+            defaultsRow.topAnchor.constraint(
                 equalTo: heading.bottomAnchor, constant: MacTheme.Spacing.xs),
-            defaultsLabel.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
-            defaultsLabel.trailingAnchor.constraint(equalTo: heading.trailingAnchor),
+            defaultsRow.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            defaultsRow.trailingAnchor.constraint(lessThanOrEqualTo: heading.trailingAnchor),
             field.topAnchor.constraint(
-                equalTo: defaultsLabel.bottomAnchor, constant: MacTheme.Spacing.s),
+                equalTo: defaultsRow.bottomAnchor, constant: MacTheme.Spacing.s),
             field.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
             field.trailingAnchor.constraint(equalTo: heading.trailingAnchor),
             scroll.topAnchor.constraint(equalTo: field.bottomAnchor, constant: MacTheme.Spacing.m),
@@ -247,12 +261,14 @@ final class NewChatSheet: NSObject {
     private func teardown() {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
+        dialPopover?.close()
+        dialPopover = nil
     }
 
     /// The shell half: whatever folder the chooser says it wants, answered from this sheet's own
     /// memory when it can be, and read off the server once when it cannot. A listing back for a
     /// query the person has already left is dropped by the chooser rather than rendered stale.
-    private func serviceListing() {
+    func serviceListing() {
         guard let request = chooser.wantedListing else { return }
         if let cached = listings[request] {
             chooser.offer(cached)
@@ -296,7 +312,8 @@ final class NewChatSheet: NSObject {
                 reachable: !unreachable.contains(ServerLabel.display(profile)),
                 canBrowse: local || ServerDirectory.shared.backend(for: profile)
                     is any FileBrowsingBackend,
-                isLocal: local)
+                isLocal: local,
+                agentEfforts: ServerDirectory.shared.backend(for: profile)?.reasoningEffortOptions)
         }
     }
 
@@ -332,7 +349,7 @@ final class NewChatSheet: NSObject {
         }
     }
 
-    private func rebuild() {
+    func rebuild() {
         switch phase {
         case .starting(let server):
             heading.stringValue = Localized.text("Starting on %@…", server)
@@ -375,24 +392,19 @@ final class NewChatSheet: NSObject {
         syncMode()
     }
 
-    /// What the chat will start with, worn under the server's name: the model as the same coloured
-    /// chip the chat list wears, or the sentence that says the server decides. Re-read on every
-    /// rebuild so switching servers re-labels the chat before it exists.
+    /// What the chat will start with, worn under the server's name as the composer's own pill —
+    /// the model's word in its family's colour, the level in its heat — beside a word that says it
+    /// is where the chat starts. Re-read on every rebuild so switching servers, or a pick made in
+    /// the dial, re-labels the chat before it exists.
     private func renderDefaults() {
         guard let defaults = chooser.defaults else {
-            defaultsLabel.stringValue = ""
+            defaultsRow.isHidden = true
             return
         }
-        let font = MacTheme.Ramp.font(.panelFootnote)
-        let text = NSMutableAttributedString(
-            string: defaults.line,
-            attributes: [.font: font, .foregroundColor: MacTheme.Color.secondaryLabel])
-        if let chip = defaults.chip {
-            text.append(NSAttributedString(string: " ", attributes: [.font: font]))
-            text.append(SidebarSessionCell.chipText(chip))
-        }
-        defaultsLabel.attributedStringValue = text
-        defaultsLabel.setAccessibilityLabel(defaults.sentence)
+        defaultsRow.isHidden = false
+        defaultsLabel.stringValue = Localized.text("Starts with")
+        renderDial(defaults)
+        dialPill.setAccessibilityLabel(defaults.sentence)
     }
 
     /// While a machine is being waited on, the question's own chrome goes away rather than sitting
@@ -400,7 +412,8 @@ final class NewChatSheet: NSObject {
     /// worse than absent.
     private func setChrome(asking: Bool) {
         field.isHidden = !asking
-        defaultsLabel.isHidden = !asking
+        defaultsRow.isHidden = !asking
+        if !asking { dialPopover?.close() }
         scroll.isHidden = !asking
         empty.isHidden = true
         status.isHidden = asking
@@ -433,7 +446,7 @@ final class NewChatSheet: NSObject {
     /// The keyboard follows the chooser's own mode: while typing, the field owns the letters and
     /// holds the caret; in normal mode nothing is focused, so the letters are the verbs the rest of
     /// this app already binds. The field is never left unfocused while the modal says it is typing.
-    private func syncMode() {
+    func syncMode() {
         switch chooser.mode {
         case .typing:
             guard field.currentEditor() == nil else { return }
@@ -463,6 +476,8 @@ final class NewChatSheet: NSObject {
             chooser = chooser.restated(
                 directories: Self.directories(for: profiles, entries: entries), entries: entries)
             rebuild()
+        case .chooseModel:
+            openModelDial()
         case .dismiss:
             close()
         }

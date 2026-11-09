@@ -107,9 +107,10 @@ extension MainWindowController {
                     if !answered, index == seats.count - 1 { done(minted.failureValue) }
                     continue
                 }
-                QuickAskDefaults.stamp(
-                    profileID: profile.id, sessionID: session.id, model: seat.model,
-                    effort: seat.effort)
+                NewChatDefaults.stampMinted(
+                    profileID: profile.id, sessionID: session.id,
+                    agentOptions: backend.reasoningEffortOptions,
+                    seat: (seat.model, seat.effort))
                 let entry = SessionEntry(
                     profileID: profile.id, profileName: profile.name,
                     host: profile.baseURL.host ?? profile.name, backendType: profile.backend,
@@ -162,7 +163,9 @@ extension MainWindowController {
                 done(nil)
                 return
             }
-            QuickAskDefaults.stamp(profileID: profile.id, sessionID: session.id)
+            NewChatDefaults.stampMinted(
+                profileID: profile.id, sessionID: session.id,
+                agentOptions: backend.reasoningEffortOptions, quickAsk: true)
             let entry = SessionEntry(
                 profileID: profile.id, profileName: profile.name,
                 host: profile.baseURL.host ?? profile.name,

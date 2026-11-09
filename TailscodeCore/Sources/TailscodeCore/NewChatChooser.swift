@@ -14,10 +14,15 @@ public struct NewChatServer: Sendable, Equatable {
     /// Whether the server is this same machine, which is the one case where a native folder picker
     /// tells the truth.
     public let isLocal: Bool
+    /// The levels the server's agent takes for a model its catalog does not describe, as its
+    /// backend reports them; nil when nobody has asked, which leaves a recorded level unjudged
+    /// rather than dropping one the chat would send.
+    public let agentEfforts: [String]?
 
     public init(
         profileID: String, name: String, backend: AgentType, address: String,
-        reachable: Bool = true, canBrowse: Bool = true, isLocal: Bool = false
+        reachable: Bool = true, canBrowse: Bool = true, isLocal: Bool = false,
+        agentEfforts: [String]? = nil
     ) {
         self.profileID = profileID
         self.name = name
@@ -26,6 +31,7 @@ public struct NewChatServer: Sendable, Equatable {
         self.reachable = reachable
         self.canBrowse = canBrowse
         self.isLocal = isLocal
+        self.agentEfforts = agentEfforts
     }
 
     public var title: String { ServerLabel.display(name: name, backend: backend) }
@@ -143,6 +149,8 @@ public enum NewChatCommand: Sendable, Equatable {
     case clearField
     case browse
     case favorite
+    /// Opens the model dial for the chosen server: the same pill and dial the composer wears.
+    case model
     case dismiss
     case pick(Int)
 }
@@ -153,6 +161,9 @@ public enum NewChatOutcome: Sendable, Equatable {
     case browse(profileID: String)
     /// The row under the cursor was starred or unstarred; the client persists it and re-gathers.
     case favorite(profileID: String, path: String)
+    /// The client opens its model dial for this server; a pick is recorded the way the composer
+    /// records one (`NewChatDefaults.record`) and the modal re-reads its defaults.
+    case chooseModel(profileID: String)
     case dismiss
 }
 
@@ -181,6 +192,9 @@ public struct NewChatChooser: Sendable, Equatable {
     public private(set) var mode: NewChatMode
     public private(set) var rows: [NewChatRow]
     public private(set) var listing: NewChatListing?
+    /// Whether the modal offers the model dial. A modal asked only where a chat goes, for a
+    /// surface that keeps its own model pill, neither claims the key nor says it does.
+    public let offersModel: Bool
 
     /// - Parameter preferredServer: the server the person last started a chat on, pre-chosen rather
     ///   than merely pre-focused — one machine is the overwhelmingly common answer and re-asking it
@@ -191,8 +205,10 @@ public struct NewChatChooser: Sendable, Equatable {
         entries: [SessionEntry] = [],
         preferredServer: String? = nil,
         query: String = "",
-        mode: NewChatMode = .typing
+        mode: NewChatMode = .typing,
+        offersModel: Bool = true
     ) {
+        self.offersModel = offersModel
         self.servers = servers
         self.directories = directories
         self.chatCounts = Dictionary(
@@ -237,18 +253,26 @@ public struct NewChatChooser: Sendable, Equatable {
     /// What the chat would open with on the chosen server, re-read on every render so a pick made
     /// elsewhere is already true here.
     public var defaults: NewChatDefaults? {
-        server.map { NewChatDefaults.resolve(profileID: $0.profileID) }
+        server.map {
+            NewChatDefaults.resolve(profileID: $0.profileID, agentOptions: $0.agentEfforts)
+        }
     }
 
     /// The keys, on screen, in the mode they work in. A modal that hides its own grammar is a modal
     /// nobody learns.
     public var hint: String {
-        switch mode {
-        case .typing:
+        switch (mode, offersModel) {
+        case (.typing, true):
+            return servers.count > 1
+                ? Localized.text("⌃n/⌃p walk · tab completes · ⌃s server · ⌃m model · esc for keys")
+                : Localized.text("⌃n/⌃p walk · tab completes · ⌃m model · enter starts · esc for keys")
+        case (.typing, false):
             return servers.count > 1
                 ? Localized.text("⌃n/⌃p walk · tab completes · ⌃s switches server · esc for keys")
                 : Localized.text("⌃n/⌃p walk · tab completes · enter starts · esc for keys")
-        case .normal:
+        case (.normal, true):
+            return Localized.text("j/k · g/G · 1–9 picks · i types · f stars · m model · enter starts · esc closes")
+        case (.normal, false):
             return Localized.text("j/k · g/G · 1–9 picks · i types · f stars · enter starts · esc closes")
         }
     }
@@ -346,6 +370,10 @@ public struct NewChatChooser: Sendable, Equatable {
         case .favorite:
             guard let server, let row = focused, row.origin != .browse else { return (true, nil) }
             return (true, .favorite(profileID: server.profileID, path: row.path))
+        case .model:
+            guard offersModel else { return (false, nil) }
+            guard let server else { return (true, nil) }
+            return (true, .chooseModel(profileID: server.profileID))
         case .dismiss:
             return (true, .dismiss)
         case .pick(let index):
@@ -390,7 +418,8 @@ public struct NewChatChooser: Sendable, Equatable {
     {
         var next = NewChatChooser(
             servers: servers, directories: directories, entries: entries,
-            preferredServer: server?.profileID, query: query, mode: mode)
+            preferredServer: server?.profileID, query: query, mode: mode,
+            offersModel: offersModel)
         next.listing = listing
         next.rebuild()
         if let path = focused?.path,
@@ -517,6 +546,7 @@ public struct NewChatChooser: Sendable, Equatable {
             case "u": return .halfUp
             case "s": return .nextServer
             case "b": return .browse
+            case "m": return .model
             default: return nil
             }
         }
@@ -538,6 +568,7 @@ public struct NewChatChooser: Sendable, Equatable {
         case "s": return chord.shift ? .previousServer : .nextServer
         case "b": return .browse
         case "f": return .favorite
+        case "m": return .model
         case "x": return .clearField
         case "l": return .activate
         default: break
@@ -548,37 +579,69 @@ public struct NewChatChooser: Sendable, Equatable {
 }
 
 /// What a chat started on a server will open with, said where Start is pressed rather than
-/// discovered on the first answer. Resolved exactly the way the composer resolves a first turn —
-/// the pick this device recorded for that server, else the server's own default — so the label
-/// and the chat it starts can never disagree. The model wears its chip where a client colours
-/// chips; a device with no pick says the server decides instead of guessing a name.
+/// discovered on the first answer, and the one value the minted chat is then stamped with: the pick
+/// this device recorded for that server — the composer's own last-used default, the one a model or
+/// level picked anywhere else in the app writes — with the level only where that model takes it,
+/// else the server's own default. A fresh session's record names the server's default model, and
+/// a chat opened on that record ahead of the pick is how the label and the chat it started came to
+/// disagree; `stamp` files this under the new session's own key before it opens, so the pill the
+/// chat wears is the pill the modal showed. The model wears its chip where a client colours chips;
+/// a device with no pick says the server decides instead of guessing a name.
 public struct NewChatDefaults: Sendable, Equatable {
+    /// The model the first turn asks for; nil leaves it to the server.
+    public let model: ModelSelection?
+    /// The level the first turn asks for, already one the model takes; nil leaves it to the
+    /// server.
+    public let effort: String?
+    /// The levels the model takes; nil where nobody can say: the agent's own were never asked,
+    /// or the server's own default runs on an agent that names no levels of its own (opencode),
+    /// whose model only the server knows. A level is then left unjudged and travels as it is, and
+    /// the chat judges it against the model that answers.
+    public let options: [String]?
     public let chip: ModelChip?
     public let line: String
 
-    public static func resolve(profileID: String) -> NewChatDefaults {
-        made(
-            model: ModelPreferenceStore.initialModel(sessionKey: nil, contextID: profileID),
-            effort: EffortPreferenceStore.initialEffort(sessionKey: nil, contextID: profileID),
-            catalog: ModelCatalogStore.cached(profileID))
+    /// - Parameter agentOptions: what the server's backend reports it takes
+    ///   (`reasoningEffortOptions`), or nil when the client has not asked it.
+    public static func resolve(profileID: String, agentOptions: [String]? = nil) -> NewChatDefaults {
+        let model = ModelPreferenceStore.globalModel(forContextID: profileID)
+        let catalog = ModelCatalogStore.cached(profileID)
+        let judged = agentOptions.flatMap { agent -> [String]? in
+            guard model != nil || !agent.isEmpty else { return nil }
+            return ModelEffort.options(models: catalog, selection: model, agentOptions: agent)
+        }
+        return made(
+            model: model, effort: EffortPreferenceStore.globalEffort(forContextID: profileID),
+            catalog: catalog, options: judged)
+    }
+
+    /// The ladder the pill and the dial draw: the model's own levels, or, where nobody can say
+    /// which levels the chat's model takes, the one level the first turn will ask for, so the
+    /// pill never hides a level the chat then wears.
+    public var levels: [String] {
+        options ?? effort.map { [$0] } ?? []
     }
 
     static func made(
-        model: ModelSelection?, effort: String?, catalog: [ModelInfo]
+        model: ModelSelection?, effort: String?, catalog: [ModelInfo], options: [String]? = nil
     ) -> NewChatDefaults {
+        let level = options.map { ModelEffort.surviving(effort, options: $0) } ?? effort
         if let chip = ModelBadge.chip(
-            model: model?.modelID, effort: effort, providerID: model?.providerID,
+            model: model?.modelID, effort: level, providerID: model?.providerID,
             catalog: catalog)
         {
-            return NewChatDefaults(chip: chip, line: Localized.text("Starts with"))
-        }
-        if let effort, !effort.isEmpty {
             return NewChatDefaults(
-                chip: nil,
-                line: Localized.text("Starts with the server's default model · %@", effort))
+                model: model, effort: level, options: options, chip: chip,
+                line: Localized.text("Starts with"))
+        }
+        if let level, !level.isEmpty {
+            return NewChatDefaults(
+                model: model, effort: level, options: options, chip: nil,
+                line: Localized.text("Starts with the server's default model · %@", level))
         }
         return NewChatDefaults(
-            chip: nil, line: Localized.text("Starts with the server's default model"))
+            model: model, effort: nil, options: options, chip: nil,
+            line: Localized.text("Starts with the server's default model"))
     }
 
     /// The whole fact as one sentence, for a screen reader or a client with nowhere to hang a
@@ -587,6 +650,47 @@ public struct NewChatDefaults: Sendable, Equatable {
         guard let chip else { return line }
         let effort = chip.effort.map { " · \($0)" } ?? ""
         return "\(line) \(chip.name)\(effort)"
+    }
+
+    /// Files this under the minted chat's own key before the chat opens, so the composer resolves
+    /// the model and level the modal showed ahead of the server's record of its default. A model
+    /// or level left to the server stamps nothing, and the chat reads the record as before.
+    public func stamp(profileID: String, sessionID: String) {
+        QuickAskDefaults.stamp(
+            profileID: profileID, sessionID: sessionID, model: model, effort: effort)
+    }
+
+    /// A model picked in the modal is the server's last-used default from then on, exactly as a
+    /// pick in the composer is: the next new chat opens on it and the modal re-reads it at once.
+    /// A pick from another server's catalog is filed against that server, and the client moves the
+    /// modal there. Nil is the server's own default, which clears the pick.
+    public static func record(model: ModelSelection?, profileID: String) {
+        ModelPreferenceStore.recordPick(model, sessionKey: nil, contextID: profileID)
+    }
+
+    /// A level picked in the modal, filed the way the composer files one.
+    public static func record(effort: String?, profileID: String) {
+        EffortPreferenceStore.recordPick(effort, sessionKey: nil, contextID: profileID)
+    }
+
+    /// Stamps a chat any surface just minted, before it opens: a party seat with the seat's own
+    /// model and level, a quick ask with an aim of its own with that aim, and every other new chat
+    /// — the modal's, a sidebar's, an unaimed quick ask's — with what the modal shows for that
+    /// server, so no new chat opens on the server's record of its default ahead of the pick the
+    /// rest of the app shows.
+    public static func stampMinted(
+        profileID: String, sessionID: String, agentOptions: [String]?, quickAsk: Bool = false,
+        seat: (model: ModelSelection?, effort: String?)? = nil
+    ) {
+        if let seat {
+            QuickAskDefaults.stamp(
+                profileID: profileID, sessionID: sessionID, model: seat.model, effort: seat.effort)
+        } else if quickAsk, QuickAskDefaults.hasOwnAim(forProfileID: profileID) {
+            QuickAskDefaults.stamp(profileID: profileID, sessionID: sessionID)
+        } else {
+            resolve(profileID: profileID, agentOptions: agentOptions)
+                .stamp(profileID: profileID, sessionID: sessionID)
+        }
     }
 }
 
@@ -725,6 +829,14 @@ public enum NewChatChooserCheck {
             "f stars the row under the cursor")
         normal.focus(normal.rows.count - 1)
         expect(normal.handle(.activate).outcome == .browse(profileID: "a"), "enter on browse browses")
+        expect(
+            normal.handle(.model).outcome == .chooseModel(profileID: "a"),
+            "m opens the model dial for the chosen server")
+        var whereOnly = NewChatChooser(
+            servers: [alpha], directories: directories, mode: .normal, offersModel: false)
+        expect(
+            whereOnly.handle(.model).handled == false && !whereOnly.hint.contains("m model"),
+            "a modal asked only where neither claims m nor names it")
 
         let keys: [(UInt32, UInt32, NewChatMode, NewChatCommand?)] = [
             (UInt32(UnicodeScalar("j").value), 0, .typing, nil),
@@ -737,6 +849,9 @@ public enum NewChatChooserCheck {
             (Keymap.tab, 0, .typing, .complete),
             (UInt32(UnicodeScalar("3").value), 0, .normal, .pick(2)),
             (UInt32(UnicodeScalar("3").value), 0, .typing, nil),
+            (UInt32(UnicodeScalar("m").value), 0, .normal, .model),
+            (UInt32(UnicodeScalar("m").value), 0, .typing, nil),
+            (UInt32(UnicodeScalar("m").value), Keymap.control, .typing, .model),
         ]
         for (keyval, state, mode, expected) in keys {
             guard let chord = KeyChord.canonical(keyval: keyval, state: state) else {

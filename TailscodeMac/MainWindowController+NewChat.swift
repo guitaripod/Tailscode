@@ -36,7 +36,9 @@ extension MainWindowController {
     /// The one round trip that mints the session id is all the new chat waits for. The sidebar
     /// row is seeded from the answer and the conversation opens on the spot with the composer
     /// focused; the full list refresh reconciles behind it, because a person who just started a
-    /// chat is looking at the prompt box, not at the list.
+    /// chat is looking at the prompt box, not at the list. The minted chat is stamped with what the
+    /// sheet's pill showed before it opens (`NewChatDefaults.stampMinted`), so the server's record
+    /// of its default model never outranks it.
     func createChat(
         on profile: ConnectionProfile, directory: String?, carrying: CarryPlan? = nil,
         done: @escaping @MainActor (NewChatFailure?) -> Void = { _ in }
@@ -55,6 +57,9 @@ extension MainWindowController {
                 done(minted.failureValue)
                 return
             }
+            NewChatDefaults.stampMinted(
+                profileID: profile.id, sessionID: session.id,
+                agentOptions: backend.reasoningEffortOptions)
             done(nil)
             guard let self else { return }
             let entry = SessionEntry(

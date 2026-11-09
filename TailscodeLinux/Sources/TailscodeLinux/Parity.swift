@@ -132,7 +132,7 @@ enum ParityManifest {
         case .newChat: return .implemented("NewChatWindow")
         case .newChatPathCompletion: return .implemented("NewChatWindow")
         case .serverFolderBrowser: return .implemented("FolderBrowserWindow")
-        case .newChatDefaults: return .implemented("renderDefaults")
+        case .newChatDefaults: return .implemented("chooseModelFromCatalog")
         case .newChatFailure: return .implemented("failureCard")
         case .keyboardShortcuts: return .implemented("installKeymap")
         case .shortcutCheatsheet: return .implemented("helpOverlay")

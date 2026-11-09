@@ -1,6 +1,7 @@
 import CAdw
 import CGtkShim
 import CodingAgentKit
+import CodingAgentKitApple
 import Foundation
 import TailscodeCore
 
@@ -17,9 +18,12 @@ import TailscodeCore
 /// focus is moved into and out of the entry to follow `chooser.mode`: the field must own the
 /// letters while a path is being typed, and must never own them once the letters are verbs.
 final class NewChatWindow: @unchecked Sendable {
-    nonisolated(unsafe) private static var open: NewChatWindow?
+    nonisolated(unsafe) static var open: NewChatWindow?
 
-    private var chooser: NewChatChooser
+    var chooser: NewChatChooser
+    /// The machines as profiles, for the dial's fleet: a model is a fact about the machine that
+    /// runs it, and the dial names every machine's.
+    let profiles: [ConnectionProfile]
     private let entries: [SessionEntry]
     private let onStart:
         @Sendable (String, String?, @escaping @Sendable (NewChatFailure?) -> Void) -> Void
@@ -39,10 +43,21 @@ final class NewChatWindow: @unchecked Sendable {
     private var listings: [NewChatListingRequest: NewChatListing] = [:]
     private var fetching: Set<NewChatListingRequest> = []
 
-    private let window: UnsafeMutablePointer<GtkWidget>
+    let window: UnsafeMutablePointer<GtkWidget>
     private let entry: UnsafeMutablePointer<GtkWidget>
     private let heading: UnsafeMutablePointer<GtkWidget>
     private var defaultsRow: UnsafeMutablePointer<GtkWidget>!
+    private var defaultsLine: UnsafeMutablePointer<GtkWidget>!
+    /// The composer's own pill: the model the chat starts on and the level it starts at, a press
+    /// away from the same dial and the same full chooser behind it.
+    var dial: DialPill!
+    lazy var effortVoice = EffortVoice { words in
+        Gtk.onMain {
+            guard let open = NewChatWindow.open, tailscode_can_announce() != 0, !words.isEmpty
+            else { return }
+            tailscode_accessible_announce(open.window, words, 0)
+        }
+    }
     private let hint: UnsafeMutablePointer<GtkWidget>
     private let list: UnsafeMutablePointer<GtkWidget>
     private let scroller: UnsafeMutablePointer<GtkWidget>
@@ -61,8 +76,8 @@ final class NewChatWindow: @unchecked Sendable {
     ///     actually on, or opening its settings — and answers the same way, so a fixed server
     ///     goes straight back into the chat that was being started.
     static func present(
-        servers: [NewChatServer], entries: [SessionEntry], preferredServer: String?,
-        parent: UnsafeMutablePointer<GtkWidget>?,
+        servers: [NewChatServer], profiles: [ConnectionProfile], entries: [SessionEntry],
+        preferredServer: String?, parent: UnsafeMutablePointer<GtkWidget>?,
         onBrowse: @escaping @Sendable (String, String, @escaping @Sendable (String) -> Void) ->
             Void,
         onFix: @escaping @Sendable (
@@ -75,13 +90,14 @@ final class NewChatWindow: @unchecked Sendable {
         guard !servers.isEmpty else { return }
         open?.close()
         open = NewChatWindow(
-            servers: servers, entries: entries, preferredServer: preferredServer, parent: parent,
-            onBrowse: onBrowse, onFix: onFix, onStart: onStart)
+            servers: servers, profiles: profiles, entries: entries,
+            preferredServer: preferredServer, parent: parent, onBrowse: onBrowse, onFix: onFix,
+            onStart: onStart)
     }
 
     private init(
-        servers: [NewChatServer], entries: [SessionEntry], preferredServer: String?,
-        parent: UnsafeMutablePointer<GtkWidget>?,
+        servers: [NewChatServer], profiles: [ConnectionProfile], entries: [SessionEntry],
+        preferredServer: String?, parent: UnsafeMutablePointer<GtkWidget>?,
         onBrowse: @escaping @Sendable (String, String, @escaping @Sendable (String) -> Void) ->
             Void,
         onFix: @escaping @Sendable (
@@ -92,6 +108,7 @@ final class NewChatWindow: @unchecked Sendable {
         ) -> Void
     ) {
         self.entries = entries
+        self.profiles = profiles
         self.onStart = onStart
         self.onFix = onFix
         self.onBrowse = onBrowse
@@ -115,9 +132,18 @@ final class NewChatWindow: @unchecked Sendable {
         heading = Gtk.label(chooser.heading, css: "section-header", selectable: false)
         gtk_box_append(ptr(column), heading)
 
-        defaultsRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
+        defaultsRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         gtk_widget_set_halign(defaultsRow, GTK_ALIGN_START)
         Gtk.margins(defaultsRow, leading: 8)
+        defaultsLine = Gtk.label("", css: "row-detail", selectable: false)
+        gtk_widget_set_valign(defaultsLine, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(defaultsRow), defaultsLine)
+        dial = Self.makeDial()
+        gtk_widget_set_valign(dial.button, GTK_ALIGN_CENTER)
+        Gtk.connect(UnsafeMutableRawPointer(dial.dial.popover), "closed") {
+            Gtk.onMain { NewChatWindow.open?.applyMode() }
+        }
+        gtk_box_append(ptr(defaultsRow), dial.button)
         gtk_box_append(ptr(column), defaultsRow)
 
         entry = gtk_entry_new()!
@@ -134,7 +160,7 @@ final class NewChatWindow: @unchecked Sendable {
         gtk_scrolled_window_set_child(op(scroller), list)
         gtk_box_append(ptr(column), scroller)
 
-        hint = Gtk.label(chooser.hint, css: "chooser-hint", selectable: false)
+        hint = Gtk.label(chooser.hint, css: "chooser-hint", wrap: true, selectable: false)
         gtk_box_append(ptr(column), hint)
         buttons = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         gtk_widget_set_halign(buttons, GTK_ALIGN_END)
@@ -335,7 +361,7 @@ final class NewChatWindow: @unchecked Sendable {
     /// The field owns the letters in `.typing` and owns nothing in `.normal`. Focus is what makes
     /// that true rather than a flag the entry could disagree with: a caret still blinking in a
     /// field whose letters are verbs is a modal nobody can read.
-    private func applyMode() {
+    func applyMode() {
         switch chooser.mode {
         case .typing: gtk_widget_grab_focus(entry)
         case .normal: gtk_widget_grab_focus(list)
@@ -346,6 +372,7 @@ final class NewChatWindow: @unchecked Sendable {
     /// not the window's grammar: enter takes the fix, escape steps back one state rather than
     /// closing something that has an unread answer in it.
     private func key(keyval: UInt32, state: UInt32) -> Bool {
+        if dialIsOpen { return false }
         switch phase {
         case .asking:
             break
@@ -392,6 +419,8 @@ final class NewChatWindow: @unchecked Sendable {
             _ = FileBrowserFavorites.toggle(path, for: profileID)
             SettingsFile.capture()
             restate()
+        case .chooseModel:
+            openModelDial()
         }
     }
 
@@ -444,7 +473,7 @@ final class NewChatWindow: @unchecked Sendable {
         render()
     }
 
-    private func render() {
+    func render() {
         renderButtons()
         switch phase {
         case .starting(let server):
@@ -590,22 +619,28 @@ final class NewChatWindow: @unchecked Sendable {
         apply(outcome)
     }
 
-    /// What the chat will start with, worn under the server's name: the model as the same chip the
-    /// chat list wears, or the sentence that says the server decides. Re-read on every render so
-    /// switching servers re-labels the chat before it exists.
+    /// What the chat will start with, worn under the server's name as the composer's own pill —
+    /// the model's word in its family's colour, the level in its heat — beside a word that says it
+    /// is where the chat starts. Re-read on every render so switching servers, or a pick made in
+    /// the dial, re-labels the chat before it exists.
     private func renderDefaults() {
-        Gtk.removeChildren(of: defaultsRow)
         guard let defaults = chooser.defaults else {
             gtk_widget_set_visible(defaultsRow, 0)
             return
         }
-        let line = Gtk.label(defaults.line, css: "row-detail", selectable: false)
-        gtk_box_append(ptr(defaultsRow), line)
-        if let chip = defaults.chip {
-            gtk_box_append(ptr(defaultsRow), SidebarRow.modelLabel(chip))
-        }
+        gtk_label_set_text(op(defaultsLine), Localized.text("Starts with"))
+        renderDial(defaults)
         tailscode_set_accessible_label(defaultsRow, defaults.sentence)
         gtk_widget_set_visible(defaultsRow, 1)
+    }
+
+    /// Everything the modal shows, drawn again from the chooser, and the keyboard handed back to
+    /// the half that owns it: a pick made in the dial or the full chooser lands here, and the
+    /// popover closing must not leave the letters with the pill.
+    func rerender() {
+        serviceListing()
+        render()
+        applyMode()
     }
 
     /// The row under the cursor is brought into view without taking focus off the field — a modal

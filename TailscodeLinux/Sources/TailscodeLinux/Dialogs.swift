@@ -459,6 +459,7 @@ enum Dialogs {
         preferredServer: String?,
         localAddresses: Set<String>,
         unreachable: Set<String> = [],
+        agentEfforts: [String: [String]] = [:],
         onFix: @escaping @Sendable (
             NewChatFailure.Fix, @escaping @Sendable (NewChatFailure?) -> Void
         ) -> Void = { _, done in done(nil) },
@@ -475,11 +476,13 @@ enum Dialogs {
                 address: ServerLabel.address(profile),
                 reachable: !unreachable.contains(profile.id),
                 canBrowse: true,
-                isLocal: local.contains(profile.id))
+                isLocal: local.contains(profile.id),
+                agentEfforts: agentEfforts[profile.id])
         }
         let parentHold = parent.map { Gtk.WeakWidget($0) }
         NewChatWindow.present(
-            servers: servers, entries: entries, preferredServer: preferredServer, parent: parent,
+            servers: servers, profiles: profiles, entries: entries,
+            preferredServer: preferredServer, parent: parent,
             onBrowse: { _, typed, deliver in
                 let host = parentHold?.widget
                 Gtk.selectFolder(parent: host, initial: browseSeed(typed)) { picked in
