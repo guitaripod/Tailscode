@@ -107,6 +107,12 @@ extension MainWindow {
                 argument.isEmpty ? "busy" : argument)
         case "carrydemo":
             self.activePane.driverCarryDemo()
+        case "chaptersdemo":
+            self.activePane.driverChaptersDemo()
+        case "chapters":
+            self.activePane.openChapters(at: argument.isEmpty ? nil : argument)
+        case "chapterjump":
+            self.activePane.scrollToChapter(argument)
         case "retrydemo":
             self.activePane.driverRetryDemo(argument)
         case "undodemo":

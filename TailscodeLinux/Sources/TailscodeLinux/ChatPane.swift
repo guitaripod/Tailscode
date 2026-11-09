@@ -222,6 +222,11 @@ final class ChatPane: @unchecked Sendable {
     let cascade = CascadePainter()
     let rowBuilder = TranscriptRowBuilder()
     var renderedRows: [TranscriptRow] = []
+    /// A chapter a jump is on its way to: it began above the rows the pane draws, so the window
+    /// widens and the next apply that draws it scrolls there.
+    var pendingChapterJump: String?
+    var heldChapters: [ConversationChapter] = []
+    var heldMessageCount = 0
     var rowWidgets: [UInt] = []
     /// Keys that have already made their entrance. A row is rebuilt whenever its value changes —
     /// a thought growing its word count, a tool call reaching its result — and fading a rebuild in

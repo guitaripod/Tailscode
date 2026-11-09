@@ -18,7 +18,7 @@ extension TranscriptRow {
             return .code
         case .reasoning, .tool, .run, .subagent, .subagentGroup, .note, .responseStats, .brain:
             return .furniture
-        case .compaction, .modelSeam, .carried:
+        case .compaction, .modelSeam, .carried, .chapterHeading:
             return .seam
         case .linkRail:
             return .rail

@@ -111,6 +111,7 @@ extension ChatPane {
         rushing = false
         windowLimit = 400
         windowWidened = false
+        pendingChapterJump = nil
         rowTailMessages = 300
         lastFullRows = []
         lastFullCount = 0

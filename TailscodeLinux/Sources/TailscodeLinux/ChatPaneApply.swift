@@ -111,6 +111,12 @@ extension ChatPane {
         if let sessionID, !rows.isEmpty { host?.rememberRows(rows, for: sessionID) }
         let appended = max(0, rows.count - lastFullCount)
         lastFullCount = rows.count
+        if let jump = pendingChapterJump,
+            let index = rows.firstIndex(where: { Self.isChapterRow($0, of: jump) })
+        {
+            windowLimit = max(windowLimit, rows.count - index + 8)
+            windowWidened = true
+        }
         let limit = rowLimit
         let windowed = rows.count > limit ? Array(rows.suffix(limit)) : rows
         let hiddenCount = rows.count - windowed.count
@@ -132,6 +138,21 @@ extension ChatPane {
                 pacedByCascade(windowed, running: state.status == .running), appended: appended)
             settleStreamedTail(in: windowed)
             paintCascade()
+        }
+        if let jump = pendingChapterJump,
+            let index = renderedRows.firstIndex(where: { Self.isChapterRow($0, of: jump) })
+        {
+            pendingChapterJump = nil
+            Gtk.after(60) { [weak self] in
+                Gtk.onMain { [weak self] in self?.scrollToRow(at: index) }
+            }
+        }
+        if state.chapters != heldChapters
+            || (ChaptersPanel.isOpen && state.messages.count != heldMessageCount)
+        {
+            heldChapters = state.chapters
+            heldMessageCount = state.messages.count
+            ChaptersPanel.chaptersChanged()
         }
         if turnEnded {
             replaceRows(where: \.hasOpenWork)
@@ -482,6 +503,8 @@ extension ChatPane {
         case .reconnect:
             guard let conversation else { return }
             Task { await conversation.reconnect() }
+        case .chapters:
+            openChapters(at: nil)
         }
     }
 

@@ -519,6 +519,17 @@ extension MatrixStylesheet {
         .interruption { color: \(textDim); \(t(.interruption)) }
         .seam-text { color: \(special); \(t(.seamLabel)) }
         .model-seam-text { color: \(text); \(t(.note)) }
+        .chapter-heading, .chapter-heading:hover {
+            min-height: 0;
+            padding: 2px 4px 4px 4px;
+            border: none;
+            border-radius: 6px;
+            box-shadow: none;
+            background-color: transparent;
+        }
+        .chapter-heading:hover { background-color: alpha(\(accent), 0.08); }
+        .chapter-kicker { color: \(textDim); \(t(.seamLabel)) }
+        .chapter-title { color: \(text); \(t(.cardTitle)) }
         .carried-text, .carried-glyph { color: \(textDim); \(t(.note)) }
         .carried-line, .carried-line:hover {
             min-height: 0;

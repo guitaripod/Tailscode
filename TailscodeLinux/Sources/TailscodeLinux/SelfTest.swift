@@ -177,6 +177,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkChapters()
+            report("chapters: \(checks) claims hold: headings above openings, none for one, the band's last fact")
+        } catch {
+            report("chapters: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkCompactChat()
             report(
                 "compact chat: \(checks) claims hold: gaps, rail settling, plate placement, hover timing, the picture gallery, the rail in every stage, density")

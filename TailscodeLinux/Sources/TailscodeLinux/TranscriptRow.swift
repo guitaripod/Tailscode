@@ -99,6 +99,9 @@ final class TranscriptContext: @unchecked Sendable {
     /// whether this device is already mid-press and knows what to do with the composer once the
     /// server answers.
     var restoreRevert: (@Sendable () -> Void)?
+    /// Opens the chapters panel, on the chapter whose opening message is named, or on the current
+    /// one.
+    var openChapters: (@Sendable (String?) -> Void)?
     /// The gallery's ear while it is open: a page whose texture was still being fetched repaints
     /// the moment a preview lands, or the original behind it is back on disk.
     var onImageStored: (@Sendable (String) -> Void)?
@@ -162,6 +165,8 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     private var publishedPolicy: NeuralOpenPolicy?
     private var seamTracker = ModelSeamTracker()
     private var catalog: [ModelInfo] = []
+    private var chapterSource: [ConversationChapter] = []
+    private var chapterHeadings: [String: ChapterHeading] = [:]
 
     /// How the brains are drawn this build: the style, which one the person opened and which one
     /// lists its rows. Set from the main loop whenever one changes. It has a lock of its own,
@@ -268,7 +273,7 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     ) -> [TranscriptRow] {
         rows(
             for: messages ?? state.messages, turnOpen: state.status == .running,
-            awaiting: BrainAwaiting.read(state), modelName: modelName)
+            awaiting: BrainAwaiting.read(state), chapters: state.chapters, modelName: modelName)
     }
 
     /// - Parameter turnOpen: whether the conversation is mid-turn. The newest message of an open
@@ -278,12 +283,18 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     ///   for a note's own model naming; not part of the memo key; see that function's doc.
     func rows(
         for messages: [ChatMessage], turnOpen: Bool = false, awaiting: NeuralAwaiting = .none,
+        chapters: [ConversationChapter] = [],
         modelName: (ModelSelection) -> String? = { _ in nil }
     ) -> [TranscriptRow] {
         lock.lock()
         defer { lock.unlock() }
         let look = Self.look
         let seams = seamTracker.update(messages, catalog: currentCatalog)
+        if chapters != chapterSource {
+            chapterSource = chapters
+            chapterHeadings = ChapterReading.headings(chapters)
+        }
+        let headings = chapterHeadings
         var brain = brains.pass(
             messages: messages, running: turnOpen, awaiting: awaiting,
             settings: currentBrainSettings)
@@ -304,6 +315,10 @@ final class TranscriptRowBuilder: @unchecked Sendable {
             guard !rows.isEmpty else { continue }
             if message.role == .user, !all.isEmpty {
                 all.append(TranscriptRow(key: "break:\(message.id)", kind: .turnBreak))
+            }
+            if message.role == .user, let heading = headings[message.id] {
+                all.append(
+                    TranscriptRow(key: "chapter:\(message.id)", kind: .chapterHeading(heading)))
             }
             if let seam = seams[message.id] {
                 all.append(TranscriptRow(key: "seam:\(message.id)", kind: .modelSeam(seam)))
@@ -417,6 +432,7 @@ struct TranscriptRow: Hashable {
         /// Where the answering model changed inside the conversation: one flat line before the
         /// first answer the new model wrote.
         case modelSeam(ModelSwitch)
+        case chapterHeading(ChapterHeading)
         /// The first row of a carried conversation: where it came from, opening the brief it rode in.
         case carried(CarryReading)
         case turnBreak

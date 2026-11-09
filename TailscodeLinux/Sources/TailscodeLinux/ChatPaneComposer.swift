@@ -64,6 +64,11 @@ extension ChatPane {
              Localized.text("A saved chat lists itself even when its server is unreachable"),
              { [weak self] in Gtk.onMain { [weak self] in self?.host?.toggleSaved(entry) } }))
 
+        if let chapters = lastState?.chapters, chapters.count >= 2 {
+            rows.append(
+                (Localized.text("Chapters…"), Localized.text("%d chapters", chapters.count),
+                 { [weak self] in Gtk.onMain { [weak self] in self?.openChapters(at: nil) } }))
+        }
         if capabilities?.supportsRenaming == true, let backend {
             rows.append(
                 (Localized.text("Rename…"), nil,

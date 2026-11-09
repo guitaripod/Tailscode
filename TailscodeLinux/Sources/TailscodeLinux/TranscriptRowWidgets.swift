@@ -138,6 +138,8 @@ extension TranscriptRow {
             }.joined(separator: " ")
         case .modelSeam(let seam):
             return seam.line
+        case .chapterHeading(let heading):
+            return heading.label + " " + heading.title
         case .carried(let reading):
             return reading.line
         case .turnBreak:
@@ -220,6 +222,8 @@ extension TranscriptRow {
             return BrainView.make(row, context: context)
         case .modelSeam(let seam):
             return Self.modelSeam(seam)
+        case .chapterHeading(let heading):
+            return Self.chapterHeading(heading, key: key, context: context)
         case .carried(let reading):
             return Self.carriedLine(reading, context: context)
         case .turnBreak:

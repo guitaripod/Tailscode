@@ -316,6 +316,25 @@ extension MatrixStylesheet {
         .range-verdict-attention { color: \(warn); }
         .range-verdict-danger { color: \(danger); }
         .range-section { color: \(textDim); \(t(.metricLabel)) margin-top: 4px; }
+        .chapters-header { color: \(textDim); \(t(.panelDetail)) }
+        .chapter-strip-piece { min-height: 8px; border-radius: 4px; background-color: alpha(\(text), 0.22); }
+        .chapter-strip-piece.chapter-strip-now { background-color: \(accent); }
+        button.chapter-row, button.chapter-row:hover {
+            min-height: 0; padding: 8px; border: none; border-radius: 10px; box-shadow: none;
+        }
+        button.chapter-row { background-color: transparent; }
+        button.chapter-row:hover, button.chapter-row:focus-visible { background-color: alpha(\(text), 0.08); }
+        button.chapter-row.chapter-row-current { background-color: alpha(\(accent), 0.10); }
+        .chapter-num {
+            min-width: 22px; min-height: 22px; border-radius: 11px;
+            border: 1px solid alpha(\(text), 0.32); color: \(textDim); \(t(.metricLabel))
+        }
+        .chapter-num.chapter-num-current { background-color: \(accent); border-color: \(accent); color: \(canvas); }
+        .chapter-row-title { color: \(text); \(t(.rowTitleStrong)) }
+        .chapter-row-now { color: \(accent); \(t(.metricLabel)) }
+        .chapter-row-gist { color: \(text); \(t(.panelDetail)) }
+        .chapter-row-span { color: \(textDim); \(t(.metricLabel)) }
+        .chapter-row-note { color: \(textDim); \(t(.panelDetail)) font-style: italic; }
         .range-slice-system { background-color: alpha(\(textDim), 0.55); }
         .range-slice-you { background-color: \(accent); }
         .range-slice-answers { background-color: \(info); }

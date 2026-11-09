@@ -140,6 +140,7 @@ extension MainWindow {
         case .scrollBottom: activePane.scroll(toEnd: true)
         case .previousPrompt: activePane.jumpPrompt(by: -1)
         case .nextPrompt: activePane.jumpPrompt(by: 1)
+        case .showChapters: activePane.openChapters(at: nil)
         case .copyLastAnswer: activePane.copyLastAnswer()
         case .insert:
             focus(.transcript)

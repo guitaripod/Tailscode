@@ -616,6 +616,9 @@ extension ChatPane {
         context.restoreRevert = { [weak self] in
             Gtk.onMain { [weak self] in self?.pressRestoreRevert() }
         }
+        context.openChapters = { [weak self] anchor in
+            Gtk.onMain { [weak self] in self?.openChapters(at: anchor) }
+        }
         context.presentText = { [weak self] title, subtitle, body, mono in
             Gtk.onMain { [weak self] in
                 Dialogs.reader(

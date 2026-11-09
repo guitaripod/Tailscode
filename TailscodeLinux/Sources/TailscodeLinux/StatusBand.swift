@@ -217,8 +217,9 @@ enum StatusBand {
     /// The segments in the order they are given up as the band narrows: the note first, then the
     /// quietest facts, and last the state of the turn itself. A segment that does not fit is hidden
     /// whole rather than shrunk to an ellipsis, so whatever remains reads in full.
-    private static let keepOrder = [
+    static let keepOrder = [
         "phase", "queued", "agents", "context", "wall", "cost", "goal", "branch", "cache", "attach",
+        "chapters",
     ]
 
     static func fit(_ box: UnsafeMutablePointer<GtkWidget>, state: State, width: Int32) {
