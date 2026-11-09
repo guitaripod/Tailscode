@@ -25,6 +25,11 @@ enum SettingsFile {
     /// Keys written by the shared stores rather than by this app's own settings — bookmarks, seen
     /// state, model choices, and the renderer the forge points at with the clips it brought back.
     /// Captured by prefix because their key space is per session.
+    /// The captured key spaces whose stores say "the server decides" by removing a key, so a key
+    /// gone from the defaults is gone from the file: without this a model or level handed back to
+    /// the server came back from the file at the next launch.
+    private static let removablePrefixes = ["tailscode.selectedModel.", "tailscode.effort."]
+
     private static let capturedPrefixes = [
         "tailscode.saved.chats", "tailscode.saved.pending", "tailscode.seen.", "tailscode.selectedModel.",
         "tailscode.effort.", "tailscode.recentModels", "tailscode.favoriteModels", "tailscode.modelPresets", "tailscode.modelParty",
@@ -175,6 +180,13 @@ enum SettingsFile {
                 if state[key] == nil, isEmpty(value) { continue }
                 guard !same(state[key], value) else { continue }
                 state[key] = value
+                dirty = true
+            }
+            let removed = state.keys.filter { key in
+                captured[key] == nil && removablePrefixes.contains(where: { key.hasPrefix($0) })
+            }
+            for key in removed {
+                state.removeValue(forKey: key)
                 dirty = true
             }
         }

@@ -37,6 +37,34 @@ extension SelfTest {
         guard try store.profiles().isEmpty else {
             throw SelfTestFailure("profile survived deletion")
         }
+        try checkHandedBackPickLeavesTheFile()
+    }
+
+    /// A model or level handed back to the server removes its key, and the file has to lose it
+    /// too, or the next launch reads the old pick back and a new chat starts on it again.
+    private static func checkHandedBackPickLeavesTheFile() throws {
+        let server = "selftest-\(UUID().uuidString)"
+        func filed() -> Set<String> {
+            guard let data = try? Data(contentsOf: SettingsFile.url),
+                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { return [] }
+            return Set(object.keys.filter { $0.hasSuffix(server) })
+        }
+        ModelPreferenceStore.setGlobalModel(
+            ModelSelection(providerID: "anthropic", modelID: "opus"), forContextID: server)
+        EffortPreferenceStore.setGlobalEffort("high", forContextID: server)
+        SettingsFile.capture()
+        SettingsFile.flush()
+        guard filed().count == 2 else {
+            throw SelfTestFailure("a model and level picked for a server did not reach the file")
+        }
+        NewChatDefaults.record(model: nil, profileID: server)
+        NewChatDefaults.record(effort: nil, profileID: server)
+        SettingsFile.capture()
+        SettingsFile.flush()
+        guard filed().isEmpty else {
+            throw SelfTestFailure("a model and level handed back to the server stayed in the file")
+        }
     }
 
     /// The composer's vim mode, driven the way a person drives it: a starting buffer, a string of
