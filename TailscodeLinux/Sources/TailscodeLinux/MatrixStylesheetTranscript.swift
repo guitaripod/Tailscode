@@ -528,7 +528,7 @@ extension MatrixStylesheet {
             background-color: transparent;
         }
         .chapter-heading:hover { background-color: alpha(\(accent), 0.08); }
-        .chapter-kicker { color: \(textDim); \(t(.seamLabel)) }
+        .chapter-kicker { color: \(textDim); \(t(.rowMeta)) font-weight: 600; }
         .chapter-title { color: \(text); \(t(.cardTitle)) }
         .carried-text, .carried-glyph { color: \(textDim); \(t(.note)) }
         .carried-line, .carried-line:hover {

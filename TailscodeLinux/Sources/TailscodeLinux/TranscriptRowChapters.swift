@@ -13,11 +13,13 @@ extension TranscriptRow {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         let kicker = Gtk.label(
             StatusMark.chapters + " " + heading.label.uppercased() + "  ·  " + heading.time,
-            css: "chapter-kicker", selectable: false)
+            css: "chapter-kicker", wrap: true, selectable: false)
         gtk_widget_set_halign(kicker, GTK_ALIGN_START)
+        gtk_label_set_max_width_chars(op(kicker), 90)
         let title = Gtk.label(heading.title, css: "chapter-title", wrap: true, selectable: false)
         gtk_widget_set_halign(title, GTK_ALIGN_START)
         gtk_label_set_xalign(op(title), 0)
+        gtk_label_set_max_width_chars(op(title), 90)
         gtk_box_append(ptr(column), kicker)
         gtk_box_append(ptr(column), title)
         let press = gtk_button_new()!

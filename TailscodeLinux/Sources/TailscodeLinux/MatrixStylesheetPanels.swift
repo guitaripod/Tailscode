@@ -327,13 +327,13 @@ extension MatrixStylesheet {
         button.chapter-row.chapter-row-current { background-color: alpha(\(accent), 0.10); }
         .chapter-num {
             min-width: 22px; min-height: 22px; border-radius: 11px;
-            border: 1px solid alpha(\(text), 0.32); color: \(textDim); \(t(.metricLabel))
+            border: 1px solid alpha(\(text), 0.32); color: \(textDim); \(t(.rowMeta)) font-weight: 600;
         }
         .chapter-num.chapter-num-current { background-color: \(accent); border-color: \(accent); color: \(canvas); }
         .chapter-row-title { color: \(text); \(t(.rowTitleStrong)) }
-        .chapter-row-now { color: \(accent); \(t(.metricLabel)) }
+        .chapter-row-now { color: \(accent); \(t(.rowMeta)) font-weight: 600; }
         .chapter-row-gist { color: \(text); \(t(.panelDetail)) }
-        .chapter-row-span { color: \(textDim); \(t(.metricLabel)) }
+        .chapter-row-span { color: \(textDim); \(t(.rowMeta)) }
         .chapter-row-note { color: \(textDim); \(t(.panelDetail)) font-style: italic; }
         .range-slice-system { background-color: alpha(\(textDim), 0.55); }
         .range-slice-you { background-color: \(accent); }

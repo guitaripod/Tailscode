@@ -15,9 +15,11 @@ final class ChapterHeadingView: NSView, KeyboardPressable {
         self.onPress = onPress
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        let kicker = RowKit.label(
+        let kicker = RowKit.wrapping(
             StatusMark.chapters + " " + heading.label.uppercased() + "  ·  " + heading.time,
             font: MacTheme.Ramp.font(.seamLabel), color: MacTheme.Color.secondaryLabel)
+        kicker.maximumNumberOfLines = 0
+        kicker.isSelectable = false
         let title = RowKit.wrapping(
             heading.title, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label)
         title.maximumNumberOfLines = 0

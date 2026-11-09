@@ -59,6 +59,11 @@ extension ChatPane {
     /// A conversation three chapters long, for photographing the headings, the band's fact and the
     /// panel headlessly: ``ChapterDemo``'s, the same words every client shows.
     func driverChaptersDemo() {
+        releaseStream()
+        chatLife.cancelAll()
+        streamGeneration &+= 1
+        let generation = streamGeneration
+        feed.update { $0.generation = generation }
         let demo = ChapterDemo.conversation()
         let state = ConversationState(
             messages: demo.messages, status: .idle, hasLoadedTranscript: true,

@@ -16,7 +16,7 @@ final class ChapterHeadingCell: UICollectionViewCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        kicker.numberOfLines = 1
+        kicker.numberOfLines = 0
         kicker.adjustsFontForContentSizeCategory = true
         title.numberOfLines = 0
         title.adjustsFontForContentSizeCategory = true

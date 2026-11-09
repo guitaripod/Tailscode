@@ -175,6 +175,8 @@ final class ChaptersPanel: @unchecked Sendable {
     private func row(_ line: ChapterLine) -> UnsafeMutablePointer<GtkWidget> {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
         let number = Gtk.label("\(line.number)", css: "chapter-num", selectable: false)
+        gtk_label_set_xalign(op(number), 0.5)
+        gtk_label_set_ellipsize(op(number), PANGO_ELLIPSIZE_NONE)
         if line.isCurrent { Gtk.addClass(number, "chapter-num-current") }
         gtk_widget_set_valign(number, GTK_ALIGN_START)
         gtk_box_append(ptr(row), number)
@@ -186,6 +188,7 @@ final class ChaptersPanel: @unchecked Sendable {
         gtk_box_append(ptr(head), title)
         if line.isCurrent {
             let now = Gtk.label(Localized.text("Current"), css: "chapter-row-now", selectable: false)
+            gtk_label_set_ellipsize(op(now), PANGO_ELLIPSIZE_NONE)
             gtk_widget_set_valign(now, GTK_ALIGN_CENTER)
             gtk_box_append(ptr(head), now)
         }
