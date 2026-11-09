@@ -77,6 +77,7 @@ Rules, in `SessionStore`:
 | fork | chapters copied; the last renamed "Fork of …", `fork`; the fork's first model title reads that chapter's opening exchange |
 | `/clear` | chapters dropped (the transcript is gone) |
 | any title event on a conversation with history but no chapters | chapter 1 is first written from the title it had, at turn 1, `kept` |
+| a conversation with 6+ of the person's messages and no chapters is read (`GET /sessions/:id`, 1.23.0) | its history is split once: the person's messages, numbered (notices out, thinned evenly to 150), go to the titler, which answers `n \| title \| what it came to` per chapter; the last keeps the chat's own name; a chat that gained chapters meanwhile keeps its own |
 
 **Where a chapter begins.** The revision is shown the person's messages since the last look (up to four, numbered) and the newest answer, and answers `KEEP` or `n: new title`, `n` the message where the new topic began. A bare title (no number) begins at the newest message. The boundary never moves at or before the previous chapter's start.
 
