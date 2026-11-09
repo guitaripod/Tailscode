@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=1572">
+<title>Chapters, phone</title>
+<link rel="stylesheet" href="base.css">
+</head>
+<body>
+<script>document.documentElement.dataset.theme=location.hash==='#light'?'light':'dark'</script>
+<div class="page" id="page"></div>
+<script>
+const I={
+book:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5c3-1.5 6-1.5 9 .5 3-2 6-2 9-.5V19c-3-1.5-6-1.5-9 .5-3-2-6-2-9-.5z"/><path d="M12 6v13.5"/></svg>',
+chev:'<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+right:'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
+ring:'<svg width="13" height="13" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-opacity=".3" stroke-width="3"/><path d="M12 3a9 9 0 0 1 8.5 6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>',
+more:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9.5"/><circle cx="7.5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="16.5" cy="12" r="1" fill="currentColor"/></svg>',
+up:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5.5 11.5L12 5l6.5 6.5"/></svg>',
+plus:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'
+};
+const CH=[
+ {t:'Fix stream freeze on resume',g:'Traced the freeze to URLSession hanging on a 401 and shipped Kit 0.42.3.',m:'Turns 1–6 · 13:05–15:10',w:6},
+ {t:'Bridge restarts wait for quiet',g:'Restarts now wait for a quiet machine; released claude-bridge 1.21.0.',m:'Turns 7–12 · 15:15–16:02',w:6},
+ {t:'Chat title history as chapters',g:'',m:'Turns 13–17 · since 16:10',w:5,now:true,who:'Named by you'}
+];
+function nav(title,status){return `<div class="nav"><span class="back" style="position:absolute;left:12px;color:var(--accent);font-size:17px">‹</span><div class="tt"><b>${title}</b><small><i></i>${status}</small></div><span class="more">${I.more}</span></div>`}
+function composer(){return `<div class="facts"><span class="fchip">${I.ring} 41%</span><span class="fchip">$3.12</span><span class="fchip">${I.book} 3 chapters</span></div>
+<div class="dock"><div class="box"><div class="words"><span style="color:var(--ink3)">Message your agent…</span></div><div class="row"><span class="plus">${I.plus}</span><span class="pill"><span class="d"></span>Opus 5.5 · xhigh</span><span class="sp"></span><span class="send">${I.up}</span></div></div></div>`}
+function chapters(){return CH.map((c,i)=>`<div class="ch ${c.now?'now':''}"><span class="num">${i+1}</span><div class="body"><div class="tl">${c.t}${c.now?'<em>CURRENT</em>':''}</div>${c.g?`<div class="gist">${c.g}</div>`:''}<div class="meta">${c.m}</div>${c.who?`<div class="who">${c.who}</div>`:''}</div><span class="chev">${I.right}</span></div>`).join('')}
+function strip(){const tot=CH.reduce((a,c)=>a+c.w,0);return `<div class="strip">${CH.map(c=>`<i class="${c.now?'now':''}" style="flex:${c.w/tot}"></i>`).join('')}</div>`}
+const transcript=`
+<div class="prose">Restarts now wait for <code>MachineQuiet</code>: the bridge holds the update until no turn is open and nothing is queued. Released as 1.21.0; each machine picks it up on its own.</div>
+<div class="head"><div class="k">${I.book}Chapter 3<span class="tm">· 16:10</span></div><div class="h">Chat title history as chapters</div></div>
+<div class="bubble">As the session goes on the title changes. I want to see how it evolved, at a glance.</div>
+<div class="tool"><i></i>Read SessionStore.swift · Titler.swift · Models.swift</div>
+<div class="prose">The bridge re-titles every three of your messages when the topic moves, and throws the old title away. I'll keep each one as a chapter…</div>`;
+const figs=[
+ {cap:'Transcript',sub:'a heading where the topic moved',body:`${nav('Chat title history as chapters','Working · 2m 10s')}<div class="col">${transcript}</div>${composer()}`},
+ {cap:'Chapters',sub:'the chip, a heading or the menu',body:`${nav('Chat title history as chapters','Working · 2m 14s')}<div class="col" style="opacity:.5">${transcript}</div>${composer()}<div class="scrim" style="background:rgba(0,0,0,.35)"></div><div class="sheet"><div class="grab"></div><div class="sh-head"><h3>Chapters</h3><span class="done">Done</span></div><div class="sh-sub">3 chapters over 17 turns · since 13:05</div>${strip()}<div class="chs">${chapters()}</div></div>`},
+ {cap:'One chapter',sub:'nothing is drawn: no heading, no chip',body:`<div class="nav"><span class="back" style="position:absolute;left:12px;color:var(--accent);font-size:17px">‹</span><div class="tt"><b>Fix stream freeze on resume</b><small>Done · 4m ago</small></div><span class="more">${I.more}</span></div><div class="col"><div class="bubble">Reopening a chat after the phone slept freezes the stream. Look at the reconnect path.</div><div class="tool"><i></i>Read BridgeStream.swift · AgentConversation.swift</div><div class="prose">The stream reconnects, but the replay asks from a cursor the bridge already dropped…</div></div><div class="facts"><span class="fchip">${I.ring} 12%</span><span class="fchip">$0.41</span></div><div class="dock"><div class="box"><div class="words"><span style="color:var(--ink3)">Message your agent…</span></div><div class="row"><span class="plus">${I.plus}</span><span class="pill"><span class="d"></span>Opus 5.5 · xhigh</span><span class="sp"></span><span class="send">${I.up}</span></div></div></div>`}
+];
+document.getElementById('page').innerHTML=`<div class="title">Chapters — iPhone<span>${document.documentElement.dataset.theme}</span></div>`+figs.map((f,i)=>`<div class="fig"><div class="cap"><span class="n">${i+1}</span>${f.cap}<span>${f.sub}</span></div><div class="phone"><div class="status"><span>9:41</span><span>●●● ▮</span></div>${f.body}</div></div>`).join('');
+</script>
+</body></html>

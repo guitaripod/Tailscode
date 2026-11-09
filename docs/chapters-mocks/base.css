@@ -1,0 +1,111 @@
+:root{--sans:"Adwaita Sans",Inter,system-ui,sans-serif;--canvas:#000;--ink:#fff;--ink2:rgba(235,235,245,.62);--ink3:rgba(235,235,245,.32);--line:rgba(84,84,88,.6);--card:#1c1c1e;--fill:#1c1c1e;--fill2:#2c2c2e;--glass:rgba(44,44,48,.78);--glassline:rgba(255,255,255,.10);--accent:#0a84ff;--onaccent:#fff;--ok:#30d158;--warn:#ff9f0a;--bad:#ff453a;--note:#ff6bb5;--bubble:#0a84ff;--page:#0b0b0e;--pageink:#f1f1f1;--opus:#e08a5e;--win:#1e1e22;--side:#18181b;--adw:#242428;--adwhead:#2e2e33}
+:root[data-theme=light]{--canvas:#f2f2f7;--ink:#000;--ink2:rgba(60,60,67,.62);--ink3:rgba(60,60,67,.32);--line:rgba(60,60,67,.18);--card:#fff;--fill:#fff;--fill2:#e5e5ea;--glass:rgba(255,255,255,.82);--glassline:rgba(0,0,0,.08);--accent:#007aff;--onaccent:#fff;--ok:#1fa840;--warn:#c77700;--bad:#d70015;--note:#d6006f;--bubble:#3478f6;--page:#e9e9ee;--pageink:#1d1d1f;--opus:#c4622f;--win:#fbfbfd;--side:#f0f0f3;--adw:#fafafb;--adwhead:#ebebed}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--page);color:var(--ink);-webkit-font-smoothing:antialiased;font-family:"Adwaita Sans",Inter,system-ui,sans-serif}
+.page{padding:22px 16px 26px;display:flex;gap:24px;flex-wrap:wrap;width:1572px}
+.title{width:100%;font:700 22px/28px var(--sans);color:var(--pageink);margin-bottom:-6px}
+.title span{font-weight:400;opacity:.6;font-size:14px;margin-left:10px}
+.fig{width:360px;flex:none}
+.cap{font:600 14px/20px var(--sans);color:var(--pageink);margin-bottom:8px;display:flex;align-items:baseline;gap:8px}
+.cap .n{width:20px;height:20px;border-radius:10px;background:var(--accent);color:#fff;font:700 11.5px/20px var(--sans);text-align:center;flex:none}
+.cap span{font-weight:400;opacity:.62;font-size:12px}
+.phone{height:720px;background:var(--canvas);box-shadow:0 0 0 1px var(--line);border-radius:30px;position:relative;overflow:hidden;display:flex;flex-direction:column}
+.status{height:36px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 28px;font:600 13px/1 var(--sans)}
+.nav{height:44px;flex:none;display:flex;align-items:center;justify-content:center;font:600 16px/1 var(--sans);position:relative;gap:6px}
+.nav .back{position:absolute;left:12px;color:var(--accent);font-weight:400;font-size:17px}
+.nav small{font-weight:400;color:var(--ink2);font-size:12px}
+.nav .wave{position:absolute;right:16px;color:var(--accent)}
+.col{flex:1;padding:6px 16px 0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.bubble{align-self:flex-end;background:var(--bubble);color:#fff;border-radius:18px;padding:8px 13px;max-width:82%;font-size:15px;line-height:20px}
+.prose{font-size:15px;line-height:21px}
+.prose code{font:13.5px "Adwaita Mono",monospace;background:var(--fill2);border-radius:5px;padding:1px 4px}
+.tool{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink2)}
+.tool i{width:6px;height:6px;border-radius:3px;background:var(--ok);display:inline-block}
+.dock{flex:none;position:relative;padding:8px 14px 26px}
+.box{position:relative;background:var(--glass);border-radius:23px;box-shadow:inset 0 0 0 .5px var(--glassline),0 6px 20px rgba(0,0,0,.18);padding:12px 16px 0;min-height:92px}
+.box .words{font-size:16px;line-height:22px;min-height:22px;padding-bottom:6px}
+.box .ph{color:var(--ink3)}
+.row{height:46px;display:flex;align-items:center;gap:8px;margin:0 -8px}
+.plus{width:32px;height:32px;display:flex;align-items:center;justify-content:center;color:var(--ink2)}
+.pill{height:28px;border-radius:14px;background:var(--fill2);display:inline-flex;align-items:center;gap:6px;padding:0 11px;font-size:12.5px}
+.pill .d{width:8px;height:8px;border-radius:4px;background:var(--opus)}
+.sp{flex:1}
+.send{width:34px;height:34px;border-radius:17px;background:var(--fill2);color:var(--onaccent);display:flex;align-items:center;justify-content:center;flex:none;position:relative}
+.send.on{background:var(--accent)}
+.send.drop{box-shadow:0 0 0 6px color-mix(in srgb,var(--accent) 22%,transparent)}
+.send.armed{background:var(--accent);transform:scale(1.15);box-shadow:0 0 0 3px var(--canvas),0 0 0 5px var(--accent),0 0 24px color-mix(in srgb,var(--accent) 60%,transparent)}
+:root[data-theme=light] .finger{background:rgba(0,0,0,.12);box-shadow:0 0 0 1.5px rgba(0,0,0,.3)}
+:root[data-theme=light] .trail{background:linear-gradient(90deg,transparent,rgba(0,0,0,.25))}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.45);z-index:20}
+.win{border-radius:12px;overflow:hidden;box-shadow:0 0 0 1px var(--line),0 20px 50px rgba(0,0,0,.35);background:var(--win);display:flex;flex-direction:column;position:relative}
+.wfig{width:748px;flex:none}
+.tbar{height:40px;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:.5px solid var(--line);font:600 13px/1 var(--sans);flex:none}
+.lights{display:flex;gap:7px;margin-right:10px}.lights i{width:12px;height:12px;border-radius:6px;display:block}
+.wbody{display:flex;flex:1;min-height:0}
+.wside{width:210px;background:var(--side);border-right:.5px solid var(--line);padding:10px 8px;display:flex;flex-direction:column;gap:2px;flex:none}
+.wside div{height:30px;border-radius:7px;display:flex;align-items:center;padding:0 10px;font-size:13px;color:var(--ink2);gap:8px}
+.wside div.sel{background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--ink)}
+.wside i{width:7px;height:7px;border-radius:4px;background:var(--ok);display:inline-block}
+.wmain{flex:1;display:flex;flex-direction:column;min-width:0}
+.wtr{flex:1;padding:16px 24px;display:flex;flex-direction:column;gap:12px;overflow:hidden;font-size:13.5px;line-height:19px}
+.wtr .bubble{font-size:13.5px;line-height:18px;padding:7px 12px}
+.wcomp{padding:10px 18px 14px;position:relative}
+.editor{border-radius:12px;background:var(--fill);box-shadow:inset 0 0 0 1px var(--line);padding:10px 12px;font-size:14px;line-height:20px;min-height:62px}
+.editor.lit{box-shadow:inset 0 0 0 1.5px var(--accent),0 0 22px color-mix(in srgb,var(--accent) 30%,transparent)}
+.wrow{display:flex;align-items:center;gap:8px;margin-top:8px}
+.wrow .pill{height:24px;font-size:12px}
+.kc{font:600 11px/1 "Adwaita Mono",monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:2px 5px;color:var(--ink2)}
+.btn{height:30px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;padding:0 14px;font:600 13px/1 var(--sans);background:var(--fill2)}
+.btn.fill{background:var(--accent);color:#fff}
+.nav .tt{display:flex;flex-direction:column;align-items:center;gap:3px;max-width:230px}
+.nav .tt b{font:600 16px/19px var(--sans);display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px}
+.nav .tt b svg{flex:none;color:var(--ink2)}
+.nav .tt small{font:400 12px/14px var(--sans);color:var(--ink2);display:flex;align-items:center;gap:5px}
+.nav .tt small i{width:7px;height:7px;border-radius:4px;background:var(--ok);display:inline-block}
+.nav .more{position:absolute;right:14px;color:var(--accent)}
+.seam{display:flex;align-items:center;gap:8px;height:32px;margin:4px 0;color:var(--ink2);font:600 11.5px/1 "Adwaita Mono",monospace;letter-spacing:.06em}
+.seam::before,.seam::after{content:"";flex:1;height:.5px;background:var(--line)}
+.seam .lab{display:flex;align-items:center;gap:6px;max-width:80%;white-space:nowrap}
+.seam .lab .n{text-transform:uppercase}
+.seam .lab .t{font:600 13px/1 "Adwaita Sans",Inter,system-ui,sans-serif;letter-spacing:0;color:var(--ink);overflow:hidden;text-overflow:ellipsis}
+.seam .lab .c{color:var(--ink3);font-size:13px}
+.facts{display:flex;gap:6px;padding:0 14px 6px;overflow:hidden}
+.fchip{height:30px;border-radius:15px;background:color-mix(in srgb,var(--ink) 7%,var(--canvas));display:inline-flex;align-items:center;gap:5px;padding:0 11px;font:500 12.5px/1 var(--sans);color:var(--ink);white-space:nowrap}
+.fchip svg{color:var(--ink2)}
+.sheet{position:absolute;left:0;right:0;bottom:0;top:250px;background:var(--card);border-radius:24px 24px 0 0;z-index:21;display:flex;flex-direction:column;padding:8px 0 0}
+.grab{width:36px;height:5px;border-radius:3px;background:var(--ink3);align-self:center;margin-bottom:10px}
+.sh-head{display:flex;align-items:flex-start;justify-content:space-between;padding:0 20px}
+.sh-head h3{font:700 20px/24px var(--sans)}
+.sh-head .done{color:var(--accent);font:600 16px/24px var(--sans)}
+.sh-sub{padding:3px 20px 12px;font-size:13.5px;line-height:18px;color:var(--ink2)}
+.strip{display:flex;gap:3px;height:8px;margin:0 20px 14px}
+.strip i{display:block;border-radius:4px;background:color-mix(in srgb,var(--ink) 22%,transparent)}
+.strip i.now{background:var(--accent)}
+.chs{display:flex;flex-direction:column;padding:0 12px;gap:2px}
+.ch{display:flex;gap:12px;padding:10px 8px;border-radius:14px;align-items:flex-start}
+.ch.now{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.ch .num{width:24px;height:24px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;font:700 12px/1 "Adwaita Mono",monospace;color:var(--ink2);box-shadow:inset 0 0 0 1.25px var(--ink3);margin-top:1px}
+.ch.now .num{background:var(--accent);color:#fff;box-shadow:none}
+.ch .body{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.ch .tl{font:600 15.5px/20px var(--sans);display:flex;gap:8px;align-items:baseline}
+.ch .tl em{font:700 10.5px/1 "Adwaita Mono",monospace;font-style:normal;color:var(--accent);letter-spacing:.08em}
+.ch .gist{font-size:14px;line-height:19px;color:var(--ink)}
+.ch .meta{font:500 12px/16px "Adwaita Mono",monospace;color:var(--ink2)}
+.ch .who{font-size:12.5px;color:var(--ink2);font-style:italic}
+.ch .chev{color:var(--ink3);align-self:center}
+.band{display:flex;align-items:center;gap:14px;height:26px;padding:0 4px;font:500 12px/1 "Adwaita Mono",monospace;color:var(--ink2)}
+.band .seg{display:flex;align-items:center;gap:5px}
+.band .seg.on{color:var(--ink);background:color-mix(in srgb,var(--accent) 18%,transparent);border-radius:6px;padding:4px 6px;margin:0 -6px}
+.pop{position:absolute;width:380px;background:var(--adwhead);border-radius:14px;box-shadow:0 0 0 1px var(--line),0 14px 40px rgba(0,0,0,.45);padding:14px 4px 8px;z-index:30;display:flex;flex-direction:column}
+.pop .sh-head{padding:0 14px}.pop .sh-sub{padding:2px 14px 10px}.pop .strip{margin:0 14px 10px}.pop .chs{padding:0 6px}
+.pop .sh-head h3{font-size:15px;line-height:20px}
+.pop .ch{padding:8px;border-radius:9px}.pop .ch .tl{font-size:13.5px;line-height:18px}.pop .ch .gist{font-size:12.5px;line-height:17px}.pop .ch .meta{font-size:11px}
+.pop .ch .num{width:20px;height:20px;font-size:10.5px}
+.pop .ch.hover{background:color-mix(in srgb,var(--ink) 8%,transparent)}
+.pop .foot{display:flex;justify-content:space-between;padding:8px 14px 2px;font:11px/1 "Adwaita Mono",monospace;color:var(--ink3)}
+.pop.arrow::after{content:"";position:absolute;bottom:-7px;left:var(--ax,60px);width:14px;height:14px;background:var(--adwhead);transform:rotate(45deg);box-shadow:1px 1px 0 0 var(--line)}
+.head{display:flex;flex-direction:column;gap:4px;margin:10px 0 2px;padding-top:12px;border-top:.5px solid var(--line)}
+.head .k{display:flex;align-items:center;gap:6px;font:600 11px/1 "Adwaita Mono",monospace;letter-spacing:.08em;color:var(--ink2);text-transform:uppercase}
+.head .k .tm{letter-spacing:0;text-transform:none;color:var(--ink3)}
+.head .h{font:650 17px/22px var(--sans);color:var(--ink)}
+.wtr .head .h{font-size:15px;line-height:20px}

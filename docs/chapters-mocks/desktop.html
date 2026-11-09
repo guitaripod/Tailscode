@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=1572">
+<title>Chapters, desktop</title>
+<link rel="stylesheet" href="base.css">
+</head>
+<body>
+<script>document.documentElement.dataset.theme=location.hash==='#light'?'light':'dark'</script>
+<div class="page" id="page"></div>
+<script>
+const I={
+book:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5c3-1.5 6-1.5 9 .5 3-2 6-2 9-.5V19c-3-1.5-6-1.5-9 .5-3-2-6-2-9-.5z"/><path d="M12 6v13.5"/></svg>',
+right:'<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>'
+};
+const CH=[
+ {t:'Fix stream freeze on resume',g:'Traced the freeze to URLSession hanging on a 401 and shipped Kit 0.42.3.',m:'Turns 1–6 · 13:05–15:10',w:6},
+ {t:'Bridge restarts wait for quiet',g:'Restarts now wait for a quiet machine; released claude-bridge 1.21.0.',m:'Turns 7–12 · 15:15–16:02',w:6,hover:true},
+ {t:'Chat title history as chapters',g:'',m:'Turns 13–17 · since 16:10',w:5,now:true,who:'Named by you'}
+];
+function chapters(){return CH.map((c,i)=>`<div class="ch ${c.now?'now':''} ${c.hover?'hover':''}"><span class="num">${i+1}</span><div class="body"><div class="tl">${c.t}${c.now?'<em>CURRENT</em>':''}</div>${c.g?`<div class="gist">${c.g}</div>`:''}<div class="meta">${c.m}</div>${c.who?`<div class="who">${c.who}</div>`:''}</div></div>`).join('')}
+function strip(){const tot=CH.reduce((a,c)=>a+c.w,0);return `<div class="strip">${CH.map(c=>`<i class="${c.now?'now':''}" style="flex:${c.w/tot}"></i>`).join('')}</div>`}
+const tr=`
+<div class="prose">Restarts now wait for <code>MachineQuiet</code>: the bridge holds the update until no turn is open and nothing is queued. Released as 1.21.0.</div>
+<div class="head"><div class="k">${I.book}Chapter 3<span class="tm">· 16:10</span></div><div class="h">Chat title history as chapters</div></div>
+<div class="bubble" style="align-self:flex-end">As the session goes on the title changes. I want to see how it evolved, at a glance.</div>
+<div class="tool"><i></i>Read SessionStore.swift · Titler.swift · Models.swift</div>
+<div class="prose">The bridge re-titles every three of your messages when the topic moves, and throws the old title away. I'll keep each one as a chapter, with what it came to…</div>`;
+function side(){return `<div class="wside"><div class="sel"><i></i>Chat title history as chapters</div><div>Range count from the agent</div><div>Quick ask palette</div><div>Dictation on Linux</div></div>`}
+function win(kind){
+ const mac=kind==='mac';
+ const title=mac?`<span class="lights"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></span>Chat title history as chapters <span style="font-weight:400;color:var(--ink2);margin-left:6px">arch</span>`:`<span style="flex:1;text-align:center;font-family:'Adwaita Mono',monospace;font-weight:500">Chat title history as chapters</span><span style="color:var(--ink2)">⋯</span>`;
+ const pop=mac
+  ?`<div class="pop arrow" style="left:330px;bottom:96px;--ax:236px"><div class="sh-head"><h3>Chapters</h3></div><div class="sh-sub">3 chapters over 17 turns · since 13:05</div>${strip()}<div class="chs">${chapters()}</div><div class="foot"><span>↑ ↓ · return jumps · esc closes</span><span>g c</span></div></div>`
+  :`<div class="scrim" style="background:rgba(0,0,0,.4);z-index:25"></div><div class="pop" style="left:184px;top:62px;width:400px;background:var(--adw);border-radius:12px"><div class="sh-head" style="align-items:center"><h3>Chapters</h3><span class="btn" style="height:26px;padding:0 10px">Close</span></div><div class="sh-sub">3 chapters over 17 turns · since 13:05</div>${strip()}<div class="chs">${chapters()}</div><div class="foot"><span>enter jumps · esc closes</span><span>g c</span></div></div>`;
+ return `<div class="win" style="height:640px"><div class="tbar" style="${mac?'':'background:var(--adwhead)'}">${title}</div><div class="wbody">${side()}<div class="wmain"><div class="wtr">${tr}</div><div class="wcomp"><div class="band"><span class="seg">◔ 41%</span><span class="seg">$3.12</span><span class="seg">⎇ master +3</span><span class="seg on">${I.book} 3 chapters</span></div><div class="editor"><span style="color:var(--ink3)">Message…</span></div></div></div></div>${pop}</div>`;
+}
+document.getElementById('page').innerHTML=`<div class="title">Chapters — Mac and Linux<span>${document.documentElement.dataset.theme}</span></div>
+<div class="wfig"><div class="cap"><span class="n">1</span>Mac<span>band segment opens a popover; g c and Chat ▸ Chapters… too</span></div>${win('mac')}</div>
+<div class="wfig"><div class="cap"><span class="n">2</span>Linux<span>band segment opens the panel; g c and ⋯ ▸ Chapters… too</span></div>${win('linux')}</div>`;
+</script>
+</body></html>
