@@ -186,7 +186,8 @@ enum Kit {
     /// agent what fills its window.
     /// 0.50.0 hands a bridge the device's notification rules and holds a wait until the work
     /// settles rather than the turn.
-    static let version = Version(0, 50, 0)
+    /// 0.51.0 carries a conversation's chapters from the servers that keep them.
+    static let version = Version(0, 51, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
