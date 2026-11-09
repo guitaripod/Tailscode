@@ -153,13 +153,19 @@ final class ChatViewController: UIViewController {
     /// the repository — read-only, because this app never commits on anyone's behalf.
     let gitChip = ChatChip(kind: .fact)
     var git: GitState?
+    /// How many chapters the conversation has been through, shown from two. Tapping opens them.
+    let chaptersChip = ChatChip(kind: .fact)
+    var chapterSource: [ConversationChapter] = []
+    var chapterHeadings: [String: ChapterHeading] = [:]
+    var chapterMessageCount = 0
+    weak var chaptersSheet: ChaptersViewController?
     /// The way into the running app, offered only where this conversation's machine runs a preview
     /// host and the folder is known. It is a control, so it is outlined, and it leads the one
     /// chip row the chat has, so a row that scrolls sideways never hides it.
     let previewChip = ChatChip(kind: .control)
     lazy var factsRow = ChatFactsRow(chips: [
         previewChip, agentsChip, backgroundChip, goalChip, contextChip, wallChip, cacheChip,
-        spendChip, gitChip,
+        spendChip, gitChip, chaptersChip,
     ])
     let factsScrim = FadeScrimView(fade: CGFloat(ChatChrome.transcriptToChrome))
     let findBar = UIView()
@@ -263,6 +269,7 @@ final class ChatViewController: UIViewController {
         configureContextChip()
         configureRangeChips()
         configureSpendChip()
+        configureChaptersChip()
         configureGitChip()
         configurePreviewChip()
         configureBackgroundChip()

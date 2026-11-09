@@ -238,6 +238,8 @@ extension ChatViewController: UICollectionViewDelegate {
             return files.compactMap { $0.filename ?? $0.mime }.joined(separator: "\n")
         case .failed(let turn):
             return turn.reason
+        case .chapterHeading(let heading):
+            return heading.title
         case .timestamp, .note, .modelSeam, .carried:
             return nil
         }

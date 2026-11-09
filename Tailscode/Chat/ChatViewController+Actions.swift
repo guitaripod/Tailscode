@@ -183,6 +183,9 @@ extension ChatViewController {
             case .modelSeam(let seam):
                 out.append("_\(seam.line)_")
                 continue
+            case .chapterHeading(let heading):
+                out.append("### \(heading.label): \(heading.title)")
+                continue
             case .carried(let reading):
                 out.append("_\(reading.line)_")
                 continue

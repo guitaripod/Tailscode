@@ -17,6 +17,7 @@ enum ChatRowBuilder {
         from messages: [ChatMessage], agents: ChatViewController.SubagentPlacement,
         runs: [String: WorkflowRun] = [:], turnOpen: Bool = false, memo: SegmentRowMemo? = nil,
         brains: BrainLayout = .none, seams: [String: ModelSwitch] = [:],
+        headings: [String: ChapterHeading] = [:],
         modelName: (ModelSelection) -> String? = { _ in nil }
     ) -> [ChatRow] {
         defer { memo?.sweep() }
@@ -47,6 +48,11 @@ enum ChatRowBuilder {
             case .assistant:
                 if brain == nil, !brains.isEmpty { brain = brains.turn(startingAt: message.id) }
             case .system: break
+            }
+            if message.role == .user, let heading = headings[message.id] {
+                rows.append(ChatRow(
+                    id: "chapter:\(message.id)", messageID: message.id, role: .system,
+                    content: .chapterHeading(heading)))
             }
             let leading = rows.count
             let stamp = lastDate.flatMap { previous in

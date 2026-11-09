@@ -28,6 +28,8 @@ struct ChatRow: Hashable {
         case compaction(CompactionRow)
         /// Where the answering model changed, as one flat line before the answer it changed on.
         case modelSeam(ModelSwitch)
+        /// Where a chapter of the conversation began, above the message that opened it.
+        case chapterHeading(ChapterHeading)
         /// The first row of a chat that was carried from another: where it came from.
         case carried(CarryReading)
         case taskBoard(TaskBoard)

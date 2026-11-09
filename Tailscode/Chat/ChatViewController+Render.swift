@@ -253,6 +253,14 @@ extension ChatViewController {
     private static func stagedState(_ state: ConversationState) -> ConversationState {
         #if DEBUG
             let environment = ProcessInfo.processInfo.environment
+            if environment["TAILSCODE_CHAPTERS_DEMO"] != nil {
+                let demo = ChapterDemo.conversation()
+                var staged = state
+                staged.messages = demo.messages
+                staged.chapters = demo.chapters
+                staged.hasLoadedTranscript = true
+                return staged
+            }
             if environment["TAILSCODE_NEURAL_DEMO"] == "write" {
                 var staged = state
                 staged.messages = NeuralDemo.writing(prefix: "w-")
@@ -295,10 +303,21 @@ extension ChatViewController {
             providerID: viewModel.displayedModel?.providerID,
             effortOptions: effortOptions, effort: effort)
         let seams = seamTracker.update(reading.messages, catalog: availableModels)
+        if state.chapters != chapterSource {
+            chapterSource = state.chapters
+            chapterHeadings = ChapterReading.headings(state.chapters)
+            chapterMessageCount = state.messages.count
+            chaptersSheet?.chaptersChanged()
+            updateChaptersChip()
+        } else if chaptersSheet != nil, state.messages.count != chapterMessageCount {
+            chapterMessageCount = state.messages.count
+            chaptersSheet?.chaptersChanged()
+        }
         var rows = ChatRowBuilder.makeRows(
             from: reading.messages, agents: subagentPlacement(for: reading.messages),
             runs: Dictionary(runs.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest }),
             turnOpen: reading.running, memo: segmentMemo, brains: layout, seams: seams,
+            headings: chapterHeadings,
             modelName: { [contextID = viewModel.contextID] selection in
                 ModelCatalog.cached(for: contextID).first { $0.selection == selection }?.name
             })

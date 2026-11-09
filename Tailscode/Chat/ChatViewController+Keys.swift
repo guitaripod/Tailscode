@@ -78,6 +78,8 @@ extension ChatViewController: KeyActionHost {
             jumpToPrompt(by: -1)
         case .nextPrompt:
             jumpToPrompt(by: 1)
+        case .showChapters:
+            presentChapters(at: nil)
         case .copyLastAnswer:
             return copyLastAnswer()
         case .findInConversation:

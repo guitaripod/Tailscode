@@ -26,7 +26,16 @@ extension ChatViewController {
                 }
             }
             guard !prompts.isEmpty else { return completion([]) }
-            completion([
+            var items: [UIMenuElement] = []
+            if self.chapterSource.count >= 2 {
+                items.append(
+                    UIAction(
+                        title: String(localized: "Chapters"),
+                        subtitle: Localized.text("%d chapters", self.chapterSource.count),
+                        image: UIImage(systemName: "book.pages")
+                    ) { [weak self] _ in self?.presentChapters(at: nil) })
+            }
+            completion(items + [
                 UIMenu(
                     title: String(localized: "Jump to message"),
                     image: UIImage(systemName: "list.bullet"),

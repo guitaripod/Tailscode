@@ -161,6 +161,7 @@ extension ChatViewController {
         updateRangeChips(facts.range)
         rangeSheet?.refresh()
         updateSpendChip()
+        updateChaptersChip()
         updateBackgroundChip(for: facts)
         refreshAgentsChip()
         var text: String?

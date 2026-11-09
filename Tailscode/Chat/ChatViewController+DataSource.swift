@@ -253,6 +253,12 @@ extension ChatViewController {
                 self?.presentCompactionSummary(compaction)
             }
             return cell
+        case .chapterHeading(let heading):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: ChapterHeadingCell.reuseID, for: indexPath) as! ChapterHeadingCell
+            let anchor = row.messageID
+            cell.configure(heading) { [weak self] in self?.presentChapters(at: anchor) }
+            return cell
         case .modelSeam(let seam):
             let cell = collectionView.dequeueReusableCell(
                 withReuseIdentifier: ModelSeamCell.reuseID, for: indexPath) as! ModelSeamCell

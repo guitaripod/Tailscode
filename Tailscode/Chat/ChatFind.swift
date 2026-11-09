@@ -58,6 +58,8 @@ enum ChatFind {
             return line.text
         case .modelSeam(let seam):
             return seam.line
+        case .chapterHeading(let heading):
+            return heading.label + " " + heading.title
         case .carried(let reading):
             return reading.line
         }

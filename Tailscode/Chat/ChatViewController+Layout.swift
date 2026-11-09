@@ -60,6 +60,8 @@ extension ChatViewController {
         collectionView.register(
             ModelSeamCell.self, forCellWithReuseIdentifier: ModelSeamCell.reuseID)
         collectionView.register(
+            ChapterHeadingCell.self, forCellWithReuseIdentifier: ChapterHeadingCell.reuseID)
+        collectionView.register(
             CarriedLineCell.self, forCellWithReuseIdentifier: CarriedLineCell.reuseID)
         collectionView.register(
             TaskBoardCell.self, forCellWithReuseIdentifier: TaskBoardCell.reuseID)

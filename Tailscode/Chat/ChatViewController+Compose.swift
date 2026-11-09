@@ -253,8 +253,10 @@ extension ChatViewController {
                 finishApply()
             } else {
                 openingStageStart = CACurrentMediaTime()
-                dataSource.apply(snapshotToApply(), animatingDifferences: animated) {
+                let held = readingPlace(before: shownIDs)
+                dataSource.apply(snapshotToApply(), animatingDifferences: animated) { [weak self] in
                     finishApply()
+                    self?.restoreReadingPlace(held)
                 }
             }
         }
