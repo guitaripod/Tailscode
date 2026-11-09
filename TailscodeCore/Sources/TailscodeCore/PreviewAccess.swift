@@ -105,7 +105,7 @@ public enum PreviewProbe {
         } catch AgentError.http(let code, _) where code == 404 {
             return .unreachable(Localized.text("That address is not a preview host"))
         } catch {
-            return .unreachable(String(describing: error))
+            return .unreachable(AgentErrorText.readable(error))
         }
     }
 }

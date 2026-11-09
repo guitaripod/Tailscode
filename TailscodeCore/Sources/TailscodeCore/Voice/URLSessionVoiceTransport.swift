@@ -1,3 +1,4 @@
+import CodingAgentKit
 import Foundation
 
 #if canImport(FoundationNetworking)
@@ -42,7 +43,7 @@ public final class URLSessionVoiceTransport: VoiceTransport, @unchecked Sendable
         } catch {
             task.cancel(with: .goingAway, reason: nil)
             _ = replace(with: nil)
-            throw VoiceTransportError.refused(error.localizedDescription)
+            throw VoiceTransportError.refused(TransportWords.sentence(for: error))
         }
     }
 

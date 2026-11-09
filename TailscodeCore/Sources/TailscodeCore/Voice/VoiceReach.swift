@@ -138,7 +138,7 @@ public struct VoiceReachProbe: Sendable {
 
     public static func reading(_ error: Error) -> VoiceReach {
         if error is VoiceDeadline { return .unreachable(VoiceCallReading.timedOut) }
-        guard let failure = error as? URLError else { return .unreachable(error.localizedDescription) }
+        guard let failure = error as? URLError else { return .unreachable(TransportWords.sentence(for: error)) }
         switch failure.code {
         case .cannotConnectToHost:
             return .noGateway
@@ -147,7 +147,7 @@ public struct VoiceReachProbe: Sendable {
         case .notConnectedToInternet, .cannotFindHost, .dnsLookupFailed, .networkConnectionLost:
             return .unreachable(VoiceCallReading.machineUnreachable)
         default:
-            return .unreachable(failure.localizedDescription)
+            return .unreachable(TransportWords.sentence(for: failure))
         }
     }
 

@@ -212,13 +212,13 @@ public struct VoiceSetupSource: SetupSource {
     }
 
     static func answer(for error: Error) -> SetupSourceAnswer {
-        guard let failure = error as? URLError else { return .unreachable(error.localizedDescription) }
+        guard let failure = error as? URLError else { return .unreachable(TransportWords.sentence(for: error)) }
         switch failure.code {
         case .cannotConnectToHost: return .absent(absentReport())
         case .timedOut: return .unreachable(VoiceCallReading.timedOut)
         case .notConnectedToInternet, .cannotFindHost, .dnsLookupFailed, .networkConnectionLost:
             return .unreachable(SetupReading.unreachableAdvice)
-        default: return .unreachable(failure.localizedDescription)
+        default: return .unreachable(TransportWords.sentence(for: failure))
         }
     }
 
