@@ -22,6 +22,16 @@ final class TranscriptViewController: NSViewController {
     /// A click on the status band, routed through the hub — reading the status and steering the
     /// turn are one gesture, and the hub owns the steering.
     var onBandAction: ((StatusFacts.Action) -> Void)?
+    var chaptersPopover: NSPopover?
+    var chaptersPanel: ChaptersPanelViewController?
+    var heldChapters: [ConversationChapter] = []
+    var heldMessageCount = 0
+    /// A chapter a jump is on its way to while the rows above the window are still being filled
+    /// in, a chunk a turn; the fill that draws it scrolls there.
+    var pendingChapterJump: String?
+    /// Whether a jump widened the window past the pane's own. It narrows again once the reader is
+    /// back at the bottom, so a stream does not go on paying for rows nobody is reading.
+    var chapterWidened = false
     /// An answered chooser row: which server, which chat, or a new one — acted on by the hub,
     /// which owns the servers and the minting of sessions.
     var onChooserAction: ((PaneChooserAction) -> Void)?
@@ -211,6 +221,11 @@ final class TranscriptViewController: NSViewController {
         didSet {
             if followsBottom {
                 rowsAtDeparture = nil
+                if chapterWidened, !oldValue {
+                    chapterWidened = false
+                    rowTailMessages = 300
+                    windowLimit = 400
+                }
             } else if oldValue {
                 rowsAtDeparture = renderedRows.count
             }

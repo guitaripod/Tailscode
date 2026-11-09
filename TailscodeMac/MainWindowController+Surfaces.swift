@@ -60,6 +60,8 @@ extension MainWindowController {
                 transcript.composer.openDemoModelDial(popover: detail != "pill")
             }
         case "spend": presentSpend(for: transcript)
+        case "chapters":
+            transcript.showChapterDemo(opening: parts.count > 1 ? parts[1] : nil)
         case "git":
             #if DEBUG
                 if parts.count > 1, parts[1] == "diff" {
@@ -175,7 +177,7 @@ extension MainWindowController {
                 Data(
                     ("unknown surface \(name) — servers, updates, preferences, typesize, analytics, newchat[:browse], "
                         + "quickask[:long|party|take], cheatsheet, commands, chooser, models, dial[:pill], spend, git, "
-                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], agents, agents-watch, agents-hour, agent-peek, party, clock-glance, clock-sheet[:minute+add+q=text], share[:fixture[+format]], draw, preview[:state[+split]], preview=HOST:PORT:/folder[+split], renderer, delegate\n").utf8))
+                        + "forge[:state], forgering[:state], studio[:state[+viewer]], viewer[:state], agents, agents-watch, agents-hour, agent-peek, party, clock-glance, clock-sheet[:minute+add+q=text], share[:fixture[+format]], chapters[:open|jump], draw, preview[:state[+split]], preview=HOST:PORT:/folder[+split], renderer, delegate\n").utf8))
         }
     }
 

@@ -85,6 +85,9 @@ final class TranscriptContext {
     var confirmUndo: ((String) -> Void)?
     /// The standing revert's own Restore press.
     var restoreRevert: (() -> Void)?
+    /// Opens the chapters popover on the chapter whose opening message is named, or on the
+    /// current one.
+    var openChapters: ((String?) -> Void)?
     /// Names a model the way this device already names it elsewhere, for a note that mentions
     /// one. Nil leaves Core's own fallback, the model's bare id, standing.
     var modelName: (ModelSelection) -> String? = { _ in nil }

@@ -64,7 +64,7 @@ enum ChatLayout {
             return .row(.code)
         case .linkRail:
             return .row(.rail)
-        case .compaction, .modelSeam, .carried:
+        case .compaction, .modelSeam, .carried, .chapterHeading:
             return .row(.seam)
         case .interruption, .reasoning, .tool, .run, .subagent, .subagentGroup, .responseStats, .note,
             .revertPending:

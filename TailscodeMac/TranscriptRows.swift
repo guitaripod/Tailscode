@@ -107,6 +107,8 @@ struct TranscriptRow: Hashable {
         /// The answering model changed here: one flat line before the answer that the new model
         /// wrote, so the change is read where it happened and not inferred from a footer.
         case modelSeam(ModelSwitch)
+        /// Where a chapter of the conversation began, above the message that opened it.
+        case chapterHeading(ChapterHeading)
         /// The first row of a chat that was carried from another: where it came from, opening the
         /// brief it rode in on.
         case carried(CarryReading)
@@ -221,6 +223,8 @@ struct TranscriptRow: Hashable {
             return compaction.summary ?? ""
         case .modelSeam(let change):
             return change.line
+        case .chapterHeading(let heading):
+            return heading.label + " " + heading.title
         case .carried(let reading):
             return reading.line
         case .designBoard(let sighting):

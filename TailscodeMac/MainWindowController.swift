@@ -305,6 +305,15 @@ extension MainWindowController: NSMenuDelegate {
             ) { [weak self] in
                 self?.sidebar.toggleSaved(entry)
             })
+        if let chapters = transcript.lastState?.chapters, chapters.count >= 2 {
+            menu.addItem(
+                actionsItem(
+                    Localized.text("Chapters…"),
+                    subtitle: Localized.text("%d chapters", chapters.count)
+                ) { [weak self] in
+                    self?.transcript.openChapters(at: nil)
+                })
+        }
         if capabilities.supportsRenaming {
             menu.addItem(
                 actionsItem(Localized.text("Rename…")) { [weak self] in

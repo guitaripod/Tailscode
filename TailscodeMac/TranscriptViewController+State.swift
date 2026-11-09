@@ -30,6 +30,13 @@ extension TranscriptViewController {
         defer { Pace.signposter.endInterval("apply", interval) }
         noteHapticEdges(state: state)
         lastState = state
+        if state.chapters != heldChapters
+            || (chaptersPopover?.isShown == true && state.messages.count != heldMessageCount)
+        {
+            heldChapters = state.chapters
+            heldMessageCount = state.messages.count
+            chaptersPanel?.chaptersChanged()
+        }
         keepRead(state)
         if let entry, spendReading.note(messages: state.messages, for: entry.session.id) {
             updateStatus()

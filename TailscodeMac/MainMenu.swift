@@ -181,6 +181,7 @@ final class MainMenu: NSObject {
         conversationChordItems = [
             (bound(Localized.text("Previous Prompt"), #selector(previousPrompt), .previousPrompt), .previousPrompt),
             (bound(Localized.text("Next Prompt"), #selector(nextPrompt), .nextPrompt), .nextPrompt),
+            (bound(Localized.text("Chapters…"), #selector(showChapters), .showChapters), .showChapters),
             (bound(Localized.text("Copy Last Answer"), #selector(copyLastAnswer), .copyLastAnswer), .copyLastAnswer),
             (bound(DictationReading.name, #selector(dictate), .dictate), .dictate),
         ]
@@ -597,6 +598,7 @@ final class MainMenu: NSObject {
     @objc private func stop() { hub.transcript.stopTurn() }
     @objc private func previousPrompt() { run(.previousPrompt) }
     @objc private func nextPrompt() { run(.nextPrompt) }
+    @objc private func showChapters() { run(.showChapters) }
     @objc private func copyLastAnswer() { run(.copyLastAnswer) }
     @objc private func dictate() {
         if let panel = NSApp.keyWindow as? QuickAskPanel {

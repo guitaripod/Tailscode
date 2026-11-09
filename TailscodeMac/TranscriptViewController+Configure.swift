@@ -178,6 +178,7 @@ extension TranscriptViewController {
     /// and the brain's reading of the turns, and this is the one place the state is handed to it.
     func buildRows(_ messages: [ChatMessage], state: ConversationState) -> [TranscriptRow] {
         rowBuilder.catalog = composer.catalog
+        rowBuilder.chapters = state.chapters
         return rowBuilder.rows(
             for: messages, turnOpen: state.status == .running,
             awaiting: brains.isActive ? BrainStore.awaiting(for: state) : .none)
@@ -316,6 +317,9 @@ extension TranscriptViewController {
         }
         context.confirmUndo = { [weak self] messageID in
             self?.presentUndoConfirmation(messageID)
+        }
+        context.openChapters = { [weak self] anchor in
+            self?.openChapters(at: anchor)
         }
         context.restoreRevert = { [weak self] in
             self?.performRestore()

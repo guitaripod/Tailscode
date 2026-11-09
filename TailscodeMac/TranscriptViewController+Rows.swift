@@ -117,6 +117,14 @@ extension TranscriptViewController {
         repaintChangedRows(rows, from: edit.start)
         if canvasHold != nil { recomputeFreshCanvas() }
         fillComplete = edit.complete
+        if edit.complete, let jump = pendingChapterJump,
+            renderedRows.contains(where: { $0.key.hasPrefix("\(jump):") })
+        {
+            pendingChapterJump = nil
+            DispatchQueue.main.async { [weak self] in
+                self?.scrollToMessage(jump, part: "\(jump):chapter")
+            }
+        }
         let revealing = pendingReveal && edit.start + renderedRows.count >= rows.count
         if !edit.complete {
             if stick { followsBottom = true }

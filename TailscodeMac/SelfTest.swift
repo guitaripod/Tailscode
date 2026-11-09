@@ -295,6 +295,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkChapters()
+            report("chapters: \(checks) claims hold: headings above openings, none for one, the band's last fact, the popover's rows")
+        } catch {
+            report("chapters: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkRevertBanner()
             report("revert banner: \(checks) claims hold: the files, the paging line, the restore press")
         } catch {

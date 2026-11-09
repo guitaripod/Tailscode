@@ -125,6 +125,7 @@ enum ParityManifest {
         case .agentsWatchStyle: return .implemented("WatchStylePopover")
         case .agentsWatch: return .implemented("WatchWallViewController")
         case .modelSeam: return .implemented("FlatNoteLineView")
+        case .chapters: return .implemented("ChaptersPanelViewController")
         case .carryChat: return .implemented("CarryShelf")
         case .responseStats: return .implemented("responseStats")
         case .ultracodeAura: return .implemented("UltracodeAura")

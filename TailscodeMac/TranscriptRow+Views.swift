@@ -57,6 +57,8 @@ extension TranscriptRow {
             return Self.seam(compaction, key: key, context: context)
         case .modelSeam(let change):
             return Self.modelSeam(change)
+        case .chapterHeading(let heading):
+            return Self.chapterHeading(heading, key: key, context: context)
         case .carried(let reading):
             return Self.carried(reading, context: context)
         case .answerless(let turn):

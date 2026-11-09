@@ -46,6 +46,8 @@ extension TranscriptViewController {
         ActivityInbox.clear(sessionID: entry.session.id)
         windowLimit = 400
         rowTailMessages = 300
+        pendingChapterJump = nil
+        chapterWidened = false
         lastFullRows = []
         lastStreamedKey = nil
         stopTailRepair()

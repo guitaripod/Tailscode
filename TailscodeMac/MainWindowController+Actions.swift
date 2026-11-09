@@ -192,6 +192,8 @@ extension MainWindowController {
             transcript.scrollToPrompt(-1)
         case .nextPrompt:
             transcript.scrollToPrompt(1)
+        case .showChapters:
+            transcript.openChapters(at: nil)
         case .copyLastAnswer:
             transcript.copyLastAnswer()
         case .findInConversation:
@@ -339,6 +341,8 @@ extension MainWindowController {
             presentGit(for: pane)
         case .reconnect:
             pane.reconnect()
+        case .chapters:
+            pane.openChapters(at: nil)
         }
     }
 

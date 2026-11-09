@@ -40,6 +40,19 @@ final class TranscriptRowBuilder {
     private var prefix: Prefix?
     private var seamTracker = ModelSeamTracker()
     private var seams: [String: ModelSwitch] = [:]
+    private var headings: [String: ChapterHeading] = [:]
+
+    /// The conversation's chapters, whose headings go above the messages they began at. A list
+    /// that changes while the messages do not — a rename, a gist, a chapter opened at a message
+    /// already drawn — lets the held prefix go, because it carries the headings it was laid out
+    /// with.
+    var chapters: [ConversationChapter] = [] {
+        didSet {
+            guard chapters != oldValue else { return }
+            headings = ChapterReading.headings(chapters)
+            prefix = nil
+        }
+    }
 
     /// The model catalog the seams' words are read against. A catalog that grows or shrinks can
     /// rename a model, so the held prefix, which carries the seams it was laid out with, is let
@@ -166,6 +179,10 @@ final class TranscriptRowBuilder {
         }
         if !rows.isEmpty, let change = seams[message.id] {
             rows.insert(Self.seamRow(change, before: message), at: 0)
+        }
+        if !rows.isEmpty, message.role == .user, let heading = headings[message.id] {
+            rows.insert(
+                TranscriptRow(key: "\(message.id):chapter", kind: .chapterHeading(heading)), at: 0)
         }
         return (rows, (message, prompt?.id, sealed, folded, trailing, shaped))
     }
