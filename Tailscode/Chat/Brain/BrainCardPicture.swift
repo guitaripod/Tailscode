@@ -84,6 +84,10 @@ final class BrainCardPicture: UIView {
         plate.opacity = Float(movingAlpha)
     }
 
+    /// The rest picture as it is drawn now, for a head that has to travel before the stage's own
+    /// picture is ready.
+    var restContents: Any? { hasRest ? base.contents : nil }
+
     func setRest(_ picture: BrainPicture?, animated: Bool) {
         hasRest = picture != nil
         defer { updatePlate() }

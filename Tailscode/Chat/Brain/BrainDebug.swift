@@ -252,6 +252,9 @@ enum BrainDebug {
                 if let id = Int(value).flatMap({ store.turnID(atBrain: $0) }) ?? turnID, !store.isOpen(id) { toggle(id) }
             case "close":
                 if let id = store.openTurnID { toggle(id) }
+            case "press", "release":
+                let target = cells.first { $0.brainRow.turnID == (Int(value).flatMap { store.turnID(atBrain: $0) } ?? turnID) }
+                target?.brainRow.card.walkPress(down: verb == "press")
             case "openturn":
                 if let number = Int(value), let id = store.turnID(atBrain: number) { toggle(id) }
             case "top":

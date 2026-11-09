@@ -16,6 +16,8 @@ struct BrainActions {
     var showInRows: (String, String) -> Void
     var openDiving: (String, NeuralZone) -> Void
     var landed: (String) -> Void
+    /// A frame of a move: the turn, whether it is opening, and how far the head has come.
+    var moved: (String, Bool, Double) -> Void
 }
 
 /// The open brain: the head as a small map with its zone chips, the step list beside it (or, on a
@@ -61,6 +63,14 @@ final class BrainOpenView: UIView, BrainBrowsing {
     let leaderDot = CAShapeLayer()
     let leaderTab = CALayer()
     private let focusRing = CALayer()
+    /// The head as the card last drew it, travelling in the stage's place until the stage's own
+    /// picture has its first frame, so a move begins on the press rather than on the stage.
+    let standIn = CALayer()
+    /// When the stage's picture arrived, for the short cross-fade from the stand-in to it.
+    var stageArrivedAt: CFTimeInterval?
+    /// The card's rectangle in the row, which the stage's backdrop grows out of and folds back
+    /// into, so the card's ground becomes the stage's in one shape.
+    var bandOrigin: CGRect = .zero
     let sweepLayer = CAGradientLayer()
     let sweepMask = CAGradientLayer()
     let stageLights = BrainLightsLayer()
@@ -105,6 +115,12 @@ final class BrainOpenView: UIView, BrainBrowsing {
         addSubview(chips)
         addSubview(compactList)
         addSubview(accordionHeader)
+        standIn.contentsRect = BrainPicture.cropRect
+        standIn.contentsGravity = .resize
+        standIn.minificationFilter = .trilinear
+        standIn.magnificationFilter = .linear
+        standIn.isHidden = true
+        layer.addSublayer(standIn)
         stage.layer.addSublayer(stageLights)
         stage.layer.addSublayer(sweepLayer)
         sweepLayer.colors = [UIColor.clear.cgColor, UIColor.white.cgColor, UIColor.clear.cgColor]
@@ -224,8 +240,11 @@ final class BrainOpenView: UIView, BrainBrowsing {
     override func layoutSubviews() {
         super.layoutSubviews()
         let split = metrics.arrangement == .split
-        stage.frame = rect(metrics.stage)
-        stageBand.frame = split ? stage.frame : CGRect(x: 0, y: stage.frame.minY, width: bounds.width, height: stage.frame.height)
+        placeStage(rect(metrics.stage))
+        if !isMoving {
+            stageBand.frame = restingBand
+            stageBand.layer.cornerRadius = 0
+        }
         stageBand.backgroundColor = stage.backgroundColor
         stageLights.layout(in: stage.bounds)
         placeWordmark()
@@ -264,6 +283,22 @@ final class BrainOpenView: UIView, BrainBrowsing {
         focusRing.borderColor = Theme.Color.accent.wash(0.55).resolvedColor(with: traitCollection).cgColor
         placeSweep(CGRect(x: 0, y: 0, width: stage.bounds.width * 0.4, height: stage.bounds.height))
         updateLeader(animated: false)
+    }
+
+    /// Where the stage's backdrop rests: behind the stage beside a split account, across the row
+    /// otherwise.
+    var restingBand: CGRect {
+        let stageRect = rect(metrics.stage)
+        return metrics.arrangement == .split
+            ? stageRect : CGRect(x: 0, y: stageRect.minY, width: bounds.width, height: stageRect.height)
+    }
+
+    /// Puts the stage where it rests by its bounds and centre, never its frame: a move holds the
+    /// head on its transform, and a frame set while that transform is not the identity undoes it,
+    /// which left a closing head at full size until it landed.
+    private func placeStage(_ rect: CGRect) {
+        stage.bounds = CGRect(origin: .zero, size: rect.size)
+        stage.center = CGPoint(x: rect.midX, y: rect.midY)
     }
 
     override var accessibilityElements: [Any]? {

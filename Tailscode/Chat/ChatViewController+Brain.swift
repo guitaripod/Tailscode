@@ -35,7 +35,46 @@ extension ChatViewController {
             goToAnswer: { [weak self] id in self?.goToAnswer(ofTurn: id) },
             showInRows: { [weak self] turn, step in self?.showInRows(turn: turn, step: step) },
             openDiving: { [weak self] turn, zone in self?.openBrainDiving(turn, zone: zone) },
-            landed: { [weak self] id in self?.brainLanded(id) })
+            landed: { [weak self] id in self?.brainLanded(id) },
+            moved: { [weak self] id, opening, progress in
+                self?.brainMoved(id, opening: opening, progress: progress)
+            })
+    }
+
+    /// A frame of a brain's move, with the page moving in the same frame instead of after it. An
+    /// opening row that would grow past the end of the window carries the page with it, so its
+    /// bottom rises as it grows and nothing scrolls once it has landed. A closing row whose top is
+    /// above the window folds toward the finger: its bottom, where Close was pressed, holds still
+    /// until its top comes into view, so the card lands on screen rather than above it.
+    private func brainMoved(_ turnID: String, opening: Bool, progress: Double) {
+        guard !isFingerDown, let index = dataSource.snapshot().indexOfItem(NeuralOpenPolicy.rowID(turnID: turnID))
+        else { return }
+        collectionView.layoutIfNeeded()
+        guard let row = collectionView.layoutAttributesForItem(at: IndexPath(item: index, section: 0))?.frame
+        else { return }
+        let inset = collectionView.adjustedContentInset
+        let offset = collectionView.contentOffset.y
+        let margin: CGFloat = 8
+        let visibleTop = offset + inset.top
+        let visibleBottom = offset + collectionView.bounds.height - inset.bottom
+        let ceiling = max(-inset.top, collectionView.contentSize.height + inset.bottom - collectionView.bounds.height)
+        if opening {
+            brainCloseAnchor = nil
+            let delta = min(row.maxY + margin - visibleBottom, row.minY - margin - visibleTop)
+            guard delta > 0.5 else { return }
+            collectionView.contentOffset.y = min(offset + delta, ceiling)
+            return
+        }
+        if brainCloseAnchor == nil {
+            guard progress > 0.999, row.minY < visibleTop - 0.5 else { return }
+            brainCloseAnchor = row.maxY - offset
+        }
+        guard let anchor = brainCloseAnchor else { return }
+        let held = row.maxY - anchor
+        let topOnScreen = row.minY - inset.top - margin
+        let target = min(max(held, topOnScreen), ceiling)
+        collectionView.contentOffset.y = max(-inset.top, target)
+        if progress < 0.001 { brainCloseAnchor = nil }
     }
 
     /// A zone chip on a card opens the brain already diving into that zone.

@@ -193,6 +193,9 @@ final class ChatViewController: UIViewController {
     /// A finger resting on the transcript, which is not the same gesture as a drag and stops the
     /// stream following the bottom all the same.
     var isFingerDown = false
+    /// Where on the screen a closing brain's bottom stands while its top is above the window, so
+    /// it folds toward the Close that was pressed.
+    var brainCloseAnchor: CGFloat?
     var lastRenderedIDs: Set<String> = []
     let enhancement = PromptEnhancementController()
     var enhanceOverlay: PromptEnhanceOverlay?

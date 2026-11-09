@@ -12,8 +12,10 @@ extension BrainOpenView {
             height: frame.traveller.height)
         let scale = stageRect.width > 0 ? traveller.width / stageRect.width : 1
         stage.alpha = CGFloat(frame.travellerAlpha)
-        wordmark.alpha = stage.alpha
-        stageBand.alpha = 0
+        placeStandIn(traveller, alpha: CGFloat(frame.travellerAlpha) * (1 - stageArrival()))
+        wordmark.alpha = CGFloat(NeuralTransition.smoothstep(0.7, 1, frame.progress))
+        stageBand.alpha = CGFloat(frame.stageBandAlpha)
+        morphBand(progress: CGFloat(frame.progress))
         stage.layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         stage.transform = CGAffineTransform(
             translationX: traveller.midX - stageRect.midX, y: traveller.midY - stageRect.midY
@@ -44,7 +46,14 @@ extension BrainOpenView {
         isMoving = false
         stage.alpha = 1
         wordmark.alpha = 1
-        UIView.animate(withDuration: 0.15) { self.stageBand.alpha = 1 }
+        if stageArrivedAt == nil, !standIn.isHidden {
+            placeStandIn(rect(metrics.stage), alpha: 1)
+        } else {
+            releaseStandIn()
+        }
+        if stageBand.alpha < 1 {
+            UIView.animate(withDuration: 0.15) { self.stageBand.alpha = 1 }
+        }
         stage.transform = .identity
         stageLights.opacity = 0
         sweepLayer.opacity = 0
@@ -60,6 +69,82 @@ extension BrainOpenView {
         footer.alpha = 1
         setNeedsLayout()
         updateLeader(animated: true)
+    }
+
+    /// The backdrop as the card's shape grown toward its own: the card's rectangle and corners at
+    /// the start, the stage's band at the end, on the head's own progress.
+    private func morphBand(progress: CGFloat) {
+        let to = restingBand
+        guard bandOrigin.width > 0 else {
+            stageBand.frame = to
+            return
+        }
+        let t = min(max(progress, 0), 1)
+        func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * t }
+        stageBand.frame = CGRect(
+            x: mix(bandOrigin.minX, to.minX), y: mix(bandOrigin.minY, to.minY),
+            width: mix(bandOrigin.width, to.width), height: mix(bandOrigin.height, to.height))
+        stageBand.layer.cornerCurve = .continuous
+        stageBand.layer.cornerRadius = Self.cardCorner * (1 - t)
+    }
+
+    /// The card's corner, which the backdrop starts from and returns to.
+    static let cardCorner: CGFloat = 12
+
+    /// How far the stage's own picture has taken over from the stand-in: none until it has a frame,
+    /// then all of it over 90 ms, so the head never goes blank and never jumps.
+    private func stageArrival() -> CGFloat {
+        guard !standIn.isHidden else { return 1 }
+        guard let arrivedAt = stageArrivedAt else { return 0 }
+        return CGFloat(min(1, (CACurrentMediaTime() - arrivedAt) / Self.standInHandover))
+    }
+
+    static let standInHandover: CFTimeInterval = 0.09
+
+    /// Lets the stand-in travel: the card's picture now, and the sharp one made for the stage's
+    /// width when the press already asked for it.
+    func holdStandIn(_ contents: Any?) {
+        guard let contents else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        standIn.contents = contents
+        standIn.isHidden = false
+        CATransaction.commit()
+        stageArrivedAt = nil
+    }
+
+    /// The stage's picture has its first frame. Mid-move the stand-in hands over on the move's
+    /// own frames; after it the stand-in that held the place fades on its own.
+    func stageArrived() {
+        guard !standIn.isHidden, stageArrivedAt == nil else { return }
+        stageArrivedAt = CACurrentMediaTime()
+        guard !isMoving else { return }
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(Self.standInHandover)
+        CATransaction.setCompletionBlock { [weak self] in
+            MainActor.assumeIsolated { self?.releaseStandIn() }
+        }
+        standIn.opacity = 0
+        CATransaction.commit()
+    }
+
+    private func placeStandIn(_ rect: CGRect, alpha: CGFloat) {
+        guard !standIn.isHidden else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        standIn.frame = rect
+        standIn.opacity = Float(alpha)
+        CATransaction.commit()
+    }
+
+    func releaseStandIn() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        standIn.isHidden = true
+        standIn.contents = nil
+        standIn.opacity = 1
+        CATransaction.commit()
+        stageArrivedAt = nil
     }
 
     /// Puts the sweep band where it is now, without the layer animating there.

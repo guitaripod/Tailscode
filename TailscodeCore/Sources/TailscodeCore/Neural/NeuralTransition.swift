@@ -32,7 +32,27 @@ import Foundation
 /// from 0.6 to 1.0, about its centre. Closing is the same table read backwards with no overshoot
 /// on the nodes and no sweep. The card's tone edge rides the picture's left edge (12 pt left of
 /// it) for 90 ms of `te` and is gone by 150.
+///
+/// A finger on glass gets the `touch` feel. The press is the start: the head travels on an ease-out
+/// quartic, four fifths of the way in the first third of the move, so it answers the finger at
+/// once and lands softly, and swells 2.5 percent as it settles. Opening runs 360 ms and closing
+/// 260 ms, the same quartic folding the stage back into the card, never the slow start of an
+/// ease-in. Content keeps its own clock: it is read at real time across the opening and is gone
+/// in the first 60 percent of a closing, so the list and the account leave before the head has
+/// shrunk and nothing is cut off in a frame. The card's words and surface follow the head instead
+/// of the clock: the words are gone before the head has covered a quarter of the way and return
+/// only in the last quarter of a closing, so a growing head is never drawn under them, and the
+/// stage's backdrop takes over from the card's surface in the first third of the travel, so a
+/// client that grows the backdrop out of the card's own shape changes the row's ground in one
+/// motion.
 public struct NeuralTransition: Sendable, Equatable {
+    /// Who is moving it. A desk's pointer gets the measured timings above; a finger gets a move
+    /// that is fast at the start of every direction.
+    public enum Feel: Sendable, Equatable {
+        case desk
+        case touch
+    }
+
     public enum Direction: Sendable, Equatable {
         case open
         case close
@@ -108,7 +128,19 @@ public struct NeuralTransition: Sendable, Equatable {
     /// The opening timeline's length in milliseconds: content time `te` runs `0...320`.
     public static let openMs = 320.0
 
+    public static let touchOpenDuration: TimeInterval = 0.360
+    public static let touchCloseDuration: TimeInterval = 0.260
+    public static let touchSwapDuration: TimeInterval = 0.300
+    public static let touchStrainedDuration: TimeInterval = 0.180
+    /// How much the head swells as it settles under a finger, at `g = 0.8`.
+    public static let touchOverscale = 0.025
+    /// The share of a touch closing in which the content has left.
+    public static let touchContentLeaves = 0.6
+    /// How far the head has travelled when the card's words are gone, and before they return.
+    public static let touchWordsReach = 0.25
+
     public let direction: Direction
+    public let feel: Feel
     public let from: Geometry
     public let to: Geometry
     /// How many nodes are drawn: the stagger is spread over them.
@@ -123,6 +155,9 @@ public struct NeuralTransition: Sendable, Equatable {
 
     private let table: Direction
     private let startG: Double
+    /// The content's clock where this move begins: the open end of the timeline, its start, or
+    /// wherever a reversed touch move found it.
+    private let startTe: Double
 
     /// Whether this window may not afford the sweep and the stagger.
     public var isStrained: Bool { level >= .strained }
@@ -136,7 +171,8 @@ public struct NeuralTransition: Sendable, Equatable {
     /// to the card.
     public init(
         direction: Direction, from: Geometry, to: Geometry, nodeCount: Int = 0, rowCount: Int = 0,
-        reduceMotion: Bool = false, level: ShedLevel = .calm, live: Bool = false
+        reduceMotion: Bool = false, level: ShedLevel = .calm, live: Bool = false,
+        feel: Feel = .desk
     ) {
         self.rowCount = max(rowCount, 0)
         self.direction = direction
@@ -146,11 +182,15 @@ public struct NeuralTransition: Sendable, Equatable {
         self.reduceMotion = reduceMotion
         self.level = level
         self.live = live
+        self.feel = feel
         table = direction
         startG = direction.isOpening ? 0 : 1
+        startTe = direction.isOpening ? 0 : Self.openMs
     }
 
-    private init(copying other: NeuralTransition, direction: Direction, startG: Double) {
+    private init(
+        copying other: NeuralTransition, direction: Direction, startG: Double, startTe: Double
+    ) {
         self.direction = direction
         from = other.to
         to = other.from
@@ -159,13 +199,25 @@ public struct NeuralTransition: Sendable, Equatable {
         reduceMotion = other.reduceMotion
         level = other.level
         live = other.live
+        feel = other.feel
         table = direction
         self.startG = startG
+        self.startTe = startTe
     }
+
+    private var isTouch: Bool { feel == .touch && !reduceMotion }
 
     /// How long the whole move takes, in seconds, for a client that drives it by a clock.
     public var fullDuration: TimeInterval {
         if reduceMotion { return Self.crossfadeDuration }
+        if isTouch {
+            if isStrained { return Self.touchStrainedDuration }
+            switch direction {
+            case .open: return Self.touchOpenDuration
+            case .close: return Self.touchCloseDuration
+            case .swap, .swapClose: return Self.touchSwapDuration
+            }
+        }
         if isStrained { return Self.strainedDuration }
         switch direction {
         case .open: return Self.openDuration
@@ -194,8 +246,21 @@ public struct NeuralTransition: Sendable, Equatable {
         if u <= 0 { return startG }
         if u >= 1 { return end }
         if reduceMotion { return startG + (end - startG) * u }
+        if isTouch {
+            let eased = Self.easeOutQuart(u)
+            return direction.isOpening ? startG + (1 - startG) * eased : startG * (1 - eased)
+        }
         if direction.isOpening { return startG + (1 - startG) * Self.easeOutCubic(u) }
         return startG * (1 - Self.easeInOutCubic(u))
+    }
+
+    /// The content's clock at progress `u`: read off `g` at a desk, so closing is the opening
+    /// played back, and at real time under a finger, from wherever this move found it.
+    public func contentTime(at u: Double) -> Double {
+        guard isTouch else { return Self.contentTime(forGradient: gradient(at: u)) }
+        let u = Self.clamp(u)
+        if direction.isOpening { return startTe + (Self.openMs - startTe) * u }
+        return startTe * (1 - Self.clamp(u / Self.touchContentLeaves))
     }
 
     /// The same move run back from `u`, so a press during it turns the head round where it is
@@ -203,7 +268,9 @@ public struct NeuralTransition: Sendable, Equatable {
     /// frame at 1 is the end the other way, and it takes the time the new direction needs for
     /// the distance left.
     public func reversed(from u: Double) -> NeuralTransition {
-        NeuralTransition(copying: self, direction: direction.reversed, startG: gradient(at: u))
+        NeuralTransition(
+            copying: self, direction: direction.reversed, startG: gradient(at: u),
+            startTe: contentTime(at: u))
     }
 
     public static func clamp(_ value: Double, _ low: Double = 0, _ high: Double = 1) -> Double {
@@ -213,6 +280,18 @@ public struct NeuralTransition: Sendable, Equatable {
     public static func easeOutCubic(_ t: Double) -> Double {
         let x = 1 - clamp(t)
         return 1 - x * x * x
+    }
+
+    /// The touch feel's travel: four fifths of the way in the first third.
+    public static func easeOutQuart(_ t: Double) -> Double {
+        let x = 1 - clamp(t)
+        return 1 - x * x * x * x
+    }
+
+    /// Zero below `low`, one above `high`, and a smooth step between.
+    public static func smoothstep(_ low: Double, _ high: Double, _ value: Double) -> Double {
+        let x = clamp((value - low) / max(high - low, 0.0001))
+        return x * x * (3 - 2 * x)
     }
 
     public static func easeInCubic(_ t: Double) -> Double {
@@ -262,7 +341,7 @@ public struct NeuralTransition: Sendable, Equatable {
     /// time of the display's clock, which a live head's swell is read from; it changes nothing
     /// else.
     public func frame(at u: Double, clock: TimeInterval = 0) -> NeuralTransitionFrame {
-        Timeline(self).frame(at: gradient(at: u), clock: clock)
+        Timeline(self).frame(at: gradient(at: u), te: contentTime(at: u), clock: clock)
     }
 
     /// The frame `seconds` into this move.
@@ -340,14 +419,16 @@ extension NeuralTransition {
     /// the stage to the card.
     public static func make(
         _ direction: Direction, metrics: NeuralStageMetrics, nodeCount: Int,
-        reduceMotion: Bool = false, level: ShedLevel = .calm, live: Bool = false
+        reduceMotion: Bool = false, level: ShedLevel = .calm, live: Bool = false,
+        feel: Feel = .desk
     ) -> NeuralTransition {
         let card = metrics.cardGeometry
         let stage = metrics.stageGeometry
         return NeuralTransition(
             direction: direction, from: direction.isOpening ? card : stage,
             to: direction.isOpening ? stage : card, nodeCount: nodeCount,
-            rowCount: metrics.rowsShown, reduceMotion: reduceMotion, level: level, live: live)
+            rowCount: metrics.rowsShown, reduceMotion: reduceMotion, level: level, live: live,
+            feel: feel)
     }
 }
 
@@ -495,6 +576,9 @@ public struct NeuralTransitionFrame: Sendable, Equatable {
     public var sweepPhase: Double
     /// From the zones' card brightness (0) to their rest brightness (1).
     public var zoneLift: Double
+    /// The stage's backdrop: none through a desk's move, which brings it in once the move has
+    /// landed, and rising as the card's surface fades under a finger.
+    public var stageBandAlpha: Double
     public var nodes: NeuralNodeReveal
     /// How much of every wire is drawn, and of every tie.
     public var wireDraw: Double
@@ -528,9 +612,11 @@ extension NeuralTransition {
         private var card: Geometry { opening ? move.from : move.to }
         private var stage: Geometry { opening ? move.to : move.from }
 
-        func frame(at g: Double, clock: TimeInterval) -> NeuralTransitionFrame {
-            move.reduceMotion ? crossfade(at: g, clock: clock) : travel(at: g, clock: clock)
+        func frame(at g: Double, te: Double, clock: TimeInterval) -> NeuralTransitionFrame {
+            move.reduceMotion ? crossfade(at: g, clock: clock) : travel(at: g, te: te, clock: clock)
         }
+
+        private var isTouch: Bool { move.feel == .touch }
 
         private func height(at g: Double) -> Double {
             card.rowHeight + (stage.rowHeight - card.rowHeight) * g
@@ -546,7 +632,14 @@ extension NeuralTransition {
         }
 
         private func overscaled(_ rect: NeuralRect, at g: Double) -> NeuralRect {
-            let factor = NeuralTransition.overscale(at: g)
+            let factor: Double
+            if isTouch {
+                factor =
+                    opening && g > 0.6 && g < 1
+                    ? 1 + NeuralTransition.touchOverscale * sin(Double.pi * (g - 0.6) / 0.4) : 1
+            } else {
+                factor = NeuralTransition.overscale(at: g)
+            }
             guard factor != 1 else { return rect }
             let width = rect.width * factor
             let height = rect.height * factor
@@ -573,7 +666,7 @@ extension NeuralTransition {
                 cardTextAlpha: cardShare, cardTextOffsetX: 0, cardSurfaceAlpha: cardShare,
                 edge: NeuralEdgeFollow(x: card.picture.x - NeuralTransition.edgeGap, alpha: cardShare),
                 nowCrossfade: handoff, countsCrossfade: handoff, rowHeight: height(at: g),
-                sweepAmount: 0, sweepPhase: 0, zoneLift: shown,
+                sweepAmount: 0, sweepPhase: 0, zoneLift: shown, stageBandAlpha: shown,
                 nodes: NeuralNodeReveal(
                     count: move.nodeCount, clock: 0, start: 0, stagger: 0, length: 1,
                     closing: !opening, uniform: shown),
@@ -584,8 +677,7 @@ extension NeuralTransition {
                 readoutOffset: NeuralPoint(0, 0), readoutAlpha: shown, footerAlpha: shown)
         }
 
-        private func travel(at g: Double, clock: TimeInterval) -> NeuralTransitionFrame {
-            let te = NeuralTransition.contentTime(forGradient: g)
+        private func travel(at g: Double, te: Double, clock: TimeInterval) -> NeuralTransitionFrame {
             let base = card.picture.interpolated(to: stage.picture, g)
             let rect = overscaled(base, at: g)
             let out = window(te, 0, 90)
@@ -593,19 +685,27 @@ extension NeuralTransition {
             let sweeping = opening && !move.isStrained
             let accountWindow = NeuralTransition.easeOutCubic(window(te, 130, 300))
             let slide = stage.readoutTravel
-            let handoff = NeuralNowCrossfade(card: 1 - out, account: accountWindow)
+            let words =
+                isTouch ? 1 - NeuralTransition.smoothstep(0, NeuralTransition.touchWordsReach, g) : 1 - out
+            let surface = isTouch ? 1 - NeuralTransition.smoothstep(0, 0.3, g) : 1 - out
+            let handoff = NeuralNowCrossfade(card: words, account: accountWindow)
             let stagger = move.isStrained ? 0.0 : 150.0
             return NeuralTransitionFrame(
                 progress: g, contentTime: te, traveller: rect, travellerScale: scale(of: rect),
                 travellerAlpha: 1, travellerSwell: swell(clock), cardPictureAlpha: 0,
                 cardLightsAlpha: opening ? 0 : NeuralTransition.clamp((0.4 - g) / 0.4),
-                cardTextAlpha: 1 - out, cardTextOffsetX: -NeuralTransition.cardTextSlide * out,
-                cardSurfaceAlpha: 1 - out, edge: edge(at: te, picture: base), nowCrossfade: handoff,
+                cardTextAlpha: words, cardTextOffsetX: -NeuralTransition.cardTextSlide * (1 - words),
+                cardSurfaceAlpha: surface,
+                edge: isTouch
+                    ? NeuralEdgeFollow(x: base.x - NeuralTransition.edgeGap, alpha: words)
+                    : edge(at: te, picture: base),
+                nowCrossfade: handoff,
                 countsCrossfade: handoff, rowHeight: height(at: g),
                 sweepAmount: sweeping && sweepWindow > 0 && sweepWindow < 1
                     ? NeuralTransition.sweepStrength * sin(Double.pi * sweepWindow) : 0,
                 sweepPhase: sweeping ? sweepWindow : 0,
                 zoneLift: NeuralTransition.easeOutCubic(sweepWindow),
+                stageBandAlpha: isTouch ? NeuralTransition.smoothstep(0, 0.3, g) : 0,
                 nodes: NeuralNodeReveal(
                     count: move.nodeCount, clock: te, start: 120, stagger: stagger,
                     length: move.isStrained ? 180 : 30, closing: false, uniform: nil,

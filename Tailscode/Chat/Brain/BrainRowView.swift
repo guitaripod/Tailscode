@@ -46,7 +46,6 @@ final class BrainRowView: UIView {
     private var moveProgress = 0.0
     private var link: CADisplayLink?
     private var linkTarget: BrainMoveTarget?
-    private var pendingOpen: PendingOpen?
     private var currentHeight: CGFloat = 0
     private var lastTextScale: CGFloat = 1
     private var cardIsStale = false
@@ -55,13 +54,6 @@ final class BrainRowView: UIView {
     private var openedByMove = false
     private var wasConfigured = false
     private var liveRegistered = false
-
-    private struct PendingOpen {
-        let started: CFTimeInterval
-        var ticket: Int
-    }
-
-    private var pendingTicket = 0
 
     /// What a move cost, for the debug log and the checks: how many frames it drew and the longest
     /// gap between two of them.
@@ -208,16 +200,12 @@ final class BrainRowView: UIView {
         card.isHidden = false
         card.clearMove()
         wasConfigured = false
-        pendingOpen = nil
-        pendingTicket += 1
     }
 
     func prepareForReuse() {
         link?.invalidate()
         link = nil
         transition = nil
-        pendingOpen = nil
-        pendingTicket += 1
         openView?.dismissReader()
         openView?.removeFromSuperview()
         openView = nil
@@ -329,7 +317,7 @@ final class BrainRowView: UIView {
         made.attach(store: store, turnID: turnID, actions: actions!)
         made.onSlotsChange = { [weak self] in self?.slotsChanged() }
         made.apply(metrics: metrics)
-        insertSubview(made, belowSubview: card)
+        addSubview(made)
         made.frame = CGRect(x: 0, y: 0, width: bounds.width, height: made.openHeight)
         made.refreshAll()
         let palette = BrainPalette.palette(for: traitCollection)
@@ -399,45 +387,51 @@ final class BrainRowView: UIView {
             to: opening ? stageGeometry : cardGeometry, nodeCount: model.nodeCount,
             rowCount: metrics.rowsShown, reduceMotion: UIAccessibility.isReduceMotionEnabled,
             level: ProcessInfo.processInfo.isLowPowerModeEnabled ? .strained : .calm,
-            live: model.turn.outcome == .running)
+            live: model.turn.outcome == .running, feel: .touch)
     }
 
+    /// The move starts on the press. Until the stage's own picture has its first frame the head
+    /// that travels is the card's picture, the sharp one the press asked for when it is ready, so
+    /// nothing waits on the stage and the card never stands without its head.
     private func startOpening() {
-        guard let move = makeTransition(direction: .open), makeOpen() != nil else {
+        guard let move = makeTransition(direction: .open), let open = makeOpen() else {
             showOpen()
             return
         }
         transition = move
-        openView?.stage.setSuspended(false)
-        pendingTicket += 1
-        let ticket = pendingTicket
-        pendingOpen = PendingOpen(started: CACurrentMediaTime(), ticket: ticket)
-        applyFrame(move.frame(at: 0, clock: CACurrentMediaTime()), opening: true)
-        if let stage = openView?.stage, stage.head.isReady {
-            beginMove()
+        open.stage.setSuspended(false)
+        if open.stage.head.isReady {
+            open.releaseStandIn()
         } else {
-            openView?.stage.onReady = { [weak self] in
-                guard let self, self.pendingOpen?.ticket == ticket else { return }
-                self.beginMove()
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
-                MainActor.assumeIsolated {
-                    guard let self, self.pendingOpen?.ticket == ticket else { return }
-                    self.pendingOpen = nil
-                    self.showOpen()
-                    self.actions?.landed(self.turnID)
-                }
+            open.holdStandIn(card.picture.restContents)
+            sharpenStandIn(open)
+            open.stage.onReady = { [weak self, weak open] in
+                open?.stage.onReady = nil
+                guard let self, let open, self.openView === open else { return }
+                open.stageArrived()
             }
         }
-    }
-
-    private func beginMove() {
-        guard pendingOpen != nil, let move = transition else { return }
-        pendingOpen = nil
-        openView?.stage.onReady = nil
         phase = .moving
         currentHeight = CGFloat(move.from.rowHeight)
+        applyFrame(move.frame(at: 0, clock: CACurrentMediaTime()), opening: true)
         startClock()
+    }
+
+    /// The stage-width picture the press asked for, when it is already made; a picture still
+    /// being made replaces the card's own the moment it lands.
+    private func sharpenStandIn(_ open: BrainOpenView) {
+        guard let model = store?.model(for: turnID) else { return }
+        let ink = BrainPalette.palette(for: traitCollection)
+        let scale = max(1, window?.windowScene?.screen.scale ?? 2)
+        let width = CGFloat(NeuralStageMetrics.headWidth(rowWidth: Double(bounds.width)))
+            * CGFloat(NeuralDesign.width / NeuralStageMetrics.designWidth)
+        BrainPictures.picture(
+            frame: model.frame(time: 0, reduceMotion: true), palette: ink, face: model.face,
+            width: width, scale: scale
+        ) { [weak open] picture in
+            guard let open, let picture, !open.standIn.isHidden else { return }
+            open.standIn.contents = picture.image
+        }
     }
 
     /// The card is not drawn while the brain is open, so it is not kept current for every token
@@ -454,7 +448,6 @@ final class BrainRowView: UIView {
             showClosed()
             return
         }
-        pendingOpen = nil
         transition = move
         phase = .moving
         card.isHidden = false
@@ -513,6 +506,7 @@ final class BrainRowView: UIView {
     private func finishMoveLanded(_ move: NeuralTransition) {
         link?.invalidate()
         link = nil
+        clipsToBounds = false
         let opening = move.direction.isOpening
         lastMove = (frames, maxGap, move.duration, opening ? "open" : "close")
         BrainDebug.logMove(
@@ -524,6 +518,7 @@ final class BrainRowView: UIView {
             card.isHidden = true
             card.clearMove()
             openView?.finishMove()
+            Theme.Haptics.notch()
             currentHeight = openView?.openHeight ?? 0
             openView?.fadeInContent()
             applyPendingDive()
@@ -543,16 +538,22 @@ final class BrainRowView: UIView {
     private func finishNow(open: Bool) {
         link?.invalidate()
         link = nil
+        clipsToBounds = false
         transition = nil
-        pendingOpen = nil
         if open { showOpen() } else if phase != .closed || openView != nil { showClosed() }
     }
 
+    /// A frame of the move. The row clips to its own height while it moves, because the open
+    /// brain is laid out at its full height and would otherwise show over the rows below a
+    /// closing one.
     private func applyFrame(_ frame: NeuralTransitionFrame, opening: Bool) {
+        clipsToBounds = true
+        openView?.bandOrigin = card.frame
         currentHeight = CGFloat(frame.rowHeight)
         card.applyMove(frame: frame, opening: opening, originX: cardInset)
         if let metrics { openView?.apply(frame: frame, from: metrics, opening: opening, live: transition?.live ?? false) }
         onHeightChange?()
+        actions?.moved(turnID, opening, frame.progress)
     }
 
     private func updateClock() {

@@ -148,9 +148,42 @@ final class BrainCardView: UIView {
     @objc private func touchDown() {
         isPressed = true
         onPrefetch?()
+        settlePress(down: true)
     }
 
-    @objc private func touchUp() { isPressed = false }
+    @objc private func touchUp() {
+        isPressed = false
+        settlePress(down: false)
+    }
+
+    /// The card gives under the finger and springs back as it lifts, so the press is answered
+    /// before the move has drawn a frame.
+    private func settlePress(down: Bool) {
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
+        let target = down ? CATransform3DMakeScale(Self.pressScale, Self.pressScale, 1) : CATransform3DIdentity
+        let spring = CASpringAnimation(keyPath: "sublayerTransform")
+        spring.fromValue = NSValue(caTransform3D: layer.presentation()?.sublayerTransform ?? layer.sublayerTransform)
+        spring.toValue = NSValue(caTransform3D: target)
+        spring.mass = 1
+        spring.stiffness = down ? 520 : 300
+        spring.damping = down ? 46 : 17
+        spring.duration = spring.settlingDuration
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.sublayerTransform = target
+        CATransaction.commit()
+        layer.add(spring, forKey: "press")
+    }
+
+    /// How far the card gives under a finger.
+    static let pressScale: CGFloat = 0.975
+
+    #if DEBUG
+        /// A finger on the card and off it again, for a walk that cannot touch the screen.
+        func walkPress(down: Bool) {
+            if down { touchDown() } else { touchUp() }
+        }
+    #endif
 
     @objc private func pressed() {
         Theme.Haptics.selection()
