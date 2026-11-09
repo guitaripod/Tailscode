@@ -1,8 +1,8 @@
 import CodingAgentKit
 import Foundation
 
-/// A conversation that has been through three chapters, for every client's screenshots, demo and
-/// selftests: the same words and the same boundaries on three desks.
+/// A conversation that has been through three chapters, in the demo world's own project, for every
+/// client's demo, screenshots and selftests: the same words and the same boundaries on three desks.
 public enum ChapterDemo {
     public struct Conversation: Sendable {
         public let messages: [ChatMessage]
@@ -10,18 +10,18 @@ public enum ChapterDemo {
     }
 
     private static let script: [(prompt: String, answer: String)] = [
-        ("Reopening a chat after the phone slept freezes the stream. Look at the reconnect path.",
-         "The stream reconnects, but the replay asks from a cursor the bridge already dropped, and URLSession never returns on the 401 that follows."),
-        ("Fix it so a 401 fails fast and the chat re-reads the transcript.",
-         "Done: a 401 now ends the stream at once and the conversation re-reads. Kit 0.42.3 is tagged."),
-        ("Bridge restarts keep killing the turn I'm in. Make them wait.",
-         "A restart now waits for a quiet machine: no turn open and nothing queued. The update holds until then."),
-        ("And a machine with no supervisor?",
-         "It is handed the command instead of being restarted, so nothing dies under you. Released as 1.21.0."),
-        ("As the session goes on the title changes. I want to see how it evolved, at a glance.",
-         "The bridge re-titles every three of your messages when the topic moves and throws the old title away. I'll keep each one as a chapter, with what it came to."),
-        ("Show it in the transcript too, not only in a sheet.",
-         "Each chapter gets a heading above the message it began at; pressing one opens the chapters on it."),
+        ("Reopening the app after the phone slept leaves the feed blank. Look at the resume path.",
+         "The feed reconnects, but the replay asks from a cursor the server already dropped, and the request that follows a 401 never times out."),
+        ("Make a 401 fail fast and reload the feed.",
+         "Done: a 401 now ends the stream at once and the feed reloads. Tagged pulse-ios 2.4.1."),
+        ("Server deploys keep cutting off uploads in progress. Make them wait.",
+         "A deploy now waits until no upload is open and nothing is queued, then restarts."),
+        ("And a node with no supervisor?",
+         "It is handed the restart instead of being killed, so no upload dies under anyone. Released as pulse-server 3.2."),
+        ("Settings needs a way to see what changed in each release, at a glance.",
+         "I'll group the changelog by release, with one line on what each release came to."),
+        ("Show it inline too, not only in a sheet.",
+         "Each release gets a heading above where it starts; tapping one opens the list on it."),
     ]
 
     public static func conversation(now: Date = Date(), agentType: AgentType = .claudeCode) -> Conversation {
@@ -42,17 +42,17 @@ public enum ChapterDemo {
         func at(_ turn: Int) -> Date { start.addingTimeInterval(Double(turn - 1) * 1800) }
         let chapters = [
             ConversationChapter(
-                title: "Fix stream freeze on resume", turn: 1,
+                title: "Blank feed after resume", turn: 1,
                 messageID: "chapter-demo-u1", startedAt: at(1),
-                gist: "Traced the freeze to URLSession hanging on a 401 and tagged Kit 0.42.3.",
+                gist: "Traced the blank feed to a request hanging on a 401 and tagged pulse-ios 2.4.1.",
                 namedBy: .model),
             ConversationChapter(
-                title: "Bridge restarts wait for quiet", turn: 3,
+                title: "Deploys wait for idle uploads", turn: 3,
                 messageID: "chapter-demo-u3", startedAt: at(3),
-                gist: "Restarts now wait for a quiet machine; released claude-bridge 1.21.0.",
+                gist: "Deploys now wait until no upload is open; released pulse-server 3.2.",
                 namedBy: .model),
             ConversationChapter(
-                title: "Chat title history as chapters", turn: 5,
+                title: "Release notes in settings", turn: 5,
                 messageID: "chapter-demo-u5", startedAt: at(5), namedBy: .model),
         ]
         return Conversation(messages: messages, chapters: chapters)

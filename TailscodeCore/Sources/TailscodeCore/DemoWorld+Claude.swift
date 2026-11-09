@@ -13,7 +13,8 @@ extension DemoWorld {
             "demo-c4": claudeExplainerScript,
             "demo-c5": claudeDesignScript,
             "demo-c6": claudeNeuralScript,
-        ].merging(rangeScripts) { current, _ in current },
+        ].merging(rangeScripts) { current, _ in current }
+            .merging(chapterScripts) { current, _ in current },
         replyTurns: [claudeReplyA, claudeReplyB],
         interactive: true,
         sessions: [
@@ -34,11 +35,12 @@ extension DemoWorld {
                 directory: "/Users/demo/dev/pulse-ios", createdAt: ago(2600), updatedAt: ago(2400),
                 model: "claude-opus-4-8", reasoningEffort: "high"),
             claudeNeuralSession(created: ago(5_000), updated: ago(3_900)),
+
             AgentSession(
                 id: "demo-c4", agentType: .claudeCode, title: "Explain the auth token refresh flow",
                 directory: "/Users/demo/dev/pulse-server", createdAt: ago(95_500), updatedAt: ago(94_000),
                 model: "claude-haiku-4-5", reasoningEffort: "low"),
-        ] + rangeSessions,
+        ] + rangeSessions + chapterSessions,
         models: [
             ModelInfo(
                 id: "claude-fable-5", name: "Fable 5", providerID: "anthropic",
@@ -174,7 +176,37 @@ extension DemoWorld {
         ],
         schedules: demoSchedules,
         machineAgents: demoAgents,
-        agentRegistry: demoRegistry)
+        agentRegistry: demoRegistry,
+        chapters: chapterDemoEnabled ? [chapterSessionID: chapterDemo.chapters] : [:])
+
+    /// `TAILSCODE_DEMO_CHAPTERS=1` adds one chat that has been through three chapters, among the
+    /// demo's older chats, so the headings, the facts row's count and the chapters panel have a
+    /// conversation to draw. Unset, the demo world holds exactly what it always did — the store's
+    /// screenshots are taken of it.
+    public static let chapterDemoEnabled =
+        ProcessInfo.processInfo.environment["TAILSCODE_DEMO_CHAPTERS"] != nil
+
+    public static let chapterSessionID = "demo-c8"
+
+    static let chapterDemo = ChapterDemo.conversation(now: ago(30_000))
+
+    static var chapterSessions: [AgentSession] {
+        guard chapterDemoEnabled else { return [] }
+        return [
+            AgentSession(
+                id: chapterSessionID, agentType: .claudeCode,
+                title: chapterDemo.chapters.last?.title ?? "Release notes in settings",
+                directory: "/Users/demo/dev/pulse-ios",
+                createdAt: chapterDemo.messages.first?.createdAt ?? ago(41_000),
+                updatedAt: chapterDemo.messages.last?.createdAt ?? ago(30_000),
+                model: "claude-fable-5", reasoningEffort: "high")
+        ]
+    }
+
+    static var chapterScripts: [String: [MockScriptStep]] {
+        guard chapterDemoEnabled else { return [:] }
+        return [chapterSessionID: chapterDemo.messages.map { step($0) } + [step(.status(.idle))]]
+    }
 
     private static var claudeLiveScript: [MockScriptStep] {
         [
