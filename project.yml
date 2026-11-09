@@ -103,8 +103,8 @@ targetTemplates:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
-        MARKETING_VERSION: "1.82"
-        CURRENT_PROJECT_VERSION: "214"
+        MARKETING_VERSION: "1.83"
+        CURRENT_PROJECT_VERSION: "215"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         SWIFT_EMIT_LOC_STRINGS: YES
@@ -255,8 +255,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.guitaripod.tailscode
-        MARKETING_VERSION: "1.82"
-        CURRENT_PROJECT_VERSION: "225"
+        MARKETING_VERSION: "1.83"
+        CURRENT_PROJECT_VERSION: "226"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         TARGETED_DEVICE_FAMILY: "1,2"
