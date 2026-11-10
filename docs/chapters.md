@@ -5,7 +5,7 @@ Asked for: "As the session continues on and on and the title changes over time, 
 ## 1. What I looked at
 
 - **claude-bridge renames a chat as its topic moves, and throws the old name away.** After the first finished turn `Titler.title` replaces the prompt-derived title; then every third message of the person's (`retitleEvery`) `Titler.revised` is shown the title and the newest exchange and answers `KEEP` or a new title. `Session.title` is one string, overwritten in place. Nothing anywhere (bridge, Kit, Core, clients) keeps an earlier title.
-- **Only claude-bridge re-titles.** opencode 1.x and 2.x name a session once, from its first message, and only rename on request (`session.renamed` carries no source and no history). omp-bridge titles once (`autoTitled` blocks every later call). So a chat's names only tell a story on claude-bridge, and there the server is the only party that sees every rename: a client sees a title only while it lists sessions.
+- **Only claude-bridge re-titles.** opencode 1.x and 2.x name a session once, from its first message, and only rename on request (`session.renamed` carries no source and no history). omp-bridge titled once (`autoTitled` blocked every later call) until 0.13.0, which keeps chapters too (§ 8). The server is the only party that sees every rename: a client sees a title only while it lists sessions.
 - **The open chat learns its title only from the list.** `TranscriptSnapshot` carries no title; iOS polls `listAllSessions` at 0, 12 and 40 s after a turn; the desktops adopt `list.upsert`. A device that was asleep for a rename never sees it.
 - **The bridge's turn number is the count of `.user` messages in `session.messages`**, the same array `GET /sessions/:id` serves, and store-minted message ids survive the fold (`SessionStore.named`). A boundary can be named by message id with the turn as a fallback.
 - **Nothing in the transcript says the topic moved.** The model seam (`ModelSeamTracker`) and the compaction seam are the only dividers. iOS's overflow menu has "Jump to message" (the last 20 prompts); the desktops have `[`/`]` prompt jumps. Neither says what any stretch was about.
@@ -20,7 +20,7 @@ One noun, **chapter**: a stretch of the conversation under one title. A chapter 
 | **Chapters panel** | iPhone sheet, Mac popover, Linux panel | opened from the chip or band fact, a heading, the menu, `g c` |
 | **Chapters fact** | facts row (iOS) / band (desktops): `📖 3 chapters` | 2+ chapters |
 
-A chat with one chapter draws nothing new (mock 3). Nothing is drawn for opencode or omp, whose servers keep no chapters.
+A chat with one chapter draws nothing new (mock 3). Nothing is drawn for opencode, whose server keeps no chapters.
 
 ### The heading
 
@@ -83,7 +83,7 @@ Rules, in `SessionStore`:
 
 **The gist.** One `haiku` call per closed chapter (rare: only when the topic moves): the title, the person's messages in the chapter (each cut to 240 characters, at most the first and last seven), its last answer (600), asking for one past-tense sentence of at most 16 words. A failure leaves the gist empty; nothing retries.
 
-omp-bridge and opencode keep no chapters and are not changed. The Kit reads their absence as `nil`.
+opencode keeps no chapters and is not changed; the Kit reads their absence as `nil`. omp-bridge 0.13.0 serves the same wire (§ 8).
 
 ## 4. Kit (0.51.0)
 
@@ -126,3 +126,14 @@ Before building, three critics read this doc against the code; after, a reviewer
 3. Core: `ChapterReading`, `ChapterHeadingTracker`, band segment, capability, shortcut, strings; tests.
 4. iOS, Mac, Linux: heading row, panel, fact, entry points, jump; selftests and screenshots of each.
 5. Ship: Linux install, iPhone and Mac TestFlight.
+
+## 8. omp-bridge (0.13.0)
+
+The same wire, rules and verdict grammar as claude-bridge, in omp-bridge's own `Chapters.swift` and `Titler`. What differs:
+
+- **A chapter is kept by turn, not message id.** oh-my-pi's transcript names a message `u-<entry id>` while the live turn that wrote it was `u-<random>`, so a stored id is wrong after any restart. The store keeps `turn` and `startedAt`; every read and frame works `messageID` out again from the turn (`ChapterBook.resolved`).
+- **Reading the transcript back recounts.** A slash command oh-my-pi answers itself is a message live and none on disk, so turn numbers can shift. `ChapterBook.reanchored` moves each chapter to the person's message nearest when it began (within 30 s) and never at or before the chapter ahead of it; a gist finds its chapter by `startedAt`.
+- **The looks run on the chat's own engine** (`omp -p --no-session --no-tools --thinking off`, or `OMP_TITLE_MODEL`), which is often a local model: every answer is read past `<think>…</think>` and markdown, taking the last line in one of the three shapes. A split may take 240 s.
+- **A split is checked before it is believed.** Measured on real omp chats of 33–42 messages with local engines: Nemotron Bolt opened a chapter at every message, and Pennyroyal numbered its chapters 1, 2, 3 where it was asked for the message each began at, or gave 13–14 fine-grained ones. The prompt now states the cap and says the number is the message's own (a chapter that began at message 12 starts its line with 12), after which Pennyroyal split the same chats into 8 and 11 chapters at the right messages. An answer with more chapters than half the messages, or numbered 1, 2, 3, is no answer and the next engine is asked; one finer than the cap (one chapter per three messages, at most 12) has its shortest chapters after the first folded into the ones before them.
+- **`/clear`** empties the chapters with a frame, and the next exchange is named afresh (`autoTitled` resets), as on claude-bridge.
+
