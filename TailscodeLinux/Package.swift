@@ -188,7 +188,8 @@ enum Kit {
     /// settles rather than the turn.
     /// 0.51.0 carries a conversation's chapters from the servers that keep them.
     /// 0.51.1 says a dropped connection in a sentence rather than an error dump.
-    static let version = Version(0, 51, 1)
+    /// 0.52.0 reads a failed turn a bridge kept on its answer.
+    static let version = Version(0, 52, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
