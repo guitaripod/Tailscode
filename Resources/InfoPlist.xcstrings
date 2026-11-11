@@ -69,12 +69,48 @@
             "state": "translated",
             "value": "Tailscode 會連線到你在自己電腦上執行的編碼代理伺服器，包含區域網路上的伺服器。"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode forbinder sig til coding-agent-servere, du kører på dine egne maskiner, også dem på dit lokale netværk."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode yhdistää koodausagenttien palvelimiin, joita ajat omilla tietokoneillasi, myös paikallisessa verkossasi."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode tengist netþjónum fyrir kóðunaragenta sem þú keyrir á eigin tölvum, þar á meðal þeim á staðarnetinu þínu."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode kobler seg til servere for kodeagenter som du kjører på dine egne maskiner, også de på det lokale nettverket ditt."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode ansluter till kodagentservrar som du kör på dina egna datorer, även de på ditt lokala nätverk."
+          }
         }
       }
     },
     "NSPhotoLibraryAddUsageDescription": {
       "extractionState": "manual",
       "localizations": {
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gem billeder fra en samtale i dit fotobibliotek."
+          }
+        },
         "de": {
           "stringUnit": {
             "state": "translated",
@@ -93,10 +129,22 @@
             "value": "Guarda imágenes de una conversación en tu fototeca."
           }
         },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tallenna kuvat keskustelusta kuvakirjastoosi."
+          }
+        },
         "fr": {
           "stringUnit": {
             "state": "translated",
             "value": "Enregistrez les images d’une conversation dans votre photothèque."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vista myndir úr samtali í myndasafnið þitt."
           }
         },
         "it": {
@@ -117,6 +165,12 @@
             "value": "대화의 사진을 사진 보관함에 저장합니다."
           }
         },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagre bilder fra en samtale i bildebiblioteket ditt."
+          }
+        },
         "pl": {
           "stringUnit": {
             "state": "translated",
@@ -127,6 +181,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Salve imagens de uma conversa na sua fototeca."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spara bilder från en konversation till ditt bildbibliotek."
           }
         },
         "zh-Hans": {
@@ -211,6 +271,36 @@
             "state": "translated",
             "value": "將照片圖庫中的圖片附加到提示。"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vedhæft billeder fra dit bibliotek til en prompt."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lisää kuvia kuvakirjastostasi kehotteeseen."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hengja myndir úr myndasafninu þínu við fyrirmæli."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Legg ved bilder fra bildebiblioteket ditt til en prompt."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bifoga bilder från ditt bildbibliotek till en prompt."
+          }
         }
       }
     },
@@ -281,6 +371,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "新增對話"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ny chat"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uusi keskustelu"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nýtt spjall"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ny chat"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ny chatt"
           }
         }
       }
@@ -353,6 +473,36 @@
             "state": "translated",
             "value": "以語音與你的編碼代理對話。你的聲音只會透過你的 tailnet 傳送到你所選擇的伺服器，不會傳到其他任何地方。"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tal med din coding-agent højt. Din stemme sendes via dit tailnet til den server, du har valgt, og ingen andre steder."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puhu koodausagentillesi ääneen. Äänesi kulkee tailnetisi kautta valitsemallesi palvelimelle eikä minnekään muualle."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Talaðu upphátt við kóðunaragentinn þinn. Röddin þín fer um tailnetið þitt til þess netþjóns sem þú valdir, og hvergi annars staðar."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Snakk med kodeagenten din høyt. Stemmen din sendes over tailnetet ditt til serveren du valgte, og ingen andre steder."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prata med din kodagent. Din röst skickas via ditt tailnet till servern du valde, och ingen annanstans."
+          }
         }
       }
     },
@@ -424,6 +574,36 @@
             "state": "translated",
             "value": "拍一張照片向你的代理提問，或掃描電腦印出的 QR Code 來連線。"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tag et billede for at spørge din agent om det, eller scan koden, som din computer viser, for at oprette forbindelse."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ota valokuva ja kysy siitä agentiltasi, tai skannaa koodi, jonka tietokoneesi tulostaa yhdistääksesi."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Taktu mynd til að spyrja agentinn þinn um hana, eða skannaðu kóðann sem tölvan þín birtir til að tengjast."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ta et bilde for å spørre agenten din om det, eller skann koden som maskinen skriver ut for å koble til."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ta ett foto för att fråga din agent om det, eller skanna koden som din dator skriver ut för att ansluta."
+          }
         }
       }
     },
@@ -494,6 +674,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "在核准代理程式正在等待的指令之前，請確認是你本人。"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekræft, at det er dig, før du godkender en kommando, som en agent venter på."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vahvista henkilöllisyytesi ennen kuin hyväksyt komennon, jota agentti odottaa."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Staðfestu að það sért þú áður en þú samþykkir skipun sem agent bíður eftir."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekreft at det er deg før du godkjenner en kommando som agenten venter på."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekräfta att det är du innan du godkänner ett kommando som en agent väntar på."
           }
         }
       }

@@ -27,7 +27,7 @@ extension ScheduleSpeech {
 
     /// Ordered: a longer phrase is rewritten before a word inside it ("jeden morgen" before "morgen",
     /// "周一到周五" before "周五", "每周五" before "每"), and a clock is made before anything reads it.
-    static let phrasebook: [(String, String)] = clocks + spans + days + parts + weekdays + joints
+    static let phrasebook: [(String, String)] = clocks + spans + nordicSpans + days + nordicDays + nordicParts + parts + nordicHabits + weekdays + joints + nordicJoints
 
     private static let hourMark = #"[時时點点시]"#
 
@@ -174,5 +174,92 @@ extension ScheduleSpeech {
         (word("una|uno|une|uma|um|un|eine[rm]?|ein") + #"(?=\s+(?:hour|day|half)(?![\p{L}]))"#, " a "),
         (word("dentro\\s+de|daqui\\s+a|en|dans|tra|fra|em|za") + #"(?=\s+(?:\d|a\s|an\s|half\s))"#, " in "),
         (#"(?<!every\s{1,3}|in\s{1,3})(?<![\d:.])(\d{1,2})h(?![\p{L}\d])"#, " $1:00 "),
+    ]
+
+    /// Swedish, Danish, Norwegian, Finnish and Icelandic counts: "om 20 min", "20 min päästä", "eftir 20 mín",
+    /// "var 2:e timme", "hver 2. time", "2 tunnin välein", "á 2 klukkustunda fresti".
+    private static let nordicSpans: [(String, String)] = [
+        (word("om") + #"\s+(\d+)\s*min(?:uter|utter|\.)?(?![\p{L}])"#, " in $1 min "),
+        (word("om") + #"\s+(\d+)\s*(?:timmar|timme|timer|time|t)(?![\p{L}])"#, " in $1 hours "),
+        (word("om") + #"\s+(\d+)\s*(?:dagar|dage|dager|dag|døgn)(?![\p{L}])"#, " in $1 days "),
+        (#"(\d+)\s*min(?:uutin|uuttia|\.)?\s+päästä"#, " in $1 min "),
+        (#"(\d+)\s*tunnin\s+päästä"#, " in $1 hours "),
+        (#"(\d+)\s*päivän\s+päästä"#, " in $1 days "),
+        (word("puolen\\s+tunnin\\s+päästä"), " in half an hour "),
+        (word("tunnin\\s+päästä"), " in an hour "),
+        (word("eftir") + #"\s+(\d+)\s*mín(?:útur|útu|\.)?(?![\p{L}])"#, " in $1 min "),
+        (word("eftir") + #"\s+(\d+)\s*(?:klukkustundir|klukkustund|klukkutíma|klst\.?|tíma)(?![\p{L}])"#, " in $1 hours "),
+        (word("eftir") + #"\s+(\d+)\s*(?:daga|dag)(?![\p{L}])"#, " in $1 days "),
+        (word("var") + #"\s+(\d+)\s*(?::e|:a)?\s*timme(?![\p{L}])"#, " every $1 hours "),
+        (word("hver") + #"\s+(\d+)\.?\s*time(?![\p{L}])"#, " every $1 hours "),
+        (#"(\d+)\s*tunnin\s+välein"#, " every $1 hours "),
+        (word("á") + #"\s+(\d+)\s*(?:klukkustunda|klukkutíma|tíma)\s+fresti"#, " every $1 hours "),
+        (word("varje\\s+timme|en\\s+gång\\s+i\\s+timmen|hver\\s+time|tunnin\\s+välein|joka\\s+tunti|á\\s+klukkutíma\\s+fresti|á\\s+klukkustundar\\s+fresti"), " hourly "),
+    ]
+
+    private static let nordicDays: [(String, String)] = [
+        (word("vardagar|på\\s+vardagar|måndag\\s+till\\s+fredag|hverdage|på\\s+hverdage|hverdager|på\\s+hverdager|ukedager|mandag\\s+til\\s+fredag|arkisin|arkipäivisin|maanantaista\\s+perjantaihin|virka\\s+daga|á\\s+virkum\\s+dögum|virkum\\s+dögum|mánudaga\\s+til\\s+föstudaga"), " weekdays "),
+        (word("varje\\s+morgon|hver\\s+morgen|joka\\s+aamu|aamuisin|á\\s+hverjum\\s+morgni"), " every morning "),
+        (word("varje\\s+kväll|hver\\s+aften|hver\\s+kveld|joka\\s+ilta|iltaisin|á\\s+hverju\\s+kvöldi"), " every evening "),
+        (word("varje\\s+dag|dagligen|hver\\s+dag|dagligt|daglig|joka\\s+päivä|päivittäin|á\\s+hverjum\\s+degi|daglega"), " daily "),
+    ]
+
+    /// Ahead of the German words, so "i morgen" is never read as "i" before a German "morgen".
+    private static let nordicParts: [(String, String)] = [
+        (word("i\\s+kväll|ikväll|i\\s+aften|i\\s+kveld|tänä\\s+iltana|tänään\\s+illalla|í\\s+kvöld"), " tonight "),
+        (word("i\\s+morgon\\s+bitti|imorgon\\s+bitti|i\\s+morgen\\s+tidlig|huomenna\\s+aamulla|í\\s+fyrramálið"), " tomorrow morning "),
+        (word("i\\s+morgon|imorgon|i\\s+morgen|huomenna|á\\s+morgun"), " tomorrow "),
+        (word("på\\s+morgonen|om\\s+morgenen|aamulla|um\\s+morguninn"), " morning "),
+        (word("på\\s+eftermiddagen|om\\s+eftermiddagen|om\\s+ettermiddagen|eftermiddag(?:en)?|ettermiddag(?:en)?|iltapäivällä|iltapäivisin|síðdegis"), " afternoon "),
+        (word("på\\s+kvällen|om\\s+aftenen|om\\s+kvelden|kväll(?:en)?|aften(?:en)?|kveld(?:en)?|illalla|um\\s+kvöldið"), " evening "),
+        (word("mitt\\s+på\\s+dagen|midt\\s+på\\s+dagen|keskipäivällä|um\\s+hádegi"), " noon "),
+        (word("midnatt|midnat|keskiyöllä|keskiyö|á\\s+miðnætti|miðnætti"), " midnight "),
+    ]
+
+    /// A day said as a habit: "på fredagar", "om fredagen", "på fredager", "perjantaisin", "á föstudögum".
+    private static let nordicHabits: [(String, String)] = {
+        let habits = [
+            "på\\s+söndagar|söndagar|om\\s+søndagen|søndage|på\\s+søndager|søndager|sunnuntaisin|á\\s+sunnudögum",
+            "på\\s+måndagar|måndagar|om\\s+mandagen|mandage|på\\s+mandager|mandager|maanantaisin|á\\s+mánudögum",
+            "på\\s+tisdagar|tisdagar|om\\s+tirsdagen|tirsdage|på\\s+tirsdager|tirsdager|tiistaisin|á\\s+þriðjudögum",
+            "på\\s+onsdagar|onsdagar|om\\s+onsdagen|onsdage|på\\s+onsdager|onsdager|keskiviikkoisin|á\\s+miðvikudögum",
+            "på\\s+torsdagar|torsdagar|om\\s+torsdagen|torsdage|på\\s+torsdager|torsdager|torstaisin|á\\s+fimmtudögum",
+            "på\\s+fredagar|fredagar|om\\s+fredagen|fredage|på\\s+fredager|fredager|perjantaisin|á\\s+föstudögum",
+            "på\\s+lördagar|lördagar|om\\s+lørdagen|lørdage|på\\s+lørdager|lørdager|lauantaisin|á\\s+laugardögum",
+        ]
+        let names = [
+            "söndag|søndag|sunnuntai(?:na)?|sunnudag(?:inn|ur|a)?",
+            "måndag|mandag|maanantai(?:na)?|mánudag(?:inn|ur|a)?",
+            "tisdag|tirsdag|tiistai(?:na)?|þriðjudag(?:inn|ur|a)?",
+            "onsdag|keskiviikko(?:na)?|miðvikudag(?:inn|ur|a)?",
+            "torsdag|torstai(?:na)?|fimmtudag(?:inn|ur|a)?",
+            "fredag|perjantai(?:na)?|föstudag(?:inn|ur|a)?",
+            "lördag|lørdag|lauantai(?:na)?|laugardag(?:inn|ur|a)?",
+        ]
+        let short = ["sön|søn|sun", "mån|man|mán", "tis|tir|þri", "ons|mið", "tors|tor|fim", "fre|fös", "lör|lør|lau"]
+        let finnish = ["su", "ma", "ti", "ke", nil, "pe", nil]
+        var rules: [(String, String)] = []
+        for day in 0..<7 {
+            rules.append((word(habits[day]), " every \(english[day]) "))
+            rules.append((word("(?:på\\s+|á\\s+)?(?:" + names[day] + ")"), " \(english[day]) "))
+            rules.append((word(short[day]) + #"\.?(?=\s|$)"#, " \(english[day]) "))
+            if let two = finnish[day] {
+                rules.append((word(two) + #"\.?(?=\s*\d)"#, " \(english[day]) "))
+            }
+        }
+        return rules
+    }()
+
+    private static let nordicJoints: [(String, String)] = [
+        (word("varje|hver|hvert|joka|á\\s+hverjum|hvern|hverja"), " every "),
+        (word("kl\\.?|klockan|klokken|klokka|klo\\.?|kello|klukkan") + #"(?=\s*\d)"#, " at "),
+        (word("en\\s+halvtimme|en\\s+halv\\s+timme|en\\s+halv\\s+time|en\\s+halvtime|hálftíma|hálfan\\s+tíma"), " half an hour "),
+        (word("minuter|minutter|minuuttia|minuutin|mínútur|mínútu|mín") , " min "),
+        (word("timmar|timer|tuntia|tunnin|klukkustundir|klukkustunda|klst\\.?"), " hours "),
+        (word("timme|tunti|klukkustund|klukkutími|klukkutíma"), " hour "),
+        (word("dagar|dage|dager|päivää|päivän|daga"), " days "),
+        (word("dag|päivä|dagur|degi"), " day "),
+        (word("en|ett|et|eitt|einn|eina|yhden") + #"(?=\s+(?:hour|day|half)(?![\p{L}]))"#, " a "),
+        (word("om|eftir") + #"(?=\s+(?:\d|a\s|an\s|half\s))"#, " in "),
     ]
 }

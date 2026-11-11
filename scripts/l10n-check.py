@@ -22,7 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "Resources" / "Localizable.xcstrings"
-LANGUAGES = ["de", "en", "es", "fr", "it", "ja", "ko", "pl", "pt-BR", "zh-Hans", "zh-Hant"]
+LANGUAGES = ["de", "en", "es", "fr", "it", "ja", "ko", "pl", "pt-BR", "zh-Hans", "zh-Hant", "sv", "da", "nb", "fi", "is"]
 SOURCES = ["Tailscode", "Shared", "TailscodeCore/Sources", "TailscodeLinux/Sources", "TailscodeMac", "TailscodeWidget", "TailscodeNSE", "TailscodeNotificationUI"]
 LITERAL = re.compile(r'Localized\.text\(\s*"((?:[^"\\]|\\.)*)"')
 SPECIFIER = re.compile(r"%(?:\d+\$)?(?:ll|l|hh|h)?[@dDfsSuUxXcC]|%%")

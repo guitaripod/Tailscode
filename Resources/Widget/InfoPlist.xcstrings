@@ -69,6 +69,36 @@
             "state": "translated",
             "value": "Tailscode 的小工具會從你執行的編碼代理伺服器讀取即時用量，包含區域網路上的伺服器。"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscodes widgets læser aktuelt forbrug fra coding-agent-servere, du kører, også dem på dit lokale netværk."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscoden widgetit lukevat reaaliaikaisen käytön koodausagenttipalvelimilta, joita ajat, myös paikallisverkossasi olevilta."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Græjur Tailscode lesa notkun í rauntíma af netþjónum kóðunaragenta sem þú rekur, þar á meðal þeim á staðarnetinu þínu."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode-widgetene leser bruksdata i sanntid fra agent-servere du kjører, også de på ditt lokale nettverk."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscodes widgetar läser aktuell användning från kodagentservrar du kör, även sådana på ditt lokala nätverk."
+          }
         }
       }
     }

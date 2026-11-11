@@ -11,6 +11,10 @@
         "amount": "14.99"
       },
       "localizations": {
+        "da": {
+          "name": "Tailscode Pro",
+          "description": "Ubegrænset antal servere. Ét køb til iPhone og Mac."
+        },
         "de-DE": {
           "name": "Tailscode Pro",
           "description": "Unbegrenzt Server. Ein Kauf für iPhone und Mac."
@@ -22,6 +26,10 @@
         "es-ES": {
           "name": "Tailscode Pro",
           "description": "Servidores ilimitados. Una compra para iPhone y Mac."
+        },
+        "fi": {
+          "name": "Tailscode Pro",
+          "description": "Rajaton palvelinmäärä. Yksi osto iPhonelle ja Macille."
         },
         "fr-FR": {
           "name": "Tailscode Pro",
@@ -39,6 +47,10 @@
           "name": "Tailscode Pro",
           "description": "서버 무제한. 한 번 구매로 iPhone과 Mac 사용."
         },
+        "no": {
+          "name": "Tailscode Pro",
+          "description": "Ubegrenset antall servere. Ett kjøp til iPhone og Mac."
+        },
         "pl": {
           "name": "Tailscode Pro",
           "description": "Wiele serwerów i aktywności na żywo naraz."
@@ -46,6 +58,10 @@
         "pt-BR": {
           "name": "Tailscode Pro",
           "description": "Servidores ilimitados. Uma compra para iPhone e Mac."
+        },
+        "sv": {
+          "name": "Tailscode Pro",
+          "description": "Obegränsat antal servrar. Ett köp för iPhone och Mac."
         },
         "zh-Hans": {
           "name": "Tailscode Pro",
@@ -67,13 +83,29 @@
         "amount": "19.99"
       },
       "localizations": {
+        "da": {
+          "name": "Overdådigt tip",
+          "description": "Du er grunden til, at appen findes. Tak!"
+        },
         "en-US": {
           "name": "Lavish Tip",
           "description": "You are the reason this app exists. Thank you!"
         },
+        "fi": {
+          "name": "Runsas tippi",
+          "description": "Ilman sinua tätä sovellusta ei olisi. Kiitos!"
+        },
+        "no": {
+          "name": "Overdådig driks",
+          "description": "Du er grunnen til at appen finnes. Takk!"
+        },
         "pl": {
           "name": "Suty napiwek",
           "description": "Dzięki tobie ta aplikacja istnieje!"
+        },
+        "sv": {
+          "name": "Frikostigt tips",
+          "description": "Du är anledningen till att appen finns. Tack!"
         }
       },
       "reviewScreenshotMd5": "7badf4ca2e95ef816847f9d2c82c21f4"
@@ -87,13 +119,29 @@
         "amount": "9.99"
       },
       "localizations": {
+        "da": {
+          "name": "Generøst tip",
+          "description": "Solid drivkraft til udviklingen. Tak!"
+        },
         "en-US": {
           "name": "Generous Tip",
           "description": "Serious fuel for development. Thank you!"
         },
+        "fi": {
+          "name": "Antelias tippi",
+          "description": "Kunnon polttoainetta jatkokehitykseen. Kiitos!"
+        },
+        "no": {
+          "name": "Sjenerøst driks",
+          "description": "Skikkelig drivstoff til utviklingen. Takk!"
+        },
         "pl": {
           "name": "Hojny napiwek",
           "description": "Solidne paliwo do dalszej pracy. Dzięki!"
+        },
+        "sv": {
+          "name": "Generöst tips",
+          "description": "Rejält bränsle till utvecklingen. Tack!"
         }
       },
       "reviewScreenshotMd5": "7badf4ca2e95ef816847f9d2c82c21f4"
@@ -107,13 +155,29 @@
         "amount": "2.99"
       },
       "localizations": {
+        "da": {
+          "name": "Lille tip",
+          "description": "En kop kaffe til udvikleren. Tak!"
+        },
         "en-US": {
           "name": "Small Tip",
           "description": "A coffee for the developer. Thank you!"
         },
+        "fi": {
+          "name": "Pieni tippi",
+          "description": "Kahvi kehittäjälle. Kiitos!"
+        },
+        "no": {
+          "name": "Lite driks",
+          "description": "En kaffe til utvikleren. Takk!"
+        },
         "pl": {
           "name": "Mały napiwek",
           "description": "Kawa dla twórcy aplikacji. Dzięki!"
+        },
+        "sv": {
+          "name": "Litet tips",
+          "description": "En kaffe till utvecklaren. Tack!"
         }
       },
       "reviewScreenshotMd5": "7badf4ca2e95ef816847f9d2c82c21f4"

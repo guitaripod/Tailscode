@@ -69,6 +69,36 @@
             "state": "translated",
             "value": "問問${applicationName}"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørg ${applicationName}"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kysy ${applicationName}"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spyrja ${applicationName}"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spør ${applicationName}"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fråga ${applicationName}"
+          }
         }
       }
     },
@@ -139,6 +169,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "向${applicationName}提問"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stil ${applicationName} et spørgsmål"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esitä kysymys sovelluksessa ${applicationName}"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leggja spurningu fyrir ${applicationName}"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Still ${applicationName} et spørsmål"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ställ en fråga till ${applicationName}"
           }
         }
       }
@@ -211,6 +271,36 @@
             "state": "translated",
             "value": "在${applicationName}中問我的代理"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørg min agent i ${applicationName}"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kysy agentiltasi sovelluksessa ${applicationName}"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spyrja agentinn minn í ${applicationName}"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spør agenten min i ${applicationName}"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fråga min agent i ${applicationName}"
+          }
         }
       }
     },
@@ -281,6 +371,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "在${applicationName}中快速提問"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hurtigspørgsmål i ${applicationName}"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pikakysymys sovelluksessa ${applicationName}"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skyndispurning í ${applicationName}"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hurtigspørsmål i ${applicationName}"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Snabbfråga i ${applicationName}"
           }
         }
       }
@@ -353,6 +473,36 @@
             "state": "translated",
             "value": "在${applicationName}中開啟快速提問"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åbn hurtigspørgsmål i ${applicationName}"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avaa pikakysymys sovelluksessa ${applicationName}"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opna skyndispurningu í ${applicationName}"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne hurtigspørsmål i ${applicationName}"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öppna snabbfråga i ${applicationName}"
+          }
         }
       }
     },
@@ -424,6 +574,36 @@
             "state": "translated",
             "value": "在${applicationName}中使用${slot}"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brug ${slot} i ${applicationName}"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Käytä ${slot} sovelluksessa ${applicationName}"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nota ${slot} í ${applicationName}"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bruk ${slot} i ${applicationName}"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Använd ${slot} i ${applicationName}"
+          }
         }
       }
     },
@@ -494,6 +674,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "將${applicationName}切換到${slot}"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skift ${applicationName} til ${slot}"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vaihda ${applicationName} paikkaan ${slot}"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skipta ${applicationName} yfir í ${slot}"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bytt ${applicationName} til ${slot}"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Byt ${applicationName} till ${slot}"
           }
         }
       }

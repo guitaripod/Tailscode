@@ -95,6 +95,11 @@ struct ScheduleSpeechTests {
             ("평일 7:30", "2시간마다", "금 17:00", "20분 뒤"),
             ("工作日 7:30", "每 2 小时", "周五 17:00", "20 分钟后"),
             ("平日 7:30", "每 2 小時", "週五 17:00", "20 分鐘後"),
+            ("vardagar 7:30", "var 2:e timme", "fre 17:00", "om 20 min"),
+            ("hverdage 7:30", "hver 2. time", "fre 17:00", "om 20 min"),
+            ("hverdager 7:30", "hver 2. time", "fre 17:00", "om 20 min"),
+            ("arkisin 7:30", "2 tunnin välein", "pe 17:00", "20 min päästä"),
+            ("virka daga 7:30", "á 2 klukkustunda fresti", "fös 17:00", "eftir 20 mín"),
         ])
     func placeholderExamples(weekdays: String, hours: String, friday: String, soon: String) throws {
         #expect(read(weekdays)?.rule == ScheduleRule(kind: .weekdays, hour: 7, minute: 30), "\(weekdays)")
@@ -118,6 +123,14 @@ struct ScheduleSpeechTests {
         #expect(read("ogni giorno alle 7")?.rule == daily7)
         #expect(read("codziennie o 7")?.rule == daily7)
         #expect(read("freitags 9 Uhr")?.rule == friday9)
+        #expect(read("varje dag kl 7")?.rule == daily7)
+        #expect(read("hver dag kl. 7")?.rule == daily7)
+        #expect(read("joka päivä klo 7")?.rule == daily7)
+        #expect(read("á hverjum degi klukkan 7")?.rule == daily7)
+        #expect(read("på fredagar kl 9")?.rule == friday9)
+        #expect(read("perjantaisin klo 9")?.rule == friday9)
+        #expect(read("om fredagen kl. 9")?.rule == friday9)
+        #expect(read("á föstudögum klukkan 9")?.rule == friday9)
         #expect(read("毎週金曜 9時")?.rule == friday9)
         #expect(read("매주 금요일 9시")?.rule == friday9)
         #expect(read("每周五 9点")?.rule == friday9)
