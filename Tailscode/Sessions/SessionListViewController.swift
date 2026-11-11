@@ -43,6 +43,9 @@ final class SessionListViewController: UIViewController {
         }
     }
 
+    /// Whether search and New chat sit at the foot of the column right now.
+    var footed = false
+
     var isUnscopedList: Bool { scope == nil }
 
     /// The list every stack already reaches from Home: no project, no filter.
@@ -116,6 +119,26 @@ final class SessionListViewController: UIViewController {
         takeDeferredRender()
         hasAppeared = true
         startClockRefresh()
+        if footed != wantsFoot { updateComposeButton() }
+        syncFootToolbar(animated: animated)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        guard let navigationController, navigationController.topViewController !== self,
+            !navigationController.isToolbarHidden
+        else { return }
+        navigationController.setToolbarHidden(true, animated: animated)
+    }
+
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        if footed != wantsFoot, !isSelecting { updateComposeButton() }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        fitSearchPlaceholder()
     }
 
     /// A list nobody can see is not drawn. On a phone this controller outlives its visit — Home

@@ -39,6 +39,7 @@ extension SessionListViewController {
                     systemItem: .done,
                     primaryAction: UIAction { [weak self] _ in self?.setSelecting(false) })
             ]
+            placeFoot(compose: nil)
             return
         }
         navigationItem.leftBarButtonItem = nil
@@ -69,7 +70,7 @@ extension SessionListViewController {
         composeItem.accessibilityLabel =
             scope.map { String(localized: "New chat in \($0.name)") }
             ?? String(localized: "New chat")
-        var items = [composeItem]
+        var items = placeFoot(compose: composeItem) ? [] : [composeItem]
         if !showsAsColumn {
             let saved = UIBarButtonItem(
                 image: UIImage(systemName: "bookmark"),
@@ -92,6 +93,50 @@ extension SessionListViewController {
             items.append(select)
         }
         navigationItem.rightBarButtonItems = items
+    }
+
+    /// Whether this list is a column in a window whose bars run down a side. The column keeps
+    /// horizontal bars of its own, and its foot is where the left thumb rests while the right one
+    /// works in the conversation beside it.
+    var wantsFoot: Bool {
+        showsAsColumn && VerticalBar.isPresent(in: splitViewController?.traitCollection)
+    }
+
+    /// Puts search and New chat side by side at the foot of the column when it wants a foot, and
+    /// takes the foot away otherwise. Says whether New chat went there.
+    @discardableResult
+    func placeFoot(compose: UIBarButtonItem?) -> Bool {
+        let foot = wantsFoot && !isSelecting
+        footed = foot
+        var items: [UIBarButtonItem]?
+        if foot, #available(iOS 26.0, *) {
+            items = [navigationItem.searchBarPlacementBarButtonItem] + (compose.map { [$0] } ?? [])
+        }
+        if toolbarItems != items { toolbarItems = items }
+        syncFootToolbar(animated: false)
+        return items != nil && compose != nil
+    }
+
+    func syncFootToolbar(animated: Bool) {
+        guard let navigationController, navigationController.topViewController === self else { return }
+        let hidden = toolbarItems == nil
+        guard navigationController.isToolbarHidden != hidden else { return }
+        navigationController.setToolbarHidden(hidden, animated: animated)
+    }
+
+    /// The long placeholder says what return does and is only worth showing whole: a field too
+    /// narrow for it, a column beside a conversation or a language that runs long, shows the short
+    /// one rather than a sentence cut off mid-word.
+    func fitSearchPlaceholder() {
+        let field = searchController.searchBar.searchTextField
+        guard field.bounds.width > 0 else { return }
+        let long = String(localized: "Filter chats — return to search inside")
+        let font = field.font ?? UIFont.preferredFont(forTextStyle: .body)
+        let needed = (long as NSString).size(withAttributes: [.font: font]).width
+        let room = field.placeholderRect(forBounds: field.bounds).width
+        let wanted = needed <= room ? long : String(localized: "Search chats")
+        guard searchController.searchBar.placeholder != wanted else { return }
+        searchController.searchBar.placeholder = wanted
     }
 
     func selectAllItem() -> UIBarButtonItem {
