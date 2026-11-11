@@ -261,7 +261,9 @@ extension ChatViewController {
 
 extension ChatViewController {
     func updateNavControls() {
-        navigationItem.rightBarButtonItems = [overflowBarButton()] + callController.barItems
+        overflowItem = overflowBarButton()
+        updateOverflowBadge(hasPermission: pendingPermission != nil)
+        applyBarItems()
         refreshAttachmentGating()
         refreshDial()
         composer.ultracodeEffort = viewModel.currentEffort

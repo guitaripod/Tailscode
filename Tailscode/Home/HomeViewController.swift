@@ -336,6 +336,9 @@ final class HomeViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        if navigationController?.isToolbarHidden == false {
+            navigationController?.setToolbarHidden(true, animated: animated)
+        }
         composerFollowsKeyboard(composerBar.isEditing)
         if deferredSnapshot { renderSnapshot() }
         if hasAppeared { Task { await load() } }

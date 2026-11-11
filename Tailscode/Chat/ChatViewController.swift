@@ -275,6 +275,7 @@ final class ChatViewController: UIViewController {
         configureBackgroundChip()
         configureFindBar()
         configureNavTitleView()
+        watchSideBar()
         configureDataSource()
         callController.attach()
         composer.delegate = self
@@ -384,6 +385,12 @@ final class ChatViewController: UIViewController {
                 }
             }
             openAskLaterForVerification()
+            if ProcessInfo.processInfo.environment["TAILSCODE_CHAT_FOCUS"] != nil {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(4))
+                    self?.composer.focus()
+                }
+            }
             if let draft = ProcessInfo.processInfo.environment["TAILSCODE_DRAFT"] {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
@@ -476,6 +483,14 @@ final class ChatViewController: UIViewController {
         viewModel.startSubagentTracking()
         callController.screenAppeared()
         updatePreviewChip()
+        _ = sideBar.read(traitCollection)
+        applyBarItems()
+        syncSideBarToolbar(animated: animated)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        releaseSideBarToolbar(animated: animated)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -712,6 +727,11 @@ final class ChatViewController: UIViewController {
     /// the menu behind it matters most.
     var shownOverflowBadge: (item: ObjectIdentifier, hasPermission: Bool)?
 
+    /// The `ellipsis.circle` menu the navigation bar carries while the bar is horizontal.
+    var overflowItem: UIBarButtonItem?
+    lazy var sideBar = makeSideBar()
+    lazy var sideOverflow = makeSideOverflow()
+
     var setAsideUnread = false
 
     /// Backends that never name the spawning call — opencode's child sessions, or a bridge that
@@ -770,7 +790,7 @@ extension ChatViewController {
     }
 
     fileprivate func refreshCallBarItem() {
-        guard let overflow = navigationItem.rightBarButtonItems?.first else { return }
-        navigationItem.rightBarButtonItems = [overflow] + callController.barItems
+        guard overflowItem != nil else { return }
+        applyBarItems()
     }
 }

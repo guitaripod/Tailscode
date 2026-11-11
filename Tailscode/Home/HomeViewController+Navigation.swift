@@ -207,6 +207,18 @@ extension HomeViewController {
         }
     }
 
+    /// New Chat from inside a conversation: the box is aimed at that conversation's machine and
+    /// folder, so the next chat starts beside the last one. A machine since removed falls back to
+    /// the plain New Chat.
+    func beginNewChat(profileID: String, directory: String?) {
+        guard let profile = viewModel.servers.first(where: { $0.id == profileID }) else {
+            beginNewChat()
+            return
+        }
+        setComposeTarget(profile: profile, directory: directory, announces: false)
+        focusComposer()
+    }
+
     #if DEBUG
         /// Puts the Saved list into a named state so each one can be reviewed
         /// without tapping: `empty` clears it, `seed` bookmarks real chats, and

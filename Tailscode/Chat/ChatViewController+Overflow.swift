@@ -4,7 +4,7 @@ import UIKit
 
 extension ChatViewController {
     func updateOverflowBadge(hasPermission: Bool) {
-        guard let barItem = navigationItem.rightBarButtonItems?.first else { return }
+        guard let barItem = overflowItem else { return }
         let shown = (item: ObjectIdentifier(barItem), hasPermission: hasPermission)
         guard shownOverflowBadge?.item != shown.item
             || shownOverflowBadge?.hasPermission != shown.hasPermission
@@ -15,7 +15,15 @@ extension ChatViewController {
     }
 
     func overflowBarButton() -> UIBarButtonItem {
-        let jump = UIDeferredMenuElement.uncached { [weak self] completion in
+        UIBarButtonItem(
+            image: UIImage(systemName: "ellipsis.circle"),
+            menu: UIMenu(children: overflowMenuChildren(sideBarHoldsFind: false)))
+    }
+
+    /// Chapters and the last prompts, built when the menu opens so it lists the conversation as
+    /// it stands then.
+    func jumpMenuElement() -> UIMenuElement {
+        UIDeferredMenuElement.uncached { [weak self] completion in
             guard let self else { return completion([]) }
             let prompts = self.orderedIDs.compactMap { id -> UIAction? in
                 guard let row = self.rowsByID[id], row.role == .user,
@@ -42,6 +50,11 @@ extension ChatViewController {
                     children: Array(prompts.suffix(20)))
             ])
         }
+    }
+
+    /// Everything the overflow offers. Find leaves it while the side bar carries it, and comes back
+    /// in the system's own overflow if that bar runs out of room.
+    func overflowMenuChildren(sideBarHoldsFind: Bool) -> [UIMenuElement] {
         let usage = UIDeferredMenuElement.uncached { [weak self] completion in
             Task { @MainActor in
                 guard let self, self.viewModel.supportsUsage, let usage = await self.viewModel.usage() else { return completion([]) }
@@ -140,13 +153,15 @@ extension ChatViewController {
                 ) { [weak self] _ in self?.presentCommandCatalog() }
             ])
         }
-        var children: [UIMenuElement] = [
-            UIAction(
-                title: String(localized: "Find in conversation"),
-                image: UIImage(systemName: "magnifyingglass")
-            ) { [weak self] _ in self?.openFind() }
-        ]
-        children += [commands, jump, subagents, regenerate, usage, save, marks]
+        var children: [UIMenuElement] = []
+        if !sideBarHoldsFind {
+            children.append(
+                UIAction(
+                    title: String(localized: "Find in conversation"),
+                    image: UIImage(systemName: "magnifyingglass")
+                ) { [weak self] _ in self?.openFind() })
+        }
+        children += [commands, jumpMenuElement(), subagents, regenerate, usage, save, marks]
         children.append(
             UIAction(
                 title: String(localized: "Share transcript"),
@@ -189,9 +204,7 @@ extension ChatViewController {
                     attributes: .destructive
                 ) { [weak self] _ in self?.confirmClear() })
         }
-        return UIBarButtonItem(
-            image: UIImage(systemName: "ellipsis.circle"),
-            menu: UIMenu(children: children))
+        return children
     }
 
     /// A chat set aside as unread from inside it stays unread: leaving it, or the next line

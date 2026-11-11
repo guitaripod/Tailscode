@@ -468,6 +468,17 @@ final class WorkspaceSplitViewController: UISplitViewController {
         home.beginNewChat()
     }
 
+    /// The next chat on the machine and folder of the one being read, from Home's composer in
+    /// either arrangement: the conversation column turns to Home, or the stack goes back to it.
+    func startNewChat(profileID: String, directory: String?) {
+        if isShowingColumns {
+            showHome(animated: true)
+        } else {
+            compactNav.popToRootViewController(animated: true)
+        }
+        home.beginNewChat(profileID: profileID, directory: directory)
+    }
+
     func openSettings() {
         home.onOpenSettings?()
     }

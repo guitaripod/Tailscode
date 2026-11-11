@@ -230,7 +230,7 @@ extension ChatViewController {
             return
         }
         let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-        sheet.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItems?.first
+        anchorToOverflow(sheet.popoverPresentationController)
         present(sheet, animated: true)
     }
 }
