@@ -17,7 +17,7 @@ extension HomeViewController {
                     ? [demoBadgeItem] : [])
             return
         }
-        var items = [settingsItem]
+        var items = [VerticalBar.isPresent(in: traitCollection) ? settingsBarItem : settingsItem]
         if let chip = UpdateLedger.rollup().chip {
             updateChip.apply(chip)
             items.append(updateChipItem)

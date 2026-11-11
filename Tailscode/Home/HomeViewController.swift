@@ -57,6 +57,11 @@ final class HomeViewController: UIViewController {
     var composerRidesKeyboard: NSLayoutConstraint!
     private let settingsButton = SettingsGearButton()
     lazy var settingsItem = UIBarButtonItem(customView: settingsButton)
+    /// The gear as a plain item, which a side bar takes in; a custom view never leaves the top row.
+    lazy var settingsBarItem = UIBarButtonItem(
+        primaryAction: UIAction(
+            title: String(localized: "Settings"), image: UIImage(systemName: "gearshape")
+        ) { [weak self] _ in self?.openSettings() })
     let updateChip = UpdateChipButton()
     lazy var updateChipItem = UIBarButtonItem(customView: updateChip)
     lazy var demoBadgeItem = makeDemoBadge()
@@ -123,6 +128,7 @@ final class HomeViewController: UIViewController {
         navigationItem.backButtonTitle = String(localized: "Home")
         view.backgroundColor = Theme.Color.groupedBackground
         settingsButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
+        VerticalBar.observe(self) { home in home.updateLeftBarItems() }
         updateChip.addTarget(self, action: #selector(openUpdates), for: .touchUpInside)
         videoButton.addTarget(self, action: #selector(openVideo), for: .touchUpInside)
         imageButton.addTarget(self, action: #selector(openImage), for: .touchUpInside)
