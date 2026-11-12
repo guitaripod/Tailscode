@@ -44,6 +44,11 @@ extension ComposerView {
             self.syncChips()
         }
         chips.onClearCarry = { [weak self] in self?.carry = nil }
+        chips.onOpenPaste = { [weak self] id in
+            guard let self, let paste = self.pastes.first(where: { $0.id == id }) else { return }
+            self.onReadPaste?(paste)
+        }
+        chips.onRemovePaste = { [weak self] id in self?.removePaste(id) }
         completion.onPick = { [weak self] command in
             self?.accept(command)
         }
@@ -114,9 +119,12 @@ extension ComposerView {
     func restoreDraft(for entry: SessionEntry) {
         let draft = DraftStore.text(
             for: .chat(profileID: entry.profileID, sessionID: entry.session.id))
-        setEditorText(draft, caretAtEnd: true)
+        let kept = PasteFold.undraft(draft)
+        pastes = kept.pastes
+        syncChips()
+        setEditorText(kept.words, caretAtEnd: true)
         lastRecordedDraft = draft
-        vim.reset(to: draft, cursor: draft.count, mode: .insert)
+        vim.reset(to: kept.words, cursor: kept.words.count, mode: .insert)
         updateVimUI()
     }
 

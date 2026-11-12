@@ -85,7 +85,7 @@ final class AskLaterSheetController: NSObject, NSTextFieldDelegate {
         let title = NSTextField(labelWithString: ScheduleWords.askLater)
         title.font = MacTheme.Ramp.font(.cardTitle)
 
-        question.stringValue = text
+        question.stringValue = state.words
         question.placeholderString = Localized.text("What should be asked?")
         question.font = MacTheme.Ramp.font(.cardBody)
         question.usesSingleLineMode = false
@@ -176,7 +176,7 @@ final class AskLaterSheetController: NSObject, NSTextFieldDelegate {
         buttons.spacing = MacTheme.Spacing.s
 
         let column = FillingStack(views: [
-            title, question, chipRow, phrase, understoodBox, switches, reach, status, buttons,
+            title, question, pastesLabel(), chipRow, phrase, understoodBox, switches, reach, status, buttons,
         ])
         column.spacing = MacTheme.Spacing.m
         column.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
@@ -203,6 +203,16 @@ final class AskLaterSheetController: NSObject, NSTextFieldDelegate {
         return row
     }
 
+    /// The long pastes the question carries, named under its words: they ride along folded and
+    /// are not edited here. An empty label when there are none takes no room in the stack.
+    private func pastesLabel() -> NSTextField {
+        let label = NSTextField(labelWithString: state.pastesLine ?? "")
+        label.font = MacTheme.Ramp.font(.panelFootnote)
+        label.textColor = MacTheme.Color.secondaryLabel
+        label.isHidden = state.pastesLine == nil
+        return label
+    }
+
     /// Types a phrase as a person would, for `--open ask-later` and the selftest.
     func type(_ text: String) {
         phrase.stringValue = text
@@ -219,7 +229,7 @@ final class AskLaterSheetController: NSObject, NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) {
         guard let field = obj.object as? NSTextField else { return }
         if field === phrase { state.type(phrase.stringValue) }
-        if field === question { state.text = question.stringValue }
+        if field === question { state.words = question.stringValue }
         render()
     }
 

@@ -356,7 +356,8 @@ final class TranscriptViewController: NSViewController {
             guard let self, let message = self.lastState?.messages.first(where: { $0.id == id }),
                 let host = self.view.window?.windowController as? MainWindowController
             else { return }
-            host.askAgain(MessageHoverBar.words(of: message), in: self)
+            let words = MessageHover.words(of: message)
+            host.askAgain(CarryMark.split(words)?.rest ?? words, in: self)
         }
         hoverBar.toast = { [weak self] text in self?.onToast?(text) }
         context.copyAnswer = { [weak self] rowKey in self?.copyAnswer(ofRowKey: rowKey) }

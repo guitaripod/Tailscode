@@ -26,6 +26,9 @@ extension NSView {
 enum ChatRowSpacing: Hashable {
     case row(ChatRowClass)
     case turnBreak
+    /// A paste folded under the words of its own message: close beneath them, and a prompt to
+    /// whatever follows.
+    case fold
 }
 
 /// The Mac's mapping of Core's chat table onto its own rows, in one place so a row kind is never
@@ -53,6 +56,8 @@ enum ChatLayout {
         switch kind {
         case .userText, .pendingSend, .queuedSend:
             return .row(.prompt)
+        case .pastedText(_, _, let under):
+            return under ? .fold : .row(.prompt)
         case .file(_, let mine, _):
             return .row(mine ? .prompt : .picture)
         case .pictures:
@@ -84,6 +89,10 @@ enum ChatLayout {
         switch (previous, next) {
         case (.turnBreak, _), (_, .turnBreak):
             return CGFloat(metrics.turnGap / 2)
+        case (_, .fold):
+            return CGFloat(metrics.paragraphGap)
+        case (.fold, .row(let below)):
+            return CGFloat(metrics.gap(from: .prompt, to: below))
         case (.row(let above), .row(let below)):
             return CGFloat(metrics.gap(from: above, to: below))
         }

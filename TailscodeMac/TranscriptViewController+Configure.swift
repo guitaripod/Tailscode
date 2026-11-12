@@ -104,11 +104,26 @@ extension TranscriptViewController {
             switch lane {
             case .chat: self.composer.takeFocus()
             case .ask: host.summonQuickAsk()
-            case .video: host.presentStudio(lane: .video, brief: self.composer.currentText)
-            case .image: host.presentStudio(lane: .image, brief: self.composer.currentText)
+            case .video:
+                host.presentStudio(
+                    lane: .video,
+                    brief: PasteFold.inline(self.composer.currentText, pastes: self.composer.pastes))
+            case .image:
+                host.presentStudio(
+                    lane: .image,
+                    brief: PasteFold.inline(self.composer.currentText, pastes: self.composer.pastes))
             }
         }
         composer.onToast = { [weak self] text in self?.onToast?(text) }
+        composer.onReadPaste = { [weak self] paste in
+            let id = paste.id
+            self?.presentReader(
+                title: FoldedPaste.title, subtitle: paste.summary, body: paste.text, mono: true,
+                action: (
+                    Localized.text("Edit as text"),
+                    { [weak self] in self?.composer.unfoldPaste(id) }
+                ))
+        }
         composer.onDialToast = { [weak self] text in self?.onDialToast?(text) }
         composer.onMoveToServer = { [weak self] profileID, plan in
             guard let self,

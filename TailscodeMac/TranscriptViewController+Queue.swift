@@ -204,7 +204,7 @@ extension TranscriptViewController {
     func takeBackLastQueued() -> Bool {
         let display = queueDisplay
         guard
-            QueueReading.upArrowOpensLast(composerText: composer.currentText, display: display),
+            QueueReading.upArrowOpensLast(composerText: composer.draftText, display: display),
             let last = display.last
         else { return false }
         editQueued(last.id)

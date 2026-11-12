@@ -253,8 +253,8 @@ final class MessageHoverBar: NSResponder {
     /// rides with is not theirs to paste: it is drawn as its own line and read from there.
     static func words(of message: ChatMessage) -> String {
         let words = MessageHover.words(of: message)
-        guard message.role == .user, let carried = CarryMark.split(words) else { return words }
-        return carried.rest
+        guard message.role == .user else { return words }
+        return PasteFold.plain(CarryMark.split(words)?.rest ?? words)
     }
 
     static func stamp(_ date: Date, now: Date = Date()) -> String {

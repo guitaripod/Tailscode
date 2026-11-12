@@ -86,8 +86,10 @@ extension TranscriptViewController {
         var index = renderedRows.firstIndex { $0.key == key }
         if index == nil, key.hasPrefix("echo:"),
             let last = renderedRows.lastIndex(where: {
-                if case .userText = $0.kind { return true }
-                return false
+                switch $0.kind {
+                case .userText, .pastedText(_, _, under: false): return true
+                default: return false
+                }
             }), last >= canvasFloor - 2
         {
             canvasKey = renderedRows[last].key

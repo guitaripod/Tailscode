@@ -501,7 +501,7 @@ extension TranscriptRow {
     /// under a prompt that did not is one seam moving in two halves.
     var announcesArrival: Bool {
         switch kind {
-        case .userText, .turnBreak: return false
+        case .userText, .pastedText, .turnBreak: return false
         default: return true
         }
     }

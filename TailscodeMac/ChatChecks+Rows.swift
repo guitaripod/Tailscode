@@ -48,6 +48,8 @@ extension ChatChecks {
             ("failed turn", .failedTurn(failure), .row(.code)),
             ("model seam", .modelSeam(seam), .row(.seam)),
             ("carried line", .carried(carried), .row(.seam)),
+            ("pasted alone", .pastedText(FoldedPaste(text: "x"), messageID: "u", under: false), .row(.prompt)),
+            ("pasted under", .pastedText(FoldedPaste(text: "x"), messageID: "u", under: true), .fold),
             ("turn break", .turnBreak, .turnBreak),
         ]
     }

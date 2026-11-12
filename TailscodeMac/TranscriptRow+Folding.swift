@@ -69,8 +69,8 @@ extension TranscriptRow {
                     }
                     if !remainder.isEmpty {
                         rows.append(
-                            TranscriptRow(
-                                key: key, kind: .userText(remainder, messageID: message.id)))
+                            contentsOf: Self.promptRows(
+                                remainder, key: key, messageID: message.id))
                     }
                     continue
                 }

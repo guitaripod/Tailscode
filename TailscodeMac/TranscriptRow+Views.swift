@@ -8,6 +8,8 @@ extension TranscriptRow {
         switch kind {
         case .userText(let text, let messageID):
             return Self.prompt(text, messageID: messageID, context: context)
+        case .pastedText(let paste, let messageID, _):
+            return Self.pastedLine(paste, messageID: messageID, context: context)
         case .interruption:
             return RowKit.label(
                 "⌧ " + Localized.text("interrupted"), font: MacTheme.Ramp.font(.interruption),

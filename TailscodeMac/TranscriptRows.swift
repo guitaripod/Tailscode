@@ -75,6 +75,9 @@ enum ActivityStep: Hashable {
 struct TranscriptRow: Hashable {
     enum Kind: Hashable {
         case userText(String, messageID: String)
+        /// A long paste in the person's message, folded to one line that opens it. `under` says
+        /// it stands beneath words of its own message rather than being the whole message.
+        case pastedText(FoldedPaste, messageID: String, under: Bool)
         case interruption
         /// The rendering rides in the row, computed where the rows are computed, so painting a
         /// prose row is a label set, not a markdown parse.
@@ -157,7 +160,7 @@ struct TranscriptRow: Hashable {
     /// them — which is the block that rises to the top when a prompt goes.
     var isPromptBlock: Bool {
         switch kind {
-        case .userText, .pendingSend, .carried: return true
+        case .userText, .pastedText, .pendingSend, .carried: return true
         case .file(_, let mine, _): return mine
         default: return false
         }
@@ -191,6 +194,8 @@ struct TranscriptRow: Hashable {
         switch kind {
         case .userText(let text, _), .reasoning(let text):
             return text
+        case .pastedText(let paste, _, _):
+            return paste.text
         case .agentProse(let text, _):
             return text
         case .codeBlock(let language, let body):
@@ -244,7 +249,7 @@ struct TranscriptRow: Hashable {
             guard let plan else { return PendingSendReading.spoken(send, now: now) }
             return ResumeReading.spoken(plan, words: send.text, now: now)
         case .interruptedTurn(let turn):
-            return "\(turn.title) \(turn.prompt)"
+            return "\(turn.title) \(PasteFold.plain(turn.prompt))"
         case .note(let note):
             return TranscriptNoteReading.read(note).text
         case .providerRetry(let card):

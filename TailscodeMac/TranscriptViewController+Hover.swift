@@ -32,7 +32,8 @@ extension TranscriptViewController {
     /// message and the part they came from, so the message is the one whose id leads the key.
     private func messageOwner(of row: TranscriptRow) -> (id: String, prompt: Bool)? {
         switch row.kind {
-        case .userText(_, let messageID): return (messageID, true)
+        case .userText(_, let messageID), .pastedText(_, let messageID, _):
+            return (messageID, true)
         case .file(_, let mine, let messageID): return mine ? (messageID, true) : nil
         case .agentProse, .codeBlock, .table, .tableDraft:
             guard let message = lastState?.messages.last(where: { row.key.hasPrefix($0.id + ":") })

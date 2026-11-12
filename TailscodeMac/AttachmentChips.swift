@@ -2,12 +2,14 @@ import AppKit
 import TailscodeCore
 
 /// What waits to ride along with the next prompt, each as one removable chip: the conversation a
-/// new chat was carried from, then the files. A file's chip removes by id, never by position — two
+/// new chat was carried from, then each long paste folded beside the box, then the files. A file's chip removes by id, never by position — two
 /// queued clicks by position would delete the wrong file — and the carry's removes only the carry.
 @MainActor
 final class AttachmentChips: NSView {
     var onRemove: ((UUID) -> Void)?
     var onClearCarry: (() -> Void)?
+    var onOpenPaste: ((String) -> Void)?
+    var onRemovePaste: ((String) -> Void)?
 
     private let row = NSStackView()
 
@@ -32,11 +34,22 @@ final class AttachmentChips: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func set(_ attachments: [PendingAttachment], carry: ConversationBrief? = nil) {
+    func set(
+        _ attachments: [PendingAttachment], carry: ConversationBrief? = nil,
+        pastes: [FoldedPaste] = []
+    ) {
         row.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        isHidden = attachments.isEmpty && carry == nil
+        isHidden = attachments.isEmpty && carry == nil && pastes.isEmpty
         if let carry {
             let chip = CarryChipView(brief: carry) { [weak self] in self?.onClearCarry?() }
+            row.addArrangedSubview(chip)
+            chip.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor).isActive = true
+        }
+        for paste in pastes {
+            let id = paste.id
+            let chip = PasteChipView(
+                paste: paste, onOpen: { [weak self] in self?.onOpenPaste?(id) },
+                onRemove: { [weak self] in self?.onRemovePaste?(id) })
             row.addArrangedSubview(chip)
             chip.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor).isActive = true
         }

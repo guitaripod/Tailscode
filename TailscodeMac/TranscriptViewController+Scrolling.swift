@@ -63,7 +63,7 @@ extension TranscriptViewController {
         var tops: [CGFloat] = []
         for (index, row) in renderedRows.enumerated() where index < rowViews.count {
             switch row.kind {
-            case .userText, .pendingSend:
+            case .userText, .pendingSend, .pastedText(_, _, under: false):
                 let view = rowViews[index]
                 guard view.superview != nil else { continue }
                 tops.append(view.convert(view.bounds, to: canvas).minY)

@@ -64,7 +64,10 @@ final class ComposerView: NSView {
     /// it last recorded has anything left to say about that draft.
     var lastRecordedDraft = ""
     var attachments: [PendingAttachment] = []
+    var pastes: [FoldedPaste] = []
     var pastedImageCount = 0
+    /// Opens a fold waiting beside the box in the reader, where it can be put back as words.
+    var onReadPaste: ((FoldedPaste) -> Void)?
     /// The conversation this chat was carried from, waiting to ride in its first message. It is
     /// the chat's own — kept on the shelf by the chat, so a switch to another and back finds it —
     /// and goes when the message is sent or the person says to start fresh.
@@ -74,7 +77,7 @@ final class ComposerView: NSView {
             if let entry {
                 CarryShelf.hold(carry, profileID: entry.profileID, sessionID: entry.session.id)
             }
-            chips.set(attachments, carry: carry)
+            chips.set(attachments, carry: carry, pastes: pastes)
         }
     }
     var models: [ModelInfo] = []
@@ -211,6 +214,7 @@ final class ComposerView: NSView {
         lastState = nil
         running = false
         attachments = []
+        pastes = []
         pastedImageCount = 0
         carry = CarryShelf.brief(profileID: entry.profileID, sessionID: entry.session.id)
         syncChips()
@@ -272,17 +276,22 @@ final class ComposerView: NSView {
     /// command go where the palette would send it, and only then hand the prompt out. The
     /// attachments ride only with a real prompt — a slash command consumes none of them.
     func sendNow() {
-        let text = editor.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = composedText
+        let commandText = PasteFold.inline(editor.text, pastes: pastes)
         let outgoing = attachments
         // Emptying the box is how a message being rewritten is taken back, so a send with nothing
         // in it is a real action while one is open — and nothing at all otherwise.
         guard !text.isEmpty || !outgoing.isEmpty || isEditingQueued?() == true else { return }
+        if !pastes.isEmpty {
+            pastes = []
+            syncChips()
+        }
         setEditorText("", caretAtEnd: true)
         if let draftScope { DraftStore.clear(draftScope) }
         vim.reset(to: "", cursor: 0, mode: .insert)
         updateVimUI()
         dismissCompletion()
-        if handleSlashCommand(text) { return }
+        if handleSlashCommand(commandText) { return }
         let words = carry?.wrapped(with: text) ?? text
         attachments = []
         carry = nil
@@ -298,15 +307,45 @@ final class ComposerView: NSView {
     /// What is in the box, for a caller deciding whether a key means something else.
     var currentText: String { editor.text }
 
+    /// What the box would send: the words, then each fold beside them as its block.
+    var composedText: String {
+        PasteFold.wrap(editor.text.trimmingCharacters(in: .whitespacesAndNewlines), pastes: pastes)
+    }
+
+    /// What the box is kept as between visits: the keystrokes, then each fold as its block.
+    var draftText: String { PasteFold.draft(editor.text, pastes: pastes) }
+
+    /// Whether anything is waiting to be sent: typed words, or a fold beside an empty box.
+    var holdsWords: Bool {
+        !pastes.isEmpty || !editor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Puts a message's text in the box: its words where they are typed, each fold it carried back
+    /// beside it as a chip, and a brief it rode with as the carry chip, never their tags.
+    func fill(with text: String) {
+        var text = text
+        if let carried = CarryMark.split(text) {
+            text = carried.rest
+            if carry == nil {
+                carry = ConversationBrief(
+                    source: carried.reading.source, body: carried.reading.brief,
+                    kept: carried.reading.kept, total: carried.reading.total,
+                    pictures: carried.reading.pictures)
+            }
+        }
+        let kept = PasteFold.undraft(text)
+        pastes = kept.pastes
+        syncChips()
+        setEditorText(kept.words, caretAtEnd: true)
+    }
+
     func takeBackQueued() -> Bool { onTakeBackQueued?() ?? false }
 
     /// Takes a waiting message into the box to be rewritten. Refuses while something is half
     /// typed: a rewrite may not throw away a sentence somebody is in the middle of.
     func adoptForEditing(_ send: QueuedSend) -> Bool {
-        guard editor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return false
-        }
-        setEditorText(send.text, caretAtEnd: true)
+        guard !holdsWords else { return false }
+        fill(with: send.text)
         editor.focus()
         attachments = send.attachments.map {
             PendingAttachment(
@@ -320,10 +359,8 @@ final class ComposerView: NSView {
     /// nothing offers — sent the ordinary way. Anything half-typed keeps the box: a retry may
     /// not throw away a sentence somebody is in the middle of.
     func sendAgain(_ words: String) -> Bool {
-        guard editor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return false
-        }
-        setEditorText(words, caretAtEnd: true)
+        guard !holdsWords else { return false }
+        fill(with: words)
         sendNow()
         return true
     }
@@ -338,17 +375,20 @@ final class ComposerView: NSView {
     /// remember exactly what it put there.
     @discardableResult
     func fillIfEmpty(_ text: String) -> Bool {
-        guard editor.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return false
-        }
-        setEditorText(text, caretAtEnd: true)
+        guard !holdsWords else { return false }
+        fill(with: text)
         return true
     }
 
     /// Takes back words this composer offered, but only if they are still exactly what was put
-    /// there: a person who kept typing after the offer landed keeps every word they added.
+    /// there: a person who kept typing after the offer landed keeps every word they added. The
+    /// offer is compared as the box keeps it, folds and all.
     func clearIfUnchanged(from text: String) {
-        guard editor.text == text else { return }
+        guard draftText == text else { return }
+        if !pastes.isEmpty {
+            pastes = []
+            syncChips()
+        }
         setEditorText("", caretAtEnd: true)
     }
 
@@ -378,7 +418,7 @@ final class ComposerView: NSView {
     /// sitting on text another pane has since edited leaves the newer draft alone and merely
     /// puts it on disk.
     func stashDraft() {
-        let text = editor.text
+        let text = draftText
         if let draftScope, text != lastRecordedDraft {
             DraftStore.record(text, for: draftScope)
             lastRecordedDraft = text

@@ -127,6 +127,7 @@ extension TranscriptViewController {
                     TranscriptRow(
                         key: "echo:\(send.id.uuidString):carried", kind: .carried(carried.reading)))
             }
+            shown.text = PasteFold.glance(shown.text)
             rows.append(
                 TranscriptRow(
                     key: "echo:\(send.id.uuidString)" + (plan.map { ":wait\($0.attempt)" } ?? ""),

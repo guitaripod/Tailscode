@@ -56,8 +56,41 @@ extension ComposerView {
     }
 
     func syncChips() {
-        chips.set(attachments, carry: carry)
+        chips.set(attachments, carry: carry, pastes: pastes)
         onAttachmentsChanged?()
+    }
+
+    /// A long paste waits beside the box as a chip rather than in it, and is part of the draft
+    /// from the moment it lands.
+    func addPaste(_ paste: FoldedPaste) {
+        pastes.append(paste)
+        syncChips()
+        recordDraftNow()
+    }
+
+    func removePaste(_ id: String) {
+        pastes.removeAll { $0.id == id }
+        syncChips()
+        recordDraftNow()
+    }
+
+    /// A fold someone wants to change goes back into the box as the words it is, where the caret
+    /// is, and stops being a chip.
+    func unfoldPaste(_ id: String) {
+        guard let paste = pastes.first(where: { $0.id == id }) else { return }
+        pastes.removeAll { $0.id == id }
+        syncChips()
+        editor.insertAtCaret(paste.text)
+        recordDraftNow()
+        takeFocus()
+    }
+
+    /// A change to the folds is a change to the draft that no keystroke announced.
+    private func recordDraftNow() {
+        guard let draftScope else { return }
+        let text = draftText
+        DraftStore.record(text, for: draftScope)
+        lastRecordedDraft = text
     }
 
     private func pasteImageAttachment() {
@@ -87,10 +120,14 @@ extension ComposerView {
             offer.text = pasteboard.string(forType: .string)
         }
         let plan = PasteIntake.plan(
-            for: offer, abilities: abilities, alreadyNamed: pastedImageCount)
+            for: offer, abilities: abilities, alreadyNamed: pastedImageCount, folding: true)
         pastedImageCount = plan.named
         if let notice = plan.notices.first { onToast?(notice) }
         guard plan.text == nil else { return false }
+        if let fold = plan.fold {
+            addPaste(fold)
+            return true
+        }
         guard !plan.attachments.isEmpty else { return !plan.notices.isEmpty }
         attachments.append(contentsOf: plan.attachments)
         syncChips()

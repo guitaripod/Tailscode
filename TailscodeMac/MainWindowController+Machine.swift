@@ -57,7 +57,7 @@ extension MainWindowController {
     /// ⌥⏎ and Chat ▸ Ask Later…: the words in the focused chat's box, asked later by its machine.
     func presentAskLater(from pane: TranscriptViewController? = nil) {
         let pane = pane ?? transcript
-        presentAskLater(text: pane.composer.currentText, on: window, pane: pane)
+        presentAskLater(text: pane.composer.composedText, on: window, pane: pane)
     }
 
     @discardableResult
@@ -77,7 +77,7 @@ extension MainWindowController {
             on: host, text: text, aim: aim, modelWord: modelWord,
             keepsSchedules: MachineDesk.shared.keepsSchedules(aim.profile.id), phrase: phrase
         ) { [weak self, weak pane] made in
-            if let pane, pane.composer.currentText.trimmingCharacters(in: .whitespacesAndNewlines) == scheduledText,
+            if let pane, pane.composer.composedText == scheduledText,
                 !scheduledText.isEmpty, made.text == scheduledText
             {
                 pane.composer.clearAfterScheduling()
@@ -204,6 +204,10 @@ extension ComposerView {
     /// The box is let go once its words were handed to the machine for later, the way a send lets
     /// it go: the draft with it, so it does not come back on the next visit.
     func clearAfterScheduling() {
+        if !pastes.isEmpty {
+            pastes = []
+            syncChips()
+        }
         setEditorText("", caretAtEnd: true)
         if let draftScope { DraftStore.clear(draftScope) }
     }

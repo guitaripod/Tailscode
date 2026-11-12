@@ -139,7 +139,8 @@ extension TranscriptRow {
         if !turn.prompt.isEmpty {
             card.insertArrangedSubview(
                 RowKit.wrapping(
-                    turn.prompt, font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.label),
+                    PasteFold.glance(turn.prompt), font: MacTheme.Ramp.font(.prompt),
+                    color: MacTheme.Color.label),
                 at: 1)
         }
         for line in turn.progress {

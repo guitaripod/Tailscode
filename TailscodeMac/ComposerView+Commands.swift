@@ -88,7 +88,7 @@ extension ComposerView {
     /// write and the store coalesces the file write itself, so nothing here is throttled.
     func editorContentChanged() {
         if let draftScope {
-            let text = editor.text
+            let text = draftText
             DraftStore.record(text, for: draftScope)
             lastRecordedDraft = text
         }

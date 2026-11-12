@@ -344,7 +344,12 @@ extension TranscriptViewController {
     /// Long machine-facing text — a compaction summary, a tool's full output — opens in its own
     /// reader window rather than cramped into the flow: title, the facts under it, the body at
     /// reading width, and a copy that hands over every byte.
-    func presentReader(title: String, subtitle: String?, body: String, mono: Bool) {
+    /// - Parameter action: one more thing the reader offers beside Copy, named by its caller; the
+    ///   reader closes before it runs.
+    func presentReader(
+        title: String, subtitle: String?, body: String, mono: Bool,
+        action: (title: String, run: () -> Void)? = nil
+    ) {
         let column = FillingStack()
         column.spacing = 0
         column.wantsLayer = true
@@ -404,7 +409,21 @@ extension TranscriptViewController {
             toast?(Localized.text("Copied"))
         }
         copy.bezelStyle = .rounded
-        let actions = NSStackView(views: [RowKit.spacer(), copy])
+        var buttons: [NSView] = [RowKit.spacer()]
+        let window = FloatingWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 600),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        if let action {
+            let run = action.run
+            let extra = RowKit.ActionButton(title: action.title) { [weak window] in
+                window?.close()
+                run()
+            }
+            extra.bezelStyle = .rounded
+            buttons.append(extra)
+        }
+        buttons.append(copy)
+        let actions = NSStackView(views: buttons)
         actions.orientation = .horizontal
         actions.spacing = MacTheme.Spacing.s
         actions.edgeInsets = NSEdgeInsets(
@@ -413,9 +432,6 @@ extension TranscriptViewController {
         actions.translatesAutoresizingMaskIntoConstraints = false
         column.addArrangedSubview(actions)
 
-        let window = FloatingWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 600),
-            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = title
         window.contentView = column
         window.contentMinSize = NSSize(width: 420, height: 280)
