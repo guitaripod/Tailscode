@@ -30,7 +30,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PANELS = os.path.join(ROOT, "marketing/appstore/panels")
 REPORT = os.path.join(tempfile.gettempdir(), "tailscode-mac-frames", "fit-report.json")
 CAPTIONS = os.environ.get("TAILSCODE_CAPTIONS", os.path.join(ROOT, "marketing/captions"))
-LOCALES = ["en-US", "de-DE", "es-ES", "fr-FR", "it", "ja", "ko", "pl", "pt-BR", "zh-Hans", "zh-Hant"]
+LOCALES = ["en-US", "de-DE", "es-ES", "fr-FR", "it", "ja", "ko", "pl", "pt-BR", "zh-Hans", "zh-Hant", "sv", "da", "no", "fi"]
 MIN_HEADLINE = 110
 GAP = 10
 

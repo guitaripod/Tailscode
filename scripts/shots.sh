@@ -62,6 +62,10 @@ language_args() {
     ko) echo "-AppleLanguages (ko) -AppleLocale ko_KR" ;;
     zh-Hans) echo "-AppleLanguages (zh-Hans) -AppleLocale zh_CN" ;;
     zh-Hant) echo "-AppleLanguages (zh-Hant) -AppleLocale zh_TW" ;;
+    sv) echo "-AppleLanguages (sv) -AppleLocale sv_SE" ;;
+    da) echo "-AppleLanguages (da) -AppleLocale da_DK" ;;
+    no) echo "-AppleLanguages (nb) -AppleLocale nb_NO" ;;
+    fi) echo "-AppleLanguages (fi) -AppleLocale fi_FI" ;;
     *) echo "unknown locale $1" >&2; exit 1 ;;
   esac
 }
@@ -86,6 +90,10 @@ system_language() {
     pl) echo "pl pl_PL" ;;
     zh-Hans) echo "zh-Hans zh_CN" ;;
     zh-Hant) echo "zh-Hant zh_TW@hours=h23" ;;
+    sv) echo "sv sv_SE" ;;
+    da) echo "da da_DK" ;;
+    no) echo "nb nb_NO" ;;
+    fi) echo "fi fi_FI" ;;
   esac
 }
 

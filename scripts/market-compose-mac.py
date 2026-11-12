@@ -61,9 +61,10 @@ DEVICE_WIDTH = 3560
 DEVICE_TOP = 490
 GAP = 10
 
-LOCALES = ["de-DE", "es-ES", "fr-FR", "it", "ja", "ko", "pl", "pt-BR", "zh-Hans", "zh-Hant"]
+LOCALES = ["de-DE", "es-ES", "fr-FR", "it", "ja", "ko", "pl", "pt-BR", "zh-Hans", "zh-Hant", "sv", "da", "no", "fi"]
 CATALOG_CODE = {"de-DE": "de", "es-ES": "es", "fr-FR": "fr", "it": "it", "ja": "ja", "ko": "ko",
-                "pl": "pl", "pt-BR": "pt-BR", "zh-Hans": "zh-Hans", "zh-Hant": "zh-Hant"}
+                "pl": "pl", "pt-BR": "pt-BR", "zh-Hans": "zh-Hans", "zh-Hant": "zh-Hant",
+                "sv": "sv", "da": "da", "no": "nb", "fi": "fi"}
 FOCUS = {
     "fl-party": (3180, 0.50),
     "06-analytics": (3300, 0.50),

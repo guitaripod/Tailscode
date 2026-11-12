@@ -51,6 +51,7 @@ REQUIRED_GUARDS = {"Game Center", "StoreKit", "update checks", "global hot key",
 LANGUAGES = {
     "de-DE": "de", "es-ES": "es", "fr-FR": "fr", "it": "it", "ja": "ja", "ko": "ko", "pl": "pl",
     "pt-BR": "pt-BR", "zh-Hans": "zh-Hans", "zh-Hant": "zh-Hant",
+    "sv": "sv", "da": "da", "no": "nb", "fi": "fi",
 }
 
 CHAT_WINDOW = "20,40,1240,512"
