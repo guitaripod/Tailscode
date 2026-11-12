@@ -93,7 +93,7 @@ public struct QueueRow: Sendable, Hashable, Identifiable {
     public var key: String { "queued:\(id)" }
 
     public var title: String {
-        guard text.isEmpty, attachmentCount > 0 else { return text }
+        guard text.isEmpty, attachmentCount > 0 else { return PasteFold.glance(text) }
         return QueueReading.attachmentsOnly(attachmentCount)
     }
 

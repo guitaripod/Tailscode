@@ -99,6 +99,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case slashDispatch
     case commandCatalog
     case attachments
+    case foldedPaste
     case drafts
     case sendQueue
     case sharedQueue

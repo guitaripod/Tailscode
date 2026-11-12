@@ -85,6 +85,7 @@ enum ParityManifest {
         case .slashDispatch: return .implemented("SlashDispatch.decide")
         case .commandCatalog: return .implemented("CommandCatalog")
         case .attachments: return .implemented("AttachmentIntake")
+        case .foldedPaste: return .implemented("pasteChip")
         case .drafts: return .implemented("DraftStore")
         case .sendQueue: return .implemented("editQueued")
         case .sharedQueue: return .implemented("resumeQueue")

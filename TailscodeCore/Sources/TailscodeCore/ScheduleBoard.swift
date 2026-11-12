@@ -166,6 +166,19 @@ public struct AskLaterSheet: Sendable, Equatable {
         self.machineKeepsSchedules = machineKeepsSchedules
     }
 
+    /// The question's own words, which are what the sheet lets a person edit; a long paste it
+    /// carries stays folded behind them and rides along unchanged.
+    public var words: String {
+        get { PasteFold.undraft(text).words }
+        set { text = PasteFold.wrap(newValue, pastes: PasteFold.undraft(text).pastes) }
+    }
+
+    /// Each paste the question carries by its label, for the line under the words, or nil.
+    public var pastesLine: String? {
+        let labels = PasteFold.undraft(text).pastes.map(\.label)
+        return labels.isEmpty ? nil : labels.joined(separator: " · ")
+    }
+
     /// Picking a chip clears what was typed; typing clears the chip. Only one answer to "when".
     public mutating func pick(_ chip: Chip) {
         self.chip = chip

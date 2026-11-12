@@ -92,6 +92,7 @@ enum ParityManifest {
         case .slashDispatch: return .implemented("SlashDispatch.decide")
         case .commandCatalog: return .implemented("CommandCatalogViewController")
         case .attachments: return .implemented("pendingAttachments")
+        case .foldedPaste: return .implemented("PastedTextCell")
         case .drafts: return .implemented("draftScope")
         case .sendQueue: return .implemented("editQueued")
         case .sharedQueue: return .implemented("QueuePausedCell")

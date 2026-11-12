@@ -30,6 +30,9 @@ public struct PastePlan: Sendable {
     public let attachments: [PendingAttachment]
     /// Words to insert at the caret. Nil when the paste was not words.
     public let text: String?
+    /// Words too long for the box, kept beside it as one block that opens to be read and rides out
+    /// as words. Nil unless the composer asked for folding.
+    public let fold: FoldedPaste?
     /// What could not be taken, said out loud. A paste that silently dropped half of what was on
     /// the clipboard is worse than one that refused it.
     public let notices: [String]
@@ -37,7 +40,18 @@ public struct PastePlan: Sendable {
     /// filename.
     public let named: Int
 
-    public var isEmpty: Bool { attachments.isEmpty && (text ?? "").isEmpty }
+    public init(
+        attachments: [PendingAttachment], text: String?, fold: FoldedPaste? = nil,
+        notices: [String], named: Int
+    ) {
+        self.attachments = attachments
+        self.text = text
+        self.fold = fold
+        self.notices = notices
+        self.named = named
+    }
+
+    public var isEmpty: Bool { attachments.isEmpty && (text ?? "").isEmpty && fold == nil }
 }
 
 /// A paste is an attach as much as it is a paste.
@@ -47,7 +61,8 @@ public struct PastePlan: Sendable {
 /// than making a person save a picture to disk and pick it back up through a file chooser. Only
 /// words go in as words, and even then a paste the size of a document is the document it already
 /// is: it becomes a file, because thousands of lines wedged into a prompt box is a thing nobody can
-/// read, edit or take back out.
+/// read, edit or take back out. Between the two, a paste longer than a person reads in a prompt box
+/// folds (`PasteFold`) where the box can show a fold: it stays words, and the box stays small.
 public enum PasteIntake {
     /// Past this a paste has stopped being a sentence. Deliberately far above anything a person
     /// types or quotes by hand — a stack trace, a diff, a page of log all still land as words,
@@ -55,8 +70,11 @@ public enum PasteIntake {
     public static let inlineCharacterLimit = 20_000
     public static let inlineLineLimit = 400
 
+    /// - Parameter folding: whether the composer asking keeps a long paste as a fold beside the
+    ///   box. One that cannot show a fold gets the words, as it always did.
     public static func plan(
-        for offer: ClipboardOffer, abilities: ModelAbilities, alreadyNamed: Int = 0
+        for offer: ClipboardOffer, abilities: ModelAbilities, alreadyNamed: Int = 0,
+        folding: Bool = false
     ) -> PastePlan {
         var attachments: [PendingAttachment] = []
         var notices: [String] = []
@@ -111,12 +129,15 @@ public enum PasteIntake {
         guard let text = offer.text, !text.isEmpty else {
             return PastePlan(attachments: [], text: nil, notices: [], named: named)
         }
-        let lines = text.reduce(into: 1) { count, character in
-            if character == "\n" { count += 1 }
-        }
+        let lines = PasteFold.lineCount(text)
         let overlong = text.count > inlineCharacterLimit || lines > inlineLineLimit
         guard overlong, abilities.attachments else {
-            return PastePlan(attachments: [], text: text, notices: [], named: named)
+            guard folding, PasteFold.folds(text) else {
+                return PastePlan(attachments: [], text: text, notices: [], named: named)
+            }
+            return PastePlan(
+                attachments: [], text: nil, fold: FoldedPaste(text: text), notices: [],
+                named: named)
         }
         named += 1
         let name = "pasted-\(named).txt"
