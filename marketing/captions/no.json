@@ -24,9 +24,9 @@
     {
       "master": "fl-peek",
       "slug": "04-peek",
-      "headline": "Kikk innom\nhvilken agent som helst",
+      "headline": "Kikk innom\nenhver agent",
       "subline": "Hva den gjør nå, de siste stegene og subagentene.",
-      "highlight": "hvilken agent som helst"
+      "highlight": "enhver agent"
     },
     {
       "master": "fl-setup",
@@ -45,9 +45,9 @@
     {
       "master": "fl-later",
       "slug": "07-every-morning",
-      "headline": "Spør hver morgen.\nMaskinen din gjør det.",
+      "headline": "Spør hver morgen.\nMaskinen gjør det.",
       "subline": "Velg tid: hverdager 7:30. Den spør også når telefonen er av.",
-      "highlight": "Maskinen din gjør det."
+      "highlight": "Maskinen gjør det."
     },
     {
       "master": "fl-carry",
@@ -189,9 +189,9 @@
     {
       "master": "fl-later",
       "slug": "07-every-morning",
-      "headline": "Spør hver morgen.\nMaskinen din gjør det.",
+      "headline": "Spør hver morgen.\nMaskinen gjør det.",
       "subline": "Velg tid: hverdager 7:30. Den spør også når telefonen er av.",
-      "highlight": "Maskinen din gjør det."
+      "highlight": "Maskinen gjør det."
     },
     {
       "master": "04-quickask",

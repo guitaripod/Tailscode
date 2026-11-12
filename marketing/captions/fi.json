@@ -17,16 +17,16 @@
     {
       "master": "fl-models",
       "slug": "03-any-model",
-      "headline": "Mikä tahansa agentti.\nMikä tahansa malli.",
+      "headline": "Mikä vain agentti.\nMikä vain malli.",
       "subline": "Hermes tai Opus, jopa omalla GPU:lla, jokaisessa keskustelussa.",
-      "highlight": "Mikä tahansa malli."
+      "highlight": "Mikä vain malli."
     },
     {
       "master": "fl-peek",
       "slug": "04-peek",
-      "headline": "Kurkista\nmihin tahansa agenttiin",
+      "headline": "Kurkista mihin\ntahansa agenttiin",
       "subline": "Mitä se tekee juuri nyt, sen viimeiset vaiheet ja avustajat.",
-      "highlight": "mihin tahansa agenttiin"
+      "highlight": "tahansa agenttiin"
     },
     {
       "master": "fl-setup",
@@ -59,9 +59,9 @@
     {
       "master": "fl-party",
       "slug": "09-party",
-      "headline": "Kuusi mallia,\nyhden pyyhkäisyn päässä",
+      "headline": "Kuusi mallia,\npyyhkäisyn päässä",
       "subline": "Malli ja sen panostus jokaisessa paikassa. Pyyhkäise mallipainiketta vaihtaaksesi.",
-      "highlight": "yhden pyyhkäisyn päässä"
+      "highlight": "pyyhkäisyn päässä"
     },
     {
       "master": "14-analytics",
