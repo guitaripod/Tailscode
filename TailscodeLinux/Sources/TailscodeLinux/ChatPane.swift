@@ -115,6 +115,7 @@ final class ChatPane: @unchecked Sendable {
 
     let attachmentsBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
     var attachments: [PendingAttachment] = []
+    var pastes: [FoldedPaste] = []
     var carry: ConversationBrief?
     var carryStash: [String: ConversationBrief] = [:]
     var pastedImageCount = 0

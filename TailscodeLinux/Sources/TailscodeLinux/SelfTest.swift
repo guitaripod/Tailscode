@@ -113,6 +113,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkFoldedPaste()
+            report("folded paste: \(checks) claims hold: a chip beside the box, a block after the words, one line under the prompt")
+        } catch {
+            report("folded paste: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkPartyCards()
             report("party: \(checks) claims hold: six cards, the one in use, a name kept and given back, a swap, a level step, no card on another")
         } catch {

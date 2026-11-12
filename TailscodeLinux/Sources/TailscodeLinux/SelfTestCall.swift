@@ -147,6 +147,7 @@ extension SelfTest {
             case "quickaskactions": report("quick ask actions: \(try checkQuickAskActions()) claims hold")
             case "keyboard": report("keyboard: \(try checkKeyboardRebind()) claims hold")
             case "carry": report("model seam and carry: \(try checkModelSeamAndCarry()) claims hold")
+            case "paste": report("folded paste: \(try checkFoldedPaste()) claims hold")
             case "call": report("call: \(try checkCall()) claims hold")
             case "dictation": report("dictation: \(try checkDictation()) claims hold")
             case "quickaskdictation": report("quick ask dictation: \(try checkQuickAskDictation()) claims hold")

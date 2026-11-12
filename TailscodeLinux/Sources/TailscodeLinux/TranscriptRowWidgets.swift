@@ -46,7 +46,7 @@ extension TranscriptRow {
     /// just wrote out of the transcript and fades them back in.
     var announcesArrival: Bool {
         switch kind {
-        case .userText, .turnBreak: return false
+        case .userText, .pastedText, .turnBreak: return false
         default: return true
         }
     }
@@ -77,6 +77,8 @@ extension TranscriptRow {
         switch kind {
         case .userText(let text, _), .reasoning(let text):
             return text
+        case .pastedText(let paste, _):
+            return paste.text
         case .agentProse(let text, _):
             return text
         case .codeBlock(let language, let body):
@@ -123,7 +125,7 @@ extension TranscriptRow {
             guard let plan else { return PendingSendReading.spoken(send, now: Date()) }
             return ResumeReading.spoken(plan, words: send.text)
         case .interruptedTurn(let turn):
-            return "\(turn.title) \(turn.prompt)"
+            return "\(turn.title) \(PasteFold.plain(turn.prompt))"
         case .note(let line):
             return line.text
         case .providerRetry(let card):
@@ -157,6 +159,8 @@ extension TranscriptRow {
         switch kind {
         case .userText(let text, let messageID):
             return Self.prompt(text, messageID: messageID, context: context)
+        case .pastedText(let paste, let messageID):
+            return Self.pastedLine(paste, messageID: messageID, context: context)
         case .interruption:
             let label = Gtk.label(
                 "⌧ " + Localized.text("interrupted"), css: "interruption", selectable: false)

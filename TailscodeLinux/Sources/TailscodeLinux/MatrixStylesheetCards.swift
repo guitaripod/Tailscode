@@ -224,6 +224,19 @@ extension MatrixStylesheet {
             color: \(text);
         }
         .carry-chip-text { color: \(text); }
+        .paste-chip { padding-left: 4px; }
+        button.paste-chip-open, button.paste-chip-open:hover {
+            min-height: 0;
+            padding: 0 6px;
+            border: none;
+            border-radius: 10px;
+            box-shadow: none;
+            background-image: none;
+            background-color: transparent;
+            color: \(text);
+        }
+        button.paste-chip-open:hover { background-color: alpha(\(accent), 0.10); }
+        .paste-glimpse { color: \(textDim); \(t(.toolDetail)) }
         button.carry-chip-clear, button.carry-chip-clear:hover {
             min-height: 0;
             min-width: 0;

@@ -540,6 +540,18 @@ extension MatrixStylesheet {
             background-color: transparent;
         }
         .carried-line:hover { background-color: alpha(\(special), 0.12); }
+        .paste-line-glyph { color: \(accent); \(t(.note)) }
+        .paste-line-label { color: \(text); \(t(.note)) font-weight: 600; }
+        .paste-line, .paste-line:hover {
+            min-height: 0;
+            padding: 3px 8px;
+            border: none;
+            border-radius: 6px;
+            box-shadow: none;
+            background-image: none;
+            background-color: alpha(\(accent), 0.06);
+        }
+        .paste-line:hover { background-color: alpha(\(accent), 0.14); }
         .seam-read, .seam-read:hover {
             \(t(.codeAction))
             min-height: 0;

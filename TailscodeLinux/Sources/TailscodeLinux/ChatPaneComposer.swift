@@ -348,16 +348,61 @@ extension ChatPane {
         Gtk.readClipboard { offer in
             Gtk.onMain { [weak self] in
                 guard let self else { return }
-                let plan = PasteIntake.plan(for: offer, abilities: able, alreadyNamed: named)
+                let plan = PasteIntake.plan(
+                    for: offer, abilities: able, alreadyNamed: named, folding: true)
                 self.pastedImageCount = plan.named
                 if let text = plan.text, !text.isEmpty { self.insertAtCaret(text) }
                 if !plan.attachments.isEmpty {
                     self.attachments.append(contentsOf: plan.attachments)
                     self.renderAttachments()
                 }
+                if let fold = plan.fold { self.addPaste(fold) }
                 if let notice = plan.notices.first { self.setNotice(notice) }
             }
         }
+    }
+
+    /// A long paste waits beside the box as a chip rather than in it, and is part of the draft
+    /// from the moment it lands. Anything that rewrites the buffer sets the folds first: the
+    /// buffer's own change records the draft, and it must record the folds that go with it.
+    func addPaste(_ paste: FoldedPaste) {
+        pastes.append(paste)
+        renderAttachments()
+        recordDraft()
+        focusComposer()
+    }
+
+    func removePaste(_ id: String) {
+        pastes.removeAll { $0.id == id }
+        renderAttachments()
+        recordDraft()
+    }
+
+    /// A fold someone wants to change goes back into the box as the words it is, where the caret
+    /// is, and stops being a chip.
+    func unfoldPaste(_ id: String) {
+        guard let paste = pastes.first(where: { $0.id == id }) else { return }
+        pastes.removeAll { $0.id == id }
+        renderAttachments()
+        insertAtCaret(paste.text)
+        recordDraft()
+        focusComposer()
+    }
+
+    /// What the box holds as it would be kept: the keystrokes, then each fold as its block.
+    func draftText() -> String {
+        PasteFold.draft(composerText(), pastes: pastes)
+    }
+
+    /// What the box would send: the words, then each fold as its block.
+    func composedText() -> String {
+        PasteFold.wrap(
+            composerText().trimmingCharacters(in: .whitespacesAndNewlines), pastes: pastes)
+    }
+
+    /// Whether anything is waiting to be sent: typed words or a fold beside them.
+    var composerHoldsWords: Bool {
+        !pastes.isEmpty || !composerText().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Where a paste actually lands, which is at the caret and never at the end: the composer is a
@@ -376,6 +421,10 @@ extension ChatPane {
     /// Empties the prompt box and the vim document that shadows it, without touching any stored
     /// draft: called where the pane has already let go of the conversation the text belonged to.
     func clearComposer() {
+        if !pastes.isEmpty {
+            pastes = []
+            renderAttachments()
+        }
         editor.clear()
         lastRecordedDraft = ""
         updateVimBadge()
@@ -385,7 +434,7 @@ extension ChatPane {
     /// on every keystroke, so nothing here throttles it a second time.
     func recordDraft() {
         guard let draftScope else { return }
-        let text = composerText()
+        let text = draftText()
         lastRecordedDraft = text
         DraftStore.record(text, for: draftScope)
     }
@@ -400,16 +449,19 @@ extension ChatPane {
     /// draft: it writes only when its own buffer has moved, and the pane still being typed into
     /// keeps the text. The flush is unconditional — someone else's newer edit is still owed a disk.
     func stashDraft() {
-        if composerText() != lastRecordedDraft { recordDraft() }
+        if draftText() != lastRecordedDraft { recordDraft() }
         DraftStore.flush()
     }
 
     func restoreDraft(for entry: SessionEntry) {
         let draft = DraftStore.text(
             for: .chat(profileID: entry.profileID, sessionID: entry.session.id))
-        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), draft, -1)
+        let kept = PasteFold.undraft(draft)
+        pastes = kept.pastes
+        renderAttachments()
+        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), kept.words, -1)
         lastRecordedDraft = draft
-        vim.reset(to: draft, cursor: draft.count, mode: .insert)
+        vim.reset(to: kept.words, cursor: kept.words.count, mode: .insert)
         updateVimBadge()
     }
 
@@ -417,12 +469,17 @@ extension ChatPane {
     /// to answer, and a composer that empties into silence reads as a hang.
     func sendFromComposer() {
         if dictation.stopAndSend() { return }
-        let text = composerText().trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = composedText()
+        let commandText = PasteFold.inline(composerText(), pastes: pastes)
         let outgoing = attachments
         // Emptying the box is how a message being rewritten is taken back, so a send with nothing
         // in it is a real action while one is open — and nothing at all otherwise.
         guard !text.isEmpty || !outgoing.isEmpty || editingQueued != nil, let conversation
         else { return }
+        if !pastes.isEmpty {
+            pastes = []
+            renderAttachments()
+        }
         let buffer = gtk_text_view_get_buffer(ptr(entryView))
         gtk_text_buffer_set_text(buffer, "", 0)
         if let draftScope { DraftStore.clear(draftScope) }
@@ -449,7 +506,7 @@ extension ChatPane {
             if let state = lastState { apply(state: state, rows: lastFullRows) }
             return
         }
-        if handleSlashCommand(text) { return }
+        if handleSlashCommand(commandText) { return }
         attachments = []
         let sentText = carry?.wrapped(with: text) ?? text
         carry = nil
@@ -475,12 +532,11 @@ extension ChatPane {
     /// and refused for the same reasons — and anything half-typed is kept rather than replaced.
     func askAgain(_ words: String) {
         guard !words.isEmpty else { return }
-        let pending = composerText().trimmingCharacters(in: .whitespacesAndNewlines)
-        guard pending.isEmpty else {
+        guard !composerHoldsWords else {
             addWordsToComposer(words)
             return
         }
-        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), words, -1)
+        fillComposer(with: words)
         sendFromComposer()
     }
 
@@ -488,20 +544,29 @@ extension ChatPane {
     /// blank line between, and nothing is sent: half a message is the person's, and a retry must
     /// never replace it or ride out with it.
     func addWordsToComposer(_ words: String, announcing: Bool = true) {
+        let held = composerHoldsWords
+        let offered = PasteFold.undraft(words)
         let existing = composerText()
         let kept = existing.trimmingCharacters(in: .whitespacesAndNewlines)
         let joined: String
         if kept.isEmpty {
-            joined = words
+            joined = offered.words
+        } else if offered.words.isEmpty {
+            joined = ""
         } else {
             let tail = existing.reversed().prefix { $0 == "\n" }.count
-            joined = String(repeating: "\n", count: max(0, 2 - tail)) + words
+            joined = String(repeating: "\n", count: max(0, 2 - tail)) + offered.words
         }
-        editor.insertAtEnd(joined)
+        if !joined.isEmpty { editor.insertAtEnd(joined) }
+        if !offered.pastes.isEmpty {
+            pastes.append(contentsOf: offered.pastes)
+            renderAttachments()
+        }
         vim.reset(to: editor.text, cursor: editor.text.count, mode: .insert)
         updateVimBadge()
+        recordDraft()
         focusComposer()
-        if announcing && !kept.isEmpty { setNotice(Localized.text("Added to the composer.")) }
+        if announcing && held { setNotice(Localized.text("Added to the composer.")) }
     }
 
     /// A prompt the app composed rather than the person typed — a design brief, a follow-up on an
@@ -509,8 +574,7 @@ extension ChatPane {
     /// refused exactly like the words somebody types, and nothing half-written is thrown away.
     func sendComposed(_ words: String) {
         guard !words.isEmpty else { return }
-        let pending = composerText().trimmingCharacters(in: .whitespacesAndNewlines)
-        guard pending.isEmpty else {
+        guard !composerHoldsWords else {
             setNotice(Localized.text("Send or clear what is in the composer first."))
             return
         }

@@ -79,9 +79,25 @@ extension ChatPane {
             .flatMap(ConversationBrief.typed) != nil
     }
 
+    /// Puts a message back in the box to be sent again or rewritten: its words in the box, each
+    /// fold it carried back beside it as a chip, and a brief it rode with as the carry chip, never
+    /// their tags.
     func fillComposer(with text: String) {
-        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), text, -1)
-        vim.reset(to: text, cursor: text.count, mode: .insert)
+        var text = text
+        if let carried = CarryMark.split(text) {
+            text = carried.rest
+            if carry == nil {
+                carry = ConversationBrief(
+                    source: carried.reading.source, body: carried.reading.brief,
+                    kept: carried.reading.kept, total: carried.reading.total,
+                    pictures: carried.reading.pictures)
+            }
+        }
+        let kept = PasteFold.undraft(text)
+        pastes = kept.pastes
+        renderAttachments()
+        gtk_text_buffer_set_text(gtk_text_view_get_buffer(ptr(entryView)), kept.words, -1)
+        vim.reset(to: kept.words, cursor: kept.words.count, mode: .insert)
         updateVimBadge()
     }
 

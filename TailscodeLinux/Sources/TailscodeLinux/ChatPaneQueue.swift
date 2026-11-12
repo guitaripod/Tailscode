@@ -245,11 +245,12 @@ extension ChatPane {
                     attachments: send.attachments),
                 through: conversation, reusing: id)
         case .edit:
+            guard !composerHoldsWords else {
+                setNotice(Localized.text("Send or clear what is in the composer first."))
+                return
+            }
             pending.remove(id: id)
-            gtk_text_buffer_set_text(
-                gtk_text_view_get_buffer(ptr(entryView)), send.text, -1)
-            vim.reset(to: send.text, cursor: send.text.count, mode: .insert)
-            updateVimBadge()
+            fillComposer(with: send.text)
             gtk_widget_grab_focus(entryView)
             if !send.attachments.isEmpty {
                 attachments = send.attachments.map {
@@ -472,16 +473,12 @@ extension ChatPane {
     func editQueued(_ id: String) {
         guard let row = queueDisplay.row(id: id), row.canEdit else { return }
         let waiting = row.editable
-        let pending = composerText().trimmingCharacters(in: .whitespacesAndNewlines)
-        guard pending.isEmpty else {
+        guard !composerHoldsWords else {
             setNotice(Localized.text("Send or clear what is in the composer first."))
             return
         }
         editingQueued = id
-        gtk_text_buffer_set_text(
-            gtk_text_view_get_buffer(ptr(entryView)), waiting.text, -1)
-        vim.reset(to: waiting.text, cursor: waiting.text.count, mode: .insert)
-        updateVimBadge()
+        fillComposer(with: waiting.text)
         gtk_widget_grab_focus(entryView)
         attachments = waiting.attachments.map {
             PendingAttachment(
@@ -496,7 +493,7 @@ extension ChatPane {
     func takeBackLastQueued() -> Bool {
         let display = queueDisplay
         guard
-            QueueReading.upArrowOpensLast(composerText: composerText(), display: display),
+            QueueReading.upArrowOpensLast(composerText: draftText(), display: display),
             let last = display.last
         else { return false }
         editQueued(last.id)

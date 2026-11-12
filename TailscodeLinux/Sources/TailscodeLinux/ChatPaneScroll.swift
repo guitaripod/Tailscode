@@ -332,6 +332,7 @@ extension ChatPane {
         for (index, row) in renderedRows.enumerated() where index < rowWidgets.count {
             switch row.kind {
             case .userText, .pendingSend: break
+            case .pastedText where index == 0 || !row.foldsUnder(renderedRows[index - 1]): break
             default: continue
             }
             guard let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index]) else { continue }

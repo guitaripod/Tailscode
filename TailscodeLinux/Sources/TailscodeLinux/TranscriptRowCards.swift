@@ -185,7 +185,8 @@ extension TranscriptRow {
         gtk_box_append(ptr(card), heading)
 
         if !turn.prompt.isEmpty {
-            let prompt = Gtk.label(turn.prompt, css: "row-title", wrap: true, selectable: true)
+            let prompt = Gtk.label(
+                PasteFold.glance(turn.prompt), css: "row-title", wrap: true, selectable: true)
             gtk_widget_set_halign(prompt, GTK_ALIGN_START)
             gtk_box_append(ptr(card), prompt)
         }

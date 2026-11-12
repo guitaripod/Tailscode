@@ -139,7 +139,7 @@ extension ChatPane {
     /// remembered by key because the same few rows are asked about on every move.
     private func hoverOwner(of row: TranscriptRow) -> String? {
         switch row.kind {
-        case .userText(_, let messageID): return messageID
+        case .userText(_, let messageID), .pastedText(_, let messageID): return messageID
         case .file(_, let mine): return mine ? messageID(leading: row.key) : nil
         case .agentProse, .codeBlock, .table, .tableDraft: return messageID(leading: row.key)
         default: return nil
@@ -172,7 +172,8 @@ extension ChatPane {
     private func copyMessage(_ id: String) {
         guard let message = lastState?.messages.first(where: { $0.id == id }) else { return }
         let words = MessageHover.words(of: message)
-        Gtk.copyToClipboard(message.role == .user ? TranscriptRow.typedWords(words) : words)
+        Gtk.copyToClipboard(
+            message.role == .user ? PasteFold.plain(TranscriptRow.typedWords(words)) : words)
         host?.toast(Localized.text("Copied"))
     }
 }

@@ -107,6 +107,8 @@ extension MainWindow {
                 argument.isEmpty ? "busy" : argument)
         case "carrydemo":
             self.activePane.driverCarryDemo()
+        case "pastedemo":
+            self.activePane.driverPasteDemo()
         case "chaptersdemo":
             self.activePane.driverChaptersDemo()
         case "chapters":

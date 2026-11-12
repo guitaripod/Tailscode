@@ -196,8 +196,10 @@ extension ChatPane {
         }
         let words = message.parts.compactMap(\.text).joined(separator: "\n")
         if !words.isEmpty {
+            let copied =
+                message.role == .user ? PasteFold.plain(TranscriptRow.typedWords(words)) : words
             rows.append(
-                (Localized.text("Copy"), nil, { Gtk.onMain { Gtk.copyToClipboard(words) } }))
+                (Localized.text("Copy"), nil, { Gtk.onMain { Gtk.copyToClipboard(copied) } }))
         }
         let typed = CarryMark.split(words)?.rest ?? words
         if message.role == .user, !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -255,7 +257,7 @@ extension ChatPane {
         revertComposerFill = nil
         revertRestoredCarry = false
         retireUndoNotice()
-        guard editor.text.isEmpty, let prompt = RevertReading.prompt(in: state.revertedMessages)
+        guard !composerHoldsWords, let prompt = RevertReading.prompt(in: state.revertedMessages)
         else { return }
         let split = CarryMark.split(prompt)
         let words = split?.rest ?? prompt
@@ -267,7 +269,7 @@ extension ChatPane {
             renderAttachments()
         }
         fillComposerForRevert(words)
-        revertComposerFill = words
+        revertComposerFill = draftText()
     }
 
     /// Takes "Winding back…" down once the banner has landed: the banner is the news now, and the
@@ -302,7 +304,7 @@ extension ChatPane {
     /// way it was, and only when it still holds exactly the words the undo put there.
     func finishRestoreRevert() {
         revertRestoring = false
-        if let fill = revertComposerFill, editor.text == fill {
+        if let fill = revertComposerFill, draftText() == fill {
             clearComposer()
             if revertRestoredCarry {
                 carry = nil
@@ -380,8 +382,10 @@ extension ChatPane {
 
     func renderAttachments() {
         Gtk.removeChildren(of: attachmentsBox)
-        gtk_widget_set_visible(attachmentsBox, attachments.isEmpty && carry == nil ? 0 : 1)
+        gtk_widget_set_visible(
+            attachmentsBox, attachments.isEmpty && pastes.isEmpty && carry == nil ? 0 : 1)
         if let carry { gtk_box_append(ptr(attachmentsBox), carryChip(carry)) }
+        for paste in pastes { gtk_box_append(ptr(attachmentsBox), pasteChip(paste)) }
         if let attachButton {
             gtk_menu_button_set_label(
                 op(attachButton), attachments.isEmpty ? "📎" : "📎 \(attachments.count)")

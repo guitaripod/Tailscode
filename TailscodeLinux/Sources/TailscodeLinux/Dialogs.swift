@@ -151,9 +151,12 @@ enum Dialogs {
     /// the conversation's flow. Focus opens on the Close button, not the first selectable label —
     /// a focused GtkLabel opens with its whole paragraph highlighted, which reads as a stuck
     /// selection.
+    /// - Parameter action: one more thing the reader offers beside Copy, named by its caller; the
+    ///   reader closes before it runs.
     static func reader(
         title: String, subtitle: String? = nil, body: String, mono: Bool = false,
-        parent: UnsafeMutablePointer<GtkWidget>?
+        parent: UnsafeMutablePointer<GtkWidget>?,
+        action: (title: String, run: @Sendable () -> Void)? = nil
     ) {
         let window = gtk_window_new()!
         gtk_window_set_title(ptr(window), title)
@@ -208,6 +211,17 @@ enum Dialogs {
             ptr(actions),
             Gtk.button(Localized.text("Copy")) { Gtk.copyToClipboard(body) })
         let windowBits = UInt(bitPattern: window)
+        if let action {
+            let run = action.run
+            gtk_box_append(
+                ptr(actions),
+                Gtk.button(action.title) {
+                    if let raw = UnsafeMutableRawPointer(bitPattern: windowBits) {
+                        gtk_window_destroy(ptr(raw))
+                    }
+                    run()
+                })
+        }
         let dismiss = Gtk.button(Localized.text("Close"), css: ["suggested-action"]) {
             guard let raw = UnsafeMutableRawPointer(bitPattern: windowBits) else { return }
             gtk_window_destroy(ptr(raw))

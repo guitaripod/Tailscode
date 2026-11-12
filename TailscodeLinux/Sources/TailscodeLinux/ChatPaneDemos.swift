@@ -112,6 +112,41 @@ extension ChatPane {
         reassert(state)
     }
 
+    /// A conversation whose prompt carried a long log, folded under the words it was sent with, and
+    /// a composer holding another paste as a chip beside half a sentence, so both faces of a fold can
+    /// be photographed headlessly.
+    func driverPasteDemo() {
+        let now = Date()
+        let log = (0..<46).map { index in
+            "2026-11-11T12:04:\(String(format: "%02d", index)) worker-\(index % 4) ERROR bind 0.0.0.0:8080: address already in use"
+        }.joined(separator: "\n")
+        let trace = (["Traceback (most recent call last):"] + (0..<18).map {
+            "  File \"/srv/app/server.py\", line \(120 + $0), in serve"
+        }).joined(separator: "\n")
+        func message(_ id: String, _ role: MessageRole, _ text: String, ago: TimeInterval) -> ChatMessage {
+            ChatMessage(
+                id: id, role: role, agentType: .claudeCode,
+                parts: [MessagePart(id: id + "-t", kind: .text(text))],
+                createdAt: now.addingTimeInterval(-ago))
+        }
+        let state = ConversationState(
+            messages: [
+                message(
+                    "paste-u1", .user,
+                    PasteFold.wrap(
+                        "the workers keep dying on start, what is holding the port?",
+                        pastes: [FoldedPaste(text: log)]), ago: 600),
+                message(
+                    "paste-a1", .assistant,
+                    "Port 8080 is still held by the previous run: every worker fails the same bind within a second of starting. `ss -ltnp 'sport = :8080'` names the process, and stopping it lets the workers come up.",
+                    ago: 580),
+            ], status: .idle, hasLoadedTranscript: true)
+        clearComposer()
+        insertAtCaret("and this one after the restart?")
+        addPaste(FoldedPaste(text: trace))
+        reassert(state)
+    }
+
     /// A turn waiting on its provider between attempts, so the card and its countdown can be
     /// driven and photographed headlessly without an account that is actually rate-limited.
     /// `mode == "remedy"` adds the provider's own remedy and its link; anything else is the bare

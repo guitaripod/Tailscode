@@ -375,6 +375,8 @@ extension TranscriptRow {
 struct TranscriptRow: Hashable {
     enum Kind: Hashable {
         case userText(String, messageID: String)
+        /// A long paste in the person's message, folded to one line that opens it.
+        case pastedText(FoldedPaste, messageID: String)
         case interruption
         /// The markup rides in the row, computed where the rows are computed — off the GLib main
         /// context — so painting a prose row is a label set, not a markdown parse. The palette's
@@ -460,7 +462,7 @@ struct TranscriptRow: Hashable {
     /// them — which is the block that rises to the top when a prompt goes.
     var isPromptBlock: Bool {
         switch kind {
-        case .userText, .pendingSend: return true
+        case .userText, .pastedText, .pendingSend: return true
         case .file(_, let mine): return mine
         default: return false
         }

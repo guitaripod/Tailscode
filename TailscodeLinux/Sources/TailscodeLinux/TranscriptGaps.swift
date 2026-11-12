@@ -9,7 +9,7 @@ extension TranscriptRow {
     /// gap across it.
     var chatClass: ChatRowClass? {
         switch kind {
-        case .userText, .pendingSend, .queuedSend, .interruption:
+        case .userText, .pastedText, .pendingSend, .queuedSend, .interruption:
             return .prompt
         case .agentProse:
             return .prose
@@ -28,6 +28,18 @@ extension TranscriptRow {
             return .picture
         case .turnBreak:
             return nil
+        }
+    }
+}
+
+extension TranscriptRow {
+    /// Whether this row is a paste folded under the words of its own message, which it belongs to
+    /// rather than following as a turn of its own.
+    func foldsUnder(_ previous: TranscriptRow) -> Bool {
+        guard case .pastedText(_, let messageID) = kind else { return false }
+        switch previous.kind {
+        case .userText(_, let id), .pastedText(_, let id): return id == messageID
+        default: return false
         }
     }
 }
@@ -52,6 +64,8 @@ enum TranscriptGaps {
             let next = row.chatClass
             if afterBreak {
                 result.append(metrics.turnGap / 2)
+            } else if index > 0, row.foldsUnder(rows[index - 1]) {
+                result.append(metrics.paragraphGap)
             } else if let next {
                 result.append(metrics.gap(from: previous, to: next))
             } else {
@@ -71,6 +85,7 @@ enum TranscriptGaps {
         if case .turnBreak = row.kind { return index == 0 ? 0 : metrics.turnGap / 2 }
         if index > 0, case .turnBreak = rows[index - 1].kind { return metrics.turnGap / 2 }
         guard let next = row.chatClass else { return 0 }
+        if index > 0, row.foldsUnder(rows[index - 1]) { return metrics.paragraphGap }
         return metrics.gap(from: index > 0 ? rows[index - 1].chatClass : nil, to: next)
     }
 

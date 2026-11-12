@@ -87,7 +87,9 @@ final class AskLaterDialog: @unchecked Sendable {
             title: isRuleOnly ? Localized.text("Change when") : ScheduleWords.askLater, parent: parent, width: 520)
         self.window = window
 
-        let quote = Gtk.label("\u{201C}\(sheet.text)\u{201D}", css: "row-detail", wrap: true, selectable: false)
+        let quote = Gtk.label(
+            "\u{201C}\(PasteFold.glance(sheet.text))\u{201D}", css: "row-detail", wrap: true,
+            selectable: false)
         gtk_label_set_xalign(op(quote), 0)
         gtk_label_set_lines(op(quote), 3)
         gtk_label_set_ellipsize(op(quote), PANGO_ELLIPSIZE_END)

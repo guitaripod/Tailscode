@@ -78,7 +78,7 @@ extension MainWindow {
     /// Ask later for whatever is in a pane's prompt box, aimed where that box is aimed: its
     /// machine, its model and level, its folder, and its own conversation for a repeat to keep.
     func askLater(from pane: ChatPane, text override: String? = nil, sessionID: String? = nil) {
-        let text = (override ?? pane.composerText()).trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = (override ?? pane.composedText()).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             toast(Localized.text("Write the question first, then ask it later."))
             return
