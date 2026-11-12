@@ -1,0 +1,226 @@
+{
+  "iphone": [
+    {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "Alle dine agenter.\nI din lomme.",
+      "subline": "Claude Code, Hermes, opencode og enhver ACP-agent, på dine egne computere.",
+      "highlight": "I din lomme."
+    },
+    {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Lad det køre.\nSe dem arbejde.",
+      "subline": "Hver agent og hjælper live og på fuld skærm. Hold for at godkende.",
+      "highlight": "Se dem arbejde."
+    },
+    {
+      "master": "fl-models",
+      "slug": "03-any-model",
+      "headline": "Enhver agent.\nEnhver model.",
+      "subline": "Hermes eller Opus, endda på din egen GPU, pr. chat.",
+      "highlight": "Enhver model."
+    },
+    {
+      "master": "fl-peek",
+      "slug": "04-peek",
+      "headline": "Kig ind hos\nenhver agent",
+      "subline": "Hvad den laver lige nu, dens seneste trin og dens hjælpere.",
+      "highlight": "enhver agent"
+    },
+    {
+      "master": "fl-setup",
+      "slug": "05-one-command",
+      "headline": "Én linje.\nScan bagefter.",
+      "subline": "Bridge'en til Claude Code installeres med én kommando. Ingen login.",
+      "highlight": "Scan bagefter."
+    },
+    {
+      "master": "fl-steer",
+      "slug": "06-steer",
+      "headline": "Styr den\nmidt i turen",
+      "subline": "Sæt næste besked i kø, eller stop turen på serveren.",
+      "highlight": "midt i turen"
+    },
+    {
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "Hver morgen,\nspørger din computer.",
+      "subline": "Sig hvornår: hverdage 7:30. Den spørger, selv med slukket telefon.",
+      "highlight": "spørger din computer."
+    },
+    {
+      "master": "fl-carry",
+      "slug": "08-carry",
+      "headline": "Skift model,\nbehold tråden.",
+      "subline": "Den næste model får et kort resumé af chatten og fører samtalen videre.",
+      "highlight": "behold tråden."
+    },
+    {
+      "master": "fl-party",
+      "slug": "09-party",
+      "headline": "Seks modeller,\nét stryg væk.",
+      "subline": "En model og dens indsats i hver plads. Stryg modelvælgeren for at skifte.",
+      "highlight": "ét stryg væk."
+    },
+    {
+      "master": "14-analytics",
+      "slug": "10-costs",
+      "headline": "Se, hvad det\nkoster.",
+      "subline": "Hver tur prisberegnet, hver måned lagt sammen på tværs af computerne.",
+      "highlight": "koster."
+    }
+  ],
+  "ipad": [
+    {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "Alle dine agenter.\nÉn skærm.",
+      "subline": "Hver kørende agent på tværs af dine computere, live.",
+      "highlight": "Én skærm."
+    },
+    {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Lad det køre.\nSe dem arbejde.",
+      "subline": "Hver agent og hjælper live og på fuld skærm. Hold for at godkende.",
+      "highlight": "Se dem arbejde."
+    },
+    {
+      "master": "fl-hour",
+      "slug": "03-the-hour",
+      "headline": "Den sidste time,\nspor for spor",
+      "subline": "Hvad hver agent gjorde, mens du var væk.",
+      "highlight": "spor for spor"
+    },
+    {
+      "master": "01-live",
+      "slug": "04-every-step",
+      "headline": "Hvert trin,\nlive",
+      "subline": "Tænkning, værktøjskørsler og diff'en, mens det sker.",
+      "highlight": "live"
+    },
+    {
+      "master": "fl-models",
+      "slug": "05-any-model",
+      "headline": "Enhver agent.\nEnhver model.",
+      "subline": "Hermes eller Opus, endda på din egen GPU, pr. chat.",
+      "highlight": "Enhver model."
+    },
+    {
+      "master": "fl-later",
+      "slug": "06-every-morning",
+      "headline": "Hver morgen,\nspørger din computer.",
+      "subline": "Sig hvornår: hverdage 7:30. Den spørger, selv med slukket telefon.",
+      "highlight": "spørger din computer."
+    },
+    {
+      "master": "03-approval",
+      "slug": "07-approve",
+      "headline": "Godkend med\nlisten i syne.",
+      "subline": "Tillad eller afvis midt i turen uden at miste din plads.",
+      "highlight": "listen i syne."
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-limits",
+      "headline": "Alle kvoter\npå én skærm.",
+      "subline": "Det strammeste vindue og hvornår det nulstilles, læst fra dine computere.",
+      "highlight": "på én skærm."
+    },
+    {
+      "master": "14-analytics",
+      "slug": "09-costs",
+      "headline": "Se, hvad det\nkoster.",
+      "subline": "Hver tur prisberegnet, hver måned lagt sammen på tværs af computerne.",
+      "highlight": "koster."
+    },
+    {
+      "master": "fl-party",
+      "slug": "10-party",
+      "headline": "Seks modeller,\nét tryk væk.",
+      "subline": "En model og dens indsats i hver plads, ét tryk for at skifte.",
+      "highlight": "ét tryk væk."
+    }
+  ],
+  "mac": [
+    {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "Alle dine agenter.\nÉt vindue.",
+      "subline": "Hver kørende agent på tværs af dine computere, live, med Forhåndsvisning og Time.",
+      "highlight": "Ét vindue."
+    },
+    {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Lad det køre.\nSe dem arbejde.",
+      "subline": "Hver agent og hjælper live på enhver skærm. Hold for at godkende.",
+      "highlight": "Se dem arbejde."
+    },
+    {
+      "master": "01-conversation",
+      "slug": "03-every-step",
+      "headline": "Hvert trin,\nlive",
+      "subline": "Tænkning, værktøjskørsler og diff'en, mens det sker.",
+      "highlight": "live"
+    },
+    {
+      "master": "fl-party",
+      "slug": "04-party",
+      "headline": "Seks modeller,\nét klik væk.",
+      "subline": "En model og dens indsats i hver plads. Én tastekombination til at skifte.",
+      "highlight": "ét klik væk."
+    },
+    {
+      "master": "fl-carry",
+      "slug": "05-carry",
+      "headline": "Skift model,\nbehold tråden.",
+      "subline": "Den næste model får et kort resumé af chatten og fører samtalen videre.",
+      "highlight": "behold tråden."
+    },
+    {
+      "master": "02-split",
+      "slug": "06-two-machines",
+      "headline": "To computere,\nside om side.",
+      "subline": "Opdel vinduet, og peg hver del mod en anden server.",
+      "highlight": "side om side."
+    },
+    {
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "Hver morgen,\nspørger din computer.",
+      "subline": "Sig hvornår: hverdage 7:30. Den spørger, selv med slukket telefon.",
+      "highlight": "spørger din computer."
+    },
+    {
+      "master": "04-quickask",
+      "slug": "08-one-chord",
+      "headline": "Én genvej\nfra hvor som helst",
+      "subline": "Kald hurtigspørgsmål-feltet frem over enhver app, mens agenten arbejder.",
+      "highlight": "Én genvej"
+    },
+    {
+      "master": "06-analytics",
+      "slug": "09-the-month",
+      "headline": "Måneden\ni tal.",
+      "subline": "Hver samtale prisberegnet, sammenlagt på tværs af alle servere.",
+      "highlight": "i tal."
+    },
+    {
+      "master": "10-private",
+      "slug": "10-your-tailnet",
+      "headline": "Dine chats forbliver\npå dit tailnet.",
+      "subline": "Punkt-til-punkt til dine computere. Ingen login. GPL-3.0.",
+      "highlight": "på dit tailnet."
+    }
+  ],
+  "header": {
+    "headline": "Alle dine agenter.\nI din lomme.",
+    "highlight": "I din lomme."
+  },
+  "search": {
+    "headline": "Hver agent du kører,\npå enhver model",
+    "highlight": "på enhver model"
+  }
+}

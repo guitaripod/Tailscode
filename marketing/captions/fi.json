@@ -1,0 +1,226 @@
+{
+  "iphone": [
+    {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "Kaikki agenttisi.\nYhdessä taskussa.",
+      "subline": "Claude Code, Hermes, opencode ja mikä tahansa ACP-agentti omilla tietokoneillasi.",
+      "highlight": "Yhdessä taskussa."
+    },
+    {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Jätä päälle.\nKatso niiden työtä.",
+      "subline": "Jokainen agentti ja avustaja reaaliajassa koko näytöllä. Pidä painettuna hyväksyäksesi.",
+      "highlight": "Katso niiden työtä."
+    },
+    {
+      "master": "fl-models",
+      "slug": "03-any-model",
+      "headline": "Mikä tahansa agentti.\nMikä tahansa malli.",
+      "subline": "Hermes tai Opus, jopa omalla GPU:lla, jokaisessa keskustelussa.",
+      "highlight": "Mikä tahansa malli."
+    },
+    {
+      "master": "fl-peek",
+      "slug": "04-peek",
+      "headline": "Kurkista\nmihin tahansa agenttiin",
+      "subline": "Mitä se tekee juuri nyt, sen viimeiset vaiheet ja avustajat.",
+      "highlight": "mihin tahansa agenttiin"
+    },
+    {
+      "master": "fl-setup",
+      "slug": "05-one-command",
+      "headline": "Yksi rivi.\nSitten skannaa.",
+      "subline": "Claude Code -bridge asentuu yhdellä komennolla. Ei kirjautumista.",
+      "highlight": "Sitten skannaa."
+    },
+    {
+      "master": "fl-steer",
+      "slug": "06-steer",
+      "headline": "Ohjaa sitä\nkesken ajon",
+      "subline": "Lisää seuraava viesti jonoon tai pysäytä vuoro palvelimella.",
+      "highlight": "kesken ajon"
+    },
+    {
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "Kysy joka aamu.\nKoneesi tekee sen.",
+      "subline": "Sano milloin: arkisin 7:30. Se kysyy, vaikka puhelin on sammutettuna.",
+      "highlight": "Koneesi tekee sen."
+    },
+    {
+      "master": "fl-carry",
+      "slug": "08-carry",
+      "headline": "Vaihda mallia,\nkeskustelu säilyy.",
+      "subline": "Seuraava malli saa lyhyen yhteenvedon keskustelusta ja jatkaa siitä.",
+      "highlight": "keskustelu säilyy."
+    },
+    {
+      "master": "fl-party",
+      "slug": "09-party",
+      "headline": "Kuusi mallia,\nyhden pyyhkäisyn päässä",
+      "subline": "Malli ja sen panostus jokaisessa paikassa. Pyyhkäise mallipainiketta vaihtaaksesi.",
+      "highlight": "yhden pyyhkäisyn päässä"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "10-costs",
+      "headline": "Katso, mitä\nse maksaa",
+      "subline": "Jokainen vuoro hinnoiteltu, jokainen kuukausi laskettu yhteen kaikilta koneilta.",
+      "highlight": "se maksaa"
+    }
+  ],
+  "ipad": [
+    {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "Kaikki agenttisi.\nYksi näyttö.",
+      "subline": "Jokainen käynnissä oleva agentti kaikilla koneillasi reaaliajassa.",
+      "highlight": "Yksi näyttö."
+    },
+    {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Jätä päälle.\nKatso niiden työtä.",
+      "subline": "Jokainen agentti ja avustaja reaaliajassa koko näytöllä. Pidä painettuna hyväksyäksesi.",
+      "highlight": "Katso niiden työtä."
+    },
+    {
+      "master": "fl-hour",
+      "slug": "03-the-hour",
+      "headline": "Viimeinen tunti,\nkaistoittain",
+      "subline": "Mitä kukin agentti teki, kun olit poissa.",
+      "highlight": "kaistoittain"
+    },
+    {
+      "master": "01-live",
+      "slug": "04-every-step",
+      "headline": "Jokainen askel,\nreaaliajassa",
+      "subline": "Päättely, työkalujen ajot ja diff, sitä mukaa kun ne tapahtuvat.",
+      "highlight": "reaaliajassa"
+    },
+    {
+      "master": "fl-models",
+      "slug": "05-any-model",
+      "headline": "Mikä tahansa agentti.\nMikä tahansa malli.",
+      "subline": "Hermes tai Opus, jopa omalla GPU:lla, jokaisessa keskustelussa.",
+      "highlight": "Mikä tahansa malli."
+    },
+    {
+      "master": "fl-later",
+      "slug": "06-every-morning",
+      "headline": "Kysy joka aamu.\nKoneesi tekee sen.",
+      "subline": "Sano milloin: arkisin 7:30. Se kysyy, vaikka puhelin on sammutettuna.",
+      "highlight": "Koneesi tekee sen."
+    },
+    {
+      "master": "03-approval",
+      "slug": "07-approve",
+      "headline": "Hyväksy niin, että\nlista pysyy näkyvissä",
+      "subline": "Salli tai estä kesken vuoron menettämättä paikkaasi.",
+      "highlight": "lista pysyy näkyvissä"
+    },
+    {
+      "master": "08-usage",
+      "slug": "08-limits",
+      "headline": "Jokainen kiintiö,\nyhdellä näytöllä",
+      "subline": "Tiukin ikkuna ja milloin se nollautuu, koneiltasi luettuna.",
+      "highlight": "yhdellä näytöllä"
+    },
+    {
+      "master": "14-analytics",
+      "slug": "09-costs",
+      "headline": "Katso, mitä\nse maksaa",
+      "subline": "Jokainen vuoro hinnoiteltu, jokainen kuukausi laskettu yhteen kaikilta koneilta.",
+      "highlight": "se maksaa"
+    },
+    {
+      "master": "fl-party",
+      "slug": "10-party",
+      "headline": "Kuusi mallia,\nyhden napautuksen päässä",
+      "subline": "Malli ja sen panostus jokaisessa paikassa, yksi napautus vaihtaaksesi.",
+      "highlight": "yhden napautuksen päässä"
+    }
+  ],
+  "mac": [
+    {
+      "master": "fl-agents",
+      "slug": "01-all-your-agents",
+      "headline": "Kaikki agenttisi.\nYksi ikkuna.",
+      "subline": "Jokainen käynnissä oleva agentti kaikilla koneillasi reaaliajassa, mukana esikatselu ja viimeinen tunti.",
+      "highlight": "Yksi ikkuna."
+    },
+    {
+      "master": "fl-wall",
+      "slug": "02-the-wall",
+      "headline": "Jätä päälle.\nKatso niiden työtä.",
+      "subline": "Jokainen agentti ja avustaja reaaliajassa millä tahansa näytöllä. Pidä painettuna hyväksyäksesi.",
+      "highlight": "Katso niiden työtä."
+    },
+    {
+      "master": "01-conversation",
+      "slug": "03-every-step",
+      "headline": "Jokainen askel,\nreaaliajassa",
+      "subline": "Päättely, työkalujen ajot ja diff, kun ne tapahtuvat.",
+      "highlight": "reaaliajassa"
+    },
+    {
+      "master": "fl-party",
+      "slug": "04-party",
+      "headline": "Kuusi mallia,\nyhden klikkauksen päässä",
+      "subline": "Malli ja sen panostus jokaisessa paikassa. Yksi pikanäppäin vaihtaa.",
+      "highlight": "yhden klikkauksen päässä"
+    },
+    {
+      "master": "fl-carry",
+      "slug": "05-carry",
+      "headline": "Vaihda mallia,\nkeskustelu säilyy.",
+      "subline": "Seuraava malli saa lyhyen yhteenvedon keskustelusta ja jatkaa siitä.",
+      "highlight": "keskustelu säilyy."
+    },
+    {
+      "master": "02-split",
+      "slug": "06-two-machines",
+      "headline": "Kaksi konetta,\nrinnakkain",
+      "subline": "Jaa ikkuna ja osoita jokainen paneeli eri palvelimeen.",
+      "highlight": "rinnakkain"
+    },
+    {
+      "master": "fl-later",
+      "slug": "07-every-morning",
+      "headline": "Kysy joka aamu.\nKoneesi tekee sen.",
+      "subline": "Sano milloin: arkisin 7:30. Se kysyy, vaikka puhelin on sammutettuna.",
+      "highlight": "Koneesi tekee sen."
+    },
+    {
+      "master": "04-quickask",
+      "slug": "08-one-chord",
+      "headline": "Yksi pikanäppäin\nmistä tahansa",
+      "subline": "Kutsu kysymysruutu minkä tahansa sovelluksen päälle, kun agentti työskentelee.",
+      "highlight": "Yksi pikanäppäin"
+    },
+    {
+      "master": "06-analytics",
+      "slug": "09-the-month",
+      "headline": "Kuukausi\nnumeroina",
+      "subline": "Jokainen keskusteluloki hinnoiteltu ja yhdistetty kaikilta palvelimilta.",
+      "highlight": "numeroina"
+    },
+    {
+      "master": "10-private",
+      "slug": "10-your-tailnet",
+      "headline": "Keskustelusi pysyvät\ntailnetissasi",
+      "subline": "Suora yhteys koneillesi. Ei kirjautumista. GPL-3.0.",
+      "highlight": "tailnetissasi"
+    }
+  ],
+  "header": {
+    "headline": "Kaikki agenttisi.\nYhdessä taskussa.",
+    "highlight": "Yhdessä taskussa."
+  },
+  "search": {
+    "headline": "Jokainen ajamasi agentti,\nmillä tahansa mallilla",
+    "highlight": "millä tahansa mallilla"
+  }
+}
