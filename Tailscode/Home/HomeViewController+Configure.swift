@@ -175,6 +175,11 @@ extension HomeViewController {
             Theme.Haptics.tap()
             self.refreshAttachments()
         }
+        attachmentStrip.onRemovePaste = { [weak self] id in
+            Theme.Haptics.tap()
+            self?.removeComposePaste(id)
+        }
+        attachmentStrip.onOpenPaste = { [weak self] id in self?.readComposePaste(id) }
         attachmentStrip.onClearCarry = { [weak self] in
             guard let self else { return }
             self.composeCarry = nil

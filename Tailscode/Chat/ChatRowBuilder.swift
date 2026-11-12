@@ -217,9 +217,8 @@ enum ChatRowBuilder {
                         }
                         if !remainder.isEmpty {
                             rows.append(
-                                ChatRow(
-                                    id: id, messageID: message.id, role: message.role,
-                                    content: .text(remainder)))
+                                contentsOf: Self.promptRows(
+                                    remainder, id: id, messageID: message.id))
                         }
                     } else {
                         let sealed = MessageSegment.isSealed(
@@ -493,6 +492,29 @@ enum ChatRowBuilder {
 
     /// There is only ever one board in a conversation, so it can simply say so.
     static let boardKey = "board"
+
+    /// A person's message as rows: their words as the bubble, and each long paste folded to a card
+    /// under them. The first row keeps the message's own id, so a message that never held a paste
+    /// keeps the identity it always had.
+    static func promptRows(_ text: String, id: String, messageID: String) -> [ChatRow] {
+        guard PasteFold.mayHold(text) else {
+            return [ChatRow(id: id, messageID: messageID, role: .user, content: .text(text))]
+        }
+        let reading = PasteFold.split(text, id: id)
+        guard reading.isFolded else {
+            return [ChatRow(id: id, messageID: messageID, role: .user, content: .text(text))]
+        }
+        return reading.pieces.enumerated().map { index, piece in
+            let pieceID = index == 0 ? id : "\(id):f\(index)"
+            switch piece {
+            case .words(let words):
+                return ChatRow(id: pieceID, messageID: messageID, role: .user, content: .text(words))
+            case .paste(let paste):
+                return ChatRow(
+                    id: pieceID, messageID: messageID, role: .user, content: .pasted(paste))
+            }
+        }
+    }
 
     static func strippedInterruption(_ text: String) -> (interrupted: Bool, remainder: String) {
         guard text.hasPrefix("[Request interrupted") else { return (false, text) }

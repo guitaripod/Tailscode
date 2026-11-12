@@ -11,7 +11,7 @@ extension HomeViewController {
     /// the box is emptied again.
     private var wantsSuggestions: Bool {
         askLane == .ask && !composerBar.isHidden && composerBar.currentText.isEmpty
-            && attachments.isEmpty && commandPalette.isHidden
+            && attachments.isEmpty && composePastes.isEmpty && commandPalette.isHidden
     }
 
     func updateSuggestions() {
@@ -87,9 +87,11 @@ extension HomeViewController {
     }
 
     func refreshAttachments() {
-        attachmentStrip.update(attachments, carry: composeCarry)
-        composerBar.carriesAttachments = !attachments.isEmpty
-        setAccessory(attachmentStrip, visible: !attachments.isEmpty || composeCarry != nil)
+        attachmentStrip.update(attachments, carry: composeCarry, pastes: composePastes)
+        composerBar.carriesAttachments = !attachments.isEmpty || !composePastes.isEmpty
+        setAccessory(
+            attachmentStrip,
+            visible: !attachments.isEmpty || composeCarry != nil || !composePastes.isEmpty)
         updateSuggestions()
     }
 

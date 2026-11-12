@@ -40,7 +40,43 @@ extension HomeViewController: HomeComposerBarDelegate {
         enhancement.updateInput(composerBar.currentText)
         enhanceOverlay?.requestDismiss()
         guard let scope = composerDraftScope else { return }
-        DraftStore.record(text, for: scope)
+        DraftStore.record(PasteFold.draft(text, pastes: composePastes), for: scope)
+    }
+
+    /// Puts a kept or sent text in the box: the words where they are typed and each fold it
+    /// carried back beside it as a card, never its tags.
+    func fillComposer(_ text: String) {
+        let kept = PasteFold.undraft(text)
+        composePastes = kept.pastes
+        refreshAttachments()
+        composerBar.setText(kept.words)
+    }
+
+    /// What the box is kept as between visits: the keystrokes, then each fold as its block.
+    var composerDraftText: String { PasteFold.draft(composerBar.rawText, pastes: composePastes) }
+
+    private func recordComposerDraft() {
+        guard let scope = composerDraftScope else { return }
+        DraftStore.record(composerDraftText, for: scope)
+    }
+
+    func removeComposePaste(_ id: String) {
+        composePastes.removeAll { $0.id == id }
+        refreshAttachments()
+        recordComposerDraft()
+    }
+
+    func readComposePaste(_ id: String) {
+        guard let paste = composePastes.first(where: { $0.id == id }) else { return }
+        present(
+            PastedTextViewController.sheet(paste) { [weak self] in
+                guard let self else { return }
+                self.composePastes.removeAll { $0.id == id }
+                self.refreshAttachments()
+                self.composerBar.insertText(paste.text)
+                self.composerBar.focus()
+                self.recordComposerDraft()
+            }, animated: true)
     }
 
     /// The bar has already thrown itself; what the lane means is decided here.
@@ -109,15 +145,33 @@ extension HomeViewController: HomeComposerBarDelegate {
         attach(data: data, name: "pasted-\(pastedImageCount).png", mime: mime)
     }
 
-    /// A paste too large to read as a sentence becomes the file it already is, so the question
-    /// stays a question and the wall of text rides beside it.
+    /// A paste too large to read as a sentence is read by the same intake every client uses: past
+    /// the file limits it becomes the file it already is, and below them, in a lane that starts a
+    /// conversation, it folds into a card beside the box that still goes out as words.
     func homeComposerDidPasteLargeText(_ text: String) {
-        guard abilities.attachments, let data = text.data(using: .utf8) else {
-            composerBar.insertText(text)
+        let plan = PasteIntake.plan(
+            for: ClipboardOffer(text: text), abilities: abilities,
+            alreadyNamed: pastedImageCount, folding: askLane == .chat || askLane == .ask)
+        pastedImageCount = plan.named
+        if let words = plan.text {
+            composerBar.insertText(words)
             return
         }
         composerBar.deleteSelection()
-        attach(data: data, name: "pasted-\(UUID().uuidString.prefix(8)).txt", mime: "text/plain")
+        if let fold = plan.fold {
+            composePastes.append(fold)
+            refreshAttachments()
+            recordComposerDraft()
+            Theme.Haptics.selection()
+            return
+        }
+        guard !plan.attachments.isEmpty else {
+            if let notice = plan.notices.first { toast(notice) }
+            return
+        }
+        for attachment in plan.attachments {
+            attach(data: attachment.data, name: attachment.name, mime: attachment.mime)
+        }
         toast(
             String(
                 localized: "Attached \(text.count.formatted()) characters — sent with the message."))
@@ -240,11 +294,11 @@ extension HomeViewController: HomeComposerBarDelegate {
     /// way switching chats does in a pane.
     func syncComposerDraft(to scope: DraftScope) {
         guard composerDraftScope != scope else { return }
-        let carried = composerBar.rawText
+        let carried = composerDraftText
         guard let previous = composerDraftScope else {
             composerDraftScope = scope
-            if composerBar.currentText.isEmpty {
-                composerBar.setText(DraftStore.text(for: scope))
+            if composerBar.currentText.isEmpty, composePastes.isEmpty {
+                fillComposer(DraftStore.text(for: scope))
             } else {
                 DraftStore.record(carried, for: scope)
             }
@@ -252,6 +306,6 @@ extension HomeViewController: HomeComposerBarDelegate {
         }
         DraftStore.record(carried, for: previous)
         composerDraftScope = scope
-        composerBar.setText(DraftStore.text(for: scope))
+        fillComposer(DraftStore.text(for: scope))
     }
 }

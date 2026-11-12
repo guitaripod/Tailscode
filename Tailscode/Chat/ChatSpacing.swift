@@ -26,6 +26,8 @@ enum ChatSpacing {
         switch row.content {
         case .text:
             return row.role == .user ? .prompt : .prose
+        case .pasted:
+            return .prompt
         case .file:
             return row.role == .user ? .prompt : .furniture
         case .code, .table, .tableDraft, .subagent, .workflow, .taskBoard, .designBoard, .failed,
@@ -58,6 +60,9 @@ enum ChatSpacing {
         if sameSend, previous == .picture || next == .picture {
             return CGFloat(metrics.pictureStripGap)
         }
+        if sameSend, previous == .prompt, next == .prompt {
+            return CGFloat(metrics.paragraphGap)
+        }
         return CGFloat(metrics.gap(from: previous, to: next))
     }
 
@@ -88,6 +93,7 @@ enum ChatSpacing {
                 (row(.linkRail(LinkRailRun(addresses: ["https://a.example"]))), .rail),
                 (row(.file(file), .user), .prompt),
                 (row(.file(file)), .furniture),
+                (row(.pasted(FoldedPaste(text: "x")), .user), .prompt),
             ]
             for (sample, expected) in expectations {
                 expect(rowClass(of: sample) == expected, "class of \(sample.content) is \(expected)")
@@ -104,6 +110,20 @@ enum ChatSpacing {
             expect(gap(.prose, .code) == 6 && gap(.code, .prose) == 6, "code is 6 either way")
             expect(gap(.prose, .prompt) == 16, "a prompt starts a turn, 16 above it")
             expect(gap(.prompt, .prose) == 8, "a prompt is the heading of its answer, 8 below it")
+            expect(
+                gap(.prompt, .prompt, sameSend: true) == 8 && gap(.prompt, .prompt) == 16,
+                "a paste folded under its own words sits 8 below them, a turn's 16 from another's")
+            let log = (1...30).map { "line \($0)" }.joined(separator: "\n")
+            let folded = ChatRowBuilder.promptRows(
+                PasteFold.wrap("why?", pastes: [FoldedPaste(text: log)]), id: "u:t", messageID: "u")
+            expect(
+                folded.map(\.id) == ["u:t", "u:t:f1"]
+                    && folded.first?.content == .text("why?")
+                    && { if case .pasted(let paste) = folded.last?.content { paste.text == log } else { false } }(),
+                "a sent paste folds under the words, the words keeping the message's own id")
+            expect(
+                ChatRowBuilder.promptRows("plain words", id: "u:t", messageID: "u").map(\.content)
+                    == [.text("plain words")], "a message with no paste is one bubble")
             expect(
                 Self.gap(from: .prose, to: .furniture, sameSend: false, metrics: compact, nextIsStamp: true) == 16
                     && Self.gap(

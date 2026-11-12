@@ -347,7 +347,9 @@ extension HomeViewController {
         }
         guard throwAskLane() else { return }
         let draft = composerBar.rawText
-        let holdsNothing = composerBar.currentText.isEmpty && attachments.isEmpty && composeCarry == nil
+        let holdsNothing =
+            composerBar.currentText.isEmpty && attachments.isEmpty && composeCarry == nil
+            && composePastes.isEmpty
         guard sends, holdsNothing else {
             MidgarLog.info(
                 "quick ask question kept in the box fresh=\(sends) holdsNothing=\(holdsNothing)",
@@ -407,9 +409,13 @@ extension HomeViewController {
         if previous == .video || previous == .image { composerBar.clearText() }
         if lane == .video || lane == .image {
             if let scope = composerDraftScope {
-                DraftStore.record(composerBar.rawText, for: scope)
+                DraftStore.record(composerDraftText, for: scope)
             }
             composerDraftScope = nil
+            if !composePastes.isEmpty {
+                composePastes = []
+                refreshAttachments()
+            }
             composerBar.setText(
                 lane == .video
                     ? ForgeRunner.shared.board.recipe.prompt

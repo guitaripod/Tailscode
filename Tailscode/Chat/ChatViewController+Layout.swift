@@ -64,6 +64,8 @@ extension ChatViewController {
         collectionView.register(
             CarriedLineCell.self, forCellWithReuseIdentifier: CarriedLineCell.reuseID)
         collectionView.register(
+            PastedTextCell.self, forCellWithReuseIdentifier: PastedTextCell.reuseID)
+        collectionView.register(
             TaskBoardCell.self, forCellWithReuseIdentifier: TaskBoardCell.reuseID)
         collectionView.register(
             AnswerlessTurnCell.self, forCellWithReuseIdentifier: AnswerlessTurnCell.reuseID)

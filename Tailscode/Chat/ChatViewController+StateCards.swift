@@ -143,14 +143,14 @@ extension ChatViewController {
         revertComposerFill = nil
         guard let prompt = RevertReading.prompt(in: state.revertedMessages).map(CarriedText.typed)
         else { return }
-        if composer.currentText == prompt {
-            revertComposerFill = prompt
+        if composedText == PasteFold.wrap(prompt, pastes: []) {
+            revertComposerFill = composedText
             return
         }
-        guard revert.messageID == requestedRevertID, composer.currentText.isEmpty else { return }
+        guard revert.messageID == requestedRevertID, !composerHoldsWords else { return }
         requestedRevertID = nil
-        composer.setDraft(prompt, focus: false, cursorAtEnd: true)
-        revertComposerFill = prompt
+        fillComposer(prompt, focus: false, cursorAtEnd: true)
+        revertComposerFill = composedText
     }
 
     /// The message a transcript row stands for, read back from the server's own account rather

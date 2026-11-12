@@ -176,6 +176,13 @@ extension ChatViewController: PHPickerViewControllerDelegate {
 
     func updateAttachmentStrip() {
         attachmentStrip.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for paste in pendingPastes {
+            let id = paste.id
+            attachmentStrip.addArrangedSubview(
+                PasteChip(
+                    paste: paste, onOpen: { [weak self] in self?.readPaste(id) },
+                    onRemove: { [weak self] in self?.removePaste(id) }))
+        }
         for (index, attachment) in pendingAttachments.enumerated() {
             let image = attachment.mime.hasPrefix("image/") && attachment.data != nil
                 ? UIImage(data: attachment.data!) : nil
@@ -191,8 +198,8 @@ extension ChatViewController: PHPickerViewControllerDelegate {
             }
             attachmentStrip.addArrangedSubview(chip)
         }
-        attachmentStrip.isHidden = pendingAttachments.isEmpty
-        composer.carriesAttachments = !pendingAttachments.isEmpty
+        attachmentStrip.isHidden = pendingAttachments.isEmpty && pendingPastes.isEmpty
+        composer.carriesAttachments = !pendingAttachments.isEmpty || !pendingPastes.isEmpty
         view.setNeedsLayout()
     }
 }

@@ -143,7 +143,7 @@ final class PendingSendCell: UICollectionViewCell {
         _ sent: PendingSend, plan: ResumePlan? = nil, delegate: PendingSendCellDelegate?
     ) {
         var send = sent
-        send.text = CarriedText.typed(sent.text)
+        send.text = PasteFold.glance(CarriedText.typed(sent.text))
         self.send = send
         self.plan = plan
         self.delegate = delegate

@@ -1,3 +1,4 @@
+import CodingAgentKit
 import TailscodeCore
 import UIKit
 
@@ -74,6 +75,7 @@ extension ChatViewController: UICollectionViewDelegate {
 
         let branchedAnswerID = answerOfferingBranch(rowID: id)
         let asksAgain = rowsByID[id]?.role == .user
+        let asked = sentWords(for: id) ?? text
         let sessionID = viewModel.session.id
 
         return UIContextMenuConfiguration(identifier: id as NSString, previewProvider: nil) {
@@ -141,7 +143,7 @@ extension ChatViewController: UICollectionViewDelegate {
                         children: [
                             UIAction(title: ScheduleWords.askAgain, image: UIImage(systemName: "clock.arrow.circlepath")) {
                                 _ in
-                                self?.askLater(text: text, sessionID: sessionID)
+                                self?.askLater(text: asked, sessionID: sessionID)
                             }
                         ]))
             }
@@ -165,6 +167,17 @@ extension ChatViewController: UICollectionViewDelegate {
             ConversationBrief.typed(question) != nil
         else { return nil }
         return message.id
+    }
+
+    /// The words a person sent as they went out, each fold still its block: what asking the
+    /// message again sends, and what copying it reads the whole of rather than the one piece of it
+    /// the finger was on.
+    private func sentWords(for id: String) -> String? {
+        guard let message = chatMessage(for: id), message.role == .user else { return nil }
+        let typed = AgentMarkup.strip(CarriedText.typed(message.text))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = ChatRowBuilder.strippedInterruption(typed).remainder
+        return words.isEmpty ? nil : words
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -195,9 +208,14 @@ extension ChatViewController: UICollectionViewDelegate {
 
     private func messageText(for id: String) -> String? {
         guard let row = rowsByID[id] else { return nil }
+        if row.role == .user, let sent = sentWords(for: id), PasteFold.mayHold(sent) {
+            return PasteFold.plain(sent)
+        }
         switch row.content {
         case .text(let text):
             return text
+        case .pasted(let paste):
+            return paste.text
         case .code(let block):
             return block.source
         case .table(let table):

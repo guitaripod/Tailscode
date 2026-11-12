@@ -42,7 +42,13 @@ extension ChatViewController {
         }
         viewModel.onRevertRestored = { [weak self] in
             guard let self else { return }
-            if self.composer.currentText == self.revertComposerFill { self.composer.clear() }
+            if self.composedText == self.revertComposerFill {
+                if !self.pendingPastes.isEmpty {
+                    self.pendingPastes = []
+                    self.updateAttachmentStrip()
+                }
+                self.composer.clear()
+            }
             self.revertComposerFill = nil
         }
         viewModel.onResumeChange = { [weak self] plan in

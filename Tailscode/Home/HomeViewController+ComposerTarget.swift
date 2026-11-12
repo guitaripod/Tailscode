@@ -244,7 +244,7 @@ extension HomeViewController {
             composeCarry = brief
             refreshAttachments()
         }
-        if let draft = carry.draft { composerBar.setText(draft) }
+        if let draft = carry.draft { fillComposer(draft) }
         focusComposer()
     }
 
@@ -281,6 +281,7 @@ extension HomeViewController {
     func composerSend(_ text: String) {
         if askLane == .video { return renderSend(text) }
         if askLane == .image { return paintSend(text) }
+        let text = PasteFold.wrap(text, pastes: composePastes)
         guard let aim = composerAim,
             QuickAskComposition.canSend(text: text, attachments: attachments.count)
         else { return }
@@ -311,8 +312,8 @@ extension HomeViewController {
             case .failure(let failure):
                 Theme.Haptics.error()
                 let typed = CarriedText.typed(send.text)
-                self.composerBar.setText(typed)
-                DraftStore.record(typed, for: aim.draftScope)
+                self.fillComposer(typed)
+                DraftStore.record(self.composerDraftText, for: aim.draftScope)
                 self.showFailure(failure)
             }
         }
@@ -336,6 +337,7 @@ extension HomeViewController {
         }
         let payload = attachments.map(\.prompt)
         attachments = []
+        composePastes = []
         composeCarry = nil
         refreshAttachments()
         composerBar.clearText()

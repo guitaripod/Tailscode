@@ -189,6 +189,8 @@ extension ChatViewController {
             case .carried(let reading):
                 out.append("_\(reading.line)_")
                 continue
+            case .pasted(let paste):
+                body = "```\n\(paste.text)\n```"
             case .answerless(let turn):
                 body = "_\(turn.title) — \(turn.detail)_"
             case .designBoard(let sighting):

@@ -12,7 +12,7 @@ extension ChatViewController {
         let send = row.editable
         editingQueued = row.id
         composer.isEditingQueued = true
-        composer.setDraft(send.text)
+        fillComposer(send.text)
         composer.becomeFirstResponder()
         if !send.attachments.isEmpty {
             pendingAttachments = send.attachments
@@ -29,7 +29,7 @@ extension ChatViewController {
     @objc func takeBackLastQueued() {
         let display = viewModel.queueDisplay
         guard
-            QueueReading.upArrowOpensLast(composerText: composer.currentText, display: display),
+            QueueReading.upArrowOpensLast(composerText: composedText, display: display),
             let last = display.last
         else { return }
         editQueued(last)
@@ -59,7 +59,7 @@ extension ChatViewController {
     /// The words of a message the server started while it was being rewritten go back into the
     /// box, because the rewrite can no longer land and losing them would be the worse outcome.
     private func giveBackEditedWords(_ text: String, attachments: [PromptAttachment]) {
-        composer.setDraft(text)
+        fillComposer(text)
         guard !attachments.isEmpty else { return }
         pendingAttachments = attachments
         composer.showsAttach = canAttachAnything
@@ -72,11 +72,17 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
     /// command should not get different behaviour from the person who tapped the row. Anything
     /// the server has never heard of goes out as the words that were written: the server is the
     /// authority on its own grammar.
-    func composerDidSend(_ text: String) {
+    func composerDidSend(_ typed: String) {
         hideCommandPalette()
+        let text = PasteFold.wrap(typed, pastes: pendingPastes)
+        let commandText = PasteFold.inline(typed, pastes: pendingPastes)
+        if !pendingPastes.isEmpty {
+            pendingPastes = []
+            updateAttachmentStrip()
+        }
         if finishQueuedEdit(text) { return }
         switch SlashDispatch.decide(
-            text: text, commands: viewModel.composerCommands,
+            text: commandText, commands: viewModel.composerCommands,
             supportsCompaction: viewModel.supportsCompaction,
             resolvesFromPromptText: viewModel.resolvesCommandsFromPromptText,
             supportsDesign: viewModel.supportsDesign, supportsDelegate: viewModel.supportsDelegate)
@@ -150,11 +156,14 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
             canvasForcedSend = id
             viewModel.retryPending(id: id)
         case .edit:
+            guard !composerHoldsWords else {
+                presentToast(Localized.text("Send or clear what is in the composer first."))
+                return
+            }
             guard let taken = viewModel.takeBackPending(id: id) else { return }
             announcedFailedSends.remove(id)
-            composer.setDraft(CarriedText.typed(taken.text))
+            fillComposer(CarriedText.typed(taken.text))
             composer.becomeFirstResponder()
-            DraftStore.record(CarriedText.typed(taken.text), for: draftScope)
             if !taken.attachments.isEmpty {
                 pendingAttachments = taken.attachments
                 composer.showsAttach = canAttachAnything
@@ -180,11 +189,14 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
             canvasForcedSend = id
             _ = viewModel.actOnResume(id, .sendNow)
         case .edit:
+            guard !composerHoldsWords else {
+                presentToast(Localized.text("Send or clear what is in the composer first."))
+                return
+            }
             guard let taken = viewModel.actOnResume(id, .edit) else { return }
             announcedFailedSends.remove(id)
-            composer.setDraft(CarriedText.typed(taken.text))
+            fillComposer(CarriedText.typed(taken.text))
             composer.becomeFirstResponder()
-            DraftStore.record(CarriedText.typed(taken.text), for: draftScope)
             if !taken.attachments.isEmpty {
                 pendingAttachments = taken.attachments
                 composer.showsAttach = canAttachAnything
@@ -198,7 +210,7 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
     }
 
     func composerTextDidChange(_ text: String) {
-        DraftStore.record(text, for: draftScope)
+        DraftStore.record(PasteFold.draft(text, pastes: pendingPastes), for: draftScope)
         updateCommandPalette(for: text)
         guard !isApplyingEnhancedPrompt else { return }
         enhancement.updateInput(text)
@@ -242,17 +254,31 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
         presentToast(String(localized: "Picture attached — it'll be sent with your next message."))
     }
 
+    /// A paste too long for the box is read by the same intake every client uses: past the file
+    /// limits it becomes the file it already is, and below them it folds into a card beside the
+    /// box that still goes out as words.
     func composerDidPasteLargeText(_ text: String) {
-        guard viewModel.canAttachFiles else {
-            composer.insertText(text)
+        let plan = PasteIntake.plan(
+            for: ClipboardOffer(text: text), abilities: viewModel.abilities,
+            alreadyNamed: pastedImageCount, folding: true)
+        pastedImageCount = plan.named
+        if let words = plan.text {
+            composer.insertText(words)
             return
         }
         composer.deleteSelection()
-        guard let data = text.data(using: .utf8) else { return }
-        pendingAttachments.append(
-            PromptAttachment(
-                mime: "text/plain", filename: "pasted-\(UUID().uuidString.prefix(8)).txt",
-                data: data))
+        if let fold = plan.fold {
+            pendingPastes.append(fold)
+            updateAttachmentStrip()
+            recordComposerDraft()
+            Theme.Haptics.selection()
+            return
+        }
+        guard !plan.attachments.isEmpty else {
+            if let notice = plan.notices.first { presentToast(notice) }
+            return
+        }
+        pendingAttachments.append(contentsOf: plan.attachments.map(\.prompt))
         composer.showsAttach = true
         updateAttachmentStrip()
         Theme.Haptics.success()
@@ -260,6 +286,51 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
             String(
                 localized:
                     "Attached \(text.count.formatted()) characters — sent with your next message."))
+    }
+
+    /// What the composer would send: the typed words, then each folded paste as its block.
+    var composedText: String { PasteFold.wrap(composer.currentText, pastes: pendingPastes) }
+
+    /// Whether the composer holds anything to send: typed words or a fold beside them.
+    var composerHoldsWords: Bool { !composer.currentText.isEmpty || !pendingPastes.isEmpty }
+
+    /// Puts a message's text in the composer: the words in the box and each fold it carried back
+    /// beside it as a card, never its tags. Kept as the draft at once, folds and all.
+    func fillComposer(_ text: String, focus: Bool = true, cursorAtEnd: Bool = false) {
+        let kept = PasteFold.undraft(CarriedText.typed(text))
+        pendingPastes = kept.pastes
+        updateAttachmentStrip()
+        composer.setDraft(kept.words, focus: focus, cursorAtEnd: cursorAtEnd)
+        recordComposerDraft()
+    }
+
+    /// A change to the folds is a change to the draft that no keystroke announced.
+    func recordComposerDraft() {
+        DraftStore.record(PasteFold.draft(composer.rawText, pastes: pendingPastes), for: draftScope)
+    }
+
+    func removePaste(_ id: String) {
+        pendingPastes.removeAll { $0.id == id }
+        updateAttachmentStrip()
+        recordComposerDraft()
+    }
+
+    /// A fold someone wants to change goes back into the box as the words it is, where the caret
+    /// is, and stops being a card.
+    func unfoldPaste(_ id: String) {
+        guard let paste = pendingPastes.first(where: { $0.id == id }) else { return }
+        pendingPastes.removeAll { $0.id == id }
+        updateAttachmentStrip()
+        composer.insertText(paste.text)
+        composer.focus()
+        recordComposerDraft()
+    }
+
+    func readPaste(_ id: String) {
+        guard let paste = pendingPastes.first(where: { $0.id == id }) else { return }
+        present(
+            PastedTextViewController.sheet(paste) { [weak self] in self?.unfoldPaste(id) },
+            animated: true)
     }
 
     func composerDidTapStop() {

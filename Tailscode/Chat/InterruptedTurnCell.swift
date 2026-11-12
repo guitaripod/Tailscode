@@ -159,7 +159,7 @@ final class InterruptedTurnCell: UICollectionViewCell {
     private func draw(_ turn: InterruptedTurn) {
         self.turn = turn
         titleLabel.text = turn.title
-        promptLabel.text = turn.prompt
+        promptLabel.text = PasteFold.glance(turn.prompt)
         promptLabel.isHidden = turn.prompt.isEmpty
         detailLabel.text = turn.detail
         for view in progressStack.arrangedSubviews { view.removeFromSuperview() }

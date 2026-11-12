@@ -89,7 +89,7 @@ final class AskLaterViewController: UIViewController, UITextViewDelegate {
 
     private func build() {
         let words = MachineCardView()
-        textView.text = context.text
+        textView.text = sheet.words
         textView.font = Theme.Ramp.font(.cardBody)
         textView.textColor = Theme.Color.label
         textView.backgroundColor = .clear
@@ -100,6 +100,15 @@ final class AskLaterViewController: UIViewController, UITextViewDelegate {
         textView.heightAnchor.constraint(greaterThanOrEqualToConstant: 64).isActive = true
         words.add(textView)
         column.addArrangedSubview(words)
+        if let line = sheet.pastesLine {
+            let pasted = UILabel()
+            pasted.text = line
+            pasted.font = Theme.Ramp.font(.panelFootnote)
+            pasted.adjustsFontForContentSizeCategory = true
+            pasted.textColor = Theme.Color.secondaryLabel
+            pasted.numberOfLines = 0
+            column.addArrangedSubview(pasted)
+        }
 
         let chips = ChipFlowView()
         for chip in AskLaterSheet.Chip.allCases {
@@ -190,7 +199,7 @@ final class AskLaterViewController: UIViewController, UITextViewDelegate {
     }
 
     func textViewDidChange(_ textView: UITextView) {
-        sheet.text = textView.text
+        sheet.words = textView.text
         update()
     }
 

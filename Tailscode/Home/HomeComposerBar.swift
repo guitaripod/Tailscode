@@ -714,7 +714,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String
     ) -> Bool {
         dictation.userWillEdit()
-        if text.count > 6000 {
+        if PasteFold.folds(text) {
             delegate?.homeComposerDidPasteLargeText(text)
             return false
         }

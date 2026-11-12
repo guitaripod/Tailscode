@@ -32,6 +32,8 @@ struct ChatRow: Hashable {
         case chapterHeading(ChapterHeading)
         /// The first row of a chat that was carried from another: where it came from.
         case carried(CarryReading)
+        /// A long paste in a message the person sent, folded to one card that opens it.
+        case pasted(FoldedPaste)
         case taskBoard(TaskBoard)
         /// A board of design alternatives the agent wrote, standing where the manifest that made
         /// it was written rather than as a line about a file.

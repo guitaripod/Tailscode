@@ -128,6 +128,8 @@ final class HomeAskSuggestions: UIView {
 final class HomeAttachmentStrip: UIView {
     var onRemove: ((UUID) -> Void)?
     var onClearCarry: (() -> Void)?
+    var onOpenPaste: ((String) -> Void)?
+    var onRemovePaste: ((String) -> Void)?
 
     private let scrollView = UIScrollView()
     private let row = UIStackView()
@@ -161,7 +163,10 @@ final class HomeAttachmentStrip: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func update(_ attachments: [PendingAttachment], carry: ConversationBrief? = nil) {
+    func update(
+        _ attachments: [PendingAttachment], carry: ConversationBrief? = nil,
+        pastes: [FoldedPaste] = []
+    ) {
         row.arrangedSubviews.forEach { $0.removeFromSuperview() }
         if let carry {
             let chip = CarryChip(brief: carry) { [weak self] in self?.onClearCarry?() }
@@ -170,6 +175,13 @@ final class HomeAttachmentStrip: UIView {
                 lessThanOrEqualTo: scrollView.frameLayoutGuide.widthAnchor,
                 constant: -2 * Theme.Spacing.l
             ).isActive = true
+        }
+        for paste in pastes {
+            let id = paste.id
+            row.addArrangedSubview(
+                PasteChip(
+                    paste: paste, onOpen: { [weak self] in self?.onOpenPaste?(id) },
+                    onRemove: { [weak self] in self?.onRemovePaste?(id) }))
         }
         for attachment in attachments {
             let image =

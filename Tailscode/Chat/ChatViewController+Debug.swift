@@ -116,6 +116,30 @@ extension ChatViewController {
 
         func tourOpenCommandCatalog() { presentCommandCatalog() }
 
+        /// Puts a long log through the composer's own paste, so the fold beside the box can be
+        /// photographed; `send` sends it under a question first, so the transcript's folded card
+        /// is on screen too, and `read` opens the waiting paste in its reader.
+        func stagePasteForVerification(_ mode: String) async {
+            let log = (0..<46).map { index in
+                "2026-11-11T12:04:\(String(format: "%02d", index)) worker-\(index % 4) ERROR bind 0.0.0.0:8080: address already in use"
+            }.joined(separator: "\n")
+            if mode.contains("send") {
+                composer.setDraft("the workers keep dying on start, what is holding the port?")
+                composerDidPasteLargeText(log)
+                composer.triggerSend()
+                try? await Task.sleep(for: .seconds(2))
+            }
+            let trace = (["Traceback (most recent call last):"] + (0..<18).map {
+                "  File \"/srv/app/server.py\", line \(120 + $0), in serve"
+            }).joined(separator: "\n")
+            composer.setDraft("and this one after the restart?")
+            composerDidPasteLargeText(trace)
+            if mode.contains("read"), let id = pendingPastes.first?.id {
+                try? await Task.sleep(for: .seconds(1))
+                readPaste(id)
+            }
+        }
+
         func tourType(_ text: String, perCharacter: Double) async {
             for index in text.indices {
                 let partial = String(text[text.startIndex...index])

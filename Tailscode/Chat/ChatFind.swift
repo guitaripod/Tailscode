@@ -62,6 +62,8 @@ enum ChatFind {
             return heading.label + " " + heading.title
         case .carried(let reading):
             return reading.line
+        case .pasted(let paste):
+            return paste.text
         }
     }
 

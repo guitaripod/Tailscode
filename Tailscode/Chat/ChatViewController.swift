@@ -45,6 +45,8 @@ final class ChatViewController: UIViewController {
     /// per streamed word does not fold one under their finger.
     var railExpansion = TranscriptExpansion()
     var pendingAttachments: [PromptAttachment] = []
+    /// Long pastes waiting beside the composer as cards, sent as words after what was typed.
+    var pendingPastes: [FoldedPaste] = []
     /// What each design board in this transcript turned out to be, so its card can say so. Kept
     /// per directory rather than per row: a board revised later in the conversation writes its
     /// manifest again and both cards are pictures of the same board.
@@ -391,6 +393,12 @@ final class ChatViewController: UIViewController {
                     self?.composer.focus()
                 }
             }
+            if let mode = ProcessInfo.processInfo.environment["TAILSCODE_PASTE"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    await self?.stagePasteForVerification(mode)
+                }
+            }
             if let draft = ProcessInfo.processInfo.environment["TAILSCODE_DRAFT"] {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
@@ -470,7 +478,7 @@ final class ChatViewController: UIViewController {
             }
         #endif
         let draft = DraftStore.text(for: draftScope)
-        if !draft.isEmpty { composer.setDraft(draft, focus: false) }
+        if !draft.isEmpty { fillComposer(draft, focus: false) }
         if viewModel.supportsModelSelection || viewModel.supportsReasoningEffort {
             Task { await loadModels() }
         }

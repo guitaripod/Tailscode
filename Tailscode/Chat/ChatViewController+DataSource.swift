@@ -272,6 +272,13 @@ extension ChatViewController {
                 withReuseIdentifier: CarriedLineCell.reuseID, for: indexPath) as! CarriedLineCell
             cell.configure(reading) { [weak self] in self?.presentCarried(reading) }
             return cell
+        case .pasted(let paste):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: PastedTextCell.reuseID, for: indexPath) as! PastedTextCell
+            cell.configure(paste) { [weak self] in
+                self?.present(PastedTextViewController.sheet(paste), animated: true)
+            }
+            return cell
         case .taskBoard(let board):
             let cell = collectionView.dequeueReusableCell(
                 withReuseIdentifier: TaskBoardCell.reuseID, for: indexPath) as! TaskBoardCell

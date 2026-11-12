@@ -40,6 +40,9 @@ final class HomeViewController: UIViewController {
     /// will take it along. It belongs to the message being written, not to the machine it is aimed
     /// at, so re-aiming keeps it; only a send or the chip's own button lets it go.
     var composeCarry: ConversationBrief?
+    /// Long pastes waiting beside the box as cards, sent as words after what was typed. They
+    /// belong to the chat and ask lanes' draft, and a render lane never holds one.
+    var composePastes: [FoldedPaste] = []
     var abilities = ModelAbilities.words
     var pastedImageCount = 0
     let enhancement = PromptEnhancementController()
@@ -335,6 +338,14 @@ final class HomeViewController: UIViewController {
                     try? await Task.sleep(for: .seconds(4))
                     self?.focusComposer()
                     self?.composerBar.tourSetText(text)
+                }
+            }
+            if ProcessInfo.processInfo.environment["TAILSCODE_COMPOSE_PASTE"] != nil {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(5))
+                    self?.homeComposerDidPasteLargeText(
+                        (1...24).map { "  File \"/srv/app/server.py\", line \(119 + $0), in serve" }
+                            .joined(separator: "\n"))
                 }
             }
         #endif
