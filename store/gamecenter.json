@@ -1,7 +1,11 @@
 {
   "app": "6791660932",
   "locales": [
-    "en-US"
+    "en-US",
+    "da",
+    "fi",
+    "no",
+    "sv"
   ],
   "leaderboards": [
     {
@@ -12,12 +16,28 @@
       "submission": "BEST_SCORE",
       "image": {
         "remote": {
-          "en-US": "745c2018-4170-43f9-a81c-d850aec8ff65"
+          "da": "8ebe2f83-6260-4aaf-9938-fd7db188bd51",
+          "en-US": "745c2018-4170-43f9-a81c-d850aec8ff65",
+          "fi": "237dc4b6-b2ea-4b50-8f43-e646f240b9e7",
+          "no": "894fd7c6-0fdb-429a-adc5-880c16159136",
+          "sv": "b497671b-c712-445e-9aa5-2811320e24c2"
         }
       },
       "localizations": {
         "en-US": {
           "name": "Longest streak"
+        },
+        "da": {
+          "name": "Længste række"
+        },
+        "fi": {
+          "name": "Pisin putki"
+        },
+        "no": {
+          "name": "Lengste rekke"
+        },
+        "sv": {
+          "name": "Längsta svit"
         }
       }
     },
@@ -29,12 +49,28 @@
       "submission": "BEST_SCORE",
       "image": {
         "remote": {
-          "en-US": "02402bb2-8cde-4761-b8c7-f216704bc863"
+          "da": "6eab1644-2e24-4b1d-9f56-9af9ac5e1823",
+          "en-US": "02402bb2-8cde-4761-b8c7-f216704bc863",
+          "fi": "5f60a4cd-f4f1-4042-a863-55913c5aad43",
+          "no": "873476ae-e5ba-479c-b5ef-515f42f2d023",
+          "sv": "7d6636d9-fabd-4950-9ea8-02153d7fb5dd"
         }
       },
       "localizations": {
         "en-US": {
           "name": "Turns in 30 days"
+        },
+        "da": {
+          "name": "Ture på 30 dage"
+        },
+        "fi": {
+          "name": "Vuorot 30 päivässä"
+        },
+        "no": {
+          "name": "Turer på 30 dager"
+        },
+        "sv": {
+          "name": "Turer på 30 dagar"
         }
       }
     },
@@ -46,12 +82,28 @@
       "submission": "BEST_SCORE",
       "image": {
         "remote": {
-          "en-US": "691de2fa-e1f4-4998-b6f2-dd4ac72bc42c"
+          "da": "48525e28-5de8-46b7-a60a-1fd2248830f6",
+          "en-US": "691de2fa-e1f4-4998-b6f2-dd4ac72bc42c",
+          "fi": "4d5458b5-bc2a-4cf5-a723-065ca4e51c7f",
+          "no": "a098b0aa-6aa8-44f9-9592-cbc18a4bafc6",
+          "sv": "4f56dcf9-f390-4ddf-adeb-77da376469b2"
         }
       },
       "localizations": {
         "en-US": {
           "name": "Tokens in 30 days"
+        },
+        "da": {
+          "name": "Tokens på 30 dage"
+        },
+        "fi": {
+          "name": "Tokenit 30 päivässä"
+        },
+        "no": {
+          "name": "Tokens på 30 dager"
+        },
+        "sv": {
+          "name": "Tokens på 30 dagar"
         }
       }
     },
@@ -63,12 +115,28 @@
       "submission": "BEST_SCORE",
       "image": {
         "remote": {
-          "en-US": "cb66738e-2bd1-4f42-8ebe-3278d3556f75"
+          "da": "58628948-c2eb-4813-b288-6dae5bba62e8",
+          "en-US": "cb66738e-2bd1-4f42-8ebe-3278d3556f75",
+          "fi": "6c40d57f-97d5-454c-ab1c-e16435806112",
+          "no": "1a52cc84-1111-48a2-9fe6-c312b83ab5a4",
+          "sv": "a275c581-4509-4cc1-9f4c-6e306eafafa8"
         }
       },
       "localizations": {
         "en-US": {
           "name": "Tool calls in 30 days"
+        },
+        "da": {
+          "name": "Værktøjskald på 30 dage"
+        },
+        "fi": {
+          "name": "Työkalukutsut 30 päivässä"
+        },
+        "no": {
+          "name": "Verktøykall på 30 dager"
+        },
+        "sv": {
+          "name": "Verktygsanrop på 30 dagar"
         }
       }
     }
@@ -82,7 +150,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "169a2499-7e12-45a7-911a-ca5de5d8b506"
+          "da": "bcfdee00-4eb4-4c66-8906-f92b9e8635bc",
+          "en-US": "169a2499-7e12-45a7-911a-ca5de5d8b506",
+          "fi": "b3913b7b-4120-4300-8d1f-5aba6a9b5508",
+          "no": "d143adaa-41a9-4f33-a1d7-90fdc960d220",
+          "sv": "e29b1dcc-f95e-47a7-9325-95e4ff1e7a43"
         }
       },
       "localizations": {
@@ -90,6 +162,26 @@
           "name": "First words",
           "before": "Send a first turn",
           "after": "You sent your first turn."
+        },
+        "da": {
+          "name": "Første ord",
+          "before": "Send en første tur",
+          "after": "Du sendte din første tur."
+        },
+        "fi": {
+          "name": "Ensimmäiset sanat",
+          "before": "Lähetä ensimmäinen vuoro",
+          "after": "Lähetit ensimmäisen vuorosi."
+        },
+        "no": {
+          "name": "Første ord",
+          "before": "Send en første tur",
+          "after": "Du sendte din første tur."
+        },
+        "sv": {
+          "name": "Första orden",
+          "before": "Skicka en första tur",
+          "after": "Du skickade din första tur."
         }
       }
     },
@@ -101,7 +193,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "8d72bfa9-14ec-408d-9ddc-6e44a7c6b17e"
+          "da": "a1fc4c5a-15be-476b-aa2f-688d913b2f72",
+          "en-US": "8d72bfa9-14ec-408d-9ddc-6e44a7c6b17e",
+          "fi": "51fcc9b1-db42-46c2-b703-5a8c5f79630f",
+          "no": "f6bc5fe7-a292-4ffb-9d79-14d6ea8cd11d",
+          "sv": "fdc023a7-a6b4-4faa-8e0c-de82d685678b"
         }
       },
       "localizations": {
@@ -109,6 +205,26 @@
           "name": "A hundred turns",
           "before": "Send 100 turns inside one month",
           "after": "You sent 100 turns in a month."
+        },
+        "da": {
+          "name": "Hundrede ture",
+          "before": "Send 100 ture inden for en måned",
+          "after": "Du sendte 100 ture i løbet af en måned."
+        },
+        "fi": {
+          "name": "Sata vuoroa",
+          "before": "Lähetä 100 vuoroa yhden kuukauden sisällä",
+          "after": "Lähetit 100 vuoroa kuukaudessa."
+        },
+        "no": {
+          "name": "Hundre turer",
+          "before": "Send 100 turer innen én måned",
+          "after": "Du sendte 100 turer i løpet av en måned."
+        },
+        "sv": {
+          "name": "Hundra turer",
+          "before": "Skicka 100 turer inom en månad",
+          "after": "Du skickade 100 turer på en månad."
         }
       }
     },
@@ -120,7 +236,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "6999e05e-8d44-4f83-b36d-ce91e08af830"
+          "da": "9d24a1df-2b45-44a6-8c7f-74efb9b620e3",
+          "en-US": "6999e05e-8d44-4f83-b36d-ce91e08af830",
+          "fi": "3883eb42-c6fa-493d-8e60-ab8ce55fbe5b",
+          "no": "01c73b8b-51ad-4895-8a94-c5fd6c6739af",
+          "sv": "fec9bb07-6ea7-4481-a61e-4b6e331f52e4"
         }
       },
       "localizations": {
@@ -128,6 +248,26 @@
           "name": "A thousand turns",
           "before": "Send 1,000 turns inside one month",
           "after": "You sent 1,000 turns in a month."
+        },
+        "da": {
+          "name": "Tusind ture",
+          "before": "Send 1.000 ture inden for en måned",
+          "after": "Du sendte 1.000 ture i løbet af en måned."
+        },
+        "fi": {
+          "name": "Tuhat vuoroa",
+          "before": "Lähetä 1 000 vuoroa yhden kuukauden sisällä",
+          "after": "Lähetit 1 000 vuoroa kuukaudessa."
+        },
+        "no": {
+          "name": "Tusen turer",
+          "before": "Send 1 000 turer innen én måned",
+          "after": "Du sendte 1 000 turer i løpet av en måned."
+        },
+        "sv": {
+          "name": "Tusen turer",
+          "before": "Skicka 1 000 turer inom en månad",
+          "after": "Du skickade 1 000 turer på en månad."
         }
       }
     },
@@ -139,7 +279,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "a9434d6a-f029-4b6d-a719-1dee58d53e00"
+          "da": "82127914-69a2-45a4-b828-05a6bb6e7f18",
+          "en-US": "a9434d6a-f029-4b6d-a719-1dee58d53e00",
+          "fi": "6c9f5b78-2cfd-4fb0-a73c-7884a0c85ef4",
+          "no": "d9cb061f-1332-4e0f-a167-2feb14e8d0dc",
+          "sv": "1fb54cce-f024-45d0-bf07-fad77d48ac42"
         }
       },
       "localizations": {
@@ -147,6 +291,26 @@
           "name": "Ten thousand turns",
           "before": "Send 10,000 turns inside one month",
           "after": "You sent 10,000 turns in a month."
+        },
+        "da": {
+          "name": "Ti tusind ture",
+          "before": "Send 10.000 ture inden for en måned",
+          "after": "Du sendte 10.000 ture i løbet af en måned."
+        },
+        "fi": {
+          "name": "Kymmenen tuhatta vuoroa",
+          "before": "Lähetä 10 000 vuoroa yhden kuukauden sisällä",
+          "after": "Lähetit 10 000 vuoroa kuukaudessa."
+        },
+        "no": {
+          "name": "Ti tusen turer",
+          "before": "Send 10 000 turer innen én måned",
+          "after": "Du sendte 10 000 turer i løpet av en måned."
+        },
+        "sv": {
+          "name": "Tio tusen turer",
+          "before": "Skicka 10 000 turer inom en månad",
+          "after": "Du skickade 10 000 turer på en månad."
         }
       }
     },
@@ -158,7 +322,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "9532dd44-c279-475f-b5e8-f8bb2a2fcc52"
+          "da": "aadfbd41-c4da-4a55-b096-76187b4b2b2a",
+          "en-US": "9532dd44-c279-475f-b5e8-f8bb2a2fcc52",
+          "fi": "02113feb-180d-4cc5-b28f-8b1dc74e62fb",
+          "no": "6a9436a1-25bc-4cf6-bf7a-3def116650fd",
+          "sv": "db05bb3f-afe9-4265-9962-b605ef9a7be6"
         }
       },
       "localizations": {
@@ -166,6 +334,26 @@
           "name": "Three days running",
           "before": "Work three days in a row",
           "after": "You worked three days in a row."
+        },
+        "da": {
+          "name": "Tre dage i træk",
+          "before": "Arbejd tre dage i træk",
+          "after": "Du arbejdede tre dage i træk."
+        },
+        "fi": {
+          "name": "Kolme päivää putkeen",
+          "before": "Työskentele kolme päivää putkeen",
+          "after": "Työskentelit kolme päivää putkeen."
+        },
+        "no": {
+          "name": "Tre dager på rad",
+          "before": "Jobb tre dager på rad",
+          "after": "Du jobbet tre dager på rad."
+        },
+        "sv": {
+          "name": "Tre dagar i rad",
+          "before": "Arbeta tre dagar i rad",
+          "after": "Du jobbade tre dagar i rad."
         }
       }
     },
@@ -177,7 +365,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "0321f51d-1fc3-4c73-bf2e-14f5fbed3abd"
+          "da": "09d06c96-8ccd-45f5-9a40-fa112ddb810e",
+          "en-US": "0321f51d-1fc3-4c73-bf2e-14f5fbed3abd",
+          "fi": "07acf577-ee54-4a4a-bd3c-4fab0807c945",
+          "no": "635a6afe-263e-445b-8838-76e9efc6d561",
+          "sv": "4d5cafa8-e06d-4ce7-9e51-ddf4e9072089"
         }
       },
       "localizations": {
@@ -185,6 +377,26 @@
           "name": "A full week",
           "before": "Work seven days in a row",
           "after": "You worked a full week without missing a day."
+        },
+        "da": {
+          "name": "En hel uge",
+          "before": "Arbejd syv dage i træk",
+          "after": "Du arbejdede en hel uge uden at springe en dag over."
+        },
+        "fi": {
+          "name": "Täysi viikko",
+          "before": "Työskentele seitsemän päivää putkeen",
+          "after": "Teit täyden viikon ilman, että yksikään päivä jäi väliin."
+        },
+        "no": {
+          "name": "En full uke",
+          "before": "Jobb syv dager på rad",
+          "after": "Du jobbet en hel uke uten å hoppe over én dag."
+        },
+        "sv": {
+          "name": "En hel vecka",
+          "before": "Arbeta sju dagar i rad",
+          "after": "Du jobbade en hel vecka utan att missa en dag."
         }
       }
     },
@@ -196,7 +408,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "e731b6be-cd5b-4c79-8811-c44b495d5e20"
+          "da": "8656db51-679a-422f-b54f-68e89eab249e",
+          "en-US": "e731b6be-cd5b-4c79-8811-c44b495d5e20",
+          "fi": "341f0743-7d1f-42c5-be32-16a6efb36b28",
+          "no": "d7ab67a7-2640-47ef-9d75-3c015acc5685",
+          "sv": "d56d82cf-cd20-4737-9c8f-0ed659c2c638"
         }
       },
       "localizations": {
@@ -204,6 +420,26 @@
           "name": "A fortnight",
           "before": "Work fourteen days in a row",
           "after": "You worked a fortnight without missing a day."
+        },
+        "da": {
+          "name": "To uger",
+          "before": "Arbejd fjorten dage i træk",
+          "after": "Du arbejdede to uger uden at springe en dag over."
+        },
+        "fi": {
+          "name": "Kaksi viikkoa",
+          "before": "Työskentele neljätoista päivää putkeen",
+          "after": "Työskentelit kaksi viikkoa ilman, että yksikään päivä jäi väliin."
+        },
+        "no": {
+          "name": "To uker",
+          "before": "Jobb fjorten dager på rad",
+          "after": "Du jobbet to uker uten å hoppe over én dag."
+        },
+        "sv": {
+          "name": "Två veckor",
+          "before": "Arbeta fjorton dagar i rad",
+          "after": "Du jobbade i två veckor utan att missa en dag."
         }
       }
     },
@@ -215,7 +451,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "174e3ead-e8e4-47a7-b995-5282d5bbd07f"
+          "da": "ab36882e-be79-45f8-975d-f43108cdce7a",
+          "en-US": "174e3ead-e8e4-47a7-b995-5282d5bbd07f",
+          "fi": "5291a00a-5e82-4a43-af11-e5bcb51ad297",
+          "no": "ae1a62e1-2e3a-469a-859c-0941ae0de707",
+          "sv": "2ddd9e78-58ad-4776-975b-71fd008b1c15"
         }
       },
       "localizations": {
@@ -223,6 +463,26 @@
           "name": "A month unbroken",
           "before": "Work thirty days in a row",
           "after": "You worked thirty days in a row."
+        },
+        "da": {
+          "name": "En hel måned uden brud",
+          "before": "Arbejd tredive dage i træk",
+          "after": "Du arbejdede tredive dage i træk."
+        },
+        "fi": {
+          "name": "Katkeamaton kuukausi",
+          "before": "Työskentele kolmekymmentä päivää putkeen",
+          "after": "Työskentelit kolmekymmentä päivää putkeen."
+        },
+        "no": {
+          "name": "En måned uten avbrudd",
+          "before": "Jobb tretti dager på rad",
+          "after": "Du jobbet tretti dager på rad."
+        },
+        "sv": {
+          "name": "En hel månad utan avbrott",
+          "before": "Arbeta trettio dagar i rad",
+          "after": "Du jobbade trettio dagar i rad."
         }
       }
     },
@@ -234,7 +494,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "972f4d48-920b-4993-96ea-c3848e182de6"
+          "da": "0ab8322e-83d7-453b-b72b-97d1545d82e6",
+          "en-US": "972f4d48-920b-4993-96ea-c3848e182de6",
+          "fi": "ea940626-a0a7-4c4e-85c5-26cd84a6bdd2",
+          "no": "652c4d60-ca48-4a5f-a581-378303ff32ae",
+          "sv": "d086f911-3e6d-4a5a-82e1-e15034cb95c7"
         }
       },
       "localizations": {
@@ -242,6 +506,26 @@
           "name": "Ten million tokens",
           "before": "Move 10M tokens inside one month",
           "after": "You moved ten million tokens in a month."
+        },
+        "da": {
+          "name": "Ti millioner tokens",
+          "before": "Kør 10 mio. tokens igennem inden for en måned",
+          "after": "Du kørte ti millioner tokens igennem i løbet af en måned."
+        },
+        "fi": {
+          "name": "Kymmenen miljoonaa tokenia",
+          "before": "Käsittele 10 miljoonaa tokenia yhden kuukauden sisällä",
+          "after": "Käsittelit kymmenen miljoonaa tokenia kuukaudessa."
+        },
+        "no": {
+          "name": "Ti millioner tokens",
+          "before": "Behandle 10 mill. tokens innen én måned",
+          "after": "Du behandlet ti millioner tokens i løpet av en måned."
+        },
+        "sv": {
+          "name": "Tio miljoner tokens",
+          "before": "Flytta 10 M tokens inom en månad",
+          "after": "Du flyttade tio miljoner tokens på en månad."
         }
       }
     },
@@ -253,7 +537,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "45a3b995-78ff-4596-a349-9934f1275da8"
+          "da": "7f144f15-2186-4c69-be6d-1313d22e7bec",
+          "en-US": "45a3b995-78ff-4596-a349-9934f1275da8",
+          "fi": "01e293d3-c42a-45d9-9524-053c59c8f168",
+          "no": "3ca56891-b4f8-48da-bb5b-7e4f5e5ca214",
+          "sv": "c0f78a5f-c80d-4fcd-8a11-4487ca441c1d"
         }
       },
       "localizations": {
@@ -261,6 +549,26 @@
           "name": "A hundred million tokens",
           "before": "Move 100M tokens inside one month",
           "after": "You moved a hundred million tokens in a month."
+        },
+        "da": {
+          "name": "Hundrede millioner tokens",
+          "before": "Kør 100 mio. tokens igennem inden for en måned",
+          "after": "Du kørte hundrede millioner tokens igennem i løbet af en måned."
+        },
+        "fi": {
+          "name": "Sata miljoonaa tokenia",
+          "before": "Käsittele 100 miljoonaa tokenia yhden kuukauden sisällä",
+          "after": "Käsittelit sata miljoonaa tokenia kuukaudessa."
+        },
+        "no": {
+          "name": "Hundre millioner tokens",
+          "before": "Behandle 100 mill. tokens innen én måned",
+          "after": "Du behandlet hundre millioner tokens i løpet av en måned."
+        },
+        "sv": {
+          "name": "Hundra miljoner tokens",
+          "before": "Flytta 100 M tokens inom en månad",
+          "after": "Du flyttade hundra miljoner tokens på en månad."
         }
       }
     },
@@ -272,7 +580,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "f966ae84-6651-4e1e-95ad-17434bd1aa2e"
+          "da": "94e9b8fa-81e0-4662-88c7-9fa384cceeb4",
+          "en-US": "f966ae84-6651-4e1e-95ad-17434bd1aa2e",
+          "fi": "2517558e-c2b0-44ca-adc7-bb6a5b00e981",
+          "no": "192df1a6-b9a2-4b87-b8d9-0319b63d3f0b",
+          "sv": "c5bbb4d3-b46e-4ad7-ae73-eb48234373a4"
         }
       },
       "localizations": {
@@ -280,6 +592,26 @@
           "name": "The billion club",
           "before": "Move 1B tokens inside one month",
           "after": "You moved a billion tokens in a month."
+        },
+        "da": {
+          "name": "Milliardklubben",
+          "before": "Kør 1 mia. tokens igennem inden for en måned",
+          "after": "Du kørte en milliard tokens igennem i løbet af en måned."
+        },
+        "fi": {
+          "name": "Miljardin klubi",
+          "before": "Käsittele 1 miljardi tokenia yhden kuukauden sisällä",
+          "after": "Käsittelit miljardi tokenia kuukaudessa."
+        },
+        "no": {
+          "name": "Milliardklubben",
+          "before": "Behandle 1 mrd. tokens innen én måned",
+          "after": "Du behandlet en milliard tokens i løpet av en måned."
+        },
+        "sv": {
+          "name": "Miljardklubben",
+          "before": "Flytta 1 mdr tokens inom en månad",
+          "after": "Du flyttade en miljard tokens på en månad."
         }
       }
     },
@@ -291,7 +623,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "8957603e-7fa3-43df-8ac2-c0468d12803c"
+          "da": "ba173042-8ff6-4330-9207-469aefb06188",
+          "en-US": "8957603e-7fa3-43df-8ac2-c0468d12803c",
+          "fi": "78c2747b-d9f6-43c4-94dc-0b4242eac4e8",
+          "no": "d0b15703-3b18-49cc-a718-7fbe38a1f062",
+          "sv": "2f331be6-29b1-4a91-8704-24cf6cb567bb"
         }
       },
       "localizations": {
@@ -299,6 +635,26 @@
           "name": "A thousand tool calls",
           "before": "Let the agent run 1,000 tools inside one month",
           "after": "The agent ran a thousand tools for you in a month."
+        },
+        "da": {
+          "name": "Tusind værktøjskald",
+          "before": "Lad agenten køre 1.000 værktøjer inden for en måned",
+          "after": "Agenten kørte tusind værktøjer for dig i løbet af en måned."
+        },
+        "fi": {
+          "name": "Tuhat työkalukutsua",
+          "before": "Anna agentin ajaa 1 000 työkalua yhden kuukauden sisällä",
+          "after": "Agentti ajoi sinulle tuhat työkalua kuukaudessa."
+        },
+        "no": {
+          "name": "Tusen verktøykall",
+          "before": "La agenten kjøre 1 000 verktøy innen én måned",
+          "after": "Agenten kjørte tusen verktøy for deg i løpet av en måned."
+        },
+        "sv": {
+          "name": "Tusen verktygsanrop",
+          "before": "Låt agenten köra 1 000 verktyg inom en månad",
+          "after": "Agenten körde tusen verktyg åt dig på en månad."
         }
       }
     },
@@ -310,7 +666,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "c077b447-3888-4c95-b581-f82f9f24ff26"
+          "da": "475a46d8-37cb-429e-81e9-e987e379a319",
+          "en-US": "c077b447-3888-4c95-b581-f82f9f24ff26",
+          "fi": "b668a836-b714-4b44-a3e9-c7bace55e4ca",
+          "no": "cb2d652d-fafa-49c4-a38f-1cecfce22898",
+          "sv": "a538479e-6721-4d82-9106-bb0aeb762160"
         }
       },
       "localizations": {
@@ -318,6 +678,26 @@
           "name": "Ten thousand tool calls",
           "before": "Let the agent run 10,000 tools inside one month",
           "after": "The agent ran ten thousand tools for you in a month."
+        },
+        "da": {
+          "name": "Ti tusind værktøjskald",
+          "before": "Lad agenten køre 10.000 værktøjer inden for en måned",
+          "after": "Agenten kørte ti tusind værktøjer for dig i løbet af en måned."
+        },
+        "fi": {
+          "name": "Kymmenen tuhatta työkalukutsua",
+          "before": "Anna agentin ajaa 10 000 työkalua yhden kuukauden sisällä",
+          "after": "Agentti ajoi sinulle kymmenen tuhatta työkalua kuukaudessa."
+        },
+        "no": {
+          "name": "Ti tusen verktøykall",
+          "before": "La agenten kjøre 10 000 verktøy innen én måned",
+          "after": "Agenten kjørte ti tusen verktøy for deg i løpet av en måned."
+        },
+        "sv": {
+          "name": "Tio tusen verktygsanrop",
+          "before": "Låt agenten köra 10 000 verktyg inom en månad",
+          "after": "Agenten körde tio tusen verktyg åt dig på en månad."
         }
       }
     },
@@ -329,7 +709,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "a3dda940-feef-49f5-a492-1ab6aad12326"
+          "da": "7a8a0307-c7e2-4ec6-9572-5503e99f3a85",
+          "en-US": "a3dda940-feef-49f5-a492-1ab6aad12326",
+          "fi": "76d91953-932a-40b9-8655-19569fea9641",
+          "no": "8d79c20c-9d7a-4502-943b-914cb759aafc",
+          "sv": "1979010b-84a5-49b3-84ca-be910303ee62"
         }
       },
       "localizations": {
@@ -337,6 +721,26 @@
           "name": "Fifty conversations",
           "before": "Hold 50 conversations inside one month",
           "after": "You held fifty conversations in a month."
+        },
+        "da": {
+          "name": "Halvtreds samtaler",
+          "before": "Hold 50 samtaler inden for en måned",
+          "after": "Du holdt halvtreds samtaler i løbet af en måned."
+        },
+        "fi": {
+          "name": "Viisikymmentä keskustelua",
+          "before": "Käy 50 keskustelua yhden kuukauden sisällä",
+          "after": "Kävit viisikymmentä keskustelua kuukaudessa."
+        },
+        "no": {
+          "name": "Femti samtaler",
+          "before": "Hold 50 samtaler innen én måned",
+          "after": "Du holdt femti samtaler i løpet av en måned."
+        },
+        "sv": {
+          "name": "Femtio konversationer",
+          "before": "Håll 50 konversationer igång inom en månad",
+          "after": "Du höll igång femtio konversationer på en månad."
         }
       }
     },
@@ -348,7 +752,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "5818497e-f2bb-4067-856c-84356507e526"
+          "da": "e7f837a9-0cc6-4ad7-9143-86532e2f7401",
+          "en-US": "5818497e-f2bb-4067-856c-84356507e526",
+          "fi": "38f9b113-21d6-46dc-99cb-e0874b63be70",
+          "no": "006b8f00-a43b-434a-8b17-52b5b53c1f30",
+          "sv": "a08e254c-5975-41b0-a6a2-4a44012faca8"
         }
       },
       "localizations": {
@@ -356,6 +764,26 @@
           "name": "Delegator",
           "before": "Send a subagent out to work",
           "after": "You sent your first subagent out to work."
+        },
+        "da": {
+          "name": "Delegerer",
+          "before": "Send en underagent i gang",
+          "after": "Du sendte din første underagent i gang."
+        },
+        "fi": {
+          "name": "Delegoija",
+          "before": "Lähetä aliagentti töihin",
+          "after": "Lähetit ensimmäisen aliagenttisi töihin."
+        },
+        "no": {
+          "name": "Delegeringsmester",
+          "before": "Send en subagent ut for å jobbe",
+          "after": "Du sendte din første subagent ut for å jobbe."
+        },
+        "sv": {
+          "name": "Delegerare",
+          "before": "Skicka ut en subagent för att arbeta",
+          "after": "Du skickade ut din första subagent för att arbeta."
         }
       }
     },
@@ -367,7 +795,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "1f8a843f-dd72-466a-8b08-ff28183d1f0f"
+          "da": "19eef857-adc3-452c-ba8b-ed55b9914c49",
+          "en-US": "1f8a843f-dd72-466a-8b08-ff28183d1f0f",
+          "fi": "7482f321-868e-4d89-a0ed-98433fe01624",
+          "no": "043fdefa-31a6-4f60-893c-a6ce1b6105e8",
+          "sv": "601f76ad-4dab-4a1a-8296-0049ed9c0b2f"
         }
       },
       "localizations": {
@@ -375,6 +807,26 @@
           "name": "Fleet commander",
           "before": "Send 250 subagents out inside one month",
           "after": "You sent 250 subagents out in a month."
+        },
+        "da": {
+          "name": "Flådechef",
+          "before": "Send 250 underagenter i gang inden for en måned",
+          "after": "Du sendte 250 underagenter i gang i løbet af en måned."
+        },
+        "fi": {
+          "name": "Laivueen komentaja",
+          "before": "Lähetä 250 aliagenttia töihin yhden kuukauden sisällä",
+          "after": "Lähetit 250 aliagenttia töihin kuukaudessa."
+        },
+        "no": {
+          "name": "Flåtesjef",
+          "before": "Send 250 subagenter ut innen én måned",
+          "after": "Du sendte 250 subagenter ut i løpet av en måned."
+        },
+        "sv": {
+          "name": "Flottchef",
+          "before": "Skicka ut 250 subagenter inom en månad",
+          "after": "Du skickade ut 250 subagenter på en månad."
         }
       }
     },
@@ -386,7 +838,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "e9550a6e-ceea-41f3-ab67-84e043f7f1f1"
+          "da": "98bca131-c977-4720-b8cd-a4948075d17b",
+          "en-US": "e9550a6e-ceea-41f3-ab67-84e043f7f1f1",
+          "fi": "61df99ee-b03e-46e4-98b7-c376d798c6ba",
+          "no": "9136d624-d591-4b03-9115-d55980e36064",
+          "sv": "945736b2-4c57-4091-a1ed-5c90bf6a6556"
         }
       },
       "localizations": {
@@ -394,6 +850,26 @@
           "name": "The long haul",
           "before": "Work a conversation long enough to compact it",
           "after": "You worked a conversation long enough to compact it."
+        },
+        "da": {
+          "name": "Det lange træk",
+          "before": "Arbejd på en samtale længe nok til at komprimere den",
+          "after": "Du arbejdede på en samtale længe nok til at komprimere den."
+        },
+        "fi": {
+          "name": "Pitkä pinna",
+          "before": "Työskentele keskustelua niin pitkään, että se tiivistetään",
+          "after": "Työskentelit keskustelussa niin pitkään, että se tiivistettiin."
+        },
+        "no": {
+          "name": "Det lange løpet",
+          "before": "Jobb i en samtale lenge nok til at den komprimeres",
+          "after": "Du jobbet i en samtale lenge nok til å komprimere den."
+        },
+        "sv": {
+          "name": "Det långa loppet",
+          "before": "Arbeta i en konversation tills den komprimeras",
+          "after": "Du jobbade i en konversation tills den komprimerades."
         }
       }
     },
@@ -405,7 +881,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "29319ffa-8a9e-46c7-8b33-ff40c2abb7f0"
+          "da": "97ca6841-cd3f-4bbb-b884-66e1d00d6ee2",
+          "en-US": "29319ffa-8a9e-46c7-8b33-ff40c2abb7f0",
+          "fi": "0469001b-fbed-41a1-9c38-c596ed69160b",
+          "no": "fc6539d9-e267-406f-b95f-5196eae0accb",
+          "sv": "ab439bee-7733-4a9b-96d8-7ca232480407"
         }
       },
       "localizations": {
@@ -413,6 +893,26 @@
           "name": "Cache money",
           "before": "Let caching save $100 inside one month",
           "after": "Caching kept $100 in your pocket in a month."
+        },
+        "da": {
+          "name": "Cache-penge",
+          "before": "Lad caching spare 100 $ inden for en måned",
+          "after": "Caching holdt 100 $ i din lomme i løbet af en måned."
+        },
+        "fi": {
+          "name": "Välimuistibonus",
+          "before": "Anna välimuistin säästää 100 $ yhden kuukauden sisällä",
+          "after": "Välimuisti säästi sinulle 100 $ kuukaudessa."
+        },
+        "no": {
+          "name": "Cache-penger",
+          "before": "La caching spare 100 $ innen én måned",
+          "after": "Caching holdt 100 $ i lommen din i løpet av en måned."
+        },
+        "sv": {
+          "name": "Cachepengar",
+          "before": "Låt cachning spara 100 $ inom en månad",
+          "after": "Cachning sparade 100 $ åt dig på en månad."
         }
       }
     },
@@ -424,7 +924,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "fe038063-70d5-45f5-8f71-d527f0805dc1"
+          "da": "755d1fa4-7b0f-4787-90ea-a1b2e16834aa",
+          "en-US": "fe038063-70d5-45f5-8f71-d527f0805dc1",
+          "fi": "4b48337b-4067-4a8b-913c-f56431810b3c",
+          "no": "f18ea61b-96a8-4e48-b1a9-f961c2c4d6b2",
+          "sv": "760ce8f5-8fe0-4616-be30-24be75ff3e66"
         }
       },
       "localizations": {
@@ -432,6 +936,26 @@
           "name": "A thousand saved",
           "before": "Let caching save $1,000 inside one month",
           "after": "Caching kept $1,000 in your pocket in a month."
+        },
+        "da": {
+          "name": "Tusind sparet",
+          "before": "Lad caching spare 1.000 $ inden for en måned",
+          "after": "Caching holdt 1.000 $ i din lomme i løbet af en måned."
+        },
+        "fi": {
+          "name": "Tuhannen säästö",
+          "before": "Anna välimuistin säästää 1 000 $ yhden kuukauden sisällä",
+          "after": "Välimuisti säästi sinulle 1 000 $ kuukaudessa."
+        },
+        "no": {
+          "name": "Tusen spart",
+          "before": "La caching spare 1 000 $ innen én måned",
+          "after": "Caching holdt 1 000 $ i lommen din i løpet av en måned."
+        },
+        "sv": {
+          "name": "Tusen sparade",
+          "before": "Låt cachning spara 1 000 $ inom en månad",
+          "after": "Cachning sparade 1 000 $ åt dig på en månad."
         }
       }
     },
@@ -443,7 +967,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "34c3c804-912a-4cfa-949f-6ed4d9ea4f02"
+          "da": "4fb9d59e-1ec0-4663-9d2d-ae161a10a392",
+          "en-US": "34c3c804-912a-4cfa-949f-6ed4d9ea4f02",
+          "fi": "ad46a01d-e173-4cb2-9947-ff7fc501a360",
+          "no": "b1f1c490-cf2e-47da-a2c3-b06399982411",
+          "sv": "99aef722-c037-4e20-a694-564b7cb684db"
         }
       },
       "localizations": {
@@ -451,6 +979,26 @@
           "name": "A second machine",
           "before": "Put two machines to work in the same month",
           "after": "You put two machines to work in the same month."
+        },
+        "da": {
+          "name": "En anden maskine",
+          "before": "Sæt to maskiner i arbejde inden for samme måned",
+          "after": "Du satte to maskiner i arbejde i samme måned."
+        },
+        "fi": {
+          "name": "Toinen kone",
+          "before": "Ota kaksi konetta töihin saman kuukauden aikana",
+          "after": "Otit kaksi konetta töihin saman kuukauden aikana."
+        },
+        "no": {
+          "name": "En andre maskin",
+          "before": "Sett to maskiner i arbeid i samme måned",
+          "after": "Du satte to maskiner i arbeid i samme måned."
+        },
+        "sv": {
+          "name": "En andra dator",
+          "before": "Sätt två datorer i arbete under samma månad",
+          "after": "Du satte två datorer i arbete under samma månad."
         }
       }
     },
@@ -462,7 +1010,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "94879f98-820d-4db8-80c4-48441246dac1"
+          "da": "720e2eb4-67a9-4946-9abb-27204183979c",
+          "en-US": "94879f98-820d-4db8-80c4-48441246dac1",
+          "fi": "49a9b763-3539-49f6-b8e2-5f1705a0b07f",
+          "no": "ee3aac33-998d-466b-b365-b80cd9c70b63",
+          "sv": "1c44bea9-3af5-4c37-8a1a-39927ca26d2a"
         }
       },
       "localizations": {
@@ -470,6 +1022,26 @@
           "name": "Five projects",
           "before": "Work five projects inside one month",
           "after": "You worked five projects in a month."
+        },
+        "da": {
+          "name": "Fem projekter",
+          "before": "Arbejd på fem projekter inden for en måned",
+          "after": "Du arbejdede på fem projekter i løbet af en måned."
+        },
+        "fi": {
+          "name": "Viisi projektia",
+          "before": "Työskentele viiden projektin parissa yhden kuukauden sisällä",
+          "after": "Työskentelit viidessä projektissa kuukaudessa."
+        },
+        "no": {
+          "name": "Fem prosjekter",
+          "before": "Jobb med fem prosjekter innen én måned",
+          "after": "Du jobbet med fem prosjekter i løpet av en måned."
+        },
+        "sv": {
+          "name": "Fem projekt",
+          "before": "Arbeta i fem projekt inom en månad",
+          "after": "Du jobbade i fem projekt på en månad."
         }
       }
     },
@@ -481,7 +1053,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "1d7fddec-980f-4b99-8ede-0673ae7b240e"
+          "da": "9d94c601-9566-41d5-bf03-8b2ec42c7406",
+          "en-US": "1d7fddec-980f-4b99-8ede-0673ae7b240e",
+          "fi": "ddd21bfd-0ec1-4ae9-812e-044f3c621a6d",
+          "no": "a2ebfe95-8031-483b-9411-fe5649d7fe8d",
+          "sv": "9638ea44-7ec4-4466-8988-2c0b8768c4f6"
         }
       },
       "localizations": {
@@ -489,6 +1065,26 @@
           "name": "Three models",
           "before": "Put three models to work inside one month",
           "after": "You put three models to work in a month."
+        },
+        "da": {
+          "name": "Tre modeller",
+          "before": "Sæt tre modeller i arbejde inden for en måned",
+          "after": "Du satte tre modeller i arbejde i løbet af en måned."
+        },
+        "fi": {
+          "name": "Kolme mallia",
+          "before": "Ota kolme mallia töihin yhden kuukauden sisällä",
+          "after": "Otit kolme mallia töihin kuukaudessa."
+        },
+        "no": {
+          "name": "Tre modeller",
+          "before": "Sett tre modeller i arbeid innen én måned",
+          "after": "Du satte tre modeller i arbeid i løpet av en måned."
+        },
+        "sv": {
+          "name": "Tre modeller",
+          "before": "Sätt tre modeller i arbete inom en månad",
+          "after": "Du satte tre modeller i arbete på en månad."
         }
       }
     },
@@ -500,7 +1096,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "fc0241c6-6de1-4184-b0d8-cd2c3717ccef"
+          "da": "02e19e58-aa8b-4f28-adc0-08c5e63169eb",
+          "en-US": "fc0241c6-6de1-4184-b0d8-cd2c3717ccef",
+          "fi": "be2ee949-9d01-4520-b455-f035faf6a9b0",
+          "no": "a597c718-8c2a-4ced-8db2-2ca71aeba75f",
+          "sv": "eaea6c83-fc96-4e3b-a911-c786ad662083"
         }
       },
       "localizations": {
@@ -508,6 +1108,26 @@
           "name": "Night shift",
           "before": "Start 50 turns between midnight and five",
           "after": "You started fifty turns between midnight and five."
+        },
+        "da": {
+          "name": "Nattevagt",
+          "before": "Start 50 ture mellem midnat og fem",
+          "after": "Du startede halvtreds ture mellem midnat og fem."
+        },
+        "fi": {
+          "name": "Yövuoro",
+          "before": "Aloita 50 vuoroa keskiyön ja viiden välillä",
+          "after": "Aloitit viisikymmentä vuoroa keskiyön ja viiden välillä."
+        },
+        "no": {
+          "name": "Nattskift",
+          "before": "Start 50 turer mellom midnatt og klokken fem",
+          "after": "Du startet femti turer mellom midnatt og klokken fem."
+        },
+        "sv": {
+          "name": "Nattskift",
+          "before": "Starta 50 turer mellan midnatt och klockan fem",
+          "after": "Du startade femtio turer mellan midnatt och klockan fem."
         }
       }
     },
@@ -519,7 +1139,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "924efacf-267b-437d-8c29-2d354e31688a"
+          "da": "0cf42658-a755-4a4d-a425-67f46aab818d",
+          "en-US": "924efacf-267b-437d-8c29-2d354e31688a",
+          "fi": "2804a024-228e-4e31-a32e-023548a39ca8",
+          "no": "73525ea6-5894-4fb1-8766-1c1f2f8aec46",
+          "sv": "5ad09620-9337-4564-8bff-70c0f62825ae"
         }
       },
       "localizations": {
@@ -527,6 +1151,26 @@
           "name": "Round the clock",
           "before": "Start a turn in every hour of the day",
           "after": "You started a turn in every hour of the day."
+        },
+        "da": {
+          "name": "Døgnet rundt",
+          "before": "Start en tur i hver time på døgnet",
+          "after": "Du startede en tur i hver time af døgnet."
+        },
+        "fi": {
+          "name": "Ympäri vuorokauden",
+          "before": "Aloita vuoro joka tunti vuorokaudessa",
+          "after": "Aloitit vuoron joka tunti vuorokaudessa."
+        },
+        "no": {
+          "name": "Døgnet rundt",
+          "before": "Start en tur i hver time av døgnet",
+          "after": "Du startet en tur i hver time av døgnet."
+        },
+        "sv": {
+          "name": "Dygnet runt",
+          "before": "Starta en tur under varje timme på dygnet",
+          "after": "Du startade en tur under varje timme på dygnet."
         }
       }
     },
@@ -538,7 +1182,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "82d621d7-e059-43d0-84ae-52562ff293d2"
+          "da": "0ed197f0-7d45-4c66-b3ee-d5d39e09ecf8",
+          "en-US": "82d621d7-e059-43d0-84ae-52562ff293d2",
+          "fi": "12c934ba-8db6-43b5-b927-23f76fe0a2ee",
+          "no": "7d666661-de57-4cab-b327-d665d57dbba8",
+          "sv": "2077dd89-2884-4411-9f39-c7eced4cf103"
         }
       },
       "localizations": {
@@ -546,6 +1194,26 @@
           "name": "The ten-minute turn",
           "before": "Keep the agent out on one turn for ten minutes",
           "after": "You kept the agent out on one turn for ten minutes."
+        },
+        "da": {
+          "name": "Turen på ti minutter",
+          "before": "Lad agenten arbejde på én tur i ti minutter",
+          "after": "Du lod agenten arbejde på én tur i ti minutter."
+        },
+        "fi": {
+          "name": "Kymmenen minuutin vuoro",
+          "before": "Anna agentin työskennellä yhdessä vuorossa kymmenen minuuttia",
+          "after": "Pidit agentin työssä yhdessä vuorossa kymmenen minuuttia."
+        },
+        "no": {
+          "name": "Ti-minutters-turen",
+          "before": "La agenten jobbe i ti minutter på én tur",
+          "after": "Du lot agenten jobbe i ti minutter på én tur."
+        },
+        "sv": {
+          "name": "Tio-minutersturen",
+          "before": "Låt agenten hålla på med en och samma tur i tio minuter",
+          "after": "Du lät agenten hålla på med en och samma tur i tio minuter."
         }
       }
     },
@@ -557,7 +1225,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "0521d483-c81e-4852-9879-70a2792c1e46"
+          "da": "77d55337-1587-4cc6-a07c-925100984003",
+          "en-US": "0521d483-c81e-4852-9879-70a2792c1e46",
+          "fi": "5debd5cd-76cd-4051-acd6-b0476b620169",
+          "no": "e94810e4-2a81-45ad-8e11-3d84fc823bfb",
+          "sv": "49363feb-19b6-46b6-8748-76a706367011"
         }
       },
       "localizations": {
@@ -565,6 +1237,26 @@
           "name": "The hundred-dollar day",
           "before": "Put $100 of work through one day",
           "after": "You put $100 of work through a single day."
+        },
+        "da": {
+          "name": "Dagen for hundrede dollar",
+          "before": "Kør 100 $ arbejde igennem på én dag",
+          "after": "Du kørte arbejde for 100 $ igennem på én enkelt dag."
+        },
+        "fi": {
+          "name": "Sadan dollarin päivä",
+          "before": "Tee yhdessä päivässä 100 dollarin edestä töitä",
+          "after": "Teit yhdessä päivässä 100 $:n edestä töitä."
+        },
+        "no": {
+          "name": "Hundre-dollar-dagen",
+          "before": "Kjør arbeid for 100 $ gjennom én dag",
+          "after": "Du kjørte arbeid for 100 $ gjennom én enkelt dag."
+        },
+        "sv": {
+          "name": "Hundradollardagen",
+          "before": "Låt arbete för 100 $ gå igenom på en dag",
+          "after": "Du lät arbete för 100 $ gå igenom på en enda dag."
         }
       }
     },
@@ -576,7 +1268,11 @@
       "repeatable": false,
       "image": {
         "remote": {
-          "en-US": "e12dd464-ee7d-4478-a849-c9cd1cc5b6b0"
+          "da": "3a78e8d1-27b0-4363-95ca-0872c26d0f36",
+          "en-US": "e12dd464-ee7d-4478-a849-c9cd1cc5b6b0",
+          "fi": "99b3b10e-280d-4ead-b4e3-fcd9839f544a",
+          "no": "5af13efc-2144-4b89-abc6-8998087a87ac",
+          "sv": "b8c7bab4-1d60-446c-985d-8b8db5d7ce68"
         }
       },
       "localizations": {
@@ -584,6 +1280,26 @@
           "name": "Weekender",
           "before": "Send 100 turns on Saturdays and Sundays",
           "after": "You sent a hundred weekend turns."
+        },
+        "da": {
+          "name": "Weekendkriger",
+          "before": "Send 100 ture på lørdage og søndage",
+          "after": "Du sendte hundrede weekendture."
+        },
+        "fi": {
+          "name": "Viikonlopputyöläinen",
+          "before": "Lähetä 100 vuoroa lauantaisin ja sunnuntaisin",
+          "after": "Lähetit sata viikonlopun vuoroa."
+        },
+        "no": {
+          "name": "Helgekrigeren",
+          "before": "Send 100 turer på lørdager og søndager",
+          "after": "Du sendte hundre turer i helgene."
+        },
+        "sv": {
+          "name": "Helgarbetaren",
+          "before": "Skicka 100 turer på lördagar och söndagar",
+          "after": "Du skickade hundra turer under helgen."
         }
       }
     }
