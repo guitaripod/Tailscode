@@ -62031,6 +62031,12 @@
     "Hide keyboard": {
       "extractionState": "manual",
       "localizations": {
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skjul tastaturet"
+          }
+        },
         "de": {
           "stringUnit": {
             "state": "translated",
@@ -62049,10 +62055,22 @@
             "value": "Ocultar teclado"
           }
         },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Piilota näppäimistö"
+          }
+        },
         "fr": {
           "stringUnit": {
             "state": "translated",
             "value": "Masquer le clavier"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fela lyklaborðið"
           }
         },
         "it": {
@@ -62073,6 +62091,12 @@
             "value": "키보드 숨기기"
           }
         },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skjul tastaturet"
+          }
+        },
         "pl": {
           "stringUnit": {
             "state": "translated",
@@ -62083,6 +62107,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ocultar teclado"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dölj tangentbordet"
           }
         },
         "zh-Hans": {
