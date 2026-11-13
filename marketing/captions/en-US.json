@@ -1,32 +1,32 @@
 {
   "iphone": [
     {
-      "master": "fl-agents",
-      "slug": "01-all-your-agents",
-      "headline": "All your agents.\nOne pocket.",
-      "subline": "Claude Code, Hermes, opencode and any ACP agent, on your own computers.",
-      "highlight": "One pocket."
+      "master": "lock",
+      "slug": "01-leave-your-desk",
+      "headline": "Leave your desk.\nYour agent finds you.",
+      "subline": "Claude Code, opencode and Hermes keep working on your own computer.",
+      "highlight": "Your agent finds you."
     },
     {
-      "master": "fl-wall",
-      "slug": "02-the-wall",
-      "headline": "Leave it on.\nWatch them work.",
-      "subline": "Every agent and helper, live and full screen. Hold to approve.",
-      "highlight": "Watch them work."
+      "master": "03-approval",
+      "slug": "02-it-asks",
+      "headline": "It asks.\nYou tap Approve.",
+      "subline": "Risky commands wait for you and your Face ID, wherever you are.",
+      "highlight": "You tap Approve."
     },
     {
-      "master": "fl-models",
-      "slug": "03-any-model",
-      "headline": "Any agent.\nAny model.",
-      "subline": "Hermes or Opus, even on your own GPU, per chat.",
-      "highlight": "Any model."
+      "master": "07-home",
+      "slug": "03-finished-work",
+      "headline": "Come back to\nfinished work.",
+      "subline": "What ran, what changed and what is done, waiting in your pocket.",
+      "highlight": "finished work."
     },
     {
-      "master": "fl-peek",
-      "slug": "04-peek",
-      "headline": "Look in on\nany agent",
-      "subline": "What it's doing now, its last steps and its helpers.",
-      "highlight": "any agent"
+      "master": "welcome",
+      "slug": "04-your-machines",
+      "headline": "No relay. No sign-in.\nJust your machines.",
+      "subline": "Your iPhone talks to your computer over your own Tailscale. Nothing sits in between.",
+      "highlight": "Just your machines."
     },
     {
       "master": "fl-setup",
@@ -36,32 +36,32 @@
       "highlight": "Then scan."
     },
     {
+      "master": "fl-agents",
+      "slug": "06-every-agent",
+      "headline": "Every agent.\nOne board.",
+      "subline": "Claude Code, Hermes, opencode and any ACP agent, on your own computers.",
+      "highlight": "One board."
+    },
+    {
+      "master": "fl-models",
+      "slug": "07-any-model",
+      "headline": "Any agent.\nAny model.",
+      "subline": "Hermes or Opus, even on your own GPU, per chat.",
+      "highlight": "Any model."
+    },
+    {
       "master": "fl-steer",
-      "slug": "06-steer",
+      "slug": "08-steer",
       "headline": "Steer it\nmid-run",
       "subline": "Queue the next message, or stop the turn on the server.",
       "highlight": "mid-run"
     },
     {
       "master": "fl-later",
-      "slug": "07-every-morning",
+      "slug": "09-every-morning",
       "headline": "Ask every morning.\nYour machine does.",
       "subline": "Say when: weekdays 7:30. It asks with your phone off.",
       "highlight": "Your machine does."
-    },
-    {
-      "master": "fl-carry",
-      "slug": "08-carry",
-      "headline": "Switch models,\nkeep the thread",
-      "subline": "The next model gets a short brief of the chat and carries on.",
-      "highlight": "keep the thread"
-    },
-    {
-      "master": "fl-party",
-      "slug": "09-party",
-      "headline": "Six models,\none swipe away",
-      "subline": "A model and its effort in each slot. Swipe the pill to switch.",
-      "highlight": "one swipe away"
     },
     {
       "master": "14-analytics",
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "All your agents.\nOne pocket.",
-    "highlight": "One pocket."
+    "headline": "Leave your desk.\nYour agent finds you.",
+    "highlight": "Your agent finds you."
   },
   "search": {
-    "headline": "Every agent you run,\non any model",
-    "highlight": "on any model"
+    "headline": "Leave your desk.\nYour agent\nfinds you.",
+    "highlight": "Your agent\nfinds you."
   }
 }

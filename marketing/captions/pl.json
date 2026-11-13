@@ -1,32 +1,32 @@
 {
   "iphone": [
     {
-      "master": "fl-agents",
-      "slug": "01-all-your-agents",
-      "headline": "Wszystkie agenty.\nW kieszeni.",
-      "subline": "Claude Code, Hermes, opencode i każdy agent ACP, na twoich własnych komputerach.",
-      "highlight": "W kieszeni."
+      "master": "lock",
+      "slug": "01-leave-your-desk",
+      "headline": "Odejdź od biurka.\nAgent cię znajdzie.",
+      "subline": "Claude Code, opencode i Hermes pracują dalej na twoim własnym komputerze.",
+      "highlight": "Agent cię znajdzie."
     },
     {
-      "master": "fl-wall",
-      "slug": "02-the-wall",
-      "headline": "Nie wyłączaj.\nPatrz, jak pracują.",
-      "subline": "Każdy agent i pomocnik na żywo, na pełnym ekranie. Przytrzymaj, aby zatwierdzić.",
-      "highlight": "Patrz, jak pracują."
+      "master": "03-approval",
+      "slug": "02-it-asks",
+      "headline": "On pyta.\nStukasz Zatwierdź.",
+      "subline": "Ryzykowne polecenia czekają na ciebie i twoje Face ID, gdziekolwiek jesteś.",
+      "highlight": "Stukasz Zatwierdź."
     },
     {
-      "master": "fl-models",
-      "slug": "03-any-model",
-      "headline": "Każdy agent.\nKażdy model.",
-      "subline": "Hermes albo Opus, nawet na twojej GPU, dla każdego czatu.",
-      "highlight": "Każdy model."
+      "master": "07-home",
+      "slug": "03-finished-work",
+      "headline": "Wróć do\nskończonej pracy.",
+      "subline": "Co się uruchomiło, co się zmieniło i co jest gotowe, czeka w kieszeni.",
+      "highlight": "skończonej pracy."
     },
     {
-      "master": "fl-peek",
-      "slug": "04-peek",
-      "headline": "Zajrzyj do\nkażdego agenta",
-      "subline": "Co robi teraz, jego ostatnie kroki i jego pomocnicy.",
-      "highlight": "każdego agenta"
+      "master": "welcome",
+      "slug": "04-your-machines",
+      "headline": "Nic pomiędzy.\nTylko twoje maszyny.",
+      "subline": "Twój iPhone rozmawia z twoim komputerem przez twój własny Tailscale. Bez przekaźnika, bez logowania.",
+      "highlight": "Tylko twoje maszyny."
     },
     {
       "master": "fl-setup",
@@ -36,32 +36,32 @@
       "highlight": "Potem skanuj."
     },
     {
+      "master": "fl-agents",
+      "slug": "06-every-agent",
+      "headline": "Każdy agent.\nJedna tablica.",
+      "subline": "Claude Code, Hermes, opencode i każdy agent ACP, na twoich własnych komputerach.",
+      "highlight": "Jedna tablica."
+    },
+    {
+      "master": "fl-models",
+      "slug": "07-any-model",
+      "headline": "Każdy agent.\nKażdy model.",
+      "subline": "Hermes albo Opus, nawet na twojej GPU, dla każdego czatu.",
+      "highlight": "Każdy model."
+    },
+    {
       "master": "fl-steer",
-      "slug": "06-steer",
+      "slug": "08-steer",
       "headline": "Zmieniaj kurs\nw biegu",
       "subline": "Ustaw kolejną wiadomość w kolejce albo zatrzymaj turę na serwerze.",
       "highlight": "w biegu"
     },
     {
       "master": "fl-later",
-      "slug": "07-every-morning",
+      "slug": "09-every-morning",
       "headline": "Pytaj każdego ranka.\nZapyta komputer.",
       "subline": "Ustaw godzinę: dni robocze 7:30. Pyta, nawet gdy telefon jest wyłączony.",
       "highlight": "Zapyta komputer."
-    },
-    {
-      "master": "fl-carry",
-      "slug": "08-carry",
-      "headline": "Zmień model,\nwątek zostaje",
-      "subline": "Następny model dostaje krótkie streszczenie czatu i prowadzi dalej.",
-      "highlight": "wątek zostaje"
-    },
-    {
-      "master": "fl-party",
-      "slug": "09-party",
-      "headline": "Sześć modeli,\njeden dotyk",
-      "subline": "Model i jego poziom w każdym miejscu. Dotknij przycisku, by zmienić.",
-      "highlight": "jeden dotyk"
     },
     {
       "master": "14-analytics",
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "Wszystkie agenty.\nW kieszeni.",
-    "highlight": "W kieszeni."
+    "headline": "Odejdź od biurka.\nAgent cię znajdzie.",
+    "highlight": "Agent cię znajdzie."
   },
   "search": {
-    "headline": "Każdy agent,\nna każdym modelu",
-    "highlight": "na każdym modelu"
+    "headline": "Odejdź od biurka.\nAgent\ncię znajdzie.",
+    "highlight": "Agent\ncię znajdzie."
   }
 }

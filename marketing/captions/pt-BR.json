@@ -1,32 +1,32 @@
 {
   "iphone": [
     {
-      "master": "fl-agents",
-      "slug": "01-all-your-agents",
-      "headline": "Todos os agentes.\nNum só bolso.",
-      "subline": "Claude Code, Hermes, opencode e qualquer agente ACP, nos seus próprios computadores.",
-      "highlight": "Num só bolso."
+      "master": "lock",
+      "slug": "01-leave-your-desk",
+      "headline": "Saia da mesa.\nSeu agente te acha.",
+      "subline": "Claude Code, opencode e Hermes seguem trabalhando no seu computador.",
+      "highlight": "Seu agente te acha."
     },
     {
-      "master": "fl-wall",
-      "slug": "02-the-wall",
-      "headline": "Deixe ligado.\nVeja-os trabalhar.",
-      "subline": "Cada agente e ajudante ao vivo, em tela cheia. Segure para aprovar.",
-      "highlight": "Veja-os trabalhar."
+      "master": "03-approval",
+      "slug": "02-it-asks",
+      "headline": "Ele pergunta.\nToque em Aprovar.",
+      "subline": "Comandos arriscados esperam por você e seu Face ID, onde estiver.",
+      "highlight": "Toque em Aprovar."
     },
     {
-      "master": "fl-models",
-      "slug": "03-any-model",
-      "headline": "Qualquer agente.\nQualquer modelo.",
-      "subline": "Hermes ou Opus, até na sua GPU, por chat.",
-      "highlight": "Qualquer modelo."
+      "master": "07-home",
+      "slug": "03-finished-work",
+      "headline": "Volte para o\ntrabalho pronto.",
+      "subline": "O que rodou, o que mudou e o que está pronto, esperando no seu bolso.",
+      "highlight": "trabalho pronto."
     },
     {
-      "master": "fl-peek",
-      "slug": "04-peek",
-      "headline": "Espie\nqualquer agente",
-      "subline": "O que está fazendo agora, seus últimos passos e seus ajudantes.",
-      "highlight": "qualquer agente"
+      "master": "welcome",
+      "slug": "04-your-machines",
+      "headline": "Nada no meio.\nSó as suas máquinas.",
+      "subline": "Seu iPhone fala com seu computador pelo seu Tailscale. Sem relay, sem login.",
+      "highlight": "Só as suas máquinas."
     },
     {
       "master": "fl-setup",
@@ -36,32 +36,32 @@
       "highlight": "Depois escaneie."
     },
     {
+      "master": "fl-agents",
+      "slug": "06-every-agent",
+      "headline": "Todo agente.\nUm só painel.",
+      "subline": "Claude Code, Hermes, opencode e qualquer agente ACP, nos seus próprios computadores.",
+      "highlight": "Um só painel."
+    },
+    {
+      "master": "fl-models",
+      "slug": "07-any-model",
+      "headline": "Qualquer agente.\nQualquer modelo.",
+      "subline": "Hermes ou Opus, até na sua GPU, por chat.",
+      "highlight": "Qualquer modelo."
+    },
+    {
       "master": "fl-steer",
-      "slug": "06-steer",
+      "slug": "08-steer",
       "headline": "Ajuste no meio\ndo turno",
       "subline": "Enfileire a próxima mensagem ou pare o turno no servidor.",
       "highlight": "do turno"
     },
     {
       "master": "fl-later",
-      "slug": "07-every-morning",
+      "slug": "09-every-morning",
       "headline": "Toda manhã.\nSua máquina faz isso.",
       "subline": "Defina o horário: dias úteis às 7:30. Ela pergunta com o celular desligado.",
       "highlight": "Sua máquina faz isso."
-    },
-    {
-      "master": "fl-carry",
-      "slug": "08-carry",
-      "headline": "Troque de modelo,\nmantenha a conversa",
-      "subline": "O próximo modelo recebe um breve resumo do chat e segue em frente.",
-      "highlight": "mantenha a conversa"
-    },
-    {
-      "master": "fl-party",
-      "slug": "09-party",
-      "headline": "Seis modelos\na um deslize",
-      "subline": "Um modelo e seu esforço em cada vaga. Deslize o botão para trocar.",
-      "highlight": "a um deslize"
     },
     {
       "master": "14-analytics",
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "Todos os agentes.\nNum só bolso.",
-    "highlight": "Num só bolso."
+    "headline": "Saia da mesa.\nSeu agente te acha.",
+    "highlight": "Seu agente te acha."
   },
   "search": {
-    "headline": "Cada agente seu,\nem qualquer modelo",
-    "highlight": "em qualquer modelo"
+    "headline": "Saia da mesa.\nSeu agente\nte acha.",
+    "highlight": "Seu agente\nte acha."
   }
 }

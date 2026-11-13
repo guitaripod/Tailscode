@@ -1,67 +1,67 @@
 {
   "iphone": [
     {
-      "master": "fl-agents",
-      "slug": "01-all-your-agents",
-      "headline": "Tous vos agents.\nDans votre poche.",
-      "subline": "Claude Code, Hermes, opencode et tout agent ACP, sur vos propres ordinateurs.",
-      "highlight": "Dans votre poche."
+      "master": "lock",
+      "slug": "01-leave-your-desk",
+      "headline": "Quittez votre bureau.\nL'agent vous trouve.",
+      "subline": "Claude Code, opencode et Hermes continuent de travailler sur votre propre ordinateur.",
+      "highlight": "L'agent vous trouve."
     },
     {
-      "master": "fl-wall",
-      "slug": "02-the-wall",
-      "headline": "Laissez-le allumé.\nVoyez-les travailler.",
-      "subline": "Chaque agent et assistant en direct, en plein écran. Maintenez pour approuver.",
-      "highlight": "Voyez-les travailler."
+      "master": "03-approval",
+      "slug": "02-it-asks",
+      "headline": "Il demande.\nTouchez Approuver.",
+      "subline": "Les commandes risquées vous attendent, vous et votre Face ID, où que vous soyez.",
+      "highlight": "Touchez Approuver."
     },
     {
-      "master": "fl-models",
-      "slug": "03-any-model",
-      "headline": "Tout agent.\nTout modèle.",
-      "subline": "Hermes ou Opus, même sur votre GPU, par chat.",
-      "highlight": "Tout modèle."
+      "master": "07-home",
+      "slug": "03-finished-work",
+      "headline": "Revenez à un\ntravail terminé.",
+      "subline": "Ce qui a tourné, ce qui a changé et ce qui est fait vous attendent dans votre poche.",
+      "highlight": "travail terminé."
     },
     {
-      "master": "fl-peek",
-      "slug": "04-peek",
-      "headline": "Jetez un œil\nà chaque agent",
-      "subline": "Ce qu'il fait maintenant, ses dernières étapes et ses assistants.",
-      "highlight": "chaque agent"
+      "master": "welcome",
+      "slug": "04-your-machines",
+      "headline": "Rien entre les deux.\nJuste vos machines.",
+      "subline": "Votre iPhone parle à votre ordinateur via votre propre Tailscale. Sans relais, sans s'identifier.",
+      "highlight": "Juste vos machines."
     },
     {
       "master": "fl-setup",
       "slug": "05-one-command",
       "headline": "Une ligne.\nPuis scannez.",
-      "subline": "Le bridge de Claude Code s'installe en une commande. Sans compte.",
+      "subline": "Le bridge de Claude Code s'installe en une commande. Sans s'identifier.",
       "highlight": "Puis scannez."
     },
     {
+      "master": "fl-agents",
+      "slug": "06-every-agent",
+      "headline": "Chaque agent.\nUn seul tableau.",
+      "subline": "Claude Code, Hermes, opencode et tout agent ACP, sur vos propres ordinateurs.",
+      "highlight": "Un seul tableau."
+    },
+    {
+      "master": "fl-models",
+      "slug": "07-any-model",
+      "headline": "Tout agent.\nTout modèle.",
+      "subline": "Hermes ou Opus, même sur votre GPU, par chat.",
+      "highlight": "Tout modèle."
+    },
+    {
       "master": "fl-steer",
-      "slug": "06-steer",
+      "slug": "08-steer",
       "headline": "Guidez-le\nen plein tour",
       "subline": "Mettez le message suivant en file, ou arrêtez le tour sur le serveur.",
       "highlight": "en plein tour"
     },
     {
       "master": "fl-later",
-      "slug": "07-every-morning",
+      "slug": "09-every-morning",
       "headline": "Chaque matin, votre\nmachine s'en charge.",
       "subline": "Un horaire : en semaine 7:30. Elle demande, téléphone éteint.",
       "highlight": "machine s'en charge."
-    },
-    {
-      "master": "fl-carry",
-      "slug": "08-carry",
-      "headline": "Changez de modèle,\ngardez le fil",
-      "subline": "Le modèle suivant reçoit un bref résumé du chat et poursuit.",
-      "highlight": "gardez le fil"
-    },
-    {
-      "master": "fl-party",
-      "slug": "09-party",
-      "headline": "Six modèles,\nà un glissement",
-      "subline": "Un modèle et son effort dans chaque case. Glissez le bouton du modèle.",
-      "highlight": "à un glissement"
     },
     {
       "master": "14-analytics",
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "Tous vos agents.\nDans votre poche.",
-    "highlight": "Dans votre poche."
+    "headline": "Quittez votre bureau.\nL'agent vous trouve.",
+    "highlight": "L'agent vous trouve."
   },
   "search": {
-    "headline": "Chaque agent,\nsur tout modèle",
-    "highlight": "sur tout modèle"
+    "headline": "Quittez votre bureau.\nL'agent\nvous trouve.",
+    "highlight": "L'agent\nvous trouve."
   }
 }

@@ -1,32 +1,32 @@
 {
   "iphone": [
     {
-      "master": "fl-agents",
-      "slug": "01-all-your-agents",
-      "headline": "Alle deine Agenten.\nIn deiner Tasche.",
-      "subline": "Claude Code, Hermes, opencode und jeder ACP-Agent, auf deinen eigenen Rechnern.",
-      "highlight": "In deiner Tasche."
+      "master": "lock",
+      "slug": "01-leave-your-desk",
+      "headline": "Geh ruhig.\nDer Agent ruft dich.",
+      "subline": "Claude Code, opencode und Hermes arbeiten auf deinem eigenen Rechner weiter.",
+      "highlight": "Der Agent ruft dich."
     },
     {
-      "master": "fl-wall",
-      "slug": "02-the-wall",
-      "headline": "Lass sie laufen.\nSieh ihnen zu.",
-      "subline": "Jeder Agent und Helfer live im Vollbild. Halten zum Freigeben.",
-      "highlight": "Sieh ihnen zu."
+      "master": "03-approval",
+      "slug": "02-it-asks",
+      "headline": "Er fragt.\nDu tippst Erlauben.",
+      "subline": "Riskante Befehle warten auf dich und deine Face ID, egal wo du bist.",
+      "highlight": "Du tippst Erlauben."
     },
     {
-      "master": "fl-models",
-      "slug": "03-any-model",
-      "headline": "Jeder Agent.\nJedes Modell.",
-      "subline": "Hermes oder Opus, sogar auf deiner eigenen GPU, pro Chat.",
-      "highlight": "Jedes Modell."
+      "master": "07-home",
+      "slug": "03-finished-work",
+      "headline": "Komm zurück zu\nfertiger Arbeit.",
+      "subline": "Was lief, was sich geändert hat und was fertig ist, wartet in deiner Tasche.",
+      "highlight": "fertiger Arbeit."
     },
     {
-      "master": "fl-peek",
-      "slug": "04-peek",
-      "headline": "Schau rein bei\njedem Agenten",
-      "subline": "Was er gerade tut, seine letzten Schritte und seine Helfer.",
-      "highlight": "jedem Agenten"
+      "master": "welcome",
+      "slug": "04-your-machines",
+      "headline": "Nichts dazwischen.\nNur deine Rechner.",
+      "subline": "iPhone und Rechner sprechen über dein eigenes Tailscale. Kein Relay, keine Anmeldung.",
+      "highlight": "Nur deine Rechner."
     },
     {
       "master": "fl-setup",
@@ -36,32 +36,32 @@
       "highlight": "Dann scannen."
     },
     {
+      "master": "fl-agents",
+      "slug": "06-every-agent",
+      "headline": "Jeder Agent.\nEin Board.",
+      "subline": "Claude Code, Hermes, opencode und jeder ACP-Agent, auf deinen eigenen Rechnern.",
+      "highlight": "Ein Board."
+    },
+    {
+      "master": "fl-models",
+      "slug": "07-any-model",
+      "headline": "Jeder Agent.\nJedes Modell.",
+      "subline": "Hermes oder Opus, sogar auf deiner eigenen GPU, pro Chat.",
+      "highlight": "Jedes Modell."
+    },
+    {
       "master": "fl-steer",
-      "slug": "06-steer",
+      "slug": "08-steer",
       "headline": "Greif ein,\nmitten im Lauf",
       "subline": "Nächste Nachricht einreihen oder den Lauf auf dem Server stoppen.",
       "highlight": "mitten im Lauf"
     },
     {
       "master": "fl-later",
-      "slug": "07-every-morning",
+      "slug": "09-every-morning",
       "headline": "Jeden Morgen.\nDein Rechner fragt.",
       "subline": "Wann: werktags 7:30. Er fragt, auch bei ausgeschaltetem Handy.",
       "highlight": "Dein Rechner fragt."
-    },
-    {
-      "master": "fl-carry",
-      "slug": "08-carry",
-      "headline": "Modell wechseln,\nder Faden bleibt",
-      "subline": "Das nächste Modell bekommt den Chat als kurze Zusammenfassung.",
-      "highlight": "der Faden bleibt"
-    },
-    {
-      "master": "fl-party",
-      "slug": "09-party",
-      "headline": "Sechs Modelle,\nein Wisch entfernt",
-      "subline": "Modell und Aufwand in jedem Platz. Zum Wechseln den Button wischen.",
-      "highlight": "ein Wisch entfernt"
     },
     {
       "master": "14-analytics",
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "Alle deine Agenten.\nIn deiner Tasche.",
-    "highlight": "In deiner Tasche."
+    "headline": "Geh ruhig.\nDer Agent ruft dich.",
+    "highlight": "Der Agent ruft dich."
   },
   "search": {
-    "headline": "Jeder Agent,\nauf jedem Modell",
-    "highlight": "auf jedem Modell"
+    "headline": "Geh ruhig.\nDer Agent\nruft dich.",
+    "highlight": "Der Agent\nruft dich."
   }
 }

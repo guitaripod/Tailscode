@@ -1,32 +1,32 @@
 {
   "iphone": [
     {
-      "master": "fl-agents",
-      "slug": "01-all-your-agents",
-      "headline": "Tutti i tuoi agenti.\nIn tasca.",
-      "subline": "Claude Code, Hermes, opencode e qualsiasi agente ACP, sui tuoi computer.",
-      "highlight": "In tasca."
+      "master": "lock",
+      "slug": "01-leave-your-desk",
+      "headline": "Lascia la scrivania.\nIl tuo agente ti trova.",
+      "subline": "Claude Code, opencode e Hermes continuano a lavorare sul tuo computer.",
+      "highlight": "Il tuo agente ti trova."
     },
     {
-      "master": "fl-wall",
-      "slug": "02-the-wall",
-      "headline": "Sempre acceso.\nGuardali.",
-      "subline": "Ogni agente e aiutante dal vivo, a schermo intero. Tieni premuto per approvare.",
-      "highlight": "Guardali."
+      "master": "03-approval",
+      "slug": "02-it-asks",
+      "headline": "Lui chiede.\nTu tocchi Approva.",
+      "subline": "I comandi rischiosi aspettano te e il tuo Face ID, ovunque tu sia.",
+      "highlight": "Tu tocchi Approva."
     },
     {
-      "master": "fl-models",
-      "slug": "03-any-model",
-      "headline": "Ogni agente.\nOgni modello.",
-      "subline": "Hermes o Opus, anche sulla tua GPU, per chat.",
-      "highlight": "Ogni modello."
+      "master": "07-home",
+      "slug": "03-finished-work",
+      "headline": "Torna e trovi\nil lavoro finito.",
+      "subline": "Cosa è stato eseguito, cosa è cambiato e cosa è fatto, in tasca ad aspettarti.",
+      "highlight": "il lavoro finito."
     },
     {
-      "master": "fl-peek",
-      "slug": "04-peek",
-      "headline": "Guarda dentro\nogni agente",
-      "subline": "Cosa sta facendo ora, i suoi ultimi passi e i suoi aiutanti.",
-      "highlight": "ogni agente"
+      "master": "welcome",
+      "slug": "04-your-machines",
+      "headline": "Niente in mezzo.\nSolo le tue macchine.",
+      "subline": "Il tuo iPhone parla con il tuo computer sul tuo Tailscale. Nessun relay, nessun login.",
+      "highlight": "Solo le tue macchine."
     },
     {
       "master": "fl-setup",
@@ -36,32 +36,32 @@
       "highlight": "Poi scansiona."
     },
     {
+      "master": "fl-agents",
+      "slug": "06-every-agent",
+      "headline": "Ogni agente.\nUn'unica bacheca.",
+      "subline": "Claude Code, Hermes, opencode e qualsiasi agente ACP, sui tuoi computer.",
+      "highlight": "Un'unica bacheca."
+    },
+    {
+      "master": "fl-models",
+      "slug": "07-any-model",
+      "headline": "Ogni agente.\nOgni modello.",
+      "subline": "Hermes o Opus, anche sulla tua GPU, per chat.",
+      "highlight": "Ogni modello."
+    },
+    {
       "master": "fl-steer",
-      "slug": "06-steer",
+      "slug": "08-steer",
       "headline": "Correggi\na metà corsa",
       "subline": "Accoda il messaggio successivo o ferma il turno sul server.",
       "highlight": "a metà corsa"
     },
     {
       "master": "fl-later",
-      "slug": "07-every-morning",
+      "slug": "09-every-morning",
       "headline": "Chiedi ogni mattina.\nLo fa il tuo computer.",
       "subline": "Orario: nei giorni feriali 7:30. Chiede anche a telefono spento.",
       "highlight": "Lo fa il tuo computer."
-    },
-    {
-      "master": "fl-carry",
-      "slug": "08-carry",
-      "headline": "Cambia modello,\nil filo resta",
-      "subline": "Il modello successivo riceve un breve riassunto e prosegue.",
-      "highlight": "il filo resta"
-    },
-    {
-      "master": "fl-party",
-      "slug": "09-party",
-      "headline": "Sei modelli,\na un tocco",
-      "subline": "Un modello e il suo impegno in ogni slot. Scorri il selettore.",
-      "highlight": "a un tocco"
     },
     {
       "master": "14-analytics",
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "Tutti i tuoi agenti.\nIn tasca.",
-    "highlight": "In tasca."
+    "headline": "Lascia la scrivania.\nIl tuo agente ti trova.",
+    "highlight": "Il tuo agente ti trova."
   },
   "search": {
-    "headline": "Ogni agente che usi,\nsu ogni modello",
-    "highlight": "su ogni modello"
+    "headline": "Lascia la scrivania.\nIl tuo agente\nti trova.",
+    "highlight": "Il tuo agente\nti trova."
   }
 }

@@ -1,32 +1,32 @@
 {
   "iphone": [
     {
-      "master": "fl-agents",
-      "slug": "01-all-your-agents",
-      "headline": "Alla dina agenter.\nI din ficka.",
-      "subline": "Claude Code, Hermes, opencode och vilken ACP-agent som helst, på dina egna datorer.",
-      "highlight": "I din ficka."
+      "master": "lock",
+      "slug": "01-leave-your-desk",
+      "headline": "Lämna skrivbordet.\nDin agent hittar dig.",
+      "subline": "Claude Code, opencode och Hermes jobbar vidare på din egen dator.",
+      "highlight": "Din agent hittar dig."
     },
     {
-      "master": "fl-wall",
-      "slug": "02-the-wall",
-      "headline": "Låt den vara igång.\nSe dem jobba.",
-      "subline": "Varje agent och subagent, live och i helskärm. Håll för att godkänna.",
-      "highlight": "Se dem jobba."
+      "master": "03-approval",
+      "slug": "02-it-asks",
+      "headline": "Den frågar.\nDu trycker Godkänn.",
+      "subline": "Riskabla kommandon väntar på dig och ditt Face ID, var du än är.",
+      "highlight": "Du trycker Godkänn."
     },
     {
-      "master": "fl-models",
-      "slug": "03-any-model",
-      "headline": "Valfri agent.\nValfri modell.",
-      "subline": "Hermes eller Opus, till och med på din egen GPU, per chatt.",
-      "highlight": "Valfri modell."
+      "master": "07-home",
+      "slug": "03-finished-work",
+      "headline": "Kom tillbaka till\nfärdigt arbete.",
+      "subline": "Vad som kördes, vad som ändrades och vad som är klart väntar i fickan.",
+      "highlight": "färdigt arbete."
     },
     {
-      "master": "fl-peek",
-      "slug": "04-peek",
-      "headline": "Kika in hos\nvalfri agent",
-      "subline": "Vad den gör just nu, dess senaste steg och dess subagenter.",
-      "highlight": "valfri agent"
+      "master": "welcome",
+      "slug": "04-your-machines",
+      "headline": "Inget mellanled.\nBara dina maskiner.",
+      "subline": "Din iPhone pratar med din dator över ditt eget Tailscale. Ingen inloggning, inget emellan.",
+      "highlight": "Bara dina maskiner."
     },
     {
       "master": "fl-setup",
@@ -36,32 +36,32 @@
       "highlight": "Skanna sedan."
     },
     {
+      "master": "fl-agents",
+      "slug": "06-every-agent",
+      "headline": "Varje agent.\nEn tavla.",
+      "subline": "Claude Code, Hermes, opencode och vilken ACP-agent som helst, på dina egna datorer.",
+      "highlight": "En tavla."
+    },
+    {
+      "master": "fl-models",
+      "slug": "07-any-model",
+      "headline": "Valfri agent.\nValfri modell.",
+      "subline": "Hermes eller Opus, till och med på din egen GPU, per chatt.",
+      "highlight": "Valfri modell."
+    },
+    {
       "master": "fl-steer",
-      "slug": "06-steer",
+      "slug": "08-steer",
       "headline": "Styr den\nmitt i körningen",
       "subline": "Köa nästa meddelande, eller stoppa turen på servern.",
       "highlight": "mitt i körningen"
     },
     {
       "master": "fl-later",
-      "slug": "07-every-morning",
+      "slug": "09-every-morning",
       "headline": "Fråga varje morgon.\nDin dator frågar.",
       "subline": "Säg när: vardagar 7:30. Den frågar med telefonen avstängd.",
       "highlight": "Din dator frågar."
-    },
-    {
-      "master": "fl-carry",
-      "slug": "08-carry",
-      "headline": "Byt modell,\nbehåll tråden",
-      "subline": "Nästa modell får en kort sammanfattning av chatten och fortsätter därifrån.",
-      "highlight": "behåll tråden"
-    },
-    {
-      "master": "fl-party",
-      "slug": "09-party",
-      "headline": "Sex modeller,\nett svep bort",
-      "subline": "En modell och dess ansträngningsnivå i varje plats. Svep kapseln för att byta.",
-      "highlight": "ett svep bort"
     },
     {
       "master": "14-analytics",
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "Alla dina agenter.\nI din ficka.",
-    "highlight": "I din ficka."
+    "headline": "Lämna skrivbordet.\nDin agent hittar dig.",
+    "highlight": "Din agent hittar dig."
   },
   "search": {
-    "headline": "Varje agent du kör,\npå valfri modell",
-    "highlight": "på valfri modell"
+    "headline": "Lämna skrivbordet.\nDin agent\nhittar dig.",
+    "highlight": "Din agent\nhittar dig."
   }
 }

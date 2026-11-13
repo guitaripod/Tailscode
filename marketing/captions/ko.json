@@ -1,32 +1,32 @@
 {
   "iphone": [
     {
-      "master": "fl-agents",
-      "slug": "01-all-your-agents",
-      "headline": "모든 에이전트,\n주머니 하나에",
-      "subline": "Claude Code, Hermes, opencode, 그리고 모든 ACP 에이전트를 내 컴퓨터에서.",
-      "highlight": "주머니 하나에"
+      "master": "lock",
+      "slug": "01-leave-your-desk",
+      "headline": "자리를 떠나도,\n에이전트가 알려 줍니다",
+      "subline": "Claude Code, opencode, Hermes가 내 컴퓨터에서 계속 일합니다.",
+      "highlight": "에이전트가 알려 줍니다"
     },
     {
-      "master": "fl-wall",
-      "slug": "02-the-wall",
-      "headline": "켜 두고\n지켜보세요",
-      "subline": "모든 에이전트와 보조 에이전트를 전체 화면으로 실시간 표시. 길게 눌러 승인하세요.",
-      "highlight": "지켜보세요"
+      "master": "03-approval",
+      "slug": "02-it-asks",
+      "headline": "물어보면,\n승인을 탭하세요",
+      "subline": "위험한 명령은 어디에 있든 나와 Face ID를 기다립니다.",
+      "highlight": "승인을 탭하세요"
     },
     {
-      "master": "fl-models",
-      "slug": "03-any-model",
-      "headline": "어떤 에이전트든,\n어떤 모델이든.",
-      "subline": "Hermes든 Opus든, 내 GPU의 모델까지, 채팅마다 골라요.",
-      "highlight": "어떤 모델이든."
+      "master": "07-home",
+      "slug": "03-finished-work",
+      "headline": "돌아오면\n일이 끝나 있습니다",
+      "subline": "무엇을 실행했고, 무엇이 바뀌었고, 무엇이 끝났는지 주머니 속에서 기다립니다.",
+      "highlight": "일이 끝나 있습니다"
     },
     {
-      "master": "fl-peek",
-      "slug": "04-peek",
-      "headline": "어떤 에이전트든\n들여다보세요",
-      "subline": "지금 하는 일, 마지막 단계, 그리고 보조 에이전트.",
-      "highlight": "어떤 에이전트든"
+      "master": "welcome",
+      "slug": "04-your-machines",
+      "headline": "중계 없음. 로그인 없음.\n내 기기뿐",
+      "subline": "iPhone이 내 Tailscale로 내 컴퓨터와 직접 통신합니다. 사이에는 아무것도 없습니다.",
+      "highlight": "내 기기뿐"
     },
     {
       "master": "fl-setup",
@@ -36,32 +36,32 @@
       "highlight": "그다음 스캔"
     },
     {
+      "master": "fl-agents",
+      "slug": "06-every-agent",
+      "headline": "모든 에이전트,\n보드 하나에",
+      "subline": "Claude Code, Hermes, opencode, 그리고 모든 ACP 에이전트를 내 컴퓨터에서.",
+      "highlight": "보드 하나에"
+    },
+    {
+      "master": "fl-models",
+      "slug": "07-any-model",
+      "headline": "어떤 에이전트든,\n어떤 모델이든.",
+      "subline": "Hermes든 Opus든, 내 GPU의 모델까지, 채팅마다 골라요.",
+      "highlight": "어떤 모델이든."
+    },
+    {
       "master": "fl-steer",
-      "slug": "06-steer",
+      "slug": "08-steer",
       "headline": "실행 중에도\n조종하세요",
       "subline": "다음 메시지를 대기시키거나 서버에서 턴을 멈추세요.",
       "highlight": "조종하세요"
     },
     {
       "master": "fl-later",
-      "slug": "07-every-morning",
+      "slug": "09-every-morning",
       "headline": "매일 아침 질문,\n컴퓨터가 알아서.",
       "subline": "“평일 7:30”이라고 쓰면 끝. 휴대폰이 꺼져 있어도 컴퓨터가 물어봐요.",
       "highlight": "컴퓨터가 알아서."
-    },
-    {
-      "master": "fl-carry",
-      "slug": "08-carry",
-      "headline": "모델을 바꿔도,\n대화는 이어져요",
-      "subline": "다음 모델이 채팅 요약을 받아 이어서 답합니다.",
-      "highlight": "대화는 이어져요"
-    },
-    {
-      "master": "fl-party",
-      "slug": "09-party",
-      "headline": "모델 여섯 개,\n스와이프 한 번",
-      "subline": "슬롯마다 모델과 추론 강도. 모델 버튼을 밀어 바꾸세요.",
-      "highlight": "스와이프 한 번"
     },
     {
       "master": "14-analytics",
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "모든 에이전트,\n주머니 하나에",
-    "highlight": "주머니 하나에"
+    "headline": "자리를 떠나도,\n에이전트가 알려 줍니다",
+    "highlight": "에이전트가 알려 줍니다"
   },
   "search": {
-    "headline": "내가 돌리는 모든 에이전트,\n어떤 모델로도",
-    "highlight": "어떤 모델로도"
+    "headline": "자리를 떠나도,\n에이전트가\n알려 줍니다",
+    "highlight": "에이전트가\n알려 줍니다"
   }
 }

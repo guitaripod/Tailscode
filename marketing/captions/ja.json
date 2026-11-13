@@ -1,32 +1,32 @@
 {
   "iphone": [
     {
-      "master": "fl-agents",
-      "slug": "01-all-your-agents",
-      "headline": "すべてのエージェント\nポケットひとつに",
-      "subline": "Claude Code、Hermes、opencode、そしてあらゆるACPエージェントを、手元のマシンで。",
-      "highlight": "ポケットひとつに"
+      "master": "lock",
+      "slug": "01-leave-your-desk",
+      "headline": "デスクを離れても、\nエージェントから届く",
+      "subline": "Claude Code、opencode、Hermes が、あなた自身のコンピュータで作業を続けます。",
+      "highlight": "エージェントから届く"
     },
     {
-      "master": "fl-wall",
-      "slug": "02-the-wall",
-      "headline": "つけたままに。\n働く姿を見守る。",
-      "subline": "すべてのエージェントとヘルパーを全画面でライブ表示。長押しで承認。",
-      "highlight": "働く姿を見守る。"
+      "master": "03-approval",
+      "slug": "02-it-asks",
+      "headline": "聞かれたら、\n承認をタップ",
+      "subline": "リスクのあるコマンドは、どこにいても、あなたと Face ID を待ちます。",
+      "highlight": "承認をタップ"
     },
     {
-      "master": "fl-models",
-      "slug": "03-any-model",
-      "headline": "どんなエージェントも\nどんなモデルも",
-      "subline": "HermesでもOpusでも、自分のGPUのモデルでも。チャットごとに。",
-      "highlight": "どんなモデルも"
+      "master": "07-home",
+      "slug": "03-finished-work",
+      "headline": "戻れば、\n仕事は終わっています",
+      "subline": "何を実行し、何が変わり、何が完了したか。すべてポケットの中に。",
+      "highlight": "仕事は終わっています"
     },
     {
-      "master": "fl-peek",
-      "slug": "04-peek",
-      "headline": "どのエージェントも\n覗いてみる",
-      "subline": "いま何をしているか、直近の手順、そしてサブエージェント。",
-      "highlight": "どのエージェントも"
+      "master": "welcome",
+      "slug": "04-your-machines",
+      "headline": "間に何もない。\n自分のマシンだけ",
+      "subline": "iPhone とコンピュータは、あなた自身の Tailscale で直接つながります。中継もサインインもありません。",
+      "highlight": "自分のマシンだけ"
     },
     {
       "master": "fl-setup",
@@ -36,32 +36,32 @@
       "highlight": "あとはスキャン"
     },
     {
+      "master": "fl-agents",
+      "slug": "06-every-agent",
+      "headline": "全エージェントを\nひとつのボードに",
+      "subline": "Claude Code、Hermes、opencode、そしてあらゆるACPエージェントを、手元のマシンで。",
+      "highlight": "ひとつのボードに"
+    },
+    {
+      "master": "fl-models",
+      "slug": "07-any-model",
+      "headline": "どんなエージェントも\nどんなモデルも",
+      "subline": "HermesでもOpusでも、自分のGPUのモデルでも。チャットごとに。",
+      "highlight": "どんなモデルも"
+    },
+    {
       "master": "fl-steer",
-      "slug": "06-steer",
+      "slug": "08-steer",
       "headline": "走行中に\n操作できる",
       "subline": "次のメッセージを予約するか、サーバー上でターンを止められます。",
       "highlight": "操作できる"
     },
     {
       "master": "fl-later",
-      "slug": "07-every-morning",
+      "slug": "09-every-morning",
       "headline": "毎朝の質問は\nマシンにお任せ",
       "subline": "「平日 7:30」と書くだけ。スマホがオフでも、マシンが尋ねます。",
       "highlight": "マシンにお任せ"
-    },
-    {
-      "master": "fl-carry",
-      "slug": "08-carry",
-      "headline": "モデルを替えても、\n会話は続く",
-      "subline": "次のモデルが短い要約を受け取り、そのまま続けます。",
-      "highlight": "会話は続く"
-    },
-    {
-      "master": "fl-party",
-      "slug": "09-party",
-      "headline": "六つのモデルを、\nスワイプひとつで",
-      "subline": "各枠にモデルと推論の強さ。ボタンをスワイプして切替。",
-      "highlight": "スワイプひとつで"
     },
     {
       "master": "14-analytics",
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "すべてのエージェント。\nポケットひとつに。",
-    "highlight": "ポケットひとつに。"
+    "headline": "デスクを離れても、\nエージェントから届く",
+    "highlight": "エージェントから届く"
   },
   "search": {
-    "headline": "動かすすべてのエージェントを、\nどのモデルでも",
-    "highlight": "どのモデルでも"
+    "headline": "デスクを離れても、\nエージェントから\n届く",
+    "highlight": "エージェントから\n届く"
   }
 }

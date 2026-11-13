@@ -38,11 +38,20 @@ OUT = os.path.join(compose.ROOT, "marketing/appstore/creative")
 HEADER = (3840, 1646)
 SEARCH = (3840, 2560)
 UNIVERSAL = (5244, 2950)
-BOARD_BOX = (30, 790, 1290, 1905)
+APPROVAL_BOX = (0.035, 0.59, 0.972, 0.818)
+ACTIVITY_BOX = (0.035, 0.745, 0.965, 0.845)
 
 
 def master(locale, name):
     return os.path.join(compose.masters_dir(locale, "iphone"), name + ".png")
+
+
+def lock_master(locale):
+    """The Lock Screen master of a locale, or the English one where a locale has none: it is photographed
+    from Device Hub at the Mac, one locale at a time, and the clock and the wallpaper say the same in
+    every language."""
+    path = master(locale, "lock")
+    return path if os.path.exists(path) else master("en-US", "lock")
 
 
 def fitted_headline(text, highlight, column, ceiling, align):
@@ -81,9 +90,11 @@ def compose_header(locale, book):
     size, head = fitted_headline(book["header"]["headline"], book["header"].get("highlight"), 1500, 150, "center")
     canvas.paste(head, ((W - head.width) // 2, 104), head)
     top = 104 + head.height + 12
-    phone(canvas, master(locale, "fl-models"), 640, W // 2 - 720, top + 150)
+    phone(canvas, master(locale, "03-approval"), 640, W // 2 - 720, top + 150)
     phone(canvas, master(locale, "07-home"), 640, W // 2 + 720, top + 150)
-    phone(canvas, master(locale, "fl-agents"), 780, W // 2, top)
+    phone(canvas, lock_master(locale), 780, W // 2, top)
+    compose.lifted(canvas, lock_master(locale), {"box": list(ACTIVITY_BOX), "width": 940, "center_y": 0.80,
+                                                 "radius": 54, "edge": 4}, None)
     return canvas.convert("RGB")
 
 
@@ -91,19 +102,26 @@ def compose_search(locale, book):
     W, H = SEARCH
     canvas = compose.ground(W, H, lift_at=(0.72, 0.7), lift_radius=0.4)
     hairline(canvas, 150, 560)
-    size, head = fitted_headline(book["search"]["headline"], book["search"].get("highlight"), 1520, 168, "left")
+    size, head = fitted_headline(book["search"]["headline"], book["search"].get("highlight"), 1440, 168, "left")
     canvas.paste(head, (560, 1010 - head.height // 2), head)
-    phone(canvas, master(locale, "fl-agents"), 1120, 2740, 420)
+    path = lock_master(locale)
+    device, (left, top), scale = phone(canvas, path, 1120, 2740, 420)
+    shot = Image.open(path)
+    screen = ((left + (device.width - shot.width * scale) / 2, top + (device.height - shot.height * scale) / 2), scale)
+    compose.lifted(canvas, path, {"box": list(ACTIVITY_BOX), "width": 1380, "over": True, "dx": 2740 - W // 2,
+                                  "radius": 78, "edge": 6}, screen)
     return canvas.convert("RGB")
 
 
 def compose_universal(locale, book):
-    """Text-free: the Agents board's needs-you card and the first working row, cut from the master at
-    its pixels and enlarged, on the ground with the tailnet line through it, set above the middle of
-    the canvas."""
+    """Text-free: the approval a chat asks for, with its three answers, cut from the master at its
+    pixels and enlarged, on the ground with the tailnet line through it, set above the middle of the
+    canvas."""
     W, H = UNIVERSAL
     canvas = compose.ground(W, H, lift_at=(0.5, 0.42), lift_radius=0.3, lift_alpha=18)
-    cut = Image.open(master(locale, "fl-agents")).convert("RGB").crop(BOARD_BOX)
+    shot = Image.open(master(locale, "03-approval")).convert("RGB")
+    x0, y0, x1, y1 = APPROVAL_BOX
+    cut = shot.crop((round(x0 * shot.width), round(y0 * shot.height), round(x1 * shot.width), round(y1 * shot.height)))
     scale = 1760 / cut.width
     cut = cut.resize((round(cut.width * scale), round(cut.height * scale)), Image.LANCZOS)
     y = round(H * 0.40)

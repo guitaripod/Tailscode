@@ -1,22 +1,56 @@
 {
   "iphone": {
-    "01-all-your-agents": {
-      "crop": 0.15,
-      "fade": 26,
-      "device_width": 1300
+    "01-leave-your-desk": {
+      "crop": 0.0,
+      "device_width": 1480,
+      "lift": {
+        "box": [
+          0.035,
+          0.745,
+          0.965,
+          0.845
+        ],
+        "width": 1250,
+        "center_y": 0.66,
+        "radius": 70
+      }
     },
-    "02-the-wall": {
+    "02-it-asks": {
+      "crop": 0.13,
+      "fade": 26,
+      "device_width": 1300,
+      "lift": {
+        "box": [
+          0.035,
+          0.59,
+          0.972,
+          0.818
+        ],
+        "width": 1268,
+        "over": true,
+        "radius": 44,
+        "dim": 0.45
+      }
+    },
+    "03-finished-work": {
       "crop": 0.06,
       "fade": 26,
-      "device_width": 1300
+      "device_width": 1300,
+      "lift": {
+        "box": [
+          0.02,
+          0.108,
+          0.98,
+          0.197
+        ],
+        "width": 1268,
+        "over": true,
+        "radius": 44,
+        "dim": 0.3
+      }
     },
-    "03-any-model": {
-      "crop": 0.165,
-      "fade": 26,
-      "device_width": 1300
-    },
-    "04-peek": {
-      "crop": 0.155,
+    "04-your-machines": {
+      "crop": 0.12,
       "fade": 26,
       "device_width": 1300
     },
@@ -25,30 +59,42 @@
       "fade": 26,
       "device_width": 1300
     },
-    "06-steer": {
+    "06-every-agent": {
+      "crop": 0.15,
+      "fade": 26,
+      "device_width": 1300
+    },
+    "07-any-model": {
+      "crop": 0.165,
+      "fade": 26,
+      "device_width": 1300
+    },
+    "08-steer": {
       "crop": 0.27,
       "fade": 26,
       "device_width": 1480
     },
-    "08-carry": {
-      "crop": 0.165,
+    "09-every-morning": {
+      "crop": 0.15,
       "fade": 26,
-      "device_width": 1400
-    },
-    "09-party": {
-      "crop": 0.285,
-      "fade": 26,
-      "device_width": 1480
+      "device_width": 1360
     },
     "10-costs": {
       "crop": 0.12,
       "fade": 26,
-      "device_width": 1300
-    },
-    "07-every-morning": {
-      "crop": 0.15,
-      "fade": 26,
-      "device_width": 1360
+      "device_width": 1300,
+      "lift": {
+        "box": [
+          0.03,
+          0.178,
+          0.97,
+          0.352
+        ],
+        "width": 1268,
+        "over": true,
+        "radius": 44,
+        "dim": 0.35
+      }
     }
   },
   "ipad": {
@@ -120,7 +166,7 @@
     }
   },
   "duo": {
-    "01-all-your-agents": {
+    "01-leave-your-desk": {
       "master": "fl-agents",
       "screen": "agents",
       "state": "inner-portrait",
@@ -129,33 +175,34 @@
         2853
       ]
     },
-    "02-the-wall": {
-      "master": "fl-wall",
-      "screen": "wall",
-      "state": "inner-landscape",
-      "size": [
-        2853,
-        2007
-      ]
-    },
-    "03-any-model": {
-      "master": "fl-models",
-      "screen": "models",
-      "state": "outer-portrait",
-      "size": [
-        1398,
-        2034
-      ]
-    },
-    "04-peek": {
-      "master": "fl-peek",
-      "screen": "peek",
+    "02-it-asks": {
+      "master": "03-approval",
+      "screen": "approval",
       "state": "outer-portrait",
       "size": [
         1398,
         2034
       ],
-      "crop": 0.15
+      "crop": 0.12
+    },
+    "03-finished-work": {
+      "master": "07-home",
+      "screen": "home",
+      "state": "outer-portrait",
+      "size": [
+        1398,
+        2034
+      ]
+    },
+    "04-your-machines": {
+      "master": "welcome",
+      "screen": "welcome",
+      "state": "inner-portrait",
+      "size": [
+        2007,
+        2853
+      ],
+      "crop": 0.1
     },
     "05-one-command": {
       "master": "fl-setup",
@@ -167,7 +214,25 @@
       ],
       "crop": 0.17
     },
-    "06-steer": {
+    "06-every-agent": {
+      "master": "fl-wall",
+      "screen": "wall",
+      "state": "inner-landscape",
+      "size": [
+        2853,
+        2007
+      ]
+    },
+    "07-any-model": {
+      "master": "fl-models",
+      "screen": "models",
+      "state": "outer-portrait",
+      "size": [
+        1398,
+        2034
+      ]
+    },
+    "08-steer": {
       "master": "fl-steer",
       "screen": "steer",
       "state": "laptop-portrait",
@@ -177,35 +242,7 @@
       ],
       "crop": 0.27
     },
-    "08-carry": {
-      "master": "fl-carry",
-      "screen": "carry",
-      "state": "inner-landscape",
-      "size": [
-        2853,
-        2007
-      ]
-    },
-    "09-party": {
-      "master": "fl-party",
-      "screen": "party",
-      "state": "inner-landscape",
-      "size": [
-        2853,
-        2007
-      ]
-    },
-    "10-costs": {
-      "master": "14-analytics",
-      "screen": "costs",
-      "state": "outer-landscape",
-      "size": [
-        2034,
-        1398
-      ],
-      "device_width": 0.78
-    },
-    "07-every-morning": {
+    "09-every-morning": {
       "master": "fl-later",
       "screen": "later",
       "state": "book-landscape",
@@ -216,6 +253,16 @@
       "device_width": 1.2,
       "device_x": 0.425,
       "device_top": -0.12
+    },
+    "10-costs": {
+      "master": "14-analytics",
+      "screen": "costs",
+      "state": "outer-landscape",
+      "size": [
+        2034,
+        1398
+      ],
+      "device_width": 0.78
     }
   }
 }

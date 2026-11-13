@@ -1,32 +1,32 @@
 {
   "iphone": [
     {
-      "master": "fl-agents",
-      "slug": "01-all-your-agents",
-      "headline": "所有智慧代理\n裝進口袋",
-      "subline": "Claude Code、Hermes、opencode 和任何 ACP 智慧代理，都在你自己的電腦上。",
-      "highlight": "裝進口袋"
+      "master": "lock",
+      "slug": "01-leave-your-desk",
+      "headline": "離開書桌\n智慧代理會來找你",
+      "subline": "Claude Code、opencode 和 Hermes 在你自己的電腦上繼續工作。",
+      "highlight": "智慧代理會來找你"
     },
     {
-      "master": "fl-wall",
-      "slug": "02-the-wall",
-      "headline": "一直開著\n看它們工作",
-      "subline": "每個代理和子代理全螢幕即時呈現。長按即可核准。",
-      "highlight": "看它們工作"
+      "master": "03-approval",
+      "slug": "02-it-asks",
+      "headline": "它來詢問\n你點一下核准",
+      "subline": "有風險的指令會等你和你的 Face ID，無論你在哪裡。",
+      "highlight": "你點一下核准"
     },
     {
-      "master": "fl-models",
-      "slug": "03-any-model",
-      "headline": "任何智慧代理，\n任何模型。",
-      "subline": "Hermes 或 Opus，哪怕跑在你自己的顯示卡上，每個對話各自選。",
-      "highlight": "任何模型。"
+      "master": "07-home",
+      "slug": "03-finished-work",
+      "headline": "回來時\n工作已經完成",
+      "subline": "執行了什麼、改了什麼、完成了什麼，都在口袋裡等你。",
+      "highlight": "工作已經完成"
     },
     {
-      "master": "fl-peek",
-      "slug": "04-peek",
-      "headline": "隨時查看\n任何智慧代理",
-      "subline": "它正在做什麼、最近幾步，以及它的子代理。",
-      "highlight": "任何智慧代理"
+      "master": "welcome",
+      "slug": "04-your-machines",
+      "headline": "沒有中繼，無需登入\n只有你的機器",
+      "subline": "iPhone 透過你自己的 Tailscale 直接連到你的電腦，中間什麼都沒有。",
+      "highlight": "只有你的機器"
     },
     {
       "master": "fl-setup",
@@ -36,32 +36,32 @@
       "highlight": "然後掃描"
     },
     {
+      "master": "fl-agents",
+      "slug": "06-every-agent",
+      "headline": "所有智慧代理\n一塊面板",
+      "subline": "Claude Code、Hermes、opencode 和任何 ACP 智慧代理，都在你自己的電腦上。",
+      "highlight": "一塊面板"
+    },
+    {
+      "master": "fl-models",
+      "slug": "07-any-model",
+      "headline": "任何智慧代理，\n任何模型。",
+      "subline": "Hermes 或 Opus，哪怕跑在你自己的顯示卡上，每個對話各自選。",
+      "highlight": "任何模型。"
+    },
+    {
       "master": "fl-steer",
-      "slug": "06-steer",
+      "slug": "08-steer",
       "headline": "執行途中\n隨時調整",
       "subline": "排隊下一則訊息，或在伺服器上停止這一輪。",
       "highlight": "隨時調整"
     },
     {
       "master": "fl-later",
-      "slug": "07-every-morning",
+      "slug": "09-every-morning",
       "headline": "每天早上的提問，\n交給你的機器。",
       "subline": "寫一句「平日 7:30」就好。手機關機，機器也會準時提問。",
       "highlight": "交給你的機器。"
-    },
-    {
-      "master": "fl-carry",
-      "slug": "08-carry",
-      "headline": "換模型\n不丟話題",
-      "subline": "下一個模型會拿到對話摘要，接著往下做。",
-      "highlight": "不丟話題"
-    },
-    {
-      "master": "fl-party",
-      "slug": "09-party",
-      "headline": "六個模型\n一滑即達",
-      "subline": "每個槽位一個模型和它的強度，滑動模型按鈕即可切換。",
-      "highlight": "一滑即達"
     },
     {
       "master": "14-analytics",
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "所有智慧代理\n裝進口袋",
-    "highlight": "裝進口袋"
+    "headline": "離開書桌\n智慧代理會來找你",
+    "highlight": "智慧代理會來找你"
   },
   "search": {
-    "headline": "你執行的每個智慧代理\n無論什麼模型",
-    "highlight": "無論什麼模型"
+    "headline": "離開書桌\n智慧代理\n會來找你",
+    "highlight": "智慧代理\n會來找你"
   }
 }

@@ -1,32 +1,32 @@
 {
   "iphone": [
     {
-      "master": "fl-agents",
-      "slug": "01-all-your-agents",
-      "headline": "Kaikki agenttisi.\nYhdessä taskussa.",
-      "subline": "Claude Code, Hermes, opencode ja mikä tahansa ACP-agentti omilla tietokoneillasi.",
-      "highlight": "Yhdessä taskussa."
+      "master": "lock",
+      "slug": "01-leave-your-desk",
+      "headline": "Lähde työpöydältä.\nAgentti löytää sinut.",
+      "subline": "Claude Code, opencode ja Hermes jatkavat työtä omalla tietokoneellasi.",
+      "highlight": "Agentti löytää sinut."
     },
     {
-      "master": "fl-wall",
-      "slug": "02-the-wall",
-      "headline": "Jätä päälle.\nKatso niiden työtä.",
-      "subline": "Jokainen agentti ja avustaja reaaliajassa koko näytöllä. Pidä painettuna hyväksyäksesi.",
-      "highlight": "Katso niiden työtä."
+      "master": "03-approval",
+      "slug": "02-it-asks",
+      "headline": "Se kysyy.\nNapauta Hyväksy.",
+      "subline": "Riskialttiit komennot odottavat sinua ja Face ID:täsi, missä ikinä oletkin.",
+      "highlight": "Napauta Hyväksy."
     },
     {
-      "master": "fl-models",
-      "slug": "03-any-model",
-      "headline": "Mikä vain agentti.\nMikä vain malli.",
-      "subline": "Hermes tai Opus, jopa omalla GPU:lla, jokaisessa keskustelussa.",
-      "highlight": "Mikä vain malli."
+      "master": "07-home",
+      "slug": "03-finished-work",
+      "headline": "Palaa takaisin:\ntyö on valmis.",
+      "subline": "Mitä ajettiin, mikä muuttui ja mikä on valmista, odottaa taskussasi.",
+      "highlight": "työ on valmis."
     },
     {
-      "master": "fl-peek",
-      "slug": "04-peek",
-      "headline": "Kurkista mihin\ntahansa agenttiin",
-      "subline": "Mitä se tekee juuri nyt, sen viimeiset vaiheet ja avustajat.",
-      "highlight": "tahansa agenttiin"
+      "master": "welcome",
+      "slug": "04-your-machines",
+      "headline": "Ei välikättä.\nVain omat koneesi.",
+      "subline": "iPhonesi puhuu tietokoneellesi oman Tailscalesi kautta. Ei välityspalvelinta eikä kirjautumista.",
+      "highlight": "Vain omat koneesi."
     },
     {
       "master": "fl-setup",
@@ -36,32 +36,32 @@
       "highlight": "Sitten skannaa."
     },
     {
+      "master": "fl-agents",
+      "slug": "06-every-agent",
+      "headline": "Jokainen agentti.\nYksi näkymä.",
+      "subline": "Claude Code, Hermes, opencode ja mikä tahansa ACP-agentti omilla tietokoneillasi.",
+      "highlight": "Yksi näkymä."
+    },
+    {
+      "master": "fl-models",
+      "slug": "07-any-model",
+      "headline": "Mikä vain agentti.\nMikä vain malli.",
+      "subline": "Hermes tai Opus, jopa omalla GPU:lla, jokaisessa keskustelussa.",
+      "highlight": "Mikä vain malli."
+    },
+    {
       "master": "fl-steer",
-      "slug": "06-steer",
+      "slug": "08-steer",
       "headline": "Ohjaa sitä\nkesken ajon",
       "subline": "Lisää seuraava viesti jonoon tai pysäytä vuoro palvelimella.",
       "highlight": "kesken ajon"
     },
     {
       "master": "fl-later",
-      "slug": "07-every-morning",
+      "slug": "09-every-morning",
       "headline": "Kysy joka aamu.\nKoneesi tekee sen.",
       "subline": "Sano milloin: arkisin 7:30. Se kysyy, vaikka puhelin on sammutettuna.",
       "highlight": "Koneesi tekee sen."
-    },
-    {
-      "master": "fl-carry",
-      "slug": "08-carry",
-      "headline": "Vaihda mallia,\nkeskustelu säilyy.",
-      "subline": "Seuraava malli saa lyhyen yhteenvedon keskustelusta ja jatkaa siitä.",
-      "highlight": "keskustelu säilyy."
-    },
-    {
-      "master": "fl-party",
-      "slug": "09-party",
-      "headline": "Kuusi mallia,\npyyhkäisyn päässä",
-      "subline": "Malli ja sen panostus jokaisessa paikassa. Pyyhkäise mallipainiketta vaihtaaksesi.",
-      "highlight": "pyyhkäisyn päässä"
     },
     {
       "master": "14-analytics",
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "Kaikki agenttisi.\nYhdessä taskussa.",
-    "highlight": "Yhdessä taskussa."
+    "headline": "Lähde työpöydältä.\nAgentti löytää sinut.",
+    "highlight": "Agentti löytää sinut."
   },
   "search": {
-    "headline": "Jokainen ajamasi agentti,\nmillä tahansa mallilla",
-    "highlight": "millä tahansa mallilla"
+    "headline": "Lähde työpöydältä.\nAgentti\nlöytää sinut.",
+    "highlight": "Agentti\nlöytää sinut."
   }
 }

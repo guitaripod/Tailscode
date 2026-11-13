@@ -1,32 +1,32 @@
 {
   "iphone": [
     {
-      "master": "fl-agents",
-      "slug": "01-all-your-agents",
-      "headline": "Alle agentene dine.\nI lommen din.",
-      "subline": "Claude Code, Hermes, opencode og enhver ACP-agent, på dine egne maskiner.",
-      "highlight": "I lommen din."
+      "master": "lock",
+      "slug": "01-leave-your-desk",
+      "headline": "Forlat pulten.\nAgenten finner deg.",
+      "subline": "Claude Code, opencode og Hermes jobber videre på din egen maskin.",
+      "highlight": "Agenten finner deg."
     },
     {
-      "master": "fl-wall",
-      "slug": "02-the-wall",
-      "headline": "La den stå på.\nSe dem jobbe.",
-      "subline": "Hver agent og subagent, live i fullskjerm. Hold inne for å godkjenne.",
-      "highlight": "Se dem jobbe."
+      "master": "03-approval",
+      "slug": "02-it-asks",
+      "headline": "Den spør.\nDu trykker Godkjenn.",
+      "subline": "Risikable kommandoer venter på deg og din Face ID, uansett hvor du er.",
+      "highlight": "Du trykker Godkjenn."
     },
     {
-      "master": "fl-models",
-      "slug": "03-any-model",
-      "headline": "Enhver agent.\nEnhver modell.",
-      "subline": "Hermes eller Opus, til og med på din egen GPU, per chat.",
-      "highlight": "Enhver modell."
+      "master": "07-home",
+      "slug": "03-finished-work",
+      "headline": "Kom tilbake til\nferdig arbeid.",
+      "subline": "Hva som kjørte, hva som ble endret og hva som er ferdig, venter i lommen.",
+      "highlight": "ferdig arbeid."
     },
     {
-      "master": "fl-peek",
-      "slug": "04-peek",
-      "headline": "Kikk innom\nenhver agent",
-      "subline": "Hva den gjør nå, de siste stegene og subagentene.",
-      "highlight": "enhver agent"
+      "master": "welcome",
+      "slug": "04-your-machines",
+      "headline": "Ingen mellomledd.\nBare maskinene dine.",
+      "subline": "iPhonen din snakker med maskinen din over ditt eget Tailscale. Ingen innlogging, ingenting imellom.",
+      "highlight": "Bare maskinene dine."
     },
     {
       "master": "fl-setup",
@@ -36,32 +36,32 @@
       "highlight": "Så skann."
     },
     {
+      "master": "fl-agents",
+      "slug": "06-every-agent",
+      "headline": "Hver agent.\nÉn tavle.",
+      "subline": "Claude Code, Hermes, opencode og enhver ACP-agent, på dine egne maskiner.",
+      "highlight": "Én tavle."
+    },
+    {
+      "master": "fl-models",
+      "slug": "07-any-model",
+      "headline": "Enhver agent.\nEnhver modell.",
+      "subline": "Hermes eller Opus, til og med på din egen GPU, per chat.",
+      "highlight": "Enhver modell."
+    },
+    {
       "master": "fl-steer",
-      "slug": "06-steer",
+      "slug": "08-steer",
       "headline": "Styr den\nmidt i turen",
       "subline": "Legg neste melding i kø, eller stopp turen på serveren.",
       "highlight": "midt i turen"
     },
     {
       "master": "fl-later",
-      "slug": "07-every-morning",
+      "slug": "09-every-morning",
       "headline": "Hver morgen\nspør maskinen.",
       "subline": "Velg tid: hverdager 7:30. Den spør også når telefonen er av.",
       "highlight": "spør maskinen."
-    },
-    {
-      "master": "fl-carry",
-      "slug": "08-carry",
-      "headline": "Bytt modell,\nbehold samtalen",
-      "subline": "Neste modell får et kort sammendrag av chatten og fortsetter.",
-      "highlight": "behold samtalen"
-    },
-    {
-      "master": "fl-party",
-      "slug": "09-party",
-      "headline": "Seks modeller,\nett sveip unna",
-      "subline": "En modell og innsatsen i hver plass. Sveip modellknappen for å bytte.",
-      "highlight": "ett sveip unna"
     },
     {
       "master": "14-analytics",
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "Alle agentene dine.\nI lommen din.",
-    "highlight": "I lommen din."
+    "headline": "Forlat pulten.\nAgenten finner deg.",
+    "highlight": "Agenten finner deg."
   },
   "search": {
-    "headline": "Hver agent du kjører,\npå enhver modell",
-    "highlight": "på enhver modell"
+    "headline": "Forlat pulten.\nAgenten\nfinner deg.",
+    "highlight": "Agenten\nfinner deg."
   }
 }

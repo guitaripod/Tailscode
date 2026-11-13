@@ -1,32 +1,32 @@
 {
   "iphone": [
     {
-      "master": "fl-agents",
-      "slug": "01-all-your-agents",
-      "headline": "Alle dine agenter.\nI din lomme.",
-      "subline": "Claude Code, Hermes, opencode og enhver ACP-agent, på dine egne computere.",
-      "highlight": "I din lomme."
+      "master": "lock",
+      "slug": "01-leave-your-desk",
+      "headline": "Forlad skrivebordet.\nDin agent finder dig.",
+      "subline": "Claude Code, opencode og Hermes arbejder videre på din egen computer.",
+      "highlight": "Din agent finder dig."
     },
     {
-      "master": "fl-wall",
-      "slug": "02-the-wall",
-      "headline": "Lad det køre.\nSe dem arbejde.",
-      "subline": "Hver agent og hjælper live og på fuld skærm. Hold for at godkende.",
-      "highlight": "Se dem arbejde."
+      "master": "03-approval",
+      "slug": "02-it-asks",
+      "headline": "Den spørger.\nDu trykker Godkend.",
+      "subline": "Risikable kommandoer venter på dig og dit Face ID, uanset hvor du er.",
+      "highlight": "Du trykker Godkend."
     },
     {
-      "master": "fl-models",
-      "slug": "03-any-model",
-      "headline": "Enhver agent.\nEnhver model.",
-      "subline": "Hermes eller Opus, endda på din egen GPU, pr. chat.",
-      "highlight": "Enhver model."
+      "master": "07-home",
+      "slug": "03-finished-work",
+      "headline": "Kom tilbage til\nfærdigt arbejde.",
+      "subline": "Hvad der kørte, hvad der blev ændret, og hvad der er færdigt, venter i lommen.",
+      "highlight": "færdigt arbejde."
     },
     {
-      "master": "fl-peek",
-      "slug": "04-peek",
-      "headline": "Kig ind hos\nenhver agent",
-      "subline": "Hvad den laver lige nu, dens seneste trin og dens hjælpere.",
-      "highlight": "enhver agent"
+      "master": "welcome",
+      "slug": "04-your-machines",
+      "headline": "Ingen mellemled.\nKun dine maskiner.",
+      "subline": "Din iPhone taler med din computer over dit eget Tailscale. Ingen login, intet imellem.",
+      "highlight": "Kun dine maskiner."
     },
     {
       "master": "fl-setup",
@@ -36,32 +36,32 @@
       "highlight": "Scan bagefter."
     },
     {
+      "master": "fl-agents",
+      "slug": "06-every-agent",
+      "headline": "Hver agent.\nÉn tavle.",
+      "subline": "Claude Code, Hermes, opencode og enhver ACP-agent, på dine egne computere.",
+      "highlight": "Én tavle."
+    },
+    {
+      "master": "fl-models",
+      "slug": "07-any-model",
+      "headline": "Enhver agent.\nEnhver model.",
+      "subline": "Hermes eller Opus, endda på din egen GPU, pr. chat.",
+      "highlight": "Enhver model."
+    },
+    {
       "master": "fl-steer",
-      "slug": "06-steer",
+      "slug": "08-steer",
       "headline": "Styr den\nmidt i turen",
       "subline": "Sæt næste besked i kø, eller stop turen på serveren.",
       "highlight": "midt i turen"
     },
     {
       "master": "fl-later",
-      "slug": "07-every-morning",
+      "slug": "09-every-morning",
       "headline": "Spørg hver morgen.\nMaskinen gør det.",
       "subline": "Sig hvornår: hverdage 7:30. Den spørger, selv med slukket telefon.",
       "highlight": "Maskinen gør det."
-    },
-    {
-      "master": "fl-carry",
-      "slug": "08-carry",
-      "headline": "Skift model,\nbehold tråden.",
-      "subline": "Den næste model får et kort resumé af chatten og fører samtalen videre.",
-      "highlight": "behold tråden."
-    },
-    {
-      "master": "fl-party",
-      "slug": "09-party",
-      "headline": "Seks modeller,\nét stryg væk.",
-      "subline": "En model og dens indsats i hver plads. Stryg modelvælgeren for at skifte.",
-      "highlight": "ét stryg væk."
     },
     {
       "master": "14-analytics",
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "Alle dine agenter.\nI din lomme.",
-    "highlight": "I din lomme."
+    "headline": "Forlad skrivebordet.\nDin agent finder dig.",
+    "highlight": "Din agent finder dig."
   },
   "search": {
-    "headline": "Hver agent du kører,\npå enhver model",
-    "highlight": "på enhver model"
+    "headline": "Forlad skrivebordet.\nDin agent\nfinder dig.",
+    "highlight": "Din agent\nfinder dig."
   }
 }

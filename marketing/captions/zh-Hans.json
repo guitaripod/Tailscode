@@ -1,32 +1,32 @@
 {
   "iphone": [
     {
-      "master": "fl-agents",
-      "slug": "01-all-your-agents",
-      "headline": "所有智能体\n装进口袋",
-      "subline": "Claude Code、Hermes、opencode 和任何 ACP 智能体，都在你自己的电脑上。",
-      "highlight": "装进口袋"
+      "master": "lock",
+      "slug": "01-leave-your-desk",
+      "headline": "离开书桌\n智能体会来找你",
+      "subline": "Claude Code、opencode 和 Hermes 在你自己的电脑上继续工作。",
+      "highlight": "智能体会来找你"
     },
     {
-      "master": "fl-wall",
-      "slug": "02-the-wall",
-      "headline": "一直开着\n看它们工作",
-      "subline": "每个智能体和子智能体全屏实时呈现。长按即可批准。",
-      "highlight": "看它们工作"
+      "master": "03-approval",
+      "slug": "02-it-asks",
+      "headline": "它来询问\n你点一下批准",
+      "subline": "有风险的命令会等你和你的 Face ID，无论你在哪里。",
+      "highlight": "你点一下批准"
     },
     {
-      "master": "fl-models",
-      "slug": "03-any-model",
-      "headline": "任何智能体，\n任何模型。",
-      "subline": "Hermes 或 Opus，哪怕跑在你自己的显卡上，每个对话单独选。",
-      "highlight": "任何模型。"
+      "master": "07-home",
+      "slug": "03-finished-work",
+      "headline": "回来时\n工作已经完成",
+      "subline": "运行了什么、改了什么、完成了什么，都在口袋里等你。",
+      "highlight": "工作已经完成"
     },
     {
-      "master": "fl-peek",
-      "slug": "04-peek",
-      "headline": "随时查看\n任何智能体",
-      "subline": "它正在做什么、最近几步，以及它的子智能体。",
-      "highlight": "任何智能体"
+      "master": "welcome",
+      "slug": "04-your-machines",
+      "headline": "没有中转，无需登录\n只有你的机器",
+      "subline": "iPhone 通过你自己的 Tailscale 直接连到你的电脑，中间什么都没有。",
+      "highlight": "只有你的机器"
     },
     {
       "master": "fl-setup",
@@ -36,32 +36,32 @@
       "highlight": "然后扫码"
     },
     {
+      "master": "fl-agents",
+      "slug": "06-every-agent",
+      "headline": "所有智能体\n一块面板",
+      "subline": "Claude Code、Hermes、opencode 和任何 ACP 智能体，都在你自己的电脑上。",
+      "highlight": "一块面板"
+    },
+    {
+      "master": "fl-models",
+      "slug": "07-any-model",
+      "headline": "任何智能体，\n任何模型。",
+      "subline": "Hermes 或 Opus，哪怕跑在你自己的显卡上，每个对话单独选。",
+      "highlight": "任何模型。"
+    },
+    {
       "master": "fl-steer",
-      "slug": "06-steer",
+      "slug": "08-steer",
       "headline": "运行途中\n随时调整",
       "subline": "排队下一条消息，或在服务器上停止这一轮。",
       "highlight": "随时调整"
     },
     {
       "master": "fl-later",
-      "slug": "07-every-morning",
+      "slug": "09-every-morning",
       "headline": "每天早上的提问，\n交给你的机器。",
       "subline": "写一句“工作日 7:30”就行。手机关机，机器也会按时提问。",
       "highlight": "交给你的机器。"
-    },
-    {
-      "master": "fl-carry",
-      "slug": "08-carry",
-      "headline": "换模型\n不丢话题",
-      "subline": "下一个模型会拿到对话摘要，接着往下做。",
-      "highlight": "不丢话题"
-    },
-    {
-      "master": "fl-party",
-      "slug": "09-party",
-      "headline": "六个模型\n一划即达",
-      "subline": "每个槽位一个模型和它的强度，滑动模型按钮即可切换。",
-      "highlight": "一划即达"
     },
     {
       "master": "14-analytics",
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "所有智能体\n装进口袋",
-    "highlight": "装进口袋"
+    "headline": "离开书桌\n智能体会来找你",
+    "highlight": "智能体会来找你"
   },
   "search": {
-    "headline": "你运行的每个智能体\n无论什么模型",
-    "highlight": "无论什么模型"
+    "headline": "离开书桌\n智能体\n会来找你",
+    "highlight": "智能体\n会来找你"
   }
 }
