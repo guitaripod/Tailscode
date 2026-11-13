@@ -10,7 +10,9 @@
 # Usage: scripts/release-mac-local.sh <build-number> <marketing-version> [--upload]
 # The temporary keychain leads the search list and a locked keychain is left out of it: over ssh
 # the login keychain is locked, holds the same identities, and fails the signing with
-# errSecInternalComponent.
+# errSecInternalComponent. Apple's WWDR intermediates are copied into the temporary keychain
+# (certificates read fine from a locked keychain), because without the chain codesign answers the
+# same error.
 set -euo pipefail
 export PATH=/opt/homebrew/bin:$HOME/.local/bin:$PATH
 cd "$(dirname "$0")/.."
@@ -89,6 +91,10 @@ security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
 security import "$VAULT/midgar_distribution.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security >/dev/null
 security import "$VAULT/midgar_mac_installer.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild -T /usr/bin/security >/dev/null
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+security find-certificate -a -c "Apple Worldwide Developer Relations" -p \
+  "$HOME/Library/Keychains/login.keychain-db" /Library/Keychains/System.keychain > "$KEYCHAIN.wwdr.pem" 2>/dev/null || true
+[ -s "$KEYCHAIN.wwdr.pem" ] && security import "$KEYCHAIN.wwdr.pem" -k "$KEYCHAIN" >/dev/null 2>&1 || true
+rm -f "$KEYCHAIN.wwdr.pem"
 SEARCH=("$KEYCHAIN")
 for chain in $ORIGINAL_KEYCHAINS; do
   security show-keychain-info "$chain" >/dev/null 2>&1 && SEARCH+=("$chain")
