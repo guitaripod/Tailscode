@@ -11,7 +11,10 @@
 # Apple's WWDR intermediates are copied into the temporary keychain (certificates read fine from a
 # locked keychain): over ssh the login keychain is locked, and codesign building the chain out of
 # it fails with errSecInternalComponent. The login keychain stays in the search list all the same,
-# because the export finds no installer identity without it.
+# because the export finds no installer identity without it, and nothing else is: another keychain
+# in the list breaks codesign. The search list is one per user and another release running on this
+# Mac rewrites it, so it is set again, and the temporary keychain unlocked again, right before the
+# export.
 set -euo pipefail
 export PATH=/opt/homebrew/bin:$HOME/.local/bin:$PATH
 cd "$(dirname "$0")/.."
@@ -94,7 +97,7 @@ security find-certificate -a -c "Apple Worldwide Developer Relations" -p \
   "$HOME/Library/Keychains/login.keychain-db" /Library/Keychains/System.keychain > "$KEYCHAIN.wwdr.pem" 2>/dev/null || true
 [ -s "$KEYCHAIN.wwdr.pem" ] && security import "$KEYCHAIN.wwdr.pem" -k "$KEYCHAIN" >/dev/null 2>&1 || true
 rm -f "$KEYCHAIN.wwdr.pem"
-security list-keychains -d user -s "$KEYCHAIN" $ORIGINAL_KEYCHAINS
+security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
 trap cleanup_keychain EXIT
 
 INSTALLER=$(security find-identity -v "$KEYCHAIN" | grep -oE '"(Mac Installer Distribution|3rd Party Mac Developer Installer)[^"]*"' | head -1 | tr -d '"')
@@ -143,6 +146,8 @@ xcodebuild archive \
 }
 [ -d "$ARCHIVE" ] || { echo "no archive produced" >&2; exit 1; }
 
+security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
 env PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -exportArchive -archivePath "$ARCHIVE" \
   -exportPath "$OUT/export" -exportOptionsPlist "$OPTIONS" > "$OUT/export.log" 2>&1 || {
   tail -20 "$OUT/export.log"

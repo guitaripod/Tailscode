@@ -13,7 +13,9 @@
 # because a second keychain holding the same distribution identity (a CI leftover) is the one an
 # export can pick, locked, and fail on with errSecInternalComponent. Apple's WWDR intermediates are
 # copied into the temporary keychain (certificates read fine from a locked keychain): over ssh the
-# login keychain is locked, and codesign building the chain out of it fails the same way.
+# login keychain is locked, and codesign building the chain out of it fails the same way. The search
+# list is one per user and another release running on this Mac rewrites it, so it is set again
+# right before the export.
 set -euo pipefail
 export PATH=/opt/homebrew/bin:$HOME/.local/bin:$PATH
 cd "$(dirname "$0")/.."
@@ -157,6 +159,7 @@ fi
 [ -d "$ARCHIVE" ] || { echo "no archive produced" >&2; exit 1; }
 
 security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
 env PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -exportArchive -archivePath "$ARCHIVE" \
   -exportPath "$OUT/export" -exportOptionsPlist "$OPTIONS" > "$OUT/export.log" 2>&1 || {
   tail -20 "$OUT/export.log"
