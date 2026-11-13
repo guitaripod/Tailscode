@@ -292,7 +292,7 @@ extension ChatViewController {
 
     private func rebuildTranscript(_ incoming: ConversationState) -> TranscriptRebuild {
         let state = Self.stagedState(incoming)
-        let runs = WorkflowRunAssembly.runs(
+        let runs = workflowFold.runs(
             messages: state.messages, agents: viewModel.trackedSubagents)
         workflowRuns = runs
         updateWorkflowTicker()

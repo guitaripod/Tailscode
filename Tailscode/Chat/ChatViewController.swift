@@ -758,6 +758,7 @@ final class ChatViewController: UIViewController {
     /// hasn't resolved the id yet — get their cards seated in order against the spawn calls
     /// still free, so a card still lands where its work began.
     var workflowRuns: [WorkflowRun] = []
+    let workflowFold = WorkflowRunFold()
     var workflowNow: Date = Date()
     var workflowTicker: Task<Void, Never>?
     var lastRenderedState: ConversationState?
