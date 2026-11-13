@@ -8,11 +8,10 @@
 # train is closed and the upload bounces with ITMS-90186 and ITMS-90062.
 #
 # Usage: scripts/release-mac-local.sh <build-number> <marketing-version> [--upload]
-# The temporary keychain leads the search list and a locked keychain is left out of it: over ssh
-# the login keychain is locked, holds the same identities, and fails the signing with
-# errSecInternalComponent. Apple's WWDR intermediates are copied into the temporary keychain
-# (certificates read fine from a locked keychain), because without the chain codesign answers the
-# same error.
+# Apple's WWDR intermediates are copied into the temporary keychain (certificates read fine from a
+# locked keychain): over ssh the login keychain is locked, and codesign building the chain out of
+# it fails with errSecInternalComponent. The login keychain stays in the search list all the same,
+# because the export finds no installer identity without it.
 set -euo pipefail
 export PATH=/opt/homebrew/bin:$HOME/.local/bin:$PATH
 cd "$(dirname "$0")/.."
@@ -95,11 +94,7 @@ security find-certificate -a -c "Apple Worldwide Developer Relations" -p \
   "$HOME/Library/Keychains/login.keychain-db" /Library/Keychains/System.keychain > "$KEYCHAIN.wwdr.pem" 2>/dev/null || true
 [ -s "$KEYCHAIN.wwdr.pem" ] && security import "$KEYCHAIN.wwdr.pem" -k "$KEYCHAIN" >/dev/null 2>&1 || true
 rm -f "$KEYCHAIN.wwdr.pem"
-SEARCH=("$KEYCHAIN")
-for chain in $ORIGINAL_KEYCHAINS; do
-  security show-keychain-info "$chain" >/dev/null 2>&1 && SEARCH+=("$chain")
-done
-security list-keychains -d user -s "${SEARCH[@]}"
+security list-keychains -d user -s "$KEYCHAIN" $ORIGINAL_KEYCHAINS
 trap cleanup_keychain EXIT
 
 INSTALLER=$(security find-identity -v "$KEYCHAIN" | grep -oE '"(Mac Installer Distribution|3rd Party Mac Developer Installer)[^"]*"' | head -1 | tr -d '"')

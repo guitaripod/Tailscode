@@ -11,11 +11,9 @@
 # SKIP_ARCHIVE=1 reuses the archive of this build number after an export that failed.
 # The keychain search list is narrowed to the temporary keychain and the login one for the run,
 # because a second keychain holding the same distribution identity (a CI leftover) is the one an
-# export can pick, locked, and fail on with errSecInternalComponent. The login keychain joins only
-# while it is unlocked: over ssh it is locked, holds the same identity, and fails the export the
-# same way. Apple's WWDR intermediates are copied into the temporary keychain (certificates read
-# fine from a locked keychain), because without the chain codesign also answers
-# errSecInternalComponent.
+# export can pick, locked, and fail on with errSecInternalComponent. Apple's WWDR intermediates are
+# copied into the temporary keychain (certificates read fine from a locked keychain): over ssh the
+# login keychain is locked, and codesign building the chain out of it fails the same way.
 set -euo pipefail
 export PATH=/opt/homebrew/bin:$HOME/.local/bin:$PATH
 cd "$(dirname "$0")/.."
@@ -103,10 +101,7 @@ security find-certificate -a -c "Apple Worldwide Developer Relations" -p \
   "$HOME/Library/Keychains/login.keychain-db" /Library/Keychains/System.keychain > "$KEYCHAIN.wwdr.pem" 2>/dev/null || true
 [ -s "$KEYCHAIN.wwdr.pem" ] && security import "$KEYCHAIN.wwdr.pem" -k "$KEYCHAIN" >/dev/null 2>&1 || true
 rm -f "$KEYCHAIN.wwdr.pem"
-SEARCH=("$KEYCHAIN")
-LOGIN_KEYCHAIN=$HOME/Library/Keychains/login.keychain-db
-security show-keychain-info "$LOGIN_KEYCHAIN" >/dev/null 2>&1 && SEARCH+=("$LOGIN_KEYCHAIN")
-security list-keychains -d user -s "${SEARCH[@]}"
+security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
 trap cleanup_keychain EXIT
 
 PROFILES_PLIST=$OUT/profiles.txt
