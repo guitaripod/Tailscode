@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Superseded by `midgar products` (Midgar decision D13); kept until this app's store flow moves to it. See ops/runbooks/store-commands.md in guitaripod/midgar-platform.
 
-Idempotent creation of Tailscode's four IAPs in ASC.
+Idempotent creation of Tailscode's one IAP in ASC.
 
-Tailscode Pro (non-consumable, Family Sharing on) + three tip consumables,
-matching Tailscode.storekit and ProOffer.swift exactly. Each gets an en-US
-localization, a USD base price, and a review screenshot. Products stay
-MISSING_METADATA until they ride the first version submission — normal.
+Tailscode Pro (non-consumable, Family Sharing on), matching ProOffer.swift.
+It gets an en-US localization, a USD base price, and a review screenshot.
+The three tip consumables were removed from sale on 2026-11-13 and are no
+longer created or priced here.
 
 Usage: python3 scripts/asc-products.py
 """
@@ -26,12 +26,6 @@ REVIEW_SHOT = os.path.join(ROOT, "marketing/appstore/iap-review.png")
 PRODUCTS = [
     ("com.guitaripod.tailscode.pro", "NON_CONSUMABLE", True, "Tailscode Pro",
      "Tailscode Pro", "Unlimited servers & Live Activities. One-time unlock.", 14.99),
-    ("com.guitaripod.tailscode.tip.small", "CONSUMABLE", False, "Tip Small",
-     "Small Tip", "A coffee for the developer. Thank you!", 2.99),
-    ("com.guitaripod.tailscode.tip.medium", "CONSUMABLE", False, "Tip Medium",
-     "Generous Tip", "Serious fuel for development. Thank you!", 9.99),
-    ("com.guitaripod.tailscode.tip.large", "CONSUMABLE", False, "Tip Large",
-     "Lavish Tip", "You are the reason this app exists. Thank you!", 19.99),
 ]
 
 

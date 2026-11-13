@@ -16,7 +16,7 @@ This replaces the earlier label, "Data Not Collected", which stops being true on
 | --- | --- | --- | --- | --- |
 | Identifiers, User ID | Yes | No | App Functionality | The random Midgar ID: sent as the sign-in token to `api.midgarcorp.cc` for the purchase ledger and for "Your Midgar" in the More Apps screen; carried by purchases as Apple's app account token |
 | Identifiers, Device ID | Yes | No | App Functionality | The app reads no advertising identifier and no vendor identifier. MidgarKit's App Attest key id, per app and per device, stored with the Midgar ID when the ID is created or joined. App Store and TestFlight builds use App Attest's production environment whether or not the app has the App Attest entitlement, so released builds create it. |
-| Purchases, Purchase History | Yes | No | App Functionality | The App Store transactions of Pro and of the tips, sent to the Midgar ledger with the Midgar ID. App Store Server Notifications for the app already go to the same ledger; there is no RevenueCat SDK in the app. |
+| Purchases, Purchase History | Yes | No | App Functionality | The App Store transactions of Pro, and of the tips sold until 2026-11-13, sent to the Midgar ledger with the Midgar ID. App Store Server Notifications for the app already go to the same ledger; there is no RevenueCat SDK in the app. |
 | Usage Data, Product Interaction | No | No | Analytics | The anonymous More Apps events (opened, shown, tapped) and the purchase event with the product id, sent by MidgarKit's signals with no identifier. The app never starts MetricKit collection. |
 
 Everything else is "Data Not Collected".
