@@ -70,14 +70,15 @@ final class ProWindowController: NSWindowController {
         column.translatesAutoresizingMaskIntoConstraints = false
 
         let facts = ProPersonalDetails.Facts.onThisMac
+        let isPro = ProAccess.shared.isPro
         column.addArrangedSubview(
             RowKit.wrapping(
-                ProPersonalDetails.headline(facts), font: MacTheme.Ramp.font(.cardTitle),
+                ProPersonalDetails.headline(facts, isPro: isPro), font: MacTheme.Ramp.font(.cardTitle),
                 color: MacTheme.Color.label))
-        column.addArrangedSubview(
-            RowKit.wrapping(
-                ProOffer.pitch, font: MacTheme.Ramp.font(.cardBody),
-                color: MacTheme.Color.secondaryLabel))
+        if let subline = ProPersonalDetails.subline(facts, isPro: isPro) {
+            column.addArrangedSubview(
+                RowKit.wrapping(subline, font: MacTheme.Ramp.font(.cardBody), color: MacTheme.Color.secondaryLabel))
+        }
         for perk in ProPersonalDetails.perks(facts) { column.addArrangedSubview(perkRow(perk)) }
 
         if ProAccess.shared.canStartProWeek {
@@ -153,8 +154,8 @@ final class ProWindowController: NSWindowController {
 
     @objc private func proChanged() {
         guard ProAccess.shared.isPro else { return }
-        purchase.title = ProOffer.owned
-        purchase.isEnabled = false
+        repaint()
+        purchase.isHidden = true
         status.stringValue = ""
     }
 
@@ -179,7 +180,7 @@ final class ProWindowController: NSWindowController {
             do {
                 switch try await ProAccess.shared.purchase(product, in: window) {
                 case .success:
-                    status.stringValue = ProOffer.owned
+                    status.stringValue = ""
                 case .pending:
                     status.stringValue = Localized.text(
                         "Waiting on approval — this window can be closed.")
@@ -200,7 +201,7 @@ final class ProWindowController: NSWindowController {
         Task {
             do {
                 switch try await ProAccess.shared.restore() {
-                case .restored: status.stringValue = ProOffer.owned
+                case .restored: status.stringValue = ""
                 case .nothingFound:
                     status.stringValue = Localized.text("No purchase found on this Apple Account.")
                 case .cancelled: status.stringValue = ""

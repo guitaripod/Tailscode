@@ -28,6 +28,15 @@ struct ProPersonalDetailsTests {
         #expect(ProPersonalDetails.headline(Facts(turns: 64)) == "64 turns finished with your agents")
     }
 
+    @Test("A copy that holds Pro is told what it has, with its own turns under it once there are enough")
+    func owner() {
+        #expect(ProPersonalDetails.headline(Facts(turns: 64), isPro: true) == ProOffer.owned)
+        #expect(ProPersonalDetails.subline(Facts(turns: 64), isPro: true) == "64 turns finished with your agents")
+        #expect(ProPersonalDetails.subline(Facts(turns: 2), isPro: true) == nil)
+        #expect(ProPersonalDetails.headline(Facts(turns: 64), isPro: false) == "64 turns finished with your agents")
+        #expect(ProPersonalDetails.subline(Facts(turns: 64), isPro: false) == ProOffer.pitch)
+    }
+
     @Test("The servers perk names the one server a free copy connects")
     func oneServer() {
         #expect(

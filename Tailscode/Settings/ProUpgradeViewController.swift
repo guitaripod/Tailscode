@@ -87,8 +87,7 @@ final class ProUpgradeViewController: UIViewController {
 
     @objc private func proStateChanged() {
         guard ProAccess.shared.isPro else { return }
-        purchaseButton.setTitle(ProOffer.owned)
-        purchaseButton.isEnabled = false
+        purchaseButton.isHidden = true
         weekButton.isEnabled = false
         statusLabel.text = nil
     }
@@ -109,13 +108,16 @@ final class ProUpgradeViewController: UIViewController {
         heroIcon.contentMode = .scaleAspectFit
 
         let heroTitle = UILabel()
-        heroTitle.text = lead == .delegate ? DelegateProGate.requirement : ProPersonalDetails.headline(facts)
+        let isPro = ProAccess.shared.isPro
+        heroTitle.text =
+            lead == .delegate ? DelegateProGate.requirement : ProPersonalDetails.headline(facts, isPro: isPro)
         heroTitle.font = Theme.Ramp.font(.cardTitle)
         heroTitle.textAlignment = .center
         heroTitle.numberOfLines = 0
 
         let heroBody = UILabel()
-        heroBody.text = lead == .delegate ? DelegateProGate.pitch : ProOffer.pitch
+        heroBody.text = lead == .delegate ? DelegateProGate.pitch : ProPersonalDetails.subline(facts, isPro: isPro)
+        heroBody.isHidden = heroBody.text == nil
         heroBody.font = Theme.Ramp.font(.panelLabel)
         heroBody.textColor = Theme.Color.secondaryLabel
         heroBody.textAlignment = .center
@@ -267,8 +269,7 @@ final class ProUpgradeViewController: UIViewController {
 
     private func load() async {
         if ProAccess.shared.isPro {
-            purchaseButton.setTitle(ProOffer.owned)
-            purchaseButton.isEnabled = false
+            purchaseButton.isHidden = true
         } else {
             purchaseButton.isEnabled = false
             purchaseButton.setLoading(true)

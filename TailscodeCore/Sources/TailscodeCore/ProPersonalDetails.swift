@@ -38,6 +38,17 @@ public enum ProPersonalDetails: Sendable {
         turnsLine(facts) ?? ProOffer.headline
     }
 
+    /// What the sheet leads with on a copy that may already hold Pro: what the person has, else `headline`.
+    public static func headline(_ facts: Facts, isPro: Bool) -> String {
+        isPro ? ProOffer.owned : headline(facts)
+    }
+
+    /// The line under the headline: what the buyer gets and keeps, or, for someone who holds Pro, their own turns
+    /// once there are enough to count and otherwise nothing.
+    public static func subline(_ facts: Facts, isPro: Bool) -> String? {
+        isPro ? turnsLine(facts) : ProOffer.pitch
+    }
+
     /// The unlimited-servers perk told with the person's own servers: the ones resting since the Pro week first, else
     /// the one server the free copy connects. Nothing to say with no server saved, or with several and none resting.
     public static func serversLine(_ facts: Facts) -> String? {

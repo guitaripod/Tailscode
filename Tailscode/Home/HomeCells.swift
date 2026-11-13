@@ -433,10 +433,12 @@ final class ProInvitationCell: ContentCardCell {
         header.alignment = .center
         header.spacing = Theme.Spacing.s
 
+        notNowButton.setContentHuggingPriority(.required, for: .horizontal)
+        notNowButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         let buttons = UIStackView(arrangedSubviews: [acceptButton, notNowButton])
         buttons.axis = .horizontal
         buttons.spacing = Theme.Spacing.s
-        buttons.distribution = .fillProportionally
+        buttons.distribution = .fill
 
         let column = UIStackView(arrangedSubviews: [header, bodyLabel, buttons])
         column.axis = .vertical
