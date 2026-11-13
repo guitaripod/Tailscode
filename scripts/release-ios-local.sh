@@ -11,7 +11,9 @@
 # SKIP_ARCHIVE=1 reuses the archive of this build number after an export that failed.
 # The keychain search list is narrowed to the temporary keychain and the login one for the run,
 # because a second keychain holding the same distribution identity (a CI leftover) is the one an
-# export can pick, locked, and fail on with errSecInternalComponent.
+# export can pick, locked, and fail on with errSecInternalComponent. The login keychain joins only
+# while it is unlocked: over ssh it is locked, holds the same identity, and fails the export the
+# same way.
 set -euo pipefail
 export PATH=/opt/homebrew/bin:$HOME/.local/bin:$PATH
 cd "$(dirname "$0")/.."
@@ -95,7 +97,10 @@ security set-keychain-settings -lut 21600 "$KEYCHAIN"
 security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
 security import "$VAULT/midgar_distribution.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security >/dev/null
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
-security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
+SEARCH=("$KEYCHAIN")
+LOGIN_KEYCHAIN=$HOME/Library/Keychains/login.keychain-db
+security show-keychain-info "$LOGIN_KEYCHAIN" >/dev/null 2>&1 && SEARCH+=("$LOGIN_KEYCHAIN")
+security list-keychains -d user -s "${SEARCH[@]}"
 trap cleanup_keychain EXIT
 
 PROFILES_PLIST=$OUT/profiles.txt
