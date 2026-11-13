@@ -16,8 +16,9 @@
 # The app must be linked against the iOS 27.1 SDK or the Duo never adapts (a black rail); the script
 # refuses a binary that vtool does not stamp 27.1. TAILSCODE_DUO_CAPTURE is the iphone-duo skill's
 # capture.py, TAILSCODE_DUO_PYTHON a Python with Pillow, and `duoctl` and `frames` must be on PATH.
-# Two screens need a fresh install, because the demo world and a queued message both outlive a launch:
-# the setup guide (it is what a first launch shows) and the steer (one queued message, not one per pose).
+# Three screens need a fresh install, because the demo world and a queued message both outlive a launch:
+# the welcome and the setup guide (they are what a first launch shows) and the steer (one queued message,
+# not one per pose).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -93,7 +94,7 @@ screen_launch() {
     agents) echo "--demo --agents" ;;
     peek) echo "--demo --agent-peek" ;;
     costs) echo "--demo --analytics" ;;
-    setup) echo "" ;;
+    setup | welcome) echo "" ;;
     *) echo "--demo" ;;
   esac
 }
@@ -103,6 +104,8 @@ screen_env() {
   case "$1" in
     agents | peek | costs) echo "TAILSCODE_DUO=1" ;;
     home) echo "TAILSCODE_DUO=1" ;;
+    approval) echo "TAILSCODE_OPEN_SESSION=demo-c3" ;;
+    welcome) echo "TAILSCODE_FAKE_TAILNET=up" ;;
     homeo1) echo "TAILSCODE_OPEN_SESSION=demo-o1" ;;
     models) echo "TAILSCODE_OPEN_SESSION=demo-c3,TAILSCODE_OPEN_MODELS=1,TAILSCODE_MODELS_DELAY=8" ;;
     setup) echo "TAILSCODE_OPEN_GUIDE=1,TAILSCODE_SETUP_AGENT=claude,TAILSCODE_SETUP_WAY=install,TAILSCODE_FAKE_TAILNET=up" ;;
@@ -163,7 +166,7 @@ shoot_locale() {
   while read -r slug screen state; do
     case "$screen" in
       steer) steer="$screen:$state" ;;
-      setup) setup="$screen:$state" ;;
+      setup | welcome) setup="${setup:+$setup,}$screen:$state" ;;
       *) main="${main:+$main,}$screen:$state" ;;
     esac
   done <<<"$rows"
@@ -181,7 +184,7 @@ shoot_locale() {
   fi
   if [ -n "$setup" ]; then
     install_fresh
-    capture_cells "$run/setup" "$locale" "$setup" setup
+    capture_cells "$run/setup" "$locale" "$setup" "$(echo "$setup" | cut -d: -f1)"
   fi
   place_masters "$locale" "$run"
 }
