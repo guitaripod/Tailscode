@@ -45,9 +45,9 @@
     {
       "master": "fl-later",
       "slug": "07-every-morning",
-      "headline": "Spør hver morgen.\nMaskinen gjør det.",
+      "headline": "Hver morgen\nspør maskinen.",
       "subline": "Velg tid: hverdager 7:30. Den spør også når telefonen er av.",
-      "highlight": "Maskinen gjør det."
+      "highlight": "spør maskinen."
     },
     {
       "master": "fl-carry",
@@ -189,9 +189,9 @@
     {
       "master": "fl-later",
       "slug": "07-every-morning",
-      "headline": "Spør hver morgen.\nMaskinen gjør det.",
+      "headline": "Hver morgen\nspør maskinen.",
       "subline": "Velg tid: hverdager 7:30. Den spør også når telefonen er av.",
-      "highlight": "Maskinen gjør det."
+      "highlight": "spør maskinen."
     },
     {
       "master": "04-quickask",
