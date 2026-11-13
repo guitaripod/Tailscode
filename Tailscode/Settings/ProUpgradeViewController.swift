@@ -3,9 +3,10 @@ import MidgarCore
 import TailscodeCore
 import UIKit
 
-/// The Pro unlock + tip jar sheet. Shown only when a gate is touched or the
-/// Settings row is tapped — never on launch, never on a timer. A copy that never had a Pro week is offered one here, as
-/// the primary action, with the purchase beside it; whichever the person takes, the thing that brought them here carries on.
+/// The Pro sheet. Shown only when a gate is touched or the Settings row is tapped — never on launch, never on a timer.
+/// It leads with the person (`ProPersonalDetails`) and lists what they get; nothing on it asks for anything. A copy that
+/// never had a Pro week is offered one here, as the primary action, with the purchase beside it; whichever the person
+/// takes, the thing that brought them here carries on.
 @MainActor
 final class ProUpgradeViewController: UIViewController {
     private let scroll = UIScrollView()
@@ -16,11 +17,10 @@ final class ProUpgradeViewController: UIViewController {
         ? SecondaryButton(title: String(localized: "Unlock Pro")) : PrimaryButton(title: String(localized: "Unlock Pro"))
     private let weekButton = PrimaryButton(title: ProWeek.startTitle)
     private let restoreButton = UIButton(type: .system)
-    private let tipStack = UIStackView()
-    private let tipHeader = UILabel()
     private let statusLabel = UILabel()
     private var proProduct: StoreProduct?
     private let lead: Lead
+    private let facts = ProPersonalDetails.Facts.onThisDevice
     private let placement: MidgarSignal.Placement
     private var hasReportedShown = false
     private let onAccess: (() -> Void)?
@@ -87,7 +87,7 @@ final class ProUpgradeViewController: UIViewController {
 
     @objc private func proStateChanged() {
         guard ProAccess.shared.isPro else { return }
-        purchaseButton.setTitle(String(localized: "You're a supporter — thank you ♥"))
+        purchaseButton.setTitle(ProOffer.owned)
         purchaseButton.isEnabled = false
         weekButton.isEnabled = false
         statusLabel.text = nil
@@ -109,9 +109,10 @@ final class ProUpgradeViewController: UIViewController {
         heroIcon.contentMode = .scaleAspectFit
 
         let heroTitle = UILabel()
-        heroTitle.text = lead == .delegate ? DelegateProGate.requirement : String(localized: "Support Tailscode")
+        heroTitle.text = lead == .delegate ? DelegateProGate.requirement : ProPersonalDetails.headline(facts)
         heroTitle.font = Theme.Ramp.font(.cardTitle)
         heroTitle.textAlignment = .center
+        heroTitle.numberOfLines = 0
 
         let heroBody = UILabel()
         heroBody.text = lead == .delegate ? DelegateProGate.pitch : ProOffer.pitch
@@ -156,27 +157,8 @@ final class ProUpgradeViewController: UIViewController {
             stack.setCustomSpacing(Theme.Spacing.xl, after: running)
         }
 
-        let delegatePerk = (DelegateProGate.perk.symbol, DelegateProGate.perk.text)
-        for (symbol, text) in [
-            (
-                "server.rack",
-                String(
-                    localized:
-                        "Connect unlimited servers — one unified session list across every machine on your tailnet"
-                )
-            ),
-            (
-                "bolt.badge.clock",
-                String(
-                    localized:
-                        "Concurrent Live Activities for every running session, not just one")
-            ),
-            (
-                "heart.fill",
-                String(localized: "Supporter badge, and a say in what gets built next")
-            ),
-        ] + [delegatePerk] {
-            stack.addArrangedSubview(featureRow(symbol: symbol, text: text))
+        for perk in ProPersonalDetails.perks(facts, liveActivities: true) {
+            stack.addArrangedSubview(featureRow(symbol: perk.symbol, text: perk.text))
         }
 
         purchaseButton.addTarget(self, action: #selector(purchaseTapped), for: .touchUpInside)
@@ -192,19 +174,6 @@ final class ProUpgradeViewController: UIViewController {
         restoreButton.titleLabel?.font = Theme.Ramp.font(.panelFootnote)
         restoreButton.addTarget(self, action: #selector(restoreTapped), for: .touchUpInside)
         stack.addArrangedSubview(restoreButton)
-
-        tipHeader.text = String(localized: "Or leave a tip — no unlock, just thanks")
-        tipHeader.font = Theme.Ramp.font(.panelFootnote)
-        tipHeader.textColor = Theme.Color.secondaryLabel
-        tipHeader.textAlignment = .center
-        tipHeader.isHidden = true
-        stack.setCustomSpacing(Theme.Spacing.xl, after: restoreButton)
-        stack.addArrangedSubview(tipHeader)
-
-        tipStack.axis = .horizontal
-        tipStack.spacing = Theme.Spacing.s
-        tipStack.distribution = .fillEqually
-        stack.addArrangedSubview(tipStack)
 
         statusLabel.font = Theme.Ramp.font(.panelFootnote)
         statusLabel.textColor = Theme.Color.secondaryLabel
@@ -298,13 +267,13 @@ final class ProUpgradeViewController: UIViewController {
 
     private func load() async {
         if ProAccess.shared.isPro {
-            purchaseButton.setTitle(String(localized: "You're a supporter — thank you ♥"))
+            purchaseButton.setTitle(ProOffer.owned)
             purchaseButton.isEnabled = false
         } else {
             purchaseButton.isEnabled = false
             purchaseButton.setLoading(true)
         }
-        let (pro, tips) = await ProAccess.shared.products()
+        let pro = await ProAccess.shared.proProduct()
         proProduct = pro
         if !ProAccess.shared.isPro {
             purchaseButton.setLoading(false)
@@ -319,18 +288,6 @@ final class ProUpgradeViewController: UIViewController {
                     localized: "Couldn't reach the App Store. Check your connection and try again.")
             }
         }
-        tipStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for tip in tips {
-            var config = Theme.Glass.buttonConfiguration()
-            config.title = tip.displayPrice
-            config.baseForegroundColor = Theme.Color.label
-            let button = UIButton(configuration: config)
-            button.addAction(
-                UIAction { [weak self] _ in self?.tip(tip) }, for: .touchUpInside)
-            tipStack.addArrangedSubview(button)
-        }
-        tipStack.isHidden = tips.isEmpty
-        tipHeader.isHidden = tips.isEmpty
     }
 
     @objc private func purchaseTapped() {
@@ -362,30 +319,6 @@ final class ProUpgradeViewController: UIViewController {
             } catch {
                 statusLabel.text = error.localizedDescription
                 Theme.Haptics.error()
-            }
-        }
-    }
-
-    private func tip(_ product: StoreProduct) {
-        Theme.Haptics.tap()
-        tipStack.isUserInteractionEnabled = false
-        Task {
-            defer { tipStack.isUserInteractionEnabled = true }
-            do {
-                switch try await ProAccess.shared.purchase(product) {
-                case .success:
-                    Theme.Haptics.success()
-                    statusLabel.text = String(localized: "Thank you! 🙏")
-                case .pending:
-                    statusLabel.text = String(localized: "Waiting for approval — thank you!")
-                case .unverified:
-                    statusLabel.text = String(
-                        localized: "Purchase couldn't be verified — please try again later.")
-                case .cancelled:
-                    break
-                }
-            } catch {
-                statusLabel.text = error.localizedDescription
             }
         }
     }

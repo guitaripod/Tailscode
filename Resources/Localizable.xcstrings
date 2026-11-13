@@ -70512,106 +70512,6 @@
         }
       }
     },
-    "No ads, no tracking, no server between you and your agents. One purchase covers iPhone and Mac, unlocks unlimited servers, and funds the work.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keine Werbung, kein Tracking, kein Server zwischen dir und deinen Agenten. Ein Kauf gilt für iPhone und Mac, schaltet unbegrenzt Server frei und finanziert die Arbeit."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No ads, no tracking, no server between you and your agents. One purchase covers iPhone and Mac, unlocks unlimited servers, and funds the work."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sin anuncios, sin rastreo, sin servidor entre tú y tus agentes. Una compra cubre iPhone y Mac, desbloquea servidores ilimitados y financia el desarrollo."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pas de pub, pas de pistage, aucun serveur entre vous et vos agents. Un achat couvre iPhone et Mac, débloque les serveurs illimités et finance le travail."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Niente pubblicità, niente tracciamento, nessun server tra te e i tuoi agenti. Un acquisto vale per iPhone e Mac, sblocca server illimitati e finanzia lo sviluppo."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "広告なし、トラッキングなし、あなたとエージェントの間にサーバーなし。一度の購入で iPhone と Mac に対応し、サーバー数無制限を解放して開発を支えます。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "광고 없음, 추적 없음, 나와 에이전트 사이에 서버 없음. 한 번 구매로 iPhone과 Mac 모두 사용하고, 서버 무제한을 열며, 개발을 지원합니다."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sem anúncios, sem rastreamento, sem servidor entre você e seus agentes. Uma compra vale para iPhone e Mac, libera servidores ilimitados e financia o trabalho."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "没有广告，没有跟踪，你和智能体之间没有任何服务器。一次购买，iPhone 与 Mac 通用，解锁不限数量的服务器，并支持开发。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "沒有廣告，沒有追蹤，你和代理之間沒有任何伺服器。一次購買，iPhone 與 Mac 通用，解鎖不限數量的伺服器，並支持開發。"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bez reklam, bez śledzenia, bez serwera między tobą a twoimi agentami. Jeden zakup obejmuje iPhone'a i Maca, odblokowuje nieograniczoną liczbę serwerów i finansuje tę pracę."
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ingen annoncer, ingen sporing, ingen server mellem dig og dine agenter. Ét køb dækker iPhone og Mac, låser op for ubegrænsede servere og finansierer arbejdet."
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ei mainoksia, ei seurantaa, ei palvelinta sinun ja agenttiesi välissä. Yksi osto kattaa iPhonen ja Macin, avaa rajattomat palvelimet ja rahoittaa työn."
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eitt kaup gildir fyrir iPhone og Mac, opnar ótakmarkaða netþjóna og fjármagnar vinnuna. Engar auglýsingar, engin rakning og enginn milliliður þegar þú talar við agentana þína."
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ingen annonser, ingen sporing, ingen server mellom deg og agentene dine. Ett kjøp dekker iPhone og Mac, låser opp ubegrenset antall servere og finansierer arbeidet."
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Inga annonser, ingen spårning och ingen server mellan dig och dina agenter. Ett köp gäller för iPhone och Mac, låser upp obegränsat antal servrar och finansierar arbetet."
-          }
-        }
-      }
-    },
     "No agents answered": {
       "extractionState": "manual",
       "localizations": {
@@ -91013,106 +90913,6 @@
         }
       }
     },
-    "Tailscode is free and open source": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode ist kostenlos und Open Source"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode is free and open source"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode es gratuito y de código abierto"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode est gratuit et open source"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode è gratuito e open source"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode は無料でオープンソースです"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode는 무료이며 오픈 소스입니다"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "O Tailscode é gratuito e de código aberto"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode 免费且开源"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode 免費且開放原始碼"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode jest bezpłatny i open source"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode er gratis og open source"
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode on ilmainen ja avoimen lähdekoodin"
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode er ókeypis og opinn hugbúnaður"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode er gratis og åpen kildekode"
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode är gratis och öppen källkod"
-          }
-        }
-      }
-    },
     "interrupted": {
       "extractionState": "manual",
       "localizations": {
@@ -103334,107 +103134,6 @@
         }
       }
     },
-    "Or leave a tip — no unlock, just thanks": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Oder gib ein Trinkgeld – kein Freischalten, nur ein Danke"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Or leave a tip — no unlock, just thanks"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "O deja una propina: sin desbloqueo, solo gracias"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ou laissez un pourboire — pas de déblocage, juste un merci"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Oppure lascia una mancia — nessuno sblocco, solo un grazie"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "またはチップを送る — 機能の解除はなし、感謝のしるしです"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "또는 팁을 남겨 주세요 — 잠금 해제는 없고, 감사의 표시입니다"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ou deixe uma gorjeta — sem desbloqueio, só um obrigado"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "或者留个赏 — 不解锁功能，只是道声谢"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "或者留個賞 — 不解鎖功能，只是道聲謝"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Albo zostaw napiwek — bez odblokowania, po prostu podziękowanie"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eller giv et tip – ingen oplåsning, bare tak"
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tai jätä tippi – ei avaa mitään, vain kiitos"
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eða gefðu þjórfé – ekkert opnast, bara takk"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eller gi et tips – ingen opplåsing, bare takk"
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eller lämna ett tips – ingen upplåsning, bara tack"
-          }
-        }
-      }
-    },
     "Other…": {
       "extractionState": "manual",
       "localizations": {
@@ -106397,107 +106096,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Dra nedåt för att försöka ansluta igen."
-          }
-        }
-      }
-    },
-    "Purchase couldn't be verified — please try again later.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Der Kauf konnte nicht verifiziert werden – bitte versuche es später erneut."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Purchase couldn't be verified — please try again later."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No se pudo verificar la compra: inténtalo de nuevo más tarde."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "L’achat n’a pas pu être vérifié — réessayez plus tard."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Non è stato possibile verificare l’acquisto — riprova più tardi."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "購入を検証できませんでした。後でもう一度お試しください。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "구매를 확인하지 못했습니다 — 나중에 다시 시도해 주세요."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Não foi possível verificar a compra — tente novamente mais tarde."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法验证购买 — 请稍后再试。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "無法驗證購買 — 請稍後再試。"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nie udało się zweryfikować zakupu — spróbuj ponownie później."
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Købet kunne ikke verificeres – prøv igen senere."
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ostosta ei voitu vahvistaa – yritä myöhemmin uudelleen."
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ekki tókst að staðfesta kaupin – reyndu aftur síðar."
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kjøpet kunne ikke bekreftes – prøv igjen senere."
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Köpet kunde inte verifieras – försök igen senare."
           }
         }
       }
@@ -121029,309 +120627,6 @@
         }
       }
     },
-    "Support Tailscode": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode unterstützen"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Support Tailscode"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apoya Tailscode"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Soutenir Tailscode"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sostieni Tailscode"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode を応援する"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode 후원하기"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apoie o Tailscode"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "支持 Tailscode"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "支持 Tailscode"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wesprzyj Tailscode"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Støt Tailscode"
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tue Tailscodea"
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Styðja Tailscode"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Støtt Tailscode"
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stöd Tailscode"
-          }
-        }
-      }
-    },
-    "Supporter badge, and a say in what gets built next": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unterstützer-Abzeichen und ein Mitspracherecht bei dem, was als Nächstes kommt"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Supporter badge, and a say in what gets built next"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Insignia de apoyo y voz en lo que se construye después"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Badge de soutien et voix au chapitre sur les prochaines fonctionnalités"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Distintivo di sostenitore e voce in capitolo su cosa verrà costruito"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "サポーターバッジと、次に作るものへの発言権"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "후원자 배지와 다음에 만들 기능에 대한 발언권"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Selo de apoiador e voz sobre o que será construído a seguir"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "支持者徽章，以及对后续开发方向的话语权"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "支持者徽章，以及對後續開發方向的發言權"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Plakietka wspierającego i głos w tym, co powstanie następnie"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Støttemærke og en stemme i, hvad der bygges næste gang"
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tukijamerkki ja mahdollisuus vaikuttaa siihen, mitä seuraavaksi rakennetaan"
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stuðningsmerki og að fá að ráða hvað verður smíðað næst"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Støttemerke og en stemme i hva som bygges neste"
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stödjarmärke och inflytande över vad som byggs härnäst"
-          }
-        }
-      }
-    },
-    "Supporter — thank you ♥": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unterstützer – danke ♥"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Supporter — thank you ♥"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Colaborador: gracias ♥"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Soutien — merci ♥"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sostenitore — grazie ♥"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "サポーター — ありがとうございます ♥"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "후원자 — 감사합니다 ♥"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apoiador — obrigado ♥"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "支持者 — 谢谢你 ♥"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "支持者 — 謝謝你 ♥"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wspierający — dziękujemy ♥"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Støtter – tak ♥"
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tukija – kiitos ♥"
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stuðningsmaður – takk fyrir ♥"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Støttespiller. Takk ♥"
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stödjare – tack ♥"
-          }
-        }
-      }
-    },
     "Supports images": {
       "extractionState": "manual",
       "localizations": {
@@ -122540,107 +121835,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tailscode är fri programvara under GNU General Public License v3. Du har rätt till hela källkoden, som är länkad ovan."
-          }
-        }
-      }
-    },
-    "Tailscode is open source, with no ads, no tracking, and no server between you and your agents. The one-time Pro unlock funds development.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode ist Open Source, ohne Werbung, ohne Tracking und ohne Server zwischen dir und deinen Agenten. Die einmalige Pro-Freischaltung finanziert die Entwicklung."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode is open source, with no ads, no tracking, and no server between you and your agents. The one-time Pro unlock funds development."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode es de código abierto, sin anuncios, sin rastreo y sin ningún servidor entre tú y tus agentes. El desbloqueo Pro único financia el desarrollo."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode est open source, sans publicité, sans suivi et sans serveur entre vous et vos agents. Le déblocage Pro unique finance le développement."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode è open source, senza pubblicità, senza tracciamento e senza server tra te e i tuoi agenti. Lo sblocco Pro una tantum finanzia lo sviluppo."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode はオープンソースで、広告もトラッキングもなく、あなたとエージェントの間にサーバはありません。買い切りの Pro 解除が開発を支えます。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode는 오픈 소스이며, 광고도 추적도 없고 사용자와 에이전트 사이에 서버가 없습니다. 일회성 Pro 잠금 해제가 개발을 지원합니다."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "O Tailscode é de código aberto, sem anúncios, sem rastreamento e sem servidor entre você e seus agentes. O desbloqueio Pro único financia o desenvolvimento."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode 是开源软件，没有广告、没有追踪，你和你的智能体之间也没有服务器。一次性解锁 Pro 用于资助开发。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode 是開放原始碼軟體，沒有廣告、沒有追蹤，你和你的代理之間也沒有伺服器。一次性解鎖 Pro 用於支持開發。"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode jest open source — bez reklam, bez śledzenia i bez serwera pośredniczącego między tobą a twoimi agentami. Jednorazowe odblokowanie Pro finansuje rozwój aplikacji."
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode er open source, uden annoncer, uden sporing og uden en server mellem dig og dine agenter. Den engangsbetalte Pro-oplåsning finansierer udviklingen."
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode on avoimen lähdekoodin ohjelma, ilman mainoksia, seurantaa tai palvelinta agenttiesi ja sinun välissä. Kertaluonteinen Pro-avaus rahoittaa kehitystä."
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode er opinn hugbúnaður, án auglýsinga, án rakningar og án netþjóns á milli þín og agentanna þinna. Einskiptisopnunin á Pro fjármagnar þróunina."
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode er åpen kildekode, uten annonser, uten sporing og uten server mellom deg og agentene dine. Engangsopplåsingen av Pro finansierer utviklingen."
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tailscode är öppen källkod, utan annonser, utan spårning och utan någon server mellan dig och dina agenter. Engångsköpet av Pro finansierar utvecklingen."
           }
         }
       }
@@ -124055,208 +123249,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Textersättning"
-          }
-        }
-      }
-    },
-    "Thank you ♥": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Danke ♥"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Thank you ♥"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gracias ♥"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Merci ♥"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Grazie ♥"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ありがとうございます ♥"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "감사합니다 ♥"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Obrigado ♥"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "谢谢你 ♥"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "謝謝你 ♥"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dziękujemy ♥"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tak ♥"
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kiitos ♥"
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Takk fyrir ♥"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Takk ♥"
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tack ♥"
-          }
-        }
-      }
-    },
-    "Thank you! 🙏": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Danke! 🙏"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Thank you! 🙏"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "¡Gracias! 🙏"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Merci ! 🙏"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Grazie! 🙏"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ありがとうございます！ 🙏"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "감사합니다! 🙏"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Obrigado! 🙏"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "谢谢！🙏"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "謝謝！🙏"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dziękujemy! 🙏"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tak! 🙏"
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kiitos! 🙏"
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Takk fyrir! 🙏"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Takk! 🙏"
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tack! 🙏"
           }
         }
       }
@@ -139714,107 +138706,6 @@
         }
       }
     },
-    "Unlimited servers, concurrent Live Activities, support development": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unbegrenzt Server, gleichzeitige Live-Aktivitäten, Entwicklung unterstützen"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unlimited servers, concurrent Live Activities, support development"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Servidores ilimitados, actividades en vivo simultáneas, apoyo al desarrollo"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Serveurs illimités, activités en direct simultanées, soutien au développement"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Server illimitati, attività in tempo reale simultanee, sostegno allo sviluppo"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "サーバ無制限、同時ライブアクティビティ、開発の支援"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "서버 무제한, 동시 실시간 현황, 개발 지원"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Servidores ilimitados, atividades ao vivo simultâneas, apoio ao desenvolvimento"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无限服务器、并发实时活动、支持开发"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "無限伺服器、並行即時動態、支持開發"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nielimitowana liczba serwerów, równoczesne aktywności na żywo, wsparcie rozwoju aplikacji"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ubegrænset antal servere, samtidige Live Activities, støtte til udviklingen"
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rajattomasti palvelimia, samanaikaiset Live Activityt ja kehityksen tukeminen"
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ótakmarkaðir netþjónar, samtímis Live Activities, stuðningur við þróun"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ubegrenset antall servere, samtidige Live Activities og støtte til utviklingen"
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Obegränsat antal servrar, samtidiga Live Activities, stöd till utvecklingen"
-          }
-        }
-      }
-    },
     "Unlock Pro": {
       "extractionState": "manual",
       "localizations": {
@@ -146885,107 +145776,6 @@
         }
       }
     },
-    "Waiting for approval — thank you!": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Warten auf Freigabe – danke!"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Waiting for approval — thank you!"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Esperando aprobación: ¡gracias!"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "En attente d’approbation — merci !"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "In attesa di approvazione — grazie!"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "承認待ちです。ありがとうございます！"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "승인 대기 중 — 감사합니다!"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aguardando aprovação — obrigado!"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "等待批准 — 谢谢你！"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "等待核准 — 謝謝你！"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Oczekiwanie na zgodę — dziękujemy!"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Venter på godkendelse – tak!"
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Odotetaan hyväksyntää – kiitos!"
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bíður eftir samþykki – takk!"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Venter på godkjenning – takk!"
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Väntar på godkännande, tack!"
-          }
-        }
-      }
-    },
     "Waiting for token": {
       "extractionState": "manual",
       "localizations": {
@@ -149911,107 +148701,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "你在它用掉那一級之前將其保留了。在那裡再執行一次，讓它繼續往上升。"
-          }
-        }
-      }
-    },
-    "You're a supporter — thank you ♥": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Du bist Unterstützer – danke ♥"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "You're a supporter — thank you ♥"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eres colaborador: gracias ♥"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vous êtes un soutien — merci ♥"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sei un sostenitore — grazie ♥"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "あなたはサポーターです — ありがとうございます ♥"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "당신은 후원자입니다 — 감사합니다 ♥"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Você é apoiador — obrigado ♥"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你是支持者 — 谢谢你 ♥"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你是支持者 — 謝謝你 ♥"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wspierasz nas — dziękujemy ♥"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Du er med som supporter – tak ♥"
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Olet tukija, kiitos ♥"
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Þú ert stuðningsaðili – takk fyrir ♥"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Du er støttespiller – takk ♥"
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Du är supporter – tack ♥"
           }
         }
       }
@@ -154064,108 +152753,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "integritetspolicy data"
-          }
-        }
-      }
-    },
-    "pro purchase upgrade supporter restore tip": {
-      "comment": "search keywords",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro kauf upgrade unterstützer wiederherstellen trinkgeld"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro purchase upgrade supporter restore tip"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro compra mejora colaborador restaurar propina"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro achat mise à niveau soutien restaurer pourboire"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro acquisto upgrade sostenitore ripristina mancia"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro 購入 アップグレード サポーター 復元 チップ"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro 구매 업그레이드 후원자 복원 팁"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro compra upgrade apoiador restaurar gorjeta"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro 购买 升级 支持者 恢复 打赏"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro 購買 升級 支持者 回復 打賞"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro zakup upgrade wspierający przywróć napiwek"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro køb opgradering supporter gendan drikkepenge"
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro osto päivitys tukija palauta vinkki"
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro kaup uppfærsla stuðningsaðili endurheimta þjórfé"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro kjøp oppgradering støttespiller gjenopprett tips"
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "pro köp uppgradera supporter återställ tips"
           }
         }
       }
@@ -392168,107 +390755,6 @@
         }
       }
     },
-    "Unlocked — thank you": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unlocked — thank you"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Freigeschaltet — danke"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Desbloqueado: gracias"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Débloqué, merci"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sbloccato — grazie"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ロック解除済み — ありがとうございます"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "잠금 해제됨 — 감사합니다"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Odblokowano — dziękujemy"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Desbloqueado — obrigado"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已解锁，谢谢"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已解鎖，謝謝"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Låst op – tak"
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Avattu – kiitos"
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Opnað – takk fyrir"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Låst opp – takk"
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Upplåst – tack"
-          }
-        }
-      }
-    },
     "Unlimited servers, and delegation to cheaper models": {
       "extractionState": "manual",
       "localizations": {
@@ -622077,6 +620563,1016 @@
           "stringUnit": {
             "state": "translated",
             "value": "打開貼上的文字"
+          }
+        }
+      }
+    },
+    "%lld turns finished with your agents": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld turns finished with your agents"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Züge mit deinen Agenten abgeschlossen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld turnos terminados con tus agentes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld tours terminés avec vos agents"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld turni completati con i tuoi agenti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントと %lld ターンを完了しました"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트와 %lld턴을 마쳤습니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tury ukończone z twoimi agentami: %lld"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld turnos concluídos com seus agentes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已与你的智能体完成 %lld 个回合"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已與你的代理完成 %lld 個回合"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld turer avslutade med dina agenter"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ture afsluttet med dine agenter"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld turer fullført med agentene dine"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld vuoroa suoritettu agenttiesi kanssa"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loknar umferðir með agentunum þínum: %lld"
+          }
+        }
+      }
+    },
+    "Resting now: %@. Pro keeps every server connected, in one session list across your tailnet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resting now: %@. Pro keeps every server connected, in one session list across your tailnet."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ruht gerade: %@. Pro hält jeden Server verbunden, in einer Sitzungsliste über dein ganzes Tailnet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En reposo ahora: %@. Pro mantiene todos los servidores conectados, en una sola lista de sesiones para toda tu tailnet."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En veille actuellement : %@. Pro garde chaque serveur connecté, dans une seule liste de sessions pour tout votre tailnet."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A riposo ora: %@. Pro tiene collegato ogni server, in un unico elenco di sessioni per tutto il tuo tailnet."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "休止中：%@。Pro ならすべてのサーバを接続したまま、tailnet 全体を 1 つのセッションリストにまとめます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "지금 휴면 중: %@. Pro는 모든 서버를 연결된 상태로 유지하고, tailnet 전체를 하나의 세션 목록으로 보여 줍니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odpoczywa teraz: %@. Pro utrzymuje połączenie z każdym serwerem, na jednej liście sesji dla całego twojego tailnet."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Em repouso agora: %@. O Pro mantém todos os servidores conectados, em uma só lista de sessões para toda a sua tailnet."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在休眠：%@。Pro 让每台服务器保持连接，并将整个 tailnet 汇总为一份会话列表。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在休眠：%@。Pro 讓每台伺服器保持連線，並將整個 tailnet 彙整為一份工作階段清單。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vilar nu: %@. Pro håller varje server ansluten, i en sessionslista för hela ditt tailnet."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hviler nu: %@. Pro holder alle servere forbundet i én sessionsliste på tværs af dit tailnet."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På pause nå: %@. Pro holder alle servere tilkoblet, i én øktliste på tvers av tailnettet ditt."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lepotilassa nyt: %@. Pro pitää jokaisen palvelimen yhdistettynä yhdessä istuntoluettelossa koko tailnetissäsi."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvílir núna: %@. Pro heldur öllum netþjónum tengdum, í einum setulista yfir allt tailnetið þitt."
+          }
+        }
+      }
+    },
+    "You connect to %@. Pro adds every other machine on your tailnet to the same session list.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You connect to %@. Pro adds every other machine on your tailnet to the same session list."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du verbindest dich mit %@. Pro nimmt jeden weiteren Rechner in deinem Tailnet in dieselbe Sitzungsliste auf."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te conectas a %@. Pro añade todas las demás máquinas de tu tailnet a la misma lista de sesiones."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous vous connectez à %@. Pro ajoute toutes les autres machines de votre tailnet à la même liste de sessions."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ti colleghi a %@. Pro aggiunge tutte le altre macchine del tuo tailnet allo stesso elenco di sessioni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続先は %@ です。Pro なら tailnet 上のほかのすべてのマシンも同じセッションリストに加わります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "지금은 %@에 연결합니다. Pro는 tailnet의 다른 모든 컴퓨터를 같은 세션 목록에 더합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Łączysz się z %@. Pro dodaje wszystkie pozostałe komputery w twoim tailnet do tej samej listy sesji."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você se conecta a %@. O Pro adiciona todas as outras máquinas da sua tailnet à mesma lista de sessões."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你连接的是 %@。Pro 会把 tailnet 上的其他所有机器加入同一份会话列表。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你連線的是 %@。Pro 會把 tailnet 上的其他所有電腦加入同一份工作階段清單。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du ansluter till %@. Pro lägger till alla andra datorer i ditt tailnet i samma sessionslista."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du forbinder til %@. Pro føjer alle andre computere i dit tailnet til den samme sessionsliste."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du kobler til %@. Pro legger alle andre maskiner i tailnettet ditt til i den samme øktlisten."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yhdistät palvelimeen %@. Pro lisää tailnetisi kaikki muut tietokoneet samaan istuntoluetteloon."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Þú tengist %@. Pro bætir öllum öðrum tölvum á tailnetinu þínu við sama setulistann."
+          }
+        }
+      }
+    },
+    "Every machine on your tailnet, in one session list": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every machine on your tailnet, in one session list"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeder Rechner in deinem Tailnet, in einer Sitzungsliste"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todas las máquinas de tu tailnet, en una sola lista de sesiones"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toutes les machines de votre tailnet, dans une seule liste de sessions"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tutte le macchine del tuo tailnet, in un unico elenco di sessioni"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tailnet 上のすべてのマシンを、1 つのセッションリストに"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tailnet의 모든 컴퓨터를 하나의 세션 목록으로"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wszystkie komputery w twoim tailnet na jednej liście sesji"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todas as máquinas da sua tailnet, em uma só lista de sessões"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tailnet 上的所有机器，汇总为一份会话列表"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tailnet 上的所有電腦，彙整為一份工作階段清單"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varje dator i ditt tailnet, i en sessionslista"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle computere i dit tailnet i én sessionsliste"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle maskiner i tailnettet ditt, i én øktliste"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailnetisi jokainen tietokone yhdessä istuntoluettelossa"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allar tölvur á tailnetinu þínu í einum setulista"
+          }
+        }
+      }
+    },
+    "Pay once and Pro is yours on iPhone and Mac. No subscription, no ads, no tracking, and no server between you and your agents.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pay once and Pro is yours on iPhone and Mac. No subscription, no ads, no tracking, and no server between you and your agents."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einmal zahlen, und Pro gehört dir auf iPhone und Mac. Kein Abo, keine Werbung, kein Tracking und kein Server zwischen dir und deinen Agenten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paga una vez y Pro es tuyo en iPhone y Mac. Sin suscripción, sin anuncios, sin rastreo y sin ningún servidor entre tú y tus agentes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Payez une fois et Pro est à vous sur iPhone et Mac. Pas d’abonnement, pas de publicité, pas de suivi et aucun serveur entre vous et vos agents."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paghi una volta e Pro è tuo su iPhone e Mac. Nessun abbonamento, niente pubblicità, niente tracciamento e nessun server tra te e i tuoi agenti."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一度の購入で、Pro は iPhone と Mac であなたのものに。サブスクリプションも広告もトラッキングもなく、あなたとエージェントの間にサーバはありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "한 번만 결제하면 Pro는 iPhone과 Mac에서 사용자의 것입니다. 구독도, 광고도, 추적도 없고 사용자와 에이전트 사이에 서버도 없습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Płacisz raz i Pro jest twoje na iPhonie i Macu. Bez subskrypcji, bez reklam, bez śledzenia i bez serwera między tobą a twoimi agentami."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pague uma vez e o Pro é seu no iPhone e no Mac. Sem assinatura, sem anúncios, sem rastreamento e sem servidor entre você e seus agentes."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一次付费，Pro 即在 iPhone 和 Mac 上归你所有。没有订阅，没有广告，没有追踪，你和你的智能体之间也没有服务器。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一次付費，Pro 即在 iPhone 和 Mac 上歸你所有。沒有訂閱，沒有廣告，沒有追蹤，你和你的代理之間也沒有伺服器。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Betala en gång så är Pro ditt på iPhone och Mac. Ingen prenumeration, inga annonser, ingen spårning och ingen server mellan dig och dina agenter."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Betal én gang, så er Pro dit på iPhone og Mac. Intet abonnement, ingen annoncer, ingen sporing og ingen server mellem dig og dine agenter."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Betal én gang, så er Pro ditt på iPhone og Mac. Ikke noe abonnement, ingen annonser, ingen sporing og ingen server mellom deg og agentene dine."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maksa kerran, ja Pro on sinun iPhonessa ja Macissa. Ei tilausta, ei mainoksia, ei seurantaa eikä palvelinta sinun ja agenttiesi välissä."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Borgaðu einu sinni og Pro er þitt á iPhone og Mac. Engin áskrift, engar auglýsingar, engin rakning og enginn netþjónn á milli þín og agentanna þinna."
+          }
+        }
+      }
+    },
+    "Tailscode Pro is yours on iPhone and Mac": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro is yours on iPhone and Mac"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro gehört dir auf iPhone und Mac"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro es tuyo en iPhone y Mac"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro est à vous sur iPhone et Mac"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro è tuo su iPhone e Mac"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro は iPhone と Mac であなたのものです"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro는 iPhone과 Mac에서 사용자의 것입니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro jest twoje na iPhonie i Macu"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscode Pro é seu no iPhone e no Mac"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro 已在 iPhone 和 Mac 上归你所有"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro 已在 iPhone 和 Mac 上歸你所有"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro är ditt på iPhone och Mac"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro er dit på iPhone og Mac"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro er ditt på iPhone og Mac"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro on sinun iPhonessa ja Macissa"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode Pro er þitt á iPhone og Mac"
+          }
+        }
+      }
+    },
+    "Yours on iPhone and Mac": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yours on iPhone and Mac"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deins auf iPhone und Mac"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tuyo en iPhone y Mac"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "À vous sur iPhone et Mac"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tuo su iPhone e Mac"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone と Mac であなたのもの"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone과 Mac에서 사용자의 것"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Twoje na iPhonie i Macu"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu no iPhone e no Mac"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在 iPhone 和 Mac 上归你所有"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在 iPhone 和 Mac 上歸你所有"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ditt på iPhone och Mac"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dit på iPhone og Mac"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ditt på iPhone og Mac"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sinun iPhonessa ja Macissa"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Þitt á iPhone og Mac"
+          }
+        }
+      }
+    },
+    "Unlimited servers, concurrent Live Activities, Delegate": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlimited servers, concurrent Live Activities, Delegate"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unbegrenzt Server, gleichzeitige Live-Aktivitäten, Delegate"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Servidores ilimitados, actividades en vivo simultáneas, Delegate"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveurs illimités, activités en direct simultanées, Delegate"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server illimitati, attività in tempo reale simultanee, Delegate"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバ無制限、同時ライブアクティビティ、Delegate"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "서버 무제한, 동시 실시간 현황, Delegate"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nielimitowana liczba serwerów, równoczesne aktywności na żywo, Delegate"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Servidores ilimitados, atividades ao vivo simultâneas, Delegate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无限服务器、并发实时活动、Delegate"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無限伺服器、並行即時動態、Delegate"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obegränsat antal servrar, samtidiga Live Activities, Delegate"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ubegrænset antal servere, samtidige Live Activities, Delegate"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ubegrenset antall servere, samtidige Live Activities og Delegate"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rajattomasti palvelimia, samanaikaiset Live Activityt ja Delegate"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ótakmarkaðir netþjónar, samtímis Live Activities, Delegate"
+          }
+        }
+      }
+    },
+    "Pro puts every machine on your tailnet in one session list, with a Live Activity for every running session and Delegate. One purchase, yours on iPhone and Mac, no subscription.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro puts every machine on your tailnet in one session list, with a Live Activity for every running session and Delegate. One purchase, yours on iPhone and Mac, no subscription."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro bringt jeden Rechner in deinem Tailnet in eine Sitzungsliste, mit einer Live-Aktivität für jede laufende Sitzung und Delegate. Ein Kauf, deins auf iPhone und Mac, kein Abo."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro reúne todas las máquinas de tu tailnet en una sola lista de sesiones, con una actividad en vivo para cada sesión activa y Delegate. Una compra, tuyo en iPhone y Mac, sin suscripción."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro réunit toutes les machines de votre tailnet dans une seule liste de sessions, avec une activité en direct pour chaque session active et Delegate. Un seul achat, à vous sur iPhone et Mac, sans abonnement."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro riunisce tutte le macchine del tuo tailnet in un unico elenco di sessioni, con un’attività in tempo reale per ogni sessione attiva e Delegate. Un solo acquisto, tuo su iPhone e Mac, senza abbonamento."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro なら tailnet 上のすべてのマシンを 1 つのセッションリストにまとめ、実行中のすべてのセッションにライブアクティビティを表示し、Delegate も使えます。一度の購入で iPhone と Mac であなたのものに。サブスクリプションはありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro는 tailnet의 모든 컴퓨터를 하나의 세션 목록에 모으고, 실행 중인 모든 세션에 실시간 현황을 표시하며, Delegate를 제공합니다. 한 번 구매로 iPhone과 Mac에서 사용자의 것이며, 구독은 없습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro zbiera wszystkie komputery w twoim tailnet na jednej liście sesji, z aktywnością na żywo dla każdej działającej sesji i Delegate. Jeden zakup, twoje na iPhonie i Macu, bez subskrypcji."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Pro reúne todas as máquinas da sua tailnet em uma só lista de sessões, com uma atividade ao vivo para cada sessão em execução e o Delegate. Uma compra, seu no iPhone e no Mac, sem assinatura."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro 将 tailnet 上的所有机器汇总为一份会话列表，为每个运行中的会话显示实时活动，并提供 Delegate。一次购买，在 iPhone 和 Mac 上归你所有，没有订阅。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro 將 tailnet 上的所有電腦彙整為一份工作階段清單，為每個執行中的工作階段顯示即時動態，並提供 Delegate。一次購買，在 iPhone 和 Mac 上歸你所有，沒有訂閱。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro samlar varje dator i ditt tailnet i en sessionslista, med en Live Activity för varje pågående session och Delegate. Ett köp, ditt på iPhone och Mac, ingen prenumeration."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro samler alle computere i dit tailnet i én sessionsliste, med en Live Activity for hver kørende session og Delegate. Ét køb, dit på iPhone og Mac, uden abonnement."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro samler alle maskiner i tailnettet ditt i én øktliste, med en Live Activity for hver kjørende økt og Delegate. Ett kjøp, ditt på iPhone og Mac, uten abonnement."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro tuo tailnetisi jokaisen tietokoneen yhteen istuntoluetteloon ja antaa Live Activityn jokaiselle käynnissä olevalle istunnolle sekä Delegaten. Yksi osto, sinun iPhonessa ja Macissa, ei tilausta."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pro setur allar tölvur á tailnetinu þínu í einn setulista, með Live Activity fyrir hverja keyrandi setu og Delegate. Eitt kaup, þitt á iPhone og Mac, engin áskrift."
+          }
+        }
+      }
+    },
+    "pro purchase upgrade restore week servers delegate": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro purchase upgrade restore week servers delegate"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro kauf upgrade wiederherstellen woche server delegate"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro compra mejora restaurar semana servidores delegate"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro achat mise à niveau restaurer semaine serveurs delegate"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro acquisto upgrade ripristina settimana server delegate"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro 購入 アップグレード 復元 ウィーク サーバ delegate"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro 구매 업그레이드 복원 위크 서버 delegate"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro zakup upgrade przywróć tydzień serwery delegate"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro compra upgrade restaurar semana servidores delegate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro 购买 升级 恢复 周 服务器 delegate"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro 購買 升級 回復 週 伺服器 delegate"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro köp uppgradera återställ vecka servrar delegate"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro køb opgradering gendan uge servere delegate"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro kjøp oppgradering gjenopprett uke servere delegate"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro osto päivitys palauta viikko palvelimet delegate"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pro kaup uppfærsla endurheimta vika netþjónar delegate"
           }
         }
       }

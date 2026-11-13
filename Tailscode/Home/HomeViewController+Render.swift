@@ -79,9 +79,13 @@ extension HomeViewController {
             snapshot.appendSections([.demoNudge])
             snapshot.appendItems([.demoNudge(DemoNudgeCard())], toSection: .demoNudge)
         }
-        if SupporterInvitation.isDue(isPro: ProAccess.shared.hasProAccess) {
-            snapshot.appendSections([.supporter])
-            snapshot.appendItems([.supporter(SupporterCard(price: proPrice))], toSection: .supporter)
+        if ProInvitation.isDue(isPro: ProAccess.shared.hasProAccess) {
+            snapshot.appendSections([.proInvitation])
+            let gift = ProInvitation.gift(canStartWeek: ProAccess.shared.canStartProWeek)
+            let card = ProInvitationCard(
+                gift: gift, price: gift == .pro ? proPrice : nil,
+                facts: ProPersonalDetails.Facts(turns: ReviewPromptPolicy.successCount))
+            snapshot.appendItems([.proInvitation(card)], toSection: .proInvitation)
         }
 
         func cards(_ band: HomeBoard.Band) -> [HomeItem] {
@@ -158,7 +162,7 @@ extension HomeViewController {
         let rowItems = snapshot.itemIdentifiers.filter {
             switch $0 {
             case .chat, .ask, .saved, .placeholder: return true
-            case .status, .schedule, .agentNews, .glance, .quota, .alert, .demoNudge, .supporter, .more:
+            case .status, .schedule, .agentNews, .glance, .quota, .alert, .demoNudge, .proInvitation, .more:
                 return false
             }
         }.count

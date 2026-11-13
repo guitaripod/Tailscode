@@ -11,7 +11,7 @@ extension HomeViewController {
                 case .status: section = Self.plainSection(top: 0, bottom: Theme.Spacing.xs)
                 case .glance:
                     section = Self.plainSection(top: Theme.Spacing.s, bottom: Theme.Spacing.m)
-                case .alerts, .demoNudge, .supporter, .agentNews:
+                case .alerts, .demoNudge, .proInvitation, .agentNews:
                     section = Self.plainSection(top: 0, bottom: Theme.Spacing.m)
                 case .schedule:
                     section = Self.plainSection(top: Theme.Spacing.s, bottom: Theme.Spacing.xs)
@@ -360,11 +360,11 @@ extension HomeViewController {
             cell.onSetUp = { [weak self] in self?.presentSetup() }
             cell.onNotNow = { [weak self] in self?.dismissDemoNudge() }
         }
-        let supporterCell = UICollectionView.CellRegistration<SupporterCell, SupporterCard> {
+        let proInvitationCell = UICollectionView.CellRegistration<ProInvitationCell, ProInvitationCard> {
             [weak self] cell, _, card in
             cell.configure(card)
-            cell.onUnlock = { [weak self] in self?.openSupporterOffer() }
-            cell.onNotNow = { [weak self] in self?.declineSupporterOffer() }
+            cell.onAccept = { [weak self] in self?.acceptProInvitation() }
+            cell.onNotNow = { [weak self] in self?.declineProInvitation() }
         }
         let chatCell = UICollectionView.CellRegistration<ChatRowCell, ChatRowCard> {
             cell, _, card in
@@ -419,9 +419,9 @@ extension HomeViewController {
             case .agentNews(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: newsCell, for: indexPath, item: card)
-            case .supporter(let card):
+            case .proInvitation(let card):
                 return collectionView.dequeueConfiguredReusableCell(
-                    using: supporterCell, for: indexPath, item: card)
+                    using: proInvitationCell, for: indexPath, item: card)
             case .chat(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: chatCell, for: indexPath, item: card)
@@ -492,7 +492,7 @@ extension HomeViewController {
             ) { [weak self] in
                 self?.pushUsage()
             }
-        case .status, .schedule, .agentNews, .glance, .alerts, .demoNudge, .supporter:
+        case .status, .schedule, .agentNews, .glance, .alerts, .demoNudge, .proInvitation:
             break
         }
     }

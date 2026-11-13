@@ -227,7 +227,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case neuralTrace
     case reviewPrompt
     case proUnlock
-    case supporterInvitation
+    case proInvitation
     case proWeek
     case videoForge
     case forgeEntry

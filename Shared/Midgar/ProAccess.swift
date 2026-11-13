@@ -10,10 +10,10 @@ import TailscodeCore
     import AppKit
 #endif
 
-/// Whether Pro is held, and the one way the iPhone app and the Mac app buy, tip and restore it.
+/// Whether Pro is held, and the one way the iPhone app and the Mac app buy and restore it.
 ///
-/// The app is open source, so Pro is a convenience-and-support purchase and every check here is an honest
-/// gate. The purchase engine is `MidgarStore`: it listens to `Transaction.updates`, finishes what it grants,
+/// The app is open source and every screen is in the free copy, so Pro is what a person gets past one machine,
+/// never a wall, and every check here is an honest gate. The purchase engine is `MidgarStore`: it listens to `Transaction.updates`, finishes what it grants,
 /// carries the Midgar ID as the `appAccountToken` and reports every purchase to the Midgar ledger. This
 /// model reads `store.isEntitled(to: "pro")` and keeps three things the engine does not:
 ///
@@ -203,14 +203,11 @@ final class ProAccess {
         await adoptEntitlement(of: store)
     }
 
-    /// The unlock and the tips as StoreKit prices them for this storefront, tips in the order the offer
-    /// lists them. An unreachable store answers with nothing rather than failing.
-    func products() async -> (pro: StoreProduct?, tips: [StoreProduct]) {
-        guard let store else { return (nil, []) }
-        let all = (try? await store.products()) ?? []
-        let pro = all.first { $0.id == ProOffer.productID }
-        let tips = ProOffer.tipIDs.compactMap { id in all.first { $0.id == id } }
-        return (pro, tips)
+    /// The unlock as StoreKit prices it for this storefront. An unreachable store answers with nothing rather than
+    /// failing.
+    func proProduct() async -> StoreProduct? {
+        guard let store else { return nil }
+        return (try? await store.products())?.first { $0.id == ProOffer.productID }
     }
 
     #if os(iOS)

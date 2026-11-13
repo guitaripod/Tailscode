@@ -12,7 +12,7 @@ struct ProAccessTests {
         try #require(UserDefaults(suiteName: "tailscode-tests-" + UUID().uuidString))
     }
 
-    @Test func theStoreSellsProAndTheTipsAndOnlyProGrantsAnything() {
+    @Test func theStoreHandlesProAndTheRetiredTipsAndOnlyProGrantsAnything() {
         let configuration = TailscodeMidgar.storeConfiguration()
 
         #expect(configuration.appID == "tailscode")

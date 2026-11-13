@@ -52,9 +52,9 @@ struct StoreHarness {
         try StoreHarness(askToBuy: false, resetSession: false)
     }
 
+    /// Any product the store handles, the retired tips included, which no screen offers and `ProAccess` no longer lists.
     func product(_ id: String) async throws -> StoreProduct {
-        let (pro, tips) = await access.products()
-        return try #require(([pro].compactMap { $0 } + tips).first { $0.id == id })
+        try #require(try await store.products().first { $0.id == id })
     }
 
     /// Buys `id` with the confirmation anchored to the host app's window scene, as the sheet is. A

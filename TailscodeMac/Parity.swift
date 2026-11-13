@@ -338,10 +338,10 @@ enum ParityManifest {
         case .linkEmbeds: return .implemented("LinkRailLine")
         case .chatDensity: return .implemented("ChatLayout")
         case .neuralTrace: return .implemented("BrainRowView")
-        case .supporterInvitation:
+        case .proInvitation:
             return .varies(
                 direct: .notApplicable("the direct build is unlocked and sells nothing"),
-                appStore: .implemented("SupporterCardView"),
+                appStore: .implemented("ProInvitationCardView"),
                 because: "only the store build has a receipt to sell")
         case .proWeek:
             return .varies(
@@ -354,7 +354,7 @@ enum ParityManifest {
                     "a build somebody installed themselves has no receipt and never will, so this copy sells nothing and gates nothing"),
                 appStore: .implemented("ProAccess"),
                 because:
-                    "The unlock is a purchase, and a purchase is a receipt from the App Store — only one of the two Mac builds has any relationship with it. The store copy asks for the same product the phone does, so a supporter is already a supporter here; the direct copy is simply open.")
+                    "The unlock is a purchase, and a purchase is a receipt from the App Store — only one of the two Mac builds has any relationship with it. The store copy asks for the same product the phone does, so whoever holds Pro on the phone holds it here; the direct copy is simply open.")
         case .videoForge: return .implemented("VideoLane")
         case .forgeEntry: return .implemented("ForgeMarkButton")
         case .forgeSetup: return .implemented("ForgeSetupSheet")

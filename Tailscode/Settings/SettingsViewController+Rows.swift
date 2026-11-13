@@ -493,14 +493,14 @@ extension SettingsViewController {
             content = quiet(.subtitleCell())
             content.text = "Tailscode Pro"
             if ProAccess.shared.isPro {
-                content.secondaryText = String(localized: "Supporter — thank you ♥")
-                content.image = tile(SettingsTile("heart.fill", .red))
+                content.secondaryText = ProOffer.ownedDetail
+                content.image = tile(SettingsTile("checkmark.seal.fill", .purple))
             } else if let endsAt = ProAccess.shared.proWeekEndsAt {
                 content.secondaryText = ProWeek.daysLeftText(until: endsAt)
                 content.image = tile(SettingsTile("sparkles", .purple))
             } else {
                 content.secondaryText = String(
-                    localized: "Unlimited servers, concurrent Live Activities, support development")
+                    localized: "Unlimited servers, concurrent Live Activities, Delegate")
                 content.image = tile(SettingsTile("sparkles", .purple))
             }
             cell.accessories = [.disclosureIndicator()]

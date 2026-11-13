@@ -7,7 +7,7 @@ import TailscodeCore
 
 @testable import Tailscode
 
-/// Buys Pro and the tips through `ProAccess` on a `MidgarStore` with Tailscode's own configuration against
+/// Buys Pro, and the tips an earlier version sold, through `ProAccess` on a `MidgarStore` with Tailscode's own configuration against
 /// `Tailscode.storekit`, the file the scheme runs with, so the products, the entitlement map and the model
 /// are checked together on a real StoreKit. StoreKit is process-wide, so the suite runs serially.
 @MainActor
@@ -122,8 +122,8 @@ struct ProAccessStoreKitTests {
         await harness.store.stop()
     }
 
-    @Test(arguments: ProOffer.tipIDs)
-    func aTipIsBoughtAndFinishedAndGrantsNothing(_ tip: String) async throws {
+    @Test(arguments: ProOffer.retiredTipIDs)
+    func aRetiredTipIsStillFinishedAndGrantsNothing(_ tip: String) async throws {
         let harness = try StoreHarness()
         await harness.access.refreshEntitlements()
 

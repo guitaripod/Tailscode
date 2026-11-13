@@ -3,10 +3,11 @@ import MidgarCommerce
 import MidgarCore
 import TailscodeCore
 
-/// The Pro unlock and the tip jar, opened by hand — from the menu, or from the one gate in the app
-/// when somebody reaches for a second machine. Never on launch, never on a timer, and never in
-/// front of work: an open-source app that nags is a fork waiting to happen. A copy that never had a
-/// Pro week is offered one here as the default button, with the purchase beside it.
+/// The Pro window, opened by hand — from the menu, or from the one gate in the app when somebody
+/// reaches for a second machine. Never on launch, never on a timer, and never in front of work: an
+/// open-source app that nags is a fork waiting to happen. It leads with the person
+/// (`ProPersonalDetails`) and lists what they get; nothing on it asks for anything. A copy that never
+/// had a Pro week is offered one here as the default button, with the purchase beside it.
 @MainActor
 final class ProWindowController: NSWindowController {
     private let column = FillingStack(views: [])
@@ -15,7 +16,6 @@ final class ProWindowController: NSWindowController {
     private let restore = RowKit.ActionButton(title: ProOffer.restoreTitle) {}
     private let status = RowKit.wrapping(
         "", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
-    private let tips = NSStackView()
     private var proProduct: StoreProduct?
 
     init() {
@@ -69,15 +69,16 @@ final class ProWindowController: NSWindowController {
             right: MacTheme.Spacing.l)
         column.translatesAutoresizingMaskIntoConstraints = false
 
+        let facts = ProPersonalDetails.Facts.onThisMac
         column.addArrangedSubview(
-            RowKit.label(
-                Localized.text("Support Tailscode"), font: MacTheme.Ramp.font(.cardTitle),
+            RowKit.wrapping(
+                ProPersonalDetails.headline(facts), font: MacTheme.Ramp.font(.cardTitle),
                 color: MacTheme.Color.label))
         column.addArrangedSubview(
             RowKit.wrapping(
                 ProOffer.pitch, font: MacTheme.Ramp.font(.cardBody),
                 color: MacTheme.Color.secondaryLabel))
-        for perk in ProOffer.perks { column.addArrangedSubview(perkRow(perk)) }
+        for perk in ProPersonalDetails.perks(facts) { column.addArrangedSubview(perkRow(perk)) }
 
         if ProAccess.shared.canStartProWeek {
             column.addArrangedSubview(
@@ -100,14 +101,6 @@ final class ProWindowController: NSWindowController {
         }
         column.addArrangedSubview(purchase)
         column.addArrangedSubview(status)
-
-        column.addArrangedSubview(
-            RowKit.label(
-                ProOffer.tipHeading, font: MacTheme.Ramp.font(.sectionLabel),
-                color: MacTheme.Color.secondaryLabel))
-        tips.orientation = .horizontal
-        tips.spacing = MacTheme.Spacing.s
-        column.addArrangedSubview(tips)
 
         restore.bezelStyle = .inline
         column.addArrangedSubview(restore)
@@ -160,13 +153,13 @@ final class ProWindowController: NSWindowController {
 
     @objc private func proChanged() {
         guard ProAccess.shared.isPro else { return }
-        purchase.title = ProOffer.thanks
+        purchase.title = ProOffer.owned
         purchase.isEnabled = false
         status.stringValue = ""
     }
 
     private func load() async {
-        let (pro, tipProducts) = await ProAccess.shared.products()
+        let pro = await ProAccess.shared.proProduct()
         proProduct = pro
         if ProAccess.shared.isPro {
             proChanged()
@@ -178,14 +171,6 @@ final class ProWindowController: NSWindowController {
             status.stringValue = Localized.text("The App Store is not answering right now.")
         }
         restore.setAction { [weak self] in self?.restorePurchases() }
-        for view in tips.arrangedSubviews { view.removeFromSuperview() }
-        for tip in tipProducts {
-            let button = RowKit.ActionButton(title: tip.displayPrice) { [weak self] in
-                self?.buy(tip)
-            }
-            tips.addArrangedSubview(button)
-        }
-        tips.addArrangedSubview(RowKit.spacer())
     }
 
     private func buy(_ product: StoreProduct) {
@@ -194,7 +179,7 @@ final class ProWindowController: NSWindowController {
             do {
                 switch try await ProAccess.shared.purchase(product, in: window) {
                 case .success:
-                    status.stringValue = Localized.text("Thank you ♥")
+                    status.stringValue = ProOffer.owned
                 case .pending:
                     status.stringValue = Localized.text(
                         "Waiting on approval — this window can be closed.")
@@ -215,7 +200,7 @@ final class ProWindowController: NSWindowController {
         Task {
             do {
                 switch try await ProAccess.shared.restore() {
-                case .restored: status.stringValue = ProOffer.thanks
+                case .restored: status.stringValue = ProOffer.owned
                 case .nothingFound:
                     status.stringValue = Localized.text("No purchase found on this Apple Account.")
                 case .cancelled: status.stringValue = ""

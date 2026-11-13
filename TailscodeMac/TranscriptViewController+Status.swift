@@ -17,7 +17,7 @@ extension TranscriptViewController {
             }
             if TurnSuccessReading.succeeded(state) {
                 MacReviewPrompt.shared.turnCompleted()
-                SupporterInvitation.recordSuccessfulTurn()
+                ProInvitation.recordSuccessfulTurn()
             }
         }
         wasRunningForHaptics = state.status == .running

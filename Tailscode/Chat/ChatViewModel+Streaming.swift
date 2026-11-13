@@ -28,7 +28,7 @@ extension ChatViewModel {
                 if self.state.status == .running, state.status != .running {
                     if TurnSuccessReading.succeeded(state) {
                         ReviewPromptCoordinator.shared.turnCompleted()
-                        SupporterInvitation.recordSuccessfulTurn()
+                        ProInvitation.recordSuccessfulTurn()
                     }
                     self.cachedUsage = nil
                     self.refreshTitleFromServer()

@@ -61,10 +61,10 @@ extension HomeViewController {
             self, selector: #selector(updatesDidChange),
             name: UpdateMonitor.didChange, object: nil)
         NotificationCenter.default.addObserver(
-            self, selector: #selector(supporterDidChange),
-            name: SupporterInvitation.didChange, object: nil)
+            self, selector: #selector(proInvitationDidChange),
+            name: ProInvitation.didChange, object: nil)
         NotificationCenter.default.addObserver(
-            self, selector: #selector(supporterDidChange),
+            self, selector: #selector(proInvitationDidChange),
             name: ProAccess.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(updateVideoMark),
@@ -163,7 +163,7 @@ extension HomeViewController {
     var proPrice: String? {
         if let price = Self.fetchedProPrice { return price }
         Task { @MainActor [weak self] in
-            guard let product = await ProAccess.shared.products().pro else { return }
+            guard let product = await ProAccess.shared.proProduct() else { return }
             Self.fetchedProPrice = product.displayPrice
             self?.applySnapshot()
         }
@@ -182,19 +182,27 @@ extension HomeViewController {
         applySnapshot()
     }
 
-    @objc private func supporterDidChange() {
-        if ProAccess.shared.isPro { SupporterInvitation.settle() }
+    @objc private func proInvitationDidChange() {
+        if ProAccess.shared.isPro { ProInvitation.settle() }
         applySnapshot()
         presentProWeekEndIfDue()
     }
 
-    func openSupporterOffer() {
+    /// The card's own button: a copy that can still start its Pro week starts it here, on the person's press, and the
+    /// invitation is answered; any other copy opens the Pro sheet.
+    func acceptProInvitation() {
+        let servers = ConnectionController.shared.savedProfiles.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }.count
+        if ProAccess.shared.startProWeek(servers: servers) {
+            Theme.Haptics.success()
+            ProInvitation.settle()
+            return
+        }
         Theme.Haptics.tap()
         ProUpgradeViewController.present(from: self, placement: .entry)
     }
 
-    func declineSupporterOffer() {
+    func declineProInvitation() {
         Theme.Haptics.selection()
-        SupporterInvitation.dismiss()
+        ProInvitation.dismiss()
     }
 }

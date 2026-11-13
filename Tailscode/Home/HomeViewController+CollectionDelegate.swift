@@ -24,7 +24,7 @@ extension HomeViewController: UICollectionViewDelegate {
             presentAgents()
         case .schedule:
             pushSchedules()
-        case .demoNudge, .supporter, .placeholder, .agentNews:
+        case .demoNudge, .proInvitation, .placeholder, .agentNews:
             break
         case .glance:
             pushUsage()
@@ -55,7 +55,7 @@ extension HomeViewController: UICollectionViewDelegate {
             return sessionMenu(for: card.entry, allowDelete: !card.row.state.isInFlight)
         case .ask(let card):
             return sessionMenu(for: card.entry, allowDelete: false)
-        case .status, .schedule, .agentNews, .glance, .quota, .alert, .demoNudge, .supporter, .more,
+        case .status, .schedule, .agentNews, .glance, .quota, .alert, .demoNudge, .proInvitation, .more,
             .placeholder:
             return nil
         }

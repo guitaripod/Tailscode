@@ -3,7 +3,7 @@ import TailscodeCore
 import UIKit
 
 enum HomeSection: Hashable {
-    case status, schedule, agentNews, glance, alerts, demoNudge, supporter, asks, usage
+    case status, schedule, agentNews, glance, alerts, demoNudge, proInvitation, asks, usage
     case needsYou, working, pinned, saved, recent
 
     var band: SessionSection? {
@@ -13,7 +13,7 @@ enum HomeSection: Hashable {
         case .pinned: return .pinned
         case .saved: return .saved
         case .recent: return .recent
-        case .status, .schedule, .agentNews, .glance, .alerts, .demoNudge, .supporter, .asks, .usage: return nil
+        case .status, .schedule, .agentNews, .glance, .alerts, .demoNudge, .proInvitation, .asks, .usage: return nil
         }
     }
 
@@ -35,7 +35,7 @@ enum HomeItem: Hashable {
     case glance(QuotaGlanceCard)
     case alert(ServerAlertCard)
     case demoNudge(DemoNudgeCard)
-    case supporter(SupporterCard)
+    case proInvitation(ProInvitationCard)
     case chat(ChatRowCard)
     case ask(AskCard)
     case quota(QuotaCard)
@@ -77,7 +77,7 @@ extension HomeItem {
         case .agentNews(let card):
             hasher.combine(card.title)
             hasher.combine(card.detail)
-        case .supporter(let card):
+        case .proInvitation(let card):
             hasher.combine(card.price)
         case .chat(let card):
             hasher.combine(card.facts.signature)
@@ -380,29 +380,31 @@ final class DemoNudgeCell: ContentCardCell {
     }
 }
 
-/// The one supporter card, keyed by nothing but its own existence: the price is content, so a
-/// store answer reconfigures the card rather than replacing it.
-struct SupporterCard: Hashable {
+/// The one invitation to Pro, keyed by nothing but its own existence: what it gives, the person's turns and the price
+/// are content, so a store answer reconfigures the card rather than replacing it.
+struct ProInvitationCard: Hashable {
+    let gift: ProInvitation.Gift
     let price: String?
+    let facts: ProPersonalDetails.Facts
 
-    static func == (lhs: SupporterCard, rhs: SupporterCard) -> Bool { true }
+    static func == (lhs: ProInvitationCard, rhs: ProInvitationCard) -> Bool { true }
     func hash(into hasher: inout Hasher) {}
 }
 
-final class SupporterCell: ContentCardCell {
-    var onUnlock: (() -> Void)?
+final class ProInvitationCell: ContentCardCell {
+    var onAccept: (() -> Void)?
     var onNotNow: (() -> Void)?
 
     private let iconView = UIImageView()
     private let titleLabel = UILabel()
     private let bodyLabel = UILabel()
-    private let unlockButton = PrimaryButton(title: ProOffer.title)
+    private let acceptButton = PrimaryButton(title: ProOffer.title)
     private let notNowButton = UIButton(type: .system)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         iconView.image = UIImage(
-            systemName: "heart.fill",
+            systemName: "sparkles",
             withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold))
         iconView.tintColor = Theme.Color.accent
         iconView.contentMode = .scaleAspectFit
@@ -411,21 +413,19 @@ final class SupporterCell: ContentCardCell {
         titleLabel.font = Theme.Ramp.font(.cardTitle)
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 0
-        titleLabel.text = SupporterInvitation.title
 
         bodyLabel.font = Theme.Ramp.font(.panelFootnote)
         bodyLabel.textColor = Theme.Color.secondaryLabel
         bodyLabel.numberOfLines = 0
-        bodyLabel.text = SupporterInvitation.body
 
         var notNow = UIButton.Configuration.gray()
-        notNow.title = SupporterInvitation.secondaryAction
+        notNow.title = ProInvitation.secondaryAction
         notNow.baseForegroundColor = Theme.Color.secondaryLabel
         notNow.cornerStyle = .large
         notNow.buttonSize = .large
         notNowButton.configuration = notNow
 
-        unlockButton.addAction(UIAction { [weak self] _ in self?.onUnlock?() }, for: .touchUpInside)
+        acceptButton.addAction(UIAction { [weak self] _ in self?.onAccept?() }, for: .touchUpInside)
         notNowButton.addAction(UIAction { [weak self] _ in self?.onNotNow?() }, for: .touchUpInside)
 
         let header = UIStackView(arrangedSubviews: [iconView, titleLabel])
@@ -433,7 +433,7 @@ final class SupporterCell: ContentCardCell {
         header.alignment = .center
         header.spacing = Theme.Spacing.s
 
-        let buttons = UIStackView(arrangedSubviews: [unlockButton, notNowButton])
+        let buttons = UIStackView(arrangedSubviews: [acceptButton, notNowButton])
         buttons.axis = .horizontal
         buttons.spacing = Theme.Spacing.s
         buttons.distribution = .fillProportionally
@@ -450,7 +450,7 @@ final class SupporterCell: ContentCardCell {
             column.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.m),
         ])
         isAccessibilityElement = false
-        accessibilityElements = [titleLabel, bodyLabel, unlockButton, notNowButton]
+        accessibilityElements = [titleLabel, bodyLabel, acceptButton, notNowButton]
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -460,8 +460,10 @@ final class SupporterCell: ContentCardCell {
         set {}
     }
 
-    func configure(_ card: SupporterCard) {
-        unlockButton.setTitle(SupporterInvitation.primaryAction(price: card.price))
+    func configure(_ card: ProInvitationCard) {
+        titleLabel.text = ProInvitation.title(card.facts)
+        bodyLabel.text = ProInvitation.body(card.gift)
+        acceptButton.setTitle(ProInvitation.primaryAction(card.gift, price: card.price))
     }
 }
 

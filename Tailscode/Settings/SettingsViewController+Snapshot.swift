@@ -298,7 +298,7 @@ extension SettingsViewController {
                 + Localized.text("megatron brain head lines tools thinking activity neural nodes style")
         case .pro:
             return String(
-                localized: "pro purchase upgrade supporter restore tip", comment: "search keywords")
+                localized: "pro purchase upgrade restore week servers delegate", comment: "search keywords")
         case .viewLogs:
             return String(
                 localized: "logs diagnostics view file debug", comment: "search keywords")

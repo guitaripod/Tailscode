@@ -40,12 +40,12 @@ final class TailscodeMidgar {
         services = Self.reachesMidgarServices ? Self.makeServices() : nil
     }
 
-    /// What Tailscode sells: the one-time Pro unlock, which grants `pro`, and the tips, which are bought,
-    /// finished and reported to the ledger but grant nothing.
+    /// What the store handles: the one-time Pro unlock, which grants `pro`, and the tips an earlier version sold,
+    /// which nothing offers any more and which are still finished and reported to the ledger, granting nothing.
     nonisolated static func storeConfiguration(directory: URL? = nil) -> MidgarStoreConfiguration {
         MidgarStoreConfiguration(
             appID: appID,
-            productIDs: [ProOffer.productID] + ProOffer.tipIDs,
+            productIDs: [ProOffer.productID] + ProOffer.retiredTipIDs,
             entitlementsByProduct: [ProOffer.productID: entitlement],
             mode: .purchases,
             directory: directory

@@ -41,7 +41,7 @@ final class SidebarViewController: NSViewController {
     var onToast: ((String) -> Void)?
     /// The standing mark was touched: the Update Center is the whole of what it leads to.
     var onOpenUpdates: (() -> Void)?
-    /// The supporter card's one button: the Pro window is the whole of what it leads to.
+    /// The invitation card's button, for a copy whose Pro week is spent: the Pro window is the whole of what it leads to.
     var onOpenPro: (() -> Void)?
     /// Which session the focused pane is actually showing. With a tiling tree, "already open"
     /// is a fact about the focused pane, not about this list's last click — an empty pane must
@@ -70,7 +70,7 @@ final class SidebarViewController: NSViewController {
     /// The world clock, leading the Update mark in the foot's one row: it is always there, and the
     /// Update mark beside it hides itself when there is nothing to say.
     let clockChip = ClockChipView()
-    private let supporterCard = SupporterCardView()
+    private let proInvitationCard = ProInvitationCardView()
     let bulkBar = SidebarBulkBar()
     let orb = PresenceOrbView()
     let agentsEntry = AgentsSidebarEntry()
@@ -202,7 +202,7 @@ final class SidebarViewController: NSViewController {
         observeAgents()
 
         updateFooter.onOpen = { [weak self] in self?.onOpenUpdates?() }
-        supporterCard.onUnlock = { [weak self] in self?.onOpenPro?() }
+        proInvitationCard.onUnlock = { [weak self] in self?.onOpenPro?() }
 
         MeridianFeed.shared.start()
         let clockRow = NSStackView(views: [clockChip, updateFooter])
@@ -210,7 +210,7 @@ final class SidebarViewController: NSViewController {
         clockRow.alignment = .centerY
         clockRow.spacing = MacTheme.Spacing.s
         clockRow.translatesAutoresizingMaskIntoConstraints = false
-        let footer = FillingStack(views: [bulkBar, supporterCard, clockRow, usageFooter, orb])
+        let footer = FillingStack(views: [bulkBar, proInvitationCard, clockRow, usageFooter, orb])
         footer.spacing = MacTheme.Spacing.xs
         footer.translatesAutoresizingMaskIntoConstraints = false
 
