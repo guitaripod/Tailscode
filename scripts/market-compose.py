@@ -374,6 +374,48 @@ def cropped_top(canvas, base, clip_top, fade):
         canvas.paste(Image.composite(base.crop(box), canvas.crop(box), mask), box[:2])
 
 
+def rounded(size, radius):
+    """An alpha mask of a rounded rectangle, drawn at four times the size so its corners are smooth."""
+    big = Image.new("L", (size[0] * 4, size[1] * 4), 0)
+    ImageDraw.Draw(big).rounded_rectangle((0, 0, big.width - 1, big.height - 1), radius * 4, fill=255)
+    return big.resize(size, Image.LANCZOS)
+
+
+def lifted(canvas, master, lift, screen):
+    """The proof object of a panel, lifted off the screen: the part of the screenshot inside `box`
+    (fractions of the master) enlarged to `width` panel pixels and laid over the device, on a card's
+    corners, a hairline in the accent and its own shadow, with the device dimmed under it by `dim`.
+    Its centre sits at `center_y` (a fraction of the panel's height), or with `over` exactly on the
+    place the screen shows it, so the original never shows beside its copy; `screen` is the screen's
+    top-left corner on the panel and its scale. It is what lets the one thing the claim is about be
+    read at thumbnail size, where a whole screen is texture."""
+    shot = Image.open(master).convert("RGB")
+    x0, y0, x1, y1 = lift["box"]
+    part = shot.crop((round(x0 * shot.width), round(y0 * shot.height), round(x1 * shot.width), round(y1 * shot.height)))
+    width = lift["width"]
+    part = part.resize((width, round(part.height * width / part.width)), Image.LANCZOS)
+    radius = lift.get("radius", 56)
+    x = (canvas.width - width) // 2 + lift.get("dx", 0)
+    centre = lift.get("center_y", 0.5) * canvas.height
+    if lift.get("over"):
+        (left, top), scale = screen
+        centre = top + (y0 + y1) / 2 * shot.height * scale
+    y = round(centre - part.height / 2)
+    dim = lift.get("dim", 0)
+    if dim:
+        shade = Image.new("RGB", canvas.size, GROUND)
+        veil = Image.new("L", canvas.size, 0)
+        ImageDraw.Draw(veil).rectangle((0, lift.get("dim_from", 0), canvas.width, canvas.height), fill=round(255 * dim))
+        canvas.paste(shade, (0, 0), veil)
+    shadow = Image.new("L", canvas.size, 0)
+    shadow.paste(rounded(part.size, radius).point(lambda a: a * 190 // 255), (x, y + 36))
+    canvas.paste(Image.new("RGB", canvas.size, (0, 0, 0)), (0, 0), shadow.filter(ImageFilter.GaussianBlur(54)))
+    edge = lift.get("edge", 5)
+    rim = Image.new("RGB", (part.width + 2 * edge, part.height + 2 * edge), ACCENT)
+    canvas.paste(rim, (x - edge, y - edge), rounded(rim.size, radius + edge))
+    canvas.paste(part, (x, y), rounded(part.size, radius))
+
+
 def compose_iphone(master, entry, spec, locale, head_size):
     spec = {**PHONE, **spec}
     W, H = spec["size"]
@@ -385,9 +427,13 @@ def compose_iphone(master, entry, spec, locale, head_size):
         device = framed(master)
         scale = spec["device_width"] / device.width
         top = round(spec["device_top"] - crop * device.height * scale)
-    place_device(canvas, master, top, 0, W, spec["device_width"])
+    device, (left, placed_top), scale = place_device(canvas, master, top, 0, W, spec["device_width"])
     if crop:
         cropped_top(canvas, base, spec["device_top"], spec.get("fade", 60))
+    if "lift" in spec:
+        shot = Image.open(master)
+        screen = ((left + (device.width - shot.width * scale) / 2, placed_top + (device.height - shot.height * scale) / 2), scale)
+        lifted(canvas, master, {"dim_from": spec["device_top"], **spec["lift"]}, screen)
     motif(canvas, spec)
     caption_block(canvas, spec, entry, head_size)
     return canvas.convert("RGB")
@@ -445,11 +491,24 @@ def set_size(entries, platform):
     return size
 
 
+SYSTEM_MASTERS = {"lock"}
+
+
+def master_path(source_dir, name, platform):
+    """Where a panel's master is. A system screen the app does not draw (the Lock Screen, photographed
+    from Device Hub at the Mac, one locale at a time) falls back to the English master where a locale
+    has none yet: its clock and wallpaper say the same in every language."""
+    path = os.path.join(source_dir, name + ".png")
+    if not os.path.exists(path) and name in SYSTEM_MASTERS:
+        return os.path.join(masters_dir("en-US", platform), name + ".png")
+    return path
+
+
 def emit(label, source_dir, folder, entries, compose, locale, specs, platform, head_size=None):
     os.makedirs(folder, exist_ok=True)
     for entry in entries:
         spec = spec_for(specs, platform, entry["slug"])
-        path = os.path.join(source_dir, entry["master"] + ".png")
+        path = master_path(source_dir, entry["master"], platform)
         if not os.path.exists(path):
             sys.exit(f"missing master {path}")
         panel = compose(path, entry, spec, locale, head_size) if head_size else compose(path, entry, spec, locale)
