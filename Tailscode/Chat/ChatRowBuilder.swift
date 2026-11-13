@@ -25,6 +25,7 @@ enum ChatRowBuilder {
         var lastDate: Date?
         var seenMessageIDs = Set<String>()
         var pendingUnattached = agents.unattached
+        let openedUnattached = agents.unattached.filter(\.expanded)
         var boardCalls: [ToolCall] = []
         for message in messages {
             for part in message.parts {
@@ -183,6 +184,10 @@ enum ChatRowBuilder {
                             ChatRow(
                                 id: "workflow:\(call.id)", messageID: message.id,
                                 role: message.role, content: .workflow(run)))
+                        rows.append(
+                            contentsOf: Self.openedAgentRows(
+                                of: run, among: openedUnattached, messageID: message.id,
+                                role: message.role))
                         pendingUnattached = []
                         continue
                     }
@@ -534,6 +539,24 @@ enum ChatRowBuilder {
     }
 
 
+
+    /// The agents of a workflow someone opened, each as its own card right under the run's card.
+    ///
+    /// The run's card holds its agents as rows, so a workflow agent has no card of its own in the
+    /// transcript — and opening one from the card or from the run's roster looked for a card that
+    /// was never there and said the agent had not reported in. An opened agent gets one, under the
+    /// card that ran it, for as long as it stays open.
+    static func openedAgentRows(
+        of run: WorkflowRun, among opened: [SubagentCard], messageID: String, role: MessageRole
+    ) -> [ChatRow] {
+        guard !opened.isEmpty else { return [] }
+        let members = Set(run.agents.map(\.id))
+        return opened.filter { members.contains($0.agentID) }.map { card in
+            ChatRow(
+                id: "agent:\(card.agentID)", messageID: messageID, role: role,
+                content: .subagent(card))
+        }
+    }
 
     static func agentRows(
         _ cards: [SubagentCard], groupID: String, messageID: String, role: MessageRole,

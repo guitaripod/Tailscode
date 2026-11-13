@@ -377,6 +377,18 @@ final class ChatViewController: UIViewController {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(2))
                     guard let self else { return }
+                    if hook.hasPrefix("workflow") {
+                        for _ in 0..<20 where !self.workflowRuns.contains(where: { $0.agents.count > 1 }) {
+                            try? await Task.sleep(for: .seconds(0.5))
+                        }
+                        guard let run = self.workflowRuns.last(where: { $0.agents.count > 1 }) else { return }
+                        if hook == "workflow-agent", let agent = run.agents.first {
+                            self.openWorkflowAgent(agent.id)
+                        } else {
+                            self.presentWorkflowAgents(runID: run.id)
+                        }
+                        return
+                    }
                     let agents = self.viewModel.trackedSubagents
                     guard !agents.isEmpty else { return }
                     switch hook {
