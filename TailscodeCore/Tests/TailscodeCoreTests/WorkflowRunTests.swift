@@ -177,6 +177,33 @@ struct WorkflowRunTests {
         #expect(runs[1].agents.map(\.id) == ["late"])
     }
 
+    @Test("An agent that names its run is seated there, whatever its clock says")
+    func seatsAgentsByTheRunTheyName() {
+        let at = Date(timeIntervalSince1970: 1_000)
+        func launch(_ id: String, run: String, after: TimeInterval) -> WorkflowRunAssembly.Launch {
+            var call = Self.call(id: id)
+            call.output = "Workflow launched in background. Task ID: t-\(id)\nRun ID: \(run)"
+            return WorkflowRunAssembly.Launch(call: call, at: at.addingTimeInterval(after))
+        }
+        func named(_ id: String, run: String?, seen: Date) -> SubagentSummary {
+            SubagentSummary(
+                id: id, title: id, agentType: WorkflowRunAssembly.agentType, updatedAt: seen,
+                isCompleted: true, workflowRunID: run)
+        }
+        let runs = WorkflowRunAssembly.runs(
+            launches: [launch("one", run: "wf_one", after: 0), launch("two", run: "wf_two", after: 1)],
+            agents: [
+                named("before-any", run: "wf_one", seen: at.addingTimeInterval(-3_600)),
+                named("first", run: "wf_one", seen: at.addingTimeInterval(5)),
+                named("second", run: "wf_two", seen: at.addingTimeInterval(6)),
+                named("unknown-run", run: "wf_gone", seen: at.addingTimeInterval(7)),
+                named("unnamed", run: nil, seen: at.addingTimeInterval(8)),
+            ])
+
+        #expect(runs[0].agents.map(\.id) == ["before-any", "first"])
+        #expect(runs[1].agents.map(\.id) == ["second", "unknown-run", "unnamed"])
+    }
+
     @Test("A run whose task reported back is finished and carries the answer")
     func completionBindsByTaskID() {
         let at = Date(timeIntervalSince1970: 1_000)

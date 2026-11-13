@@ -542,9 +542,10 @@ public enum WorkflowRunAssembly {
         let workflowAgents = agents
             .filter { $0.agentType == agentType }
             .sorted { $0.updatedAt < $1.updatedAt }
+        let byRun = launchesByRun(ordered)
         var seated: [String: [WorkflowAgent]] = [:]
         for agent in workflowAgents {
-            guard let owner = owner(of: agent, among: ordered) else { continue }
+            guard let owner = owner(of: agent, among: ordered, byRun: byRun) else { continue }
             seated[owner, default: []].append(WorkflowAgent(agent))
         }
         return ordered.map { launch in
@@ -552,7 +553,30 @@ public enum WorkflowRunAssembly {
         }
     }
 
-    private static func owner(of agent: SubagentSummary, among launches: [Launch]) -> String? {
+    /// Each launch's call, by the `Run ID` its Workflow call answered with.
+    private static func launchesByRun(_ launches: [Launch]) -> [String: String] {
+        var byRun: [String: String] = [:]
+        for launch in launches {
+            guard let runID = WorkflowLaunch.parse(output: launch.call.output ?? "").runID,
+                byRun[runID] == nil
+            else { continue }
+            byRun[runID] = launch.call.id
+        }
+        return byRun
+    }
+
+    /// The run an agent belongs to: the one it names, when the backend says, and otherwise the
+    /// last one launched before the agent appeared.
+    ///
+    /// The clock is a guess, and on a long chat a bad one. A launch is timed by the message that
+    /// holds it, every launch in one message shares that time, and a message can be stamped later
+    /// than the calls inside it — so on a chat that ran thirteen workflows, every agent that seemed
+    /// to start before its message landed on the newest run: one card claimed 1,816 agents while
+    /// the runs that did the work said none had appeared yet.
+    private static func owner(
+        of agent: SubagentSummary, among launches: [Launch], byRun: [String: String]
+    ) -> String? {
+        if let runID = agent.workflowRunID, let call = byRun[runID] { return call }
         let started = agent.startedAt ?? agent.updatedAt
         let candidate = launches.last { ($0.at ?? .distantPast) <= started } ?? launches.last
         return candidate?.call.id
