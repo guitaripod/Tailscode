@@ -621478,10 +621478,10 @@
     "%d lines": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
+        "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d lines"
+            "value": "%d linjer"
           }
         },
         "de": {
@@ -621490,16 +621490,34 @@
             "value": "%d Zeilen"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d lines"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "%d líneas"
           }
         },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d riviä"
+          }
+        },
         "fr": {
           "stringUnit": {
             "state": "translated",
             "value": "%d lignes"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d línur"
           }
         },
         "it": {
@@ -621520,6 +621538,12 @@
             "value": "%d줄"
           }
         },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d linjer"
+          }
+        },
         "pl": {
           "stringUnit": {
             "state": "translated",
@@ -621530,6 +621554,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "%d linhas"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d rader"
           }
         },
         "zh-Hans": {
@@ -621549,10 +621579,10 @@
     "%d characters": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
+        "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d characters"
+            "value": "%d tegn"
           }
         },
         "de": {
@@ -621561,16 +621591,34 @@
             "value": "%d Zeichen"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d characters"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "%d caracteres"
           }
         },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d merkkiä"
+          }
+        },
         "fr": {
           "stringUnit": {
             "state": "translated",
             "value": "%d caractères"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d stafir"
           }
         },
         "it": {
@@ -621591,6 +621639,12 @@
             "value": "%d자"
           }
         },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d tegn"
+          }
+        },
         "pl": {
           "stringUnit": {
             "state": "translated",
@@ -621601,6 +621655,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "%d caracteres"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%d tecken"
           }
         },
         "zh-Hans": {
@@ -621620,10 +621680,10 @@
     "Pasted text": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
+        "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pasted text"
+            "value": "Indsat tekst"
           }
         },
         "de": {
@@ -621632,16 +621692,34 @@
             "value": "Eingefügter Text"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pasted text"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "Texto pegado"
           }
         },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liitetty teksti"
+          }
+        },
         "fr": {
           "stringUnit": {
             "state": "translated",
             "value": "Texte collé"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Límdur texti"
           }
         },
         "it": {
@@ -621662,6 +621740,12 @@
             "value": "붙여넣은 텍스트"
           }
         },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innlimt tekst"
+          }
+        },
         "pl": {
           "stringUnit": {
             "state": "translated",
@@ -621672,6 +621756,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Texto colado"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inklistrad text"
           }
         },
         "zh-Hans": {
@@ -621691,10 +621781,10 @@
     "Pasted · %@": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
+        "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pasted · %@"
+            "value": "Indsat · %@"
           }
         },
         "de": {
@@ -621703,16 +621793,34 @@
             "value": "Eingefügt · %@"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pasted · %@"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "Pegado · %@"
           }
         },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liitetty · %@"
+          }
+        },
         "fr": {
           "stringUnit": {
             "state": "translated",
             "value": "Collé · %@"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Límt · %@"
           }
         },
         "it": {
@@ -621733,6 +621841,12 @@
             "value": "붙여넣음 · %@"
           }
         },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innlimt · %@"
+          }
+        },
         "pl": {
           "stringUnit": {
             "state": "translated",
@@ -621743,6 +621857,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Colado · %@"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inklistrad · %@"
           }
         },
         "zh-Hans": {
@@ -621762,10 +621882,10 @@
     "Pasted text, %@": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
+        "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pasted text, %@"
+            "value": "Indsat tekst, %@"
           }
         },
         "de": {
@@ -621774,16 +621894,34 @@
             "value": "Eingefügter Text, %@"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pasted text, %@"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "Texto pegado, %@"
           }
         },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liitetty teksti, %@"
+          }
+        },
         "fr": {
           "stringUnit": {
             "state": "translated",
             "value": "Texte collé, %@"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Límdur texti, %@"
           }
         },
         "it": {
@@ -621804,6 +621942,12 @@
             "value": "붙여넣은 텍스트, %@"
           }
         },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innlimt tekst, %@"
+          }
+        },
         "pl": {
           "stringUnit": {
             "state": "translated",
@@ -621814,6 +621958,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Texto colado, %@"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inklistrad text, %@"
           }
         },
         "zh-Hans": {
@@ -621833,10 +621983,10 @@
     "Opens the pasted text": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
+        "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Opens the pasted text"
+            "value": "Åbner den indsatte tekst"
           }
         },
         "de": {
@@ -621845,16 +621995,34 @@
             "value": "Öffnet den eingefügten Text"
           }
         },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens the pasted text"
+          }
+        },
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "Abre el texto pegado"
           }
         },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avaa liitetyn tekstin"
+          }
+        },
         "fr": {
           "stringUnit": {
             "state": "translated",
             "value": "Ouvre le texte collé"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opnar límda textann"
           }
         },
         "it": {
@@ -621875,6 +622043,12 @@
             "value": "붙여넣은 텍스트를 엽니다"
           }
         },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpner den innlimte teksten"
+          }
+        },
         "pl": {
           "stringUnit": {
             "state": "translated",
@@ -621885,6 +622059,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Abre o texto colado"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öppnar den inklistrade texten"
           }
         },
         "zh-Hans": {
