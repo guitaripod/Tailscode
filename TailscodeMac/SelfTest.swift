@@ -228,6 +228,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkWorkflowCardWindow()
+            report("workflow card window: \(checks) claims hold for a 660-agent run")
+        } catch {
+            report("workflow card window: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkActivityTempo()
             report("activity tempo: \(checks) claims hold — nothing moves at a rate of its own")
         } catch {

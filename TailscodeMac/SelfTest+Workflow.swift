@@ -86,6 +86,59 @@ extension SelfTest {
         return checks
     }
 
+    /// A fan-out of hundreds of agents is still one card a reader can open: the rows stay the
+    /// window's handful, the rest fold into one line, the second hand restates the card in place,
+    /// and building it costs what a small run costs. One row per agent laid 660 rows into a phone
+    /// cell, and the watchdog killed the app opening the chat.
+    static func checkWorkflowCardWindow() throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else {
+                throw SelfTestFailure("workflow card window case failed: \(label)")
+            }
+            checks += 1
+        }
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let call = ToolCall(
+            id: "call-wide", name: "Workflow", status: .completed,
+            output: "Workflow launched in background. Task ID: task-wide")
+        let agents = (0..<660).map { index in
+            WorkflowAgent(
+                id: "agent-\(index)", title: "translate batch \(index)", isActive: index >= 655,
+                isCompleted: index < 655, startedAt: start.addingTimeInterval(Double(index)),
+                updatedAt: start.addingTimeInterval(Double(index) + 60))
+        }
+        let context = TranscriptContext()
+        context.workflowNow = start.addingTimeInterval(900)
+        context.workflowRuns = [
+            call.id: WorkflowRun(
+                id: call.id, name: "nordic-translate", agents: agents, state: .running,
+                startedAt: start)
+        ]
+        context.expanded.set("wide", open: true)
+        var built: NSView?
+        let spent = ContinuousClock().measure {
+            let card = WorkflowCardView.make(call, key: "wide", context: context)
+            card.layoutSubtreeIfNeeded()
+            built = card
+        }
+        guard let card = built else { throw SelfTestFailure("workflow card window: no card") }
+        let rows = WorkflowCardView.agentReading(of: card).dropFirst("agents=".count)
+            .split(separator: ",")
+        try expect(
+            rows.count == WorkflowAgentWindow.rowLimit,
+            "a 660-agent run draws \(WorkflowAgentWindow.rowLimit) agent rows, not \(rows.count)")
+        try expect(
+            WorkflowCardView.foldReading(of: card) == Localized.text("+%lld more", 652),
+            "and folds the other 652 into one line, not \(WorkflowCardView.foldReading(of: card))")
+        try expect(spent < .seconds(1), "and is built and laid out in \(spent)")
+        context.workflowNow = context.workflowNow.addingTimeInterval(1)
+        try expect(
+            WorkflowCardView.restate(card, call: call, context: context),
+            "the second hand restates it in place")
+        return checks
+    }
+
     static func checkWorkflowCard() throws -> Int {
         var checks = 0
         func expect(_ condition: Bool, _ label: String) throws {

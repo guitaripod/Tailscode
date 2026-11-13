@@ -148,6 +148,9 @@ extension SelfTest {
             case "keyboard": report("keyboard: \(try checkKeyboardRebind()) claims hold")
             case "carry": report("model seam and carry: \(try checkModelSeamAndCarry()) claims hold")
             case "paste": report("folded paste: \(try checkFoldedPaste()) claims hold")
+            case "workflow":
+                report("workflow card: \(try checkWorkflowCard()) run shapes read correctly")
+                report("workflow card window: \(try checkWorkflowCardWindow()) claims hold for a 660-agent run")
             case "call": report("call: \(try checkCall()) claims hold")
             case "dictation": report("dictation: \(try checkDictation()) claims hold")
             case "quickaskdictation": report("quick ask dictation: \(try checkQuickAskDictation()) claims hold")

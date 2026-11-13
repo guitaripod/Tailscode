@@ -5,8 +5,13 @@ import UIKit
 /// A workflow run as one card in the conversation that started it. The Workflow tool answers the
 /// instant it hands the work to the background, so the call itself has nothing left to say while
 /// its agents spend minutes on it — the card says it instead: the run's name and description, the
-/// phase plan its script declares, every agent that has appeared with what it is running, a meter
-/// over the fan-out in hand, elapsed, and the answer folded in when the task reports back.
+/// phase plan its script declares, the agents worth a row with what each is running, a meter over
+/// the fan-out in hand, elapsed, and the answer folded in when the task reports back.
+///
+/// A script can fan out to hundreds of agents, and one row each laid six hundred and sixty stacked
+/// rows into this cell — the layout engine spent longer solving them than the watchdog waits, and the
+/// app was killed opening the chat. The card draws ``WorkflowAgentWindow``'s handful in a fixed set of
+/// slots it writes into, and folds the rest into one line that opens the whole roster.
 final class WorkflowCardCell: UICollectionViewCell {
     static let reuseID = "WorkflowCardCell"
 
@@ -22,16 +27,18 @@ final class WorkflowCardCell: UICollectionViewCell {
     private let meterLabel = UILabel()
     private let phaseStack = UIStackView()
     private let agentStack = UIStackView()
+    private let moreButton = UIButton(type: .system)
     private let answerLabel = UILabel()
     private let mark = ActivityBadgeView(pointSize: 12)
     private let column = UIStackView()
     private var fillWidth: NSLayoutConstraint?
     private var containerTop: NSLayoutConstraint!
     private var onAgentTap: ((String) -> Void)?
+    private var onMoreAgents: (() -> Void)?
     private var phaseSignature: [String] = []
     private var phaseHandles: [PhaseHandle] = []
-    private var agentIDs: [String] = []
     private var agentHandles: [AgentHandle] = []
+    private var slotAgentIDs: [String] = []
 
     /// The pieces of one phase row a restate writes into: the marker, and the title it is read out
     /// with. The standing rides on the title rather than on the marker so the rail gains no extra
@@ -43,9 +50,11 @@ final class WorkflowCardCell: UICollectionViewCell {
         let phase: WorkflowPhase
     }
 
-    /// The mutable pieces of one agent row, kept so a reconfigure writes into them instead of
+    /// One agent slot, kept so a reconfigure writes the agent it now holds into it instead of
     /// rebuilding the row — a rebuilt row takes the button out from under a finger mid-tap.
     private struct AgentHandle {
+        let row: UIView
+        let button: UIButton
         let glyph: ActivityBadgeView
         let title: UILabel
         let live: UILabel
@@ -115,6 +124,21 @@ final class WorkflowCardCell: UICollectionViewCell {
         agentStack.axis = .vertical
         agentStack.spacing = 4
 
+        var more = UIButton.Configuration.plain()
+        more.contentInsets = NSDirectionalEdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0)
+        more.baseForegroundColor = Theme.Color.accent
+        more.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = Theme.Ramp.font(.workflowStep)
+            return outgoing
+        }
+        moreButton.configuration = more
+        moreButton.contentHorizontalAlignment = .leading
+        moreButton.isHidden = true
+        moreButton.answersPointer(cornerRadius: Theme.Radius.control)
+        moreButton.addAction(
+            UIAction { [weak self] _ in self?.onMoreAgents?() }, for: .touchUpInside)
+
         let header = UIStackView(arrangedSubviews: [
             iconView, titleLabel, UIView(), headlineLabel, mark, elapsedLabel,
         ])
@@ -130,9 +154,10 @@ final class WorkflowCardCell: UICollectionViewCell {
         column.axis = .vertical
         column.spacing = 8
         column.translatesAutoresizingMaskIntoConstraints = false
-        for view in [header, summaryLabel, meterRow, phaseStack, agentStack, answerLabel] {
+        for view in [header, summaryLabel, meterRow, phaseStack, agentStack, moreButton, answerLabel] {
             column.addArrangedSubview(view)
         }
+        column.setCustomSpacing(4, after: agentStack)
 
         container.addSubview(rail)
         container.addSubview(column)
@@ -170,8 +195,12 @@ final class WorkflowCardCell: UICollectionViewCell {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func configure(_ run: WorkflowRun, at now: Date, onAgentTap: @escaping (String) -> Void) {
+    func configure(
+        _ run: WorkflowRun, at now: Date, onAgentTap: @escaping (String) -> Void,
+        onMoreAgents: @escaping () -> Void
+    ) {
         self.onAgentTap = onAgentTap
+        self.onMoreAgents = onMoreAgents
         titleLabel.text = run.name
         headlineLabel.text = run.headline(at: now)
         summaryLabel.text = run.summary
@@ -203,19 +232,23 @@ final class WorkflowCardCell: UICollectionViewCell {
         }
         for handle in phaseHandles { Self.wear(run.phaseStanding, on: handle) }
 
-        let ids = run.agents.map(\.id)
-        if ids != agentIDs {
-            agentIDs = ids
-            agentHandles = []
-            rebuild(agentStack) { stack in
-                for agent in run.agents {
-                    stack.addArrangedSubview(self.agentRow(agent))
-                }
-            }
+        let window = WorkflowAgentWindow(run)
+        while agentHandles.count < window.shown.count {
+            let handle = agentSlot(agentHandles.count)
+            agentHandles.append(handle)
+            agentStack.addArrangedSubview(handle.row)
         }
-        for (handle, agent) in zip(agentHandles, run.agents) {
-            update(handle, with: agent, in: run, at: now)
+        slotAgentIDs = window.shown.map(\.id)
+        for (slot, handle) in agentHandles.enumerated() {
+            let holds = slot < window.shown.count
+            if handle.row.isHidden == holds { handle.row.isHidden = !holds }
+            if holds { update(handle, with: window.shown[slot], in: run, at: now) }
         }
+        if agentStack.isHidden != window.shown.isEmpty { agentStack.isHidden = window.shown.isEmpty }
+        if moreButton.configuration?.title != window.foldedLabel {
+            moreButton.configuration?.title = window.foldedLabel
+        }
+        if moreButton.isHidden != (window.folded == 0) { moreButton.isHidden = window.folded == 0 }
 
         let answer = run.result?.trimmingCharacters(in: .whitespacesAndNewlines)
         answerLabel.text = answer.map { $0.count > 600 ? String($0.prefix(600)) + "…" : $0 }
@@ -301,11 +334,12 @@ final class WorkflowCardCell: UICollectionViewCell {
         return row
     }
 
-    /// One agent, tappable: opening it is opening its own transcript, because a workflow agent is
-    /// never its own chat and never gets a screen of its own to be lost behind. The live-tool and
-    /// elapsed labels exist from the start and hide while empty, so a reconfigure only ever
-    /// changes words — the row, and the button under a finger, are never rebuilt for a tick.
-    private func agentRow(_ agent: WorkflowAgent) -> UIView {
+    /// One agent slot, tappable: opening it is opening the transcript of whichever agent the slot
+    /// holds now, because a workflow agent is never its own chat and never gets a screen of its own
+    /// to be lost behind. The live-tool and elapsed labels exist from the start and hide while
+    /// empty, so a reconfigure only ever changes words — the row, and the button under a finger,
+    /// are never rebuilt for a tick or for a different agent taking the slot.
+    private func agentSlot(_ slot: Int) -> AgentHandle {
         let glyph = ActivityBadgeView(pointSize: 11)
         glyph.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -330,10 +364,11 @@ final class WorkflowCardCell: UICollectionViewCell {
         row.alignment = .firstBaseline
 
         let button = UIButton(type: .system)
-        button.accessibilityLabel = agent.title
-        let agentID = agent.id
         button.addAction(
-            UIAction { [weak self] _ in self?.onAgentTap?(agentID) }, for: .touchUpInside)
+            UIAction { [weak self] _ in
+                guard let self, self.slotAgentIDs.indices.contains(slot) else { return }
+                self.onAgentTap?(self.slotAgentIDs[slot])
+            }, for: .touchUpInside)
         button.translatesAutoresizingMaskIntoConstraints = false
         row.addSubview(button)
         NSLayoutConstraint.activate([
@@ -342,8 +377,7 @@ final class WorkflowCardCell: UICollectionViewCell {
             button.topAnchor.constraint(equalTo: row.topAnchor),
             button.bottomAnchor.constraint(equalTo: row.bottomAnchor),
         ])
-        agentHandles.append(AgentHandle(glyph: glyph, title: title, live: live, time: time))
-        return row
+        return AgentHandle(row: row, button: button, glyph: glyph, title: title, live: live, time: time)
     }
 
     /// One agent row restated. The mark is read against the run rather than against the agent's
@@ -361,7 +395,9 @@ final class WorkflowCardCell: UICollectionViewCell {
         let icon = ActivityIcon.workflowAgent(agent, in: run)
         handle.glyph.show(
             icon, spoken: icon == .openWork ? String(localized: "Agent working") : nil)
-        handle.title.text = agent.title.replacingOccurrences(of: "\n", with: " ")
+        let title = agent.title.replacingOccurrences(of: "\n", with: " ")
+        if handle.title.text != title { handle.title.text = title }
+        handle.button.accessibilityLabel = title
         let tool = Self.liveTool(agent, wearing: icon)
         handle.live.text = tool
         handle.live.isHidden = tool == nil

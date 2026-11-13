@@ -227,9 +227,11 @@ extension ChatViewController {
             let cell = collectionView.dequeueReusableCell(
                 withReuseIdentifier: WorkflowCardCell.reuseID, for: indexPath)
                 as! WorkflowCardCell
+            let runID = run.id
             cell.configure(
                 run, at: self.workflowNow,
-                onAgentTap: { [weak self] agentID in self?.openWorkflowAgent(agentID) })
+                onAgentTap: { [weak self] agentID in self?.openWorkflowAgent(agentID) },
+                onMoreAgents: { [weak self] in self?.presentWorkflowAgents(runID: runID) })
             return cell
         case .subagent(let card):
             let cell = collectionView.dequeueReusableCell(

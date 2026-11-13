@@ -123,9 +123,31 @@ extension ChatViewController {
         UIView.animate(withDuration: 0.45, delay: 0.1) { cell.contentView.alpha = 1 }
     }
 
-    func presentSubagents(_ agents: [SubagentSummary]) {
+    /// Every agent one workflow ran, in the list built for a roster that long: the card draws a
+    /// handful and folds the rest into the line that opens this. The run is looked up again at
+    /// every poll, so a fan-out still under way keeps adding to the list it opened.
+    func presentWorkflowAgents(runID: String) {
+        guard let run = workflowRuns.first(where: { $0.id == runID }) else { return }
+        let members = { [weak self] () -> Set<String> in
+            let run = self?.workflowRuns.first { $0.id == runID }
+            return Set(run?.agents.map(\.id) ?? [])
+        }
+        let current = members()
+        presentSubagents(
+            viewModel.trackedSubagents.filter { current.contains($0.id) }, heading: run.name,
+            narrow: { agents in
+                let ids = members()
+                return agents.filter { ids.contains($0.id) }
+            })
+    }
+
+    func presentSubagents(
+        _ agents: [SubagentSummary], heading: String? = nil,
+        narrow: @escaping ([SubagentSummary]) -> [SubagentSummary] = { $0 }
+    ) {
         let list = SubagentListViewController(
             backend: viewModel.backend, parentSessionID: viewModel.session.id, agents: agents,
+            heading: heading, narrow: narrow,
             hold: { [weak self] in self?.viewModel.agentHold ?? .over(at: nil) })
         list.onSelect = { [weak self] agentID in
             self?.revealSubagent(id: agentID)

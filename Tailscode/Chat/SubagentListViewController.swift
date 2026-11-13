@@ -18,16 +18,26 @@ final class SubagentListViewController: UIViewController {
     private var refreshTask: Task<Void, Never>?
     var onSelect: ((String) -> Void)?
     private let hold: () -> AgentHold
+    private let heading: String?
+    private let narrow: ([SubagentSummary]) -> [SubagentSummary]
 
-    /// - Parameter hold: how the turn holds the agents right now, asked again at every poll,
-    ///   because an agent is out only while the turn that holds it is.
+    /// - Parameters:
+    ///   - hold: how the turn holds the agents right now, asked again at every poll, because an
+    ///     agent is out only while the turn that holds it is.
+    ///   - heading: the list's title when it holds one workflow's agents rather than the session's.
+    ///   - narrow: which of the session's agents belong in the list, asked again at every poll so a
+    ///     run that is still fanning out keeps adding to it.
     init(
         backend: any CodingAgentBackend, parentSessionID: String, agents: [SubagentSummary],
+        heading: String? = nil,
+        narrow: @escaping ([SubagentSummary]) -> [SubagentSummary] = { $0 },
         hold: @escaping () -> AgentHold
     ) {
         self.backend = backend
         self.parentSessionID = parentSessionID
         self.agents = agents
+        self.heading = heading
+        self.narrow = narrow
         self.hold = hold
         super.init(nibName: nil, bundle: nil)
     }
@@ -38,7 +48,7 @@ final class SubagentListViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = String(localized: "Agents")
+        title = heading ?? String(localized: "Agents")
         view.backgroundColor = Theme.Color.groupedBackground
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             systemItem: .close, primaryAction: UIAction { [weak self] _ in
@@ -59,7 +69,7 @@ final class SubagentListViewController: UIViewController {
 
     private func reload() async {
         guard let fresh = try? await backend.subagents(for: parentSessionID) else { return }
-        agents = fresh
+        agents = narrow(fresh)
         applySnapshot()
     }
 

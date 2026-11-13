@@ -6,10 +6,14 @@ import TailscodeCore
 
 /// A workflow is a run, not a receipt. The Workflow tool answers the instant it hands the work to
 /// the background, so the call itself has nothing left to say while four agents spend three minutes
-/// on it — the card says it instead: what the run is, the phases its script declares, every agent
-/// that has appeared and what it is doing, how far through the fan-out in hand it is, and how long
-/// it has been going. The answer arrives later as its own message and is folded into the same card,
+/// on it — the card says it instead: what the run is, the phases its script declares, the agents
+/// worth a row and what each is doing, how far through the fan-out in hand it is, and how long it
+/// has been going. The answer arrives later as its own message and is folded into the same card,
 /// so a run reads as one thing from launch to result.
+///
+/// A script can fan out to hundreds of agents, and one disclosure row each is a card too heavy to
+/// open — the phone was killed by its watchdog laying out a 660-agent card. The rows are
+/// ``WorkflowAgentWindow``'s handful, and the rest fold into one line that opens the roster.
 ///
 /// A live card is a clock, and a clock must not be a demolition: the once-a-second tick is written
 /// into the labels the card already has (``restate``), never by tearing the widget down — a card
@@ -120,14 +124,22 @@ enum WorkflowCardView {
             }
         }
 
+        let window = agentWindow(run, context: context)
         let agents = section("workflow-agents")
-        guard (agents != nil) == !run.agents.isEmpty else { return false }
+        guard (agents != nil) == !window.shown.isEmpty else { return false }
         if let agents {
             let rows = children(of: agents)
-            guard rows.count == run.agents.count else { return false }
-            for (row, agent) in zip(rows, run.agents) {
+            guard rows.map(name(of:)) == window.shown.map(\.id) else { return false }
+            for (row, agent) in zip(rows, window.shown) {
                 guard restateAgent(row, agent: agent, in: run, now: now) else { return false }
             }
+        }
+        let more = section("workflow-more")
+        guard (more != nil) == (window.folded > 0) else { return false }
+        if let more, let label = window.foldedLabel,
+            gtk_button_get_label(ptr(more)).map({ String(cString: $0) }) != label
+        {
+            gtk_button_set_label(ptr(more), label)
         }
 
         let hasAnswer = !(run.result ?? "").isEmpty
@@ -176,7 +188,13 @@ enum WorkflowCardView {
         }
         gtk_box_append(ptr(body), meter(run))
         if !run.phases.isEmpty { gtk_box_append(ptr(body), phaseRail(run)) }
-        if !run.agents.isEmpty { gtk_box_append(ptr(body), agentList(run, context: context, now: now)) }
+        let window = agentWindow(run, context: context)
+        if !window.shown.isEmpty {
+            gtk_box_append(ptr(body), agentList(window, run: run, context: context, now: now))
+        }
+        if let label = window.foldedLabel {
+            gtk_box_append(ptr(body), moreLine(label, runID: run.id, context: context))
+        }
         if let result = run.result, !result.isEmpty {
             gtk_box_append(ptr(body), Gtk.hairline())
             gtk_box_append(ptr(body), answer(result, name: run.name, context: context))
@@ -253,15 +271,46 @@ enum WorkflowCardView {
         "\(phase.index == count - 1 ? "└" : "├") \(standing.glyph)"
     }
 
-    private static func agentList(_ run: WorkflowRun, context: TranscriptContext, now: Date)
-        -> UnsafeMutablePointer<GtkWidget>
+    /// The agents this card gives a row, keeping any the reader has open so a row being read never
+    /// rotates out from under them as newer agents report.
+    private static func agentWindow(_ run: WorkflowRun, context: TranscriptContext)
+        -> WorkflowAgentWindow
     {
+        let open = run.agents.lazy.map(\.id).filter { context.isExpanded("wf:\(run.id):\($0)") }
+        return WorkflowAgentWindow(run, keeping: Set(open))
+    }
+
+    private static func agentList(
+        _ window: WorkflowAgentWindow, run: WorkflowRun, context: TranscriptContext, now: Date
+    ) -> UnsafeMutablePointer<GtkWidget> {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
         Gtk.addClass(column, "workflow-agents")
-        for agent in run.agents {
+        for agent in window.shown {
             gtk_box_append(ptr(column), agentRow(agent, run: run, context: context, now: now))
         }
         return column
+    }
+
+    /// The agents the card folded, as one line that opens every agent of the run in the reader —
+    /// plain lines there, because the reason they were folded is that hundreds of rows is the hang.
+    /// The run is read again at the press, so a fan-out still under way lists what it has now.
+    private static func moreLine(_ label: String, runID: String, context: TranscriptContext)
+        -> UnsafeMutablePointer<GtkWidget>
+    {
+        let button = Gtk.button(label, css: ["seam-read", "workflow-more"]) { [weak context] in
+            guard let context, let run = context.workflowRuns[runID] else { return }
+            context.presentText?(
+                run.name, meterCaption(run),
+                WorkflowAgentWindow.roster(of: run, at: context.liveNow), true)
+        }
+        gtk_widget_set_halign(button, GTK_ALIGN_START)
+        return button
+    }
+
+    /// Which agent a row was built for, so a restate never writes one agent's clock into another's
+    /// row when the window's handful changes.
+    private static func name(of row: UnsafeMutablePointer<GtkWidget>) -> String {
+        gtk_widget_get_name(row).map { String(cString: $0) } ?? ""
     }
 
     /// One agent, openable in place: its own sidecar transcript is fetched on demand and rendered
@@ -297,7 +346,7 @@ enum WorkflowCardView {
         let reveal = context.revealRow
         let request = context.requestWorkflowAgent
         let agentID = agent.id
-        return Gtk.disclosure(
+        let row = Gtk.disclosure(
             header: header, expanded: context.isExpanded(key),
             onToggle: { open, bits in
                 toggle?(key, open)
@@ -327,6 +376,8 @@ enum WorkflowCardView {
             }
             return body
         }
+        gtk_widget_set_name(row, agentID)
+        return row
     }
 
     /// The run's answer, in the card that started it. Long answers stay behind a reader rather than
@@ -435,6 +486,18 @@ enum WorkflowCardView {
     /// One reading of the agent rows, for a harness that has to prove a row under a run that
     /// ended holds still however active the agent's own record still claims to be: each row's
     /// glyph and whether it is on the clock.
+    /// The fold line's words as drawn, or nothing when the card gives every agent a row — for a
+    /// harness that has to prove a wide run folds rather than lays out a row per agent.
+    static func foldReading(of card: UnsafeMutablePointer<GtkWidget>) -> String {
+        guard let button = gtk_widget_get_first_child(card),
+            let body = gtk_widget_get_next_sibling(button),
+            let more = children(of: body).first(where: {
+                gtk_widget_has_css_class($0, "workflow-more") != 0
+            })
+        else { return "" }
+        return gtk_button_get_label(ptr(more)).map { String(cString: $0) } ?? ""
+    }
+
     static func agentReading(of card: UnsafeMutablePointer<GtkWidget>) -> String {
         guard let button = gtk_widget_get_first_child(card),
             let body = gtk_widget_get_next_sibling(button),

@@ -234,6 +234,14 @@ public enum SelfTest {
             failures += 1
         }
 
+        do {
+            let checks = try checkWorkflowCardWindow()
+            report("workflow card window: \(checks) claims hold for a 660-agent run")
+        } catch {
+            report("workflow card window: \(error)")
+            failures += 1
+        }
+
         let runFailures = WorkflowRunCheck.run()
         if runFailures.isEmpty {
             report("workflow run: every ending is read, holds still, and the tempo is thirty")

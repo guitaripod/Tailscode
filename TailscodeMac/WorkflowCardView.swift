@@ -4,9 +4,13 @@ import TailscodeCore
 
 /// A workflow is a run, not a receipt. The Workflow tool answers the instant it hands the work to
 /// the background, so the call itself has nothing left to say while its agents spend minutes on it —
-/// the card says it instead: what the run is, the phases its script declares, every agent that has
-/// appeared and what it is doing, how far through the fan-out in hand it is, and how long it has
-/// been going. The answer arrives later as its own message and is folded into the same card.
+/// the card says it instead: what the run is, the phases its script declares, the agents worth a
+/// row and what each is doing, how far through the fan-out in hand it is, and how long it has been
+/// going. The answer arrives later as its own message and is folded into the same card.
+///
+/// A script can fan out to hundreds of agents, and one disclosure row each is a card too heavy to
+/// open — the phone was killed by its watchdog laying out a 660-agent card. The rows are
+/// ``WorkflowAgentWindow``'s handful, and the rest fold into one line that opens the roster.
 ///
 /// A live card is a clock, and a clock must not be a demolition: the once-a-second tick is written
 /// into the labels the card already has (``restate``), never by tearing the view down — a card
@@ -20,6 +24,7 @@ enum WorkflowCardView {
     private static let meterID = NSUserInterfaceItemIdentifier("workflow-meter")
     private static let phasesID = NSUserInterfaceItemIdentifier("workflow-phases")
     private static let agentsID = NSUserInterfaceItemIdentifier("workflow-agents")
+    private static let moreID = NSUserInterfaceItemIdentifier("workflow-more")
     private static let answerID = NSUserInterfaceItemIdentifier("workflow-answer")
     private static let summaryID = NSUserInterfaceItemIdentifier("workflow-summary")
 
@@ -117,15 +122,19 @@ enum WorkflowCardView {
             }
         }
 
+        let window = agentWindow(run, context: context)
         let agents = find(agentsID, in: body) as? NSStackView
-        guard (agents != nil) == !run.agents.isEmpty else { return false }
+        guard (agents != nil) == !window.shown.isEmpty else { return false }
         if let agents {
             let rows = agents.arrangedSubviews.compactMap { $0 as? DisclosureRow }
-            guard rows.count == run.agents.count else { return false }
-            for (agentRow, agent) in zip(rows, run.agents) {
+            guard rows.map(\.identifier?.rawValue) == window.shown.map(\.id) else { return false }
+            for (agentRow, agent) in zip(rows, window.shown) {
                 guard restateAgent(agentRow, agent: agent, in: run, now: now) else { return false }
             }
         }
+        let more = find(moreID, in: body) as? NSButton
+        guard (more != nil) == (window.folded > 0) else { return false }
+        if let more, let label = window.foldedLabel, more.title != label { more.title = label }
 
         let hasAnswer = !(run.result ?? "").isEmpty
         guard (find(answerID, in: body) != nil) == hasAnswer else { return false }
@@ -190,20 +199,49 @@ enum WorkflowCardView {
             for phase in run.phases { rail.addArrangedSubview(phaseRow(phase, run: run)) }
             body.addArrangedSubview(rail)
         }
-        if !run.agents.isEmpty {
+        let window = agentWindow(run, context: context)
+        if !window.shown.isEmpty {
             let list = FillingStack()
             list.spacing = 1
             list.identifier = agentsID
-            for agent in run.agents {
+            for agent in window.shown {
                 list.addArrangedSubview(agentRow(agent, run: run, context: context, now: now))
             }
             body.addArrangedSubview(list)
+        }
+        if let label = window.foldedLabel {
+            body.addArrangedSubview(moreLine(label, runID: run.id, context: context))
         }
         if let result = run.result, !result.isEmpty {
             body.addArrangedSubview(RowKit.hairline(verticalPadding: 4))
             body.addArrangedSubview(answer(result, name: run.name, context: context))
         }
         return RowKit.inset(card, leading: 26)
+    }
+
+    /// The agents this card gives a row, keeping any the reader has open so a row being read never
+    /// rotates out from under them as newer agents report.
+    private static func agentWindow(_ run: WorkflowRun, context: TranscriptContext)
+        -> WorkflowAgentWindow
+    {
+        let open = run.agents.lazy.map(\.id).filter { context.isExpanded("wf:\(run.id):\($0)") }
+        return WorkflowAgentWindow(run, keeping: Set(open))
+    }
+
+    /// The agents the card folded, as one line that opens every agent of the run in the reader —
+    /// plain lines there, because the reason they were folded is that hundreds of rows is the hang.
+    /// The run is read again at the press, so a fan-out still under way lists what it has now.
+    private static func moreLine(_ label: String, runID: String, context: TranscriptContext)
+        -> NSView
+    {
+        let button = RowKit.linkButton(label) { [weak context] in
+            guard let context, let run = context.workflowRuns[runID] else { return }
+            context.presentText?(
+                run.name, meterCaption(run),
+                WorkflowAgentWindow.roster(of: run, at: context.workflowNow), true)
+        }
+        button.identifier = moreID
+        return button
     }
 
     /// Progress over the agents in hand. A run never promises how many it will spawn, so the meter
@@ -329,7 +367,7 @@ enum WorkflowCardView {
         let reveal = context.revealRow
         let request = context.requestWorkflowAgent
         let agentID = agent.id
-        return DisclosureRow(
+        let row = DisclosureRow(
             header: header, expanded: context.isExpanded(key),
             onToggle: { [weak context] open, row in
                 toggle?(key, open)
@@ -368,6 +406,8 @@ enum WorkflowCardView {
             }
             return RowKit.inset(body, leading: 20)
         }
+        row.identifier = NSUserInterfaceItemIdentifier(agentID)
+        return row
     }
 
     /// The run's answer, in the card that started it. Long answers stay behind a reader rather than
@@ -469,6 +509,12 @@ enum WorkflowCardView {
             return "\(icon.glyph):\(moving ? "moving" : "still"):\(tool)"
         }
         return "agents=" + rows.joined(separator: ",")
+    }
+
+    /// The fold line's words as drawn, or nothing when the card gives every agent a row — for a
+    /// harness that has to prove a wide run folds rather than lays out a row per agent.
+    static func foldReading(of card: NSView) -> String {
+        (find(moreID, in: card) as? NSButton)?.title ?? ""
     }
 
     /// One reading of what the agent rows say about time, for a harness that has to prove a row
