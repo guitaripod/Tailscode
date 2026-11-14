@@ -7,3 +7,8 @@ the corrected `description` of each of the fourteen languages 1.82 ships waits h
 
 When the next version's folders are written, take `description` from these files instead of from 1.82's. The Swedish,
 Danish, Norwegian and Finnish listing in `marketing/listing-nordic/` already carries the same wording.
+
+Since 2026-11-14 the English files also carry what the next version's search words should be, from the category study in
+`docs/marketing-2026-11.md` §7: `keywords` for en-US and en-GB per train (Codex is in the subtitle now, so the field
+spends its hundred characters on what the name and subtitle do not say) and the iPhone `promotionalText`, which is live
+already because promotional text needs no version. The new name and subtitle wait in `store/metadata/*/app-info/`.
