@@ -75,9 +75,9 @@
     {
       "master": "fl-agents",
       "slug": "01-all-your-agents",
-      "headline": "Alle deine Agenten.\nIn deiner Tasche.",
-      "subline": "Jeder laufende Agent über alle Rechner, live.",
-      "highlight": "In deiner Tasche."
+      "headline": "Claude Code,\nvom iPad aus.",
+      "subline": "Jeder laufende Agent über alle Rechner, live. Auch Codex, opencode und Hermes.",
+      "highlight": "vom iPad aus."
     },
     {
       "master": "fl-wall",

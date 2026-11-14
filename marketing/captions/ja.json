@@ -75,9 +75,9 @@
     {
       "master": "fl-agents",
       "slug": "01-all-your-agents",
-      "headline": "すべてのエージェント\n画面ひとつ",
-      "subline": "マシン全体で動いている全エージェントを、ライブで。",
-      "highlight": "画面ひとつ"
+      "headline": "Claude Code を、\niPad から",
+      "subline": "動いている全エージェントをライブで。Codex、opencode、Hermes にも対応。",
+      "highlight": "iPad から"
     },
     {
       "master": "fl-wall",

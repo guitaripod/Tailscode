@@ -75,9 +75,9 @@
     {
       "master": "fl-agents",
       "slug": "01-all-your-agents",
-      "headline": "所有智慧代理\n一個畫面",
-      "subline": "你所有機器上運作中的智慧代理，即時呈現。",
-      "highlight": "一個畫面"
+      "headline": "Claude Code，\n隨時用 iPad 操控",
+      "subline": "你所有機器上運作中的智慧代理，即時呈現。也支援 Codex、opencode 和 Hermes。",
+      "highlight": "隨時用 iPad 操控"
     },
     {
       "master": "fl-wall",

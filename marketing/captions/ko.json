@@ -75,9 +75,9 @@
     {
       "master": "fl-agents",
       "slug": "01-all-your-agents",
-      "headline": "모든 에이전트,\n화면 하나에",
-      "subline": "내 모든 기기에서 실행 중인 에이전트를 라이브로.",
-      "highlight": "화면 하나에"
+      "headline": "Claude Code를\niPad에서",
+      "subline": "내 모든 기기에서 실행 중인 에이전트를 라이브로. Codex, opencode, Hermes도 지원합니다.",
+      "highlight": "iPad에서"
     },
     {
       "master": "fl-wall",

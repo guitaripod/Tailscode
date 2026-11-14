@@ -75,9 +75,9 @@
     {
       "master": "fl-agents",
       "slug": "01-all-your-agents",
-      "headline": "Alla dina agenter.\nEn skärm.",
-      "subline": "Varje pågående agent på alla dina datorer, live.",
-      "highlight": "En skärm."
+      "headline": "Claude Code,\nfrån din iPad.",
+      "subline": "Varje pågående agent på alla dina datorer, live. Även Codex, opencode och Hermes.",
+      "highlight": "från din iPad."
     },
     {
       "master": "fl-wall",

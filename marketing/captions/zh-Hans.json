@@ -75,9 +75,9 @@
     {
       "master": "fl-agents",
       "slug": "01-all-your-agents",
-      "headline": "所有智能体\n一个屏幕",
-      "subline": "你所有机器上正在运行的智能体，实时呈现。",
-      "highlight": "一个屏幕"
+      "headline": "Claude Code，\n随时用 iPad 操控",
+      "subline": "你所有机器上正在运行的智能体，实时呈现。也支持 Codex、opencode 和 Hermes。",
+      "highlight": "随时用 iPad 操控"
     },
     {
       "master": "fl-wall",

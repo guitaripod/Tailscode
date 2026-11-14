@@ -75,9 +75,9 @@
     {
       "master": "fl-agents",
       "slug": "01-all-your-agents",
-      "headline": "Kaikki agenttisi.\nYksi näyttö.",
-      "subline": "Jokainen käynnissä oleva agentti kaikilla koneillasi reaaliajassa.",
-      "highlight": "Yksi näyttö."
+      "headline": "Claude Code,\nsuoraan iPadista.",
+      "subline": "Jokainen agentti koneillasi reaaliajassa. Myös Codex, opencode ja Hermes.",
+      "highlight": "suoraan iPadista."
     },
     {
       "master": "fl-wall",

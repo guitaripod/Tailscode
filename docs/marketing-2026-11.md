@@ -62,7 +62,7 @@ Dropped: the wall as its own panel (it carries panel 6 on the Duo), Peek, carry 
 - The Duo set needed three new captures a locale (`scripts/shots-duo.sh` screens `approval`, `home`, `welcome`); the Duo's first panel shows the Agents board, because no Duo Lock Screen master exists (that capture drives Device Hub at the Mac).
 - Creative, every locale: `marketing/appstore/creative/<locale>/`.
 - **Not localized: the Lock Screen master.** Panel 1 and both creative images use the English capture in every language (the date and "Awaiting your approval" stay English). Take `TAILSCODE_SHOT_LOCALE=<locale> scripts/shots.sh lock` per locale at the Mac, with the desktop free, before the release that carries this set.
-- **Unchanged: the iPad and Mac sets and the preview.** They still tell the fleet story. The iPad is 6 % of downloads and the Mac's limit is search relevance, not pictures. `scripts/market-validate.py mac` fails as it did before this work: the Mac captions name `07-every-morning` and the panels on disk are still `07-ask-anything`, in all eleven Mac locales.
+- **Unchanged: the Mac set and the preview, and the iPad set but for its first panel (§7).** They still tell the fleet story. The iPad is 6 % of downloads and the Mac's limit is search relevance, not pictures. `scripts/market-validate.py mac` fails as it did before this work: the Mac captions name `07-every-morning` and the panels on disk are still `07-ask-anything`, in all eleven Mac locales.
 - The landing page (midgarcorp.cc/tailscode, in the Midgar monorepo) leads with the same line and shows the approval in its hero.
 - Nothing is uploaded with a version: no release is cut (2026-11-13). See §6 for the test that needs none.
 
@@ -95,6 +95,7 @@ Asked (2026-11-14): "Look at how other apps in this category market themselves a
 | Panel 1 subline | Claude Code, opencode and Hermes keep working on your own computer. | It runs on your own computer and reaches you when it needs you. Codex, opencode and Hermes too. |
 | Panel 5 | One line. Then scan. | Set up in one line. **No SSH, no tmux.** |
 | Panel 6 subline | Claude Code, Hermes, opencode and any ACP agent... | Claude Code, Codex, Hermes, opencode and any ACP agent... |
+| iPad panel 1 (the whole iPad search card: a landscape set shows one picture) | All your agents. One screen. | Claude Code, **from your iPad.** (subline adds Codex, opencode and Hermes) |
 | App name (next release) | Tailscode: Coding Agent Remote | Tailscode: Claude Code Remote |
 | Subtitle (next release) | Claude Code·Hermes·opencode | Codex, opencode, Hermes agents |
 | Keywords en-US, en-GB (next release) | hermes,acp,ai,llm,local,ollama,gpu,tailscale,tailnet,ssh,terminal,cli,homelab,linux,mac,omp,dev | coding,mobile,phone,ai,ssh,tmux,terminal,tailscale,gemini,vibe,cli,acp,approve,ollama,local,llm,gpu |

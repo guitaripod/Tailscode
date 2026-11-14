@@ -75,9 +75,9 @@
     {
       "master": "fl-agents",
       "slug": "01-all-your-agents",
-      "headline": "Tous vos agents.\nUn seul écran.",
-      "subline": "Chaque agent en marche sur vos machines, en direct.",
-      "highlight": "Un seul écran."
+      "headline": "Claude Code,\ndepuis votre iPad.",
+      "subline": "Chaque agent en marche sur vos machines, en direct. Codex, opencode et Hermes aussi.",
+      "highlight": "depuis votre iPad."
     },
     {
       "master": "fl-wall",
