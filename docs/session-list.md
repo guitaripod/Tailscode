@@ -2,7 +2,7 @@
 
 The chat list on all three clients: the Mac and Linux sidebars and the phone's Chats list. Written 2026-11-14 from a screenshot of the Mac sidebar holding 1,800 chats in which nothing told a read chat from an unread one.
 
-Mocks: `docs/session-list-mocks/` (`HEIGHT=1150 ./render.sh desktop.html 'desktop.html#light' 'desktop.html#linux'`, `WIDTH=700 HEIGHT=800 ./render.sh rows.html`, `WIDTH=980 HEIGHT=800 ./render.sh ladder.html`, `WIDTH=820 HEIGHT=1260 ./render.sh phone.html`). `app-mac.png` and `app-iphone.png` are the shipped clients drawing `ChatListFixture`, one of every row: `TailscodeMac --demo --open chat-list --shot <png>` (`chat-list:tail` for the far end), and `TAILSCODE_CHATLIST_FIXTURE=1 TAILSCODE_OPEN_CHATS=1` with `--demo` on the phone.
+Mocks: `docs/session-list-mocks/` (`HEIGHT=1150 ./render.sh desktop.html 'desktop.html#light' 'desktop.html#linux'`, `WIDTH=700 HEIGHT=800 ./render.sh rows.html`, `WIDTH=980 HEIGHT=800 ./render.sh ladder.html`, `WIDTH=820 HEIGHT=1260 ./render.sh phone.html`). `app-mac.png`, `app-linux.png` and `app-iphone.png` are the shipped clients drawing `ChatListFixture`, one of every row: `TailscodeMac --demo --open chat-list --shot <png>` (`chat-list:tail` for the far end), `scripts/dev-linuxapp.sh do chatlist` then `shot` on Linux, and `TAILSCODE_CHATLIST_FIXTURE=1 TAILSCODE_OPEN_CHATS=1` with `--demo` on the phone.
 
 ## What was wrong
 
@@ -72,6 +72,8 @@ News, in the order it is decided (`ChatRowNews.reading`):
 - **A turn in flight is never weighted for being unread.** Its clock moves with every token, so it is unread for as long as it runs; weighting it weighted the whole WORKING section.
 - **The phone's working words take the tile's tone.** A green tile over blue words read as two states.
 - **The figure beside a phone heading is two thirds its size.** At the prominent heading's own size "1 new" read as part of the name.
+- **Linux says pinned in a word.** A text client has no symbol set, and `⌃` after a title was a mark somebody had to learn; the clock glyph the list already used stays.
+- **A heading never gives up its own letters.** The first GTK build let the count beside it take the width and drew "NEEDS Y…".
 
 ## Not changed
 
