@@ -1,5 +1,32 @@
 import Foundation
+import Synchronization
 import WidgetKit
+
+/// Keeps a process from being suspended while it holds the usage providers lock.
+///
+/// iOS kills an app that is suspended holding a lock on a file in the shared container
+/// (0xDEAD10CC), because any other process that then asks for the lock would wait forever. Only
+/// the app installs one: an extension takes the lock only before it calls the completion that
+/// keeps it running, and a Mac process is never suspended.
+protocol UsageLockSuspensionGuard: Sendable {
+    /// Starts holding the process awake, or nil when the system will not, because the process is
+    /// already on its way to being suspended.
+    func holdAwake(reason: String) -> (any UsageLockHold)?
+}
+
+/// One hold on the process, begun before the providers flock is asked for and released after it
+/// is let go.
+protocol UsageLockHold: Sendable {
+    /// Whether the hold still keeps the process awake. A writer still waiting for the flock gives
+    /// up once it does not.
+    var isHolding: Bool { get }
+    /// Records that the flock is now held, so that an expiration landing before ``release()``
+    /// waits for the flock to be let go instead of letting the process be suspended with it.
+    /// False when the hold has already ended, and the flock must be let go at once.
+    func flockTaken() -> Bool
+    /// Ends the hold, once, after the flock is let go.
+    func release()
+}
 
 struct UsageWidgetEntry: Codable, TimelineEntry {
     var date: Date
@@ -69,7 +96,17 @@ enum UsageWidgetStore {
     static let suiteName = "group.com.guitaripod.tailscode"
     private static let providersKey = "usage_providers"
     private static let pendingRouteKey = "pending_control_route"
+    private static let lockFileName = "usage_providers.lock"
     static let kind = "UsageWidget"
+
+    private static let suspensionGuard = Mutex<(any UsageLockSuspensionGuard)?>(nil)
+    private static let inProcessLock = NSLock()
+
+    /// Installs what keeps the process awake while it holds the providers lock. The app installs
+    /// one at launch, before anything writes the snapshot.
+    static func installSuspensionGuard(_ keeper: any UsageLockSuspensionGuard) {
+        suspensionGuard.withLock { $0 = keeper }
+    }
 
     /// How many windows one provider keeps in the snapshot. The large family draws every one it is
     /// given, and a provider that meters four windows (a session, a week, a week per model) used to
@@ -200,20 +237,13 @@ enum UsageWidgetStore {
     /// because it cannot carry the account identity or exact windows the current bridge sends; the
     /// next refresh puts the live card back.
     static func dropEstimates(reload: Bool = true) {
+        guard storedProviders().contains(where: isEstimate) else { return }
         var removed = false
         withProvidersLock {
             guard let data = UserDefaults(suiteName: suiteName)?.data(forKey: providersKey),
                 let stored = try? JSONDecoder().decode(Storage.self, from: data)
             else { return }
-            let remaining = stored.providers.filter { provider in
-                let fromEstimate =
-                    provider.subtitle.lowercased().contains("estimated")
-                    || provider.source?.lowercased().contains("estimated") == true
-                let oldOpenCode =
-                    provider.providerName.lowercased().contains("opencode")
-                    && provider.schema == nil
-                return !fromEstimate && !oldOpenCode
-            }
+            let remaining = stored.providers.filter { !isEstimate($0) }
             guard remaining.count != stored.providers.count else { return }
             let storage = Storage(providers: remaining, updatedAt: stored.updatedAt)
             guard let encoded = try? JSONEncoder().encode(storage) else { return }
@@ -221,6 +251,27 @@ enum UsageWidgetStore {
             removed = true
         }
         if removed, reload { WidgetCenter.shared.reloadTimelines(ofKind: kind) }
+    }
+
+    /// Whether a snapshot is one ``dropEstimates(reload:)`` drops: worked out on this device, or
+    /// an opencode snapshot from before the usage schema.
+    private static func isEstimate(_ provider: UsageWidgetEntry.ProviderSnapshot) -> Bool {
+        let fromEstimate =
+            provider.subtitle.lowercased().contains("estimated")
+            || provider.source?.lowercased().contains("estimated") == true
+        let oldOpenCode =
+            provider.providerName.lowercased().contains("opencode") && provider.schema == nil
+        return fromEstimate || oldOpenCode
+    }
+
+    /// The stored providers, read without the lock. Only the removals use it, to skip the lock
+    /// when there is nothing to remove: a removal that loses a race to a writer adding the same
+    /// provider back ends the same as one that ran before it.
+    private static func storedProviders() -> [UsageWidgetEntry.ProviderSnapshot] {
+        guard let data = UserDefaults(suiteName: suiteName)?.data(forKey: providersKey),
+            let stored = try? JSONDecoder().decode(Storage.self, from: data)
+        else { return [] }
+        return stored.providers
     }
 
     /// The stored snapshot of an account and when it was read.
@@ -238,6 +289,11 @@ enum UsageWidgetStore {
 
     /// Drops the stored snapshot of an account, once it is too old to keep.
     static func removeProvider(providerName: String, accountID: String?, reload: Bool = true) {
+        guard
+            storedProviders().contains(where: {
+                $0.covers(providerName: providerName, accountID: accountID)
+            })
+        else { return }
         var removed = false
         withProvidersLock {
             guard let data = UserDefaults(suiteName: suiteName)?.data(forKey: providersKey),
@@ -259,6 +315,7 @@ enum UsageWidgetStore {
     /// the user just deleted has no balance to report, and showing yesterday's is worse than
     /// showing nothing.
     static func removeProvider(named name: String, reload: Bool = true) {
+        guard storedProviders().contains(where: { $0.providerName == name }) else { return }
         var removed = false
         withProvidersLock {
             guard let data = UserDefaults(suiteName: suiteName)?.data(forKey: providersKey),
@@ -274,28 +331,71 @@ enum UsageWidgetStore {
         if removed, reload { WidgetCenter.shared.reloadTimelines(ofKind: kind) }
     }
 
-    /// The app, the widget, and the notification service extension all
-    /// read-modify-write the provider list from separate processes; an exclusive
-    /// flock on a file in the shared container keeps a concurrent writer from
-    /// dropping another's provider. Runs unlocked if the container is unavailable.
+    /// The app, the widget, and the notification service extension all read-modify-write the
+    /// provider list from separate processes; an exclusive flock on a file in the shared container
+    /// keeps a concurrent writer from dropping another's provider.
     private static func withProvidersLock(_ body: () -> Void) {
-        guard
-            let container = FileManager.default.containerURL(
-                forSecurityApplicationGroupIdentifier: suiteName)
-        else {
-            body()
-            return
+        withProvidersLock(
+            lockFile: providersLockFile, keeper: suspensionGuard.withLock { $0 }, body)
+    }
+
+    /// The file the providers flock is taken on, in the shared container; nil where the process
+    /// has no shared container.
+    static var providersLockFile: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suiteName)?
+            .appending(path: lockFileName, directoryHint: .notDirectory)
+    }
+
+    /// How long a writer waits for another process to let the flock go before it writes without it.
+    /// Every holder keeps it for one read and one write of the snapshot, a few milliseconds.
+    static let flockPatience: Duration = .seconds(2)
+
+    /// Runs `body` under the in-process lock and, when there is a lock file, its flock. Both locks
+    /// are only ever held inside the keeper's hold, taken after it begins and let go before it
+    /// ends, so the process cannot be suspended holding the flock and no thread waits on the
+    /// in-process lock while another is inside UIKit. When there is no hold to be had, or the
+    /// flock does not come in time, the write goes ahead under the in-process lock alone: a
+    /// snapshot another process overwrites is put back by the next poll, while a flock held into
+    /// suspension gets the app killed.
+    static func withProvidersLock(
+        lockFile: URL?, keeper: (any UsageLockSuspensionGuard)?, _ body: () -> Void
+    ) {
+        guard let lockFile else { return inProcessLock.withLock(body) }
+        var hold: (any UsageLockHold)?
+        if let keeper {
+            guard let granted = keeper.holdAwake(reason: "Usage snapshot write") else {
+                return inProcessLock.withLock(body)
+            }
+            hold = granted
         }
-        let lockPath = container.appendingPathComponent("usage_providers.lock").path
-        let descriptor = open(lockPath, O_CREAT | O_WRONLY, 0o644)
-        guard descriptor >= 0 else {
-            body()
-            return
+        defer { hold?.release() }
+        inProcessLock.lock()
+        defer { inProcessLock.unlock() }
+        let descriptor = open(lockFile.path, O_CREAT | O_WRONLY | O_CLOEXEC, 0o644)
+        guard descriptor >= 0 else { return body() }
+        defer { close(descriptor) }
+        guard takeFlock(descriptor, while: { hold?.isHolding ?? true }) else { return body() }
+        guard hold?.flockTaken() ?? true else {
+            flock(descriptor, LOCK_UN)
+            return body()
         }
-        let locked = flock(descriptor, LOCK_EX) == 0
+        defer { flock(descriptor, LOCK_UN) }
         body()
-        if locked { flock(descriptor, LOCK_UN) }
-        close(descriptor)
+    }
+
+    /// Takes the flock without ever sleeping in the kernel on it: a non-blocking request, asked
+    /// again every few milliseconds until it is granted, `holding` turns false, or
+    /// ``flockPatience`` runs out.
+    private static func takeFlock(_ descriptor: Int32, while holding: () -> Bool) -> Bool {
+        let deadline = ContinuousClock.now + flockPatience
+        while holding() {
+            if flock(descriptor, LOCK_EX | LOCK_NB) == 0 { return true }
+            guard errno == EWOULDBLOCK || errno == EINTR, ContinuousClock.now < deadline else {
+                return false
+            }
+            usleep(5_000)
+        }
+        return false
     }
 
     private static let lastThrottledReloadKey = "usage_push_last_reload"

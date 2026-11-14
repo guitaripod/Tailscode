@@ -10,6 +10,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     ) -> Bool {
         TailscodeLogging.configure()
         MidgarLog.info("didFinishLaunching", category: .lifecycle)
+        let lockGuard = BackgroundTaskLockGuard(application: application)
+        UsageWidgetStore.installSuspensionGuard(lockGuard)
+        #if DEBUG
+            lockGuard.holdProvidersLockIfAsked()
+        #endif
         ReviewPromptPolicy.migrateIfNeeded()
         FieldMetrics.shared.start()
         MainStallMonitor.shared.start()
