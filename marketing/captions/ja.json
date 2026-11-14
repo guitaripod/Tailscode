@@ -147,9 +147,9 @@
     {
       "master": "fl-agents",
       "slug": "01-all-your-agents",
-      "headline": "すべてのエージェントを\n一つのウインドウに",
-      "subline": "全マシンで動く全エージェントを、ライブで。Peek と Hour付き。",
-      "highlight": "一つのウインドウに"
+      "headline": "Claude Code を、\nネイティブの Mac アプリで",
+      "subline": "全マシンで動く全エージェントを、ライブで。Peek と Hour付き。Codex、opencode、Hermes にも対応。",
+      "highlight": "ネイティブの Mac アプリで"
     },
     {
       "master": "fl-wall",

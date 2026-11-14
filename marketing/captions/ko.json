@@ -147,9 +147,9 @@
     {
       "master": "fl-agents",
       "slug": "01-all-your-agents",
-      "headline": "모든 에이전트,\n창 하나에",
-      "subline": "모든 기기에서 도는 에이전트를 라이브로, Peek와 Hour와 함께.",
-      "highlight": "창 하나에"
+      "headline": "Claude Code를\n네이티브 Mac 앱으로",
+      "subline": "모든 기기에서 도는 에이전트를 라이브로, Peek와 Hour와 함께. Codex, opencode, Hermes도 지원합니다.",
+      "highlight": "네이티브 Mac 앱으로"
     },
     {
       "master": "fl-wall",

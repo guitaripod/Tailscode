@@ -147,9 +147,9 @@
     {
       "master": "fl-agents",
       "slug": "01-all-your-agents",
-      "headline": "所有智能体\n一个窗口",
-      "subline": "你所有机器上运行中的智能体，实时呈现，支持 Peek 与 Hour。",
-      "highlight": "一个窗口"
+      "headline": "Claude Code，\n原生 Mac 应用",
+      "subline": "你所有机器上运行中的智能体，实时呈现，支持 Peek 与 Hour。也支持 Codex、opencode 和 Hermes。",
+      "highlight": "原生 Mac 应用"
     },
     {
       "master": "fl-wall",

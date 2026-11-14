@@ -147,9 +147,9 @@
     {
       "master": "fl-agents",
       "slug": "01-all-your-agents",
-      "headline": "Todos tus agentes.\nUna sola ventana.",
-      "subline": "Cada agente en marcha en tus máquinas, en vivo, con Peek y Hour.",
-      "highlight": "Una sola ventana."
+      "headline": "Claude Code,\nen una app nativa de Mac.",
+      "subline": "Cada agente en marcha en tus máquinas, en vivo, con Peek y Hour. También Codex, opencode y Hermes.",
+      "highlight": "en una app nativa de Mac."
     },
     {
       "master": "fl-wall",
