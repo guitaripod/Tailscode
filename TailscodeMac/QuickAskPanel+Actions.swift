@@ -160,7 +160,7 @@ extension QuickAskPanel {
         guard let gathering else { return }
         self.gathering = nil
         let composed = gathering.composed()
-        editor.setText(composed.text, caretAtEnd: true)
+        write(composed.text)
         editor.placeCaret(at: composed.caret)
         let fetched = gathering.attachments + gathering.copiedAttachments
         if !fetched.isEmpty {

@@ -173,7 +173,7 @@ extension QuickAskPanel {
     func applyVerb(_ starter: QuickAskStarter) {
         guard !asking, gathering == nil else { return }
         let typed = editor.text
-        editor.setText("", caretAtEnd: true)
+        write("")
         run(starter.action, copied: false, typed: typed)
     }
 

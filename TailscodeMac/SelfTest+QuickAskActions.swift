@@ -153,7 +153,46 @@ extension SelfTest {
         try expect(waiting.count == 1 && waiting[0].repeats == .daily, "a question put off is kept with its repeat")
         try expect(waiting[0].profileID == arch.id, "and with the machine showing")
         try expect(panel.editor.text.isEmpty, "and leaves the box empty")
+
+        try checkVimArrival(panel, servers: [arch, macbook], expect)
         return checks
+    }
+
+    /// The panel outlives a summon and so does its vim engine: escape leaves insert, a second
+    /// escape closes the panel, and the next summon has to hand the box back typing, its draft
+    /// whole, rather than in the normal mode the panel was put away in.
+    private static func checkVimArrival(
+        _ panel: QuickAskPanel, servers: [ConnectionProfile], _ expect: (Bool, String) throws -> Void
+    ) throws {
+        let defaults = UserDefaults.standard
+        let vimKey = "tailscode.vimComposer"
+        let keptVim = defaults.object(forKey: vimKey)
+        let scope = DraftScope.quickAsk(profileID: panel.targetServer.id)
+        let keptDraft = DraftStore.text(for: scope)
+        defer {
+            if let keptVim { defaults.set(keptVim, forKey: vimKey) } else { defaults.removeObject(forKey: vimKey) }
+            if keptDraft.isEmpty { DraftStore.clear(scope) } else { DraftStore.record(keptDraft, for: scope) }
+            panel.editor.applyPreferences()
+        }
+        defaults.set(true, forKey: vimKey)
+        panel.editor.applyPreferences()
+        panel.write("half a question")
+        try expect(panel.editor.vim.mode == .insert, "vim: the box is typing before escape")
+        _ = panel.editor.vim.handle(
+            VimKey(isEscape: true), text: panel.editor.text, cursor: panel.editor.cursor)
+        try expect(panel.editor.vim.mode == .normal, "vim: escape leaves insert first")
+        panel.close()
+        panel.arrive(
+            servers: servers, preferredServer: panel.targetServer.id, recents: [],
+            onAsk: { _, _, _, done in done(nil) }, onResume: { _ in },
+            onAskParty: { _, done in done(nil) })
+        try expect(panel.editor.vim.mode == .insert, "vim: the next summon arrives typing")
+        try expect(panel.editor.text == "half a question", "vim: with the draft it was put away with")
+        try expect(
+            panel.editor.vim.document.text == "half a question",
+            "vim: and the engine reads the draft the box shows")
+        panel.write("")
+        panel.orderFrontRegardless()
     }
 
     /// The panel is the person's size: the list takes the height a taller panel gives it, the

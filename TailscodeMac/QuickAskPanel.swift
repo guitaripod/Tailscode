@@ -177,7 +177,7 @@ final class QuickAskPanel: NSPanel {
     /// Brings the panel up for one summon, with what that summon knows: the machines, the chats it
     /// can reopen, what sending does, the draft filed under the machine it aims at, and whatever
     /// the pasteboard holds now.
-    private func arrive(
+    func arrive(
         servers: [ConnectionProfile], preferredServer: String?, recents: [SessionEntry],
         onAsk: @escaping (
             String, QuickAskSend, [PendingAttachment], @escaping @MainActor (NewChatFailure?) -> Void
@@ -196,6 +196,7 @@ final class QuickAskPanel: NSPanel {
             among: servers.map(\.id), fallback: preferredServer)
         machinePill.reload(servers: servers)
         shortcuts = ShortcutSet.load()
+        editor.applyPreferences()
         watch()
         restoreDraft()
         clipboard = Self.detectClipboard()
@@ -532,7 +533,7 @@ final class QuickAskPanel: NSPanel {
         guard let open = frontmost, open.isVisible, open.targetServer.id == profileID,
             open.editor.text.trimmingCharacters(in: .whitespacesAndNewlines) == text
         else { return }
-        open.editor.setText("", caretAtEnd: true)
+        open.write("")
     }
 
     /// The powers are visibly on before the question is sent: the aim's own effort, or the word

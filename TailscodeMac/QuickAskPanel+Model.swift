@@ -31,8 +31,18 @@ extension QuickAskPanel {
     /// The words filed under the machine aimed at, or an empty box where none are.
     func restoreDraft() {
         draftProfileID = targetServer.id
-        editor.setText(DraftStore.text(for: draftScope), caretAtEnd: true)
+        write(DraftStore.text(for: draftScope))
         refreshStarterVisibility()
+    }
+
+    /// Every path that puts other words in the box lands here, and leaves the box typing. The
+    /// panel and its vim engine outlive a summon, so the escape that left insert before the one
+    /// that closed the panel would otherwise bring the next question up in normal mode: the caret
+    /// hidden, the edge lit, and the first letters typed spent as commands.
+    func write(_ text: String) {
+        editor.vim.reset(to: text, cursor: text.count, mode: .insert)
+        editor.refreshMode()
+        editor.setText(text, caretAtEnd: true)
     }
 
     /// Moving the question to another machine leaves the words filed under the one being left and
@@ -45,7 +55,7 @@ extension QuickAskPanel {
         }
         DraftStore.record(editor.text, for: .quickAsk(profileID: previous))
         draftProfileID = targetServer.id
-        editor.setText(DraftStore.text(for: draftScope), caretAtEnd: true)
+        write(DraftStore.text(for: draftScope))
         refreshStarterVisibility()
     }
 

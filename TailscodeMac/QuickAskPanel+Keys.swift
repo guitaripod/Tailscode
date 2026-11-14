@@ -265,10 +265,7 @@ extension QuickAskPanel {
     /// it just wrote.
     func accept(_ command: AgentCommand) {
         SlashRecents.record(command.name)
-        let text = command.takesArguments ? "/\(command.name) " : "/\(command.name)"
-        editor.setText(text, caretAtEnd: true)
-        editor.vim.reset(to: text, cursor: text.count, mode: .insert)
-        editor.refreshMode()
+        write(command.takesArguments ? "/\(command.name) " : "/\(command.name)")
         editor.focus()
     }
 

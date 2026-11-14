@@ -46,7 +46,7 @@ extension QuickAskPanel {
             fireAt: choice.fireDate(now: Date()), repeats: choice.repeats)
         QuickAskLaterStore.save(later)
         releaseHold()
-        editor.setText("", caretAtEnd: true)
+        write("")
         DraftStore.clear(.quickAsk(profileID: server.id))
         renderStarters()
         refreshStarterVisibility()
