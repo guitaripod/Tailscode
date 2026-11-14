@@ -139,7 +139,7 @@ extension QuickAskPanel {
                     for path in paths {
                         switch AttachmentIntake.read(path: path) {
                         case .success(let attachment): current.attachments.append(attachment)
-                        case .failure(let refusal): self.setStatus(refusal.message)
+                        case .failure(let refusal): self.setStatus(refusal.message, tone: .failure)
                         }
                     }
                 }
@@ -199,7 +199,7 @@ extension QuickAskPanel {
     func grabScreen() {
         guard !asking, gathering == nil else { return }
         guard abilities.vision else {
-            setStatus(Localized.text("This model can't see pictures."))
+            setStatus(Localized.text("This model can't see pictures."), tone: .failure)
             return
         }
         grab { [weak self] picture in
@@ -211,7 +211,7 @@ extension QuickAskPanel {
 
     private func grab(then done: @escaping @MainActor (PendingAttachment?) -> Void) {
         guard MacScreenGrab.isAvailable else {
-            setStatus(Localized.text("This build can't capture the screen."))
+            setStatus(Localized.text("This build can't capture the screen."), tone: .failure)
             done(nil)
             return
         }
@@ -227,7 +227,7 @@ extension QuickAskPanel {
                 self.setStatus(Localized.text("The drag was called off."))
                 done(nil)
             case .failed(let reason):
-                self.setStatus(reason)
+                self.setStatus(reason, tone: .failure)
                 done(nil)
             }
         }
@@ -241,7 +241,7 @@ extension QuickAskPanel {
         guard QuickAskComposition.canSend(text: text, attachments: attachments.count) else { return }
         let targets = QuickAskParty.targets(partyCards())
         guard targets.count >= 2 else {
-            setStatus(Localized.text("The party needs two filled slots that can answer."))
+            setStatus(Localized.text("The party needs two filled slots that can answer."), tone: .failure)
             return
         }
         let server = targetServer
@@ -250,7 +250,7 @@ extension QuickAskPanel {
             resolvesFromPromptText: ServerDirectory.shared.backend(for: server)?
                 .resolvesCommandsFromPromptText == true)
         if case .command = question.kind {
-            setStatus(Localized.text("A command belongs to one machine — send it with enter."))
+            setStatus(Localized.text("A command belongs to one machine — send it with enter."), tone: .failure)
             return
         }
         let seats = targets.map { target in
@@ -268,13 +268,10 @@ extension QuickAskPanel {
         asking = true
         dismissCompletion()
         editor.isEditable = false
-        machinePill.isEnabled = false
         dialPopover?.close()
         partyPopover?.close()
         makeRoomPopover?.close()
-        dialPill.isEnabled = false
-        attachButton.isEnabled = false
-        screenButton.isEnabled = false
+        holdAim(true)
         sendButton.isEnabled = false
         dictation.waiting = true
         refreshStarterVisibility()
@@ -290,7 +287,7 @@ extension QuickAskPanel {
                 return
             }
             self.unlock()
-            self.setStatus("\(failure.title) — \(failure.detail)")
+            self.setStatus("\(failure.title) — \(failure.detail)", tone: .failure)
             self.refreshStarterVisibility()
             self.editor.focus()
         }

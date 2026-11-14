@@ -21,7 +21,9 @@ final class CompletionPopover: NSView {
     private var namingMatches: [SlashMatch] = []
     private var cursor = 0
 
-    init() {
+    /// `inGlass` is for a list that opens inside a surface that is already glass — the quick ask's
+    /// palette — where glass never stacks on glass, so it is a quiet raised card there instead.
+    init(inGlass: Bool = false) {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         isHidden = true
@@ -32,7 +34,7 @@ final class CompletionPopover: NSView {
             right: MacTheme.Spacing.s)
         column.translatesAutoresizingMaskIntoConstraints = false
 
-        let glass = MacTheme.glass(around: column, cornerRadius: MacTheme.Radius.card)
+        let glass: NSView = inGlass ? RaisedCard(around: column) : MacTheme.glass(around: column, cornerRadius: MacTheme.Radius.card)
         addSubview(glass)
         NSLayoutConstraint.activate([
             glass.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -279,5 +281,37 @@ private final class CompletionRowView: NSView {
     override func accessibilityPerformPress() -> Bool {
         pick(index)
         return true
+    }
+}
+
+/// The completion list's ground where it already stands on glass: the system's quietest fill and a
+/// hairline, at the card radius, resolved again whenever the appearance changes.
+@MainActor
+private final class RaisedCard: NSView {
+    init(around content: NSView) {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        layer?.cornerRadius = MacTheme.Radius.card
+        layer?.cornerCurve = .continuous
+        layer?.borderWidth = 1
+        addSubview(content)
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor),
+            content.topAnchor.constraint(equalTo: topAnchor),
+            content.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor
+            layer?.borderColor = MacTheme.Color.separator.cgColor
+        }
     }
 }

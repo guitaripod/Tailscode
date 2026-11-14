@@ -146,6 +146,7 @@ extension SelfTest {
         try expect(panel.menuCursor.index == nil && panel.isVisible, "Esc lets go of the line first")
 
         try checkPlacement(panel, expect)
+        try checkHead(panel, expect)
 
         panel.editor.setText("Any iPad mini rumours?", caretAtEnd: true)
         panel.schedule(.everyMorning)
@@ -156,6 +157,47 @@ extension SelfTest {
 
         try checkVimArrival(panel, servers: [arch, macbook], expect)
         return checks
+    }
+
+    /// The head reads as one line and one row: the words start where the placeholder stands rather
+    /// than under the hidden titlebar's inset, the mark and both buttons stand level with that
+    /// line, Send is the microphone's size, the four aim controls are chips of one height, and a
+    /// question that did not go out is said in the failure colour and the next notice is not.
+    private static func checkHead(
+        _ panel: QuickAskPanel, _ expect: (Bool, String) throws -> Void
+    ) throws {
+        panel.contentView?.layoutSubtreeIfNeeded()
+        let field = panel.editor.fieldView.convert(panel.editor.fieldView.bounds, to: nil)
+        let text = panel.editor.focusTarget.convert(panel.editor.focusTarget.bounds, to: nil)
+        try expect(
+            abs(field.maxY - text.maxY) < 0.5,
+            "the words start at the top of the box, not under a titlebar inset (\(field.maxY) vs \(text.maxY))")
+        let line = field.maxY - panel.editor.firstLineMiddle
+        for (view, name) in [
+            (panel.spark, "the mark"), (panel.sendButton, "Send"), (panel.dictation.button, "the microphone"),
+        ] as [(NSView, String)] {
+            let middle = view.convert(view.bounds, to: nil).midY
+            try expect(abs(middle - line) < 0.75, "\(name) stands level with the first line (\(middle) vs \(line))")
+        }
+        try expect(
+            panel.sendButton.frame.size == panel.dictation.button.frame.size,
+            "Send is the microphone's size (\(panel.sendButton.frame.size))")
+        let shown = [panel.machinePill, panel.dialPill, panel.attachButton, panel.screenButton].filter { !$0.isHidden }
+        let heights = Set(shown.map { $0.frame.height })
+        try expect(
+            shown.count >= 2 && heights.count == 1 && heights.first ?? 0 > 0,
+            "the aim's controls are chips of one height (\(heights.sorted()))")
+        panel.holdAim(true)
+        try expect(
+            panel.sendButton.alphaValue < 1 && panel.dialPill.alphaValue < 1,
+            "a question out fades Send with the aim")
+        panel.holdAim(false)
+        try expect(panel.sendButton.alphaValue == 1, "and its end brings them back")
+        panel.setStatus("refused", tone: .failure)
+        try expect(panel.status.textColor == MacTheme.Color.danger, "a question that did not go out is said in the failure colour")
+        panel.setStatus("noted")
+        try expect(panel.status.textColor == MacTheme.Color.accent, "and the next notice is not")
+        panel.setStatus("")
     }
 
     /// The panel outlives a summon and so does its vim engine: escape leaves insert, a second

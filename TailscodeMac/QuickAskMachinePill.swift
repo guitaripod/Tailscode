@@ -5,23 +5,19 @@ import TailscodeCore
 
 /// Which machine the question goes to, as one pill under the question: the machine and the agent
 /// that answers there, and a press for the list of the others. Tab still walks them without a
-/// press; the pill only states the aim and offers the rest.
+/// press; the pill only states the aim and offers the rest. It is the chat's own chip, so it has
+/// the dial's height, capsule, type and baseline beside it rather than AppKit's push-button bezel.
 @MainActor
 final class QuickAskMachinePill: NSView {
     var onPick: ((String) -> Void)?
     private var servers: [ConnectionProfile]
-    private let button = NSButton()
+    private let button = SymbolChip()
     private var selected: String?
 
     init(servers: [ConnectionProfile]) {
         self.servers = servers
         super.init(frame: .zero)
-        button.bezelStyle = .rounded
-        button.controlSize = .regular
-        button.font = MacTheme.Ramp.font(.control)
-        button.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
-        button.imagePosition = .imageTrailing
+        button.symbol = "desktopcomputer"
         button.target = self
         button.action = #selector(showMachines)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -41,7 +37,7 @@ final class QuickAskMachinePill: NSView {
         didSet { refreshEnabled() }
     }
 
-    var title: String { button.title }
+    var title: String { button.text }
 
     /// The machines a summon offers, which can differ from the last summon's.
     func reload(servers: [ConnectionProfile]) {
@@ -52,13 +48,17 @@ final class QuickAskMachinePill: NSView {
     func select(id: String) {
         selected = id
         guard let server = servers.first(where: { $0.id == id }) else { return }
-        button.title = "● " + ServerLabel.display(name: server.name, backend: server.backend)
+        button.text = ServerLabel.display(name: server.name, backend: server.backend)
+        button.setAccessibilityLabel(button.text)
         button.toolTip = ServerLabel.address(server)
     }
 
+    /// A pill held while a question is out offers nothing, and says so by fading, since a chip
+    /// draws no disabled face of its own. With one machine behind it the press still answers,
+    /// with that one machine ticked and its address beside it.
     private func refreshEnabled() {
-        button.isEnabled = isEnabled && servers.count > 1
-        button.imagePosition = servers.count > 1 ? .imageTrailing : .noImage
+        button.isEnabled = isEnabled
+        button.alphaValue = isEnabled ? 1 : QuickAskPanel.heldAlpha
     }
 
     @objc private func showMachines() {

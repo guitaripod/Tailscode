@@ -202,7 +202,7 @@ extension QuickAskPanel {
     func refreshSend() {
         let ready = QuickAskComposition.canSend(text: editor.text, attachments: attachments.count)
         sendButton.isEnabled = ready && !asking
-        sendButton.contentTintColor = ready ? MacTheme.Color.accent : MacTheme.Color.tertiaryLabel
+        sendButton.isReady = ready
     }
 
     /// Everything in the list runs the list's full width, so the lines line up under the box.
@@ -312,11 +312,21 @@ extension QuickAskPanel {
         listScroll.alphaValue = asking ? 0.45 : 1
     }
 
+    /// What the line under the question is saying. News, progress and a thing done are a notice, in
+    /// the accent. Anything the person asked for that did not happen — a question the machine
+    /// refused, an action the panel turned down, a picture that was not there — is a failure, in
+    /// the colour every other failure in the app wears, so a refusal is never read as one more
+    /// notice.
+    enum StatusTone {
+        case notice, failure
+    }
+
     /// Everything the panel says about itself goes through here, because the sentence is sometimes
     /// a whole failure — what the other machine refused and why — and it is held whole: the list
     /// gives up its height to it first, and the panel grows only past that.
-    func setStatus(_ text: String) {
+    func setStatus(_ text: String, tone: StatusTone = .notice) {
         status.stringValue = text
+        status.textColor = tone == .failure ? MacTheme.Color.danger : MacTheme.Color.accent
         status.isHidden = text.isEmpty
         makeRoom()
     }
@@ -354,12 +364,12 @@ extension QuickAskPanel {
             switch AttachmentIntake.read(path: path) {
             case .success(let attachment):
                 guard able.accepts(mime: attachment.mime) else {
-                    setStatus(Localized.text("This model can't read %@", attachment.name))
+                    setStatus(Localized.text("This model can't read %@", attachment.name), tone: .failure)
                     continue
                 }
                 attachments.append(attachment)
             case .failure(let refusal):
-                setStatus(refusal.message)
+                setStatus(refusal.message, tone: .failure)
             }
         }
         syncAttachments()
@@ -369,7 +379,7 @@ extension QuickAskPanel {
         guard abilities.vision else { return }
         let pasteboard = NSPasteboard.general
         guard let data = pasteboard.data(forType: .png) ?? pngFromTIFF(pasteboard) else {
-            setStatus(Localized.text("The clipboard holds no picture."))
+            setStatus(Localized.text("The clipboard holds no picture."), tone: .failure)
             return
         }
         addPastedImage(data)
@@ -399,9 +409,8 @@ extension QuickAskPanel {
 
     func syncAttachments() {
         chips.set(attachments)
-        attachButton.title =
-            attachments.isEmpty
-            ? Localized.text("Attach") : Localized.text("%@ attached", "\(attachments.count)")
+        attachButton.setAccessibilityValue(
+            attachments.isEmpty ? nil : Localized.text("%@ attached", "\(attachments.count)"))
         renderTyping()
         refreshSend()
         makeRoom()

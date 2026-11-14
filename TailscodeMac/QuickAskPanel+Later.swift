@@ -9,11 +9,11 @@ extension QuickAskPanel {
         guard !asking, gathering == nil else { return }
         let text = editor.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
-            setStatus(Localized.text("Type the question first, then choose when."))
+            setStatus(Localized.text("Type the question first, then choose when."), tone: .failure)
             return
         }
         guard attachments.isEmpty else {
-            setStatus(Localized.text("A question for later carries words only."))
+            setStatus(Localized.text("A question for later carries words only."), tone: .failure)
             return
         }
         if case .command = QuickAskSend.decide(
@@ -21,7 +21,7 @@ extension QuickAskPanel {
             resolvesFromPromptText: ServerDirectory.shared.backend(for: targetServer)?
                 .resolvesCommandsFromPromptText == true
         ).kind {
-            setStatus(Localized.text("A command runs now — send it with enter."))
+            setStatus(Localized.text("A command runs now — send it with enter."), tone: .failure)
             return
         }
         let now = Date()

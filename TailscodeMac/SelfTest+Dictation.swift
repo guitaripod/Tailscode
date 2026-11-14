@@ -180,7 +180,7 @@ extension SelfTest {
             let actions = first.dictation.button.superview as? NSStackView,
             actions === first.sendButton.superview,
             let box = field.arrangedSubviews.firstIndex(of: first.editor),
-            let pair = field.arrangedSubviews.firstIndex(of: actions),
+            let pair = field.arrangedSubviews.firstIndex(where: { actions.isDescendant(of: $0) }),
             let mic = actions.arrangedSubviews.firstIndex(of: first.dictation.button),
             let send = actions.arrangedSubviews.firstIndex(of: first.sendButton)
         else { throw SelfTestFailure("quick ask dictation: the microphone is in the field beside Send") }

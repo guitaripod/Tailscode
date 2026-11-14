@@ -336,6 +336,14 @@ final class PromptEditor: NSView {
 
     var focusTarget: NSView { textView }
 
+    /// How far below the box's top edge the middle of its first line falls — where the placeholder
+    /// stands and where the first words land — for a surface that lines a mark or a button up with
+    /// the words rather than with the box's edge.
+    var firstLineMiddle: CGFloat {
+        let font = textView.font ?? MacTheme.Ramp.font(.composer)
+        return textView.textContainerInset.height + ceil(font.ascender - font.descender + font.leading) / 2
+    }
+
     func focus() {
         window?.makeFirstResponder(textView)
     }

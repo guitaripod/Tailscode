@@ -50,9 +50,9 @@ final class QuickAskPanel: NSPanel {
         image: NSImage(systemSymbolName: "sparkle", accessibilityDescription: nil) ?? NSImage())
     let machinePill: QuickAskMachinePill
     let dialPill = DialPill()
-    let attachButton = NSButton()
-    let screenButton = NSButton()
-    let sendButton = NSButton()
+    let attachButton = SymbolChip()
+    let screenButton = SymbolChip()
+    let sendButton = QuickAskSendButton()
     let chips = AttachmentChips()
     let status = NSTextField(wrappingLabelWithString: "")
     let starters = NSStackView()
@@ -74,7 +74,7 @@ final class QuickAskPanel: NSPanel {
     /// Whether the list was last drawn for a typed box, so it is redrawn as the verbs or as
     /// everything only when that flips.
     var typingShown: Bool?
-    let completion = CompletionPopover()
+    let completion = CompletionPopover(inGlass: true)
     var servers: [ConnectionProfile]
     var recents: [SessionEntry]
     var attachments: [PendingAttachment] = []
@@ -125,6 +125,9 @@ final class QuickAskPanel: NSPanel {
     var actionsObserver: NSObjectProtocol?
     var laterObserver: NSObjectProtocol?
     var actionSheet: QuickAskActionSheet?
+    /// The constraints that stand the mark and the buttons level with the box's first line, kept
+    /// so a type-scale change moves them with the words.
+    private var lanes: [(middle: NSLayoutConstraint, height: NSLayoutConstraint, width: NSLayoutConstraint?)] = []
 
     static func present(
         over window: NSWindow?, servers: [ConnectionProfile], preferredServer: String?,
@@ -197,6 +200,7 @@ final class QuickAskPanel: NSPanel {
         machinePill.reload(servers: servers)
         shortcuts = ShortcutSet.load()
         editor.applyPreferences()
+        alignHead()
         watch()
         restoreDraft()
         clipboard = Self.detectClipboard()
@@ -272,30 +276,21 @@ final class QuickAskPanel: NSPanel {
         dialPill.usage = Localized.text(
             "The model the question runs on and how hard it thinks — scroll to step the effort")
 
-        for (button, title, symbol, action) in [
+        for (chip, title, symbol, action) in [
             (attachButton, Localized.text("Attach"), "paperclip", #selector(pickAttachments)),
             (screenButton, Localized.text("Screen"), "rectangle.dashed", #selector(grabScreenPressed)),
         ] {
-            button.bezelStyle = .rounded
-            button.controlSize = .regular
-            button.font = MacTheme.Ramp.font(.control)
-            button.title = title
-            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(pointSize: 11, weight: .medium))
-            button.imagePosition = .imageLeading
-            button.target = self
-            button.action = action
-            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+            chip.symbol = symbol
+            chip.text = title
+            chip.setAccessibilityLabel(title)
+            chip.target = self
+            chip.action = action
+            chip.setContentCompressionResistancePriority(.required, for: .horizontal)
         }
         screenButton.toolTip = Localized.text("Drag over part of the screen — ⌘⇧S")
 
-        sendButton.bezelStyle = .circular
-        sendButton.image = NSImage(systemSymbolName: "arrow.up", accessibilityDescription: Localized.text("Send"))?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .bold))
-        sendButton.imagePosition = .imageOnly
         sendButton.target = self
         sendButton.action = #selector(submit)
-        sendButton.setContentHuggingPriority(.required, for: .horizontal)
 
         status.font = MacTheme.Ramp.font(.panelFootnote)
         status.textColor = MacTheme.Color.accent
@@ -340,10 +335,12 @@ final class QuickAskPanel: NSPanel {
         actions.alignment = .centerY
         actions.spacing = 6
         actions.setContentHuggingPriority(.required, for: .horizontal)
-        let field = NSStackView(views: [spark, editor, actions])
+        let sparkLane = lane(holding: spark, width: QuickAskList.tileSide)
+        let field = NSStackView(views: [sparkLane, editor, lane(holding: actions, width: nil)])
         field.orientation = .horizontal
         field.alignment = .top
         field.spacing = 10
+        field.setCustomSpacing(6, after: sparkLane)
 
         let slack = NSView()
         slack.setContentHuggingPriority(.init(1), for: .horizontal)
@@ -367,9 +364,13 @@ final class QuickAskPanel: NSPanel {
         chordLabel.textColor = MacTheme.Color.tertiaryLabel
         let footSlack = NSView()
         footSlack.setContentHuggingPriority(.init(1), for: .horizontal)
+        footSlack.setContentCompressionResistancePriority(.init(1), for: .horizontal)
         let foot = NSStackView(views: [footKeys, footSlack, chordLabel])
         foot.orientation = .horizontal
+        foot.distribution = .fill
         foot.edgeInsets = NSEdgeInsets(top: 9, left: 18, bottom: 11, right: 18)
+        holdMargins(of: foot, around: footKeys)
+        chordLabel.centerYAnchor.constraint(equalTo: footKeys.centerYAnchor).isActive = true
 
         let column = QuickAskDropView(views: [head, listRule, listScroll, footRule, foot])
         column.orientation = .vertical
@@ -428,6 +429,74 @@ final class QuickAskPanel: NSPanel {
                 guard let self, !self.asking else { return }
                 self.renderStarters()
             }
+        }
+    }
+
+    /// A centred horizontal stack keeps its top and bottom insets only as a wish, so the list above
+    /// the foot squeezed it two points shorter than its keys and their margins and the bottom
+    /// margin was the one cut. The keys hold both margins outright; the list gives the two points.
+    private func holdMargins(of stack: NSStackView, around keys: NSView) {
+        NSLayoutConstraint.activate([
+            keys.topAnchor.constraint(equalTo: stack.topAnchor, constant: stack.edgeInsets.top),
+            stack.bottomAnchor.constraint(equalTo: keys.bottomAnchor, constant: stack.edgeInsets.bottom),
+        ])
+    }
+
+    /// How faint a control is while a question is out and it cannot be pressed.
+    static let heldAlpha: CGFloat = 0.5
+
+    /// The aim's controls while a question is out: none of them can be pressed, and each fades so
+    /// it does not look as if it could, since a chip draws no disabled face of its own. Send fades
+    /// with them: its words are still there, so it would otherwise stay lit while it does nothing.
+    func holdAim(_ held: Bool) {
+        machinePill.isEnabled = !held
+        for chip in [dialPill, attachButton, screenButton] as [ChipButton] {
+            chip.isEnabled = !held
+            chip.alphaValue = held ? Self.heldAlpha : 1
+        }
+        sendButton.alphaValue = held ? Self.heldAlpha : 1
+    }
+
+    /// The mark and the two buttons stand level with the box's first line of words rather than with
+    /// its top edge, so a question that grows to more lines keeps them beside the line it started
+    /// on. Each stands in a lane the height of that line's middle twice over; the mark's lane is a
+    /// list tile wide, so it sits on the same axis as the glyphs in the list below it.
+    private func lane(holding view: NSView, width: CGFloat?) -> NSView {
+        let lane = NSView()
+        lane.translatesAutoresizingMaskIntoConstraints = false
+        view.translatesAutoresizingMaskIntoConstraints = false
+        lane.addSubview(view)
+        let middle = view.centerYAnchor.constraint(equalTo: lane.topAnchor, constant: editor.firstLineMiddle)
+        let height = lane.heightAnchor.constraint(equalToConstant: editor.firstLineMiddle * 2)
+        var pins = [
+            middle, height,
+            view.topAnchor.constraint(greaterThanOrEqualTo: lane.topAnchor),
+            view.bottomAnchor.constraint(lessThanOrEqualTo: lane.bottomAnchor),
+        ]
+        var across: NSLayoutConstraint?
+        if let width {
+            let fixed = lane.widthAnchor.constraint(equalToConstant: width)
+            across = fixed
+            pins += [fixed, view.centerXAnchor.constraint(equalTo: lane.centerXAnchor)]
+        } else {
+            pins += [
+                view.leadingAnchor.constraint(equalTo: lane.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: lane.trailingAnchor),
+            ]
+        }
+        NSLayoutConstraint.activate(pins)
+        lanes.append((middle, height, across))
+        return lane
+    }
+
+    /// The lanes follow the box's type: a scale changed while the panel was put away moves the
+    /// first line, and the mark and the buttons move with it.
+    func alignHead() {
+        let middle = editor.firstLineMiddle
+        for lane in lanes {
+            lane.middle.constant = middle
+            lane.height.constant = middle * 2
+            lane.width?.constant = QuickAskList.tileSide
         }
     }
 
@@ -513,10 +582,7 @@ final class QuickAskPanel: NSPanel {
     func unlock() {
         asking = false
         editor.isEditable = true
-        machinePill.isEnabled = true
-        dialPill.isEnabled = true
-        attachButton.isEnabled = true
-        screenButton.isEnabled = true
+        holdAim(false)
         dictation.waiting = false
         refreshSend()
     }
@@ -630,13 +696,10 @@ final class QuickAskPanel: NSPanel {
         asking = true
         dismissCompletion()
         editor.isEditable = false
-        machinePill.isEnabled = false
         dialPopover?.close()
         partyPopover?.close()
         makeRoomPopover?.close()
-        dialPill.isEnabled = false
-        attachButton.isEnabled = false
-        screenButton.isEnabled = false
+        holdAim(true)
         sendButton.isEnabled = false
         dictation.waiting = true
         refreshStarterVisibility()
@@ -655,7 +718,7 @@ final class QuickAskPanel: NSPanel {
                 return
             }
             self.unlock()
-            self.setStatus("\(failure.title) — \(failure.detail)")
+            self.setStatus("\(failure.title) — \(failure.detail)", tone: .failure)
             self.refreshStarterVisibility()
             self.editor.focus()
         }

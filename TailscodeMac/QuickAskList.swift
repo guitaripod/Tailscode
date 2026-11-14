@@ -7,7 +7,11 @@ import TailscodeCore
 /// through `PressSurface`, so the panel is not a second dialect of hover.
 @MainActor
 enum QuickAskList {
-    static let rowHeight: CGFloat = 34
+    static var rowHeight: CGFloat { (34 * MacTheme.UIScale.factor).rounded() }
+
+    /// The tinted square a line's glyph stands in, grown with the window's type like the words
+    /// beside it.
+    static var tileSide: CGFloat { (24 * MacTheme.UIScale.factor).rounded() }
 
     static func row(
         _ item: QuickAskMenuItem, onPress: @escaping () -> Void
@@ -22,8 +26,12 @@ enum QuickAskList {
                 string: text,
                 attributes: MacTheme.Ramp.attributes(
                     .sectionLabel, color: MacTheme.Color.secondaryLabel)))
-        return padded(label, top: 10, left: 10, bottom: 2)
+        return padded(label, top: 10, left: lineInset, bottom: 2)
     }
+
+    /// Where every line's contents start inside the list: the tiles, the names of groups and the
+    /// words of the copied band all begin on this one edge, under the pills above them.
+    static let lineInset: CGFloat = 8
 
     /// What was copied heads its section: what it is in the accent, a glimpse of it, and the way
     /// to say it is not what this question is about.
@@ -45,6 +53,11 @@ enum QuickAskList {
         aside.contentTintColor = MacTheme.Color.secondaryLabel
         aside.toolTip = QuickAskWords.setAside
         aside.setContentHuggingPriority(.required, for: .horizontal)
+        aside.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            aside.widthAnchor.constraint(equalToConstant: 20),
+            aside.heightAnchor.constraint(equalToConstant: 20),
+        ])
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
         let head = NSStackView(views: [headline, spacer, aside])
@@ -64,11 +77,11 @@ enum QuickAskList {
         column.orientation = .vertical
         column.alignment = .leading
         column.spacing = 2
-        column.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 8)
+        column.edgeInsets = NSEdgeInsets(top: 6, left: lineInset, bottom: 6, right: 4)
         column.wantsLayer = true
         column.layer?.cornerRadius = 8
         column.layer?.backgroundColor = MacTheme.Color.accent.withAlphaComponent(0.08).cgColor
-        head.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -20).isActive = true
+        head.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -(lineInset + 4)).isActive = true
         return padded(column, top: 6, left: 0, bottom: 2)
     }
 
@@ -146,14 +159,14 @@ final class QuickAskRowView: NSView {
         let symbol = NSImageView(
             image: NSImage(systemSymbolName: item.symbol, accessibilityDescription: nil)
                 ?? NSImage(systemSymbolName: "sparkle", accessibilityDescription: nil) ?? NSImage())
-        symbol.symbolConfiguration = .init(pointSize: 11, weight: .semibold)
+        symbol.symbolConfiguration = .init(pointSize: (11 * MacTheme.UIScale.factor).rounded(), weight: .semibold)
         symbol.contentTintColor = MacTheme.Color.accent
         symbol.translatesAutoresizingMaskIntoConstraints = false
         badge.addSubview(symbol)
         badge.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            badge.widthAnchor.constraint(equalToConstant: 24),
-            badge.heightAnchor.constraint(equalToConstant: 24),
+            badge.widthAnchor.constraint(equalToConstant: QuickAskList.tileSide),
+            badge.heightAnchor.constraint(equalToConstant: QuickAskList.tileSide),
             symbol.centerXAnchor.constraint(equalTo: badge.centerXAnchor),
             symbol.centerYAnchor.constraint(equalTo: badge.centerYAnchor),
         ])
@@ -198,7 +211,7 @@ final class QuickAskRowView: NSView {
         let line = NSStackView(views: views)
         line.orientation = .horizontal
         line.spacing = 10
-        line.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 10)
+        line.edgeInsets = NSEdgeInsets(top: 0, left: QuickAskList.lineInset, bottom: 0, right: 10)
         line.translatesAutoresizingMaskIntoConstraints = false
         face.addSubview(line)
         face.translatesAutoresizingMaskIntoConstraints = false

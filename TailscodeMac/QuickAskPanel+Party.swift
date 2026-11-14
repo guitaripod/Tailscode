@@ -122,7 +122,7 @@ extension QuickAskPanel {
         }
         guard let card = partyCards().first(where: { $0.slot == number - 1 }), !card.isHollow
         else {
-            setStatus(Localized.text("Slot %d is empty", number))
+            setStatus(Localized.text("Slot %d is empty", number), tone: .failure)
             return
         }
         takePartyCard(card)
@@ -265,7 +265,7 @@ extension QuickAskPanel {
 
     private func fillParty(slot: Int, with pick: ModelPick) {
         guard let selection = pick.selection else {
-            setStatus(Localized.text("A slot holds a model, not the server's choice"))
+            setStatus(Localized.text("A slot holds a model, not the server's choice"), tone: .failure)
             return
         }
         let preset = pick.preset ?? presetCarrying(selection, profileID: pick.profileID)
