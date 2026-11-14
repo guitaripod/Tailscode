@@ -3,9 +3,9 @@
     {
       "master": "lock",
       "slug": "01-leave-your-desk",
-      "headline": "Lähde työpöydältä.\nAgentti löytää sinut.",
-      "subline": "Claude Code, opencode ja Hermes jatkavat työtä omalla tietokoneellasi.",
-      "highlight": "Agentti löytää sinut."
+      "headline": "Claude Code,\nsuoraan iPhonesta.",
+      "subline": "Se toimii omalla tietokoneellasi ja ilmoittaa, kun se tarvitsee sinua. Myös Codex, opencode ja Hermes.",
+      "highlight": "suoraan iPhonesta."
     },
     {
       "master": "03-approval",
@@ -31,15 +31,15 @@
     {
       "master": "fl-setup",
       "slug": "05-one-command",
-      "headline": "Yksi rivi.\nSitten skannaa.",
+      "headline": "Yksi rivi riittää.\nEi SSH:ta, ei tmuxia.",
       "subline": "Claude Code -bridge asentuu yhdellä komennolla. Ei kirjautumista.",
-      "highlight": "Sitten skannaa."
+      "highlight": "Ei SSH:ta, ei tmuxia."
     },
     {
       "master": "fl-agents",
       "slug": "06-every-agent",
       "headline": "Jokainen agentti.\nYksi näkymä.",
-      "subline": "Claude Code, Hermes, opencode ja mikä tahansa ACP-agentti omilla tietokoneillasi.",
+      "subline": "Claude Code, Codex, Hermes, opencode ja mikä tahansa ACP-agentti omilla tietokoneillasi.",
       "highlight": "Yksi näkymä."
     },
     {
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "Lähde työpöydältä.\nAgentti löytää sinut.",
-    "highlight": "Agentti löytää sinut."
+    "headline": "Claude Code,\nsuoraan iPhonesta.",
+    "highlight": "suoraan iPhonesta."
   },
   "search": {
-    "headline": "Lähde työpöydältä.\nAgentti\nlöytää sinut.",
-    "highlight": "Agentti\nlöytää sinut."
+    "headline": "Claude Code,\nsuoraan iPhonesta.",
+    "highlight": "suoraan iPhonesta."
   }
 }

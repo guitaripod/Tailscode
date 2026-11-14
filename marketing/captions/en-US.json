@@ -3,9 +3,9 @@
     {
       "master": "lock",
       "slug": "01-leave-your-desk",
-      "headline": "Leave your desk.\nYour agent finds you.",
-      "subline": "Claude Code, opencode and Hermes keep working on your own computer.",
-      "highlight": "Your agent finds you."
+      "headline": "Claude Code,\nfrom your phone.",
+      "subline": "It runs on your own computer and reaches you when it needs you. Codex, opencode and Hermes too.",
+      "highlight": "from your phone."
     },
     {
       "master": "03-approval",
@@ -31,15 +31,15 @@
     {
       "master": "fl-setup",
       "slug": "05-one-command",
-      "headline": "One line.\nThen scan.",
+      "headline": "Set up in one line.\nNo SSH, no tmux.",
       "subline": "Claude Code's bridge installs with one command. No sign-in.",
-      "highlight": "Then scan."
+      "highlight": "No SSH, no tmux."
     },
     {
       "master": "fl-agents",
       "slug": "06-every-agent",
       "headline": "Every agent.\nOne board.",
-      "subline": "Claude Code, Hermes, opencode and any ACP agent, on your own computers.",
+      "subline": "Claude Code, Codex, Hermes, opencode and any ACP agent, on your own computers.",
       "highlight": "One board."
     },
     {
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "Leave your desk.\nYour agent finds you.",
-    "highlight": "Your agent finds you."
+    "headline": "Claude Code,\nfrom your phone.",
+    "highlight": "from your phone."
   },
   "search": {
-    "headline": "Leave your desk.\nYour agent\nfinds you.",
-    "highlight": "Your agent\nfinds you."
+    "headline": "Claude Code,\nfrom your phone.",
+    "highlight": "from your phone."
   }
 }

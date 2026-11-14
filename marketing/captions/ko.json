@@ -3,9 +3,9 @@
     {
       "master": "lock",
       "slug": "01-leave-your-desk",
-      "headline": "자리를 떠나도,\n에이전트가 알려 줍니다",
-      "subline": "Claude Code, opencode, Hermes가 내 컴퓨터에서 계속 일합니다.",
-      "highlight": "에이전트가 알려 줍니다"
+      "headline": "Claude Code를\niPhone에서",
+      "subline": "에이전트는 내 컴퓨터에서 실행되고, 필요할 때 알려 줍니다. Codex, opencode, Hermes도 지원합니다.",
+      "highlight": "iPhone에서"
     },
     {
       "master": "03-approval",
@@ -31,15 +31,15 @@
     {
       "master": "fl-setup",
       "slug": "05-one-command",
-      "headline": "명령 한 줄,\n그다음 스캔",
+      "headline": "한 줄이면 설정 끝.\nSSH도 tmux도 없이",
       "subline": "Claude Code 브리지는 명령 한 줄로 설치됩니다. 로그인 없음.",
-      "highlight": "그다음 스캔"
+      "highlight": "SSH도 tmux도 없이"
     },
     {
       "master": "fl-agents",
       "slug": "06-every-agent",
       "headline": "모든 에이전트,\n보드 하나에",
-      "subline": "Claude Code, Hermes, opencode, 그리고 모든 ACP 에이전트를 내 컴퓨터에서.",
+      "subline": "Claude Code, Codex, Hermes, opencode, 그리고 모든 ACP 에이전트를 내 컴퓨터에서.",
       "highlight": "보드 하나에"
     },
     {
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "자리를 떠나도,\n에이전트가 알려 줍니다",
-    "highlight": "에이전트가 알려 줍니다"
+    "headline": "Claude Code를\niPhone에서",
+    "highlight": "iPhone에서"
   },
   "search": {
-    "headline": "자리를 떠나도,\n에이전트가\n알려 줍니다",
-    "highlight": "에이전트가\n알려 줍니다"
+    "headline": "Claude Code를\niPhone에서",
+    "highlight": "iPhone에서"
   }
 }

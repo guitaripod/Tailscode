@@ -3,9 +3,9 @@
     {
       "master": "lock",
       "slug": "01-leave-your-desk",
-      "headline": "Forlad skrivebordet.\nDin agent finder dig.",
-      "subline": "Claude Code, opencode og Hermes arbejder videre på din egen computer.",
-      "highlight": "Din agent finder dig."
+      "headline": "Claude Code,\nfra din iPhone.",
+      "subline": "Den kører på din egen computer og giver lyd, når den har brug for dig. Også Codex, opencode og Hermes.",
+      "highlight": "fra din iPhone."
     },
     {
       "master": "03-approval",
@@ -31,15 +31,15 @@
     {
       "master": "fl-setup",
       "slug": "05-one-command",
-      "headline": "Én linje.\nScan bagefter.",
+      "headline": "Én linje er nok.\nUden SSH og tmux.",
       "subline": "Bridge'en til Claude Code installeres med én kommando. Ingen login.",
-      "highlight": "Scan bagefter."
+      "highlight": "Uden SSH og tmux."
     },
     {
       "master": "fl-agents",
       "slug": "06-every-agent",
       "headline": "Hver agent.\nÉn tavle.",
-      "subline": "Claude Code, Hermes, opencode og enhver ACP-agent, på dine egne computere.",
+      "subline": "Claude Code, Codex, Hermes, opencode og enhver ACP-agent, på dine egne computere.",
       "highlight": "Én tavle."
     },
     {
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "Forlad skrivebordet.\nDin agent finder dig.",
-    "highlight": "Din agent finder dig."
+    "headline": "Claude Code,\nfra din iPhone.",
+    "highlight": "fra din iPhone."
   },
   "search": {
-    "headline": "Forlad skrivebordet.\nDin agent\nfinder dig.",
-    "highlight": "Din agent\nfinder dig."
+    "headline": "Claude Code,\nfra din iPhone.",
+    "highlight": "fra din iPhone."
   }
 }

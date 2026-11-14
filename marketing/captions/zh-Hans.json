@@ -3,9 +3,9 @@
     {
       "master": "lock",
       "slug": "01-leave-your-desk",
-      "headline": "离开书桌\n智能体会来找你",
-      "subline": "Claude Code、opencode 和 Hermes 在你自己的电脑上继续工作。",
-      "highlight": "智能体会来找你"
+      "headline": "Claude Code，\n随时用 iPhone 操控",
+      "subline": "它在你自己的电脑上运行，需要你时会通知你。也支持 Codex、opencode 和 Hermes。",
+      "highlight": "随时用 iPhone 操控"
     },
     {
       "master": "03-approval",
@@ -31,15 +31,15 @@
     {
       "master": "fl-setup",
       "slug": "05-one-command",
-      "headline": "一行命令\n然后扫码",
+      "headline": "一行命令完成设置\n不用 SSH，不用 tmux",
       "subline": "Claude Code 的桥接用一条命令即可安装，无需登录。",
-      "highlight": "然后扫码"
+      "highlight": "不用 SSH，不用 tmux"
     },
     {
       "master": "fl-agents",
       "slug": "06-every-agent",
       "headline": "所有智能体\n一块面板",
-      "subline": "Claude Code、Hermes、opencode 和任何 ACP 智能体，都在你自己的电脑上。",
+      "subline": "Claude Code、Codex、Hermes、opencode 和任何 ACP 智能体，都在你自己的电脑上。",
       "highlight": "一块面板"
     },
     {
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "离开书桌\n智能体会来找你",
-    "highlight": "智能体会来找你"
+    "headline": "Claude Code，\n随时用 iPhone 操控",
+    "highlight": "随时用 iPhone 操控"
   },
   "search": {
-    "headline": "离开书桌\n智能体\n会来找你",
-    "highlight": "智能体\n会来找你"
+    "headline": "Claude Code，\n随时用 iPhone 操控",
+    "highlight": "随时用 iPhone 操控"
   }
 }

@@ -3,9 +3,9 @@
     {
       "master": "lock",
       "slug": "01-leave-your-desk",
-      "headline": "離開書桌\n智慧代理會來找你",
-      "subline": "Claude Code、opencode 和 Hermes 在你自己的電腦上繼續工作。",
-      "highlight": "智慧代理會來找你"
+      "headline": "Claude Code，\n隨時用 iPhone 操控",
+      "subline": "它在你自己的電腦上執行，需要你時會通知你。也支援 Codex、opencode 和 Hermes。",
+      "highlight": "隨時用 iPhone 操控"
     },
     {
       "master": "03-approval",
@@ -31,15 +31,15 @@
     {
       "master": "fl-setup",
       "slug": "05-one-command",
-      "headline": "一行指令\n然後掃描",
+      "headline": "一行指令完成設定\n不用 SSH，不用 tmux",
       "subline": "Claude Code 的橋接用一行指令即可安裝，無需登入。",
-      "highlight": "然後掃描"
+      "highlight": "不用 SSH，不用 tmux"
     },
     {
       "master": "fl-agents",
       "slug": "06-every-agent",
       "headline": "所有智慧代理\n一塊面板",
-      "subline": "Claude Code、Hermes、opencode 和任何 ACP 智慧代理，都在你自己的電腦上。",
+      "subline": "Claude Code、Codex、Hermes、opencode 和任何 ACP 智慧代理，都在你自己的電腦上。",
       "highlight": "一塊面板"
     },
     {
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "離開書桌\n智慧代理會來找你",
-    "highlight": "智慧代理會來找你"
+    "headline": "Claude Code，\n隨時用 iPhone 操控",
+    "highlight": "隨時用 iPhone 操控"
   },
   "search": {
-    "headline": "離開書桌\n智慧代理\n會來找你",
-    "highlight": "智慧代理\n會來找你"
+    "headline": "Claude Code，\n隨時用 iPhone 操控",
+    "highlight": "隨時用 iPhone 操控"
   }
 }

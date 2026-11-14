@@ -3,9 +3,9 @@
     {
       "master": "lock",
       "slug": "01-leave-your-desk",
-      "headline": "Odejdź od biurka.\nAgent cię znajdzie.",
-      "subline": "Claude Code, opencode i Hermes pracują dalej na twoim własnym komputerze.",
-      "highlight": "Agent cię znajdzie."
+      "headline": "Claude Code\nz twojego iPhone'a.",
+      "subline": "Działa na twoim komputerze i daje znać, gdy cię potrzebuje. Także Codex, opencode i Hermes.",
+      "highlight": "z twojego iPhone'a."
     },
     {
       "master": "03-approval",
@@ -31,15 +31,15 @@
     {
       "master": "fl-setup",
       "slug": "05-one-command",
-      "headline": "Jedna linia.\nPotem skanuj.",
+      "headline": "Jedna linijka.\nBez SSH i tmux.",
       "subline": "Bridge dla Claude Code instaluje się jednym poleceniem. Bez logowania.",
-      "highlight": "Potem skanuj."
+      "highlight": "Bez SSH i tmux."
     },
     {
       "master": "fl-agents",
       "slug": "06-every-agent",
       "headline": "Każdy agent.\nJedna tablica.",
-      "subline": "Claude Code, Hermes, opencode i każdy agent ACP, na twoich własnych komputerach.",
+      "subline": "Claude Code, Codex, Hermes, opencode i każdy agent ACP, na twoich własnych komputerach.",
       "highlight": "Jedna tablica."
     },
     {
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "Odejdź od biurka.\nAgent cię znajdzie.",
-    "highlight": "Agent cię znajdzie."
+    "headline": "Claude Code\nz twojego iPhone'a.",
+    "highlight": "z twojego iPhone'a."
   },
   "search": {
-    "headline": "Odejdź od biurka.\nAgent\ncię znajdzie.",
-    "highlight": "Agent\ncię znajdzie."
+    "headline": "Claude Code\nz twojego iPhone'a.",
+    "highlight": "z twojego iPhone'a."
   }
 }

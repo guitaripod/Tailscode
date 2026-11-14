@@ -3,9 +3,9 @@
     {
       "master": "lock",
       "slug": "01-leave-your-desk",
-      "headline": "デスクを離れても、\nエージェントから届く",
-      "subline": "Claude Code、opencode、Hermes が、あなた自身のコンピュータで作業を続けます。",
-      "highlight": "エージェントから届く"
+      "headline": "Claude Code を、\niPhone から",
+      "subline": "エージェントは自分のコンピュータで動き、必要なときに知らせます。Codex、opencode、Hermes にも対応。",
+      "highlight": "iPhone から"
     },
     {
       "master": "03-approval",
@@ -31,15 +31,15 @@
     {
       "master": "fl-setup",
       "slug": "05-one-command",
-      "headline": "コマンドは一行、\nあとはスキャン",
+      "headline": "設定は 1 行だけ。\nSSH も tmux も不要",
       "subline": "Claude Code のブリッジは一行で入ります。サインイン不要。",
-      "highlight": "あとはスキャン"
+      "highlight": "SSH も tmux も不要"
     },
     {
       "master": "fl-agents",
       "slug": "06-every-agent",
       "headline": "全エージェントを\nひとつのボードに",
-      "subline": "Claude Code、Hermes、opencode、そしてあらゆるACPエージェントを、手元のマシンで。",
+      "subline": "Claude Code、Codex、Hermes、opencode、そしてあらゆるACPエージェントを、手元のマシンで。",
       "highlight": "ひとつのボードに"
     },
     {
@@ -216,11 +216,11 @@
     }
   ],
   "header": {
-    "headline": "デスクを離れても、\nエージェントから届く",
-    "highlight": "エージェントから届く"
+    "headline": "Claude Code を、\niPhone から",
+    "highlight": "iPhone から"
   },
   "search": {
-    "headline": "デスクを離れても、\nエージェントから\n届く",
-    "highlight": "エージェントから\n届く"
+    "headline": "Claude Code を、\niPhone から",
+    "highlight": "iPhone から"
   }
 }
