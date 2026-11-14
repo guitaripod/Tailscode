@@ -170,7 +170,8 @@ extension SidebarViewController {
         visible = (searchRunning || searchBoard != nil) ? [] : sections.flatMap(\.1)
         syncCursorToSelection()
 
-        let missed = ActivityInbox.ordered(limit: 5)
+        let missed = ActivityInbox.unsaid(by: Self.drawnRows(sections, limit: sidebarLimit), limit: 5)
+        listedMissed = missed.all
         let vocabulary = ChatListVocabulary(rows: models)
         let snapshot = (
             visible.map(\.key), unreachable, filter,
@@ -263,6 +264,20 @@ extension SidebarViewController {
         }
         reselect()
         refreshHover()
+    }
+
+    /// The chat rows the list is about to draw: the first `limit` items in the order the sections
+    /// run, a split counted as the chats it stands for. What MISSED leaves out is judged against
+    /// exactly these, because a row below the limit says nothing to anybody.
+    static func drawnRows(_ sections: [(ChatListSection, [ChatListItem])], limit: Int)
+        -> [SessionRowModel]
+    {
+        sections.flatMap(\.1).prefix(limit).flatMap { item -> [SessionRowModel] in
+            switch item {
+            case .chat(let row): return [row]
+            case .tab(let tab): return tab.members
+            }
+        }
     }
 
     /// One of every row the list can draw, in place of the listing: a picture of the grammar that

@@ -163,6 +163,40 @@ struct ChatListSectionsTests {
         #expect(row(entry("b")).titleMarks(under: .recent).isEmpty)
     }
 
+    @Test("A notice the chat's own row already says is not said again above it")
+    func unsaidNotices() {
+        func notice(_ id: String, _ reason: MissedActivity.Reason) -> MissedActivity {
+            MissedActivity(
+                identifier: "n-\(id)", profileID: "one", sessionID: id, title: "chat \(id)",
+                body: "", reason: reason, at: now)
+        }
+        let rows = [
+            row(entry("unread"), unread: true),
+            row(entry("read")),
+            row(entry("asking"), presence: .awaitingApproval),
+            row(entry("busy", active: true), unread: true),
+        ]
+        let notices = [
+            notice("unread", .turnEnded), notice("read", .turnEnded),
+            notice("asking", .needsApproval), notice("busy", .needsAnswer),
+            notice("elsewhere", .turnFailed),
+        ]
+        let left = MissedActivity.unsaid(notices, by: rows).map(\.sessionID)
+        #expect(
+            left == ["read", "busy", "elsewhere"],
+            "an unread row and a row under NEEDS YOU speak for themselves; a question in a chat the list shows as working, and a chat the list is not drawing, do not")
+        #expect(MissedActivity.unsaid(notices, by: []).count == notices.count)
+        let other = SessionRowModel(
+            entry: SessionEntry(
+                profileID: "two", profileName: "two", host: "two", backendType: .claudeCode,
+                session: entry("unread").session),
+            unreachable: false, unread: true, saved: false)
+        #expect(
+            MissedActivity.unsaid([notice("unread", .turnEnded)], by: [other]).count == 1,
+            "the same id on another server is another chat")
+        #expect(MissedActivity.unsaid(notices, by: rows).allSatisfy { notices.contains($0) })
+    }
+
     @Test("An unread finish quotes the answer, and a read one says nothing")
     func quotedNews() {
         let said = "Uploaded 1.84 (222); App Store Connect reports it VALID."

@@ -109,7 +109,7 @@ extension SidebarViewController {
     }
 
     func clearMissed() {
-        ActivityInbox.clearAll()
+        ActivityInbox.clear(listedMissed)
         lastSidebar = nil
         render()
     }

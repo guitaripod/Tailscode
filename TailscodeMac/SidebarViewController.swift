@@ -51,6 +51,9 @@ final class SidebarViewController: NSViewController {
     /// `(profileID, sessionID)`. A listing reports `active` for the seconds a turn is literally
     /// open on the server and never reports a turn that stopped to ask something, so the chat a
     /// person is talking in right now leads WORKING from here rather than from the next sweep.
+    /// Every notice the list above the chats is holding, shown or folded under "more": what its
+    /// own clear acts on.
+    var listedMissed: [MissedActivity] = []
     /// One of every row, drawn in place of the listing while it is set (`--open chat-list`).
     var fixture: [ChatListFixture.Section]? {
         didSet { render() }

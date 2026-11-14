@@ -283,6 +283,24 @@ extension DeviceStores {
       MarkIntentStore.forgetAllForTesting()
     }
 
+    @Test("A list that holds some of the notices clears those and leaves the rest standing")
+    func clearingWhatIsListed() {
+      fresh()
+      let defaults = UserDefaults.standard
+      defaults.removeObject(forKey: SessionSeenStore.seenKey)
+      ActivityInbox.record([
+        alert("done:s1", session: "s1"),
+        alert("done:s2", session: "s2"),
+      ])
+      let listed = ActivityInbox.all().filter { $0.sessionID == "s1" }
+      ActivityInbox.clear(listed)
+      #expect(ActivityInbox.all().map(\.sessionID) == ["s2"])
+      #expect(SessionSeenStore.values()["s1"] != nil)
+      #expect(SessionSeenStore.values()["s2"] == nil, "a chat whose row still says its news was not dealt with")
+      defaults.removeObject(forKey: SessionSeenStore.seenKey)
+      MarkIntentStore.forgetAllForTesting()
+    }
+
     @Test("A notice about an unnamed chat is named by the words that started it")
     func nameFallsBackToThePrompt() {
       #expect(MissedActivity.name(title: "A chat", latestPrompt: "anything") == "A chat")

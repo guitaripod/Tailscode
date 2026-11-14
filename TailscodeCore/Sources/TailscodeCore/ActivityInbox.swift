@@ -66,6 +66,31 @@ public struct MissedActivity: Codable, Hashable, Sendable, Identifiable {
         return AgentSession.isPlaceholderTitle(named) ? Localized.text("New conversation") : named
     }
 
+    /// The notices a list of chats does not already carry on its own rows, in the order given.
+    ///
+    /// A row says its own news: an unread chat wears the mark and the words for how it ended, and
+    /// a chat waiting on the person stands under NEEDS YOU. A notice for such a row is the same
+    /// news said twice, one line above the other. What is left is what only a notice can say: a
+    /// question in a chat this device is not streaming, which a listing shows as merely working,
+    /// and anything in a chat the list is not drawing at all — below its limit, filtered out,
+    /// archived, or gone from the listing.
+    ///
+    /// - Parameter rows: the chat rows the list is drawing right now, and no others.
+    public static func unsaid(_ notices: [MissedActivity], by rows: [SessionRowModel])
+        -> [MissedActivity]
+    {
+        var drawn: [String: SessionRowModel] = [:]
+        for row in rows {
+            drawn[SessionPinStore.key(row.entry.profileID, row.entry.session.id)] = row
+        }
+        return notices.filter { notice in
+            guard let row = drawn[SessionPinStore.key(notice.profileID, notice.sessionID)] else {
+                return true
+            }
+            return notice.isBlocking ? !row.state.needsYou : !row.unread
+        }
+    }
+
     /// The same notice under the name the conversation goes by now. The event is the identifier
     /// and the moment; the title was only ever a copy of something the server owns.
     public func retitled(_ title: String) -> MissedActivity {
@@ -153,6 +178,18 @@ public enum ActivityInbox {
             return lhs.at > rhs.at
         }
         return (Array(sorted.prefix(limit)), entries.count)
+    }
+
+    /// The same list with everything the chat rows under it already say taken out, for a client
+    /// that draws the list above its chats.
+    ///
+    /// - Returns: the first `limit` to draw, how many there are, and every one of them, which is
+    ///   what the list's own clear acts on.
+    public static func unsaid(by rows: [SessionRowModel], limit: Int)
+        -> (shown: [MissedActivity], total: Int, all: [MissedActivity])
+    {
+        let left = MissedActivity.unsaid(ordered(limit: Int.max).shown, by: rows)
+        return (Array(left.prefix(limit)), left.count, left)
     }
 
     /// Records what the client just raised. Same identifier as the notification it accompanies, so
@@ -358,13 +395,23 @@ public enum ActivityInbox {
     /// the list full on the desk the person was not at. A request still waiting on a person is
     /// cleared from the list and nothing more, because a look does not answer it.
     public static func clearAll(at now: Date = Date()) {
+        clear(all(), at: now)
+    }
+
+    /// The same, for the notices a list is actually holding. A list that leaves out what its chat
+    /// rows already say clears what it lists and nothing behind it: a row that is still showing
+    /// its own unread mark was not on the list and has not been dealt with.
+    public static func clear(_ notices: [MissedActivity], at now: Date = Date()) {
+        guard !notices.isEmpty else { return }
+        let dropped = Set(notices.map(\.identifier))
         let current = all()
-        guard !current.isEmpty else { return }
-        for sessionID in Set(current.lazy.filter { !$0.isBlocking }.map(\.sessionID)) {
+        let leaving = current.filter { dropped.contains($0.identifier) }
+        guard !leaving.isEmpty else { return }
+        for sessionID in Set(leaving.lazy.filter { !$0.isBlocking }.map(\.sessionID)) {
             SessionSeenStore.markSeen(sessionID)
         }
-        markCleared(current.map(\.identifier), at: now)
-        write([])
+        markCleared(leaving.map(\.identifier), at: now)
+        write(current.filter { !dropped.contains($0.identifier) })
     }
 
     private static func write(_ entries: [MissedActivity]) {

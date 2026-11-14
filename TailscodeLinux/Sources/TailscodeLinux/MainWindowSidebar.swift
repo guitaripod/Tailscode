@@ -194,7 +194,14 @@ extension MainWindow {
         syncCursorToSelection()
         guard canDraw else { return }
 
-        let missed = ActivityInbox.ordered(limit: 5)
+        let drawn = visible.prefix(sidebarLimit).flatMap { item -> [SessionRowModel] in
+            switch item {
+            case .chat(let row): return [row]
+            case .tab(let tab): return tab.members
+            }
+        }
+        let missed = ActivityInbox.unsaid(by: drawn, limit: 5)
+        let listed = missed.all
         let vocabulary = ChatListVocabulary(rows: rows)
         let snapshot = (
             visible.map(\.key), unreachable, filter,
@@ -260,7 +267,7 @@ extension MainWindow {
                 ptr(sidebarList),
                 SidebarRow.missedHeader(count: missed.total) {
                     Gtk.onMain { [weak self] in
-                        ActivityInbox.clearAll()
+                        ActivityInbox.clear(listed)
                         self?.renderSidebar()
                     }
                 })

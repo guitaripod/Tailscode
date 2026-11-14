@@ -51,7 +51,7 @@ News, in the order it is decided (`ChatRowNews.reading`):
 
 ## What the agent said
 
-`lastWords` is one optional string on a listing row: the first sentence or so of the last answer of a turn that has closed, markdown stripped, cut at 200 characters. claude-bridge reads it from the transcript's tail when the file changes (the same pass that reads the model and whether the turn is closed), so a listing costs nothing more per request. It is absent while a turn is open and on a server that cannot say (opencode, an older bridge), where the row says "Finished". The Kit carries it as `AgentSession.lastWords`.
+`lastWords` is one optional string on a listing row: the first sentence or so of the last answer of a turn that has closed, markdown stripped, cut at 200 characters. claude-bridge reads it from the transcript's tail when the file changes (the same pass that reads the model and whether the turn is closed), so a listing costs nothing more per request. omp-bridge 0.15.0 sends the same field from the conversation it holds in memory. It is absent while a turn is open and on a server that cannot say (opencode, an older bridge, an omp-bridge chat it has not opened since it started), where the row says "Finished". The Kit carries it as `AgentSession.lastWords`.
 
 ## Sections
 
@@ -75,6 +75,6 @@ News, in the order it is decided (`ChatRowNews.reading`):
 - **Linux says pinned in a word.** A text client has no symbol set, and `⌃` after a title was a mark somebody had to learn; the clock glyph the list already used stays.
 - **A heading never gives up its own letters.** The first GTK build let the count beside it take the width and drew "NEEDS Y…".
 
-## Not changed
+## The list above the chats
 
-The MISSED block on the desktops still lists what `ActivityInbox` holds. With rows saying their own news it repeats them, and whether it stays is a product decision rather than a layout one.
+MISSED on the desktops listed every notice `ActivityInbox` holds, and with rows saying their own news most of it was said twice, one line above the other. It is not removed, because it carries two things a row cannot: a question in a chat this device is not streaming, which a listing shows as merely working, and anything in a chat the list is not drawing (below its limit, filtered out, archived). So it holds only what the rows under it do not already say (`MissedActivity.unsaid`): a notice for a row that is drawn and unread, or drawn under NEEDS YOU, is left out, and the heading counts what is left. The phone never had the block.

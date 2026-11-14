@@ -194,7 +194,7 @@ enum ParityManifest {
         case .noticeRules: return .implemented("Notifier.setRules")
         case .chatMute: return .implemented("Notifier.toggleMute")
         case .hapticFeedback: return .notApplicable("nothing under a desktop vibrates; a keyboard and a monitor have no actuator to drive, and the cues a phone gives a hand are carried here by the status band and the notifier")
-        case .missedActivity: return .implemented("ActivityInbox.ordered")
+        case .missedActivity: return .implemented("ActivityInbox.unsaid")
         case .liveActivity: return .notApplicable("a Linux desktop has no Lock Screen card or Dynamic Island an app publishes into; a turn ending on this desk is said by the notifier and the status band")
         case .turnEndWhileAway: return .notApplicable("a desktop process is never suspended by the OS while it runs — it keeps its sockets and its event loop open whether or not its window has focus, so the notifier and the status band already say a turn ended the moment it does; the only way this app stops answering is being quit, and a quit process is not somewhere a background wait could wake")
         case .usageWidgets: return .notApplicable("a Linux desktop has no widget surface an app publishes into — no Home screen, no lock screen accessory, no Control Center — and the quota strip at the foot of the chat list is the same reading in the window that is already open")
