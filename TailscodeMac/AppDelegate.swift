@@ -66,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let controller else { return }
                 ConnectLinkDoor.show(serverID: id, main: controller)
             })
-        if MacShot.surface?.hasPrefix("welcome") != true, !holdsFirstRunBack {
+        if !MacShot.staysInTheChatWindow, !holdsFirstRunBack {
             FirstRunWindow.presentIfNeeded()
         }
         openPendingLinks()

@@ -60,6 +60,10 @@ extension MainWindow {
             return SidebarRow.make(
                 row, focused: row.entry.session.id == activePane.sessionID,
                 marked: marks.contains(row.entry), vocabulary: vocabulary,
+                section: sidebarBoardOfKey[item.key],
+                news: ChatRowNews.reading(
+                    for: row, ask: sidebarAsks[item.key],
+                    missed: sidebarMissedReasons[row.entry.session.id]),
                 onOpen: { [weak self] in
                     self?.open(row.entry)
                 },

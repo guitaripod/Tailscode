@@ -9,7 +9,7 @@ enum ParityManifest {
 
     static func evidence(for capability: AppCapability) -> ParityEvidence {
         switch capability {
-        case .sessionSections: return .implemented("groupIntoSections")
+        case .sessionSections: return .implemented("groupIntoListSections")
         case .homeBoard: return .gap("the chat list draws the same sections through groupIntoSections, but nothing on this desk writes the status sentence or holds a band to HomeBandLimits, and a row has no news line under its title. HomeStatus and ChatRowNews are Core; the port is a header over the sidebar and a second label in its rows")
         case .sessionRowStatus: return .implemented("observedPresence")
         case .activityIconography: return .implemented("ActivityPulse")
@@ -19,8 +19,8 @@ enum ParityManifest {
         case .bulkRangeSelection: return .implemented("rangeSelect")
         case .bulkSplit: return .implemented("openMarkedSplit")
         case .splitTabs: return .implemented("unsplitAll")
-        case .sessionPinning: return .implemented("pill-pinned")
-        case .unreadTracking: return .implemented("toggleUnreadSelected")
+        case .sessionPinning: return .implemented("func togglePinned")
+        case .unreadTracking: return .implemented("model.columnMark")
         case .savedChats: return .implemented("SavedChatStore")
         case .savedChatSync: return .implemented("SessionMarkSync")
         case .sessionMarks: return .implemented("SessionMarks")
@@ -33,7 +33,8 @@ enum ParityManifest {
         case .autoOpenLastSession: return .implemented("lastSession")
         case .liveListUpdates: return .implemented("SessionListStreaming")
         case .rowContextActions: return .implemented("rowMenuRows")
-        case .rowSnippet: return .implemented("model.snippet")
+        case .rowSnippet: return .implemented("ChatRowNews.reading")
+        case .rowQuotedAnswer: return .implemented("ChatRowInk.newsLines(news.voice")
         case .rowFacets: return .implemented("row-age")
         case .modelIdentityTint: return .implemented("modelLabel")
         case .usageGauges: return .implemented("usage-footer")

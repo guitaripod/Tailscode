@@ -165,7 +165,9 @@ struct HomeBoardTests {
         #expect(ChatRowNews.reading(for: asked)?.lead == "Waiting for your approval")
         let withAsk = ChatRowNews.reading(
             for: asked, ask: ApprovalAsk(lead: "Wants to run", object: "systemctl restart x"))
-        #expect(withAsk == ChatRowNews(lead: "Wants to run", object: "systemctl restart x"))
+        #expect(
+            withAsk
+                == ChatRowNews(lead: "Wants to run", object: "systemctl restart x", voice: .asking))
         #expect(withAsk?.spoken == "Wants to run systemctl restart x")
 
         let working = row(entry("w", active: true, task: "Editing three files"))

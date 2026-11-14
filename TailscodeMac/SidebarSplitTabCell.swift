@@ -105,12 +105,14 @@ final class SidebarSplitTabCell: NSView {
         let state = model.state
         let activity = marked ? nil : state.activity
         badge.activity = activity
-        glyph.stringValue = activity == nil ? (marked ? "✓" : state.glyph.text) : ""
-        glyph.font = MacTheme.Ramp.font(.panelLabel)
-        glyph.textColor = marked ? MacTheme.Color.accent : SidebarSessionCell.glyphColor(state)
+        glyph.stringValue = marked ? "✓" : activity == nil && model.unread ? "●" : ""
+        glyph.font = MacTheme.Ramp.font(marked ? .panelLabel : .badge)
+        glyph.textColor = MacTheme.Color.accent
         title.stringValue = model.title
-        title.font =
-            model.unread ? MacTheme.Ramp.font(.rowTitleStrong) : MacTheme.Ramp.font(.rowTitle)
+        let emphasis = ChatRowInk.emphasis(state: state, unread: model.unread)
+        title.font = MacTheme.Ramp.font(emphasis == .strong ? .rowTitleStrong : .rowTitle)
+        title.textColor = MacTheme.Color.label.withAlphaComponent(
+            ChatRowInk.titleOpacity(emphasis))
         let facets = model.facets()
         detail.font = MacTheme.Ramp.font(.panelFootnote)
         detail.stringValue = [facets.project, facets.origin].compactMap { $0 }
@@ -122,15 +124,7 @@ final class SidebarSplitTabCell: NSView {
             titleRow.removeArrangedSubview(view)
             view.removeFromSuperview()
         }
-        if let pill = state.pill {
-            titleRow.addArrangedSubview(
-                SidebarSessionCell.pill(pill.text, tint: SidebarSessionCell.pillTint(state)))
-        }
-        if model.pinned {
-            titleRow.addArrangedSubview(
-                SidebarSessionCell.pill(
-                    Localized.text("PINNED"), tint: MacTheme.Color.accent))
-        }
+        if model.pinned { titleRow.addArrangedSubview(SidebarSessionCell.markView(.pinned)) }
         for view in memberRows.arrangedSubviews {
             memberRows.removeArrangedSubview(view)
             view.removeFromSuperview()
@@ -142,7 +136,7 @@ final class SidebarSplitTabCell: NSView {
 
     private func memberButton(_ model: SessionRowModel, index: Int) -> NSButton {
         let button = NSButton(
-            title: "\(model.state.glyph.text) \(model.title)", target: self,
+            title: "\(Self.memberGlyph(model)) \(model.title)", target: self,
             action: #selector(memberPressed))
         button.isBordered = false
         button.tag = index
@@ -153,6 +147,13 @@ final class SidebarSplitTabCell: NSView {
         button.toolTip = Localized.text("Open just this chat")
         button.setAccessibilityLabel(Localized.text("Open just %@", model.title))
         return button
+    }
+
+    /// A member's state as one glyph: what it is doing, the unread dot at rest, and the quiet dot
+    /// only where a line would otherwise start with a space.
+    private static func memberGlyph(_ model: SessionRowModel) -> String {
+        if model.state.activity != nil { return model.state.glyph.text }
+        return model.unread ? "●" : ActivityIcon.idle.glyph
     }
 
     @objc private func memberPressed(_ sender: NSButton) {

@@ -17,11 +17,13 @@ enum SidebarRow: Equatable {
     /// The sidebar's answer to an empty list when the cause is that no machine is set up: the
     /// one press that starts setting one up, so the sentence above it is never a dead end.
     case addMachine(String)
-    case header(String, Int)
+    case header(SectionHeading)
     /// - Parameter marked: whether the row is held by the bulk selection. It travels in the row
     ///   value rather than being read from the store at configure time, so the table's diff sees a
     ///   mark land the same way it sees a title change.
-    case session(SessionRowModel, marked: Bool, vocabulary: ChatListVocabulary)
+    /// - Parameter dress: what the list decides for the row, carried in the value for the same
+    ///   reason: news that changed is a row that changed.
+    case session(SessionRowModel, marked: Bool, dress: SidebarRowDress)
     /// Several conversations held in one window at once, drawn as the one row they are. Pressing
     /// it puts the whole arrangement back; each member still has a line of its own.
     case tab(SplitTabRow, marked: Bool)
@@ -56,6 +58,17 @@ enum SidebarRow: Equatable {
     }
 }
 
+/// What the list around a chat row decides for it: the facts every row of this listing shares
+/// and so none repeats, the heading it sits under, whose mark it need not wear again, and the
+/// line of news it has to say.
+struct SidebarRowDress: Equatable, Sendable {
+    var vocabulary: ChatListVocabulary
+    var section: SessionSection?
+    var news: ChatRowNews?
+
+    static let plain = SidebarRowDress(vocabulary: .full, section: nil, news: nil)
+}
+
 /// The verbs a chat row offers to a pointer resting on it, without a right-click: the ones
 /// somebody reaches for most, and the way into the rest.
 enum SidebarQuickAction {
@@ -82,6 +95,22 @@ final class SidebarRowView: NSTableRowView {
         didSet { if isHovered != oldValue { needsDisplay = true } }
     }
 
+    override var isSelected: Bool {
+        didSet { tellCellItIsChosen() }
+    }
+
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        tellCellItIsChosen()
+    }
+
+    /// The row the selection is on is the one being looked at — the chat open in the window, or
+    /// the one the arrow keys are passing over on the way to another — and its cell inks its
+    /// title at full strength.
+    private func tellCellItIsChosen() {
+        for case let cell as SidebarSessionCell in subviews { cell.isChosen = isSelected }
+    }
+
     override func drawBackground(in dirtyRect: NSRect) {
         super.drawBackground(in: dirtyRect)
         guard isHovered, !isSelected else { return }
@@ -102,17 +131,17 @@ enum SidebarCellFactory {
         onOpenMember: ((SplitTab, Int) -> Void)? = nil
     ) -> NSView {
         switch row {
-        case .session(let model, let marked, let vocabulary):
+        case .session(let model, let marked, let dress):
             let cell = reuse("session", in: tableView) { SidebarSessionCell() }
-            cell.configure(with: model, marked: marked, vocabulary: vocabulary)
+            cell.configure(with: model, marked: marked, dress: dress)
             return cell
         case .tab(let model, let marked):
             let cell = reuse("splitTab", in: tableView) { SidebarSplitTabCell() }
             cell.configure(with: model, marked: marked, onOpenMember: onOpenMember)
             return cell
-        case .header(let title, let count):
+        case .header(let heading):
             let cell = reuse("header", in: tableView) { SidebarHeaderCell() }
-            cell.configure(title: title, count: count)
+            cell.configure(heading: heading)
             return cell
         case .banner(let text):
             let cell = reuse("banner", in: tableView) { SidebarMessageCell() }
@@ -319,9 +348,11 @@ final class SidebarSearchResultCell: NSView {
     }
 }
 
-/// A section heading with its count — NEEDS YOU, WORKING, SAVED, RECENT, ARCHIVED.
+/// A section heading and the one figure worth putting beside it: how many agents are waiting or
+/// working, or how many rows under it are new.
 final class SidebarHeaderCell: NSView {
     private let title = NSTextField(labelWithString: "")
+    private let fresh = NSTextField(labelWithString: "")
     private let count = NSTextField(labelWithString: "")
     private let clear = NSButton()
     private var onClear: (() -> Void)?
@@ -340,13 +371,23 @@ final class SidebarHeaderCell: NSView {
         clear.action = #selector(clearTapped)
         clear.isHidden = true
         clear.translatesAutoresizingMaskIntoConstraints = false
+        fresh.textColor = MacTheme.Color.accent
+        fresh.isHidden = true
+        fresh.translatesAutoresizingMaskIntoConstraints = false
+        fresh.setContentCompressionResistancePriority(.required, for: .horizontal)
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        title.lineBreakMode = .byTruncatingTail
         addSubview(title)
+        addSubview(fresh)
         addSubview(count)
         addSubview(clear)
         NSLayoutConstraint.activate([
             title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
             title.topAnchor.constraint(equalTo: topAnchor, constant: 10),
             title.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            fresh.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 7),
+            fresh.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
+            fresh.trailingAnchor.constraint(lessThanOrEqualTo: clear.leadingAnchor, constant: -6),
             count.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             count.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
             clear.trailingAnchor.constraint(equalTo: count.leadingAnchor, constant: -8),
@@ -367,6 +408,28 @@ final class SidebarHeaderCell: NSView {
     ///   whole. Absent for the ordinary chat-list headings, which name a grouping rather than a
     ///   pile of things to be got through.
     func configure(title: String, count: Int?, onClear: (() -> Void)? = nil) {
+        apply(title: title, count: count, fresh: nil, tint: nil, onClear: onClear)
+    }
+
+    /// A chat section's heading. The section that waits on the person wears the attention tone,
+    /// name and figure both, because it is the one heading that is itself a call to act.
+    func configure(heading: SectionHeading) {
+        apply(
+            title: heading.title, count: heading.total, fresh: heading.freshLabel,
+            tint: heading.needsYou ? MacTheme.Color.warning : nil, onClear: nil)
+        setAccessibilityLabel(heading.spoken)
+    }
+
+    private func apply(
+        title: String, count: Int?, fresh: String?, tint: NSColor?, onClear: (() -> Void)?
+    ) {
+        self.title.textColor = tint ?? MacTheme.Color.secondaryLabel
+        self.count.textColor = tint ?? MacTheme.Color.tertiaryLabel
+        self.fresh.font = NSFont.systemFont(
+            ofSize: MacTheme.Ramp.font(.panelFootnote).pointSize, weight: .semibold)
+        self.fresh.textColor = MacTheme.Color.accent
+        self.fresh.stringValue = fresh ?? ""
+        self.fresh.isHidden = fresh == nil
         self.title.font = MacTheme.Ramp.font(.sectionLabel)
         self.title.stringValue = title
         self.count.font = MacTheme.Ramp.font(.metricLabel)
@@ -375,6 +438,15 @@ final class SidebarHeaderCell: NSView {
         clear.font = MacTheme.Ramp.font(.metricLabel)
         self.onClear = onClear
         clear.isHidden = onClear == nil
+    }
+
+    /// What the heading is drawing, for a harness: its name, the figure beside it and the words
+    /// that say how many rows are new, each nil when it is not shown.
+    var reading: (title: String, count: String?, fresh: String?) {
+        (
+            title.stringValue, count.isHidden ? nil : count.stringValue,
+            fresh.isHidden ? nil : fresh.stringValue
+        )
     }
 
     @objc private func clearTapped() { onClear?() }

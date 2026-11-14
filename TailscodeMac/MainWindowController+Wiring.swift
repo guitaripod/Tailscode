@@ -76,6 +76,7 @@ extension MainWindowController {
             return active
         }
         sidebar.presenceSource = { [weak self] in self?.observedPresence() ?? [:] }
+        sidebar.askSource = { [weak self] in self?.observedAsks() ?? [:] }
         sidebar.announce = { [weak self] line in self?.toast(line) }
         splitPanes.makePane = { [weak self] in
             self?.makePane() ?? TranscriptViewController()
@@ -139,6 +140,20 @@ extension MainWindowController {
         }
         presenceLedger.absorb(observed)
         return presenceLedger.readings()
+    }
+
+    /// What the panes that are waiting on the person are waiting for, in a row's own words. Read
+    /// only for a pane that is actually waiting, which is rare and is the one time the question is
+    /// worth the walk through its turn.
+    private func observedAsks() -> [String: ApprovalAsk] {
+        var asks: [String: ApprovalAsk] = [:]
+        splitPanes.eachPane { pane in
+            guard pane.presence == .awaitingApproval, let entry = pane.currentEntry,
+                let state = pane.lastState, let ask = ApprovalAsk.reading(in: state)
+            else { return }
+            asks[ChatSelection.key(entry)] = ask
+        }
+        return asks
     }
 
     /// Every conversation the store is holding a message for gets a watch, so a queue written

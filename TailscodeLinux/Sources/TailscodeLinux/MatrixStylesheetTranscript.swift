@@ -33,6 +33,18 @@ extension MatrixStylesheet {
         .selection-split-header { \(t(.sectionLabel)) opacity: 0.5; }
         .row-title { \(t(.rowTitle)) color: \(text); }
         .row-title-unread { \(t(.rowTitleStrong)) color: \(text); }
+        .row-title-read { \(t(.rowTitle)) color: alpha(\(text), \(ChatRowInk.recededTitle)); }
+        .row-state { min-width: \(c(1.0)); }
+        .row-flag { \(t(.rowNote)) color: \(text); opacity: 0.45; }
+        .row-news { \(t(.panelDetail)) color: \(textDim); }
+        .row-news.news-ask { color: \(text); }
+        .row-news.news-live { color: \(accent); }
+        .row-news.news-fail { color: \(danger); }
+        .row-news.news-said { color: alpha(\(text), \(ChatRowInk.quotedNews)); }
+        .row-model-read { opacity: \(ChatRowInk.recededChip); }
+        .row-away { opacity: 0.62; }
+        .section-fresh { \(t(.rowNote)) color: \(accent); padding: 10px 0 2px 0; }
+        .section-header.section-needs { color: \(warn); opacity: 1; }
         .row-detail { \(t(.rowDetail)) opacity: 0.55; }
         .row-model { \(t(.rowMeta)) }
         .row-project { \(t(.rowMeta)) opacity: 0.9; color: \(text); }

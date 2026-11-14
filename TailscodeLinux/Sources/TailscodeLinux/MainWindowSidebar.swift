@@ -60,6 +60,7 @@ extension MainWindow {
     func sidebarTeardown() {
         sidebarTornDown = true
         sidebarRows = []
+        sidebarHeadings = [:]
         sidebarCoalescer.reset()
         pendingListChanges = []
     }
@@ -80,6 +81,10 @@ extension MainWindow {
     /// notices and the orb read them) and leaves its widgets alone until it can be seen.
     func drawSidebar() {
         guard !sidebarTornDown, !Gtk.isQuitting else { return }
+        if let sidebarFixture {
+            drawSidebarFixture(sidebarFixture)
+            return
+        }
         if sidebarPointerHeld {
             sidebarRenderHeld = true
             return
@@ -165,16 +170,26 @@ extension MainWindow {
                     || $0.row.detail.lowercased().contains(needle)
                     || ($0.row.snippet?.lowercased().contains(needle) ?? false)
             }
-        let grouped: [(String, [SessionRowModel])] =
+        let grouped: [(ChatListSection, [SessionRowModel])] =
             showingArchive
-            ? [(Localized.text("ARCHIVED"), matching.filter { $0.archived }.map { $0.row })]
+            ? [(ChatListSection.archived, matching.filter { $0.archived }.map { $0.row })]
                 .filter { !$0.1.isEmpty }
-            : groupIntoSections(
-                matching.filter { !$0.archived || $0.row.isUnfinished }.map { $0.row }
-            ).map { ($0.0.title, $0.1) }
+            : groupIntoListSections(
+                matching.filter { !$0.archived || $0.row.isUnfinished }.map { $0.row }, now: now)
         let sections = SplitTabGrouping.apply(
             to: grouped, tab: showingArchive ? nil : SplitTab(snapshot: splitHost.snapshot()))
         visible = sections.flatMap(\.1)
+        sidebarBoardOfKey = [:]
+        for (section, members) in sections {
+            guard let board = section.board else { continue }
+            for item in members { sidebarBoardOfKey[item.key] = board }
+        }
+        sidebarMissedReasons = Dictionary(
+            ActivityInbox.all().map { ($0.sessionID, $0.reason) },
+            uniquingKeysWith: { first, _ in first })
+        let asks = observedAsks()
+        let asksMoved = Set(asks.keys).union(sidebarAsks.keys).filter { asks[$0] != sidebarAsks[$0] }
+        sidebarAsks = asks
         if !marks.isEmpty { marks.prune(to: visibleEntries) }
         syncCursorToSelection()
         guard canDraw else { return }
@@ -183,18 +198,21 @@ extension MainWindow {
         let vocabulary = ChatListVocabulary(rows: rows)
         let snapshot = (
             visible.map(\.key), unreachable, filter,
-            "\(sidebarLimit)|\(showingArchive)|\(archivedTotal)|\(splitHost.paneCount)|\(marks.keys.sorted().joined(separator: ","))|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))|\(projectScope.map { "\($0.profileID):\($0.directory ?? "")" } ?? "")|\(sections.map { "\($0.0):\($0.1.count)" }.joined(separator: ","))|\(vocabulary.namesServer)\(vocabulary.namesBackend)|\(knownProfiles.isEmpty)"
+            "\(sidebarLimit)|\(showingArchive)|\(archivedTotal)|\(splitHost.paneCount)|\(marks.keys.sorted().joined(separator: ","))|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))|\(projectScope.map { "\($0.profileID):\($0.directory ?? "")" } ?? "")|\(sections.map { "\($0.0.key):\($0.1.count)" }.joined(separator: ","))|\(vocabulary.namesServer)\(vocabulary.namesBackend)|\(knownProfiles.isEmpty)"
         )
         let previous = lastVisible
         lastVisible = visible
         let changed = sidebarDirtyKeys
         sidebarDirtyKeys = []
         if let last = lastSidebar, last == snapshot {
-            refreshChangedSidebarRows(from: previous, vocabulary: vocabulary, changed: changed)
+            refreshChangedSidebarRows(
+                from: previous, vocabulary: vocabulary, changed: changed, asked: Set(asksMoved))
+            refreshSidebarHeadings(sections)
             markFocusedRow(selectedID)
             return
         }
         lastSidebar = snapshot
+        sidebarHeadings = [:]
 
         let scrollTarget = sidebarScrollTarget ?? sidebarScrollValue()
         sidebarScrollTarget = nil
@@ -295,10 +313,11 @@ extension MainWindow {
         }
 
         var built = 0
-        for (title, members) in sections {
+        for (section, members) in sections {
             guard built < sidebarLimit else { break }
-            gtk_box_append(
-                ptr(sidebarList), SidebarRow.header(title, count: members.count))
+            let heading = SidebarRow.header(SectionHeading(section: section, items: members))
+            sidebarHeadings[section.key] = Gtk.WeakWidget(heading.fresh)
+            gtk_box_append(ptr(sidebarList), heading.row)
             for item in members {
                 guard built < sidebarLimit else { break }
                 let widget = makeSidebarItem(item, vocabulary: vocabulary)
@@ -354,6 +373,52 @@ extension MainWindow {
     /// server's next sweep. Two panes on one chat resolve to the louder answer: a pane that knows
     /// nothing must never overwrite the one that knows a turn is running. Conversations a pane
     /// moved on from are still watched in the background, and their reading counts the same way.
+    /// One of every row the list can draw, in place of the listing: a picture of the grammar that
+    /// no real listing ever holds all at once. The rows open nothing.
+    private func drawSidebarFixture(_ sections: [ChatListFixture.Section]) {
+        sidebarRows = []
+        sidebarHeadings = [:]
+        lastSidebar = nil
+        Gtk.removeChildren(of: sidebarBanner)
+        Gtk.removeChildren(of: sidebarList)
+        let vocabulary = ChatListFixture.vocabulary()
+        for section in sections {
+            gtk_box_append(ptr(sidebarList), SidebarRow.header(section.heading).row)
+            for row in section.rows {
+                gtk_box_append(
+                    ptr(sidebarList),
+                    SidebarRow.make(
+                        row.model,
+                        focused: row.model.entry.session.id == ChatListFixture.openSessionID,
+                        vocabulary: vocabulary, section: row.section, news: row.news,
+                        onOpen: {}, onMenu: { _, _, _ in }))
+            }
+        }
+    }
+
+    /// The count of new rows beside each standing heading, written in place: a chat that was just
+    /// read changes a figure, and a figure is not worth rebuilding the list under it.
+    func refreshSidebarHeadings(_ sections: [(ChatListSection, [ChatListItem])]) {
+        for (section, members) in sections {
+            guard let label = sidebarHeadings[section.key]?.widget else { continue }
+            SidebarRow.setFresh(label, SectionHeading(section: section, items: members).freshLabel)
+        }
+    }
+
+    /// What the panes that are waiting on the person are waiting for, in a row's own words. Read
+    /// only for a pane that is actually waiting, which is rare and is the one time the question is
+    /// worth the walk through its turn.
+    func observedAsks() -> [String: ApprovalAsk] {
+        var asks: [String: ApprovalAsk] = [:]
+        splitHost.eachPane { pane in
+            guard pane.presence == .awaitingApproval, let entry = pane.entry,
+                let state = pane.lastState, let ask = ApprovalAsk.reading(in: state)
+            else { return }
+            asks[SessionPinStore.key(entry.profileID, entry.session.id)] = ask
+        }
+        return asks
+    }
+
     func observedPresence() -> [String: SessionPresence] {
         var observed = backgroundPresence
         splitHost.eachPane { pane in
@@ -415,15 +480,22 @@ extension MainWindow {
     /// keys and the sections matched, so every row already has a widget in the right slot; a row
     /// whose words moved gets a fresh widget in that slot and every other row keeps the one the
     /// reader may be pressing on.
+    ///
+    /// - Parameter asked: the rows whose question moved while nothing else about them did. What a
+    ///   waiting turn wants is not in its row model, so a second permission behind the first would
+    ///   otherwise leave the row asking for the one already answered.
     func refreshChangedSidebarRows(
-        from previous: [ChatListItem], vocabulary: ChatListVocabulary, changed: Set<String>
+        from previous: [ChatListItem], vocabulary: ChatListVocabulary, changed: Set<String>,
+        asked: Set<String> = []
     ) {
         guard previous.count == visible.count else { return }
         for (index, item) in visible.enumerated() {
             guard index < sidebarRows.count else { break }
-            if changed.isEmpty, !item.isTab { continue }
-            guard sidebarRows[index].key == item.key, changed.contains(item.key) || item.isTab,
-                previous[index] != item, let old = sidebarRows[index].widget
+            if changed.isEmpty, asked.isEmpty, !item.isTab { continue }
+            let moved = asked.contains(item.key)
+            guard sidebarRows[index].key == item.key,
+                changed.contains(item.key) || item.isTab || moved,
+                previous[index] != item || moved, let old = sidebarRows[index].widget
             else { continue }
             let fresh = makeSidebarItem(item, vocabulary: vocabulary)
             gtk_box_insert_child_after(ptr(sidebarList), fresh, old)

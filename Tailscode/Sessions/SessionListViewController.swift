@@ -12,7 +12,7 @@ final class SessionListViewController: UIViewController {
 
     let viewModel: SessionListViewModel
     var collectionView: UICollectionView!
-    var dataSource: UICollectionViewDiffableDataSource<SessionSection, SessionEntry>!
+    var dataSource: UICollectionViewDiffableDataSource<ChatListSection, SessionEntry>!
     let refreshControl = UIRefreshControl()
     let searchController = UISearchController(searchResultsController: nil)
     let chipBar = UIScrollView()
@@ -63,6 +63,13 @@ final class SessionListViewController: UIViewController {
     /// Each visible row's derived state, keyed the way every store here is keyed, so a cell reads
     /// what `SessionRowModel` already decided instead of re-deciding it per configure.
     var rowModels: [String: SessionRowModel] = [:]
+    /// What each heading says beside its name, and the heading each row sits under, decided with
+    /// the snapshot so a header and a cell never read a different pass.
+    var headings: [ChatListSection: SectionHeading] = [:]
+    var rowBoards: [String: SessionSection] = [:]
+    /// Why each chat was missed, read once per snapshot, so an unread row says a failure or a
+    /// question rather than quoting an answer.
+    var missedReasons: [String: MissedActivity.Reason] = [:]
     /// What the whole listing already says, so no row repeats it: one server's name written on
     /// every row of a one-server fleet is the word a reader's eye lands on and learns nothing from.
     var vocabulary: ChatListVocabulary = .full

@@ -296,6 +296,12 @@ final class HomeViewController: UIViewController {
                     self?.presentDuoScreen(named: name)
                 }
             }
+            if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_CHATS"] != nil {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    self?.pushChats()
+                }
+            }
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_SETTINGS"] != nil {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))

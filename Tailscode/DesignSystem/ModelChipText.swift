@@ -6,11 +6,16 @@ import UIKit
 /// Ultracode is not a heat, so its word is set letter by letter from the shared rainbow, each
 /// held to the canvas's own contrast floor.
 enum ModelChipText {
-    static func runs(for chip: ModelChip, size: CGFloat) -> NSAttributedString {
+    /// - Parameter strength: how much of its own colour the chip keeps. A read row's chip steps
+    ///   back with the row, so the hues are there to recognise and never the brightest thing on it.
+    static func runs(for chip: ModelChip, size: CGFloat, strength: Double = 1) -> NSAttributedString {
         let font = UIFont.systemFont(ofSize: size, weight: .semibold)
+        func inked(_ color: UIColor) -> UIColor {
+            strength == 1 ? color : color.withAlphaComponent(strength)
+        }
         let text = NSMutableAttributedString(
             string: chip.name,
-            attributes: [.font: font, .foregroundColor: Theme.Color.modelIdentity(chip)])
+            attributes: [.font: font, .foregroundColor: inked(Theme.Color.modelIdentity(chip))])
         guard let effort = chip.effort else { return text }
         text.append(NSAttributedString(string: " ", attributes: [.font: font]))
         if chip.isUltracode {
@@ -20,8 +25,8 @@ enum ModelChipText {
                         string: String(letter),
                         attributes: [
                             .font: font,
-                            .foregroundColor: Theme.Color.modelRainbowLetter(
-                                index, of: effort.count),
+                            .foregroundColor: inked(
+                                Theme.Color.modelRainbowLetter(index, of: effort.count)),
                         ]))
             }
         } else {
@@ -30,8 +35,8 @@ enum ModelChipText {
                     string: effort,
                     attributes: [
                         .font: font,
-                        .foregroundColor: Theme.Color.modelEffort(effort)
-                            ?? Theme.Color.secondaryLabel,
+                        .foregroundColor: inked(
+                            Theme.Color.modelEffort(effort) ?? Theme.Color.secondaryLabel),
                     ]))
         }
         return text
@@ -41,12 +46,24 @@ enum ModelChipText {
     /// the same three-weight read the desktop rows give, with the separators kept at the
     /// quietest weight so they never outrank a fact. An empty piece vanishes rather than
     /// leaving a stranded dot; no chip is just the facts.
+    ///
+    /// - Parameter chipTrails: put the chip after the facts instead of before them. A chat row
+    ///   leads with the project a person knows the chat by, and the model follows.
     static func line(
-        chip: ModelChip?, pieces: [(text: String, color: UIColor)], size: CGFloat
+        chip: ModelChip?, pieces: [(text: String, color: UIColor)], size: CGFloat,
+        chipTrails: Bool = false, strength: Double = 1
     ) -> NSAttributedString {
         let font = Theme.Ramp.font(.panelFootnote).withSize(size)
         let line = NSMutableAttributedString()
-        if let chip { line.append(runs(for: chip, size: size)) }
+        if let chip, !chipTrails { line.append(runs(for: chip, size: size, strength: strength)) }
+        defer {
+            if let chip, chipTrails {
+                if line.length > 0 {
+                    line.append(NSAttributedString(string: "  ", attributes: [.font: font]))
+                }
+                line.append(runs(for: chip, size: size, strength: strength))
+            }
+        }
         for piece in pieces where !piece.text.isEmpty {
             if line.length > 0 {
                 line.append(

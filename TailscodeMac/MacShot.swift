@@ -84,6 +84,13 @@ enum MacShot {
         return arguments[index + 1]
     }
 
+    /// Whether the surface asked for is drawn inside the chat window itself, so the first-run
+    /// window that would stand over an empty machine list is kept away from the picture.
+    static var staysInTheChatWindow: Bool {
+        guard let surface else { return false }
+        return surface.hasPrefix("welcome") || surface.hasPrefix("chat-list")
+    }
+
     /// Whether `--shot-size` is a surface's size, drawn once it is up. A staged transcript is the
     /// main window itself, which has to be its final size before anything is staged into it, or
     /// what floats over it is placed for a window that is gone by the time it is drawn.

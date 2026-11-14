@@ -25,15 +25,21 @@ extension DemoWorld {
             AgentSession(
                 id: "demo-c3", agentType: .claudeCode, title: "Dark mode for the settings screen",
                 directory: "/Users/demo/dev/pulse-ios", createdAt: ago(1800), updatedAt: ago(1560),
-                model: "claude-sonnet-5", reasoningEffort: "high"),
+                model: "claude-sonnet-5", reasoningEffort: "high",
+                lastWords:
+                    "Dark mode is in for Settings: every row reads from the palette now, and the two hard-coded greys are gone."),
             AgentSession(
                 id: "demo-c2", agentType: .claudeCode, title: "Migrate CI to self-hosted runners",
                 directory: "/Users/demo/dev/pulse-infra", createdAt: ago(11_000), updatedAt: ago(3300),
-                model: "claude-opus-4-8", reasoningEffort: "medium"),
+                model: "claude-opus-4-8", reasoningEffort: "medium",
+                lastWords:
+                    "All four jobs run on the self-hosted pool. The cache key now includes the runner image, which is what was missing."),
             AgentSession(
                 id: "demo-c5", agentType: .claudeCode, title: "Redesign the composer",
                 directory: "/Users/demo/dev/pulse-ios", createdAt: ago(2600), updatedAt: ago(2400),
-                model: "claude-opus-4-8", reasoningEffort: "high"),
+                model: "claude-opus-4-8", reasoningEffort: "high",
+                lastWords:
+                    "Three directions for the composer are on the board; the docked one keeps the send button under the thumb."),
             claudeNeuralSession(created: ago(5_000), updated: ago(3_900)),
 
             AgentSession(

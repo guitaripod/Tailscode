@@ -9,14 +9,14 @@ enum ParityManifest {
 
     static func evidence(for capability: AppCapability) -> ParityEvidence {
         switch capability {
-        case .sessionSections: return .implemented("sectionedRows")
+        case .sessionSections: return .implemented("groupIntoListSections")
         case .homeBoard: return .implemented("HomeBoard")
         case .sessionRowStatus: return .implemented("statusPill")
         case .activityIconography: return .implemented("ActivityBadgeView")
         case .backgroundWork: return .implemented("inBackground")
         case .backgroundStop: return .implemented("stopBackgroundWork")
         case .sessionPinning: return .implemented("togglePinned")
-        case .unreadTracking: return .implemented("markUnread")
+        case .unreadTracking: return .implemented("row.columnMark")
         case .savedChats: return .implemented("SavedChatsViewController")
         case .savedChatSync: return .implemented("SessionMarkSync")
         case .sessionMarks: return .implemented("SessionMarks")
@@ -37,7 +37,8 @@ enum ParityManifest {
                     "only an iPad window the system restores reopens the conversation it was showing; the phone launches to the Home board by design, where Live cards and deep links reopen work")
         case .liveListUpdates: return .implemented("startStreams")
         case .rowContextActions: return .implemented("sessionMenu")
-        case .rowSnippet: return .implemented("agentTask")
+        case .rowSnippet: return .implemented("ChatRowNews.reading")
+        case .rowQuotedAnswer: return .implemented("ChatRowInk.newsLines(news.voice")
         case .rowFacets: return .implemented("ChatRowFacts")
         case .modelIdentityTint: return .implemented("ModelChipText")
         case .usageGauges: return .implemented("QuotaCard")

@@ -228,12 +228,32 @@ public struct ApprovalAsk: Equatable, Sendable {
 /// there would spend a line of every row on the one thing nobody asked. `lead` is words; `object`
 /// is the command or path the lead is about and is set in the machine's face.
 public struct ChatRowNews: Equatable, Sendable {
+    /// What kind of news the line is, which is what a client colours it by: a row says a failure
+    /// in the failure tone and quotes an answer in the reader's own ink, and neither is decided by
+    /// reading the words back.
+    public enum Voice: Equatable, Sendable {
+        /// The turn is waiting on the person.
+        case asking
+        /// Work is under way: a step, a task, a command carried between turns.
+        case working
+        /// The last turn failed.
+        case failed
+        /// The machine stopped answering.
+        case away
+        /// What the agent said when it finished, in its own words.
+        case said
+        /// It finished, on a server that cannot quote it.
+        case settled
+    }
+
     public let lead: String
     public let object: String?
+    public let voice: Voice
 
-    public init(lead: String, object: String? = nil) {
+    public init(lead: String, object: String? = nil, voice: Voice = .settled) {
         self.lead = lead
         self.object = object
+        self.voice = voice
     }
 
     public var spoken: String {
@@ -248,26 +268,32 @@ public struct ChatRowNews: Equatable, Sendable {
     ) -> ChatRowNews? {
         switch row.state {
         case .awaitingApproval:
-            if let ask { return ChatRowNews(lead: ask.lead, object: ask.object) }
-            return ChatRowNews(lead: ActivityKind.needsApproval.spoken)
+            if let ask { return ChatRowNews(lead: ask.lead, object: ask.object, voice: .asking) }
+            return ChatRowNews(lead: ActivityKind.needsApproval.spoken, voice: .asking)
         case .stalled(let tasks):
-            return ChatRowNews(lead: ActivityKind.stalled(tasks: tasks).title, object: row.snippet)
+            return ChatRowNews(
+                lead: ActivityKind.stalled(tasks: tasks).title, object: row.snippet, voice: .asking)
         case .live:
-            return ChatRowNews(lead: row.snippet ?? Localized.text("Working"))
+            return ChatRowNews(lead: row.snippet ?? Localized.text("Working"), voice: .working)
         case .background(let tasks):
-            if let snippet = row.snippet { return ChatRowNews(lead: snippet) }
-            return ChatRowNews(lead: ActivityKind.inBackground(tasks: tasks).title)
+            if let snippet = row.snippet { return ChatRowNews(lead: snippet, voice: .working) }
+            return ChatRowNews(lead: ActivityKind.inBackground(tasks: tasks).title, voice: .working)
         case .failed:
-            return ChatRowNews(lead: Localized.text("Last turn failed"))
+            return ChatRowNews(lead: Localized.text("Last turn failed"), voice: .failed)
         case .offline:
-            return ChatRowNews(lead: Localized.text("Last heard %@ ago", row.age))
+            return ChatRowNews(lead: Localized.text("Last heard %@ ago", row.age), voice: .away)
         case .idle:
             guard row.unread else { return nil }
             switch missed {
-            case .turnFailed?: return ChatRowNews(lead: Localized.text("Last turn failed"))
-            case .needsAnswer?: return ChatRowNews(lead: Localized.text("Asked you a question"))
-            case .needsApproval?: return ChatRowNews(lead: ActivityKind.needsApproval.spoken)
-            case .turnEnded?, nil: return ChatRowNews(lead: Localized.text("Finished"))
+            case .turnFailed?:
+                return ChatRowNews(lead: Localized.text("Last turn failed"), voice: .failed)
+            case .needsAnswer?:
+                return ChatRowNews(lead: Localized.text("Asked you a question"), voice: .asking)
+            case .needsApproval?:
+                return ChatRowNews(lead: ActivityKind.needsApproval.spoken, voice: .asking)
+            case .turnEnded?, nil:
+                if let said = row.lastWords { return ChatRowNews(lead: said, voice: .said) }
+                return ChatRowNews(lead: Localized.text("Finished"))
             }
         }
     }

@@ -51,7 +51,14 @@ final class SidebarViewController: NSViewController {
     /// `(profileID, sessionID)`. A listing reports `active` for the seconds a turn is literally
     /// open on the server and never reports a turn that stopped to ask something, so the chat a
     /// person is talking in right now leads WORKING from here rather than from the next sweep.
+    /// One of every row, drawn in place of the listing while it is set (`--open chat-list`).
+    var fixture: [ChatListFixture.Section]? {
+        didSet { render() }
+    }
     var presenceSource: (() -> [String: SessionPresence])?
+    /// What each chat stopped to ask, for the ones a pane here is holding the question for. A
+    /// listing says a turn is waiting and never on what, so only a watcher can fill this in.
+    var askSource: (() -> [String: ApprovalAsk])?
     /// Says one line in the window's own toast. Filing a chat away is one keystroke, so the list
     /// tells the person what it just did rather than letting a row leave without a word.
     var announce: ((String) -> Void)?

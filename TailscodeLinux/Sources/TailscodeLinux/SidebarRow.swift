@@ -6,16 +6,39 @@ import TailscodeCore
 /// Every kind of row the chat list can draw, in one place: a section heading, a conversation, the
 /// banner that says a server stopped answering, and the line that admits there is nothing here.
 enum SidebarRow {
-    static func header(_ title: String, count: Int) -> UnsafeMutablePointer<GtkWidget> {
+    /// A section's heading and the one figure worth putting beside it: how many agents are waiting
+    /// or working, or how many rows under it are new. The "new" label is always built and handed
+    /// back, so a count that moves is written into the heading that is standing rather than
+    /// costing a rebuild of the list under it.
+    static func header(_ heading: SectionHeading)
+        -> (row: UnsafeMutablePointer<GtkWidget>, fresh: UnsafeMutablePointer<GtkWidget>)
+    {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-        let label = Gtk.label(title, css: "section-header", selectable: false)
-        gtk_widget_set_hexpand(label, 1)
-        let tally = Gtk.label("\(count)", css: "section-header", selectable: false)
-        gtk_label_set_ellipsize(op(tally), PANGO_ELLIPSIZE_NONE)
-        gtk_widget_set_size_request(tally, 34, -1)
+        let label = Gtk.label(heading.title, css: "section-header", selectable: false)
+        gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
+        if heading.needsYou { Gtk.addClass(label, "section-needs") }
         gtk_box_append(ptr(row), label)
-        gtk_box_append(ptr(row), tally)
-        return row
+        let fresh = Gtk.label("", css: "section-fresh", selectable: false)
+        gtk_label_set_ellipsize(op(fresh), PANGO_ELLIPSIZE_NONE)
+        gtk_widget_set_hexpand(fresh, 1)
+        gtk_box_append(ptr(row), fresh)
+        setFresh(fresh, heading.freshLabel)
+        if let total = heading.total {
+            let tally = Gtk.label("\(total)", css: "section-header", selectable: false)
+            if heading.needsYou { Gtk.addClass(tally, "section-needs") }
+            gtk_label_set_ellipsize(op(tally), PANGO_ELLIPSIZE_NONE)
+            gtk_label_set_xalign(op(tally), 1)
+            gtk_widget_set_size_request(tally, 34, -1)
+            gtk_box_append(ptr(row), tally)
+        }
+        tailscode_set_accessible_label(row, heading.spoken)
+        return (row, fresh)
+    }
+
+    /// Writes how many rows under a heading are new, or takes the words away when none are.
+    static func setFresh(_ label: UnsafeMutablePointer<GtkWidget>, _ words: String?) {
+        gtk_label_set_text(op(label), words ?? "")
+        gtk_widget_set_opacity(label, words == nil ? 0 : 1)
     }
 
     static func banner(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
@@ -170,8 +193,9 @@ enum SidebarRow {
         return label
     }
 
-    /// One conversation. Three registers on two lines — what it is, where it lives, and what it is
-    /// doing — with the state carried by a pill rather than by a colour a reader has to decode.
+    /// One conversation, in the grammar `docs/session-list.md` sets for all three desks: a state
+    /// column whose mark always means something, the title on a line of its own, a line of news
+    /// only when there is news, and who, where and with what last.
     /// A right click hands back the row widget (as bits, for the sendable hop) and where inside it
     /// the click landed, so the caller can open a menu under the pointer. The row is also the
     /// handle a pointer picks the chat up by: it carries its own identity to whichever pane it is
@@ -180,9 +204,13 @@ enum SidebarRow {
     /// The mark lives in a button of its own beside the chat rather than inside it, because a
     /// press inside a `GtkButton` belongs to that button: a marker drawn into the row would open
     /// the conversation every time someone tried to select it.
+    ///
+    /// - Parameter section: the heading the row sits under, whose mark it need not wear again.
+    /// - Parameter news: what the row has to say, decided by the list that holds it.
     static func make(
         _ model: SessionRowModel, focused: Bool, marked: Bool = false,
-        vocabulary: ChatListVocabulary = .full,
+        vocabulary: ChatListVocabulary = .full, section: SessionSection? = nil,
+        news: ChatRowNews? = nil,
         onOpen: @escaping @Sendable () -> Void,
         onMark: @escaping @Sendable (Bool) -> Void = { _ in },
         onAgents: (@Sendable () -> Void)? = nil,
@@ -193,42 +221,21 @@ enum SidebarRow {
         Gtk.addClass(button, "session-row")
         if focused { Gtk.addClass(button, "row-focused") }
         if marked { Gtk.addClass(button, "row-marked") }
+        if model.state == .offline { Gtk.addClass(button, "row-away") }
 
-        let glyph = Gtk.label(model.state.glyph.text, css: model.state.glyph.css, selectable: false)
+        let glyph = stateMark(model)
         gtk_widget_set_valign(glyph, GTK_ALIGN_START)
         Gtk.margins(glyph, top: 3)
-        ActivityPulse.apply(model.state.activity?.icon, to: glyph)
-        if let spoken = model.state.activity?.spoken {
-            gtk_widget_set_tooltip_text(glyph, spoken)
-        }
 
         let titleRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-        let title = Gtk.label(
-            model.title, css: model.unread ? "row-title-unread" : "row-title", selectable: false)
-        gtk_widget_set_hexpand(title, 1)
+        let title = Gtk.label(model.title, css: titleClass(model.emphasis), selectable: false)
         gtk_box_append(ptr(titleRow), title)
-        if model.entry.session.isScheduled == true {
-            let clock = Gtk.label("◷", css: "dim-label", selectable: false)
-            gtk_widget_set_tooltip_text(clock, Localized.text("A schedule asks in this conversation"))
-            gtk_box_append(ptr(titleRow), clock)
-        }
-        if let pill = model.state.pill {
-            gtk_box_append(ptr(titleRow), makePill(pill.text, css: pill.css))
-        }
-        if model.pinned {
-            gtk_box_append(ptr(titleRow), makePill(Localized.text("PINNED"), css: "pill-pinned"))
-        }
-        if model.saved {
-            gtk_box_append(ptr(titleRow), makePill(Localized.text("SAVED"), css: "pill-saved"))
-        }
-        if model.unread, model.state.pill == nil {
-            let dot = Gtk.label("●", css: "unread-dot", selectable: false)
-            gtk_label_set_ellipsize(op(dot), PANGO_ELLIPSIZE_NONE)
-            gtk_box_append(ptr(titleRow), dot)
-        }
+        let marks = model.titleMarks(under: section)
+        for mark in marks { gtk_box_append(ptr(titleRow), flag(mark)) }
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         gtk_box_append(ptr(column), titleRow)
+        if let news { gtk_box_append(ptr(column), newsLine(news)) }
         gtk_box_append(
             ptr(column), detailRow(model, vocabulary: vocabulary, onAgents: onAgents))
         gtk_widget_set_hexpand(column, 1)
@@ -238,6 +245,7 @@ enum SidebarRow {
         gtk_box_append(ptr(row), glyph)
         gtk_box_append(ptr(row), column)
         gtk_button_set_child(ptr(button), row)
+        tailscode_set_accessible_label(button, spoken(model, news: news, marks: marks))
 
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onOpen)
         let buttonBits = UInt(bitPattern: button)
@@ -253,6 +261,94 @@ enum SidebarRow {
         gtk_box_append(ptr(holder), makeMark(marked: marked, onMark: onMark))
         gtk_box_append(ptr(holder), button)
         return holder
+    }
+
+    /// A small mark after the title. This client is set in type, so a mark is a quiet word rather
+    /// than a symbol somebody has to learn; the clock is the one glyph the list already uses.
+    static func flag(_ mark: ChatRowInk.TitleMark) -> UnsafeMutablePointer<GtkWidget> {
+        let word = mark == .scheduled ? mark.glyph : mark.spoken.lowercased()
+        let flag = Gtk.label(word, css: "row-flag", selectable: false)
+        gtk_label_set_ellipsize(op(flag), PANGO_ELLIPSIZE_NONE)
+        gtk_widget_set_tooltip_text(flag, mark.spoken)
+        return flag
+    }
+
+    /// What the state column draws: the state's own glyph, the unread dot on a row at rest, and
+    /// nothing at all on a row that has been read, in a column that keeps its width either way so
+    /// every title starts on one edge.
+    private static func stateMark(_ model: SessionRowModel) -> UnsafeMutablePointer<GtkWidget> {
+        let glyph: UnsafeMutablePointer<GtkWidget>
+        switch model.columnMark {
+        case .activity(let activity):
+            glyph = Gtk.label(model.state.glyph.text, css: model.state.glyph.css, selectable: false)
+            ActivityPulse.apply(activity.icon, to: glyph)
+            gtk_widget_set_tooltip_text(glyph, activity.spoken)
+        case .unread:
+            glyph = Gtk.label("●", css: "unread-dot", selectable: false)
+            gtk_widget_set_tooltip_text(glyph, Localized.text("Unread"))
+        case .none:
+            glyph = Gtk.label("", css: "glyph-pending", selectable: false)
+        }
+        Gtk.addClass(glyph, "row-state")
+        gtk_label_set_ellipsize(op(glyph), PANGO_ELLIPSIZE_NONE)
+        gtk_label_set_xalign(op(glyph), 0.5)
+        return glyph
+    }
+
+    /// The title's face on the three rungs of ink.
+    static func titleClass(_ emphasis: ChatRowInk.Emphasis) -> String {
+        switch emphasis {
+        case .strong: return "row-title-unread"
+        case .plain: return "row-title"
+        case .receded: return "row-title-read"
+        }
+    }
+
+    /// The class a line of news wears, which is what gives it the tone of what it is.
+    static func newsClass(_ voice: ChatRowNews.Voice) -> String {
+        switch voice {
+        case .asking: return "news-ask"
+        case .working: return "news-live"
+        case .failed: return "news-fail"
+        case .said: return "news-said"
+        case .away, .settled: return "news-quiet"
+        }
+    }
+
+    /// The line of news under the title. A quoted answer and a question may take two lines; a
+    /// status that is rewritten while the turn runs stays on one and is cut at its end, so a step
+    /// that changes never changes the height of the row it is on.
+    private static func newsLine(_ news: ChatRowNews) -> UnsafeMutablePointer<GtkWidget> {
+        let lines = ChatRowInk.newsLines(news.voice, roomy: false)
+        let words = [news.lead, news.object].compactMap { $0 }.filter { !$0.isEmpty }
+        let label: UnsafeMutablePointer<GtkWidget>
+        if let object = news.object, !object.isEmpty {
+            label = Gtk.markupLabel(
+                "\(PangoMarkdown.escape(news.lead)) <tt>\(PangoMarkdown.escape(object))</tt>",
+                css: "row-news", wrap: lines > 1)
+            gtk_label_set_selectable(op(label), 0)
+        } else {
+            label = Gtk.label(news.lead, css: "row-news", wrap: lines > 1, selectable: false)
+        }
+        Gtk.addClass(label, newsClass(news.voice))
+        gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_END)
+        gtk_label_set_lines(op(label), Int32(lines))
+        gtk_label_set_xalign(op(label), 0)
+        gtk_widget_set_tooltip_text(label, words.joined(separator: " "))
+        return label
+    }
+
+    /// What the row is called aloud: its name, what it is doing, what it has to say, and whether
+    /// it is unread, in the order a person would say them.
+    static func spoken(
+        _ model: SessionRowModel, news: ChatRowNews?, marks: [ChatRowInk.TitleMark]
+    ) -> String {
+        var parts = [model.title]
+        if let state = model.state.activity?.spoken { parts.append(state) }
+        if let news, news.spoken != model.state.activity?.spoken { parts.append(news.spoken) }
+        if model.unread { parts.append(Localized.text("Unread")) }
+        parts.append(contentsOf: marks.map(\.spoken))
+        return parts.joined(separator: ", ")
     }
 
     /// Several conversations held in one window, drawn as the one row they are. The names are the
@@ -279,23 +375,27 @@ enum SidebarRow {
         if marked { Gtk.addClass(button, "row-marked") }
 
         let state = model.state
-        let glyph = Gtk.label(state.glyph.text, css: state.glyph.css, selectable: false)
+        let glyph: UnsafeMutablePointer<GtkWidget>
+        if let activity = state.activity {
+            glyph = Gtk.label(state.glyph.text, css: state.glyph.css, selectable: false)
+            ActivityPulse.apply(activity.icon, to: glyph)
+            gtk_widget_set_tooltip_text(glyph, activity.spoken)
+        } else if model.unread {
+            glyph = Gtk.label("●", css: "unread-dot", selectable: false)
+        } else {
+            glyph = Gtk.label("", css: "glyph-pending", selectable: false)
+        }
+        Gtk.addClass(glyph, "row-state")
+        gtk_label_set_ellipsize(op(glyph), PANGO_ELLIPSIZE_NONE)
+        gtk_label_set_xalign(op(glyph), 0.5)
         gtk_widget_set_valign(glyph, GTK_ALIGN_START)
         Gtk.margins(glyph, top: 3)
-        ActivityPulse.apply(state.activity?.icon, to: glyph)
-        if let spoken = state.activity?.spoken { gtk_widget_set_tooltip_text(glyph, spoken) }
 
         let titleRow = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-        let title = Gtk.label(
-            model.title, css: model.unread ? "row-title-unread" : "row-title", selectable: false)
-        gtk_widget_set_hexpand(title, 1)
+        let emphasis = ChatRowInk.emphasis(state: state, unread: model.unread)
+        let title = Gtk.label(model.title, css: titleClass(emphasis), selectable: false)
         gtk_box_append(ptr(titleRow), title)
-        if let pill = state.pill {
-            gtk_box_append(ptr(titleRow), makePill(pill.text, css: pill.css))
-        }
-        if model.pinned {
-            gtk_box_append(ptr(titleRow), makePill(Localized.text("PINNED"), css: "pill-pinned"))
-        }
+        if model.pinned { gtk_box_append(ptr(titleRow), flag(.pinned)) }
 
         let facets = model.facets()
         let detail = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
@@ -355,7 +455,10 @@ enum SidebarRow {
         Gtk.addClass(button, "flat")
         Gtk.addClass(button, "split-tab-member")
         let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-        let glyph = Gtk.label(model.state.glyph.text, css: model.state.glyph.css, selectable: false)
+        let glyph =
+            model.state.activity == nil && model.unread
+            ? Gtk.label("●", css: "unread-dot", selectable: false)
+            : Gtk.label(model.state.glyph.text, css: model.state.glyph.css, selectable: false)
         gtk_label_set_ellipsize(op(glyph), PANGO_ELLIPSIZE_NONE)
         gtk_box_append(ptr(line), glyph)
         let title = Gtk.label(
@@ -408,40 +511,32 @@ enum SidebarRow {
         rowButton(0, in: widget)
     }
 
-    /// The second line, read as three things rather than one: what the conversation is in, where
-    /// it lives, and how long ago it moved. The age is pinned to the trailing edge in monospace so
-    /// it forms a straight column down the list — a staleness that has to be found at the end of a
-    /// sentence of varying length is a fact nobody reads. A row that is working says what it is
-    /// working on instead, and keeps the column.
+    /// The last line, read as three things rather than one: what the conversation is in and where
+    /// it lives, what it runs on, and how long ago it moved. Who and where lead because the
+    /// project is what a person recognises a chat by, and the model follows them a step back on a
+    /// row at rest. The age is pinned to the trailing edge in monospace so it forms a straight
+    /// column down the list — a staleness that has to be found at the end of a sentence of varying
+    /// length is a fact nobody reads.
     private static func detailRow(
         _ model: SessionRowModel, vocabulary: ChatListVocabulary,
         onAgents: (@Sendable () -> Void)?
     ) -> UnsafeMutablePointer<GtkWidget> {
         let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         let facets = model.facets(vocabulary)
-        let chip = ModelBadge.chip(for: model.entry)
-        let agents = onAgents.flatMap { agentsChip(model, onOpen: $0) }
-        if let chip {
-            gtk_box_append(ptr(line), modelLabel(chip))
+        if let project = facets.project {
+            gtk_box_append(ptr(line), Gtk.label(project, css: "row-project", selectable: false))
         }
-        if let agents { gtk_box_append(ptr(line), agents) }
-        if let snippet = model.snippet {
-            let text = chip == nil ? snippet : "· \(snippet)"
-            let label = Gtk.label(text, css: "row-note", selectable: false)
-            gtk_widget_set_hexpand(label, 1)
+        if let origin = facets.origin {
+            let text = facets.project == nil ? origin : "· \(origin)"
+            gtk_box_append(ptr(line), Gtk.label(text, css: "row-detail", selectable: false))
+        }
+        if let chip = ModelBadge.chip(for: model.entry) {
+            let label = modelLabel(chip)
+            if model.emphasis == .receded { Gtk.addClass(label, "row-model-read") }
             gtk_box_append(ptr(line), label)
-        } else {
-            if let project = facets.project {
-                let text = chip == nil ? project : "· \(project)"
-                let label = Gtk.label(text, css: "row-project", selectable: false)
-                gtk_box_append(ptr(line), label)
-            }
-            if let origin = facets.origin {
-                let text = chip == nil && facets.project == nil ? origin : "· \(origin)"
-                let label = Gtk.label(text, css: "row-detail", selectable: false)
-                gtk_widget_set_hexpand(label, 1)
-                gtk_box_append(ptr(line), label)
-            }
+        }
+        if let agents = onAgents.flatMap({ agentsChip(model, onOpen: $0) }) {
+            gtk_box_append(ptr(line), agents)
         }
         let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
         gtk_widget_set_hexpand(spacer, 1)

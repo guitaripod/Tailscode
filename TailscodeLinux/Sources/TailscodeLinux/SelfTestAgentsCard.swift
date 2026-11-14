@@ -125,7 +125,104 @@ extension SelfTest {
         pump(0.4)
 
         claims += try checkAgentsRowChip(host: host, expect: expect, pump: pump)
+        claims += try checkChatListRows(expect: expect)
         claims += try checkAgentsNarrow(host: host, pane: pane, window: window, expect: expect, pump: pump)
+        return claims
+    }
+
+    /// The chat list's row grammar, on the fixture that holds one of every row: what makes an
+    /// unread row findable, what a row says and when, and that no pill shares the title's line.
+    static func checkChatListRows(expect: (Bool, String) throws -> Void) throws -> Int {
+        var claims = 0
+        func note(_ condition: Bool, _ label: String) throws {
+            try expect(condition, "chat list: " + label)
+            claims += 1
+        }
+        struct Seen {
+            var classes: Set<String> = []
+            var words: [String] = []
+        }
+        func look(at row: ChatListFixture.Row) -> Seen {
+            let widget = SidebarRow.make(
+                row.model, focused: false, vocabulary: ChatListFixture.vocabulary(),
+                section: row.section, news: row.news, onOpen: {}, onMenu: { _, _, _ in })
+            var seen = Seen()
+            let known = [
+                "row-title", "row-title-unread", "row-title-read", "unread-dot", "row-news",
+                "news-said", "news-fail", "news-live", "news-ask", "row-flag", "row-model-read",
+                "pill-live", "pill-pinned", "pill-saved", "pill-needs", "pill-error",
+            ]
+            widgets(under: widget) { child in
+                for name in known where gtk_widget_has_css_class(child, name) != 0 {
+                    seen.classes.insert(name)
+                }
+                if tailscode_is_label(child) != 0 {
+                    seen.words.append(String(cString: gtk_label_get_text(op(child))))
+                }
+            }
+            g_object_ref_sink(UnsafeMutableRawPointer(widget))
+            g_object_unref(UnsafeMutableRawPointer(widget))
+            return seen
+        }
+        let rows = Dictionary(
+            ChatListFixture.sections().flatMap(\.rows).map { ($0.model.entry.session.id, $0) },
+            uniquingKeysWith: { first, _ in first })
+        func seen(_ id: String) throws -> Seen {
+            guard let row = rows[id] else {
+                try expect(false, "chat list: the fixture holds \(id)")
+                return Seen()
+            }
+            return look(at: row)
+        }
+        let unread = try seen("fx-said")
+        let read = try seen("fx-read-1")
+        let working = try seen(ChatListFixture.openSessionID)
+        let asking = try seen("fx-asking")
+        let failed = try seen("fx-failed")
+        let carrying = try seen("fx-carrying")
+        let pinned = try seen("fx-pinned")
+        try note(
+            unread.classes.contains("row-title-unread") && read.classes.contains("row-title-read"),
+            "an unread title is the heavier face and a read one steps back")
+        try note(
+            unread.classes.contains("unread-dot") && !read.classes.contains("unread-dot"),
+            "the dot is on the unread row only, in the state column")
+        try note(
+            working.classes.contains("row-title") && !working.classes.contains("unread-dot"),
+            "a turn in flight is full strength without the weight, and its state takes the column")
+        try note(asking.classes.contains("row-title-unread"), "a row waiting on the person is pressed as hard")
+        try note(
+            unread.classes.contains("news-said")
+                && unread.words.contains { $0.hasPrefix("Three directions are on the board") },
+            "an unread finish quotes the answer")
+        try note(!read.classes.contains("row-news"), "a read row at rest has no news line")
+        try note(failed.classes.contains("news-fail"), "a failure is said in the failure tone")
+        try note(working.classes.contains("news-live"), "work is said in the live tone")
+        try note(
+            asking.classes.contains("news-ask") && asking.words.contains { $0.contains("git push origin release/2.4") },
+            "a waiting turn says what it wants")
+        try note(
+            read.classes.contains("row-model-read") && !unread.classes.contains("row-model-read"),
+            "a read row's model chip steps back with it")
+        try note(
+            carrying.classes.contains("row-flag") && !pinned.classes.contains("row-flag"),
+            "a pinned row wears its mark under WORKING and not under PINNED")
+        let every = [unread, read, working, asking, failed, carrying, pinned]
+        try note(
+            every.allSatisfy { $0.classes.allSatisfy { !$0.hasPrefix("pill-") } },
+            "no pill shares the title's line")
+        let today = SidebarRow.header(SectionHeading(section: .recent(.today), rows: 5, fresh: 2))
+        let fleet = SidebarRow.header(SectionHeading(section: .needsYou, rows: 2, fresh: 2))
+        try note(
+            String(cString: gtk_label_get_text(op(today.fresh))) == Localized.text("%@ new", "2"),
+            "a heading says how many of its rows are new")
+        try note(
+            String(cString: gtk_label_get_text(op(fleet.fresh))).isEmpty,
+            "and the fleet's headings keep their totals instead")
+        for heading in [today.row, fleet.row] {
+            g_object_ref_sink(UnsafeMutableRawPointer(heading))
+            g_object_unref(UnsafeMutableRawPointer(heading))
+        }
         return claims
     }
 

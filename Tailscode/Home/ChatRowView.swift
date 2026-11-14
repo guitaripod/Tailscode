@@ -17,6 +17,9 @@ struct ChatRowFacts: Equatable {
     var icon: ActivityIcon
     var title: String
     var unread: Bool
+    /// What the tile draws: the state, the unread dot on a row at rest, or nothing.
+    var mark: ChatRowInk.ColumnMark
+    var emphasis: ChatRowInk.Emphasis
     var news: ChatRowNews?
     var chip: ModelChip?
     var pieces: [Piece]
@@ -25,16 +28,19 @@ struct ChatRowFacts: Equatable {
     var dimmed: Bool
     var spoken: String
 
+    /// - Parameter section: the heading the row sits under, whose mark it need not wear again.
     @MainActor
     init(
         row: SessionRowModel, vocabulary: ChatListVocabulary, ask: ApprovalAsk? = nil,
-        missed: MissedActivity.Reason? = nil
+        missed: MissedActivity.Reason? = nil, section: SessionSection? = nil
     ) {
         let facets = row.facets(vocabulary)
         let news = ChatRowNews.reading(for: row, ask: ask, missed: missed)
         self.icon = row.state.icon
         self.title = SessionListViewController.displayTitle(row.title)
         self.unread = row.unread
+        self.mark = row.columnMark
+        self.emphasis = row.emphasis
         self.news = news
         self.chip = ModelBadge.chip(for: row.entry)
         var pieces = Self.pieces(of: facets)
@@ -43,7 +49,7 @@ struct ChatRowFacts: Equatable {
         }
         self.pieces = pieces
         self.age = facets.age
-        self.pinned = row.pinned
+        self.pinned = row.titleMarks(under: section).contains(.pinned)
         self.dimmed = row.state == .offline
         self.spoken = Self.spoken(
             title: title, state: row.state.activity?.spoken, news: news?.spoken,
@@ -54,6 +60,8 @@ struct ChatRowFacts: Equatable {
         self.icon = .idle
         self.title = chat.displayTitle
         self.unread = unread
+        self.mark = unread ? .unread : .none
+        self.emphasis = unread ? .strong : .receded
         self.news = unread ? ChatRowNews(lead: String(localized: "Finished")) : nil
         self.chip = nil
         var pieces: [Piece] = []
@@ -74,8 +82,11 @@ struct ChatRowFacts: Equatable {
         hasher.combine(String(describing: icon.tone))
         hasher.combine(title)
         hasher.combine(unread)
+        hasher.combine(String(describing: mark))
+        hasher.combine(String(describing: emphasis))
         hasher.combine(news?.lead)
         hasher.combine(news?.object)
+        hasher.combine(news.map { String(describing: $0.voice) })
         hasher.combine(chip)
         for piece in pieces {
             hasher.combine(piece.text)
@@ -117,10 +128,12 @@ struct ChatRowConfiguration: UIContentConfiguration, Equatable {
     func updated(for state: any UIConfigurationState) -> ChatRowConfiguration { self }
 }
 
-/// The row: a tinted tile holding the state's own mark, the title with its unread dot, a line of
-/// news only when there is some, and who and where beneath it. The tile is the one place the
-/// activity vocabulary moves — working breathes, a question knocks, everything settled holds
-/// still — so a column of rows reads as a column of states before a word of it is read.
+/// The row, in the grammar `docs/session-list.md` sets for all three clients: a tile that is lit
+/// only when there is something to know — the state's own mark, or the unread dot on a row at
+/// rest — the title on a line of its own, a line of news only when there is some, and who, where
+/// and with what beneath it. The tile is the one place the activity vocabulary moves — working
+/// breathes, a question knocks, everything settled holds still — so a column of rows reads as a
+/// column of states before a word of it is read, and a clear tile says there is nothing to read.
 @MainActor
 final class ChatRowContentView: UIView, UIContentView {
     var configuration: any UIContentConfiguration {
@@ -139,6 +152,7 @@ final class ChatRowContentView: UIView, UIContentView {
     private var applied: ChatRowFacts?
 
     static let tileSize: CGFloat = 30
+    static let dotSize: CGFloat = 9
     static let textInset: CGFloat = Theme.Spacing.m + tileSize + Theme.Spacing.m
 
     init(configuration: ChatRowConfiguration) {
@@ -173,11 +187,12 @@ final class ChatRowContentView: UIView, UIContentView {
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         unreadDot.backgroundColor = Theme.Color.accent
-        unreadDot.layer.cornerRadius = 4
+        unreadDot.layer.cornerRadius = Self.dotSize / 2
         unreadDot.translatesAutoresizingMaskIntoConstraints = false
-        unreadDot.setContentHuggingPriority(.required, for: .horizontal)
+        unreadDot.isHidden = true
+        tile.addSubview(unreadDot)
 
-        let titleRow = UIStackView(arrangedSubviews: [titleLabel, unreadDot])
+        let titleRow = UIStackView(arrangedSubviews: [titleLabel])
         titleRow.axis = .horizontal
         titleRow.alignment = .center
         titleRow.spacing = Theme.Spacing.s
@@ -217,8 +232,10 @@ final class ChatRowContentView: UIView, UIContentView {
             tile.heightAnchor.constraint(equalToConstant: Self.tileSize),
             badge.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
             badge.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
-            unreadDot.widthAnchor.constraint(equalToConstant: 8),
-            unreadDot.heightAnchor.constraint(equalToConstant: 8),
+            unreadDot.widthAnchor.constraint(equalToConstant: Self.dotSize),
+            unreadDot.heightAnchor.constraint(equalToConstant: Self.dotSize),
+            unreadDot.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
+            unreadDot.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
             text.leadingAnchor.constraint(
                 equalTo: tile.trailingAnchor, constant: Theme.Spacing.m),
             text.trailingAnchor.constraint(equalTo: layoutMarginsGuide.trailingAnchor),
@@ -251,18 +268,31 @@ final class ChatRowContentView: UIView, UIContentView {
         applied = facts
         let large = traitCollection.preferredContentSizeCategory.isAccessibilityCategory
 
-        tile.backgroundColor = facts.icon.tone.color.withAlphaComponent(0.14)
-        badge.show(facts.icon, spoken: nil)
+        switch facts.mark {
+        case .activity:
+            tile.backgroundColor = facts.icon.tone.color.withAlphaComponent(0.14)
+            badge.show(facts.icon, spoken: nil)
+            unreadDot.isHidden = true
+        case .unread:
+            tile.backgroundColor = Theme.Color.accent.withAlphaComponent(0.14)
+            badge.show(nil, spoken: nil)
+            unreadDot.isHidden = false
+        case .none:
+            tile.backgroundColor = .clear
+            badge.show(nil, spoken: nil)
+            unreadDot.isHidden = true
+        }
 
-        titleLabel.font = Theme.Ramp.font(facts.unread ? .rowTitleStrong : .rowTitle)
+        titleLabel.font = Theme.Ramp.font(facts.emphasis == .strong ? .rowTitleStrong : .rowTitle)
+        titleLabel.textColor = Theme.Color.label.withAlphaComponent(
+            ChatRowInk.titleOpacity(facts.emphasis))
         titleLabel.numberOfLines = large ? 0 : 1
         titleLabel.text = facts.title
-        unreadDot.isHidden = !facts.unread
 
         if let news = facts.news {
             newsLabel.isHidden = false
-            newsLabel.numberOfLines = large ? 0 : 2
-            newsLabel.attributedText = Self.newsText(news, tone: facts.icon.tone)
+            newsLabel.numberOfLines = large ? 0 : ChatRowInk.newsLines(news.voice, roomy: true)
+            newsLabel.attributedText = Self.newsText(news, live: facts.icon.tone.color)
         } else {
             newsLabel.isHidden = true
             newsLabel.attributedText = nil
@@ -274,7 +304,8 @@ final class ChatRowContentView: UIView, UIContentView {
             pieces: facts.pieces.map {
                 ($0.text, $0.isQuiet ? Theme.Color.tertiaryLabel : Theme.Color.secondaryLabel)
             },
-            size: Theme.Ramp.font(.panelFootnote).pointSize)
+            size: Theme.Ramp.font(.panelFootnote).pointSize, chipTrails: true,
+            strength: ChatRowInk.chipOpacity(facts.emphasis))
         pinView.isHidden = !facts.pinned
         ageLabel.text = facts.age
 
@@ -282,14 +313,24 @@ final class ChatRowContentView: UIView, UIContentView {
         accessibilityLabel = facts.spoken
     }
 
-    private static func newsText(_ news: ChatRowNews, tone: ActivityTone) -> NSAttributedString {
+    /// The news in the tone of what it is: a failure in the failure colour, work in the live one,
+    /// a quoted answer in the reader's own ink a step under the title, and the thing a waiting
+    /// turn wants in the machine's face, because it is a command or a path.
+    ///
+    /// - Parameter live: the tone the row's own tile is lit in, so the words under a working tile
+    ///   are the tile's colour and not a second one beside it.
+    private static func newsText(_ news: ChatRowNews, live: UIColor) -> NSAttributedString {
+        let color: UIColor
+        switch news.voice {
+        case .asking: color = Theme.Color.label
+        case .working: color = live
+        case .failed: color = Theme.Color.danger
+        case .said: color = Theme.Color.label.withAlphaComponent(ChatRowInk.quotedNews)
+        case .away, .settled: color = Theme.Color.secondaryLabel
+        }
         let lead = NSMutableAttributedString(
             string: news.lead,
-            attributes: [
-                .font: Theme.Ramp.font(.panelDetail),
-                .foregroundColor: tone == .attention
-                    ? Theme.Color.label : Theme.Color.secondaryLabel,
-            ])
+            attributes: [.font: Theme.Ramp.font(.panelDetail), .foregroundColor: color])
         if let object = news.object, !object.isEmpty {
             lead.append(NSAttributedString(string: " "))
             lead.append(

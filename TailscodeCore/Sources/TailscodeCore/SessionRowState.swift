@@ -182,6 +182,9 @@ public struct SessionRowModel: Equatable, Sendable {
     public let age: String
     /// What the agent is working on, when it is working — the line a busy row leads with.
     public let snippet: String?
+    /// What the answer that closed the last turn began with, when the server quotes it. A row
+    /// says it only while it is unread.
+    public let lastWords: String?
 
     /// - Parameter presence: what this device is watching first-hand. First-hand beats the
     ///   listing in both directions: a turn running here is live before the server's sweep agrees,
@@ -214,6 +217,7 @@ public struct SessionRowModel: Equatable, Sendable {
             project, ServerLabel.display(name: entry.profileName, backend: entry.backendType), age,
         ].compactMap { $0 }.joined(separator: " · ")
         self.state = Self.resolve(entry: entry, unreachable: unreachable, presence: presence)
+        self.lastWords = entry.session.lastWords.flatMap { $0.isEmpty ? nil : $0 }
         switch presence {
         case .running(let step) where step?.isEmpty == false:
             self.snippet = step
@@ -249,6 +253,28 @@ public struct SessionRowModel: Equatable, Sendable {
         return SessionRowFacets(
             project: project, origin: origin.isEmpty ? nil : origin.joined(separator: " · "),
             age: age)
+    }
+
+    /// How hard the row's title is pressed, on ``ChatRowInk``'s three rungs.
+    public var emphasis: ChatRowInk.Emphasis {
+        ChatRowInk.emphasis(state: state, unread: unread)
+    }
+
+    /// What the state column draws. A state always wins the column, the unread dot takes it on a
+    /// row at rest, and a read row at rest leaves it empty, so a mark there always means something.
+    public var columnMark: ChatRowInk.ColumnMark {
+        if let activity = state.activity { return .activity(activity) }
+        return unread ? .unread : .none
+    }
+
+    /// The small marks after the title: what the person set this chat aside as, and whether a
+    /// schedule asks in it. A mark the row's own heading already says is not repeated under it.
+    public func titleMarks(under section: SessionSection?) -> [ChatRowInk.TitleMark] {
+        var marks: [ChatRowInk.TitleMark] = []
+        if pinned, section != .pinned { marks.append(.pinned) }
+        if saved, section != .saved { marks.append(.saved) }
+        if entry.session.isScheduled == true { marks.append(.scheduled) }
+        return marks
     }
 
     /// The order the row's six states are decided in. What this device watched wins over what the

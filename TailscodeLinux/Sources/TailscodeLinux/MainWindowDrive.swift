@@ -181,6 +181,11 @@ extension MainWindow {
             } else {
                 FileHandle.standardOutput.write(Data("STOPWORK no chat is open\n".utf8))
             }
+        case "chatlist":
+            self.sidebarFixture = ChatListFixture.sections(tail: argument == "tail")
+            self.renderSidebar()
+            FileHandle.standardOutput.write(
+                Data("CHATLIST \(self.sidebarFixture?.count ?? 0) sections\n".utf8))
         case "archive":
             if let entry = self.activePane.entry {
                 let word = self.toggleArchived(entry)

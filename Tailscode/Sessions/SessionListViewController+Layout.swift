@@ -118,6 +118,10 @@ extension SessionListViewController {
 
 extension SessionListViewController {
     func configureDataSource() {
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
+            (list: SessionListViewController, _) in
+            list.refreshVisibleHeaders()
+        }
         let cell = UICollectionView.CellRegistration<ChatRowCell, SessionEntry> {
             [weak self] cell, _, entry in
             guard let self else { return }
@@ -138,14 +142,61 @@ extension SessionListViewController {
             guard let self else { return }
             let sections = self.dataSource.snapshot().sectionIdentifiers
             guard sections.indices.contains(indexPath.section) else { return }
-            var content = self.showsAsColumn
-                ? UIListContentConfiguration.header()
-                : UIListContentConfiguration.prominentInsetGroupedHeader()
-            content.text = sections[indexPath.section].title
-            view.contentConfiguration = content
+            self.dress(view, as: sections[indexPath.section])
         }
         dataSource.supplementaryViewProvider = { collectionView, _, indexPath in
             collectionView.dequeueConfiguredReusableSupplementary(using: header, for: indexPath)
+        }
+    }
+
+    /// A heading and the one figure worth putting beside it: how many agents are waiting or
+    /// working, in the section's own tone, or how many rows under it are new, in the accent.
+    func dress(_ view: UICollectionViewListCell, as section: ChatListSection) {
+        var content = showsAsColumn
+            ? UIListContentConfiguration.header()
+            : UIListContentConfiguration.prominentInsetGroupedHeader()
+        let heading = headings[section] ?? SectionHeading(section: section, rows: 0, fresh: 0)
+        let tint = heading.needsYou ? Theme.Color.warning : content.textProperties.color
+        let text = NSMutableAttributedString(
+            string: content.textProperties.transform == .uppercase
+                ? heading.title.uppercased(with: .current) : heading.title,
+            attributes: [.font: content.textProperties.font, .foregroundColor: tint])
+        let figure = heading.total.map { ("\($0)", heading.needsYou ? tint : Theme.Color.tertiaryLabel) }
+            ?? heading.freshLabel.map { ($0, Theme.Color.accent) }
+        if let figure {
+            text.append(
+                NSAttributedString(
+                    string: "  " + figure.0,
+                    attributes: [
+                        .font: UIFont.systemFont(
+                            ofSize: Self.figureSize(beside: content.textProperties.font),
+                            weight: .semibold),
+                        .foregroundColor: figure.1,
+                    ]))
+        }
+        content.attributedText = text
+        view.contentConfiguration = content
+        view.accessibilityLabel = heading.spoken
+    }
+
+    /// The figure beside a heading: the heading's own size where the heading is already small, and
+    /// two thirds of it under the phone's prominent headings, where a figure as large as the name
+    /// would read as part of it.
+    private static func figureSize(beside font: UIFont) -> CGFloat {
+        font.pointSize > 17 ? (font.pointSize * 0.68).rounded() : font.pointSize
+    }
+
+    /// A count beside a heading moves when a chat under it is read, which changes no row and so
+    /// redraws no header on its own.
+    func refreshVisibleHeaders() {
+        let kind = UICollectionView.elementKindSectionHeader
+        let sections = dataSource.snapshot().sectionIdentifiers
+        for path in collectionView.indexPathsForVisibleSupplementaryElements(ofKind: kind) {
+            guard sections.indices.contains(path.section),
+                let view = collectionView.supplementaryView(forElementKind: kind, at: path)
+                    as? UICollectionViewListCell
+            else { continue }
+            dress(view, as: sections[path.section])
         }
     }
 
@@ -160,7 +211,11 @@ extension SessionListViewController {
         cell.contentConfiguration = ChatRowConfiguration(
             facts: ChatRowFacts(
                 row: row, vocabulary: vocabulary,
-                ask: SessionActivity.shared.approvalAsk(for: entry.session.id)))
+                ask: showsFixture
+                    ? ChatListFixture.asks[entry.session.id]
+                    : SessionActivity.shared.approvalAsk(for: entry.session.id),
+                missed: missedReasons[entry.session.id],
+                section: rowBoards[ChatSelection.key(entry)]))
 
         let marked = isSelecting && selection.contains(entry)
         let column = showsAsColumn

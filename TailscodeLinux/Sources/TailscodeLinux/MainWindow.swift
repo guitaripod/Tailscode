@@ -124,6 +124,16 @@ final class MainWindow: @unchecked Sendable {
     /// emptied before every teardown and when the window is destroyed: a pointer here must never
     /// outlive the row it names.
     var sidebarRows: [SidebarRowWidget] = []
+    /// One of every row, drawn in place of the listing while it is set (the `chatlist` drive verb).
+    var sidebarFixture: [ChatListFixture.Section]?
+    /// The label beside each standing heading that says how many rows under it are new, by the
+    /// section's key.
+    var sidebarHeadings: [String: Gtk.WeakWidget] = [:]
+    /// What the last pass decided for each row and a row built later still needs: the heading it
+    /// sits under, why it was missed, and what it stopped to ask.
+    var sidebarBoardOfKey: [String: SessionSection] = [:]
+    var sidebarMissedReasons: [String: MissedActivity.Reason] = [:]
+    var sidebarAsks: [String: ApprovalAsk] = [:]
     var sidebarReveal: String?
     var visible: [ChatListItem] = []
     var unreachable: [String] = []

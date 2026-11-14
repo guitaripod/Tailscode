@@ -156,15 +156,16 @@ extension SessionListViewController {
             observedAt: viewModel.observedAt[entry.profileID])
     }
 
-    /// The listing as the shared `groupIntoSections` groups it — NEEDS YOU, WORKING, PINNED, SAVED, RECENT,
-    /// with empty sections dropped so no heading ever sits over nothing. Every row carries the
+    /// The listing as the shared `groupIntoListSections` groups it — NEEDS YOU, WORKING, PINNED,
+    /// SAVED, then the rest by when: Today, Yesterday, the last week, the last month, months and
+    /// years — with empty sections dropped so no heading ever sits over nothing. Every row carries the
     /// presence this device knows first-hand, which is what puts the conversation being streamed
     /// right now in WORKING instead of waiting for the server's next sweep to agree.
-    private func sectionedRows(for entries: [SessionEntry]) -> [(SessionSection, [SessionRowModel])]
+    private func sectionedRows(for entries: [SessionEntry]) -> [(ChatListSection, [SessionRowModel])]
     {
         let saved = Set(SavedChatStore.all().map { SessionPinStore.key($0.profileID, $0.sessionID) })
         let context = RowContext.read(saved: saved, unreachable: Set(viewModel.unreachable))
-        return groupIntoSections(entries.map { rowModel(for: $0, in: context) })
+        return groupIntoListSections(entries.map { rowModel(for: $0, in: context) })
     }
 
     /// The flattened order the sections draw becomes `visibleEntries` — the one list the keyboard
@@ -173,7 +174,7 @@ extension SessionListViewController {
     func applySnapshot() {
         guard mayRender() else { return }
         let entries = filteredEntries()
-        let sections = sectionedRows(for: entries)
+        let sections = fixtureSections() ?? sectionedRows(for: entries)
         let rows = sections.flatMap(\.1)
 
         rowModels = Dictionary(
@@ -183,21 +184,56 @@ extension SessionListViewController {
         visibleEntries = rows.map(\.entry)
         selection.prune(to: visibleEntries)
 
-        var snapshot = NSDiffableDataSourceSnapshot<SessionSection, SessionEntry>()
+        var snapshot = NSDiffableDataSourceSnapshot<ChatListSection, SessionEntry>()
+        var headings: [ChatListSection: SectionHeading] = [:]
+        var boards: [String: SessionSection] = [:]
         for (section, members) in sections {
             snapshot.appendSections([section])
             snapshot.appendItems(members.map(\.entry), toSection: section)
+            headings[section] = SectionHeading(
+                section: section, rows: members.count, fresh: members.count { $0.unread })
+            guard let board = section.board else { continue }
+            for row in members { boards[ChatSelection.key(row.entry)] = board }
         }
+        let headingsMoved = headings != self.headings
+        self.headings = headings
+        rowBoards = boards
+        missedReasons = Dictionary(
+            ActivityInbox.all().map { ($0.sessionID, $0.reason) },
+            uniquingKeysWith: { first, _ in first })
+        if showsFixture { missedReasons = ChatListFixture.missed }
         let existing = Set(dataSource.snapshot().itemIdentifiers)
         let retained = visibleEntries.filter { existing.contains($0) }
         if !retained.isEmpty { snapshot.reconfigureItems(retained) }
         dataSource.apply(snapshot, animatingDifferences: hasAppeared)
+        if headingsMoved { refreshVisibleHeaders() }
         refreshControl.endRefreshing()
         clampKeyCursor()
         updateSelectionBar()
         updateEmptyState(itemCount: snapshot.numberOfItems)
         syncOpenMark()
         onListingChange?()
+    }
+
+    /// Whether the list draws one of every row instead of the listing (`TAILSCODE_CHATLIST_FIXTURE`),
+    /// for a picture of the grammar no real listing holds all at once.
+    var showsFixture: Bool {
+        #if DEBUG
+            ProcessInfo.processInfo.environment["TAILSCODE_CHATLIST_FIXTURE"] != nil
+        #else
+            false
+        #endif
+    }
+
+    private func fixtureSections() -> [(ChatListSection, [SessionRowModel])]? {
+        guard showsFixture else { return nil }
+        let all = groupIntoListSections(ChatListFixture.models())
+        #if DEBUG
+            if ProcessInfo.processInfo.environment["TAILSCODE_CHATLIST_FIXTURE"] == "tail" {
+                return all.filter { $0.0 != .needsYou && $0.0 != .working && $0.0 != .pinned }
+            }
+        #endif
+        return all
     }
 
     /// A cursor that outlived the row it pointed at must land somewhere real, not address a row a

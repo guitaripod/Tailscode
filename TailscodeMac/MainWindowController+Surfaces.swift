@@ -23,6 +23,8 @@ extension MainWindowController {
             if parts.count > 1 { stageServersFailure(parts[1]) }
         case "first-run": presentFirstRunFixture(parts.count > 1 ? parts[1] : "machine-asking")
         case "welcome": presentWelcomeFixture(parts.count > 1 ? parts[1] : "machine-asking")
+        case "chat-list":
+            sidebar.fixture = ChatListFixture.sections(tail: parts.count > 1 && parts[1] == "tail")
         case "updates": presentUpdates()
         case "preferences", "prefs":
             presentPreferences(page: parts.count > 1 ? PreferencesWindow.page(named: parts[1]) : nil)

@@ -106,6 +106,10 @@ extension SidebarViewController {
     /// changed — so nothing is touched unless what the list would say actually differs from what
     /// it says now.
     func render() {
+        if let fixture {
+            renderFixture(fixture)
+            return
+        }
         if NSEvent.pressedMouseButtons != 0, view.window?.isKeyWindow == true {
             holdRender()
             return
@@ -157,10 +161,10 @@ extension SidebarViewController {
                 || ($0.snippet?.lowercased().contains(needle) ?? false)
         }
         let active = matching.filter { !isArchived($0) || $0.isUnfinished }
-        let grouped: [(String, [SessionRowModel])] =
+        let grouped: [(ChatListSection, [SessionRowModel])] =
             showingArchive
-            ? [(Localized.text("ARCHIVED"), matching.filter(isArchived))].filter { !$0.1.isEmpty }
-            : groupIntoSections(active).map { ($0.0.title, $0.1) }
+            ? [(ChatListSection.archived, matching.filter(isArchived))].filter { !$0.1.isEmpty }
+            : groupIntoListSections(active)
         let sections = SplitTabGrouping.apply(
             to: grouped, tab: showingArchive ? nil : splitTabSource?())
         visible = (searchRunning || searchBoard != nil) ? [] : sections.flatMap(\.1)
@@ -174,7 +178,7 @@ extension SidebarViewController {
                 + "|\(selection.keys.sorted().joined(separator: ","))"
                 + "|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))"
                 + "|\(projectScope.map { "\($0.profileID):\($0.directory ?? "")" } ?? "")"
-                + "|\(sections.map { "\($0.0):\($0.1.count)" }.joined(separator: ","))"
+                + "|\(sections.map { "\($0.0.key):\($0.1.count)" }.joined(separator: ","))"
                 + "|\(vocabulary.namesServer)\(vocabulary.namesBackend)|\(searchRunning)\(searchBoard != nil)"
         )
         let sameShape = lastSidebar.map { $0 == snapshot } ?? false
@@ -217,17 +221,25 @@ extension SidebarViewController {
             }
         } else {
             var built = 0
-            for (title, members) in sections {
+            let reasons = Dictionary(
+                ActivityInbox.all().map { ($0.sessionID, $0.reason) },
+                uniquingKeysWith: { first, _ in first })
+            let asks = askSource?() ?? [:]
+            for (section, members) in sections {
                 guard built < sidebarLimit else { break }
-                next.append(.header(title, members.count))
+                next.append(.header(SectionHeading(section: section, items: members)))
                 for item in members {
                     guard built < sidebarLimit else { break }
                     switch item {
                     case .chat(let model):
+                        let news = ChatRowNews.reading(
+                            for: model, ask: asks[ChatSelection.key(model.entry)],
+                            missed: reasons[model.entry.session.id])
                         next.append(
                             .session(
                                 model, marked: selection.contains(model.entry),
-                                vocabulary: vocabulary))
+                                dress: SidebarRowDress(
+                                    vocabulary: vocabulary, section: section.board, news: news)))
                     case .tab(let model):
                         next.append(
                             .tab(
@@ -251,6 +263,30 @@ extension SidebarViewController {
         }
         reselect()
         refreshHover()
+    }
+
+    /// One of every row the list can draw, in place of the listing: a picture of the grammar that
+    /// no real listing ever holds all at once.
+    private func renderFixture(_ sections: [ChatListFixture.Section]) {
+        var next: [SidebarRow] = []
+        for section in sections {
+            next.append(.header(section.heading))
+            for row in section.rows {
+                next.append(
+                    .session(
+                        row.model, marked: false,
+                        dress: SidebarRowDress(
+                            vocabulary: ChatListFixture.vocabulary(), section: row.section,
+                            news: row.news)))
+            }
+        }
+        rows = next
+        tableView.reloadData()
+        suppressSelectionSync = true
+        defer { suppressSelectionSync = false }
+        if let open = rowIndex(of: ChatListFixture.openSessionID) {
+            tableView.selectRowIndexes(IndexSet(integer: open), byExtendingSelection: false)
+        }
     }
 
     /// The same rows in the same places, some of them saying something new: an age that crossed a

@@ -190,7 +190,8 @@ enum Kit {
     /// 0.51.1 says a dropped connection in a sentence rather than an error dump.
     /// 0.52.0 reads a failed turn a bridge kept on its answer.
     /// 0.53.0 carries the workflow run each agent belongs to.
-    static let version = Version(0, 53, 0)
+    /// 0.54.0 carries what a chat's last answer said, for a list row nobody has read.
+    static let version = Version(0, 54, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

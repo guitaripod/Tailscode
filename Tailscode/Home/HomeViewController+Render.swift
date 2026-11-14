@@ -96,7 +96,8 @@ extension HomeViewController {
                         row: row,
                         facts: ChatRowFacts(
                             row: row, vocabulary: vocabulary,
-                            ask: SessionActivity.shared.approvalAsk(for: id), missed: missed[id]),
+                            ask: SessionActivity.shared.approvalAsk(for: id), missed: missed[id],
+                            section: band.section),
                         band: band.section))
             }
         }

@@ -489,7 +489,10 @@ struct MatrixStylesheet {
             background-color: alpha(\(accent), 0.14);
             box-shadow: inset 2px 0 0 \(accent);
         }
-        .row-focused .row-title, .row-focused .row-title-unread { color: \(text); }
+        .row-focused .row-title, .row-focused .row-title-unread, .row-focused .row-title-read {
+            color: \(text);
+        }
+        .row-focused .row-model-read { opacity: 1; }
         .row-focused .row-detail { opacity: 0.85; }
         .row-marked, .row-marked:hover, .row-marked:active {
             background-color: alpha(\(accent), 0.20);

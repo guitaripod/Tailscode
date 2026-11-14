@@ -61,6 +61,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case liveListUpdates
     case rowContextActions
     case rowSnippet
+    case rowQuotedAnswer
     case rowFacets
     case modelIdentityTint
     case usageGauges

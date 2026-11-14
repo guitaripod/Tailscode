@@ -194,6 +194,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try checkSidebarRows()
+            report("chat list: \(checks) claims hold — unread is found by a mark, a weight and the answer's own words")
+        } catch {
+            report("chat list: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkPointerFeedback()
             report("pointer: \(checks) claims hold — what can be pressed answers before the press")
         } catch {
