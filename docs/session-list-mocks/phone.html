@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=820">
+<title>Session list, iPhone: today and proposed</title>
+<link rel="stylesheet" href="base.css">
+<style>
+.page .fig{width:380px}
+.phone{background:var(--canvas);border-radius:34px;box-shadow:0 0 0 1px var(--rule);overflow:hidden;padding:0 0 18px}
+:root{--canvas:#000;--card:#1c1c1e;--line:rgba(84,84,88,.55)}
+:root[data-theme=light]{--canvas:#f2f2f7;--card:#fff;--line:rgba(60,60,67,.2)}
+.bar{height:50px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 22px 4px;font:600 15px/20px var(--sans);color:var(--ink)}
+.big{font:700 31px/38px var(--sans);padding:6px 20px 4px;color:var(--ink);letter-spacing:-.01em}
+.ph{display:flex;align-items:baseline;gap:8px;padding:16px 32px 7px;font:600 13px/17px var(--sans);color:var(--ink2);text-transform:uppercase;letter-spacing:.02em}
+.ph .new{color:var(--accent);text-transform:none;letter-spacing:0;font-weight:650}
+.ph .n{margin-left:auto;font:500 12.5px/17px var(--mono);color:var(--ink3)}
+.ph.needs{color:var(--warn)}.ph.needs .n{color:var(--warn)}
+.grp{background:var(--card);border-radius:14px;margin:0 16px;overflow:hidden}
+.pr{display:flex;gap:12px;padding:12px;position:relative}
+.pr+.pr::before{content:"";position:absolute;top:0;left:54px;right:0;border-top:.5px solid var(--line)}
+.pr.attn{background:color-mix(in srgb,var(--warn) 10%,var(--card))}
+.tile{flex:none;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--tone,var(--ink3)) 15%,transparent)}
+.tile svg{width:16px;height:16px}
+.tile .dot{width:9px;height:9px}
+.pt{flex:1;min-width:0}
+.p1{display:flex;align-items:center;gap:7px}
+.p1 .t{font:400 15.6px/20px var(--sans);color:var(--ink-read);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr.unread .p1 .t,.pr.need .p1 .t{font-weight:600;color:var(--ink)}
+.pr.live .p1 .t{color:var(--ink)}
+.p1 .dot{flex:none;width:8px;height:8px}
+.p2{font:400 13.9px/18px var(--sans);color:var(--ink2);margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pr.unread .p2{color:color-mix(in srgb,var(--ink) 80%,transparent)}
+.p2.step{color:var(--ink2)}.p2 .obj{font:400 13px/18px var(--mono);color:var(--ink)}
+.p2.ask{color:var(--ink)}.pr .p2.bad{color:var(--bad)}
+.p3{display:flex;align-items:baseline;gap:6px;margin-top:3px;font:400 12.7px/16px var(--sans);color:var(--ink2);min-width:0}
+.p3 .where{flex:0 1 auto}
+.p3 .chip{font-size:12.2px}
+.p3 .age{font-size:12.2px}
+.p3 .mk{align-self:center}
+.oldp .p1 .t{color:var(--ink)}
+.oldp{--readchip:1}
+.newp{--ink-read:color-mix(in srgb,var(--ink) 84%,transparent);--readchip:.62}
+</style>
+</head>
+<body>
+<div class="page" id="page"></div>
+<script src="draw.js"></script>
+<script>
+const TONE = { ask: 'var(--warn)', q: 'var(--warn)', stall: 'var(--warn)', work: 'var(--accent)', bg: 'var(--accent)', fail: 'var(--bad)' }
+const IDLE = `<span style="color:var(--ink3)">${S('<circle cx="8" cy="8" r="5.6"/>', 16)}</span>`
+const rowsFor = keys => ROWS.filter(r => keys.includes(r.sec))
+function oldPhoneRow(r) {
+  const news = r.ask ? `<div class="p2 ask">${r.ask[0]} <span class="obj">${r.ask[1]}</span></div>`
+    : r.step ? `<div class="p2 step">${r.step}</div>`
+    : r.failed ? '<div class="p2">Last turn failed</div>'
+    : r.unread ? '<div class="p2">Finished</div>' : ''
+  const lit = ['ask'].includes(r.st) ? 'need attn' : r.st ? 'live' : ''
+  return `<div class="pr ${lit} ${r.unread ? 'unread' : ''}"><div class="tile" style="--tone:${TONE[r.st] || 'var(--ink3)'}">${r.st ? BADGE[r.st] : IDLE}</div><div class="pt"><div class="p1"><span class="t">${r.t}</span>${r.unread ? '<i class="dot"></i>' : ''}</div>${news}<div class="p3">${chip(r)}<span class="where">${r.proj} <i>· ${r.host}</i></span>${r.pinned ? `<span class="mk">${MARK.pin}</span>` : ''}<span class="age">${r.age}</span></div></div></div>`
+}
+function newPhoneRow(r) {
+  const news = r.ask ? `<div class="p2 ask">${r.ask[0]} <span class="obj">${r.ask[1]}</span></div>`
+    : r.step ? `<div class="p2 step" style="color:var(--accent)">${r.step}</div>`
+    : r.failed ? '<div class="p2 bad">Last turn failed</div>'
+    : r.unread ? `<div class="p2">${r.said || 'Finished'}</div>` : ''
+  const lit = ['ask'].includes(r.st) ? 'need attn' : r.st ? 'live' : ''
+  const tone = TONE[r.st] || (r.unread ? 'var(--accent)' : 'var(--ink3)')
+  const face = r.st ? BADGE[r.st] : r.unread ? BADGE.dot : ''
+  const tile = r.st || r.unread ? `<div class="tile" style="--tone:${tone}">${face}</div>` : '<div class="tile" style="background:none"></div>'
+  const fade = r.unread || r.st ? '' : ' style="--chipfade:var(--readchip,1)"'
+  const pin = r.pinned && r.sec !== 'pinned' ? `<span class="mk">${MARK.pin}</span>` : ''
+  return `<div class="pr ${lit} ${r.unread ? 'unread' : ''}"${fade}>${tile}<div class="pt"><div class="p1"><span class="t">${r.t}</span>${pin}</div>${news}<div class="p3"><span class="where">${r.proj} <i>· ${r.host}</i></span>${chip(r)}<span class="age">${r.age}</span></div></div></div>`
+}
+function phone(sections, draw, cls) {
+  return `<div class="phone ${cls}"><div class="bar"><span>9:41</span><span></span></div><div class="big">Chats</div>` + sections.map(([title, keys, opts = {}]) => {
+    const members = rowsFor(keys).slice(0, opts.limit || 99)
+    if (!members.length) return ''
+    const fresh = members.filter(r => r.unread).length
+    const tally = opts.count ? `<span class="n">${opts.count === true ? members.length : opts.count}</span>` : ''
+    const news = opts.news && fresh ? `<span class="new">${fresh} new</span>` : ''
+    return `<div class="ph ${opts.needs ? 'needs' : ''}"><span>${title}</span>${news}${tally}</div><div class="grp">${members.map(draw).join('')}</div>`
+  }).join('') + '</div>'
+}
+document.getElementById('page').innerHTML =
+  fig('Today', 'The phone already has a news line. An unread finish says “Finished”.',
+    phone([['Needs you', ['needs']], ['Working', ['working']], ['Pinned', ['pinned']], ['Saved', ['saved'], { limit: 1 }], ['Recent', ['today'], { limit: 4 }]], oldPhoneRow, 'oldp'),
+    'Every tile is filled, so the tile says nothing on a row at rest. The dot trails the title; the model leads the last line.') +
+  fig('Proposed', 'One grammar with the desktops.',
+    phone([['Needs you', ['needs'], { needs: true, count: true }], ['Working', ['working'], { count: true }], ['Pinned', ['pinned'], { news: true }], ['Saved', ['saved'], { limit: 1 }], ['Today', ['today'], { news: true, limit: 4 }]], newPhoneRow, 'newp'),
+    'The tile is lit only when there is something to know: a state, or the unread dot. The news line quotes the answer.')
+</script>
+</body></html>

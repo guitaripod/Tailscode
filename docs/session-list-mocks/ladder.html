@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=980">
+<title>Session list: how far a read row steps back</title>
+<link rel="stylesheet" href="base.css">
+</head>
+<body>
+<div class="page" id="page"></div>
+<script src="draw.js"></script>
+<script>
+const subset = ROWS.filter(r => ['pinned', 'saved', 'today'].includes(r.sec))
+const ink = (t, c) => `--ink-read:color-mix(in srgb,var(--ink) ${t}%,transparent);--readchip:${c}`
+document.getElementById('page').innerHTML =
+  fig('A · weight and dot only', 'Read titles and chips at full strength.', newSidebar(subset, { style: ink(100, 1) }),
+    'The rainbow on a read row is still the brightest thing in the list.') +
+  fig('B · read steps back once', 'Read title 84%, chip 62%. Excerpt may take two lines.', newSidebar(subset, { style: ink(84, .62), two: true }),
+    'Unread is found without reading. Read titles still pass for body text.') +
+  fig('C · read steps back twice', 'Read title 68%, chip 45%.', newSidebar(subset, { style: ink(68, .45), two: true }),
+    'Strongest contrast, and the nine in ten rows a person scans to resume are grey.')
+</script>
+</body></html>

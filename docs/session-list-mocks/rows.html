@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=700">
+<title>Session list: every row</title>
+<link rel="stylesheet" href="base.css">
+</head>
+<body>
+<div class="page wide" id="page"></div>
+<script src="draw.js"></script>
+<script>
+const base = { proj: 'pulse-ios', host: 'studio', m: 'Opus', e: 'ultracode' }
+const one = (label, r) => `<div class="hd"><span>${label}</span></div>` + newRow({ ...base, ...r })
+const side = rows => `<div class="side">${rows.join('')}</div>`
+const left = [
+  one('Waiting to run something', { t: 'Cut the 2.4 release branch', st: 'ask', ask: ['Wants to run', 'git push origin release/2.4'], age: '3m', e: 'xhigh' }),
+  one('Asked a question', { t: 'Pricing page copy', st: 'q', ask: ['Asked:', ''], said: '', age: '8m' , askText: true}),
+  one('Working, step known', { t: 'Fix the flaky WebSocket reconnect test', st: 'work', step: 'Running swift test --filter Reconnect', age: '12s' }),
+  one('Working for a pinned chat', { t: 'Backtest the pricing model', st: 'bg', step: 'cargo test --release · for 4m', age: '4m', pinned: true, e: 'high' }),
+  one('Stuck', { t: 'Nightly benchmark', st: 'stall', step: 'Stalled · llama-bench · for 2h', age: '2h', e: 'high', stalled: true }),
+  one('Failed, not yet seen', { t: 'Ship the pricing page A/B test', st: 'fail', failed: true, unread: true, age: '1h', e: 'high' }),
+  one('Machine not answering', { t: 'What is eating my GPU memory?', st: 'off', offline: true, age: '3h', host: 'workshop', e: 'high', m: 'Sonnet' }),
+]
+const right = [
+  one('Finished, not yet seen', { t: 'Dark mode for the settings screen', unread: true, said: 'Dark mode is in for Settings: every row reads from the palette now, and the two hard-coded greys are gone.', age: '54m' }),
+  one('Finished, server cannot quote it', { t: 'Add the jitter bound test', unread: true, age: '2h', host: 'workshop', e: 'xhigh' }),
+  one('Read', { t: 'Write the v2.3 release notes', age: '1h', m: 'Fable' }),
+  one('Read, a schedule asks in it', { t: 'Morning sales digest', age: '9h', scheduled: true, e: 'high' }),
+  one('Open in the window', { t: 'Explain the auth token refresh flow', age: '1h', sel: true, e: 'xhigh' }),
+  one('Under the pointer', { t: 'Refactor the auth module to async/await', age: '2h', hov: true }),
+  one('Marked for a bulk verb', { t: 'Migrate CI to self-hosted runners', age: '6d', marked: true }),
+]
+document.getElementById('page').innerHTML =
+  fig('Rows that need or tell', 'The left column carries the state; the second line carries the words.', side(left)) +
+  fig('Rows at rest', 'Unread is a dot, a weight and the answer’s first words. Read is two quiet lines.', side(right))
+</script>
+</body></html>

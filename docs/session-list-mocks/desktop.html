@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=660">
+<title>Session list, desktop: today and proposed</title>
+<link rel="stylesheet" href="base.css">
+</head>
+<body>
+<div class="page" id="page"></div>
+<script src="draw.js"></script>
+<script>
+document.getElementById('page').innerHTML =
+  fig('Today', 'Fourteen chats, three of them unread.', oldSidebar(),
+    'Pills restate the heading and take the title’s width. The unread dot trails wherever the title ends, and a failed row has none. The loudest ink on every row is the model.') +
+  fig('Proposed', 'The same fourteen chats.', newSidebar(ROWS, { more: '1,786 earlier chats' }),
+    'A mark in the left column always means something. A row with news says it, in the agent’s own words; a read row stays two lines and steps back.')
+</script>
+</body></html>
