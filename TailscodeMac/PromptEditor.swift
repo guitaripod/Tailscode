@@ -136,6 +136,7 @@ final class PromptEditor: NSView {
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
+        keepTextUnderThePlaceholder()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         placeholderLabel.textColor = MacTheme.Color.onGlassSecondary
@@ -179,6 +180,15 @@ final class PromptEditor: NSView {
             dictationEdge.topAnchor.constraint(equalTo: fieldContainer.topAnchor),
             dictationEdge.bottomAnchor.constraint(equalTo: fieldContainer.bottomAnchor),
         ])
+    }
+
+    /// A scroll view that reaches under a window's titlebar is inset by AppKit by the part of the bar
+    /// it sits under, and the quick ask's box sits at the top of a titled panel whose bar is hidden:
+    /// the words and the caret were pushed fourteen points below the placeholder, which is drawn
+    /// outside the scroll view and was not. The box is never under a bar it has to clear.
+    private func keepTextUnderThePlaceholder() {
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsetsZero
     }
 
     /// The ramp is read rather than remembered: the box is set in the role that exists for what a
