@@ -10,6 +10,7 @@ extension ChatViewModel {
         streamTask = nil
         resumeClock?.cancel()
         resumeClock = nil
+        SessionActivity.shared.stoppedWatching(self)
     }
 
     func resync() {
@@ -106,6 +107,7 @@ extension ChatViewModel {
                 effort: effort ?? currentEffort, userMessages: userCount).id
         }
         optimisticThinking = true
+        if streamTask == nil { start() }
         onPending?()
         let activityTitle = AgentSession.isPlaceholderTitle(displayTitle)
             ? AgentSession.provisionalTitle(fromPrompt: text) : displayTitle
@@ -146,14 +148,10 @@ extension ChatViewModel {
                     onPending?()
                 }
                 try? await Task.sleep(for: .seconds(30))
-                guard !Task.isCancelled, generation == sendGeneration else { return }
-                if optimisticThinking, !turnSawRunning {
-                    optimisticThinking = false
-                    settleCard(.noResponse)
-                    recoverFailedSend(
-                        outgoing, row: echoID,
-                        reason: String(localized: "the machine never picked it up"))
-                }
+                guard !Task.isCancelled, generation == sendGeneration, optimisticThinking,
+                    !turnSawRunning
+                else { return }
+                reviveWitness()
             } catch {
                 let cancelled = error is CancellationError
                 guard generation == sendGeneration else {
@@ -180,6 +178,22 @@ extension ChatViewModel {
                 }
             }
         }
+    }
+
+    /// A send the server accepted that no stream has shown starting means this device lost sight
+    /// of the conversation, never that the machine lost the message: the server already said it
+    /// has it. The conversation marks itself running the moment a send is accepted, so any stream
+    /// that is listening shows it at once; one that is not is brought back, and the server's
+    /// state says what became of the turn from there.
+    private func reviveWitness() {
+        MidgarLog.info(
+            "send unseen for 30 s session=\(session.id) stream=\(streamTask != nil)", category: .chat)
+        guard streamTask != nil else {
+            start()
+            return
+        }
+        let conversation = self.conversation
+        Task { await conversation.reconnect() }
     }
 
     /// Stop always does something: a send still in flight is cancelled

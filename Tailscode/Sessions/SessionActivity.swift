@@ -138,7 +138,8 @@ final class SessionActivity {
     /// How many turns this device is driving on one server right now — which is exactly what a
     /// restart of that server would stop, and so what a person is owed before pressing it.
     func workingCount(onProfile profileID: String) -> Int {
-        retained.values.filter { $0.contextID == profileID }.count
+        retained.values.filter { $0.contextID == profileID && status(for: $0.session.id) != .idle }
+            .count
     }
 
     /// What a conversation this device is driving has told it, in the vocabulary the row and the
@@ -279,6 +280,14 @@ final class SessionActivity {
         NotificationCenter.default.post(name: Self.didChange, object: nil)
     }
 
+    /// A view model that stopped streaming is no longer a witness, so it stops speaking for its
+    /// conversation and the listing says what the session is doing. It stays kept, because what
+    /// it holds that did not go lives nowhere else, and the next open picks it up and streams.
+    func stoppedWatching(_ viewModel: ChatViewModel) {
+        guard retained[viewModel.session.id] === viewModel else { return }
+        settleUnobserved(viewModel.session.id)
+    }
+
     /// Drops a session whose observing stream died without reaching idle — the
     /// turn may still be running server-side, but nothing on this device can
     /// see it finish, so keeping the pill and the retained view model would
@@ -286,6 +295,10 @@ final class SessionActivity {
     /// finish, we just lost sight of it.
     func markUnobserved(sessionID: String) {
         retained[sessionID] = nil
+        settleUnobserved(sessionID)
+    }
+
+    private func settleUnobserved(_ sessionID: String) {
         guard let current = statuses[sessionID], current != .idle else { return }
         statuses[sessionID] = .idle
         NotificationCenter.default.post(name: Self.didChange, object: nil)

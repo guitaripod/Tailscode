@@ -319,6 +319,7 @@ final class ChatViewController: UIViewController {
             self?.revealTranscript()
         }
         bind()
+        viewModel.isBound = true
         viewModel.start()
         viewModel.restoreHeldMessages()
         #if DEBUG
