@@ -69,6 +69,22 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.83" date="2026-11-14">
+      <description>
+        <p>Long chats have chapters, and a long paste folds into a chip.</p>
+        <p>New:</p>
+        <ul>
+          <li>Chapters. A long chat is split into chapters as it goes. A heading marks where each one begins; click it, choose ⋯ ▸ Chapters… or type g c to see every chapter with what it came to and how long it ran, and pick one to jump there. With claude-bridge 1.22 or omp-bridge 0.13.</li>
+          <li>A long paste folds into a chip. Ctrl+V more than ten lines or a thousand characters and it waits beside the box as a chip you can open, edit as text or remove, and it is sent after your words as a document the agent reads. The draft keeps it when you switch chats.</li>
+        </ul>
+        <p>Fixes:</p>
+        <ul>
+          <li>A workflow that fans out to hundreds of agents shows a handful of rows and a “+N more” line, and each agent sits under the run it belongs to (claude-bridge 1.24).</li>
+          <li>Voice, setup, preview and connection failures say what happened in a sentence instead of an error code.</li>
+          <li>An omp chat whose provider refused a turn shows the provider&#x27;s reason instead of a prompt nobody answered.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.82" date="2026-11-09">
       <description>
         <p>New:</p>
