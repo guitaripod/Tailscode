@@ -72,8 +72,8 @@ final class HomeViewController: UIViewController {
     lazy var videoItem = UIBarButtonItem(customView: videoButton)
     let imageButton = ImageMarkButton()
     lazy var imageItem = UIBarButtonItem(customView: imageButton)
-    let orbView = PresenceOrbView()
-    var orbTarget: SessionEntry?
+    let agentsOrb = AgentsOrbButton()
+    lazy var agentsItem = makeAgentsItem()
     var quotas: [UsageQuota] = []
     var quotasAnsweredAt: Date?
     var savedChats: [SavedChat] = SavedChatStore.all()

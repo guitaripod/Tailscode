@@ -562,11 +562,6 @@ final class HomeStatusCell: UICollectionViewCell {
     private let sentenceLabel = UILabel()
     private let detailLabel = UILabel()
     private let rangeLabel = UILabel()
-    private let chevron = UIImageView()
-
-    override var isHighlighted: Bool {
-        didSet { contentView.alpha = isHighlighted ? 0.6 : 1 }
-    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -589,13 +584,7 @@ final class HomeStatusCell: UICollectionViewCell {
         light.setContentHuggingPriority(.required, for: .horizontal)
         light.translatesAutoresizingMaskIntoConstraints = false
 
-        chevron.image = UIImage(
-            systemName: "chevron.forward",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
-        chevron.tintColor = Theme.Color.tertiaryLabel
-        chevron.setContentHuggingPriority(.required, for: .horizontal)
-        chevron.setContentCompressionResistancePriority(.required, for: .horizontal)
-        [light, sentenceLabel, chevron].forEach(lead.addArrangedSubview)
+        [light, sentenceLabel].forEach(lead.addArrangedSubview)
         lead.axis = .horizontal
         lead.alignment = .center
         lead.spacing = Theme.Spacing.s + 2
@@ -616,8 +605,7 @@ final class HomeStatusCell: UICollectionViewCell {
                 equalTo: contentView.layoutMarginsGuide.trailingAnchor),
         ])
         isAccessibilityElement = true
-        accessibilityTraits = [.button, .header]
-        accessibilityHint = String(localized: "Opens the agents board")
+        accessibilityTraits = .header
         applySentenceFont()
         registerForTraitChanges([UITraitVerticalSizeClass.self, UITraitPreferredContentSizeCategory.self]) {
             (cell: HomeStatusCell, _) in

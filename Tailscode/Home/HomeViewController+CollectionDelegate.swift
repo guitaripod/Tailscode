@@ -13,6 +13,14 @@ extension HomeViewController: UICollectionViewDelegate {
         }
     }
 
+    /// The status sentence is read, not pressed: the bar's orb is Home's one way to the agents.
+    func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt indexPath: IndexPath)
+        -> Bool
+    {
+        if case .status = dataSource.itemIdentifier(for: indexPath) { return false }
+        return true
+    }
+
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         releaseDeferredSnapshotIfNeeded()
@@ -20,11 +28,9 @@ extension HomeViewController: UICollectionViewDelegate {
         switch item {
         case .alert:
             onOpenSettings?()
-        case .status:
-            presentAgents()
         case .schedule:
             pushSchedules()
-        case .demoNudge, .proInvitation, .placeholder, .agentNews:
+        case .status, .demoNudge, .proInvitation, .placeholder, .agentNews:
             break
         case .glance:
             pushUsage()

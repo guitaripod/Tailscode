@@ -347425,107 +347425,6 @@
         }
       }
     },
-    "Alpha — a GPU-rendered creature over Home that breathes what every conversation is doing; may cost battery": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alpha — ein GPU-gerendertes Wesen über dem Start, das atmet, was jede Unterhaltung gerade tut; kann Akku kosten"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alpha — a GPU-rendered creature over Home that breathes what every conversation is doing; may cost battery"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alfa — una criatura renderizada por GPU sobre Inicio que respira lo que hace cada conversación; puede costar batería"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alpha — une créature rendue par le GPU au-dessus de l’Accueil, qui respire ce que fait chaque conversation ; peut coûter de la batterie"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alpha — una creatura renderizzata dalla GPU sopra Home che respira ciò che sta facendo ogni conversazione; può costare batteria"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "アルファ版 — ホーム画面の上に浮かぶ GPU 描画の生き物で、すべての会話の様子を呼吸のように表します。バッテリーを消費する場合があります"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "알파 — 홈 화면 위에 떠 있는 GPU 렌더링 생물로, 모든 대화가 하는 일을 숨쉬듯 표현합니다. 배터리를 소모할 수 있습니다"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alfa — uma criatura renderizada por GPU sobre a Início que respira o que cada conversa está fazendo; pode custar bateria"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "内测 — 一个在主页上方以 GPU 渲染的生物，会随每段对话的动态呼吸；可能会更耗电"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "內測 — 一個在主頁上方以 GPU 渲染的生物，會隨每段對話的動態呼吸；可能會更耗電"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alpha — renderowane przez GPU stworzenie nad ekranem głównym, które oddycha tym, co robi każda rozmowa; może zużywać baterię"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alpha: en GPU-renderet skabning over Hjem, der ånder i takt med, hvad hver samtale gør; kan koste batteri"
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alfa – GPU:lla piirretty olento Koti-näkymän päällä, joka hengittää sen mukaan, mitä jokainen keskustelu tekee; voi kuluttaa akkua"
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alfa – GPU-teiknuð skepna yfir Heim-flipanum sem andar í takt við það sem hvert samtal er að gera; getur kostað rafhlöðu"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alfa – et GPU-tegnet vesen over Hjem som pulserer med hva hver samtale gjør; kan tære på batteriet"
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alfa – en GPU-renderad varelse över Hem som andas vad varje konversation gör; kan kosta batteri"
-          }
-        }
-      }
-    },
     "App theme": {
       "extractionState": "manual",
       "localizations": {
@@ -533505,107 +533404,6 @@
         }
       }
     },
-    "Opens the agents board": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Opens the agents board"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Öffnet das Agenten-Board"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abre el tablero de agentes"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ouvre le tableau des agents"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apre la bacheca degli agenti"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "エージェントボードを開きます"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "에이전트 보드를 엽니다"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Otwiera tablicę agentów"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abre o painel de agentes"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开智能体看板"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "開啟代理看板"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Åbner agenttavlen"
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Avaa agenttitaulun"
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Opnar agentatöfluna"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Åpner agenttavlen"
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Öppnar agentöversikten"
-          }
-        }
-      }
-    },
     "Send nudge": {
       "extractionState": "manual",
       "localizations": {
@@ -609861,107 +609659,6 @@
         }
       }
     },
-    "Alpha. A creature drawn on the GPU over Home that breathes what every conversation is doing. It may cost battery.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alpha. A creature drawn on the GPU over Home that breathes what every conversation is doing. It may cost battery."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alpha. Eine Kreatur, die per GPU über Home gezeichnet wird und atmet, was jeder Chat gerade tut. Sie kann den Akku belasten."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alfa. Una criatura dibujada en la GPU sobre Inicio que respira con lo que hace cada chat. Puede gastar batería."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alpha. Une créature dessinée par le GPU au-dessus de l’écran Accueil, qui reflète l’activité de chaque conversation. Elle peut consommer de la batterie."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alpha. Una creatura disegnata dalla GPU sopra Home che respira con ciò che fa ogni chat. Può consumare la batteria."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "アルファ版。ホーム画面の上に GPU で描かれる生き物で、すべての会話の様子を息づかいで表します。バッテリーを消費する場合があります。"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "알파. 홈 위에 GPU로 그려지는 생물로, 모든 대화가 하는 일을 숨결로 보여 줍니다. 배터리를 소모할 수 있습니다."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alfa. Stworzenie rysowane przez GPU nad ekranem Start, które oddycha tym, co robi każda rozmowa. Może zużywać baterię."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alfa. Uma criatura desenhada pela GPU sobre o Início que respira com o que cada conversa está fazendo. Pode gastar bateria."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "内测版。在主页上方由 GPU 绘制的一只生物，用呼吸般的起伏表现每段对话正在做什么。可能会消耗电量。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "內測版。在主頁上方由 GPU 繪製的一隻生物，用呼吸般的起伏表現每段對話正在做什麼。可能會消耗電量。"
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alfa. Et væsen tegnet på GPU’en over Hjem, som trækker vejret i takt med, hvad hver samtale laver. Det kan koste batteri."
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alfa. GPU:n piirtämä olento Kodin päällä, joka hengittää sen mukaan, mitä kukin keskustelu tekee. Se voi kuluttaa akkua."
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alfa. Vera sem er teiknuð á GPU yfir Home og andar í takt við það sem hvert samtal er að gera. Hún getur tæmt rafhlöðuna."
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alfa. Et vesen tegnet på GPU-en over Hjem-skjermen som puster i takt med det hver samtale gjør. Det kan tære på batteriet."
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alfa. Ett väsen ritat på grafikkortet över Hem som andas med vad varje konversation gör. Det kan kosta batteri."
-          }
-        }
-      }
-    },
     "Hold Send to refine a draft with the on-device model. Keyboard shortcuts are for a hardware keyboard and use the same keys and rebinding file as the desktop apps.": {
       "extractionState": "manual",
       "localizations": {
@@ -624098,6 +623795,208 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nu %@, på %@ s: ”%@”. Väljs om när en annan körs eller när denna stannar."
+          }
+        }
+      }
+    },
+    "Agents board": {
+      "extractionState": "manual",
+      "localizations": {
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agenttavle"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agenten-Board"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agents board"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Panel de agentes"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agenttitaulu"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tableau des agents"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agentatafla"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bacheca degli agenti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントボード"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트 보드"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agenttavle"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tablica agentów"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Painel de agentes"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agenttavla"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能体面板"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代理面板"
+          }
+        }
+      }
+    },
+    "Opens the agents wall": {
+      "extractionState": "manual",
+      "localizations": {
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åbner agentvæggen"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öffnet die Agenten-Wand"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens the agents wall"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre el muro de agentes"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avaa agenttiseinän"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvre le mur des agents"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opnar vegg agenta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apre la parete degli agenti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "エージェントのウォールを開きます"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "에이전트 월을 엽니다"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpner agentveggen"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otwiera ścianę agentów"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre o mural de agentes"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öppnar agentväggen"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开代理墙"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟代理牆"
           }
         }
       }

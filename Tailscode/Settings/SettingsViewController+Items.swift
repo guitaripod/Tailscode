@@ -57,7 +57,7 @@ extension SettingsViewController {
         case tailnetStatus, discovery
         case permission, finished, needsYou, muted, usageAlerts, liveActivities, push, testNotice
         case composer, dictation, agentSteps, answers, resume
-        case theme, density, orb
+        case theme, density
         case keys
         case logs, report
         case version, feedback, legal
@@ -84,7 +84,6 @@ extension SettingsViewController {
         case dictationChatWords
         case notifyApprovals, notifyUsage, notifyRunningLow, serverPush
         case liveActivities
-        case presenceOrb
 
         var title: String {
             switch self {
@@ -101,7 +100,6 @@ extension SettingsViewController {
             case .notifyRunningLow: return String(localized: "Running low")
             case .serverPush: return String(localized: "Push from servers")
             case .liveActivities: return String(localized: "Live Activities")
-            case .presenceOrb: return String(localized: "Presence orb")
             }
         }
 
@@ -136,11 +134,6 @@ extension SettingsViewController {
                         "Keeps this device registered with claude-bridge, which pushes turn alerts and refreshes the usage widget while the app is closed"
                 )
             case .liveActivities: return String(localized: "Live turn progress on the Lock Screen")
-            case .presenceOrb:
-                return String(
-                    localized:
-                        "Alpha — a GPU-rendered creature over Home that breathes what every conversation is doing; may cost battery"
-                )
             }
         }
 
@@ -159,7 +152,6 @@ extension SettingsViewController {
             case .notifyRunningLow: return AppPreferences.notifyRunningLow
             case .serverPush: return AppPreferences.pushAlertsEnabled
             case .liveActivities: return AppPreferences.liveActivitiesEnabled
-            case .presenceOrb: return PresenceOrbSetting.isEnabled
             }
         }
 
@@ -186,7 +178,6 @@ extension SettingsViewController {
             case .liveActivities:
                 AppPreferences.liveActivitiesEnabled = value
                 if !value { AppActivityController.shared.withdrawAll() }
-            case .presenceOrb: PresenceOrbSetting.setEnabled(value)
             }
         }
     }

@@ -223,36 +223,15 @@ extension HomeViewController {
     }
 
     private func configureOrb() {
-        orbView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(orbView)
-        NSLayoutConstraint.activate([
-            orbView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
-            orbView.bottomAnchor.constraint(equalTo: accessories.topAnchor, constant: -10),
-            orbView.widthAnchor.constraint(equalToConstant: 76),
-            orbView.heightAnchor.constraint(equalToConstant: 76),
-        ])
-        orbView.setEnabled(PresenceOrbSetting.isEnabled)
-        orbView.onTap = { [weak self] in
-            guard let self, let entry = self.orbTarget else { return }
-            self.openChat(for: entry)
-        }
-        orbView.onOpenAgents = { [weak self] in self?.presentAgents() }
+        agentsOrb.onWall = { [weak self] in self?.presentWall() }
+        agentsOrb.onBoard = { [weak self] in self?.presentAgents() }
         composerBar.onAuraChanged = { [weak self] in self?.applyOrbState() }
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(orbSettingChanged),
-            name: PresenceOrbSetting.didChange, object: nil)
-    }
-
-    @objc private func orbSettingChanged() {
-        orbView.setEnabled(PresenceOrbSetting.isEnabled)
-        applyOrbState()
     }
 
     /// The orb reads the same board the list draws: what this device is streaming first-hand
     /// wins, the listing's own working flag counts, and every unreachable server rests one quiet
-    /// weight on the body. The conversation a tap opens is the one that most needs the person.
+    /// weight on the body.
     func applyOrbState() {
-        guard PresenceOrbSetting.isEnabled else { return }
         var kinds: [ActivityKind?] = viewModel.entries.map { entry in
             switch SessionActivity.shared.status(for: entry.session.id) {
             case .awaitingApproval: return .needsApproval
@@ -267,11 +246,7 @@ extension HomeViewController {
             }
         }
         kinds += viewModel.unreachable.map { _ in ActivityKind.offline }
-        orbTarget =
-            viewModel.entries.first {
-                SessionActivity.shared.status(for: $0.session.id) == .awaitingApproval
-            } ?? viewModel.entries.first { isLive($0) }
-        orbView.update(
+        agentsOrb.update(
             signal: PresenceSignal.aggregate(kinds, ultracode: composerBar.auraIsActive))
     }
 
@@ -465,12 +440,7 @@ extension HomeViewController {
         case .needsYou, .asks:
             view.configure(title: String(localized: "Needs you"), count: count, needsYou: true)
         case .working:
-            view.configure(
-                title: String(localized: "Working"), count: count,
-                actionTitle: String(localized: "Agents")
-            ) { [weak self] in
-                self?.presentAgents()
-            }
+            view.configure(title: String(localized: "Working"), count: count)
         case .pinned:
             view.configure(title: String(localized: "Pinned"), count: count)
         case .saved:

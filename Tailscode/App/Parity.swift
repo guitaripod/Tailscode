@@ -228,7 +228,7 @@ enum ParityManifest {
         case .hapticFeedback: return .implemented("HapticEngine")
         case .homeQuickActions: return .implemented("HomeQuickActions")
         case .usageWidgets: return .implemented("WidgetGlance")
-        case .presenceOrb: return .implemented("PresenceOrbView")
+        case .presenceOrb: return .implemented("AgentsOrbButton")
         case .auroraStream: return .implemented("AuroraStreamView")
         case .gameCenter: return .implemented("GameCenterCoordinator")
         case .projectBoard: return .implemented("openProjectBoard")

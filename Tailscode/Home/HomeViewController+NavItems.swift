@@ -106,8 +106,8 @@ extension HomeViewController {
         present(nav, animated: true)
     }
 
-    /// Home's bar carries the Agents board, one press from Home whatever Home is showing, and one
-    /// button for everything else that is not the board: the tools. The composer is the new chat,
+    /// Home's bar carries the agents, as the orb that says what they are doing and opens their wall
+    /// in one press whatever Home is showing, and one button for everything else: the tools. The composer is the new chat,
     /// so a pencil that only focused a box already on screen is gone from the phone; with several
     /// servers the menu opens with the choice of machine, which keeps its one-tap home. A render
     /// that is out is the exception, because the light round its button is how the app says where
@@ -127,21 +127,21 @@ extension HomeViewController {
         appliedComposeButtonState = state
         var items =
             workspace == nil
-            ? [toolsItem(for: servers, imageOpen: door.isOpen), agentsItem]
-            : [newChatItem(for: servers), agentsItem]
+            ? [agentsItem, toolsItem(for: servers, imageOpen: door.isOpen)]
+            : [agentsItem, newChatItem(for: servers)]
         if rendering { items.append(videoItem) }
         if painting { items.append(imageItem) }
         navigationItem.rightBarButtonItems = items
     }
 
-    /// The Agents board, from the bar: the same board the status sentence opens, in the same mark
-    /// the side bar of an iPhone Duo uses.
-    var agentsItem: UIBarButtonItem {
-        let item = UIBarButtonItem(
-            primaryAction: UIAction(
-                title: String(localized: "Agents"), image: UIImage(systemName: AgentsPresenter.symbol)
-            ) { [weak self] _ in self?.presentAgents() })
-        item.accessibilityLabel = String(localized: "Agents")
+    /// The orb in a glass of its own at the bar's trailing edge, never merged into the tools' glass:
+    /// it is the one item in the bar that is alive, and the same item every pass, because the bead
+    /// it carries keeps its field from frame to frame.
+    func makeAgentsItem() -> UIBarButtonItem {
+        let item = UIBarButtonItem(customView: agentsOrb)
+        item.title = String(localized: "Agents")
+        item.image = UIImage(systemName: AgentsPresenter.symbol)
+        if #available(iOS 26.0, *) { item.sharesBackground = false }
         return item
     }
 

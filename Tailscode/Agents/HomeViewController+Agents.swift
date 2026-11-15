@@ -27,4 +27,6 @@ extension HomeViewController: AgentsListSource {
     }
 
     func presentAgents() { AgentsPresenter.present(from: self) }
+
+    func presentWall() { AgentsPresenter.presentWall(from: self) }
 }

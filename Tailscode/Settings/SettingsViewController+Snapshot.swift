@@ -56,7 +56,6 @@ extension SettingsViewController {
             return [
                 (.theme, [.appearance]),
                 (.density, [.chatDensity]),
-                (.orb, [.toggle(.presenceOrb)]),
             ]
         case .keys:
             return [(.keys, [.ollamaKey, .deepseekKey])]

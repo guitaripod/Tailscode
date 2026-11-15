@@ -2,11 +2,11 @@ import MetalKit
 import TailscodeCore
 import UIKit
 
-/// The presence orb: the aggregate of everything this phone watches, worn as one small creature
-/// floating over Home. The whole behaviour is Core's `PresenceField` — this end only resolves the
-/// theme's inks, reads the display's clock, and hands each frame to the shader — and the link
-/// pauses the moment a frame reports itself settled, because stillness rendered a hundred times a
-/// second is a battery spent on a picture that is finished.
+/// The presence orb: the aggregate of everything this phone watches, worn as one small glass bead
+/// in Home's bar. The whole behaviour is Core's `PresenceField` — this end only resolves the
+/// theme's inks, reads the display's clock, and hands each frame to the shader — and the clock
+/// stops the moment a frame reports itself settled, because stillness redrawn twenty times a second
+/// is a battery spent on a picture that is finished.
 @MainActor
 final class PresenceOrbView: UIView {
     private struct Uniforms {
@@ -15,6 +15,7 @@ final class PresenceOrbView: UIView {
         var stopCount: Int32
         var color: SIMD4<Float>
         var params: SIMD4<Float>
+        var look: SIMD4<Float>
         var blobs:
             (
                 SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>,
@@ -27,15 +28,26 @@ final class PresenceOrbView: UIView {
             )
     }
 
+    /// How often the bead is redrawn while it moves. Every motion it makes is a slow one at the
+    /// size of a bar button — a breath over seconds, satellites a few points a second, a knock
+    /// that lasts a quarter of one — so twenty frames draw it as smoothly as thirty would, for a
+    /// third fewer wakes of the main thread and the GPU.
+    static let tempo = 20
+
+    /// How much of the field's unit space the view shows: less than all of it, so the core reads
+    /// at bar size while the outermost satellite and the start of its glow still fit.
+    static let zoom: Float = 0.72
+
     private let metalView = MTKView()
-    private var device: MTLDevice?
-    private var queue: MTLCommandQueue?
     private var pipeline: MTLRenderPipelineState?
+    private var queue: MTLCommandQueue?
     private var field: PresenceField
     private(set) var signal = PresenceSignal()
     private var isHeld = false
-    var onTap: (() -> Void)?
-    var onOpenAgents: (() -> Void)?
+    private nonisolated(unsafe) var observers: [NSObjectProtocol] = []
+
+    /// False where Metal cannot draw it, so the button wears a symbol instead of an empty glass.
+    var isAvailable: Bool { pipeline != nil }
 
     init() {
         field = PresenceField(colors: PresenceColors(
@@ -44,51 +56,40 @@ final class PresenceOrbView: UIView {
             danger: PresenceRGB(red: 0.9, green: 0.3, blue: 0.3),
             quiet: PresenceRGB(red: 0.5, green: 0.5, blue: 0.55)))
         super.init(frame: .zero)
+        isUserInteractionEnabled = false
         configureMetal()
         field.set(colors: inks())
-        isAccessibilityElement = true
-        accessibilityTraits = .button
-        accessibilityLabel = signal.spoken
-        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
-        addInteraction(UIContextMenuInteraction(delegate: self))
-        accessibilityCustomActions = [
-            UIAccessibilityCustomAction(name: String(localized: "Agents")) { [weak self] _ in
-                self?.onOpenAgents?()
-                return true
-            }
-        ]
         registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) {
             (view: PresenceOrbView, _) in
             view.field.set(colors: view.inks())
             view.wake()
         }
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(motionPreferenceChanged),
-            name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
+        observeStillness()
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    deinit {
+        for observer in observers { NotificationCenter.default.removeObserver(observer) }
+    }
 
     private func configureMetal() {
         guard let context = NeuralMetalContext.shared,
             let pipeline = context.premultipliedPipeline(
                 vertex: "orb_vertex", fragment: "orb_fragment", format: .bgra8Unorm)
-        else {
-            isHidden = true
-            return
-        }
-        let device = context.device
-        self.device = device
+        else { return }
         queue = context.queue
         self.pipeline = pipeline
-        metalView.device = device
+        metalView.device = context.device
         metalView.delegate = self
         metalView.isOpaque = false
         metalView.backgroundColor = .clear
         metalView.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         metalView.framebufferOnly = true
+        metalView.autoResizeDrawable = true
         metalView.preferredFramesPerSecond = Self.tempo
         metalView.isUserInteractionEnabled = false
+        metalView.isPaused = true
         metalView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(metalView)
         NSLayoutConstraint.activate([
@@ -98,18 +99,6 @@ final class PresenceOrbView: UIView {
             metalView.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
     }
-
-    /// How often the creature is redrawn: the vocabulary's own tempo, because the orb is a mark
-    /// rather than a renderer.
-    ///
-    /// Every parameter of a frame eases in seconds and the field reads absolute time, so a frame
-    /// this view does not ask for costs a frame and never the phase — while the sixty this client
-    /// had chosen for itself is twice the GPU spent on motion no eye can tell from thirty, beside
-    /// badges on the same screen counting thirty. The two clocks in this app that really are
-    /// renderers — the answer cascade and its shader preview — keep their own full rate on
-    /// purpose; this is not one of them, and the other two desks already read their orb's rate
-    /// from here.
-    private static var tempo: Int { Int(ActivityTuning.frameRate) }
 
     /// The palette's own tone slots, and nothing private — under System, the platform's colours,
     /// resolved against this view's own traits so the orb flips with the appearance it sits in.
@@ -132,27 +121,18 @@ final class PresenceOrbView: UIView {
         guard signal != self.signal else { return }
         self.signal = signal
         field.set(signal: signal)
-        accessibilityLabel = signal.spoken
         wake()
     }
 
-    /// Disabling must stop the clock, not just the pixels: a hidden view's display link runs on,
-    /// and an animated signal never settles, so hiding alone would spend the battery the setting
-    /// exists to protect.
-    func setEnabled(_ enabled: Bool) {
-        isHidden = !enabled
-        if enabled { wake() } else { metalView.isPaused = true }
-    }
-
-    /// Under a sheet that hides it the creature stops drawing, and picks up where its field says it
-    /// is the moment it is seen again: the field reads absolute time, so no frame is owed.
+    /// Under a sheet that hides it the bead stops drawing, and picks up where its field says it is
+    /// the moment it is seen again: the field reads absolute time, so no frame is owed.
     func setHeld(_ held: Bool) {
         isHeld = held
         if held { metalView.isPaused = true } else { wake() }
     }
 
     private func wake() {
-        guard window != nil, !isHidden, !isHeld else { return }
+        guard pipeline != nil, window != nil, !isHidden, !isHeld else { return }
         metalView.isPaused = false
     }
 
@@ -161,33 +141,29 @@ final class PresenceOrbView: UIView {
         if window == nil { metalView.isPaused = true } else { wake() }
     }
 
-    @objc private func tapped() { onTap?() }
-
-    @objc private func motionPreferenceChanged() { wake() }
-}
-
-extension PresenceOrbView: UIContextMenuInteractionDelegate {
-    func contextMenuInteraction(
-        _ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint
-    ) -> UIContextMenuConfiguration? {
-        guard onOpenAgents != nil else { return nil }
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-            UIMenu(children: [
-                UIAction(title: String(localized: "Agents"), image: UIImage(systemName: "person.2")) {
-                    _ in self?.onOpenAgents?()
-                }
-            ])
-        }
+    /// Reduce Motion, Low Power Mode and a phone running hot all ask for the same thing: each
+    /// state's resting arrangement, drawn once, with its colour and its satellites and nothing
+    /// that needs a clock.
+    private var holdsStill: Bool {
+        let info = ProcessInfo.processInfo
+        return UIAccessibility.isReduceMotionEnabled || info.isLowPowerModeEnabled
+            || info.thermalState == .serious || info.thermalState == .critical
     }
 
-    func contextMenuInteraction(
-        _ interaction: UIContextMenuInteraction,
-        previewForHighlightingMenuWithConfiguration configuration: UIContextMenuConfiguration
-    ) -> UITargetedPreview? {
-        let parameters = UIPreviewParameters()
-        parameters.backgroundColor = .clear
-        parameters.visiblePath = UIBezierPath(ovalIn: bounds.insetBy(dx: 8, dy: 8))
-        return UITargetedPreview(view: self, parameters: parameters)
+    /// Low Power Mode and the thermal state are posted from whichever thread noticed them, so the
+    /// bead hears them on the main queue.
+    private func observeStillness() {
+        for name in [
+            UIAccessibility.reduceMotionStatusDidChangeNotification,
+            Notification.Name.NSProcessInfoPowerStateDidChange,
+            ProcessInfo.thermalStateDidChangeNotification,
+        ] {
+            observers.append(
+                NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {
+                    [weak self] _ in
+                    MainActor.assumeIsolated { self?.wake() }
+                })
+        }
     }
 }
 
@@ -202,8 +178,7 @@ extension PresenceOrbView: MTKViewDelegate {
         guard let pipeline, let queue, let descriptor = view.currentRenderPassDescriptor,
             let drawable = view.currentDrawable
         else { return }
-        let frame = field.frame(
-            at: CACurrentMediaTime(), reduceMotion: UIAccessibility.isReduceMotionEnabled)
+        let frame = field.frame(at: CACurrentMediaTime(), reduceMotion: holdsStill)
         if frame.settled { view.isPaused = true }
         var uniforms = Self.uniforms(for: frame, size: view.drawableSize)
         guard let commands = queue.makeCommandBuffer(),
@@ -238,6 +213,7 @@ extension PresenceOrbView: MTKViewDelegate {
             params: SIMD4(
                 Float(frame.energy), Float(frame.intensity), Float(frame.rainbow),
                 Float(frame.rainbowPhase)),
+            look: SIMD4(zoom, 0, 0, 0),
             blobs: (
                 blobs[0], blobs[1], blobs[2], blobs[3], blobs[4], blobs[5], blobs[6], blobs[7]
             ),

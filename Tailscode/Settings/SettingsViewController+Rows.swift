@@ -133,7 +133,7 @@ extension SettingsViewController {
         switch section {
         case .servers, .discovery, .permission, .finished, .needsYou, .muted, .usageAlerts,
             .liveActivities, .push, .testNotice, .composer, .dictation, .agentSteps, .answers, .resume, .density,
-            .orb, .keys, .report, .legal:
+            .keys, .report, .legal:
             return true
         case .midgar, .alerts, .network, .experience, .accounts, .pro, .support, .addServer, .demo,
             .testServers, .tailnetStatus, .theme, .logs, .version, .feedback, .results:
@@ -225,11 +225,6 @@ extension SettingsViewController {
             return AutoResumeSetting.explanation
         case .density:
             return ChatDensitySetting.explanation
-        case .orb:
-            return String(
-                localized:
-                    "Alpha. A creature drawn on the GPU over Home that breathes what every conversation is doing. It may cost battery."
-            )
         case .keys:
             return String(
                 localized:
