@@ -191,7 +191,9 @@ enum Kit {
     /// 0.52.0 reads a failed turn a bridge kept on its answer.
     /// 0.53.0 carries the workflow run each agent belongs to.
     /// 0.54.0 carries what a chat's last answer said, for a list row nobody has read.
-    static let version = Version(0, 54, 0)
+    /// 0.55.0 carries the limiter's verdict on a usage window, so a refusal is told apart from a
+    /// reading rounded up to 100 %.
+    static let version = Version(0, 55, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

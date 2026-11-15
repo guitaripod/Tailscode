@@ -1,5 +1,5 @@
 {
-  "originHash" : "915e5b6eac1118c44c7129da188858dee43cdb41119cc218a9f074c82eab3c46",
+  "originHash" : "d272701af4ff87d747b83629f60a9e1c84a129707c30c73ad585c5f743004527",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/guitaripod/CodingAgentKit.git",
       "state" : {
-        "revision" : "bcdc0bb1bdb6d5dbb655ac8f183dbb94ef8def8f",
-        "version" : "0.54.0"
+        "revision" : "8afea661a675dcf1f94e75b7b616cb75298afa3f",
+        "version" : "0.55.0"
       }
     },
     {
