@@ -119,16 +119,18 @@ extension HomeViewController {
         let door = ImageGenDoor.current()
         let rendering = ForgeRunner.shared.light != .dark
         let painting = ImageStudio.shared.isPainting
+        let vertical = VerticalBar.isPresent(in: traitCollection)
         let state =
             servers.map { "\($0.id)|\($0.name)|\($0.backend.rawValue)" }.joined(separator: "\u{1}")
             + "\u{1}image=\(door.isOpen)\u{1}columns=\(workspace != nil)"
-            + "\u{1}render=\(rendering)\u{1}paint=\(painting)"
+            + "\u{1}render=\(rendering)\u{1}paint=\(painting)\u{1}vertical=\(vertical)"
         guard state != appliedComposeButtonState else { return }
         appliedComposeButtonState = state
+        let agents = vertical ? agentsBarItem : agentsItem
         var items =
             workspace == nil
-            ? [agentsItem, toolsItem(for: servers, imageOpen: door.isOpen)]
-            : [agentsItem, newChatItem(for: servers)]
+            ? [agents, toolsItem(for: servers, imageOpen: door.isOpen)]
+            : [agents, newChatItem(for: servers)]
         if rendering { items.append(videoItem) }
         if painting { items.append(imageItem) }
         navigationItem.rightBarButtonItems = items
@@ -142,6 +144,19 @@ extension HomeViewController {
         item.title = String(localized: "Agents")
         item.image = UIImage(systemName: AgentsPresenter.symbol)
         if #available(iOS 26.0, *) { item.sharesBackground = false }
+        return item
+    }
+
+    /// The same way in for a bar down a side edge, which never takes in a custom view and would
+    /// leave the orb a row of its own across the top: the board's mark, the same press to the wall
+    /// and the same menu.
+    func makeAgentsBarItem() -> UIBarButtonItem {
+        let item = UIBarButtonItem(
+            title: String(localized: "Agents"), image: UIImage(systemName: AgentsPresenter.symbol),
+            primaryAction: UIAction { [weak self] _ in self?.presentWall() },
+            menu: AgentsOrbButton.menu { [weak self] in self?.presentAgents() })
+        item.accessibilityHint = String(localized: "Opens the agents wall")
+        VerticalBar.rank(item, .keep)
         return item
     }
 

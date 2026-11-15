@@ -15,7 +15,7 @@ enum AgentsPresenter {
         let chain = presented(from: presenter)
         guard board(in: chain) == nil, let top = chain.last, !top.isBeingDismissed else { return nil }
         let board = AgentsBoardViewController()
-        let navigation = UINavigationController(rootViewController: board)
+        let navigation = AgentsBoardNavigation(rootViewController: board)
         Theme.Haptics.tap()
         top.present(navigation, animated: animated)
         return board
@@ -46,7 +46,33 @@ enum AgentsPresenter {
         return chain
     }
 
+    /// Posted with the window scene the board covers as its object and `covered` in its user info,
+    /// as the board's sheet rises and as it starts to leave.
+    static let boardCoverDidChange = Notification.Name("tailscode.agents.boardCover")
+
     private static func board(in chain: [UIViewController]) -> UIViewController? {
         chain.first { ($0 as? UINavigationController)?.viewControllers.first is AgentsBoardViewController }
+    }
+}
+
+/// The board's sheet, which says when it covers the window it rose over, so what is drawn under it
+/// can rest the way it rests under Settings. A wall opened over the board leaves it covering.
+@MainActor
+final class AgentsBoardNavigation: UINavigationController {
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        post(covered: true)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        guard isBeingDismissed else { return }
+        post(covered: false)
+    }
+
+    private func post(covered: Bool) {
+        guard let scene = presentingViewController?.view.window?.windowScene else { return }
+        NotificationCenter.default.post(
+            name: AgentsPresenter.boardCoverDidChange, object: scene, userInfo: ["covered": covered])
     }
 }

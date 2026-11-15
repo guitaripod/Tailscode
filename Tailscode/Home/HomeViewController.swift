@@ -74,6 +74,7 @@ final class HomeViewController: UIViewController {
     lazy var imageItem = UIBarButtonItem(customView: imageButton)
     let agentsOrb = AgentsOrbButton()
     lazy var agentsItem = makeAgentsItem()
+    lazy var agentsBarItem = makeAgentsBarItem()
     var quotas: [UsageQuota] = []
     var quotasAnsweredAt: Date?
     var savedChats: [SavedChat] = SavedChatStore.all()
@@ -131,7 +132,10 @@ final class HomeViewController: UIViewController {
         navigationItem.backButtonTitle = String(localized: "Home")
         view.backgroundColor = Theme.Color.groupedBackground
         settingsButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
-        VerticalBar.observe(self) { home in home.updateLeftBarItems() }
+        VerticalBar.observe(self) { home in
+            home.updateLeftBarItems()
+            home.updateComposeButton()
+        }
         updateChip.addTarget(self, action: #selector(openUpdates), for: .touchUpInside)
         videoButton.addTarget(self, action: #selector(openVideo), for: .touchUpInside)
         imageButton.addTarget(self, action: #selector(openImage), for: .touchUpInside)

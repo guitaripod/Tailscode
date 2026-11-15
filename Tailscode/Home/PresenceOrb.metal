@@ -50,7 +50,9 @@ vertex OrbVarying orb_vertex(uint id [[vertex_id]], constant OrbUniforms &unifor
 /// The field is a smooth-min union of the circles Core handed over, lit as one glass bead: the
 /// distance field's own slope is the surface normal, so the core and every satellite catch the
 /// same key light from the upper left, a specular glint and a rim that brightens toward the edge,
-/// with the ink glowing from inside as the body breathes. The shader adds light and nothing else:
+/// with the ink glowing from inside as the body breathes. Where the slope vanishes, on the saddle
+/// of a neck between the core and a satellite, the surface faces the viewer rather than nowhere,
+/// because a normal of nothing is not a number. The shader adds light and nothing else:
 /// no motion, no colour choice, no state lives here. `look.x` is the zoom, how much of the unit
 /// space the view shows, so a small view can wear a larger body, and the glow fades out inside the
 /// view's inscribed circle so a square view never shows a square edge. Output is premultiplied
@@ -76,7 +78,8 @@ fragment float4 orb_fragment(
         float2 outward = length(slope) > 1e-5 ? normalize(slope) : float2(0.0);
         float rise = clamp(-d / 0.22, 0.0, 1.0);
         float height = sqrt(1.0 - (1.0 - rise) * (1.0 - rise));
-        float3 normal = normalize(float3(outward * sqrt(max(0.0, 1.0 - height * height)), height));
+        float3 raw = float3(outward * sqrt(max(0.0, 1.0 - height * height)), height);
+        float3 normal = dot(raw, raw) > 1e-12 ? normalize(raw) : float3(0.0, 0.0, 1.0);
         float3 light = normalize(float3(-0.48, 0.6, 0.64));
         float diffuse = max(dot(normal, light), 0.0);
         float glint = pow(max(dot(normal, normalize(light + float3(0.0, 0.0, 1.0))), 0.0), 38.0);

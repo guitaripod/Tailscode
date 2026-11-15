@@ -43,7 +43,7 @@ final class PresenceOrbView: UIView {
     private var queue: MTLCommandQueue?
     private var field: PresenceField
     private(set) var signal = PresenceSignal()
-    private var isHeld = false
+    private var holds: Set<Hold> = []
     private nonisolated(unsafe) var observers: [NSObjectProtocol] = []
 
     /// False where Metal cannot draw it, so the button wears a symbol instead of an empty glass.
@@ -124,15 +124,20 @@ final class PresenceOrbView: UIView {
         wake()
     }
 
+    /// What can cover Home while it stays in the window: Settings and the Agents board, each a sheet
+    /// a person sits in.
+    enum Hold: Hashable { case settings, board }
+
     /// Under a sheet that hides it the bead stops drawing, and picks up where its field says it is
-    /// the moment it is seen again: the field reads absolute time, so no frame is owed.
-    func setHeld(_ held: Bool) {
-        isHeld = held
-        if held { metalView.isPaused = true } else { wake() }
+    /// the moment it is seen again: the field reads absolute time, so no frame is owed. Each sheet
+    /// holds it for itself, so one leaving never wakes the bead under the other.
+    func setHeld(_ held: Bool, by hold: Hold) {
+        if held { holds.insert(hold) } else { holds.remove(hold) }
+        if !holds.isEmpty { metalView.isPaused = true } else { wake() }
     }
 
     private func wake() {
-        guard pipeline != nil, window != nil, !isHidden, !isHeld else { return }
+        guard pipeline != nil, window != nil, !isHidden, holds.isEmpty else { return }
         metalView.isPaused = false
     }
 

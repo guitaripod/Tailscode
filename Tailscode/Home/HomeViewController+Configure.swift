@@ -226,6 +226,18 @@ extension HomeViewController {
         agentsOrb.onWall = { [weak self] in self?.presentWall() }
         agentsOrb.onBoard = { [weak self] in self?.presentAgents() }
         composerBar.onAuraChanged = { [weak self] in self?.applyOrbState() }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(boardCoverChanged(_:)), name: AgentsPresenter.boardCoverDidChange,
+            object: nil)
+    }
+
+    /// The board is a sheet a person sits in, like Settings, so the bead rests under it in this
+    /// window and nowhere else.
+    @objc private func boardCoverChanged(_ note: Notification) {
+        guard let scene = note.object as? UIWindowScene, scene === view.window?.windowScene,
+            let covered = note.userInfo?["covered"] as? Bool
+        else { return }
+        agentsOrb.setHeld(covered, by: .board)
     }
 
     /// The orb reads the same board the list draws: what this device is streaming first-hand

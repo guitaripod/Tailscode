@@ -5,7 +5,8 @@ import UIKit
 /// always saying, in colour, motion and satellites, what every machine's agents are doing. A press
 /// opens the wall full screen; a long press offers the board, and on an iPad that can hold several
 /// windows the wall in a window of its own. Where Metal cannot draw the bead the button wears the
-/// board's mark instead, so the way in never disappears.
+/// board's mark instead, so the way in never disappears; a side bar, which never takes in a custom
+/// view, gets Home's plain Agents item with the same press and the same menu.
 @MainActor
 final class AgentsOrbButton: UIButton {
     static let side: CGFloat = 36
@@ -31,7 +32,7 @@ final class AgentsOrbButton: UIButton {
             self.configuration = configuration
         }
         addAction(UIAction { [weak self] _ in self?.onWall?() }, for: .primaryActionTriggered)
-        menu = UIMenu(children: menuActions())
+        menu = Self.menu { [weak self] in self?.onBoard?() }
         showsMenuAsPrimaryAction = false
         isPointerInteractionEnabled = true
         showsLargeContentViewer = true
@@ -72,15 +73,16 @@ final class AgentsOrbButton: UIButton {
         accessibilityValue = signal.spoken
     }
 
-    func setHeld(_ held: Bool) {
-        orb.setHeld(held)
+    func setHeld(_ held: Bool, by hold: PresenceOrbView.Hold) {
+        orb.setHeld(held, by: hold)
     }
 
-    private func menuActions() -> [UIMenuElement] {
+    /// What a long press offers, here and on the plain Agents item a side bar takes in instead.
+    static func menu(board: @escaping @MainActor @Sendable () -> Void) -> UIMenu {
         var actions: [UIMenuElement] = [
             UIAction(
                 title: String(localized: "Agents board"), image: UIImage(systemName: AgentsPresenter.symbol)
-            ) { [weak self] _ in self?.onBoard?() }
+            ) { _ in board() }
         ]
         if UIDevice.current.userInterfaceIdiom == .pad, UIApplication.shared.supportsMultipleScenes {
             actions.append(
@@ -89,6 +91,6 @@ final class AgentsOrbButton: UIButton {
                     image: UIImage(systemName: "macwindow.badge.plus")
                 ) { _ in WatchScene.openWindow() })
         }
-        return actions
+        return UIMenu(children: actions)
     }
 }

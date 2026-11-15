@@ -257,7 +257,7 @@ extension HomeViewController {
     func setUnderSettings(_ covered: Bool) {
         guard covered != isUnderSettings else { return }
         isUnderSettings = covered
-        agentsOrb.setHeld(covered)
+        agentsOrb.setHeld(covered, by: .settings)
         guard !covered else { return stopLiveRefresh() }
         guard viewIfLoaded?.window != nil else { return }
         if deferredSnapshot { renderSnapshot() }
