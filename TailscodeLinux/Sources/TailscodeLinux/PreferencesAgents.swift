@@ -40,6 +40,18 @@ extension Preferences {
         SettingsFile.set(trimmed.isEmpty ? nil : trimmed, forKey: plainWordsAddressKey)
     }
 
+    private static let plainWordsLabelKey = "tailscode.watch.plainWordsLabel"
+
+    /// What the finder called the model it chose and proved, empty when the address is one the
+    /// person typed.
+    static var plainWordsLabel: String { UserDefaults.standard.string(forKey: plainWordsLabelKey) ?? "" }
+
+    static var plainWordsFound: Bool { !plainWordsLabel.isEmpty }
+
+    static func setPlainWordsFound(label: String?) {
+        SettingsFile.set(label?.isEmpty == false ? label : nil, forKey: plainWordsLabelKey)
+    }
+
     static func setPlainWordsModel(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         SettingsFile.set(trimmed.isEmpty ? nil : trimmed, forKey: plainWordsModelKey)

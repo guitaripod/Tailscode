@@ -13,7 +13,8 @@ extension MainWindow {
     /// `nightdesk`, `studio`, `effects:off|subtle|lively`, `field:motes|currents|aurora|none`,
     /// `light:on|off`, `still:on|off`, `night:off|scheduled|always`, `dim:300|never`,
     /// `awake:whileCharging|always|never`, `clock|hour|rails|squads:on|off`, `approvals:hold|openChat`),
-    /// and `agents-bench=<seconds>` measures how the window draws (`AgentsBench`).
+    /// `agents-bench=<seconds>` measures how the window draws (`AgentsBench`), and `plainwords-find`
+    /// runs the plain-words finder against this machine and prints what it chose.
     func driveAgentsWatch(_ verb: String, _ argument: String) {
         switch verb {
         case "agents-watch":
@@ -47,6 +48,11 @@ extension MainWindow {
             AgentsWindow.current?.watchView.tiles.values.forEach { $0.approveUp() }
         case "agents-bench":
             AgentsBench.run(seconds: Double(argument) ?? 10)
+        case "plainwords-find":
+            Task {
+                let outcome = await PlainWordsScout().settle()
+                FileHandle.standardOutput.write(Data("PLAINWORDS \(outcome)\n".utf8))
+            }
         default: break
         }
     }

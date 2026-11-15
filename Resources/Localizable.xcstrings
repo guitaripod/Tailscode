@@ -622283,6 +622283,1521 @@
           }
         }
       }
+    },
+    "A model server": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A model server"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Modellserver"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un servidor de modelos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un serveur de modèles"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un server di modelli"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "モデルサーバー"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모델 서버"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um servidor de modelos"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型服务器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型伺服器"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serwer modeli"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En modelserver"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mallipalvelin"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Líkanaþjónn"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En modelltjener"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En modellserver"
+          }
+        }
+      }
+    },
+    "Off by default. Only a command the built-in rules could not read is sent, as text with secrets taken out, to a model on this machine or your private network. Lines it writes are marked ✦. Never used for approvals.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off by default. Only a command the built-in rules could not read is sent, as text with secrets taken out, to a model on this machine or your private network. Lines it writes are marked ✦. Never used for approvals."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Standardmäßig aus. Nur ein Befehl, den die eingebauten Regeln nicht lesen konnten, wird als Text ohne Geheimnisse an ein Modell auf diesem Rechner oder in deinem privaten Netzwerk geschickt. Von ihm geschriebene Zeilen sind mit ✦ markiert. Wird nie für Freigaben verwendet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desactivado por defecto. Solo se envía un comando que las reglas integradas no pudieron leer, como texto y sin secretos, a un modelo de este equipo o de tu red privada. Las líneas que escribe llevan ✦. Nunca se usa para aprobaciones."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Désactivé par défaut. Seule une commande que les règles intégrées n’ont pas su lire est envoyée, en texte et sans secrets, à un modèle de cette machine ou de votre réseau privé. Les lignes qu’il écrit sont marquées ✦. Jamais utilisé pour les approbations."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disattivato di default. Viene inviato solo un comando che le regole integrate non hanno saputo leggere, come testo e senza segreti, a un modello su questo computer o sulla tua rete privata. Le righe che scrive sono contrassegnate da ✦. Mai usato per le approvazioni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "初期状態ではオフです。内蔵ルールで読み取れなかったコマンドだけが、秘密情報を除いたテキストとして、このマシンかプライベートネットワーク上のモデルに送られます。モデルが書いた行には ✦ が付きます。承認には使われません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "기본값은 꺼짐입니다. 내장 규칙이 읽지 못한 명령만 비밀 정보를 뺀 텍스트로, 이 기기나 사설 네트워크에 있는 모델로 전송됩니다. 모델이 쓴 줄에는 ✦가 붙습니다. 승인에는 쓰이지 않습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desativado por padrão. Só um comando que as regras integradas não souberam ler é enviado, como texto e sem segredos, a um modelo neste computador ou na sua rede privada. As linhas que ele escreve levam ✦. Nunca é usado em aprovações."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认关闭。只有内置规则读不懂的命令才会以去掉敏感信息的文本发送给本机或你的私有网络内的模型。模型写的行会带有 ✦。绝不用于批准。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "預設關閉。只有內建規則讀不懂的指令才會以移除機密的文字傳送給本機或你的私人網路內的模型。模型寫的行會附上 ✦。絕不用於核准。"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domyślnie wyłączone. Wysyłane jest tylko polecenie, którego wbudowane reguły nie potrafiły odczytać, jako tekst bez sekretów, do modelu na tym komputerze lub w Twojej sieci prywatnej. Wiersze, które napisze, są oznaczone ✦. Nigdy nie jest używane przy zatwierdzaniu."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slået fra som standard. Kun en kommando, som de indbyggede regler ikke kunne læse, sendes som tekst uden hemmeligheder til en model på denne maskine eller i dit private netværk. Linjer den skriver, markeres med ✦. Bruges aldrig til godkendelser."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oletuksena pois päältä. Lähetetään vain komento, jota sisäänrakennetut säännöt eivät osanneet lukea, tekstinä ilman salaisuuksia mallille tällä tietokoneella tai yksityisessä verkossasi. Mallin kirjoittamat rivit on merkitty ✦. Mallia ei koskaan käytetä hyväksyntöihin."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slökkt sjálfgefið. Aðeins skipun sem innbyggðu reglurnar gátu ekki lesið er send, sem texti án leyndarmála, til líkans á þessari tölvu eða á einkaneti þínu. Línur sem það skrifar eru merktar ✦. Er aldrei notað fyrir samþykki."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Av som standard. Bare en kommando som de innebygde reglene ikke kunne lese, sendes som tekst uten hemmeligheter til en modell på denne maskinen eller i ditt private nettverk. Linjer den skriver, er merket med ✦. Brukes aldri til godkjenning."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Av som standard. Endast en kommando som de inbyggda reglerna inte kunde tolka skickas, som text utan hemligheter, till en modell på den här datorn eller i ditt privata nätverk. Rader den skriver markeras med ✦. Används aldrig för godkännanden."
+          }
+        }
+      }
+    },
+    "Another server": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another server"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anderer Server"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otro servidor"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autre serveur"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Altro server"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "別のサーバー"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 서버"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outro servidor"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其他服务器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其他伺服器"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inny serwer"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anden server"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toinen palvelin"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annar netþjónn"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annen server"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annan server"
+          }
+        }
+      }
+    },
+    "A model on another machine of yours, by its address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A model on another machine of yours, by its address"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Modell auf einem anderen Rechner von dir, über seine Adresse"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un modelo en otro equipo tuyo, por su dirección"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un modèle sur une autre machine à vous, par son adresse"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un modello su un altro computer tuo, tramite il suo indirizzo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自分の別のマシン上のモデル。アドレスで指定します"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 다른 기기에 있는 모델, 주소로 지정"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um modelo em outro computador seu, pelo endereço"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你另一台机器上的模型，按其地址指定"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你另一台機器上的模型，依其位址指定"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model na innym z Twoich komputerów, wskazany adresem"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En model på en anden af dine maskiner, angivet med adressen"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Malli toisella omistamallasi koneella, osoitteen mukaan"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Líkan á annarri af þínum tölvum, eftir vistfangi"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En modell på en annen av maskinene dine, etter adresse"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En modell på en annan av dina datorer, med dess adress"
+          }
+        }
+      }
+    },
+    "Find again": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Find again"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erneut suchen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscar de nuevo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rechercher à nouveau"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trova di nuovo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再検索"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다시 찾기"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Procurar de novo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再次查找"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再次尋找"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Znajdź ponownie"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Find igen"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Etsi uudelleen"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leita aftur"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finn igjen"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sök igen"
+          }
+        }
+      }
+    },
+    "Turn the switch on and a model on this machine is found and tried": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn the switch on and a model on this machine is found and tried"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schalte es ein, dann wird ein Modell auf diesem Rechner gesucht und ausprobiert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activa el interruptor y se busca y prueba un modelo de este equipo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activez l’interrupteur pour qu’un modèle de cette machine soit trouvé et essayé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attiva l’interruttore e viene cercato e provato un modello su questo computer"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スイッチを入れると、このマシン上のモデルを探して試します"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "스위치를 켜면 이 기기의 모델을 찾아 시험합니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ligue a chave e um modelo deste computador será encontrado e testado"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开开关后，会查找并试用本机上的模型"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟開關後，會尋找並試用本機上的模型"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Włącz przełącznik, a model na tym komputerze zostanie znaleziony i wypróbowany"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slå kontakten til, så findes og afprøves en model på denne maskine"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kytke kytkin päälle, niin tältä tietokoneelta etsitään malli ja kokeillaan sitä"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kveiktu á rofanum og líkan á þessari tölvu verður fundið og prófað"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slå på bryteren, så blir en modell på denne maskinen funnet og prøvd"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slå på omkopplaren så hittas en modell på den här datorn och testas"
+          }
+        }
+      }
+    },
+    "Looking on this machine…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Looking on this machine…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suche auf diesem Rechner…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscando en este equipo…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recherche sur cette machine…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricerca su questo computer…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このマシンを調べています…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기에서 찾는 중…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Procurando neste computador…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在查找本机…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在查找本機…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Szukanie na tym komputerze…"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leder på denne maskine…"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Etsitään tältä tietokoneelta…"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leita á þessari tölvu…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leter på denne maskinen…"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Letar på den här datorn…"
+          }
+        }
+      }
+    },
+    "Starting it and asking for one line…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starting it and asking for one line…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird gestartet und um eine Zeile gebeten…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciándolo y pidiendo una línea…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Démarrage et demande d’une ligne…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avvio e richiesta di una riga…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "起動して1行をリクエストしています…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "시작하고 한 줄을 요청하는 중…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciando e pedindo uma linha…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在启动并请求一行…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在啟動並請求一行…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uruchamianie i prośba o jedną linię…"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starter den og beder om én linje…"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Käynnistetään ja pyydetään yksi rivi…"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ræsir það og biður um eina línu…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starter den og ber om én linje…"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Startar den och ber om en rad…"
+          }
+        }
+      }
+    },
+    "Answers in %@ s: “%@”": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Answers in %@ s: “%@”"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Antwort in %@ s: „%@“"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Responde en %@ s: “%@”"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Répond en %@ s : « %@ »"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Risponde in %@ s: “%@”"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 秒で回答: 「%@」"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@초 만에 응답: “%@”"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Responde em %@ s: “%@”"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 秒回答：“%@”"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 秒回答：“%@”"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odpowiada w %@ s: „%@”"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svarer på %@ s: “%@”"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vastaa ajassa %@ s: ”%@”"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svarar á %@ s: „%@“"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svarer på %@ s: «%@»"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svarar på %@ s: ”%@”"
+          }
+        }
+      }
+    },
+    "Not running yet. %@ starts it when asked, and may stop another model to make room unless the two share a group.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not running yet. %@ starts it when asked, and may stop another model to make room unless the two share a group."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Läuft noch nicht. %@ startet es auf Anfrage und kann ein anderes Modell beenden, um Platz zu machen, sofern die beiden nicht zu einer Gruppe gehören."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todavía no está en marcha. %@ lo inicia cuando se le pide y puede detener otro modelo para hacer sitio, a menos que ambos compartan un grupo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pas encore lancé. %@ le démarre sur demande et peut arrêter un autre modèle pour faire de la place, sauf si les deux partagent un groupe."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non ancora in esecuzione. %@ lo avvia quando richiesto e può fermare un altro modello per fare spazio, a meno che i due non condividano un gruppo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まだ起動していません。%@ は求められると起動し、両方が同じグループでない限り、場所を空けるために別のモデルを停止することがあります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "아직 실행 중이 아닙니다. %@은(는) 요청이 오면 시작하며, 두 모델이 같은 그룹이 아니라면 자리를 내기 위해 다른 모델을 멈출 수도 있습니다."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não está em execução. %@ o inicia quando pedido e pode parar outro modelo para abrir espaço, a menos que os dois compartilhem um grupo."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未运行。收到请求时 %@ 会启动它，并可能为腾出空间而停止另一个模型，除非两者属于同一组。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未執行。收到請求時 %@ 會啟動它，並可能為騰出空間而停止另一個模型，除非兩者屬於同一組。"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeszcze nie działa. %@ uruchamia go na żądanie i może zatrzymać inny model, żeby zrobić miejsce, chyba że oba są w tej samej grupie."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kører endnu ikke. %@ starter den, når den bliver bedt om det, og kan stoppe en anden model for at skabe plads, medmindre de to deler en gruppe."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ei vielä käynnissä. %@ käynnistää sen pyydettäessä ja voi pysäyttää toisen mallin tilan vapauttamiseksi, ellei kaksi ole samassa ryhmässä."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keyrir ekki enn. %@ ræsir það þegar beðið er um það og getur stöðvað annað líkan til að rýma til, nema þau tvö séu í sama hópi."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kjører ikke ennå. %@ starter den når den blir bedt om det, og kan stoppe en annen modell for å gjøre plass, med mindre de to deler en gruppe."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Körs inte än. %@ startar den när den begärs och kan stoppa en annan modell för att göra plats, om inte de två delar en grupp."
+          }
+        }
+      }
+    },
+    "Start it": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start it"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Démarrer"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avvia"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "起動"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "시작"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启动"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "啟動"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uruchom"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start den"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Käynnistä"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ræsa"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start den"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starta den"
+          }
+        }
+      }
+    },
+    "No model wrote one plain line": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No model wrote one plain line"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kein Modell hat eine einfache Zeile geschrieben"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ningún modelo escribió una línea sencilla"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun modèle n’a écrit une seule ligne simple"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessun modello ha scritto una riga semplice"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "平易な1行を書いたモデルはありませんでした"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "어떤 모델도 평이한 한 줄을 쓰지 못했습니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhum modelo escreveu uma linha simples"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有模型写出通俗的一行"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沒有模型寫出白話的一行"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Żaden model nie napisał jednego prostego wiersza"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen model skrev én enkel linje"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yksikään malli ei kirjoittanut yhtä selkeää riviä"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekkert líkan skrifaði eina venjulega línu"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen modell skrev én enkel linje"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen modell skrev en enkel rad"
+          }
+        }
+      }
+    },
+    "%@ answered, but none of its models wrote one plain line. Load a small instruct model there, or give an address under Another server.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ answered, but none of its models wrote one plain line. Load a small instruct model there, or give an address under Another server."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ hat geantwortet, aber keines seiner Modelle hat eine einfache Zeile geschrieben. Lade dort ein kleines Instruct-Modell, oder gib unter „Anderer Server“ eine Adresse an."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ respondió, pero ninguno de sus modelos escribió una línea sencilla. Carga allí un modelo pequeño de instrucciones, o indica una dirección en «Otro servidor»."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ a répondu, mais aucun de ses modèles n’a écrit une seule ligne simple. Chargez-y un petit modèle d’instructions, ou indiquez une adresse sous « Autre serveur »."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ha risposto, ma nessuno dei suoi modelli ha scritto una riga semplice. Carica lì un piccolo modello di istruzioni, oppure indica un indirizzo in «Altro server»."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ は応答しましたが、そのモデルのどれも平易な1行を書きませんでした。小さな指示調整済みモデルを読み込むか、「別のサーバー」の下にアドレスを入力してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@이(가) 응답했지만 어떤 모델도 평이한 한 줄을 쓰지 않았습니다. 거기서 작은 지시 따르기 모델을 불러오거나, ‘다른 서버’ 아래에 주소를 입력하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ respondeu, mas nenhum dos seus modelos escreveu uma linha simples. Carregue lá um modelo pequeno de instruções, ou informe um endereço em “Outro servidor”."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 有回应，但它的模型都没有写出通俗的一行。请在那边加载一个小型指令模型，或在“其他服务器”下填写地址。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 有回應，但它的模型都沒有寫出白話的一行。請在那邊載入一個小型指令模型，或在「其他伺服器」下填寫位址。"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ odpowiedział, ale żaden z jego modeli nie napisał jednego prostego wiersza. Załaduj tam mały model instrukcji albo podaj adres w sekcji „Inny serwer”."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ svarede, men ingen af dens modeller skrev én enkel linje. Indlæs en lille instruktionsmodel dér, eller angiv en adresse under „Anden server“."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ vastasi, mutta yksikään sen malleista ei kirjoittanut yhtä selkeää riviä. Lataa sinne pieni ohjemalli tai anna osoite kohdassa ”Toinen palvelin”."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ svaraði, en ekkert af líkönum þess skrifaði eina venjulega línu. Hlaðið þar inn litlu skipanalíkani eða gefið upp vistfang undir „Annar netþjónn“."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ svarte, men ingen av modellene der skrev én enkel linje. Last inn en liten instruksjonsmodell der, eller oppgi en adresse under «Annen server»."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ svarade, men ingen av modellerna där skrev en enkel rad. Läs in en liten instruktionsmodell där, eller ange en adress under ”Annan server”."
+          }
+        }
+      }
+    },
+    "No model server on this machine": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No model server on this machine"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kein Modellserver auf diesem Rechner"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No hay servidor de modelos en este equipo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun serveur de modèles sur cette machine"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessun server di modelli su questo computer"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このマシンにモデルサーバーがありません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기에 모델 서버가 없습니다"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhum servidor de modelos neste computador"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本机没有模型服务器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本機沒有模型伺服器"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brak serwera modeli na tym komputerze"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen modelserver på denne maskine"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ei mallipalvelinta tällä tietokoneella"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enginn líkanaþjónn á þessari tölvu"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen modelltjener på denne maskinen"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen modellserver på den här datorn"
+          }
+        }
+      }
+    },
+    "Looked for Ollama, LM Studio, llama.cpp, llama-swap, vLLM and others on this machine. Start one, or give an address under Another server.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Looked for Ollama, LM Studio, llama.cpp, llama-swap, vLLM and others on this machine. Start one, or give an address under Another server."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf diesem Rechner wurde nach Ollama, LM Studio, llama.cpp, llama-swap, vLLM und anderen gesucht. Starte einen, oder gib unter „Anderer Server“ eine Adresse an."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se buscó Ollama, LM Studio, llama.cpp, llama-swap, vLLM y otros en este equipo. Inicia uno, o indica una dirección en «Otro servidor»."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recherche de Ollama, LM Studio, llama.cpp, llama-swap, vLLM et d’autres sur cette machine. Lancez-en un, ou indiquez une adresse sous « Autre serveur »."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cercati Ollama, LM Studio, llama.cpp, llama-swap, vLLM e altri su questo computer. Avviane uno, oppure indica un indirizzo in «Altro server»."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このマシン上で Ollama、LM Studio、llama.cpp、llama-swap、vLLM などを探しました。いずれかを起動するか、「別のサーバー」の下にアドレスを入力してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기에서 Ollama, LM Studio, llama.cpp, llama-swap, vLLM 등을 찾아봤습니다. 하나를 실행하거나, ‘다른 서버’ 아래에 주소를 입력하세요."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Procurei Ollama, LM Studio, llama.cpp, llama-swap, vLLM e outros neste computador. Inicie um, ou informe um endereço em “Outro servidor”."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在本机查找 Ollama、LM Studio、llama.cpp、llama-swap、vLLM 等。请启动其中一个，或在“其他服务器”下填写地址。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在本機查找 Ollama、LM Studio、llama.cpp、llama-swap、vLLM 等。請啟動其中一個，或在「其他伺服器」下填寫位址。"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Szukano na tym komputerze: Ollama, LM Studio, llama.cpp, llama-swap, vLLM i innych. Uruchom jeden z nich albo podaj adres w sekcji „Inny serwer”."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der blev søgt efter Ollama, LM Studio, llama.cpp, llama-swap, vLLM og andre på denne maskine. Start en, eller angiv en adresse under „Anden server“."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tältä tietokoneelta haettiin palvelimia: Ollama, LM Studio, llama.cpp, llama-swap, vLLM ja muita. Käynnistä yksi, tai anna osoite kohdassa ”Toinen palvelin”."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leitað var að Ollama, LM Studio, llama.cpp, llama-swap, vLLM og öðrum á þessari tölvu. Ræstu eitt, eða gefðu upp vistfang undir „Annar netþjónn“."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lette etter Ollama, LM Studio, llama.cpp, llama-swap, vLLM og andre på denne maskinen. Start en, eller oppgi en adresse under «Annen server»."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Letade efter Ollama, LM Studio, llama.cpp, llama-swap, vLLM och andra på den här datorn. Starta en, eller ange en adress under ”Annan server”."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

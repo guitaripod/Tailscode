@@ -72,6 +72,7 @@ extension SelfTest {
         try checkWatchScenes(check)
         try checkWatchSquad(check)
         try checkWatchPlain(check)
+        try checkPlainWordsScout(check)
         try checkWatchHold(check)
         try checkWatchTimers(check)
         try checkWatchControls(check)

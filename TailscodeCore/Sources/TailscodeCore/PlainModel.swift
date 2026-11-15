@@ -76,13 +76,16 @@ public enum PlainModel {
         return text
     }
 
-    /// The JSON body of a chat completion asking for one line about `raw`, redacted.
+    /// The JSON body of a chat completion asking for one line about `raw`, redacted. The command is
+    /// framed as one, which a small model reads more exactly than a bare command line, and a model
+    /// that can think first is asked not to.
     public static func request(model: String, raw: String) -> Data {
         let body: [String: Any] = [
             "model": model, "stream": false, "temperature": 0.1, "max_tokens": 40,
+            "chat_template_kwargs": ["enable_thinking": false],
             "messages": [
                 ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": redact(raw)],
+                ["role": "user", "content": "Command: " + redact(raw) + "\nOne plain line:"],
             ],
         ]
         return (try? JSONSerialization.data(withJSONObject: body)) ?? Data()
