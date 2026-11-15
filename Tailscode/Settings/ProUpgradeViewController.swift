@@ -88,6 +88,7 @@ final class ProUpgradeViewController: UIViewController {
     @objc private func proStateChanged() {
         guard ProAccess.shared.isPro else { return }
         purchaseButton.isHidden = true
+        restoreButton.isHidden = true
         weekButton.isEnabled = false
         statusLabel.text = nil
     }
@@ -175,6 +176,7 @@ final class ProUpgradeViewController: UIViewController {
         restoreButton.setTitle(String(localized: "Restore purchases"), for: .normal)
         restoreButton.titleLabel?.font = Theme.Ramp.font(.panelFootnote)
         restoreButton.addTarget(self, action: #selector(restoreTapped), for: .touchUpInside)
+        restoreButton.isHidden = ProAccess.shared.isPro
         stack.addArrangedSubview(restoreButton)
 
         statusLabel.font = Theme.Ramp.font(.panelFootnote)
