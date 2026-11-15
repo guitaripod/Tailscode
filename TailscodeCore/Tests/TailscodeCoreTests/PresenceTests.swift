@@ -20,6 +20,26 @@ import Testing
         #expect(signal.satellites == 3)
     }
 
+    @Test("Stuck work alone holds the attention colour still and settles")
+    func stuckWorkHoldsStill() {
+        let signal = PresenceSignal.aggregate([.stalled(tasks: 2), nil, .failed])
+        #expect(signal.tone == .attention)
+        #expect(signal.motion == .still)
+        #expect(signal.satellites == 2)
+        #expect(signal.spoken == ActivityKind.stalled(tasks: 2).title)
+        let moving = PresenceSignal.aggregate([.stalled(tasks: 1), .working])
+        #expect(moving.tone == .live)
+        #expect(moving.motion == .working)
+        #expect(moving.satellites == 2)
+        var field = PresenceField(colors: colors)
+        field.set(signal: signal)
+        var settled = false
+        for step in 0..<600 where !settled {
+            settled = field.frame(at: Double(step) / 30).settled
+        }
+        #expect(settled)
+    }
+
     @Test("Work in flight breathes with one satellite per open turn")
     func workBreathes() {
         let signal = PresenceSignal.aggregate([.working, .thinking, nil, .offline])

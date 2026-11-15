@@ -122,9 +122,11 @@ public struct PresenceSignal: Sendable, Equatable {
 
     /// The aggregate over every conversation, in the order a reader cares: a turn waiting on the
     /// person outranks everything and knocks; any work in flight breathes, wearing one satellite
-    /// per open turn; a failure holds the danger colour perfectly still — a broken thing must
-    /// never be animated into looking merely busy, or cute; an unreachable server rests quiet;
-    /// and idle is a body at rest, not a body pretending to work.
+    /// per open turn; work the machine found stuck, with nothing else moving, holds the attention
+    /// colour still, a satellite per stuck task, the way its own badge does; a failure holds the
+    /// danger colour perfectly still — a broken thing must never be animated into looking merely
+    /// busy, or cute; an unreachable server rests quiet; and idle is a body at rest, not a body
+    /// pretending to work.
     public static func aggregate(_ kinds: [ActivityKind?], ultracode: Bool = false)
         -> PresenceSignal
     {
@@ -135,9 +137,14 @@ public struct PresenceSignal: Sendable, Equatable {
                 tone: .attention, motion: .attention, satellites: inFlight.count,
                 ultracode: ultracode)
         }
-        if !inFlight.isEmpty {
+        let stuck = inFlight.map(stuckTasks)
+        if stuck.contains(0) {
             return PresenceSignal(
                 tone: .live, motion: .working, satellites: inFlight.count, ultracode: ultracode)
+        }
+        if !stuck.isEmpty {
+            return PresenceSignal(
+                tone: .attention, motion: .still, satellites: stuck.reduce(0, +), ultracode: ultracode)
         }
         if present.contains(.failed) {
             return PresenceSignal(tone: .danger, motion: .still, ultracode: ultracode)
@@ -148,9 +155,18 @@ public struct PresenceSignal: Sendable, Equatable {
         return PresenceSignal(ultracode: ultracode)
     }
 
+    /// How many stuck tasks a conversation's activity stands for, and none for anything that moves.
+    private static func stuckTasks(_ kind: ActivityKind) -> Int {
+        guard case .stalled(let tasks) = kind else { return 0 }
+        return max(1, tasks)
+    }
+
     /// The sentence a screen reader says for the whole orb. Motion and colour are its entire
     /// vocabulary and both are invisible there, so the words carry everything.
     public var spoken: String {
+        if tone == .attention, motion == .still {
+            return ActivityKind.stalled(tasks: max(1, satellites)).title
+        }
         if tone == .attention { return Localized.text("A conversation needs you") }
         if satellites > 0 {
             return satellites == 1
