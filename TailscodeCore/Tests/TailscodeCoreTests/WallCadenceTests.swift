@@ -43,6 +43,41 @@ private func cap(
         #expect(cap(live: true, thermal: .fair, proMotion: true) == 60)
     }
 
+    @Test func aSmoothWallRunsAtItsDisplaysRateWhileAnythingMoves() {
+        func smooth(_ live: Bool, _ breathing: Bool, strained: Bool = false, lowPower: Bool = false, dimmed: Bool = false) -> Int {
+            WallCadence.cap(
+                effectsLive: live, breathing: breathing, dimmedCalm: dimmed, hidden: false, lowPower: lowPower,
+                thermal: .nominal, proMotion: false, smooth: 72, strained: strained)
+        }
+        #expect(smooth(false, true) == 72)
+        #expect(smooth(true, false) == 72)
+        #expect(smooth(false, false) == 1)
+        #expect(smooth(false, true, strained: true) == 30)
+        #expect(smooth(false, true, lowPower: true) == 20)
+        #expect(smooth(false, true, dimmed: true) == 1)
+        #expect(smooth(true, false, dimmed: true) == 72)
+    }
+
+    @Test func aDisplayIsDividedIntoEvenFramesOfAtLeastFifty() {
+        #expect(WallCadence.stride(refreshHz: 60) == 1)
+        #expect(WallCadence.stride(refreshHz: 90) == 1)
+        #expect(WallCadence.stride(refreshHz: 100) == 1)
+        #expect(WallCadence.stride(refreshHz: 120) == 2)
+        #expect(WallCadence.stride(refreshHz: 144) == 2)
+        #expect(WallCadence.stride(refreshHz: 165) == 2)
+        #expect(WallCadence.stride(refreshHz: 240) == 3)
+        #expect(WallCadence.stride(refreshHz: 0) == 1)
+        #expect(WallCadence.smoothRate(refreshHz: 144) == 72)
+        #expect(WallCadence.smoothRate(refreshHz: 165) == 83)
+        #expect(WallCadence.smoothRate(refreshHz: 59.94) == 60)
+        #expect(WallCadence.smoothRate(refreshHz: 240) == 80)
+        #expect(WallCadence.smoothRate(refreshHz: .nan) == 60)
+        for hz in stride(from: 50.0, through: 500, by: 7.5) {
+            let rate = WallCadence.smoothRate(refreshHz: hz)
+            #expect(rate >= 50 && rate <= 100, "\(hz) Hz gives \(rate)")
+        }
+    }
+
     @Test func lowPowerCapsAtTwenty() {
         #expect(cap(live: true, lowPower: true, proMotion: true) == 20)
         #expect(cap(breathing: true, lowPower: true) == 20)
