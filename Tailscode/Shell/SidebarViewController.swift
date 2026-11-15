@@ -11,7 +11,7 @@ enum SidebarScope: Hashable {
 /// A place that fills the conversation column, or opens over the window, rather than choosing
 /// what the list shows.
 enum SidebarPlace: Hashable {
-    case home, usage, schedules, delegate, video, images
+    case home, agents, usage, schedules, delegate, video, images
 }
 
 /// Everything the chat list knows that the side of the window shows beside it, taken from the one
@@ -248,7 +248,9 @@ final class SidebarViewController: UIViewController {
     }
 
     private func sectionItems() -> [(Section, [Item])] {
-        var places: [Item] = [.place(.home), .place(.usage), .place(.schedules), .place(.delegate), .place(.video)]
+        var places: [Item] = [
+            .place(.home), .place(.agents), .place(.usage), .place(.schedules), .place(.delegate), .place(.video),
+        ]
         if ImageGenDoor.current().isOpen { places.append(.place(.images)) }
         var result: [(Section, [Item])] = [(.places, places)]
         var chats: [Item] = [.scope(.all), .scope(.live), .scope(.saved)]
@@ -294,7 +296,7 @@ final class SidebarViewController: UIViewController {
                 content.textProperties.color = Theme.Color.accent
                 content.imageProperties.tintColor = Theme.Color.accent
             }
-            if Self.isBusy(place) { accessories.append(.working(spoken: Self.busyWords(of: place))) }
+            if isBusy(place) { accessories.append(.working(spoken: Self.busyWords(of: place))) }
         case .scope(let scope):
             content.text = title(of: scope)
             content.image = image(of: scope)
@@ -411,6 +413,7 @@ final class SidebarViewController: UIViewController {
     private static func title(of place: SidebarPlace) -> String {
         switch place {
         case .home: return String(localized: "Home")
+        case .agents: return String(localized: "Agents")
         case .usage: return String(localized: "Usage")
         case .schedules: return ScheduleWords.title
         case .delegate: return DelegateEntryPoint.title
@@ -422,6 +425,7 @@ final class SidebarViewController: UIViewController {
     private static func symbol(of place: SidebarPlace) -> String {
         switch place {
         case .home: return "house"
+        case .agents: return AgentsPresenter.symbol
         case .usage: return "gauge.with.dots.needle.33percent"
         case .schedules: return "clock"
         case .delegate: return DelegateEntryPoint.symbol
@@ -430,8 +434,11 @@ final class SidebarViewController: UIViewController {
         }
     }
 
-    private static func isBusy(_ place: SidebarPlace) -> Bool {
+    /// Whether the place has work going on now: a render, a picture, or a chat the listing has live,
+    /// which is what the Agents board is about.
+    private func isBusy(_ place: SidebarPlace) -> Bool {
         switch place {
+        case .agents: return reading.digest.live > 0
         case .video: return ForgeRunner.shared.isRendering
         case .images: return ImageStudio.shared.isPainting
         default: return false
@@ -439,8 +446,11 @@ final class SidebarViewController: UIViewController {
     }
 
     private static func busyWords(of place: SidebarPlace) -> String {
-        place == .video
-            ? String(localized: "A video is rendering") : String(localized: "A picture is being made")
+        switch place {
+        case .agents: return String(localized: "Working")
+        case .video: return String(localized: "A video is rendering")
+        default: return String(localized: "A picture is being made")
+        }
     }
 
     private static func isCollapsed(_ section: Section) -> Bool {
@@ -458,6 +468,7 @@ final class SidebarViewController: UIViewController {
         Theme.Haptics.selection()
         switch place {
         case .home: workspace.showHome()
+        case .agents: AgentsPresenter.present(from: workspace)
         case .usage: workspace.show(place: UsageViewController())
         case .schedules: workspace.show(place: SchedulesViewController())
         case .video: workspace.home.presentVideo()

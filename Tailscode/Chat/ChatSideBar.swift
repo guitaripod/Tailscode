@@ -43,7 +43,7 @@ final class ChatSideBar {
             ) { _ in actions.previousPrompt() })
         agents = UIBarButtonItem(
             primaryAction: UIAction(
-                title: String(localized: "Agents"), image: UIImage(systemName: "person.2")
+                title: String(localized: "Agents"), image: UIImage(systemName: AgentsPresenter.symbol)
             ) { _ in actions.agents() })
         newChat = UIBarButtonItem(
             primaryAction: UIAction(

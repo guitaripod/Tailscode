@@ -1,8 +1,8 @@
 import AppIntents
 
 /// What Siri, Spotlight, the Shortcuts app and Vocal Shortcuts offer before the person builds
-/// anything: a question asked out loud, the quick ask box opened to type in, and one of the six
-/// models a person carries taken by the name they gave it.
+/// anything: a question asked out loud, the quick ask box opened to type in, one of the six models
+/// a person carries taken by the name they gave it, and the Agents board.
 struct TailscodeShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -30,5 +30,13 @@ struct TailscodeShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Use a Model",
             systemImageName: "circle.grid.3x3.fill")
+        AppShortcut(
+            intent: OpenAgentsIntent(),
+            phrases: [
+                "Open agents in \(.applicationName)",
+                "Show my agents in \(.applicationName)",
+            ],
+            shortTitle: "Agents",
+            systemImageName: "person.2")
     }
 }

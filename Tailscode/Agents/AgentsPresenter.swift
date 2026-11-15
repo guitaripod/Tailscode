@@ -5,6 +5,9 @@ import UIKit
 /// it closes them; the peek rises over it as a second sheet.
 @MainActor
 enum AgentsPresenter {
+    /// The board's mark wherever a button opens it.
+    static let symbol = "person.2"
+
     @discardableResult
     static func present(from presenter: UIViewController, animated: Bool = true)
         -> AgentsBoardViewController?

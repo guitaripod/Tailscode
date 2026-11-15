@@ -11,6 +11,7 @@ struct TailscodeWidgetBundle: WidgetBundle {
         UsageWidget()
         TopUsageControl()
         QuickAskControl()
+        AgentsControl()
         LiveActivityWidget()
     }
 }

@@ -106,13 +106,14 @@ extension HomeViewController {
         present(nav, animated: true)
     }
 
-    /// Home's bar carries one button for everything that is not the board: the tools. The composer
-    /// is the new chat, so a pencil that only focused a box already on screen is gone from the
-    /// phone; with several servers the menu opens with the choice of machine, which keeps its
-    /// one-tap home. A render that is out is the exception, because the light round its button is
-    /// how the app says where a clip or a picture is — that button stays in the bar for as long as
-    /// the light is lit. The iPad keeps its pencil: beside a chat list, where no box is in reach,
-    /// starting a chat is the list's own action.
+    /// Home's bar carries the Agents board, one press from Home whatever Home is showing, and one
+    /// button for everything else that is not the board: the tools. The composer is the new chat,
+    /// so a pencil that only focused a box already on screen is gone from the phone; with several
+    /// servers the menu opens with the choice of machine, which keeps its one-tap home. A render
+    /// that is out is the exception, because the light round its button is how the app says where
+    /// a clip or a picture is — that button stays in the bar for as long as the light is lit. The
+    /// iPad keeps its pencil: beside a chat list, where no box is in reach, starting a chat is the
+    /// list's own action.
     func updateComposeButton() {
         let servers = viewModel.servers
         let door = ImageGenDoor.current()
@@ -124,14 +125,24 @@ extension HomeViewController {
             + "\u{1}render=\(rendering)\u{1}paint=\(painting)"
         guard state != appliedComposeButtonState else { return }
         appliedComposeButtonState = state
-        guard workspace == nil else {
-            navigationItem.rightBarButtonItems = [newChatItem(for: servers)]
-            return
-        }
-        var items = [toolsItem(for: servers, imageOpen: door.isOpen)]
+        var items =
+            workspace == nil
+            ? [toolsItem(for: servers, imageOpen: door.isOpen), agentsItem]
+            : [newChatItem(for: servers), agentsItem]
         if rendering { items.append(videoItem) }
         if painting { items.append(imageItem) }
         navigationItem.rightBarButtonItems = items
+    }
+
+    /// The Agents board, from the bar: the same board the status sentence opens, in the same mark
+    /// the side bar of an iPhone Duo uses.
+    var agentsItem: UIBarButtonItem {
+        let item = UIBarButtonItem(
+            primaryAction: UIAction(
+                title: String(localized: "Agents"), image: UIImage(systemName: AgentsPresenter.symbol)
+            ) { [weak self] _ in self?.presentAgents() })
+        item.accessibilityLabel = String(localized: "Agents")
+        return item
     }
 
     private func newChatItem(for servers: [ConnectionProfile]) -> UIBarButtonItem {

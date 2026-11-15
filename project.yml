@@ -309,6 +309,7 @@ targets:
       - path: Tailscode/Usage/UsageWidgetStore.swift
       - path: Tailscode/Usage/UsageControlIntents.swift
       - path: Tailscode/Home/QuickAskControlIntent.swift
+      - path: Tailscode/Agents/AgentsControlIntent.swift
       - path: Tailscode/Usage/UsageWidgetWriter.swift
       - path: Tailscode/Usage/UsagePushPayload.swift
       - path: Tailscode/Usage/LiveQuotaFetcher.swift

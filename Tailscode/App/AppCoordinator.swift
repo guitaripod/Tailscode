@@ -385,6 +385,7 @@ final class AppCoordinator: NSObject {
         case question(String, askedAt: Date)
         case partySlot(Int)
         case resume(sessionID: String)
+        case agents
     }
 
     /// A spoken question parked behind setup is still the person's words when Home finally
@@ -428,6 +429,8 @@ final class AppCoordinator: NSObject {
             if let home { home.openSession(withID: sessionID) } else {
                 pendingShortcut = .resume(sessionID: sessionID)
             }
+        case .agents:
+            if let home { home.presentAgents() } else { pendingShortcut = .agents }
         }
     }
 
@@ -466,7 +469,8 @@ final class AppCoordinator: NSObject {
         route(animated: true)
     }
 
-    /// Routes `tailscode://session/<id>` (Live Activity tap) to that chat.
+    /// Routes `tailscode://session/<id>` (Live Activity tap) to that chat, and `tailscode://agents`
+    /// to the Agents board.
     /// Links that arrive before the session list exists are parked and
     /// delivered on the next route to the main UI; a link older than 30s is
     /// dropped rather than hijacking navigation long after the tap.
@@ -488,6 +492,10 @@ final class AppCoordinator: NSObject {
         }
         if url.host() == "saved" {
             perform(.saved)
+            return
+        }
+        if url.host() == "agents" {
+            perform(.agents)
             return
         }
         if url.host() == "ask" {
@@ -652,6 +660,7 @@ final class AppCoordinator: NSObject {
         switch UsageWidgetStore.takePendingControlRoute() {
         case "usage": handle(URL(string: "tailscode://usage")!)
         case "ask": perform(.quickAsk(draft: nil))
+        case "agents": perform(.agents)
         default: return
         }
     }
