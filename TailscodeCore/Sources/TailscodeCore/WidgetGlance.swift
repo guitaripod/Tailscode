@@ -242,7 +242,8 @@ public struct WidgetGlance: Sendable, Equatable {
         grouping: WidgetGrouping = .automatic, detail: WidgetDetail = .automatic,
         providerFilter: Set<String>? = nil
     ) -> WidgetGlance {
-        let kept = filter(quotas, by: providerFilter).map { quota -> WidgetQuota in
+        let kept = filter(quotas, by: providerFilter).map { stored -> WidgetQuota in
+            let quota = QuotaReset.settled(stored, now: now)
             guard let readAt = quota.readAt,
                 QuotaFreshness.isStale(age: now.timeIntervalSince(readAt))
             else { return quota }

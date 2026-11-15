@@ -43,11 +43,17 @@ public struct QuotaHolding: Sendable, Equatable {
 /// signed into the same provider reports the same windows, so a card per machine says one true
 /// thing three times and wears a hostname that carries no information — the reader already knows
 /// which machines they own. The rollup folds every server's report into one holding per provider,
-/// keeping the strictest reading of each window and the most trustworthy reset, and remembers who
-/// answered so a surface can name machines only when there is more than one to name.
+/// keeping the reading of each window that knows the most (``fold(_:live:_:live:)``) and the most
+/// trustworthy reset, and remembers who answered so a surface can name machines only when there is
+/// more than one to name.
 public enum QuotaRollup {
-    /// One holding per provider, tightest window first, from every server's report.
-    public static func account(from reports: [(String, UsageQuota)]) -> [QuotaHolding] {
+    /// One holding per provider, tightest window first, from every server's report. A window
+    /// whose stated reset has passed by `now` is read as reset before anything is folded
+    /// (``QuotaReset``).
+    public static func account(from reports: [(String, UsageQuota)], now: Date = Date())
+        -> [QuotaHolding]
+    {
+        let reports = reports.map { ($0.0, QuotaReset.settled($0.1, now: now)) }
         let knownAccounts = reports.reduce(into: [String: Set<String>]()) { result, report in
             let family = family(of: report.1)
             guard let account = report.1.accountID, !account.isEmpty else { return }
@@ -59,12 +65,16 @@ public enum QuotaRollup {
         var failures: [String: [String]] = [:]
         var failureRanks: [String: Int] = [:]
         var accounts: [String: String] = [:]
+        var liveWindows: [String: Set<String>] = [:]
         for (server, quota) in reports {
             let key = holdingKey(for: quota, knownAccounts: knownAccounts)
             if let existing = folded[key] {
-                folded[key] = fold(existing, quota)
+                var live = liveWindows[key] ?? []
+                folded[key] = fold(existing, quota, liveWindows: &live)
+                liveWindows[key] = live
             } else {
                 folded[key] = quota
+                liveWindows[key] = quota.live ? Set(quota.gauges.map(window)) : []
                 order.append(key)
             }
             if let account = quota.accountID, !account.isEmpty {
@@ -171,8 +181,12 @@ public enum QuotaRollup {
     }
 
     /// Two reports of one account. A live report outranks an estimated one for the identity the
-    /// card wears; the windows themselves merge one by one.
-    private static func fold(_ base: UsageQuota, _ next: UsageQuota) -> UsageQuota {
+    /// card wears; the windows themselves merge one by one. `liveWindows` names the windows whose
+    /// folded reading came from a live report, so whether a window is live is a fact about the
+    /// reading that won it and never about the order the machines answered in.
+    private static func fold(
+        _ base: UsageQuota, _ next: UsageQuota, liveWindows: inout Set<String>
+    ) -> UsageQuota {
         var result = base
         if !base.live, next.live {
             result.providerName = next.providerName
@@ -185,10 +199,15 @@ public enum QuotaRollup {
 
         var gauges = base.gauges
         for gauge in next.gauges {
-            if let index = gauges.firstIndex(where: { window($0) == window(gauge) }) {
-                gauges[index] = fold(gauges[index], gauge)
+            let name = window(gauge)
+            if let index = gauges.firstIndex(where: { window($0) == name }) {
+                let (merged, live) = folded(
+                    gauges[index], live: liveWindows.contains(name), gauge, live: next.live)
+                gauges[index] = merged
+                if live { liveWindows.insert(name) } else { liveWindows.remove(name) }
             } else {
                 gauges.append(gauge)
+                if next.live { liveWindows.insert(name) }
             }
         }
         result.gauges = gauges
@@ -208,13 +227,52 @@ public enum QuotaRollup {
         return result
     }
 
-    /// The same window seen twice: the account has spent the larger of the two, and a reset the
-    /// provider actually stated beats one a backend guessed.
-    private static func fold(_ base: UsageQuota.Gauge, _ next: UsageQuota.Gauge)
-        -> UsageQuota.Gauge
-    {
-        var winner = next.fraction > base.fraction ? next : base
-        let other = next.fraction > base.fraction ? base : next
+    /// Two readings of one kind of window, in the order that decides between them:
+    ///
+    /// - When the provider stated both resets and they are far enough apart to be two different
+    ///   windows, the later window is the one the account is in and the earlier is history; an
+    ///   estimated reset can be off by hours and says nothing of the kind.
+    /// - A window read as reset (``QuotaReset``) is a placeholder for the window that opened, and a
+    ///   measured reading of that window, one ending after the reset, replaces it.
+    /// - A window the limiter is refusing outranks one it is not: a refusal is a verdict, and a
+    ///   figure just short of the wall from another machine's older turn does not lift it.
+    /// - A live reading speaks over one served from a machine's last good answer.
+    /// - Two figures that agree to within a whole percent are one measurement, and the finer one
+    ///   carries more of it — a figure rounded up to 100 % beside 99.5 % from the same limiter is the
+    ///   same number said less exactly, not a fuller account.
+    /// - Otherwise the account has spent the larger of the two.
+    ///
+    /// A reset the provider actually stated beats one a backend guessed.
+    static func fold(
+        _ base: UsageQuota.Gauge, live baseLive: Bool, _ next: UsageQuota.Gauge, live nextLive: Bool
+    ) -> UsageQuota.Gauge {
+        folded(base, live: baseLive, next, live: nextLive).gauge
+    }
+
+    /// ``fold(_:live:_:live:)`` with whether the reading that won came from a live report.
+    private static func folded(
+        _ base: UsageQuota.Gauge, live baseLive: Bool, _ next: UsageQuota.Gauge, live nextLive: Bool
+    ) -> (gauge: UsageQuota.Gauge, live: Bool) {
+        if base.trustedReset, next.trustedReset, let baseReset = base.resetsAt,
+            let nextReset = next.resetsAt,
+            abs(baseReset.timeIntervalSince(nextReset)) >= distinctWindows
+        {
+            return nextReset > baseReset ? (next, nextLive) : (base, baseLive)
+        }
+        if measures(next, windowOpenedBy: base) { return (next, nextLive) }
+        if measures(base, windowOpenedBy: next) { return (base, baseLive) }
+        let nextLeads: Bool
+        if (base.refused == true) != (next.refused == true) {
+            nextLeads = next.refused == true
+        } else if baseLive != nextLive {
+            nextLeads = nextLive
+        } else if let finer = finer(base.fraction, next.fraction) {
+            nextLeads = finer == next.fraction
+        } else {
+            nextLeads = next.fraction > base.fraction
+        }
+        var winner = nextLeads ? next : base
+        let other = nextLeads ? base : next
         var adoptedReset = false
         if other.trustedReset, !winner.trustedReset, let reset = other.resetsAt {
             winner.resetsAt = reset
@@ -233,7 +291,38 @@ public enum QuotaRollup {
         if winner.usedUSD == nil { winner.usedUSD = other.usedUSD }
         if winner.limitUSD == nil { winner.limitUSD = other.limitUSD }
         if winner.key == "rolling", other.key == "five_hour" { winner.key = "five_hour" }
-        return winner
+        return (winner, nextLeads ? nextLive : baseLive)
+    }
+
+    /// Whether `reading` is a measurement of the window that `placeholder`, a window read as reset,
+    /// stands in for: it names a reset after the moment the placeholder's window opened.
+    private static func measures(
+        _ reading: UsageQuota.Gauge, windowOpenedBy placeholder: UsageQuota.Gauge
+    ) -> Bool {
+        guard QuotaReset.isReopened(placeholder), !QuotaReset.isReopened(reading),
+            let opened = placeholder.startsAt, let reset = reading.resetsAt
+        else { return false }
+        return reset > opened
+    }
+
+    /// Two resets this far apart belong to two windows; the closest two windows of one kind any
+    /// provider reports are five hours apart, while one window's reset read twice moves by seconds.
+    static let distinctWindows: TimeInterval = 1800
+
+    /// The finer of two figures that are one measurement said twice: within a whole percent of
+    /// each other, one of them a whole percent and the other not. Nil when they are two readings.
+    private static func finer(_ lhs: Double, _ rhs: Double) -> Double? {
+        guard lhs != rhs, abs(lhs - rhs) <= 0.01 else { return nil }
+        switch (isWholePercent(lhs), isWholePercent(rhs)) {
+        case (true, false): return rhs
+        case (false, true): return lhs
+        default: return nil
+        }
+    }
+
+    private static func isWholePercent(_ fraction: Double) -> Bool {
+        let percent = fraction * 100
+        return abs(percent - percent.rounded()) < 1e-6
     }
 
     private static func window(_ gauge: UsageQuota.Gauge) -> String {

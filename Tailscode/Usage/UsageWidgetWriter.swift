@@ -53,28 +53,36 @@ extension UsageWidgetStore {
     /// The last numbers any surface landed — the background refresh, a silent
     /// push, the widget, or an earlier foreground pass — rebuilt as quotas. Every
     /// screen seeds from this before fetching, so usage is never blank while the
-    /// live fetch is still out.
+    /// live fetch is still out. A window whose reset has passed since comes back
+    /// reset (``QuotaReset``), so no chat says it is used up after it reopened.
     static func cachedQuotas() -> [UsageQuota] {
         guard let entry = read() else { return [] }
+        let now = Date()
         return entry.providers.map { provider in
             let readAt = provider.readAt ?? entry.date
-            return UsageQuota(
-                providerName: provider.providerName,
-                subtitle: provider.subtitle,
-                source: provider.source ?? "last snapshot",
-                live: provider.isLive
-                    && !QuotaFreshness.isStale(age: Date().timeIntervalSince(readAt)),
-                gauges: provider.gauges.map { gauge in
-                    UsageQuota.Gauge(
-                        key: gauge.label, label: gauge.label, fraction: gauge.fraction,
-                        resetsAt: gauge.resetsAt, trustedReset: provider.isLive,
-                        usedUSD: gauge.usedUSD, limitUSD: gauge.limitUSD,
-                        currency: gauge.currency)
-                },
-                details: [],
-                accountID: provider.accountID,
-                schema: provider.schema)
+            return QuotaReset.settled(storedQuota(provider, readAt: readAt, now: now), now: now)
         }
+    }
+
+    private static func storedQuota(
+        _ provider: UsageWidgetEntry.ProviderSnapshot, readAt: Date, now: Date
+    ) -> UsageQuota {
+        UsageQuota(
+            providerName: provider.providerName,
+            subtitle: provider.subtitle,
+            source: provider.source ?? "last snapshot",
+            live: provider.isLive
+                && !QuotaFreshness.isStale(age: now.timeIntervalSince(readAt)),
+            gauges: provider.gauges.map { gauge in
+                UsageQuota.Gauge(
+                    key: gauge.label, label: gauge.label, fraction: gauge.fraction,
+                    resetsAt: gauge.resetsAt, trustedReset: provider.isLive,
+                    usedUSD: gauge.usedUSD, limitUSD: gauge.limitUSD,
+                    currency: gauge.currency)
+            },
+            details: [],
+            accountID: provider.accountID,
+            schema: provider.schema)
     }
 
     /// The last good readings, with when each was taken, for a screen to serve while a poll fails.

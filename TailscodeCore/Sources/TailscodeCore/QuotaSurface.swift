@@ -202,10 +202,11 @@ public enum QuotaSurface {
     public enum FailureReading: Sendable, Hashable {
         /// The turn died of a wall, and the wall is in front of the model this chat is on now.
         case wall(QuotaExhaustion)
-        /// The turn died of a wall the model now in front never spends against. The person has
-        /// already done the one thing the wall asked — switched model — so there is nothing left
-        /// to say: neither the countdown, which belongs to a door the next send will not take,
-        /// nor the raw sentence, which is that same countdown in the provider's own words.
+        /// The turn died of a wall that is no longer in the way: the model now in front never spends
+        /// against it, or the window it named has opened again since. There is nothing left to
+        /// say: neither the countdown, which belongs to a door the next send will not take or to a
+        /// window that has already reset, nor the raw sentence, which is that same countdown in the
+        /// provider's own words.
         case moved
         /// Not a wall. The failure's own words are the news.
         case words
@@ -252,6 +253,7 @@ public enum QuotaSurface {
         if let gauge = hottestExhausted(in: attributed, model: model, named: name, now: now) {
             return .wall(gauge)
         }
+        if hasReopened(windowNamedIn: message, among: attributed, now: now) { return .moved }
         guard !attributed.contains(where: \.live) else { return .words }
         let provider: String
         if let hint, house == nil || ProviderBrand.slug(hint) == house {
@@ -503,6 +505,38 @@ public enum QuotaSurface {
         }
         guard seconds > 0 else { return nil }
         return now.addingTimeInterval(seconds)
+    }
+
+    /// Whether a window of the kind a failure names has reset since the reading that held it was
+    /// taken — a stored week read as reset (``QuotaReset/isReopened(_:)``), or one whose own reset
+    /// is behind us. The failure is then a picture of a wall that has since come down, and it is
+    /// no longer the answer to why the next send would not go. A failure that names no kind is
+    /// answered by any account-wide window that has reopened.
+    private static func hasReopened(
+        windowNamedIn message: String, among quotas: [UsageQuota], now: Date
+    ) -> Bool {
+        let named = windowKind(of: message.lowercased())
+        return quotas.contains { quota in
+            quota.gauges.contains { gauge in
+                let reopened =
+                    QuotaReset.isReopened(gauge) || (gauge.resetsAt.map { $0 <= now } ?? false)
+                guard reopened, QuotaBinding.scope(of: gauge) == .account else { return false }
+                guard let named else { return true }
+                return windowKind(of: "\(gauge.key) \(gauge.label)".lowercased()) == named
+            }
+        }
+    }
+
+    /// Which kind of window lowercased words describe: a session, a week or a month.
+    private static func windowKind(of words: String) -> String? {
+        if words.contains("session") || words.contains("5-hour") || words.contains("5 hour")
+            || words.contains("five_hour")
+        {
+            return "session"
+        }
+        if words.contains("week") || words.contains("seven_day") { return "week" }
+        if words.contains("month") { return "month" }
+        return nil
     }
 
     private static func windowHint(in message: String) -> String? {

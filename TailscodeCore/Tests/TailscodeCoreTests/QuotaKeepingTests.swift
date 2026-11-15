@@ -103,7 +103,7 @@ struct QuotaKeepingTests {
             [gauge("5-hour", 0.5, resetsIn: 3_600, trusted: true, key: "five_hour")])
         let other = quota(
             "opencode go",
-            [gauge("5-hour", 0.2, resetsIn: 9_000, trusted: true, startsIn: -3_600, key: "five_hour")])
+            [gauge("5-hour", 0.2, resetsIn: 4_800, trusted: true, startsIn: -3_600, key: "five_hour")])
         let merged = QuotaRollup.account(from: [("a", winner), ("b", other)])[0].gauges[0]
         #expect(merged.resetsAt == now.addingTimeInterval(3_600))
         #expect(merged.startsAt == nil)

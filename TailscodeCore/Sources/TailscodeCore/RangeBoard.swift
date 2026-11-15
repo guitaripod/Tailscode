@@ -212,6 +212,7 @@ public struct RangeBoard: Sendable, Equatable {
         trail: QuotaTrail? = nil, measured: MeasuredContext? = nil, now: Date = Date(),
         clock: RangeClock = .current
     ) -> RangeBoard {
+        let quotas = quotas.map { QuotaReset.settled($0, now: now) }
         let burn = fill.flatMap {
             ContextBurn.read(messages: messages, fill: $0, wholeConversation: true)
         }
@@ -319,7 +320,7 @@ public enum RangeHome {
         now: Date = Date(), clock: RangeClock = .current
     ) -> String? {
         var earliest: (provider: String, window: String, at: Date)?
-        for quota in quotas where !board.isHidden(ProviderBrand.slug(quota.providerName) ?? quota.providerName.lowercased()) {
+        for quota in quotas.map({ QuotaReset.settled($0, now: now) }) where !board.isHidden(ProviderBrand.slug(quota.providerName) ?? quota.providerName.lowercased()) {
             for gauge in quota.gauges
             where (gauge.usedUSD == nil || gauge.limitUSD != nil)
                 && QuotaBinding.scope(of: gauge) == .account

@@ -124,7 +124,8 @@ extension HomeViewController {
                 if !shown.isEmpty {
                     snapshot.appendSections([.usage])
                     snapshot.appendItems(
-                        shown.map { HomeItem.quota(QuotaCard(quota: $0)) }, toSection: .usage)
+                        shown.map { HomeItem.quota(QuotaCard(quota: QuotaReset.settled($0))) },
+                        toSection: .usage)
                 }
             }
         }
