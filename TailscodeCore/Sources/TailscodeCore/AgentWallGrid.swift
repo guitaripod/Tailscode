@@ -38,13 +38,13 @@ enum WallGrid {
     /// `aspect` is the screen's shape and picks the grid; `areaAspect` is the shape of the area the
     /// grid fills, which is what each cell's own shape is measured from.
     static func place(
-        _ tiles: [WallTile], aspect: Double, areaAspect: Double? = nil, pages: Bool = false
+        _ tiles: [WallTile], aspect: Double, areaAspect: Double? = nil, pages: Bool = false,
+        maxColumns: Int = .max
     ) -> (tiles: [WallTile], columns: Int, rows: Int) {
         guard !tiles.isEmpty else { return ([], 0, 0) }
         if pages { return paged(tiles, aspect: aspect, areaAspect: areaAspect) }
         let shape = Shape(aspect: aspect)
-        let flat = base(count: tiles.count, shape: shape)
-        let grid = flat
+        let grid = capped(base(count: tiles.count, shape: shape), count: tiles.count, maxColumns: maxColumns)
         var spans = [Int](repeating: 1, count: tiles.count)
         var cells: [(column: Int, row: Int)] = []
         var column = 0
@@ -80,6 +80,15 @@ enum WallGrid {
                 cellAspect: (areaAspect ?? aspect) * Double(spans[index] * (row + 1)) / Double(grid.columns))
         }
         return (placed, grid.columns, row + 1)
+    }
+
+    /// The grid with no more than `maxColumns` columns, its rows grown so every tile still has a cell.
+    private static func capped(
+        _ grid: (columns: Int, rows: Int), count: Int, maxColumns: Int
+    ) -> (columns: Int, rows: Int) {
+        let columns = max(1, min(grid.columns, maxColumns))
+        guard columns < grid.columns else { return grid }
+        return (columns, (count + columns - 1) / columns)
     }
 
     /// Two columns, one per page of a book, filled row-major: an odd last tile keeps one column and

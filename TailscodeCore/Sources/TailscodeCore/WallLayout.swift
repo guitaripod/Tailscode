@@ -187,18 +187,27 @@ public struct WallLayout: Sendable, Equatable {
     /// grid area's own for a side or laptop base, and pages for a book.
     public static func reading(
         width: Double, height: Double, safe: WallInsets, fold: WallFold?, style: WallStyle
-    ) -> (aspect: Double, gridAspect: Double, pages: Bool) {
+    ) -> (aspect: Double, gridAspect: Double, pages: Bool, maxColumns: Int) {
         let layout = chrome(
             width: width, height: height, safe: safe, fold: fold, style: style, drift: (0, 0), roomy: false)
         let area = layout.grid.height > 0 ? layout.grid.width / layout.grid.height : 1
+        let fits = layout.columnsThatFit
         switch layout.mode {
-        case .stack: return (height > 0 ? width / height : 1, area, false)
-        case .side, .laptop: return (area, area, false)
+        case .stack: return (height > 0 ? width / height : 1, area, false, fits)
+        case .side, .laptop: return (area, area, false, fits)
         case .book:
             let span = layout.pages.reduce(0) { $0 + $1.width }
             let aspect = layout.grid.height > 0 ? span / layout.grid.height : 1
-            return (aspect, aspect, true)
+            return (aspect, aspect, true, fits)
         }
+    }
+
+    static let narrowestTile = 300.0
+
+    /// How many tiles side by side the grid's width holds before a tile is narrower than a card's
+    /// words can be read in: a small window, or a Mac set to larger text, has few points across.
+    var columnsThatFit: Int {
+        max(1, Int((grid.width + gutter) / (Self.narrowestTile + gutter)))
     }
 
     static func chrome(

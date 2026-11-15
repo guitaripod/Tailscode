@@ -240,7 +240,7 @@ public struct AgentWall: Sendable, Equatable {
     /// the grid is two columns, one per page of a book, and no tile spans the fold.
     public static func read(
         board: AgentBoard, hour: AgentHour?, now: Date, aspect: Double, gridAspect: Double? = nil,
-        pages: Bool = false, previous: AgentWall?
+        pages: Bool = false, maxColumns: Int = .max, previous: AgentWall?
     ) -> AgentWall {
         let drafts = WallReading.drafts(board: board, now: now, previous: previous)
         let ordered = WallReading.order(drafts, previous: previous)
@@ -248,7 +248,7 @@ public struct AgentWall: Sendable, Equatable {
         let shownIDs = Set(shown.map(\.id))
         let overflow = ordered.filter { !shownIDs.contains($0.id) && $0.state.isRunning }
         let chips = WallReading.listed(board: board, overflow: overflow)
-        let placed = WallGrid.place(shown, aspect: aspect, areaAspect: gridAspect, pages: pages)
+        let placed = WallGrid.place(shown, aspect: aspect, areaAspect: gridAspect, pages: pages, maxColumns: maxColumns)
         let mood = WallReading.mood(drafts: drafts, listed: chips)
         return AgentWall(
             mood: mood,
@@ -264,8 +264,11 @@ public struct AgentWall: Sendable, Equatable {
 
     /// The same wall laid out for another screen: a demo scene is read once and fitted to the window
     /// it is shown in.
-    public func reflowed(aspect: Double, gridAspect: Double? = nil, pages: Bool = false) -> AgentWall {
-        let placed = WallGrid.place(tiles, aspect: aspect, areaAspect: gridAspect, pages: pages)
+    public func reflowed(
+        aspect: Double, gridAspect: Double? = nil, pages: Bool = false, maxColumns: Int = .max
+    ) -> AgentWall {
+        let placed = WallGrid.place(
+            tiles, aspect: aspect, areaAspect: gridAspect, pages: pages, maxColumns: maxColumns)
         return AgentWall(
             mood: mood, headline: headline, watchLine: watchLine, tiles: placed.tiles,
             columns: placed.columns, rows: placed.rows, listed: listed, listedOverflow: listedOverflow,

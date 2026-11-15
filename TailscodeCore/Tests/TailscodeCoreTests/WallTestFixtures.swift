@@ -57,10 +57,13 @@ enum WallFixtures {
 
     static func wall(
         sessions: Int, crew: Int = 0, asking: Bool = false, now: Date = epoch,
-        reading: (aspect: Double, gridAspect: Double, pages: Bool) = (16.0 / 9.0, 16.0 / 9.0, false)
+        reading: (aspect: Double, gridAspect: Double, pages: Bool, maxColumns: Int) = (
+            16.0 / 9.0, 16.0 / 9.0, false, .max
+        )
     ) -> AgentWall {
         AgentWall.read(
             board: board(sessions: sessions, crew: crew, asking: asking, now: now), hour: nil, now: now,
-            aspect: reading.aspect, gridAspect: reading.gridAspect, pages: reading.pages, previous: nil)
+            aspect: reading.aspect, gridAspect: reading.gridAspect, pages: reading.pages,
+            maxColumns: reading.maxColumns, previous: nil)
     }
 }

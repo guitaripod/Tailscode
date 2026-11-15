@@ -250,11 +250,13 @@ final class WatchWallViewController: NSViewController {
         let reading = WallLayout.reading(width: width, height: height, safe: safe, fold: nil, style: style)
         let next: AgentWall
         if let fixedWall {
-            next = fixedWall.reflowed(aspect: reading.aspect, gridAspect: reading.gridAspect, pages: reading.pages)
+            next = fixedWall.reflowed(
+                aspect: reading.aspect, gridAspect: reading.gridAspect, pages: reading.pages,
+                maxColumns: reading.maxColumns)
         } else {
             next = AgentWall.read(
                 board: board, hour: hour, now: now, aspect: reading.aspect, gridAspect: reading.gridAspect,
-                pages: reading.pages, previous: initialRead ? nil : wall)
+                pages: reading.pages, maxColumns: reading.maxColumns, previous: initialRead ? nil : wall)
         }
         let made = WallLayout.make(
             width: width, height: height, safe: safe, fold: nil, wall: next, style: style, drift: drift)

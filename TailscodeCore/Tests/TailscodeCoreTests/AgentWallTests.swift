@@ -483,6 +483,25 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
         #expect(shape(4, landscape, asks: true) == shape(4, landscape))
     }
 
+    @Test func aNarrowWindowKeepsFewerColumnsAndEveryTileACell() {
+        let read = wall(sources(3), aspect: landscape).reflowed(aspect: landscape, maxColumns: 2)
+        #expect(read.columns == 2 && read.rows == 2)
+        #expect(read.tiles.map(\.column) == [0, 1, 0])
+        #expect(read.tiles.map(\.row) == [0, 0, 1])
+        #expect(read.tiles.map(\.span) == [1, 1, 2])
+        let one = wall(sources(5), aspect: landscape).reflowed(aspect: landscape, maxColumns: 1)
+        #expect(one.columns == 1 && one.rows == 5)
+    }
+
+    @Test func aWindowsWidthSaysHowManyColumnsFit() {
+        let window = WallLayout.reading(
+            width: 760, height: 582, safe: WallInsets(top: 52), fold: nil, style: .studio).maxColumns
+        let display = WallLayout.reading(
+            width: 1920, height: 1080, safe: .zero, fold: nil, style: .studio).maxColumns
+        #expect(window == 2)
+        #expect(display >= 3)
+    }
+
     @Test func aTilesCellsAreWhereTheGridFlowsThem() {
         let read = wall(sources(5, asks: true))
         #expect(read.columns == 3 && read.rows == 2)
