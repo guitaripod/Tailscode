@@ -184,13 +184,18 @@ public enum PlainModelScout {
     }
 
     /// How well a model suits one plain line, higher is better; nil for one that cannot write it at
-    /// all. Running counts for most: a model already up answers at once and costs nothing to keep.
-    /// After that small and general, a few billion parameters, never one that thinks first.
+    /// all. Running counts for most: a model already up answers at once and costs nothing more to
+    /// ask, whatever its size, so among running models the larger writes the better line. A model
+    /// that would have to be started should be small, a few billion parameters, and none should
+    /// think first.
     public static func score(_ model: Model) -> Double? {
         let traits = traits(model)
         guard !traits.embeds, !traits.listens else { return nil }
-        var score = model.running == true ? 100.0 : 0
-        if let size = model.parameters {
+        var score = 0.0
+        if model.running == true {
+            score = 100
+            if let size = model.parameters { score += size < 1.2 ? -10 : (size < 3 ? 0 : 10) }
+        } else if let size = model.parameters {
             switch size {
             case ..<1.2: score += 8
             case ..<10: score += 40 - 8 * abs(log2(size / 4))
@@ -218,16 +223,36 @@ public enum PlainModelScout {
     }
 
     /// The models worth trying, best first, each with whether it may be used without asking.
+    /// Models of equal score keep the order the servers listed them in.
     public static func ranked(_ models: [Model]) -> [(model: Model, asks: Bool)] {
-        models.compactMap { model in score(model).map { (model, $0) } }
-            .sorted { $0.1 > $1.1 }
-            .map { ($0.0, $0.0.running != true && $0.0.kind.mayStopAnother) }
+        var scored: [(model: Model, score: Double, index: Int)] = []
+        for (index, model) in models.enumerated() {
+            if let score = score(model) { scored.append((model, score, index)) }
+        }
+        scored.sort { left, right in
+            left.score != right.score ? left.score > right.score : left.index < right.index
+        }
+        return scored.map { entry in
+            (entry.model, entry.model.running != true && entry.model.kind.mayStopAnother)
+        }
     }
 
     /// The model to use, given the ones a test line was already refused by.
     public static func choose(_ models: [Model], refused: Set<String> = []) -> Verdict {
         guard let best = ranked(models).first(where: { !refused.contains(key($0.model)) }) else { return .none }
         return best.asks ? .ask(best.model) : .use(best.model)
+    }
+
+    /// The best model that can be asked now without starting anything that could stop another: one
+    /// that is running, or on a server that never stops one model for another, one it has not said
+    /// is stopped. Given the ones a test line was already refused by. This is what is asked when the
+    /// person named no model, at the moment a line is wanted, so a model that comes and goes is used
+    /// while it is there and the one that stays takes over when it is not.
+    public static func bestReady(_ models: [Model], refused: Set<String> = []) -> Model? {
+        ranked(models).map(\.model).first { model in
+            !refused.contains(key(model))
+                && (model.running == true || (model.running == nil && !model.kind.mayStopAnother))
+        }
     }
 
     /// One model on one server, as a refusal remembers it.

@@ -104,7 +104,7 @@ extension SelfTest {
             ], now: now)
     }
 
-    private static func waitFor(_ check: WatchCheck, _ seconds: Double, _ done: () -> Bool) {
+    static func waitFor(_ check: WatchCheck, _ seconds: Double, _ done: () -> Bool) {
         var waited = 0.0
         while !done() && waited < seconds {
             check.pump(0.05)
@@ -261,12 +261,12 @@ extension SelfTest {
         Preferences.setPlainWordsModel("")
         let named = PlainStub(.line("Deploying to the edge servers"))
         window.plainWordsChanged(transport: named)
-        waitFor(check, 6) { named.posts.count >= 2 }
+        waitFor(check, 6) { named.posts.count >= 3 }
         let used = named.posts.compactMap { body($0)?["model"] as? String }
         try check.expect(
-            named.gets.count == 1 && named.gets[0].absoluteString == "http://127.0.0.1:8080/v1/models"
-                && used.count == 2 && used.allSatisfy { $0 == "stub-model" },
-            "with no model named it asks the server once and uses the first it lists: \(named.gets.count) \(used)")
+            named.gets.first?.absoluteString == "http://127.0.0.1:8080/v1/models" && used.count == 3
+                && used.allSatisfy { $0 == "stub-model" },
+            "with no model named it asks the server what it has, proves the best one with one line and uses it: \(named.gets.count) \(used)")
         window.usePlainWords(nil)
 
         let crowd = PlainStub(.line("Deploying to the edge servers"), delay: .milliseconds(40))

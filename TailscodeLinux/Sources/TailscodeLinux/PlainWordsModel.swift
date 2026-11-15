@@ -78,12 +78,17 @@ final class PlainWordsModel: @unchecked Sendable {
     static let cacheLimit = 256
     static let queueLimit = 6
     static let marker = " ✦"
+    /// How long a model chosen because none was named is kept before the server is asked again, and
+    /// how long one that stopped answering is passed over.
+    static let chooseEvery: TimeInterval = 600
 
     private let endpoint: URL
     private let transport: any PlainWordsTransport
     private let clock: @Sendable () -> Date
     private let lock = NSLock()
-    private var model: String
+    private let model: String
+    private var chosen: (name: String, at: Date)?
+    private var avoided: [String: Date] = [:]
     private var answers: [String: String] = [:]
     private var order: [String] = []
     private var failedAt: [String: Date] = [:]
@@ -177,18 +182,54 @@ final class PlainWordsModel: @unchecked Sendable {
 
     private func converse(raw: String, model named: String, generation mine: Int) async throws -> String {
         guard let vetted = PlainModel.endpoint(endpoint.absoluteString) else { throw PlainWordsError.refused }
-        var name = named
-        if name.isEmpty {
-            name = try await Self.firstModel(at: vetted, transport: transport)
-            lock.withLock { if generation == mine { model = name } }
+        let name: String
+        if named.isEmpty {
+            name = try await choose(at: vetted)
+        } else {
+            name = named
         }
         let url = vetted.appendingPathComponent("chat").appendingPathComponent("completions")
         lock.withLock { _requests += 1 }
         let body = PlainModel.request(model: name, raw: raw)
         let transport = transport
-        let data = try await Self.bounded { try await transport.post(url, body: body) }
+        let data: Data
+        do {
+            data = try await Self.bounded { try await transport.post(url, body: body) }
+        } catch {
+            if named.isEmpty { avoid(name, at: vetted) }
+            throw error
+        }
         guard let line = PlainModel.reply(from: data) else { throw PlainWordsError.notAnswered }
         return line
+    }
+
+    /// The model to ask when none was named: the best one the server has ready, proved by its line,
+    /// kept for ten minutes and chosen again after that or as soon as it stops answering, so a model
+    /// that comes and goes is used while it is there and nothing is ever started for a line.
+    private func choose(at base: URL) async throws -> String {
+        let now = clock()
+        let kept = lock.withLock { () -> String? in
+            guard let chosen, now.timeIntervalSince(chosen.at) < Self.chooseEvery else { return nil }
+            return chosen.name
+        }
+        if let kept { return kept }
+        let refused = lock.withLock { () -> Set<String> in
+            avoided = avoided.filter { now.timeIntervalSince($0.value) < Self.chooseEvery }
+            return Set(avoided.keys)
+        }
+        guard let found = await PlainWordsScout(transport: transport).ready(at: base, refused: refused) else {
+            throw PlainWordsError.noModel
+        }
+        lock.withLock { chosen = (found.model.id, clock()) }
+        return found.model.id
+    }
+
+    private func avoid(_ name: String, at base: URL) {
+        let now = clock()
+        lock.withLock {
+            avoided[base.absoluteString + "|" + name] = now
+            if chosen?.name == name { chosen = nil }
+        }
     }
 
     private func finish(_ raw: String, _ outcome: Result<String, Error>, generation mine: Int) {
@@ -219,14 +260,7 @@ final class PlainWordsModel: @unchecked Sendable {
         pump()
     }
 
-    private static func firstModel(at endpoint: URL, transport: any PlainWordsTransport) async throws -> String {
-        let url = endpoint.appendingPathComponent("models")
-        let data = try await bounded { try await transport.get(url) }
-        guard let first = ids(from: data).first else { throw PlainWordsError.noModel }
-        return first
-    }
-
-    /// The model names a server lists, for the Check button and for the default.
+    /// The model names a server lists, for the Check button.
     static func ids(from data: Data) -> [String] {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let list = object["data"] as? [[String: Any]]

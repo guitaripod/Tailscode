@@ -48,20 +48,39 @@ import Testing
         #expect(PlainModelScout.swapRunning(json(#"{"models":[]}"#)) == nil)
     }
 
-    @Test func aSmallRunningModelLeadsAndABigOneIsNeverAskedFirst() {
+    @Test func aRunningGeneralModelLeadsWhateverItsSizeAndABigOneIsNeverStarted() {
         let models = PlainModelScout.models(fromList: swapList, kind: .llamaSwap, base: swap)
         let order = PlainModelScout.ranked(models).map(\.model.id)
-        #expect(order.first == "unrager-4b-gguf")
-        let bolt = order.firstIndex(of: "nemotron-3.5-bolt-74b-a9b-24gb-abliterated-gguf")!
-        #expect(order.firstIndex(of: "qwen3-4b-instruct-gguf")! < bolt)
+        #expect(order.first == "nemotron-3.5-bolt-74b-a9b-24gb-abliterated-gguf")
+        #expect(order[1] == "unrager-4b-gguf")
+        #expect(order.firstIndex(of: "qwen3-4b-instruct-gguf")! < order.firstIndex(of: "flint")!)
+        #expect(order.firstIndex(of: "flint")! < order.firstIndex(of: "sglang-gptoss120b")!)
         #expect(order.firstIndex(of: "qwen3-4b-thinking-gguf")! > order.firstIndex(of: "qwen3-0_6b-gguf")!)
-        #expect(PlainModelScout.choose(models) == .use(models.first { $0.id == "unrager-4b-gguf" }!))
+        #expect(PlainModelScout.choose(models) == .use(models.first { $0.id.hasPrefix("nemotron") }!))
+        #expect(PlainModelScout.bestReady(models)?.id.hasPrefix("nemotron") == true)
+    }
+
+    @Test func aSmallInstructModelThatIsRunningLeadsABigOne() {
+        var models = PlainModelScout.models(fromList: swapList, kind: .llamaSwap, base: swap)
+        models = models.map { model in
+            var model = model
+            if model.id == "gpulens-helper" { model.running = true }
+            return model
+        }
+        #expect(PlainModelScout.bestReady(models)?.id == "gpulens-helper")
+        let helper = models.first { $0.id == "gpulens-helper" }!
+        let bolt = models.first { $0.id.hasPrefix("nemotron") }!
+        #expect(PlainModelScout.bestReady(models, refused: [PlainModelScout.key(helper)])?.id == bolt.id)
+        let gone = models.filter { $0.running != true }
+        #expect(PlainModelScout.bestReady(gone) == nil)
+        let generic = PlainModelScout.Model(id: "served", kind: .other, base: swap)
+        #expect(PlainModelScout.bestReady([generic])?.id == "served")
     }
 
     @Test func aModelLlamaSwapWouldHaveToStartIsAskedAboutNotStarted() {
         let models = PlainModelScout.models(fromList: swapList, kind: .llamaSwap, base: swap)
-        let unrager = models.first { $0.id == "unrager-4b-gguf" }!
-        guard case .ask(let model) = PlainModelScout.choose(models, refused: [PlainModelScout.key(unrager)]) else {
+        let refused = Set(models.filter { $0.running == true }.map(PlainModelScout.key))
+        guard case .ask(let model) = PlainModelScout.choose(models, refused: refused) else {
             Issue.record("a model that is not running on llama-swap is asked about")
             return
         }

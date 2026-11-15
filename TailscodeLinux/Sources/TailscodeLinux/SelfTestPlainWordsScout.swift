@@ -45,12 +45,26 @@ extension SelfTest {
             throw SelfTestFailure("agents watch: plain words: a model llama-swap would have to start is asked about, got \(String(describing: asked))")
         }
         try check.expect(model.id == "qwen3-4b-instruct-gguf" && model.kind == .llamaSwap, "the finder offers the small instruct model llama-swap is not running")
-        try check.expect(swap.posts == ["helper-4b"], "after trying the small running one, and never the big one or the one that would have to start: \(swap.posts)")
+        try check.expect(
+            swap.posts == ["big-74b", "helper-4b"],
+            "after trying the running ones best first, the big general one before the tuned one, and never the one that would have to start: \(swap.posts)")
         let started = blockingOutcome { await PlainWordsScout(transport: swap).start(model) }
-        guard case .ready(let ready, let line, _)? = started else {
+        guard case .ready(let ready, let line, _, let pinned)? = started else {
             throw SelfTestFailure("agents watch: plain words: a model the person starts is tried and used")
         }
-        try check.expect(ready.id == model.id && line == "Showing what changed in the project", "and once started it is proved with one line")
+        try check.expect(ready.id == model.id && line == "Showing what changed in the project" && pinned, "and once started it is proved with one line and kept")
+
+        let steady = PlainScoutStub(pages: swapPages, lines: ["big-74b": "Showing the files that changed"])
+        guard case .ready(let always, _, _, let kept)? = blockingOutcome({ await PlainWordsScout(transport: steady).settle() }) else {
+            throw SelfTestFailure("agents watch: plain words: the big running model is used")
+        }
+        try check.expect(always.id == "big-74b" && !kept, "on llama-swap the best running model is used and not pinned, so the wall picks again when another runs")
+        let wall = PlainWordsModel(endpoint: URL(string: "http://127.0.0.1:8081/v1")!, model: "", transport: steady)
+        wall.ask("terraform plan -out tfplan")
+        waitFor(check, 6) { wall.said(for: "terraform plan -out tfplan") != nil }
+        try check.expect(
+            wall.said(for: "terraform plan -out tfplan") == "Showing the files that changed" && steady.posts.suffix(2) == ["big-74b", "big-74b"],
+            "with no model named the wall proves the best running one and asks it: \(steady.posts)")
 
         let ollama = PlainScoutStub(
             pages: [
@@ -60,10 +74,10 @@ extension SelfTest {
             ],
             lines: ["qwen3:4b": "Checking the project's changes"])
         let found = blockingOutcome { await PlainWordsScout(transport: ollama).settle() }
-        guard case .ready(let picked, _, _)? = found else {
+        guard case .ready(let picked, _, _, let ollamaPinned)? = found else {
             throw SelfTestFailure("agents watch: plain words: Ollama's small model is used without asking, got \(String(describing: found))")
         }
-        try check.expect(picked.id == "qwen3:4b" && picked.kind == .ollama && picked.base.absoluteString == "http://127.0.0.1:11434/v1", "Ollama's small model is found, tried and used without asking")
+        try check.expect(picked.id == "qwen3:4b" && picked.kind == .ollama && ollamaPinned && picked.base.absoluteString == "http://127.0.0.1:11434/v1", "Ollama's small model is found, tried and used without asking")
 
         let empty = PlainScoutStub(pages: [:], lines: [:])
         try check.expect(blockingOutcome { await PlainWordsScout(transport: empty).settle() } == PlainWordsScout.Outcome.none, "a machine with no model server says so")
@@ -77,7 +91,7 @@ extension SelfTest {
         }
         let setup = PlainWordsSetup()
         _ = setup.build()
-        setup.landed(.ready(picked, line: "Checking the project's changes", seconds: 0.4))
+        setup.landed(.ready(picked, line: "Checking the project's changes", seconds: 0.4, pinned: true))
         try check.expect(
             Preferences.plainWordsAddress == "http://127.0.0.1:11434/v1" && Preferences.plainWordsModel == "qwen3:4b"
                 && Preferences.plainWordsLabel == "qwen3:4b · Ollama",

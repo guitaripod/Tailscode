@@ -9,8 +9,10 @@ import TailscodeCore
 final class PlainWordsScout: @unchecked Sendable {
     /// What the look found.
     enum Outcome: Equatable {
-        /// This model wrote a fitting line, in this long.
-        case ready(PlainModelScout.Model, line: String, seconds: Double)
+        /// This model wrote a fitting line, in this long. `pinned` is a model to use from now on;
+        /// otherwise it is only the best one running now on a server that may stop one model for
+        /// another, and the wall picks again whenever it needs a line.
+        case ready(PlainModelScout.Model, line: String, seconds: Double, pinned: Bool)
         /// The best model is not running and its server may stop another to start it.
         case ask(PlainModelScout.Model)
         /// Model servers answered, these, but none of their models wrote a fitting line.
@@ -43,7 +45,9 @@ final class PlainWordsScout: @unchecked Sendable {
             case .ask(let model):
                 return .ask(model)
             case .use(let model):
-                if let proof = await trial(model) { return .ready(model, line: proof.line, seconds: proof.seconds) }
+                if let proof = await trial(model) {
+                    return .ready(model, line: proof.line, seconds: proof.seconds, pinned: !model.kind.mayStopAnother)
+                }
                 refused.insert(PlainModelScout.key(model))
             }
         }
@@ -53,7 +57,26 @@ final class PlainWordsScout: @unchecked Sendable {
     /// Asks a model the person agreed to start for its line, which starts it.
     func start(_ model: PlainModelScout.Model) async -> Outcome {
         guard let proof = await trial(model) else { return .silent([model.kind.title]) }
-        return .ready(model, line: proof.line, seconds: proof.seconds)
+        return .ready(model, line: proof.line, seconds: proof.seconds, pinned: true)
+    }
+
+    /// The best model the server at `base` can answer with now without starting one, proved by its
+    /// line, skipping the ones in `refused`: what the wall asks when no model was named.
+    func ready(at base: URL, refused: Set<String> = []) async -> (model: PlainModelScout.Model, line: String)? {
+        let models = await server(root: Self.root(of: base), base: base)
+        var refused = refused
+        for _ in 0..<Self.trials {
+            guard let model = PlainModelScout.bestReady(models, refused: refused) else { return nil }
+            if let proof = await trial(model) { return (model, proof.line) }
+            refused.insert(PlainModelScout.key(model))
+        }
+        return nil
+    }
+
+    /// The server's own root for an OpenAI-compatible address, where llama-swap, Ollama and LM Studio
+    /// answer the documents that tell them apart.
+    static func root(of base: URL) -> URL {
+        base.lastPathComponent == "v1" ? base.deletingLastPathComponent() : base
     }
 
     private static func servers(_ models: [PlainModelScout.Model]) -> [String] {
@@ -66,7 +89,10 @@ final class PlainWordsScout: @unchecked Sendable {
     func look() async -> [PlainModelScout.Model] {
         await withTaskGroup(of: [PlainModelScout.Model].self) { group in
             for port in PlainModelScout.ports {
-                group.addTask { [self] in await server(on: port) }
+                guard let root = URL(string: "http://\(host):\(port)"),
+                    let base = PlainModel.endpoint(root.absoluteString + "/v1")
+                else { continue }
+                group.addTask { [self] in await server(root: root, base: base) }
             }
             var all: [PlainModelScout.Model] = []
             for await found in group { all += found }
@@ -74,10 +100,8 @@ final class PlainWordsScout: @unchecked Sendable {
         }
     }
 
-    private func server(on port: Int) async -> [PlainModelScout.Model] {
-        guard let root = URL(string: "http://\(host):\(port)"), let base = PlainModel.endpoint(root.absoluteString + "/v1"),
-            let list = await fetch(base.appendingPathComponent("models"))
-        else { return [] }
+    private func server(root: URL, base: URL) async -> [PlainModelScout.Model] {
+        guard let list = await fetch(base.appendingPathComponent("models")) else { return [] }
         var models = PlainModelScout.models(fromList: list, kind: .other, base: base)
         guard !models.isEmpty else { return [] }
         if let running = await fetch(root.appendingPathComponent("running")).flatMap(PlainModelScout.swapRunning) {

@@ -50,7 +50,7 @@ enum SettingsPlainWords {
         judge(Preferences.plainWordsAddress, on: address)
         adw_expander_row_add_row(ptr(other), address)
         let model = entryRow(
-            title: Localized.text("Model"), placeholder: Localized.text("First one the server lists"),
+            title: Localized.text("Model"), placeholder: Localized.text("The best one it has running"),
             text: Preferences.plainWordsModel
         ) { [setup] text, _ in
             Preferences.setPlainWordsModel(text)
@@ -260,19 +260,21 @@ final class PlainWordsSetup: @unchecked Sendable {
         looking = false
         self.outcome = outcome
         switch outcome {
-        case .ready(let model, let line, let seconds):
-            let label = Self.label(model)
+        case .ready(let model, let line, let seconds, let pinned):
+            let label = pinned ? Self.label(model) : Localized.text("The best model %@ has running", model.kind.title)
             Preferences.setPlainWordsAddress(model.base.absoluteString)
-            Preferences.setPlainWordsModel(model.id)
+            Preferences.setPlainWordsModel(pinned ? model.id : "")
             Preferences.setPlainWordsFound(label: label)
             if let entries {
                 SettingsPlainWords.fill(entries.address.widget, model.base.absoluteString)
-                SettingsPlainWords.fill(entries.model.widget, model.id)
+                SettingsPlainWords.fill(entries.model.widget, pinned ? model.id : "")
             }
+            let timing = String(format: seconds < 1 ? "%.2f" : "%.1f", seconds)
             show(
                 title: label,
-                subtitle: Localized.text(
-                    "Answers in %@ s: “%@”", String(format: seconds < 1 ? "%.2f" : "%.1f", seconds), line),
+                subtitle: pinned
+                    ? Localized.text("Answers in %@ s: “%@”", timing, line)
+                    : Localized.text("Now %@, in %@ s: “%@”. Picked again whenever another is running or it stops.", model.title, timing, line),
                 button: Localized.text("Find again"))
             SettingsPlainWords.changed()
         case .ask(let model):
