@@ -752,10 +752,11 @@ final class AppCoordinator: NSObject {
         return nav
     }
 
-    /// Every window is the workspace: columns when the window is wide and tall enough for them, and
-    /// the phone's one stack with Home at its root when it is not. An iPhone on its outer display
-    /// is that stack; opened out to its inner display it is the iPad's columns, and folded shut
-    /// again the same view controllers fold back into the stack.
+    /// Every window is the workspace: columns when the window is wide enough for them, and the
+    /// phone's one stack with Home at its root when it is not. An iPhone held upright is that
+    /// stack and a large one turned on its side has the list beside the conversation; an iPhone on
+    /// its outer display is the stack, opened out to its inner display it is the iPad's columns, and
+    /// folded shut again the same view controllers fold back into the stack.
     private func makeMain() -> UIViewController {
         let home = HomeViewController()
         mainHome = home
@@ -765,9 +766,7 @@ final class AppCoordinator: NSObject {
         }
         let traits = window.traitCollection
         return WorkspaceSplitViewController(
-            home: home,
-            startsCollapsed: traits.horizontalSizeClass == .compact
-                || traits.verticalSizeClass == .compact)
+            home: home, startsCollapsed: traits.horizontalSizeClass == .compact)
     }
 
     private func presentSettings(

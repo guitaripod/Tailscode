@@ -5,7 +5,8 @@ import UIKit
 import UIKit.UIGestureRecognizerSubclass
 
 /// The iPad's window: places, chat lists and servers down the side, the conversations that were
-/// chosen there beside them, and the open conversation — or Home — filling the rest.
+/// chosen there beside them, and the open conversation — or Home — filling the rest. A large
+/// iPhone turned on its side is wide enough for the list beside the conversation, and gets it.
 ///
 /// A window too narrow for columns is the phone's app exactly: one stack with Home at its root.
 /// The same view controllers serve both arrangements, carried from one to the other whenever the
@@ -61,12 +62,10 @@ final class WorkspaceSplitViewController: UISplitViewController {
         super.viewDidLoad()
         view.backgroundColor = Theme.Color.background
         installPressRouting()
-        registerForTraitChanges([UITraitVerticalSizeClass.self]) { (self: Self, _) in
-            self.holdOneStackWhenShort()
-        }
         #if DEBUG
             flipWidthForVerification()
             walkForVerification()
+            turnForVerification()
         #endif
     }
 
@@ -84,10 +83,12 @@ final class WorkspaceSplitViewController: UISplitViewController {
         }
     #endif
 
+    /// The arrangement on first sight is the size class's, because `isCollapsed` is not settled
+    /// until the split's first layout: read here it said columns for a phone held upright, and the
+    /// window spread into columns and gathered back into its stack before anything was drawn.
     override func viewIsAppearing(_ animated: Bool) {
         super.viewIsAppearing(animated)
-        holdOneStackWhenShort()
-        arrange(collapsed: isCollapsed)
+        arrange(collapsed: traitCollection.horizontalSizeClass == .compact)
         refreshMarks()
     }
 
@@ -104,17 +105,6 @@ final class WorkspaceSplitViewController: UISplitViewController {
         fitColumns(to: size.width)
     }
 
-    /// Columns need height as well as width: a phone turned on its side is regular wide and
-    /// compact tall, and three columns across 430 points would leave the conversation no room.
-    /// A short window therefore reads as a compact one, and keeps the phone's single stack.
-    private func holdOneStackWhenShort() {
-        if traitCollection.verticalSizeClass == .compact {
-            traitOverrides.horizontalSizeClass = .compact
-        } else {
-            traitOverrides.remove(UITraitHorizontalSizeClass.self)
-        }
-    }
-
     private enum WidthBand { case narrow, medium, wide }
     private var widthBand: WidthBand?
 
@@ -123,6 +113,13 @@ final class WorkspaceSplitViewController: UISplitViewController {
     /// sidebar in over them when asked; a narrow one gives the conversation the width and lays
     /// the list over it on demand. Decided only when the width crosses a band, so a column a
     /// person put away stays put until the window itself changes.
+    ///
+    /// Whether there are columns at all is the size class's to say, once: a large iPhone on its
+    /// side is regular wide, 900-odd points across, the width of a middling iPad window, and keeps
+    /// the list beside the conversation however short it is. A height rule applied on top of the
+    /// system's — the stack held whenever the window was short — reached the split one trait pass
+    /// after it had already spread into columns, so every turn of the phone drew the list and took
+    /// it away again.
     private func fitColumns(to width: CGFloat) {
         guard width > 0 else { return }
         let band: WidthBand = width >= 1180 ? .wide : width >= 820 ? .medium : .narrow
@@ -580,6 +577,26 @@ final class WorkspaceSplitViewController: UISplitViewController {
             }
         }
 
+        /// `TAILSCODE_TURNS=4:landscape,9:portrait` turns the phone at each mark through the same
+        /// geometry request a rotation makes, so a simulator that boots upright walks the real
+        /// rotation path — the transition, the trait change and the split's collapse or expansion —
+        /// and the log says how many times the window was arranged on the way.
+        private func turnForVerification() {
+            guard let marks = ProcessInfo.processInfo.environment["TAILSCODE_TURNS"] else { return }
+            for mark in marks.split(separator: ",") {
+                let parts = mark.split(separator: ":", maxSplits: 1).map(String.init)
+                guard parts.count == 2, let time = Double(parts[0]) else { continue }
+                let orientations: UIInterfaceOrientationMask = parts[1] == "portrait" ? .portrait : .landscapeRight
+                DispatchQueue.main.asyncAfter(deadline: .now() + time) { [weak self] in
+                    guard let scene = self?.view.window?.windowScene else { return }
+                    MidgarLog.info("workspace turn \(parts[1])", category: .ui)
+                    scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientations)) { error in
+                        MidgarLog.info("workspace turn refused: \(error.localizedDescription)", category: .ui)
+                    }
+                }
+            }
+        }
+
         /// `TAILSCODE_WIDTH_FLIPS=4,9` narrows the window to one column at the first mark and
         /// widens it back at the next, so a simulator — which cannot be resized from a script —
         /// walks every carry between the two arrangements with a conversation open.
@@ -706,12 +723,20 @@ extension WorkspaceSplitViewController: UISplitViewControllerDelegate {
         return proposedDisplayMode
     }
 
+    /// The screens are carried while the split is still in the arrangement it is leaving, so Home
+    /// is asked again once it has arrived: its bar and its board depend on whether it stands in a
+    /// column, which reads the arrangement the split now shows. Asked during the move, a phone
+    /// turned on its side kept the stack's gear and tools beside a list, and an iPad widened from
+    /// Slide Over did the same.
     func splitViewControllerDidCollapse(_ svc: UISplitViewController) {
         arrange(collapsed: true)
+        home.workspaceDidRearrange()
     }
 
     func splitViewControllerDidExpand(_ svc: UISplitViewController) {
         arrange(collapsed: false)
+        home.workspaceDidRearrange()
+        refreshMarks()
     }
 }
 
