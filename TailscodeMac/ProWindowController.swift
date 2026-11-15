@@ -10,31 +10,50 @@ import TailscodeCore
 /// had a Pro week is offered one here as the default button, with the purchase beside it.
 @MainActor
 final class ProWindowController: NSWindowController {
+    private static let openingWidth: CGFloat = 460
+    private static let smallestContent = NSSize(width: 420, height: 240)
+    /// Not `TailscodePro`: earlier builds let this window take its size from a view that had none, so it
+    /// opened as a bare title bar and remembered that frame under the old name.
+    private static let frameName = "TailscodePro2"
+
     private let column = FillingStack(views: [])
     private let scroll = NSScrollView()
-    private let purchase = RowKit.ActionButton(title: ProOffer.title) {}
+    private let purchase = RowKit.ActionButton(title: Localized.text("Unlock Pro")) {}
     private let restore = RowKit.ActionButton(title: ProOffer.restoreTitle) {}
     private let status = RowKit.wrapping(
         "", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)
     private var proProduct: StoreProduct?
+    private var onAccess: (@MainActor () -> Void)?
+    private var hasChosenSize = false
+    private var sizedToPage: CGFloat?
+    private var isLoading = false
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 560),
-            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            contentRect: NSRect(x: 0, y: 0, width: Self.openingWidth, height: 560),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = ProOffer.title
         window.isReleasedWhenClosed = false
-        window.contentMinSize = NSSize(width: 460, height: 420)
+        window.contentMinSize = Self.smallestContent
         MacTheme.Chrome.adopt(window)
         super.init(window: window)
-        window.contentViewController = NSViewController(nibName: nil, bundle: nil)
-        window.contentViewController?.view = makeContent()
+        window.contentView = makeContent()
         window.center()
-        window.rememberFrame(as: "TailscodePro")
+        hasChosenSize = window.rememberFrame(as: Self.frameName)
+        restore.setAction { [weak self] in self?.restorePurchases() }
+        status.isHidden = true
         NotificationCenter.default.addObserver(
             self, selector: #selector(proChanged), name: ProAccess.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(closed), name: NSWindow.willCloseNotification, object: window)
+    }
+
+    /// A window closed without Pro forgets what it would have carried on with: an Ask to Buy approved
+    /// hours later must not suddenly save a server or open Delegate.
+    @objc private func closed() {
+        onAccess = nil
     }
 
     @available(*, unavailable)
@@ -45,21 +64,63 @@ final class ProWindowController: NSWindowController {
     /// already has, which keep their titles, their prices and whatever the status line was saying.
     @objc private func repaint() {
         column.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        window?.contentViewController?.view = makeContent()
+        window?.contentView = makeContent()
         status.textColor = MacTheme.Color.secondaryLabel
+        followPage()
     }
 
     /// Brings the window forward and sends `paywall.view` with `placement`, where it was opened from.
     /// A window already on screen is the same view brought forward, not a second one, so it is
     /// counted once, as the iPhone's sheet is.
-    func present(placement: MidgarSignal.Placement) {
+    /// - Parameter onAccess: What brought the person here, carried on with once Pro is open — by the
+    ///   week, a purchase or a restore — after this window has gone. Opened by hand, nothing waits
+    ///   and the window stays to say what the person now has.
+    func present(placement: MidgarSignal.Placement, onAccess: (@MainActor () -> Void)? = nil) {
+        self.onAccess = onAccess
         if window?.isVisible != true {
             ReviewPromptPolicy.notePaywallShown()
             MidgarPaywallMoments.noteShown(placement: placement)
+            fitToPage()
         }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         Task { await load() }
+    }
+
+    /// Sizes a window nobody has resized to its page: as tall as the page is, never taller than
+    /// the screen has room for, with the scroll view taking whatever does not fit.
+    private func fitToPage() {
+        guard let window, !hasChosenSize else { return }
+        hasChosenSize = true
+        window.setContentSize(NSSize(width: Self.openingWidth, height: Self.smallestContent.height))
+        let height = pageHeight(in: window)
+        window.setContentSize(NSSize(width: Self.openingWidth, height: height))
+        window.center()
+        sizedToPage = height
+    }
+
+    /// Keeps a window this page sized at the page's height as the page changes — a status line under
+    /// the buttons, the offer giving way to what the person now has — growing and shrinking from its
+    /// top edge. A window the person resized is theirs and stays as they left it.
+    private func followPage() {
+        guard let window, let sizedToPage,
+            abs(window.contentRect(forFrameRect: window.frame).height - sizedToPage) < 1
+        else { return }
+        let height = pageHeight(in: window)
+        guard abs(height - sizedToPage) >= 1 else { return }
+        let content = NSRect(x: 0, y: 0, width: window.contentRect(forFrameRect: window.frame).width, height: height)
+        var frame = window.frameRect(forContentRect: content)
+        frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
+        window.setFrame(frame, display: true, animate: window.isVisible)
+        self.sizedToPage = height
+    }
+
+    /// How tall the content has to be to show the whole page at the window's width, within the
+    /// screen's room and never under the window's smallest size.
+    private func pageHeight(in window: NSWindow) -> CGFloat {
+        window.contentView?.layoutSubtreeIfNeeded()
+        let room = (window.screen ?? NSScreen.main)?.visibleFrame.height ?? 800
+        return min(max(column.frame.height, Self.smallestContent.height), room - 160)
     }
 
     private func makeContent() -> NSView {
@@ -81,30 +142,7 @@ final class ProWindowController: NSWindowController {
         }
         for perk in ProPersonalDetails.perks(facts) { column.addArrangedSubview(perkRow(perk)) }
 
-        if ProAccess.shared.canStartProWeek {
-            column.addArrangedSubview(
-                RowKit.label(ProWeek.offerTitle, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label))
-            column.addArrangedSubview(
-                RowKit.wrapping(
-                    ProWeek.offerBody, font: MacTheme.Ramp.font(.cardBody), color: MacTheme.Color.secondaryLabel))
-            let week = RowKit.ActionButton(title: ProWeek.startTitle) { [weak self] in self?.startWeek() }
-            week.keyEquivalent = "\r"
-            column.addArrangedSubview(week)
-            purchase.keyEquivalent = ""
-        } else {
-            if let endsAt = ProAccess.shared.proWeekEndsAt {
-                column.addArrangedSubview(
-                    RowKit.wrapping(
-                        ProWeek.runningLine(endsAt: endsAt), font: MacTheme.Ramp.font(.cardBody),
-                        color: MacTheme.Color.accent))
-            }
-            purchase.keyEquivalent = "\r"
-        }
-        column.addArrangedSubview(purchase)
-        column.addArrangedSubview(status)
-
-        restore.bezelStyle = .inline
-        column.addArrangedSubview(restore)
+        if !isPro { addOffer() }
 
         let clip = RowKit.FlippedClip()
         clip.drawsBackground = false
@@ -130,6 +168,50 @@ final class ProWindowController: NSWindowController {
         return container
     }
 
+    /// What a copy without Pro is asked, once: the week as the first button when it was never
+    /// started, the purchase as the first button after that, and the way to restore under both.
+    private func addOffer() {
+        if let last = column.arrangedSubviews.last { column.setCustomSpacing(MacTheme.Spacing.xl, after: last) }
+        let offersWeek = ProAccess.shared.canStartProWeek
+        if offersWeek {
+            column.addArrangedSubview(
+                RowKit.label(ProWeek.offerTitle, font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label))
+            column.addArrangedSubview(
+                RowKit.wrapping(
+                    ProWeek.offerBody, font: MacTheme.Ramp.font(.cardBody), color: MacTheme.Color.secondaryLabel))
+            let week = RowKit.ActionButton(title: ProWeek.startTitle) { [weak self] in self?.startWeek() }
+            prominent(week)
+            column.addArrangedSubview(week)
+            column.setCustomSpacing(MacTheme.Spacing.s, after: week)
+        } else if let endsAt = ProAccess.shared.proWeekEndsAt {
+            column.addArrangedSubview(
+                RowKit.wrapping(
+                    ProWeek.runningLine(endsAt: endsAt), font: MacTheme.Ramp.font(.cardBody),
+                    color: MacTheme.Color.accent))
+        }
+        purchase.controlSize = .large
+        if offersWeek {
+            purchase.keyEquivalent = ""
+            purchase.bezelColor = nil
+        } else {
+            prominent(purchase)
+        }
+        column.addArrangedSubview(purchase)
+        column.addArrangedSubview(status)
+        restore.bezelStyle = .inline
+        let restoreRow = NSStackView(views: [restore])
+        restoreRow.orientation = .horizontal
+        restoreRow.alignment = .centerY
+        column.addArrangedSubview(restoreRow)
+    }
+
+    /// The button the page leads to: the accent, large, and the one Return presses.
+    private func prominent(_ button: NSButton) {
+        button.controlSize = .large
+        button.bezelColor = MacTheme.Color.accent
+        button.keyEquivalent = "\r"
+    }
+
     private func perkRow(_ perk: ProOffer.Perk) -> NSView {
         let symbol = NSImageView()
         symbol.image = NSImage(systemSymbolName: perk.symbol, accessibilityDescription: nil)
@@ -145,69 +227,106 @@ final class ProWindowController: NSWindowController {
         return row
     }
 
-    /// Starts the week with as many servers kept afterwards as are saved now, and redraws the page around it.
+    /// Starts the week with as many servers kept afterwards as are saved now, then carries on with
+    /// what brought the person here, or redraws the page around the week.
     private func startWeek() {
         let servers = ServerDirectory.shared.savedProfiles.filter { !$0.id.hasPrefix(DemoWorld.profilePrefix) }.count
         guard ProAccess.shared.startProWeek(servers: servers) else { return }
-        repaint()
+        if !carryOn() { repaint() }
+    }
+
+    /// Closes the window and runs what brought the person here, once. Whether anything did.
+    @discardableResult
+    private func carryOn() -> Bool {
+        guard let onAccess else { return false }
+        self.onAccess = nil
+        window?.close()
+        onAccess()
+        return true
     }
 
     @objc private func proChanged() {
         guard ProAccess.shared.isPro else { return }
-        repaint()
-        purchase.isHidden = true
-        status.stringValue = ""
+        if !carryOn() { repaint() }
+        say("")
     }
 
+    /// The line under the buttons, gone when there is nothing to say so the page does not hold a gap.
+    private func say(_ text: String) {
+        status.stringValue = text
+        status.isHidden = text.isEmpty
+        followPage()
+    }
+
+    /// Whether a purchase or a restore is waiting on the App Store, so neither button can be pressed
+    /// into a second one.
+    private func setBusy(_ busy: Bool) {
+        purchase.isEnabled = !busy && !isLoading
+        restore.isEnabled = !busy
+    }
+
+    /// Asks the App Store for the price. The button reads "Unlock Pro" and waits until it has one;
+    /// a store that does not answer turns it into the way to ask again, as on the iPhone.
     private func load() async {
+        guard !ProAccess.shared.isPro, !isLoading else { return }
+        isLoading = true
+        purchase.isEnabled = false
+        purchase.title = Localized.text("Unlock Pro")
+        say("")
         let pro = await ProAccess.shared.proProduct()
+        isLoading = false
         proProduct = pro
-        if ProAccess.shared.isPro {
-            proChanged()
-        } else if let pro {
+        guard !ProAccess.shared.isPro else { return }
+        purchase.isEnabled = true
+        if let pro {
             purchase.title = Localized.text("Unlock Pro · %@", pro.displayPrice)
             purchase.setAction { [weak self] in self?.buy(pro) }
         } else {
-            purchase.isEnabled = false
-            status.stringValue = Localized.text("The App Store is not answering right now.")
+            purchase.title = Localized.text("Try again")
+            purchase.setAction { [weak self] in Task { await self?.load() } }
+            say(Localized.text("Couldn't reach the App Store. Check your connection and try again."))
         }
-        restore.setAction { [weak self] in self?.restorePurchases() }
     }
 
     private func buy(_ product: StoreProduct) {
-        status.stringValue = ""
+        say("")
+        setBusy(true)
         Task {
+            defer { setBusy(false) }
             do {
                 switch try await ProAccess.shared.purchase(product, in: window) {
                 case .success:
-                    status.stringValue = ""
+                    carryOn()
                 case .pending:
-                    status.stringValue = Localized.text(
-                        "Waiting on approval — this window can be closed.")
+                    say(Localized.text("Waiting on approval — this window can be closed."))
                 case .cancelled:
                     break
                 case .unverified:
-                    status.stringValue = Localized.text(
-                        "That purchase could not be verified. Nothing was charged.")
+                    say(Localized.text("That purchase could not be verified. Nothing was charged."))
                 }
             } catch {
-                status.stringValue = error.localizedDescription
+                say(error.localizedDescription)
             }
         }
     }
 
     private func restorePurchases() {
-        status.stringValue = Localized.text("Checking…")
+        say(Localized.text("Checking…"))
+        setBusy(true)
         Task {
+            defer { setBusy(false) }
             do {
                 switch try await ProAccess.shared.restore() {
-                case .restored: status.stringValue = ""
+                case .restored:
+                    say("")
+                    carryOn()
                 case .nothingFound:
-                    status.stringValue = Localized.text("No purchase found on this Apple Account.")
-                case .cancelled: status.stringValue = ""
+                    say(Localized.text("No purchase found on this Apple Account."))
+                case .cancelled:
+                    say("")
                 }
             } catch {
-                status.stringValue = error.localizedDescription
+                say(error.localizedDescription)
             }
         }
     }

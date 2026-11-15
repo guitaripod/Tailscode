@@ -260,7 +260,9 @@ extension MainWindowController {
                 MacUpdateWatch.shared.noteProfilesChanged()
                 Task { [weak self] in await self?.sidebar.refresh() }
             }
-            serversWindow?.onNeedsPro = { [weak self] in self?.presentPro(placement: .limit) }
+            serversWindow?.onNeedsPro = { [weak self] onAccess in
+                self?.presentPro(placement: .limit, onAccess: onAccess)
+            }
             serversWindow?.onOpenAgent = { [weak self] profile, id in
                 self?.presentAgentCard(profile: profile, agentID: id)
             }
@@ -298,7 +300,7 @@ extension MainWindowController {
     /// because delegation is the door the purchase is sold through.
     func presentDelegate(handoff: DelegateHandoff? = nil) {
         guard MacDelegateGate.isOpen else {
-            presentPro(placement: .feature)
+            presentPro(placement: .feature) { [weak self] in self?.presentDelegate(handoff: handoff) }
             return
         }
         MacDelegateGate.watchNotices()
@@ -309,9 +311,9 @@ extension MainWindowController {
     }
 
     /// The unlock, opened by hand — from the menu, or from the one gate that asks for it.
-    func presentPro(placement: MidgarSignal.Placement) {
+    func presentPro(placement: MidgarSignal.Placement, onAccess: (@MainActor () -> Void)? = nil) {
         if proWindow == nil { proWindow = ProWindowController() }
-        proWindow?.present(placement: placement)
+        proWindow?.present(placement: placement, onAccess: onAccess)
     }
 
     func selectSettingsPage(named name: String) {

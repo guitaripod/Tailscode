@@ -48,8 +48,9 @@ enum ServerProbe {
 final class ServersWindow: NSWindowController {
     private static let log = Logger(subsystem: "com.guitaripod.tailscode", category: "persistence")
     private let onChanged: @MainActor () -> Void
-    /// What to open when somebody reaches past the free copy's one server.
-    var onNeedsPro: (@MainActor () -> Void)?
+    /// What to open when somebody reaches past the free copy's one server, handed what to carry on
+    /// with once Pro is open.
+    var onNeedsPro: (@MainActor (_ onAccess: (@MainActor () -> Void)?) -> Void)?
     /// What to open when somebody reaches past one server's own card to the whole picture.
     var onOpenUpdateCenter: (@MainActor () -> Void)?
     /// A machine's agent pressed in its Agents section: the hub opens the agent's card.
@@ -426,7 +427,7 @@ final class ServersWindow: NSWindowController {
         }
         buttons.append(
             makeInlineButton(Localized.text("Get Tailscode Pro")) { [weak self] in
-                self?.onNeedsPro?()
+                self?.offerPro()
             })
         let actions = NSStackView(views: buttons)
         actions.orientation = .horizontal
@@ -607,7 +608,7 @@ final class ServersWindow: NSWindowController {
                 self.passwordField.stringValue = ""
             } catch is ServerDirectory.ProRequired {
                 self.setStatus(ProOffer.requirement)
-                self.offerPro()
+                self.offerPro { [weak self] in self?.probeAndSave() }
             } catch {
                 self.setStatus(
                     Localized.text(
@@ -794,8 +795,8 @@ final class ServersWindow: NSWindowController {
 
     /// The gate does not just refuse — it opens the one window that answers it. A price stated
     /// with no way to pay it is a dead end, and this is the only place in the app that asks.
-    private func offerPro() {
-        onNeedsPro?()
+    private func offerPro(carryingOnWith onAccess: (@MainActor () -> Void)? = nil) {
+        onNeedsPro?(onAccess)
     }
 
     private func setStatus(_ text: String) {
