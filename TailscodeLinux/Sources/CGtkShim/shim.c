@@ -1001,7 +1001,12 @@ void tailscode_clipboard_read_text(
     gdk_clipboard_read_text_async(clipboard, NULL, tailscode_clipboard_text_done, box);
 }
 
+static const char *tailscode_accessible_label_key = "tailscode-accessible-label";
+
 void tailscode_set_accessible_label(GtkWidget *widget, const char *label) {
+    const char *said = g_object_get_data(G_OBJECT(widget), tailscode_accessible_label_key);
+    if (said && label && strcmp(said, label) == 0) return;
+    g_object_set_data_full(G_OBJECT(widget), tailscode_accessible_label_key, g_strdup(label), g_free);
     gtk_accessible_update_property(
         GTK_ACCESSIBLE(widget), GTK_ACCESSIBLE_PROPERTY_LABEL, label, -1);
 }

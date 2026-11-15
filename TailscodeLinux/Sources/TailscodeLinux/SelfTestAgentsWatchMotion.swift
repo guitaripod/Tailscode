@@ -5,7 +5,8 @@ import Foundation
 import TailscodeCore
 
 extension SelfTest {
-    /// What the wall costs: one frame clock under thirty a second while anything moves, none when
+    /// What the wall costs: one frame clock, at twenty a second under the software renderer the
+    /// harness draws with, while anything moves, none when
     /// the desk asks for stillness or nobody can see the window, still frames that do not change
     /// with time, and an edge that breathes only while something has waited too long.
     static func checkWatchMotion(_ check: WatchCheck) throws {
@@ -97,7 +98,10 @@ extension SelfTest {
         let frames = view.frames
         check.pump(0.7)
         let made = view.frames - frames
-        try check.expect(made >= 6 && made <= 23, "and draws at thirty a second at the most: \(made) in 0.7 s")
+        try check.expect(
+            view.drawsWithGPU || view.cadenceCap() == 20,
+            "under the software renderer the wall keeps to low power's twenty a second: \(view.cadenceCap())")
+        try check.expect(made >= 6 && made <= 16, "and draws at that rate: \(made) in 0.7 s")
         view.setVisible(false)
         try check.expect(!view.isTurning, "a hidden window runs no clock")
         let still = view.frames

@@ -217,7 +217,8 @@ void tailscode_set_text_scale(double scale);
 
 /// Names a control for assistive technology. A button whose only child is a glyph has nothing an
 /// AT can read, and `gtk_accessible_update_property` is variadic, so it cannot be called from
-/// Swift directly.
+/// Swift directly. A name the widget already has is not said again: a wall that restates every
+/// tile once a second would otherwise send the accessibility bus a change it does not carry.
 void tailscode_set_accessible_label(GtkWidget *widget, const char *label);
 
 /// A press delivered the way a click is, at once — `gtk_widget_activate` waits out the button's
@@ -812,3 +813,5 @@ long tailscode_soak_rows(void);
 #include "brain.h"
 #include "selfdiag.h"
 #include "stage.h"
+#include "frames.h"
+#include "wallpaint.h"

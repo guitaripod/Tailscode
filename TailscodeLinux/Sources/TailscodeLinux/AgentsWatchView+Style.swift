@@ -9,7 +9,7 @@ extension AgentsWatchView {
     func apply(style next: WallStyle) {
         context.style = next
         dim.calmFor = next.dimAfter
-        context.animated = RepeatingMotion.allowed && !next.still
+        context.animated = RepeatingMotion.deskAllows && !next.still
         syncWorkers(wall, now: context.clock.now)
         refreshNight(now: context.clock.now, force: true)
         top.apply(wall, now: context.clock.now)

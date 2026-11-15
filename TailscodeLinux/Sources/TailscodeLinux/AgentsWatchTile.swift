@@ -10,9 +10,12 @@ import TailscodeCore
 /// placed by the wall and lays its own parts out from the size it is given.
 final class WatchTileView: @unchecked Sendable {
     let container: TileCanvas
-    let card = AgentsCanvas(width: 1, height: 1)
-    let glyph = AgentsCanvas(width: 1, height: 1)
-    let beatCanvas = AgentsCanvas(width: 1, height: 1)
+    let card = WallLayer()
+    let glyph = WallLayer()
+    let beatCanvas = WallLayer()
+    private let cardFace = WallCard()
+    private let glyphFace = WallGlyph()
+    private let beatFace = WallBeat()
     let title = WatchLabel()
     let status = WatchLabel()
     let meta = WatchLabel()
@@ -79,14 +82,17 @@ final class WatchTileView: @unchecked Sendable {
 
     private func build() {
         tailscode_set_accessible_hidden(card.widget, 1)
-        for canvas in [card, glyph, beatCanvas, ring] {
-            gtk_widget_set_can_target(canvas.widget, canvas === card ? 1 : 0)
-            gtk_widget_set_can_focus(canvas.widget, 0)
-            tailscode_set_accessible_hidden(canvas.widget, 1)
+        for layer in [card, glyph, beatCanvas] {
+            gtk_widget_set_can_target(layer.widget, layer === card ? 1 : 0)
+            gtk_widget_set_can_focus(layer.widget, 0)
+            tailscode_set_accessible_hidden(layer.widget, 1)
         }
-        card.paint = { [weak self] cr, width, height in self?.paintCard(cr, width, height) }
-        glyph.paint = { [weak self] cr, width, _ in self?.paintGlyph(cr, width) }
-        beatCanvas.paint = { [weak self] cr, width, height in self?.paintBeat(cr, width, height) }
+        gtk_widget_set_can_target(ring.widget, 0)
+        gtk_widget_set_can_focus(ring.widget, 0)
+        tailscode_set_accessible_hidden(ring.widget, 1)
+        card.draw = { [weak self] snapshot, width, height in self?.drawCard(snapshot, width, height) }
+        glyph.draw = { [weak self] snapshot, width, _ in self?.drawGlyph(snapshot, width) }
+        beatCanvas.draw = { [weak self] snapshot, width, height in self?.drawBeat(snapshot, width, height) }
         ring.paint = { [weak self] cr, width, _ in self?.paintRing(cr, width) }
         container.add(card.widget, layer: .panes)
         for canvas in [glyph, beatCanvas] { container.add(canvas.widget, layer: .dividers) }
@@ -232,7 +238,7 @@ final class WatchTileView: @unchecked Sendable {
     }
 
     func redrawAll() {
-        for canvas in [card, glyph, beatCanvas] { canvas.redraw() }
+        for layer in [card, glyph, beatCanvas] { layer.redraw() }
     }
 
     /// What the effects playing on this tile ask of it now: the context ring's share while it drains,
@@ -279,39 +285,43 @@ final class WatchTileView: @unchecked Sendable {
         }
     }
 
-    func frame(card cardDue: Bool, glyph glyphDue: Bool, beat beatDue: Bool) {
-        if cardDue { card.redraw() }
-        if glyphDue { glyph.redraw() }
-        if beatDue || slideStart != nil { beatCanvas.redraw() }
+    /// One frame: whatever of the tile moves is drawn again, which costs nodes and no pixels.
+    func frame() {
+        if isAnimating { card.redraw() }
+        if glyphAnimates { glyph.redraw() }
+        if slideStart != nil { beatCanvas.redraw() }
     }
 
-    private func paintCard(_ cr: OpaquePointer, _ width: Double, _ height: Double) {
+    var face: WatchTilePaint.Face? {
+        guard let tile else { return nil }
+        return .init(state: tile.state, focused: focused, pulse: pulse, ultracode: tile.chip?.isUltracode == true)
+    }
+
+    func drawCard(_ snapshot: WallSnapshot, _ width: Double, _ height: Double) {
+        guard let face else { return }
+        cardFace.draw(
+            snapshot, width: width, height: height, unit: unit, face: face, palette: context.palette,
+            paletteKey: context.paletteKey, t: context.seconds, animated: context.animated)
+    }
+
+    func drawGlyph(_ snapshot: WallSnapshot, _ size: Double) {
         guard let tile else { return }
-        WatchTilePaint.card(
-            cr, width: width, height: height, unit: unit,
-            face: .init(
-                state: tile.state, focused: focused, pulse: pulse,
-                ultracode: tile.chip?.isUltracode == true),
-            palette: context.palette, t: context.seconds, animated: context.animated)
+        glyphFace.draw(
+            snapshot, size: size, state: tile.state, share: drainShare ?? tile.contextShare, fade: tile.fade,
+            palette: context.palette, paletteKey: context.paletteKey, t: context.seconds,
+            animated: context.animated)
     }
 
-    private func paintGlyph(_ cr: OpaquePointer, _ size: Double) {
-        guard let tile else { return }
-        WatchGlyph.paint(
-            cr, size: size, state: tile.state, share: drainShare ?? tile.contextShare, fade: tile.fade,
-            palette: context.palette, t: context.seconds, animated: context.animated)
-    }
-
-    private func paintBeat(_ cr: OpaquePointer, _ width: Double, _ height: Double) {
+    func drawBeat(_ snapshot: WallSnapshot, _ width: Double, _ height: Double) {
         guard let tile else { return }
         var slide = 0.0
         if let start = slideStart {
             let progress = (context.seconds - start) / 0.45
             if progress >= 1 { slideStart = nil } else { slide = 1 - progress * progress * (3 - 2 * progress) }
         }
-        WatchTilePaint.beat(
-            cr, width: width, height: height, beat: beat, slide: slide,
-            ink: context.palette.ink(tile.state), palette: context.palette)
+        beatFace.draw(
+            snapshot, width: width, height: height, beat: beat, slide: slide, ink: context.palette.ink(tile.state),
+            palette: context.palette, paletteKey: context.paletteKey)
     }
 
     var beatValues: [Int] { beat }

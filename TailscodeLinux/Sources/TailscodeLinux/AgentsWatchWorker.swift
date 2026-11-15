@@ -47,9 +47,11 @@ final class WatchWorkerView: @unchecked Sendable {
     static let narrowest = 24.0
 
     let container: TileCanvas
-    let card = AgentsCanvas(width: 1, height: 1)
-    let glyph = AgentsCanvas(width: 1, height: 1)
-    let bar = AgentsCanvas(width: 1, height: 1)
+    let card = WallLayer()
+    let glyph = WallLayer()
+    let bar = WallLayer()
+    private let cardFace = WallCard()
+    private let glyphFace = WallGlyph()
     let title = WatchLabel()
     let status = WatchLabel()
     let words = WatchLabel()
@@ -71,14 +73,14 @@ final class WatchWorkerView: @unchecked Sendable {
     var widget: UnsafeMutablePointer<GtkWidget> { container.widget }
 
     private func build() {
-        for canvas in [card, glyph, bar] {
-            gtk_widget_set_can_target(canvas.widget, canvas === card ? 1 : 0)
-            gtk_widget_set_can_focus(canvas.widget, 0)
-            tailscode_set_accessible_hidden(canvas.widget, 1)
+        for layer in [card, glyph, bar] {
+            gtk_widget_set_can_target(layer.widget, layer === card ? 1 : 0)
+            gtk_widget_set_can_focus(layer.widget, 0)
+            tailscode_set_accessible_hidden(layer.widget, 1)
         }
-        card.paint = { [weak self] cr, width, height in self?.paintCard(cr, width, height) }
-        glyph.paint = { [weak self] cr, width, _ in self?.paintGlyph(cr, width) }
-        bar.paint = { [weak self] cr, width, height in self?.paintBar(cr, width, height) }
+        card.draw = { [weak self] snapshot, width, height in self?.drawCard(snapshot, width, height) }
+        glyph.draw = { [weak self] snapshot, width, _ in self?.drawGlyph(snapshot, width) }
+        bar.draw = { [weak self] snapshot, width, height in self?.drawBar(snapshot, width, height) }
         container.add(card.widget, layer: .panes)
         for canvas in [glyph, bar] { container.add(canvas.widget, layer: .dividers) }
         for label in [title, status, words, figure] { container.add(label.widget, layer: .dividers) }
@@ -164,7 +166,7 @@ final class WatchWorkerView: @unchecked Sendable {
     }
 
     func redrawAll() {
-        for canvas in [card, glyph, bar] { canvas.redraw() }
+        for layer in [card, glyph, bar] { layer.redraw() }
     }
 
     /// The palette changed: lay the small tile out and paint it again.
@@ -201,35 +203,35 @@ final class WatchWorkerView: @unchecked Sendable {
         }
     }
 
-    func frame(card cardDue: Bool, glyph glyphDue: Bool) {
-        if cardDue { card.redraw() }
-        if glyphDue { glyph.redraw() }
+    /// One frame: whatever of the small tile moves is drawn again, which costs nodes and no pixels.
+    func frame() {
+        if isAnimating { card.redraw() }
+        if glyphAnimates { glyph.redraw() }
     }
 
-    private func paintCard(_ cr: OpaquePointer, _ width: Double, _ height: Double) {
-        WatchTilePaint.card(
-            cr, width: width, height: height, unit: unit, face: .init(state: state, focused: false),
-            palette: context.palette, t: context.seconds, animated: context.animated,
-            corner: Self.corner)
+    func drawCard(_ snapshot: WallSnapshot, _ width: Double, _ height: Double) {
+        cardFace.draw(
+            snapshot, width: width, height: height, unit: unit, corner: Self.corner,
+            face: .init(state: state, focused: false), palette: context.palette, paletteKey: context.paletteKey,
+            t: context.seconds, animated: context.animated)
     }
 
-    private func paintGlyph(_ cr: OpaquePointer, _ size: Double) {
+    func drawGlyph(_ snapshot: WallSnapshot, _ size: Double) {
         guard case .worker(let worker)? = face else { return }
-        WatchGlyph.paint(
-            cr, size: size, state: worker.state.wallState, share: nil, fade: worker.fade,
-            palette: context.palette, t: context.seconds, animated: context.animated)
+        glyphFace.draw(
+            snapshot, size: size, state: worker.state.wallState, share: nil, fade: worker.fade,
+            palette: context.palette, paletteKey: context.paletteKey, t: context.seconds,
+            animated: context.animated)
     }
 
-    private func paintBar(_ cr: OpaquePointer, _ width: Double, _ height: Double) {
+    func drawBar(_ snapshot: WallSnapshot, _ width: Double, _ height: Double) {
         guard case .worker(let worker)? = face, let share = worker.progress else { return }
         let palette = context.palette
-        agentsRoundedRect(cr, x: 0, y: 0, width: width, height: height, radius: height / 2)
-        palette.text.set(cr, alpha: 0.16)
-        cairo_fill(cr)
+        snapshot.fill(WatchRect(x: 0, y: 0, width: width, height: height), radius: height / 2, ink: palette.text, alpha: 0.16)
         guard share > 0 else { return }
-        agentsRoundedRect(cr, x: 0, y: 0, width: max(height, width * share), height: height, radius: height / 2)
-        palette.ink(worker.state.wallState).set(cr, alpha: 0.95)
-        cairo_fill(cr)
+        snapshot.fill(
+            WatchRect(x: 0, y: 0, width: max(height, width * share), height: height), radius: height / 2,
+            ink: palette.ink(worker.state.wallState), alpha: 0.95)
     }
 
     func solve(width: Int32, height: Int32, sink: TileSink) {

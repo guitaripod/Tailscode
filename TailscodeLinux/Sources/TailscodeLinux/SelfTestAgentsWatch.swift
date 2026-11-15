@@ -76,6 +76,7 @@ extension SelfTest {
         try checkWatchTimers(check)
         try checkWatchControls(check)
         try checkWatchMotion(check)
+        try checkWatchGPU(check)
         try checkWatchEffects(check)
         try checkWatchStyle(check)
         return check.claims

@@ -330,7 +330,7 @@ extension MainWindow {
         case "agents-face", "agents-sidebar", "agents-rows", "agents-focus":
             self.driveAgentsFace(verb, argument)
         case "agents-watch", "agents-fullscreen", "agents-dim", "agents-keepawake", "agents-skew", "agents-hold", "agents-release",
-            "agents-fx", "agents-style":
+            "agents-fx", "agents-style", "agents-bench":
             self.driveAgentsWatch(verb, argument)
         case "party":
             self.presentPartyDemo(editing: false)

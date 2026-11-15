@@ -9,7 +9,11 @@ import TailscodeCore
 /// whatever needs a person when something does, slow and warm in an alarm. Currents gives each
 /// a four-point trail that fades behind it.
 final class WatchMotes: @unchecked Sendable {
-    private var field = WallMotes(width: 1920, height: 1080, seed: 1)
+    private(set) var field = WallMotes(width: 1920, height: 1080, seed: 1)
+    /// Runs of x, y, radius and alpha, and of trail segments, kept at the size they grew to so a
+    /// frame allocates nothing.
+    var buffer: [Double] = []
+    var segments: [Double] = []
 
     var count: Int { field.count }
 
@@ -25,6 +29,22 @@ final class WatchMotes: @unchecked Sendable {
 
     func step(dt: Double, mood: WallMood, target: (x: Double, y: Double)?, slow: Double, aspect: Double) {
         field.step(dt: dt, mood: mood, target: target, slow: slow, aspect: aspect)
+    }
+
+    /// The field moves in steps of a fifteenth of a second, as it always has, so its wander and its
+    /// trails stay the same whatever the display runs at; a frame between two steps draws each mote
+    /// that share of the way from where it was to where it is.
+    static let stepEvery = 1.0 / 15
+    private(set) var between = 0.0
+
+    var stepShare: Double { min(1, between / Self.stepEvery) }
+
+    func advance(by dt: Double, mood: WallMood, target: (x: Double, y: Double)?, slow: Double, aspect: Double) {
+        between += max(0, min(dt, 0.25))
+        while between >= Self.stepEvery {
+            between -= Self.stepEvery
+            field.step(dt: Self.stepEvery, mood: mood, target: target, slow: slow, aspect: aspect)
+        }
     }
 
     func paint(
@@ -144,85 +164,6 @@ enum WatchAmbient {
     }
 }
 
-/// The parts of the ground that change only with the size, the palette or the mood, painted once
-/// into a surface and copied from there, so repainting the ground for a ripple or a breath of light
-/// costs a copy and not a screenful of gradients. The surface is made again only when its key
-/// changes.
-final class WatchGroundCache {
-    struct Key: Equatable {
-        var width: Int
-        var height: Int
-        var unit: Double
-        var tint: PartyInk
-        var palette: WatchPalette
-    }
-
-    private var surface: OpaquePointer?
-    private var key: Key?
-    private(set) var builds = 0
-
-    deinit {
-        if let surface { cairo_surface_destroy(surface) }
-    }
-
-    func paint(_ cr: OpaquePointer, key next: Key, build: (OpaquePointer) -> Void) {
-        if key != next || surface == nil {
-            if let surface { cairo_surface_destroy(surface) }
-            surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, Int32(next.width), Int32(next.height))
-            key = next
-            builds += 1
-            if let surface, let inner = cairo_create(surface) {
-                build(inner)
-                cairo_destroy(inner)
-            }
-        }
-        guard let surface else { return }
-        cairo_save(cr)
-        cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE)
-        cairo_set_source_surface(cr, surface, 0, 0)
-        cairo_paint(cr)
-        cairo_restore(cr)
-    }
-}
-
-/// The aurora painted a sixteenth of the screen's size and stretched over it: the blooms are the
-/// softest thing on the wall, and a full-size radial gradient is the slowest thing Cairo draws.
-final class WatchAuroraCache {
-    static let shrink = 16.0
-
-    private var surface: OpaquePointer?
-    private var size = (width: 0, height: 0)
-
-    deinit {
-        if let surface { cairo_surface_destroy(surface) }
-    }
-
-    func paint(
-        _ cr: OpaquePointer, width: Double, height: Double, ink: PartyInk, text: PartyInk, t: Double
-    ) {
-        let small = (width: max(8, Int(width / Self.shrink)), height: max(8, Int(height / Self.shrink)))
-        if surface == nil || size != small {
-            if let surface { cairo_surface_destroy(surface) }
-            surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, Int32(small.width), Int32(small.height))
-            size = small
-        }
-        guard let surface, let inner = cairo_create(surface) else { return }
-        cairo_set_operator(inner, CAIRO_OPERATOR_CLEAR)
-        cairo_paint(inner)
-        cairo_set_operator(inner, CAIRO_OPERATOR_OVER)
-        WatchGround.aurora(
-            inner, width: Double(small.width), height: Double(small.height), ink: ink, text: text, t: t)
-        cairo_destroy(inner)
-        cairo_save(cr)
-        cairo_scale(cr, width / Double(small.width), height / Double(small.height))
-        cairo_set_operator(cr, CAIRO_OPERATOR_ADD)
-        cairo_set_source_surface(cr, surface, 0, 0)
-        if let pattern = cairo_get_source(cr) { cairo_pattern_set_filter(pattern, CAIRO_FILTER_BILINEAR) }
-        cairo_paint(cr)
-        cairo_restore(cr)
-    }
-}
-
 /// What the ground gains from the style and from what happens on the wall, added as light on the
 /// ground layer under the glass: the light each tile spills, the slow aurora, and the bands that
 /// spread from a tile's edge when it knocks or finishes.
@@ -305,14 +246,9 @@ enum WatchGround {
         _ cr: OpaquePointer, width: Double, height: Double, ink: PartyInk, text: PartyInk, t: Double
     ) {
         let reach = 0.55 * max(width, height)
-        let blooms: [(x: Double, y: Double, alpha: Double, mix: Double)] = [
-            (0.28 + 0.12 * sin(t * 0.031), 0.36 + 0.10 * cos(t * 0.027), 0.040, 0),
-            (0.72 + 0.10 * sin(t * 0.023 + 2), 0.64 + 0.12 * sin(t * 0.029 + 1), 0.034, 0.3),
-            (0.50 + 0.18 * cos(t * 0.019), 0.22 + 0.10 * sin(t * 0.025 + 4), 0.028, 0.55),
-        ]
         cairo_save(cr)
         cairo_set_operator(cr, CAIRO_OPERATOR_ADD)
-        for bloom in blooms {
+        for bloom in blooms(t: t) {
             let colour = ink.mixed(with: text, bloom.mix)
             let cx = bloom.x * width
             let cy = bloom.y * height
@@ -326,6 +262,16 @@ enum WatchGround {
             cairo_pattern_destroy(pattern)
         }
         cairo_restore(cr)
+    }
+
+    /// Where the aurora's three blooms are at `t`, as shares of the screen, with their strength and
+    /// how far each leans from the mood's colour toward the text's.
+    static func blooms(t: Double) -> [(x: Double, y: Double, alpha: Double, mix: Double)] {
+        [
+            (0.28 + 0.12 * sin(t * 0.031), 0.36 + 0.10 * cos(t * 0.027), 0.040, 0),
+            (0.72 + 0.10 * sin(t * 0.023 + 2), 0.64 + 0.12 * sin(t * 0.029 + 1), 0.034, 0.3),
+            (0.50 + 0.18 * cos(t * 0.019), 0.22 + 0.10 * sin(t * 0.025 + 4), 0.028, 0.55),
+        ]
     }
 
     /// A band of light spreading outward from a tile's edge, soft on both sides; the tile's own area

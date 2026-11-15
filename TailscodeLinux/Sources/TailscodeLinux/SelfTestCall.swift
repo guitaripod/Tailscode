@@ -172,6 +172,7 @@ extension SelfTest {
             case "diagnosis": report("self-diagnosis: \(try runBlocking { try await checkSelfDiagnosis() }) claims hold")
             case "guard": report("resource guard: \(try checkResourceGuard()) claims hold")
             case "audio": report("voice audio: \(try runBlocking { try await checkVoiceAudio() }) claims hold")
+            case "themes": report("themes: \(try checkPalettes()) themes read in both appearances")
             default: report("no check named \(name)"); exit(2)
             }
             report("SELFTEST_OK")

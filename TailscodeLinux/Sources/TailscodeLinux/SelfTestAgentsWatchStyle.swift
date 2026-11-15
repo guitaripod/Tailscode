@@ -86,7 +86,7 @@ extension SelfTest {
             var style = WallStyle.studio
             style.field = field
             setWatchStyle(window, style)
-            return renderLayer(frameWidth, frameHeight) { cr, w, h in view.motes.paint?(cr, w, h) }
+            return renderLayer(frameWidth, frameHeight) { cr, w, h in view.paintMotes(cr, w, h) }
         }
         let plain = motes(.motes)
         let none = motes(.none)

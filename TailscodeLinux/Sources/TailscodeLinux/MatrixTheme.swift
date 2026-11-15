@@ -171,6 +171,7 @@ enum MatrixTheme {
             gtk_style_context_add_provider_for_display(
                 display, op(provider), guint(GTK_STYLE_PROVIDER_PRIORITY_APPLICATION))
         }
+        AgentsCanvas.repaintAll()
     }
 
 }

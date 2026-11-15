@@ -77,7 +77,7 @@ enum WatchGlyph {
         cairo_arc(cr, x, y, r, 0, 2 * .pi)
     }
 
-    private static func contextRing(
+    static func contextRing(
         _ cr: OpaquePointer, _ c: Double, _ radius: Double, _ width: Double, _ share: Double?,
         _ ink: PartyInk, _ palette: WatchPalette, track: Bool = true
     ) {
@@ -111,6 +111,11 @@ enum WatchGlyph {
             cairo_fill(cr)
             cairo_pattern_destroy(halo)
         }
+        body(cr, c, r, ink)
+    }
+
+    /// The core's lit body and its highlight, without the halo, for a picture the GPU scales.
+    static func body(_ cr: OpaquePointer, _ c: Double, _ r: Double, _ ink: PartyInk) {
         let bright = ink.lifted(0.55)
         let deep = ink.sunk(0.3)
         if let body = cairo_pattern_create_radial(c - r * 0.35, c - r * 0.4, r * 0.08, c, c, r) {
@@ -160,12 +165,17 @@ enum WatchGlyph {
         }
     }
 
-    private static func crawl(
+    /// A dashed ring whose dashes crawl round it. The pattern is fitted to a whole number of turns
+    /// of the ring, so no short dash sits where the circle closes and the crawl is the same as
+    /// turning the ring.
+    static func crawl(
         _ cr: OpaquePointer, _ c: Double, _ radius: Double, _ width: Double, _ ink: PartyInk,
         _ t: Double, _ animated: Bool
     ) {
-        dashes[0] = width * 2.1
-        dashes[1] = width * 1.5
+        let around = 2 * .pi * radius
+        let period = around / max(1, (around / (width * 3.6)).rounded())
+        dashes[0] = period * 2.1 / 3.6
+        dashes[1] = period * 1.5 / 3.6
         cairo_set_dash(cr, dashes, 2, animated ? -t * radius * 0.55 : 0)
         cairo_set_line_width(cr, width * 1.15)
         disc(cr, c, c, radius)
@@ -208,7 +218,7 @@ enum WatchGlyph {
         cairo_fill(cr)
     }
 
-    private static func finish(
+    static func finish(
         _ cr: OpaquePointer, _ c: Double, _ size: Double, _ outcome: WallOutcome, _ ink: PartyInk,
         _ palette: WatchPalette, _ fade: Double
     ) {
@@ -250,7 +260,7 @@ enum WatchGlyph {
         cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT)
     }
 
-    private static func hatched(_ cr: OpaquePointer, _ c: Double, _ r: Double, _ ink: PartyInk) {
+    static func hatched(_ cr: OpaquePointer, _ c: Double, _ r: Double, _ ink: PartyInk) {
         cairo_save(cr)
         disc(cr, c, c, r)
         ink.set(cr, alpha: 0.12)

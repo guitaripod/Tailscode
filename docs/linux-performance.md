@@ -114,3 +114,33 @@ A stall of 250 ms or more raises the governor two levels at once (`TileGovernor.
 ### Measuring it again
 
 `TAILSCODE_TRACE=1` prints, for every open, `open+Nms first rows`, `first frame`, `revealed`, `filled` and any `placeholder`; a script that appends `openid=<uuid>` lines to the harness drive file at fixed times and a parser over the log is all it takes. Reset `launch.json` to a clean exit first and stop the app with SIGTERM, or the next harness starts with the shed floor at loaded and every number is the slow one. The `chatswitch` selftest holds the claims that do not need a person: a message drawn once for every builder, the first apply bounded, the page shown before the history is complete, no drift of the page's end during the backfill, a blank state leaving the page alone.
+
+## The Agents wall at the display's pace
+
+The wall was capped at 30 fps with its layers at 15, 12, 6 and 2, and on the desktop it ran far below even that: each layer was a full-window or tile-sized `GtkDrawingArea`, and under the Vulkan renderer a cairo node is rasterised and uploaded again whenever it lies in the damaged region, which the motes made the whole window every frame. One frame cost the main thread about 50 ms, the loop meter read busy, the governor went to critical and took the pulses away, and the wall fell to one frame a second.
+
+### What was measured
+
+A hidden gamescope (`gamescope --backend headless -W 2112 -H 1333 -r 144`) runs the release binary on X11 with `GSK_RENDERER=vulkan` (the real desktop's renderer), its own session bus and home with the person's wall style copied, `TAILSCODE_DRIVE="1500:agents-watch=<scene>;5000:agents-bench=10"`, and the app's own meter prints the result. Gamescope's X11 clock reports 60 Hz, so 60 is the ceiling there. Process CPU is read from `/proc`. Main-thread stacks come from `eu-stack -1` in a user namespace that keeps `CAP_SYS_PTRACE` (see the freeze recipe above).
+
+| scene | before | after |
+|---|---|---|
+| squad | 1.0 fps, paint cycle mean 202 ms | 59.9 fps, 0.95 ms, CPU 5.6 % |
+| busy (an ultracode tile) | 2.9 fps, 53 ms, CPU 15.5 % | 59.9 fps, 1.2 ms, CPU 6.6 % |
+| alarm | 2.9 fps, 55 ms, CPU 16 % | 59.9 fps, 1.6 ms, CPU 9 % |
+| calm | 39.7 fps, 13 ms, p99 69 ms, CPU 50 % | 59.9 fps, 0.7 ms, CPU 3.9 % |
+
+Under the software renderer (`GSK_RENDERER=cairo`) the busy scene drew about 48 frames a second of mixed layers at 47 % CPU before, and draws 20 at 39 % now. After 30 s of warm-up a 15 s window under Vulkan has no frame later than 1.5 intervals and the worst paint cycle is 6-7 ms; the slow frames of the first seconds are the GPU renderer creating pipelines for node kinds it meets for the first time.
+
+### What changed
+
+- `CGtkShim/wallpaint.c`: a paint widget whose snapshot the Swift side builds (`WallLayer`), pictures painted once with cairo and kept as `GdkMemoryTexture`s under a GPU renderer or as a surface the cairo renderer replays (`WallPicture`, repainted only when its key, size, scale or renderer changes), and helpers for the nodes the GPU draws itself: discs, rings, rounded fills, strokes and bands, radial and linear gradients, capsules, mote fields, turns and clips, and the ultracode sweep.
+- Every wall layer is nodes (`AgentsWatchFaces.swift`, `AgentsWatchBackdrop.swift`): the card's glass, wash, edge, rim and focus; the mark's ring, lit core and dashes as pictures moved by scale, turn and opacity, its waves and orbit as rings and discs; the ground as one picture with the aurora as radial gradients, each tile's light as a half-resolution picture drawn at its breath's opacity, ripples as rounded bands; motes as discs, interpolated between the field's fixed 15 Hz steps so its wander and trails are unchanged; plates, effects and the vignette as fills, gradients and discs. `SelfTestAgentsWatchGPU.swift` renders each through GSK's own node drawing and holds it against the cairo painter it replaced, for every state at several moments.
+- The ultracode ring was first a conic gradient seen through a mask. The GPU renderer gives every mask an offscreen image and Vulkan allocated and freed one per frame (85 % of the busy scene's main-thread time in `ioctl`); it is now runs of linear gradients and corner borders (`tailscode_snap_sweep_band`), and the busy scene's samples show no offscreen made per frame.
+- `AgentsCanvas`, which every other agents surface paints with, keeps its picture as a texture until it is told something changed, so a strip beside a moving thing is no longer rasterised again with it. Its widget owns it, as a drawing area owned its closure, and a theme change paints every live one again.
+- The wall's frame clock runs at `WallCadence.smoothRate` of the display under a GPU renderer, each frame due half a refresh short of a whole number of refreshes, and answers to the desk's reduce-motion setting alone, not the shed level's pulses; at critical it holds to 30, and under the software renderer, which draws every node on the main thread, it keeps to 20.
+- An accessible label the widget already carries is not set again, so a wall restating its tiles once a second sends the accessibility bus nothing.
+
+### Measuring it again
+
+`agents-bench=<seconds>` (`AgentsBench.swift`, `CGtkShim/frames.c`) stamps every frame the Agents window's surface actually renders (an emission hook on `GdkSurface::render`, whose own handler stops the signal; a frame-clock cycle that drew nothing is not counted) and prints `AGENTS bench`: frames and fps, the gaps against the wall's own target (`late` is a gap over 1.5 targets), the paint cycle and the layout share of it, main-thread CPU, cairo draws and megapixels, snapshots, pictures painted, stage layouts, the worst canvas allocation and the once-a-second tick. Run it in the gamescope above, not the Xvfb harness: under the cairo renderer the numbers are the software renderer's.

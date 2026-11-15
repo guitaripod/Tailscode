@@ -147,7 +147,8 @@ enum WatchTilePaint {
         return mesh
     }
 
-    private static func border(_ state: WallState, unit: Double, swell: Double) -> (Double, Double) {
+    /// How strong and how wide a card's edge is drawn: brighter and wider while it asks.
+    static func border(_ state: WallState, unit: Double, swell: Double) -> (Double, Double) {
         switch state {
         case .needsYou(.overdue): return (0.8 + 0.2 * swell, 0.34 * unit)
         case .needsYou: return (0.55 + 0.4 * swell, 0.26 * unit)
@@ -160,18 +161,23 @@ enum WatchTilePaint {
         }
     }
 
+    /// How strongly the state's colour washes the glass: breathing with the swell while it works,
+    /// knocking while it asks, flashing for a step, and faint and still once it is done.
+    static func washStrength(_ face: Face, swell: Double) -> Double {
+        switch face.state {
+        case .needsYou(.overdue): return 0.15 + 0.1 * swell
+        case .needsYou: return 0.1 + 0.08 * swell
+        case .quiet: return 0.04
+        case .finished(.failed): return 0.14
+        case .finished, .away: return 0.03
+        default: return 0.06 + 0.06 * swell + 0.03 * face.pulse
+        }
+    }
+
     private static func wash(
         _ cr: OpaquePointer, width: Double, height: Double, ink: PartyInk, face: Face, swell: Double
     ) {
-        var strength = 0.06 + 0.06 * swell + 0.03 * face.pulse
-        switch face.state {
-        case .needsYou(.overdue): strength = 0.15 + 0.1 * swell
-        case .needsYou: strength = 0.1 + 0.08 * swell
-        case .quiet: strength = 0.04
-        case .finished(.failed): strength = 0.14
-        case .finished, .away: strength = 0.03
-        default: break
-        }
+        let strength = washStrength(face, swell: swell)
         guard let glow = cairo_pattern_create_linear(0, 0, 0, height * 0.9) else { return }
         cairo_pattern_add_color_stop_rgba(glow, 0, ink.red, ink.green, ink.blue, strength * 1.6)
         cairo_pattern_add_color_stop_rgba(glow, 1, ink.red, ink.green, ink.blue, 0)
@@ -184,7 +190,7 @@ enum WatchTilePaint {
         }
     }
 
-    private static func hatch(
+    static func hatch(
         _ cr: OpaquePointer, width: Double, height: Double, unit: Double, face: Face,
         palette: WatchPalette
     ) {

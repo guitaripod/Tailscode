@@ -325,6 +325,8 @@ final class AgentsWindow: @unchecked Sendable {
     /// One second of the window's life: every clock it shows, every wait it keeps. A check calls
     /// it directly after moving the wall's clock, instead of sleeping through the second.
     func secondPassed() {
+        let started = g_get_monotonic_time()
+        defer { AgentsBench.noteTick(microseconds: g_get_monotonic_time() - started) }
         let now = Date()
         boardView.tick(now: now)
         peek.tick(now: now)

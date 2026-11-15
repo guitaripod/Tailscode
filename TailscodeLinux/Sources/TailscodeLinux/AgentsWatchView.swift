@@ -11,13 +11,10 @@ import TailscodeCore
 final class AgentsWatchView: @unchecked Sendable {
     let context: WatchContext
     let stage: TileCanvas
-    let ground = AgentsCanvas(width: 1, height: 1)
-    let motes = AgentsCanvas(width: 1, height: 1)
-    let vignette = AgentsCanvas(width: 1, height: 1)
-    let plates = AgentsCanvas(width: 1, height: 1)
+    let backdrop = WallLayer()
+    let vignette = WallLayer()
+    let pictures = WallBackdropPictures()
     let effects = WatchEffectsLayer()
-    let groundCache = WatchGroundCache()
-    let auroraCache = WatchAuroraCache()
     let scrim = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
     let top: WatchTopBand
     let calm: WatchCalmView
@@ -49,7 +46,7 @@ final class AgentsWatchView: @unchecked Sendable {
     var liveBaseline: AgentWall?
     var fadePumping = false
     var lightsDrawn = 0
-    lazy var lap = RepeatingMotion { [weak self] in self?.frame() }
+    lazy var lap = RepeatingMotion(followsShed: false) { [weak self] in self?.frame() }
     var onHourWanted: () -> Void = {}
     var onPeekExpired: () -> Void = {}
     private(set) var rereads = 0
@@ -77,22 +74,17 @@ final class AgentsWatchView: @unchecked Sendable {
         gtk_widget_set_vexpand(stage.widget, 1)
         gtk_widget_set_overflow(stage.widget, GTK_OVERFLOW_HIDDEN)
         tailscode_tile_canvas_set_minimum(stage.widget, 320, 200)
-        for canvas in [ground, motes, plates, vignette] {
-            gtk_widget_set_can_target(canvas.widget, 0)
-            gtk_widget_set_can_focus(canvas.widget, 0)
-            tailscode_set_accessible_hidden(canvas.widget, 1)
+        for layer in [backdrop, vignette] {
+            gtk_widget_set_can_target(layer.widget, 0)
+            gtk_widget_set_can_focus(layer.widget, 0)
+            tailscode_set_accessible_hidden(layer.widget, 1)
         }
         gtk_widget_set_can_target(scrim, 0)
         Gtk.addClass(scrim, "agents-wall-scrim")
         gtk_widget_set_opacity(scrim, 0)
-        ground.paint = { [weak self] cr, width, height in self?.paintGround(cr, width, height) }
-        motes.paint = { [weak self] cr, width, height in self?.paintMotes(cr, width, height) }
-        vignette.paint = { [weak self] cr, width, height in self?.paintVignette(cr, width, height) }
-        plates.paint = { [weak self] cr, width, height in self?.paintPlates(cr, width, height) }
-        stage.add(ground.widget, layer: .panes)
-        stage.add(motes.widget, layer: .panes)
-        stage.add(plates.widget, layer: .panes)
-        stage.add(effects.canvas.widget, layer: .panes)
+        backdrop.draw = { [weak self] snapshot, width, height in self?.drawBackdrop(snapshot, width, height) }
+        vignette.draw = { [weak self] snapshot, width, height in self?.drawVignette(snapshot, width, height) }
+        stage.add(backdrop.widget, layer: .panes)
         for widget in top.widgets + rails.widgets { stage.add(widget, layer: .dividers) }
         stage.add(calm.orb.widget, layer: .dividers)
         stage.add(calm.line.widget, layer: .dividers)
@@ -132,7 +124,7 @@ final class AgentsWatchView: @unchecked Sendable {
             width: w, height: h, tiles: tilesNow, columns: wall.columns, rows: wall.rows,
             isCalm: wall.isCalm, drift: drift, style: context.style)
         let full = TileRect(x: 0, y: 0, width: width, height: height)
-        for widget in [ground.widget, motes.widget, plates.widget, effects.canvas.widget, vignette.widget, scrim] {
+        for widget in [backdrop.widget, vignette.widget, scrim] {
             sink.place(widget, full)
         }
         placeTop(sink)
@@ -146,7 +138,7 @@ final class AgentsWatchView: @unchecked Sendable {
             }
             if let frame = squad.more, let crowd = crowds[tile.id] { sink.place(crowd.widget, rect(frame)) }
         }
-        plates.redraw()
+        backdrop.redraw()
         if tilesNow.isEmpty {
             let side = geometry.centre
             sink.place(calm.orb.widget, rect(WatchRect(x: side.x, y: side.y - 2 * geometry.unit, width: side.width, height: side.height)))
@@ -246,7 +238,7 @@ final class AgentsWatchView: @unchecked Sendable {
         ribbon.apply(hour: hour, calm: next.isCalm && next.tiles.isEmpty, unit: context.unit)
         refreshFocus()
         if moved { stage.invalidate() }
-        if before != next.mood || (moved && context.style.light) { ground.redraw() }
+        if before != next.mood || moved { backdrop.redraw() }
         if hadOverdue != next.hasOverdue { vignette.redraw() }
         play(events, contexts: contexts)
         updateClock()

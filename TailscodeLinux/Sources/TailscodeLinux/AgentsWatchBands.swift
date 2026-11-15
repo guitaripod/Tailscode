@@ -70,8 +70,9 @@ final class WatchTopBand: @unchecked Sendable {
 /// What the wall shows when nothing runs: a large slow orb, drawn in the centre of the grid, and
 /// the last hour in one line under it.
 final class WatchCalmView: @unchecked Sendable {
-    let orb = AgentsCanvas(width: 1, height: 1)
+    let orb = WallLayer()
     let line = WatchLabel()
+    private let face = WallCalmOrb()
     private let context: WatchContext
 
     init(context: WatchContext) {
@@ -81,7 +82,7 @@ final class WatchCalmView: @unchecked Sendable {
         gtk_label_set_ellipsize(op(line.widget), PANGO_ELLIPSIZE_NONE)
         gtk_label_set_xalign(op(line.widget), 0.5)
         gtk_label_set_justify(op(line.widget), GTK_JUSTIFY_CENTER)
-        orb.paint = { [weak self] cr, width, _ in self?.paintOrb(cr, width) }
+        orb.draw = { [weak self] snapshot, width, _ in self?.drawOrb(snapshot, width) }
     }
 
     func apply(_ wall: AgentWall) {
@@ -91,8 +92,10 @@ final class WatchCalmView: @unchecked Sendable {
         orb.redraw()
     }
 
-    func paintOrb(_ cr: OpaquePointer, _ size: Double) {
-        Self.paint(cr, size: size, palette: context.palette, t: context.seconds, animated: context.animated)
+    private func drawOrb(_ snapshot: WallSnapshot, _ size: Double) {
+        face.draw(
+            snapshot, size: size, palette: context.palette, paletteKey: context.paletteKey, t: context.seconds,
+            animated: context.animated)
     }
 
     static func paint(
@@ -120,6 +123,11 @@ final class WatchCalmView: @unchecked Sendable {
             cairo_set_line_width(cr, max(1, size * 0.004))
             cairo_stroke(cr)
         }
+        body(cr, centre: centre, core: core, ink: ink)
+    }
+
+    /// The orb's lit body alone, for a picture the GPU scales as it breathes.
+    static func body(_ cr: OpaquePointer, centre: Double, core: Double, ink: PartyInk) {
         if let body = cairo_pattern_create_radial(centre - core * 0.3, centre - core * 0.35, core * 0.1, centre, centre, core) {
             let bright = ink.lifted(0.5)
             let deep = ink.sunk(0.35)

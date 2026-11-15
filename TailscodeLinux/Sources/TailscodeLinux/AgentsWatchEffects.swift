@@ -16,14 +16,13 @@ struct WatchDeparted {
 }
 
 /// The effects on the wall: Core's queue of timed gestures, the shapes they have at this moment, and
-/// the canvas that paints them in Cairo between the glass plates and the words. Rings, blooms and
+/// the gradients the GPU draws for them between the glass plates and the words. Rings, blooms and
 /// motes add their light; the bands that spread from a tile's edge are handed to the ground, which
-/// paints them under the glass. The arrays are kept at the size they grew to, so a frame allocates
+/// draws them under the glass. The arrays are kept at the size they grew to, so a frame allocates
 /// only the shapes of each live effect.
 final class WatchEffectsLayer: @unchecked Sendable {
     static let departedLasts = 1.5
 
-    let canvas = AgentsCanvas(width: 1, height: 1)
     private(set) var queue = WallEffectQueue()
     private(set) var pieces: [WatchFxPiece] = []
     private(set) var ripples: [WatchFxPiece] = []
@@ -38,10 +37,6 @@ final class WatchEffectsLayer: @unchecked Sendable {
     init() {
         pieces.reserveCapacity(256)
         ripples.reserveCapacity(WallScene.maxRipples)
-        gtk_widget_set_can_target(canvas.widget, 0)
-        gtk_widget_set_can_focus(canvas.widget, 0)
-        tailscode_set_accessible_hidden(canvas.widget, 1)
-        canvas.paint = { [weak self] cr, width, height in self?.paint(cr, width, height) }
     }
 
     var live: [WallEffect] { queue.live }
@@ -121,85 +116,58 @@ final class WatchEffectsLayer: @unchecked Sendable {
         }
     }
 
-    func paint(_ cr: OpaquePointer, _ width: Double, _ height: Double) {
-        guard !pieces.isEmpty else { return }
-        cairo_set_operator(cr, CAIRO_OPERATOR_ADD)
+    /// The live pieces as gradients and discs the GPU draws.
+    func draw(_ s: WallSnapshot) {
         for piece in pieces {
             switch piece.shape {
             case .ring(let x, let y, let radius, let ringWidth, let alpha):
-                Self.ring(cr, x: x, y: y, radius: radius, width: ringWidth, alpha: alpha, ink: piece.ink)
+                Self.ring(s, x: x, y: y, radius: radius, width: ringWidth, alpha: alpha, ink: piece.ink)
             case .bloom(let x, let y, let radius, let alpha):
-                Self.bloom(cr, x: x, y: y, radius: radius, alpha: alpha, ink: piece.ink)
+                Self.bloom(s, x: x, y: y, radius: radius, alpha: alpha, ink: piece.ink)
             case .dot(let x, let y, let size, let alpha):
-                Self.dot(cr, x: x, y: y, size: size, alpha: alpha, ink: piece.ink.lifted(0.35))
+                guard alpha > 0.002, size > 0.5 else { continue }
+                let ink = piece.ink.lifted(0.35)
+                s.disc(x: x, y: y, radius: size / 2 * 2.2, ink: ink, alpha: alpha * 0.22)
+                s.disc(x: x, y: y, radius: size / 2, ink: ink, alpha: alpha)
             case .ripple:
                 break
             }
         }
-        cairo_set_operator(cr, CAIRO_OPERATOR_OVER)
     }
 
-    /// A soft ring: a band whose brightness falls off on both sides like a gaussian, painted as one
-    /// gradient over the annulus alone.
+    /// The pieces as the frame draws them, into a cairo context, for a check that compares pixels.
+    func paint(_ cr: OpaquePointer, _ width: Double, _ height: Double) {
+        WallSnapshot.render(cr) { draw($0) }
+    }
+
+    /// A soft ring: a band whose brightness falls off on both sides like a gaussian, one radial
+    /// gradient over the annulus.
     static func ring(
-        _ cr: OpaquePointer, x: Double, y: Double, radius: Double, width: Double, alpha: Double, ink: PartyInk
+        _ s: WallSnapshot, x: Double, y: Double, radius: Double, width: Double, alpha: Double, ink: PartyInk
     ) {
         guard alpha > 0.002, radius > 0.5 else { return }
         let scale = max(1.2, width)
         let inner = max(0, radius - 3.2 * scale)
         let outer = radius + 3.2 * scale
-        guard let pattern = cairo_pattern_create_radial(x, y, inner, x, y, outer) else { return }
-        for step in 0...8 {
+        let stops = (0...8).map { step -> WallStop in
             let at = Double(step) / 8
             let band = at * 6.4 - 3.2
-            cairo_pattern_add_color_stop_rgba(pattern, at, ink.red, ink.green, ink.blue, alpha * exp(-band * band))
+            return WallStop(offset: at, ink: ink, alpha: alpha * exp(-band * band))
         }
-        cairo_new_path(cr)
-        cairo_arc(cr, x, y, outer, 0, 2 * .pi)
-        if inner > 0.5 {
-            cairo_new_sub_path(cr)
-            cairo_arc_negative(cr, x, y, inner, 0, 2 * .pi)
-        }
-        cairo_set_source(cr, pattern)
-        cairo_fill(cr)
-        cairo_pattern_destroy(pattern)
+        s.radial(x: x, y: y, from: inner, to: outer, stops: stops)
     }
 
     /// A glow that falls off from its centre like a gaussian, reaching two and a half radii.
     static func bloom(
-        _ cr: OpaquePointer, x: Double, y: Double, radius: Double, alpha: Double, ink: PartyInk
+        _ s: WallSnapshot, x: Double, y: Double, radius: Double, alpha: Double, ink: PartyInk
     ) {
         guard alpha > 0.002, radius > 0.5 else { return }
-        let reach = radius * 2.4
-        guard let pattern = cairo_pattern_create_radial(x, y, 0, x, y, reach) else { return }
-        for step in 0...8 {
+        let stops = (0...8).map { step -> WallStop in
             let at = Double(step) / 8
             let out = at * 2.4
-            cairo_pattern_add_color_stop_rgba(pattern, at, ink.red, ink.green, ink.blue, alpha * exp(-out * out))
+            return WallStop(offset: at, ink: ink, alpha: alpha * exp(-out * out))
         }
-        cairo_new_path(cr)
-        cairo_arc(cr, x, y, reach, 0, 2 * .pi)
-        cairo_set_source(cr, pattern)
-        cairo_fill(cr)
-        cairo_pattern_destroy(pattern)
-    }
-
-    /// A mote of light: a filled circle inside a halo of two and a fifth of its size at a fifth of
-    /// its strength. It is passed lifted toward white by the caller, so a mote of the tile's own
-    /// colour still shows against the tile's glass.
-    static func dot(
-        _ cr: OpaquePointer, x: Double, y: Double, size: Double, alpha: Double, ink: PartyInk
-    ) {
-        guard alpha > 0.002, size > 0.5 else { return }
-        let radius = size / 2
-        ink.set(cr, alpha: alpha * 0.22)
-        cairo_new_path(cr)
-        cairo_arc(cr, x, y, radius * 2.2, 0, 2 * .pi)
-        cairo_fill(cr)
-        ink.set(cr, alpha: alpha)
-        cairo_new_path(cr)
-        cairo_arc(cr, x, y, radius, 0, 2 * .pi)
-        cairo_fill(cr)
+        s.radial(x: x, y: y, from: 0, to: radius * 2.4, stops: stops)
     }
 }
 
@@ -208,7 +176,7 @@ extension AgentsWatchView {
     /// movement, so a desk that reduces motion gets the crossfade and not the gesture.
     var queueStyle: WallStyle {
         var style = context.style
-        style.still = style.still || !RepeatingMotion.allowed
+        style.still = style.still || !RepeatingMotion.deskAllows
         return style
     }
 
@@ -291,7 +259,7 @@ extension AgentsWatchView {
     func effectsStarted() {
         updateClock()
         pumpFades()
-        effects.canvas.redraw()
+        backdrop.redraw()
     }
 
     /// One frame of the effects: where each piece is now, the canvas painted, the ground repainted
@@ -299,8 +267,7 @@ extension AgentsWatchView {
     func tickEffects(at t: Double) {
         let wasRippling = effects.hasRipples
         let needsPaint = effects.prepare(at: t, unit: geometry.unit, palette: context.palette) { place($0) }
-        if needsPaint { effects.canvas.redraw() }
-        if effects.hasRipples || wasRippling { ground.redraw() }
+        if needsPaint || effects.hasRipples || wasRippling { backdrop.redraw() }
         let still = queueStyle.still
         for (key, view) in tiles {
             view.setEffects(

@@ -41,6 +41,9 @@ void tailscode_tile_sink_place(
 /// What the selftest and the recorder read: adds refused for already having a parent, the number
 /// of allocation passes and how long the last one took (the solver, every child's measure and
 /// allocate, and so every transcript relayout beneath), and the number of children.
+/// The longest any canvas took to lay itself out since this was last asked, in microseconds, for a
+/// bench that wants to know whether a slow frame was a layout.
+long tailscode_tile_canvas_take_worst_allocate_us(void);
 long tailscode_tile_canvas_reparents(void);
 long tailscode_tile_canvas_allocations(GtkWidget *canvas);
 long tailscode_tile_canvas_allocate_us(GtkWidget *canvas);

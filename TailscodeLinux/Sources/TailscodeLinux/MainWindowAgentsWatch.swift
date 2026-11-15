@@ -12,7 +12,8 @@ extension MainWindow {
     /// `agents-style=<preset or key:value>` sets the wall's style the way Settings does (`open` presses Style, `showcase`,
     /// `nightdesk`, `studio`, `effects:off|subtle|lively`, `field:motes|currents|aurora|none`,
     /// `light:on|off`, `still:on|off`, `night:off|scheduled|always`, `dim:300|never`,
-    /// `awake:whileCharging|always|never`, `clock|hour|rails|squads:on|off`, `approvals:hold|openChat`).
+    /// `awake:whileCharging|always|never`, `clock|hour|rails|squads:on|off`, `approvals:hold|openChat`),
+    /// and `agents-bench=<seconds>` measures how the window draws (`AgentsBench`).
     func driveAgentsWatch(_ verb: String, _ argument: String) {
         switch verb {
         case "agents-watch":
@@ -44,6 +45,8 @@ extension MainWindow {
             tile.evaluateHold()
         case "agents-release":
             AgentsWindow.current?.watchView.tiles.values.forEach { $0.approveUp() }
+        case "agents-bench":
+            AgentsBench.run(seconds: Double(argument) ?? 10)
         default: break
         }
     }

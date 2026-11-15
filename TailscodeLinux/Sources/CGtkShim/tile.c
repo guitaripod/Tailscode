@@ -14,6 +14,7 @@ struct TailscodeTileSink {
 };
 
 static gint tile_reparents = 0;
+static gint64 tile_allocate_worst_us = 0;
 
 static const char *tile_layer_key = "tailscode-tile-layer";
 
@@ -114,6 +115,7 @@ static void tailscode_tile_layout_allocate(
     g_array_free(sink.slots, TRUE);
     self->allocations += 1;
     self->allocate_us = (long)(g_get_monotonic_time() - started);
+    if (self->allocate_us > tile_allocate_worst_us) tile_allocate_worst_us = self->allocate_us;
 }
 
 static void tailscode_tile_layout_class_init(TailscodeTileLayoutClass *class) {
@@ -205,6 +207,12 @@ void tailscode_tile_sink_place(
 }
 
 long tailscode_tile_canvas_reparents(void) { return g_atomic_int_get(&tile_reparents); }
+
+long tailscode_tile_canvas_take_worst_allocate_us(void) {
+    long worst = (long)tile_allocate_worst_us;
+    tile_allocate_worst_us = 0;
+    return worst;
+}
 
 long tailscode_tile_canvas_allocations(GtkWidget *canvas) {
     return TAILSCODE_TILE_CANVAS(canvas)->allocations;

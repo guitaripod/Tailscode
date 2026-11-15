@@ -24,6 +24,7 @@ import TailscodeCore
 final class RepeatingMotion {
     private let step: () -> Void
     private let holding: Bool
+    private let followsShed: Bool
     private var widget: UnsafeMutablePointer<GtkWidget>?
     private var tick: UInt = 0
     /// What the frame clock holds in place of the lap: a clock outlives whatever let go of it, so
@@ -43,8 +44,12 @@ final class RepeatingMotion {
     ///   removing a callback from a freed widget is a crash rather than a dropped frame. A mark
     ///   that lives *on* its widget does not: it is released by that widget's own data, so a
     ///   reference held back the other way is a row nothing can ever finalize.
-    init(holding: Bool = true, _ step: @escaping () -> Void) {
+    ///   `followsShed` is whether the window's shed level may take the lap away as well as the
+    ///   desk: a surface that costs the GPU and not the main thread, and paces itself under load, says
+    ///   no and answers to the desk alone.
+    init(holding: Bool = true, followsShed: Bool = true, _ step: @escaping () -> Void) {
         self.holding = holding
+        self.followsShed = followsShed
         self.step = step
     }
 
@@ -55,7 +60,10 @@ final class RepeatingMotion {
     /// The window's shed level has a say too: from strained up the governor takes the pulses away
     /// (`AnimationBudget.pulses`), and every lap is asked again when it does, exactly as when the
     /// desk changes its mind.
-    static var allowed: Bool { tailscode_animations_enabled() != 0 && CascadeBudget.budget.pulses }
+    static var allowed: Bool { deskAllows && CascadeBudget.budget.pulses }
+
+    /// The desk's answer alone, without the window's shed level.
+    static var deskAllows: Bool { tailscode_animations_enabled() != 0 }
 
     /// Whether a lap is turning right now, for a harness that has to prove a claim about it rather
     /// than watch it — a still frame and a moving one are the same picture in any screenshot.
@@ -72,7 +80,8 @@ final class RepeatingMotion {
         on widget: UnsafeMutablePointer<GtkWidget>, meaning: ActivityMotion = .working
     ) -> Bool {
         lift()
-        guard meaning.honoring(reduceMotion: !Self.allowed).isAnimated else { return false }
+        let allowed = followsShed ? Self.allowed : Self.deskAllows
+        guard meaning.honoring(reduceMotion: !allowed).isAnimated else { return false }
         _ = Gtk.releaseInstalled
         if holding { g_object_ref(UnsafeMutableRawPointer(widget)) }
         self.widget = widget

@@ -42,34 +42,64 @@ extension PartyInk {
     }
 }
 
-/// A drawing area that paints only when it is told something changed. It owns nothing but its
-/// closure and the one draw it is asked for, so a strip of bars or a field of lanes costs a line at
-/// rest: no timer, no frame clock, nothing between a state change and the draw that shows it.
+/// A picture that paints only when it is told something changed. It owns nothing but its closure
+/// and the one paint it is asked for, so a strip of bars or a field of lanes costs a line at rest:
+/// no timer, no frame clock, nothing between a state change and the paint that shows it. What it
+/// paints is kept as a texture the GPU draws for as long as nothing changes, so a canvas that sits
+/// beside something moving every frame is never painted again because of it. Its widget keeps it
+/// alive, as a drawing area kept its closure, so a maker may let go of it once it is placed.
 final class AgentsCanvas: @unchecked Sendable {
-    let widget: UnsafeMutablePointer<GtkWidget>
+    let layer = WallLayer()
     var paint: ((OpaquePointer, Double, Double) -> Void)?
+    private let picture = WallPicture()
+    private var generation = 0
     private(set) var draws = 0
+    /// Every canvas's draws and the logical pixels they covered, for a bench of the wall's cost.
+    nonisolated(unsafe) static var drawsEverywhere = 0
+    nonisolated(unsafe) static var pixelsEverywhere = 0.0
 
-    init(width: Int32, height: Int32) {
-        widget = gtk_drawing_area_new()!
-        gtk_widget_set_size_request(widget, width, height)
-        _ = Gtk.releaseInstalled
-        let held = Unmanaged.passRetained(self).toOpaque()
-        gtk_drawing_area_set_draw_func(
-            ptr(widget),
-            { _, cr, width, height, raw in
-                guard let cr, let raw else { return }
-                let canvas = Unmanaged<AgentsCanvas>.fromOpaque(raw).takeUnretainedValue()
-                canvas.draws += 1
-                canvas.paint?(cr, Double(width), Double(height))
-            }, held,
-            { raw in
-                guard let raw else { return }
-                Unmanaged<AgentsCanvas>.fromOpaque(raw).release()
-            })
+    var widget: UnsafeMutablePointer<GtkWidget> { layer.widget }
+
+    private final class Weak {
+        weak var canvas: AgentsCanvas?
+        init(_ canvas: AgentsCanvas) { self.canvas = canvas }
     }
 
-    func redraw() { gtk_widget_queue_draw(widget) }
+    /// Every canvas alive, so a theme change can paint each of them again: their closures read the
+    /// palette when they paint, and a kept picture would otherwise wear the old one until the next
+    /// thing it shows changed.
+    nonisolated(unsafe) private static var live: [ObjectIdentifier: Weak] = [:]
+
+    init(width: Int32, height: Int32) {
+        gtk_widget_set_size_request(layer.widget, width, height)
+        layer.draw = { snapshot, width, height in self.snap(snapshot, width, height) }
+        Self.live[ObjectIdentifier(self)] = Weak(self)
+    }
+
+    deinit {
+        Self.live[ObjectIdentifier(self)] = nil
+    }
+
+    /// The theme changed: every canvas paints itself again in it.
+    static func repaintAll() {
+        for entry in live.values { entry.canvas?.redraw() }
+    }
+
+    func redraw() {
+        generation &+= 1
+        layer.redraw()
+    }
+
+    private func snap(_ snapshot: WallSnapshot, _ width: Double, _ height: Double) {
+        guard let paint else { return }
+        picture.ensure(String(generation), width: width, height: height, in: snapshot) { cr, width, height in
+            draws += 1
+            AgentsCanvas.drawsEverywhere += 1
+            AgentsCanvas.pixelsEverywhere += width * height
+            paint(cr, width, height)
+        }
+        snapshot.picture(picture, WatchRect(x: 0, y: 0, width: width, height: height))
+    }
 }
 
 /// Text inside a drawing, set by Pango from the widget's own font so it follows the desk's size

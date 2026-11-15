@@ -7,12 +7,16 @@ import TailscodeCore
 /// its sizes are multiples of, and the doors out of it (a peek, a chat, an answer).
 final class WatchContext: @unchecked Sendable {
     let dayPalette = WatchPalette.current()
-    var palette = WatchPalette.current()
+    var palette = WatchPalette.current() {
+        didSet { if palette != oldValue { paletteKey &+= 1 } }
+    }
+    /// Changes whenever the palette does, for a picture to fold into what it was painted from.
+    private(set) var paletteKey = 0
     var style = WallStyle.studio
     var isNight = false
     let clock = WatchClock()
     var unit = 10.8
-    var animated = RepeatingMotion.allowed
+    var animated = RepeatingMotion.deskAllows
     var allowsBigType = true
     let actions: AgentsActions
     var openPeek: (String) -> Void = { _ in }
@@ -23,7 +27,15 @@ final class WatchContext: @unchecked Sendable {
         self.actions = actions
     }
 
-    var seconds: Double { clock.seconds }
+    /// When the frame being drawn will be seen, from the window's frame clock, so everything that
+    /// moves in one frame moves by the same time and by exactly one frame's worth of it.
+    var frameSeconds: Double?
+
+    var seconds: Double {
+        let now = clock.seconds
+        guard let frameSeconds, abs(frameSeconds - now) < 0.1 else { return now }
+        return frameSeconds
+    }
 
     func size(_ units: Double) -> Double { max(max(WatchGeometry.minimumText * unit, 9), units * unit) }
 

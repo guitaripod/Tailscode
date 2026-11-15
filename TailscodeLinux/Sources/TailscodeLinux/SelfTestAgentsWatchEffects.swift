@@ -166,7 +166,11 @@ extension SelfTest {
         check.pump(0.25)
         view.effects.clear()
         view.fire(.finished)
-        try check.expect(view.cadenceCap() == 30, "while an effect plays the wall may draw at thirty: \(view.cadenceCap())")
+        let playing =
+            view.drawsWithGPU ? WallCadence.smoothRate(refreshHz: 1 / max(0.001, view.refreshInterval)) : 20
+        try check.expect(
+            view.cadenceCap() == playing,
+            "while an effect plays the wall draws at its renderer's rate, twenty under software: \(view.cadenceCap())")
         try check.expect(view.isTurning, "and its frame clock runs")
         view.effects.clear()
         view.startScene("calm")
@@ -177,7 +181,7 @@ extension SelfTest {
         view.updateClock()
         try check.expect(view.cadenceCap() == 1 && !view.isTurning, "a dimmed calm wall draws once a second: \(view.cadenceCap())")
         view.effects.add([WallEvent(kind: .finished, tile: "nowhere")], at: view.context.seconds, style: .studio, contexts: [:])
-        try check.expect(view.cadenceCap() == 30, "an effect wakes the rate for as long as it lasts")
+        try check.expect(view.cadenceCap() == playing, "an effect wakes the rate for as long as it lasts")
         view.effects.clear()
         view.setVisible(false)
         try check.expect(view.cadenceCap() == 0, "and a hidden wall draws nothing")
