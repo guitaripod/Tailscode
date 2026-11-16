@@ -74,6 +74,11 @@ final class NeuralHeadView: NeuralPlatformView {
     /// shapes, wires and cards. Transparent; the view never draws into it.
     let nodeLayer = CALayer()
 
+    /// The layer over the front, the size of the picture, for what is read on the head rather
+    /// than through its glass: the zones' names, two of which stand on the chassis, where a name
+    /// under the front is hidden whole. Transparent; the view never draws into it.
+    let nameLayer = CALayer()
+
     /// Called on every tick of the clock, before the frame is drawn, with the clock's time in
     /// seconds, so a client moves its node layers in the same frame.
     var onTick: ((Double) -> Void)?
@@ -303,9 +308,11 @@ extension NeuralHeadView {
         interiorLayer.name = "neural interior"
         frontLayer.name = "neural front"
         nodeLayer.name = "neural nodes"
+        nameLayer.name = "neural names"
         hostLayer.addSublayer(interiorLayer)
         hostLayer.addSublayer(nodeLayer)
         hostLayer.addSublayer(frontLayer)
+        hostLayer.addSublayer(nameLayer)
     }
 
     /// Everything that decides whether and how fast to draw, taken again: the clock first, since a
@@ -470,7 +477,7 @@ extension NeuralHeadView {
         let scale = backingScale
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for layer in [interiorLayer, frontLayer, nodeLayer] {
+        for layer in [interiorLayer, frontLayer, nodeLayer, nameLayer] {
             layer.frame = rect
             layer.contentsScale = scale
         }

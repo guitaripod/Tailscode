@@ -78,6 +78,7 @@ final class BrainStageView: UIView {
         clipsToBounds = true
         addSubview(head)
         head.nodeLayer.addSublayer(field.root)
+        head.nameLayer.addSublayer(field.names)
         head.onTick = { [weak self] time in self?.tick(time) }
         head.onReady = { [weak self] in self?.onReady?() }
         pad.backgroundColor = .clear

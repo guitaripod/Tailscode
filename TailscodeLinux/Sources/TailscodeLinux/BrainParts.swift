@@ -204,6 +204,7 @@ enum BrainUI {
                 cairo_set_line_width(cr, 1.5)
                 cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND)
                 cairo_stroke(cr)
+                BrainPainter.glyphCore(cr, box.zone.shape, radius: radius)
                 cairo_restore(cr)
             }, Unmanaged.passRetained(holder).toOpaque(),
             { raw in

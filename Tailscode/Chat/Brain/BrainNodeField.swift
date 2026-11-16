@@ -22,7 +22,13 @@ final class BrainNodeField {
     }
 
     let root = CALayer()
+    /// The zones' names, in the design's units like `root` and scaled with it, for the layer over
+    /// the head's front: a name under the glass is hidden wherever the chassis is.
+    let names = CALayer()
     private(set) var zoneLabelRects: [NeuralZone: CGRect] = [:]
+    /// Where Core stands each name for the nodes on the head and the size the words are held at.
+    private var labelHomes: [NeuralRect] = NeuralZone.labelRects
+    private var labelsPlaced: (revision: Int, size: CGFloat) = (-1, 0)
 
     /// The steps the list's filters hide: the head draws their nodes at 28 percent.
     var dimmed: Set<String> = []
@@ -60,9 +66,13 @@ final class BrainNodeField {
         root.bounds = CGRect(x: 0, y: 0, width: NeuralDesign.width, height: NeuralDesign.height)
         root.anchorPoint = .zero
         root.position = .zero
-        for layer in [wellLayer, labelLayer, tieLayer, wireLayer, pulseLayer, viaLayer, batchLayer, nodeLayer] {
+        names.bounds = root.bounds
+        names.anchorPoint = .zero
+        names.position = .zero
+        for layer in [wellLayer, tieLayer, wireLayer, pulseLayer, viaLayer, batchLayer, nodeLayer] {
             root.addSublayer(layer)
         }
+        names.addSublayer(labelLayer)
         buildWells()
         buildRing()
     }
@@ -195,6 +205,7 @@ final class BrainNodeField {
         CATransaction.setDisableActions(true)
         scale = newScale
         root.transform = CATransform3DMakeScale(newScale, newScale, 1)
+        names.transform = root.transform
         setContentsScale(newContents)
         layoutLabels()
         for node in nodes.values { node.sizeText(designScale: scale, contentsScale: contentsScale) }
@@ -289,7 +300,22 @@ final class BrainNodeField {
         applyTies(drawn.ties, selecting: selecting, pointing: pointing)
         applyNodes(draws, many: many, selecting: false, reduceMotion: reduceMotion)
         applyWells(model)
+        placeLabels(draws, revision: model.revision)
     }
+
+    /// Asks Core where the names stand for the nodes this turn has put on the head, once for a
+    /// layout of the turn and a size of the words.
+    private func placeLabels(_ draws: [NeuralNodeDraw], revision: Int) {
+        let size = labelFontSize
+        guard labelsPlaced.revision != revision || abs(labelsPlaced.size - size) > 0.01 else { return }
+        labelsPlaced = (revision, size)
+        labelHomes = NeuralZoneLabels.rects(
+            draws: draws, magnify: Double(size / Self.designLabelSize))
+        layoutLabels()
+    }
+
+    /// The size the design draws a zone's name at, in its own units.
+    private static let designLabelSize: CGFloat = 9
 
     /// How many nodes have lit since the last call, for the haptic that says a node fired.
     func newlyLit(in model: NeuralBrainModel, time: Double) -> Int {
@@ -356,15 +382,22 @@ final class BrainNodeField {
             text.contentsScale = contentsScale
             let width = size * 0.62 * CGFloat(zone.displayLabel.count) * 1.35 + 8
             let height = size * 1.3
-            let well = zone.well
-            let origin = CGPoint(
-                x: zone.center.x - width / 2, y: zone.center.y - well.ry - 8 - height * 0.8)
-            text.frame = CGRect(x: origin.x, y: origin.y, width: width, height: height)
+            let home = labelHomes[zone.rawValue]
+            text.frame = CGRect(
+                x: home.x + home.width / 2 - width / 2, y: home.y + home.height / 2 - height / 2,
+                width: width, height: height)
+            text.backgroundColor = used ? Self.labelPlate : nil
+            text.cornerRadius = height / 2
             zoneLabelRects[zone] = text.frame.insetBy(dx: -8, dy: -10)
         }
     }
 
     private var zonesInUse: Set<NeuralZone> = []
+
+    /// The plate the name of a zone that did work stands on, so a wire or a ring passing behind
+    /// it does not run through its letters. The head is dark under every theme, so the plate is
+    /// too. A zone the turn never used has nothing behind its name and keeps it bare and quiet.
+    private static let labelPlate = UIColor(white: 0.02, alpha: 0.5).cgColor
 
     /// Labels read at six or seven points on a phone, however small the head is drawn, but never
     /// larger than the well under them can carry: a head of 208 points draws them smaller.

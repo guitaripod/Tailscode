@@ -36,6 +36,9 @@ struct BrainScene {
     var wireDraw = 1.0
     var tieDraw = 1.0
     var labelAlpha = 1.0
+    /// Where each zone's name stands, by the zone's raw value, in design space: Core's answer for
+    /// the nodes this frame draws and the size the words are held at.
+    var labels: [NeuralRect] = NeuralZone.allCases.map { NeuralZoneLabels.rect(of: $0) }
 }
 
 enum BrainPainter {
@@ -53,7 +56,6 @@ enum BrainPainter {
         cairo_scale(cr, scene.zoom, scene.zoom)
         cairo_translate(cr, -scene.zoomCenter.x * scale, -scene.zoomCenter.y * scale)
         cairo_scale(cr, scale, scale)
-        zoneLabels(cr, scene: scene, inks: inks, scale: scale)
         ties(cr, scene: scene, inks: inks)
         wires(cr, scene: scene, inks: inks)
         for (index, node) in scene.draws.enumerated() {
@@ -66,32 +68,58 @@ enum BrainPainter {
         cairo_restore(cr)
     }
 
-    static func zoneLabelRect(_ zone: NeuralZone) -> (x: Double, y: Double, width: Double, height: Double) {
-        let well = zone.well
-        let width = Double(zone.displayLabel.count) * 8.2 + 8
-        return (zone.center.x - width / 2, zone.center.y - well.ry - 8 - 11, width, 14)
+    /// The size the zones' names are drawn at on a head `width` points wide, in points: the
+    /// design's nine at the design's width, and never smaller than can be read.
+    static func labelPoints(width: Double) -> Double {
+        max(8.5, 9 * width / NeuralStageMetrics.designWidth)
     }
 
-    private static func zoneLabels(
-        _ cr: OpaquePointer, scene: BrainScene, inks: BrainInks, scale: Double
+    /// How much larger than the design's that makes a name, which is what Core places it by.
+    static func labelMagnify(width: Double) -> Double {
+        guard width > 0 else { return 1 }
+        return labelPoints(width: width) / (9 * width / NeuralStageMetrics.designWidth)
+    }
+
+    /// The zones' names, drawn over the head's front: a name under the glass is hidden wherever
+    /// the chassis is, which is all of ACT's and SAID's. Each stands on a soft dark plate, so a
+    /// wire or a ring passing behind it does not run through its letters.
+    static func paintLabels(
+        _ cr: OpaquePointer, width: Int32, height: Int32, scene: BrainScene, inks: BrainInks
     ) {
-        let size = max(8.5, 9 * scale) / scale
+        guard scene.labelAlpha > 0.01 else { return }
+        let scale = Double(width) / NeuralStageMetrics.designWidth
+        cairo_save(cr)
+        cairo_rectangle(cr, 0, 0, Double(width), Double(height))
+        cairo_clip(cr)
+        cairo_translate(cr, -NeuralStageMetrics.designCrop.x * scale, 0)
+        cairo_translate(cr, scene.zoomCenter.x * scale, scene.zoomCenter.y * scale)
+        cairo_scale(cr, scene.zoom, scene.zoom)
+        cairo_translate(cr, -scene.zoomCenter.x * scale, -scene.zoomCenter.y * scale)
+        cairo_scale(cr, scale, scale)
+        let size = labelPoints(width: Double(width)) / scale
+        let font = "\(mono) Bold \(size)px"
         for zone in NeuralZone.allCases {
             let on = scene.usedZones.contains(zone)
             let color = on ? inks.zone(zone) : inks.domeDim
             let alpha =
                 (on ? (scene.hotZone == nil || scene.hotZone == zone ? 1.0 : 0.4) : 0.55)
                 * scene.labelAlpha
-            let rect = zoneLabelRect(zone)
+            let rect = scene.labels[zone.rawValue]
             var spaced = ""
             for character in zone.displayLabel { spaced += "\(character)\u{200A}" }
             var measured = 0.0
-            var height = 0.0
-            tailscode_text_measure(spaced, "\(mono) Bold \(size)px", 0, 1, &measured, &height)
+            var tall = 0.0
+            tailscode_text_measure(spaced, font, 0, 1, &measured, &tall)
+            let left = rect.x + rect.width / 2 - measured / 2
+            let top = rect.y + rect.height / 2 - tall / 2
+            let pad = size * 0.42
+            round(cr, left - pad, top - pad * 0.35, measured + pad * 2, tall + pad * 0.7, (tall + pad * 0.7) / 2)
+            setColor(cr, inks.panel, (on ? 0.5 : 0.18) * scene.labelAlpha)
+            cairo_fill(cr)
             _ = tailscode_text_draw(
-                cr, spaced, "\(mono) Bold \(size)px", zone.center.x - measured / 2, rect.y, 0, 0, 1,
-                color.red, color.green, color.blue, alpha)
+                cr, spaced, font, left, top, 0, 0, 1, color.red, color.green, color.blue, alpha)
         }
+        cairo_restore(cr)
     }
 
     private static func setColor(_ cr: OpaquePointer, _ color: BrainInks.RGB, _ alpha: Double) {
@@ -254,6 +282,17 @@ enum BrainPainter {
         setColor(cr, inks.live, 1)
         cairo_new_path(cr)
         cairo_arc(cr, x, y, 5, 0, 2 * .pi)
+        cairo_fill(cr)
+    }
+
+    /// What a zone's glyph carries inside its outline where it is drawn small, in the colour the
+    /// outline was just stroked in. At the size of a chip an octagon is a ring and DELEGATE's
+    /// cannot be told from PLAN's circle, so it holds a dot: the agent inside the agent. A node on
+    /// the head is large enough to be an octagon and holds its number instead.
+    static func glyphCore(_ cr: OpaquePointer, _ shape: NeuralShape, radius r: Double) {
+        guard shape == .octagon else { return }
+        cairo_new_path(cr)
+        cairo_arc(cr, 0, 0, max(1.2, r * 0.3), 0, 2 * .pi)
         cairo_fill(cr)
     }
 

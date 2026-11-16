@@ -185,11 +185,12 @@ public struct NeuralLiveCard: Sendable, Equatable {
         let subject = NeuralReadoutBuilder.subject(of: step)
         let argument = thinking || NeuralReading.isNote(step) ? nil : subject.primary
         let lines = NeuralReading.isTool(step) ? NeuralReadoutBuilder.tail(of: step).lines : []
+        let title = NeuralHuman.presentTitle(at: index, in: steps)
         return Flight(
             stepID: step.id, number: index + 1,
-            title: NeuralHuman.presentTitle(at: index, in: steps),
+            title: title,
             argument: argument.map { NeuralReadoutText.oneLine($0, limit: 160) }.flatMap {
-                $0.isEmpty ? nil : $0
+                $0.isEmpty || NeuralHuman.says(title, argument: $0) ? nil : $0
             },
             verdict: readings.steps[index].verdict, lastLine: lines.last, isThinking: thinking)
     }

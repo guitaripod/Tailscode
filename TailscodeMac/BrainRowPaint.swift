@@ -249,7 +249,8 @@ final class BrainRowPainter {
         _ row: NeuralStepList.Row, limit: CGFloat, query: String, into made: inout Prepared
     ) {
         let measured = fonts.width(row.title, fonts.title)
-        let titleWidth = min(measured, Self.titleMax)
+        let titleRoom = row.argument.isEmpty ? max(0, limit - Self.titleX) : Self.titleMax
+        let titleWidth = min(measured, titleRoom)
         made.titleWidth = titleWidth
         made.title = NSAttributedString(
             string: row.title,

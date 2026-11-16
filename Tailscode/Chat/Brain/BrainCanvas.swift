@@ -112,7 +112,7 @@ final class BrainShapeIcon: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         let radius = min(bounds.width, bounds.height) / 2 - 2
-        shape.path = BrainShapes.path(zoneShape, radius: radius * 0.85)
+        shape.path = BrainShapes.glyph(zoneShape, radius: radius * 0.85)
         shape.position = CGPoint(x: bounds.midX, y: bounds.midY)
     }
 

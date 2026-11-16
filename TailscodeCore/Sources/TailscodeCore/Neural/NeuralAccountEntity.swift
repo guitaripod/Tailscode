@@ -309,9 +309,10 @@ extension NeuralAccount {
         let step = model.steps[at]
         let subject = NeuralReadoutBuilder.subject(of: step, title: titles[at].text)
         let tail = NeuralReading.isTool(step) ? NeuralReadoutBuilder.tail(of: step).lines : []
+        let argument = NeuralReadoutText.oneLine(subject.primary, limit: 160)
         return LiveStep(
             stepID: step.id, number: at + 1, title: titles[at].text, rawTitle: titles[at].raw,
-            argument: NeuralReadoutText.oneLine(subject.primary, limit: 160),
+            argument: NeuralHuman.says(titles[at].text, argument: argument) ? "" : argument,
             verdict: readings.steps[at].verdict, tail: tail)
     }
 

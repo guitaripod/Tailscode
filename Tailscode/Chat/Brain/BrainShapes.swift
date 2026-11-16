@@ -5,6 +5,19 @@ import UIKit
 /// chipped square, hexagon, octagon and speech bubble, so the kind of work is carried by shape
 /// before colour: authored in the mock's `shapeD` and kept to its numbers.
 enum BrainShapes {
+    /// A zone's shape where it is drawn small, on a chip or beside a row. At that size an octagon
+    /// is a ring and DELEGATE's cannot be told from PLAN's circle, so it holds a dot, small
+    /// enough that the stroke fills it: the agent inside the agent. A node on the head is large
+    /// enough to be an octagon and holds its number instead.
+    static func glyph(_ shape: NeuralShape, radius r: CGFloat) -> CGPath {
+        guard shape == .octagon else { return path(shape, radius: r) }
+        let marked = CGMutablePath()
+        marked.addPath(path(shape, radius: r))
+        let dot = max(0.9, r * 0.16)
+        marked.addEllipse(in: CGRect(x: -dot, y: -dot, width: 2 * dot, height: 2 * dot))
+        return marked
+    }
+
     static func path(_ shape: NeuralShape, radius r: CGFloat) -> CGPath {
         switch shape {
         case .circle:

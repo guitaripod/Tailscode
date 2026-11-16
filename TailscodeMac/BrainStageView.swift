@@ -102,6 +102,10 @@ final class BrainStageView: NSView, BrainKeyTaker {
     let head = NeuralHeadView()
 
     private let overlay = CALayer()
+    /// The zones' names, over the head's front where the nodes are under it, kept the size and
+    /// the transform of `overlay` so a dive carries both.
+    private let nameOverlay = CALayer()
+    private var labelRects: [NeuralRect] = NeuralZone.labelRects
     private let tieGroup = CALayer()
     private let wireGroup = CALayer()
     private let viaGroup = CALayer()
@@ -180,9 +184,11 @@ final class BrainStageView: NSView, BrainKeyTaker {
         head.frame = bounds
         addSubview(head)
         head.nodeLayer.addSublayer(overlay)
-        for group in [tieGroup, wireGroup, viaGroup, labelGroup, batchGroup, nodeGroup, ringGroup] {
+        head.nameLayer.addSublayer(nameOverlay)
+        for group in [tieGroup, wireGroup, viaGroup, batchGroup, nodeGroup, ringGroup] {
             overlay.addSublayer(group)
         }
+        nameOverlay.addSublayer(labelGroup)
         ringGroup.addSublayer(previewRing.layer)
         ringGroup.addSublayer(cursorRing.layer)
         head.onTick = { [weak self] time in self?.tick(time) }
@@ -390,8 +396,10 @@ final class BrainStageView: NSView, BrainKeyTaker {
         let backing = window?.backingScaleFactor ?? 2
         if diving == nil, divedZone == nil {
             overlay.frame = CGRect(origin: .zero, size: head.contentRect.size)
+            nameOverlay.frame = overlay.frame
         }
         overlay.contentsScale = backing
+        nameOverlay.contentsScale = backing
         for group in [tieGroup, wireGroup, viaGroup, labelGroup, batchGroup, nodeGroup, ringGroup] {
             group.frame = overlay.bounds
         }
@@ -440,23 +448,28 @@ final class BrainStageView: NSView, BrainKeyTaker {
         }
         var counts = [Int](repeating: 0, count: NeuralZone.allCases.count)
         for step in model.turn.steps { counts[step.zone.rawValue] += 1 }
+        let size = Self.labelPoints(scale: scale)
+        labelRects = NeuralZoneLabels.rects(
+            draws: NeuralNodes.draws(model: model, time: 0, reduceMotion: true),
+            magnify: scale > 0 ? Double(size / (Self.designLabelPoints * scale)) : 1)
         for zone in NeuralZone.allCases where counts[zone.rawValue] > 0 {
             let label = CATextLayer()
             label.alignmentMode = .center
             label.contentsScale = backing
             label.isWrapped = false
-            let size = max(8, 9.2 * scale * 1.15)
             label.fontSize = size
-            label.font = NSFont.monospacedSystemFont(ofSize: size, weight: .semibold)
-            label.string = NSAttributedString(
+            let font = NSFont.monospacedSystemFont(ofSize: size, weight: .semibold)
+            label.font = font
+            let words = NSAttributedString(
                 string: zone.displayLabel,
-                attributes: [
-                    .font: NSFont.monospacedSystemFont(ofSize: size, weight: .semibold),
-                    .kern: 1.8 * scale,
-                    .foregroundColor: inks.dome(zone),
-                ])
-            label.bounds = CGRect(x: 0, y: 0, width: 96 * scale, height: size * 1.4)
-            let rect = zone.labelRect
+                attributes: [.font: font, .kern: 1.8 * scale, .foregroundColor: inks.dome(zone)])
+            label.string = words
+            let height = (size * 1.4).rounded(.up)
+            label.bounds = CGRect(
+                x: 0, y: 0, width: (words.size().width + size * 1.1).rounded(.up), height: height)
+            label.backgroundColor = Self.labelPlate
+            label.cornerRadius = height / 2
+            let rect = labelRects[zone.rawValue]
             label.position = head.layerPoint(
                 forDesign: NeuralPoint(rect.x + rect.width / 2, rect.y + rect.height / 2))
             labelGroup.addSublayer(label)
@@ -464,6 +477,17 @@ final class BrainStageView: NSView, BrainKeyTaker {
         }
         lastDynamic = 0
     }
+
+    /// The size the design draws a zone's name at on a head of the design's width, in points.
+    private static let designLabelPoints: CGFloat = 9.2 * 1.15
+
+    /// The size the names are drawn at on a head scaled by `scale`: the design's, and never
+    /// smaller than can be read.
+    private static func labelPoints(scale: CGFloat) -> CGFloat { max(8, designLabelPoints * scale) }
+
+    /// The plate a name stands on, so a wire or a ring passing behind it does not run through
+    /// its letters. The head is dark under every theme, so the plate is too.
+    private static let labelPlate = CGColor(gray: 0.02, alpha: 0.5)
 
     /// The nodes the filters hide, which draw at 28 percent: a node dims when its step and every
     /// step it stands for are hidden.
@@ -737,7 +761,7 @@ final class BrainStageView: NSView, BrainKeyTaker {
         let used = Set(model.steps.map(\.zone))
         let design = head.designPoint(forViewPoint: convert(point, to: head))
         for zone in NeuralZone.allCases where used.contains(zone) {
-            let rect = zone.labelRect
+            let rect = labelRects[zone.rawValue]
             if design.x >= rect.x - 4, design.x <= rect.maxX + 4, design.y >= rect.y - 4,
                 design.y <= rect.maxY + 4
             {
@@ -892,6 +916,9 @@ final class BrainStageView: NSView, BrainKeyTaker {
         overlay.position = at
         overlay.setAffineTransform(
             CGAffineTransform(scaleX: 1 + 0.9 * progress, y: 1 + 0.9 * progress))
+        nameOverlay.anchorPoint = overlay.anchorPoint
+        nameOverlay.position = at
+        nameOverlay.setAffineTransform(overlay.affineTransform())
         CATransaction.commit()
         guard let model = currentModel() else { return }
         head.apply(
@@ -915,6 +942,9 @@ final class BrainStageView: NSView, BrainKeyTaker {
             overlay.anchorPoint = CGPoint(x: 0.5, y: 0.5)
             overlay.frame = CGRect(origin: .zero, size: head.contentRect.size)
             overlay.setAffineTransform(.identity)
+            nameOverlay.anchorPoint = overlay.anchorPoint
+            nameOverlay.frame = overlay.frame
+            nameOverlay.setAffineTransform(.identity)
             CATransaction.commit()
         } else {
             divedZone = zone
@@ -965,6 +995,12 @@ final class BrainStageView: NSView, BrainKeyTaker {
     /// size: the poster lays them between the head's interior and its glass.
     func drawOverlay(in context: CGContext) {
         overlay.render(in: context)
+    }
+
+    /// The zones' names as they stand, drawn into a context at the stage's own size: the poster
+    /// lays them over the head's glass, where the stage has them.
+    func drawNames(in context: CGContext) {
+        nameOverlay.render(in: context)
     }
 
     /// What the stage holds, for the selftest: layers drawn, nodes lit, whether anything moves.

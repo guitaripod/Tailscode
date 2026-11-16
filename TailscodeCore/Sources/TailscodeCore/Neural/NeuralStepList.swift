@@ -550,7 +550,9 @@ public struct NeuralStepList: Sendable, Equatable {
     /// A row after its step's words grew: only what the words draw changes, because no other row
     /// reads them, so a streamed token touches one row and not the whole list.
     private static func refreshed(_ row: Row, from step: NeuralStep) -> Row {
-        row.replacing(argument: argument(of: step, kind: row.kind), lines: lines(of: step, kind: row.kind))
+        row.replacing(
+            argument: argument(of: step, kind: row.kind, title: row.title),
+            lines: lines(of: step, kind: row.kind))
     }
 
     private mutating func rebuild() {
@@ -641,7 +643,7 @@ public struct NeuralStepList: Sendable, Equatable {
                 id: step.id, index: index, number: index + 1, kind: kind, zone: step.zone,
                 title: titles[index].text,
                 rawTitle: NeuralReading.title(of: step), verdict: reading.verdict,
-                argument: argument(of: step, kind: kind),
+                argument: argument(of: step, kind: kind, title: titles[index].text),
                 argumentKind: tool ? NeuralReadoutBuilder.subjectKind(of: step).argumentKind : .words,
                 status: step.status, mark: mark(of: reading.verdict, related: related), related: related,
                 bracket: tool ? bracket(of: index, group: toolsInGroup[step.group] ?? []) : .none,
@@ -663,9 +665,11 @@ public struct NeuralStepList: Sendable, Equatable {
         let isCommand: Bool
     }
 
-    private static func argument(of step: NeuralStep, kind: Kind) -> String {
+    /// What a row says after its title: a call's command, path or pattern, unless the title has
+    /// already said it, and a thought's or a note's first line.
+    private static func argument(of step: NeuralStep, kind: Kind, title: String) -> String {
         switch kind {
-        case .tool: return step.detail
+        case .tool: return NeuralHuman.says(title, argument: step.detail) ? "" : step.detail
         case .thought, .note:
             return NeuralReadoutText.oneLine(NeuralReadoutText.firstLine(step.text), limit: 160)
         }

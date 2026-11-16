@@ -212,13 +212,18 @@ extension BrainView {
         startClosing(swapped: swapped)
     }
 
-    /// Builds the stage, readout and footer without showing them: what a move needs in hand.
+    /// Builds whatever of the open brain is not standing yet, without showing it: the head, the
+    /// step list and the account with its story. An open that gave up waiting for the head's
+    /// first picture arrives here with the head already made and nothing else, and has to leave
+    /// with all of it, so each part is asked for by itself.
     func makeParts() {
-        guard stage == nil else { return }
+        openSchedule = nil
         makeHead()
         makeList()
+        let hadAccount = account != nil
         makeAccount()
-        fillAccount()
+        if !hadAccount { fillAccount() }
+        account?.finishRealize()
     }
 
     /// What the card turns into first: the head, the chips, the readout and the footer. The list

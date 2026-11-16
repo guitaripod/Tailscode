@@ -105,6 +105,31 @@ public enum NeuralHuman {
         sentence(for: step, retry: false)
     }
 
+    /// Whether a sentence already says an argument: "Asking an agent: Watch the cut and confirm\u{2026}"
+    /// beside "Watch the cut and confirm the first tap lands on the riff" is the same words twice
+    /// on one line, and so is "Used the frames-cli skill" beside `frames-cli`. The sentence says
+    /// it when it holds the argument's whole first line as words of its own, or the first two
+    /// dozen characters of a longer one, which is what a sentence that was cut to fit still has.
+    public static func says(_ sentence: String, argument: String) -> Bool {
+        let wanted = NeuralReadoutText.oneLine(NeuralReadoutText.firstLine(argument), limit: 160)
+            .lowercased()
+        guard wanted.count >= 2 else { return false }
+        let said = sentence.lowercased()
+        if wanted.count > 24 { return said.contains(wanted.prefix(24)) }
+        var from = said.startIndex
+        while let found = said.range(of: wanted, range: from..<said.endIndex) {
+            let before = found.lowerBound == said.startIndex ? nil : said[said.index(before: found.lowerBound)]
+            let after = found.upperBound == said.endIndex ? nil : said[found.upperBound]
+            if !(before?.isLetter ?? false), !(before?.isNumber ?? false), !(after?.isLetter ?? false),
+                !(after?.isNumber ?? false)
+            {
+                return true
+            }
+            from = said.index(after: found.lowerBound)
+        }
+        return false
+    }
+
     /// Whether an earlier step ran this very command and failed.
     public static func isRetry(at index: Int, in steps: [NeuralStep]) -> Bool {
         let step = steps[index]

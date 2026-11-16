@@ -327,7 +327,7 @@ extension AccountReadoutPage {
         }
         flow.add(textBlock(headline), before: 8)
 
-        let bars = section(AccountWords.whereTheWorkWent, right: AccountWords.steps(digest.ticks.count))
+        let bars = section(AccountWords.whereTheWorkWent)
         for bar in digest.zoneBars {
             let row = AccountZoneBarRow(bar: bar, paint: paint)
             let zone = bar.zone

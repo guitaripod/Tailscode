@@ -92,7 +92,9 @@ extension BrainView {
             place(
                 sink, card.buttons,
                 NeuralRect(
-                    x: m.width - 12 - buttonsWidth, y: 8, width: buttonsWidth, height: buttonsHeight),
+                    x: m.width - 12 - buttonsWidth,
+                    y: card.buttonsTop(cardHeight: cardHeight, textWidth: textRect.width, buttonsHeight: buttonsHeight),
+                    width: buttonsWidth, height: buttonsHeight),
                 dx: offset)
         } else {
             let (_, buttonsHeight) = naturalSize(card.buttons)

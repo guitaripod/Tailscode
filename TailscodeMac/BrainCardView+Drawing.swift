@@ -74,7 +74,7 @@ extension BrainCardView {
                     .font: badge, .kern: 0.6,
                 ]).width
                 let countWidth = ("\(chip.count)" as NSString).size(withAttributes: [.font: badge]).width
-                let chipWidth = ceil(10 + 14 + labelWidth + 6 + countWidth + 10)
+                let chipWidth = ceil(10 + Self.chipGlyphRoom + labelWidth + 6 + countWidth + 10)
                 guard cursor + chipWidth <= textRight else { break }
                 let rect = CGRect(x: cursor, y: chipsTop, width: chipWidth, height: chipHeight)
                 out.chipRects.append((chip, rect))
@@ -512,6 +512,10 @@ extension BrainCardView {
             at: CGPoint(x: x, y: rect.midY - size.height / 2), withAttributes: attributes)
     }
 
+    /// The room a chip keeps for its zone's glyph before its word: the glyph's own eleven points
+    /// and the air that keeps a hexagon's corner off the first letter.
+    static let chipGlyphRoom: CGFloat = 18
+
     private func drawChip(
         _ chip: NeuralBrainCard.ZoneChip, rect: CGRect, inks: BrainInks, hot: Bool, face: NeuralFace
     ) {
@@ -547,7 +551,7 @@ extension BrainCardView {
         let labelAttributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: ink, .kern: 0.6]
         let label = chip.label.uppercased()
         let labelSize = (label as NSString).size(withAttributes: labelAttributes)
-        let x = rect.minX + 10 + 14
+        let x = rect.minX + 10 + Self.chipGlyphRoom
         (label as NSString).draw(at: CGPoint(x: x, y: rect.midY - labelSize.height / 2), withAttributes: labelAttributes)
         let countAttributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: inks.text]
         let count = "\(chip.count)"

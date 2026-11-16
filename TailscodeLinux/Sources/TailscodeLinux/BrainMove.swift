@@ -318,6 +318,8 @@ extension BrainView {
         BrainCardPainter.layer(
             cr, surface: pictures.front, logicalWidth: pictures.width, logicalHeight: pictures.height,
             rect: rect)
+        BrainPainter.paintLabels(
+            cr, width: Int32(width.rounded()), height: Int32(height.rounded()), scene: stage.scene, inks: inks)
         if f.sweepAmount > 0.002 { sweep(cr, f, width: width, height: height) }
         if f.travellerAlpha < 0.999 {
             cairo_pop_group_to_source(cr)

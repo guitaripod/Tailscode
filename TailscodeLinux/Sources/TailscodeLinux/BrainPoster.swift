@@ -95,6 +95,7 @@ extension BrainScene {
         scene.wires = NeuralNodes.wires(model: model, time: 0, reduceMotion: true)
         scene.reduceMotion = true
         scene.usedZones = Set(model.steps.map(\.zone))
+        scene.labels = NeuralZoneLabels.rects(draws: scene.draws)
         scene.crowded = model.nodeCount > 60
         return scene
     }
@@ -307,14 +308,19 @@ enum BrainPoster {
         cairo_fill(cr)
         let factor = target.width / Double(size.width)
         draw(&pair.interior, into: cr, at: target, factor: factor)
+        let scene = BrainScene.resting(model: model)
         cairo_save(cr)
         cairo_translate(cr, target.x, target.y)
         cairo_scale(cr, factor, factor)
-        BrainPainter.paint(
-            cr, width: Int32(size.width), height: Int32(size.height),
-            scene: BrainScene.resting(model: model), inks: inks)
+        BrainPainter.paint(cr, width: Int32(size.width), height: Int32(size.height), scene: scene, inks: inks)
         cairo_restore(cr)
         draw(&pair.front, into: cr, at: target, factor: factor)
+        cairo_save(cr)
+        cairo_translate(cr, target.x, target.y)
+        cairo_scale(cr, factor, factor)
+        BrainPainter.paintLabels(
+            cr, width: Int32(size.width), height: Int32(size.height), scene: scene, inks: inks)
+        cairo_restore(cr)
         cairo_restore(cr)
     }
 

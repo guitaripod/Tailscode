@@ -77,7 +77,7 @@ extension BrainStage {
     func zoneLabel(at point: NeuralPoint) -> NeuralZone? {
         let used = Set(owner.model.steps.map(\.zone))
         for zone in NeuralZone.allCases where used.contains(zone) {
-            let rect = BrainPainter.zoneLabelRect(zone)
+            let rect = scene.labels[zone.rawValue]
             if point.x >= rect.x - 4, point.x <= rect.x + rect.width + 4, point.y >= rect.y - 4,
                 point.y <= rect.y + rect.height + 4
             {

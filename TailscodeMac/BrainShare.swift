@@ -113,6 +113,10 @@ enum BrainPoster {
         stage.drawOverlay(in: ctx)
         ctx.restoreGState()
         ctx.draw(front, in: rect)
+        ctx.saveGState()
+        ctx.scaleBy(x: scale, y: scale)
+        stage.drawNames(in: ctx)
+        ctx.restoreGState()
         return ctx.makeImage()
     }
 

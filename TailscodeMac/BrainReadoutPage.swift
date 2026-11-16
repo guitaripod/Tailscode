@@ -375,8 +375,8 @@ final class AccountReadoutPage: NSView {
         case .digest(let digest):
             zone = nil
             buildDigest(digest)
-            foot.left = NeuralNoticeLine.countText(tools: 0, steps: digest.ticks.count)
-            foot.right = owner.beganClock ?? ""
+            foot.left = owner.beganClock.map { NeuralReading.turnBegan($0) } ?? ""
+            foot.right = AccountWords.hoverHint
         case .now(let now):
             zone = now.step?.header.zone
             buildNow(now)

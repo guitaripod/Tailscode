@@ -348,6 +348,23 @@ extension SelfTest {
         _ = pump(0.3)
         try expect(!view.model.isReplaying && !view.isClockRunning, "stopping the replay stops the clock")
 
+        let names = stage.scene.labels
+        let faces = stage.scene.draws
+        try expect(
+            names.count == NeuralZone.allCases.count
+                && NeuralZone.allCases.allSatisfy { zone in
+                    !faces.contains { NeuralZoneLabels.covers(names[zone.rawValue], $0.point, radius: $0.radius) }
+                },
+            "every zone's name stands clear of the nodes on the head")
+        try expect(
+            names[NeuralZone.shell.rawValue].y < NeuralZoneLabels.rect(
+                of: .shell, magnify: BrainPainter.labelMagnify(width: Double(stage.logical.width))).y,
+            "and SHELL's, crowded to its second ring, stands above its highest node")
+        let shellName = names[NeuralZone.shell.rawValue]
+        try expect(
+            stage.zoneLabel(at: NeuralPoint(shellName.x + shellName.width / 2, shellName.y + shellName.height / 2)) == .shell,
+            "a name is pressed where it is drawn")
+
         stage.dive(into: .shell)
         try expect(stage.isDiving, "pressing a zone's name dives into it")
         _ = pump(0.9)
@@ -571,7 +588,7 @@ extension SelfTest {
         var opened = brain
         opened.open = true
 
-        func run(slow: Bool = false) throws -> (opening: Double, closing: Double, grew: Double) {
+        func run(slow: Bool = false) throws -> (opening: Double, closing: Double, grew: Double, whole: Bool) {
             let host = BrainHost()
             host.sessionKey = "selftest-anchor"
             host.policy = { builder.brainPolicy }
@@ -644,6 +661,7 @@ extension SelfTest {
             let afterOpen = offset(of: "after-3")
             if abs(afterOpen - before) > 1.5 { report("brain anchor trail \(trail.prefix(30).joined(separator: " ")) ... \(trail.suffix(10).joined(separator: " "))") }
             let grew = gtk_adjustment_get_upper(adjustment) - upperBefore
+            let whole = held.list != nil && held.account != nil && held.footer != nil
             held.restate(closed)
             _ = brainPump(0.8)
             let afterClose = offset(of: "after-3")
@@ -651,7 +669,7 @@ extension SelfTest {
             gtk_window_destroy(ptr(window))
             _ = brainPump(0.4)
             BrainCompositors.dropIdle(olderThan: 0)
-            return (afterOpen - before, afterClose - before, grew)
+            return (afterOpen - before, afterClose - before, grew, whole)
         }
 
         let held = try run()
@@ -661,6 +679,9 @@ extension SelfTest {
         try expect(
             abs(slow.opening) <= 1.5 && abs(slow.closing) <= 1.5 && slow.grew > 100,
             "and when the renderer is too slow and the stage is taken with no move, the row above the reader is still held (\(slow.opening) px opening, \(slow.closing) closing)")
+        try expect(
+            slow.whole && held.whole,
+            "and a stage taken with no move stands whole, with its step list and its account, as one that moved does")
         try expect(
             held.grew > 100,
             "the stage opening above the viewport makes the page taller by its own height (\(Int(held.grew)) px)")

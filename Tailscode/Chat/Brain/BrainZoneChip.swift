@@ -51,7 +51,9 @@ final class BrainZoneChip: UIControl {
     }
 
     private static let padding: CGFloat = 7
-    private static let gap: CGFloat = 3
+    /// The air between the zone's shape and what the chip says: enough that a hexagon's corner or
+    /// a bubble's tail never touches the first letter.
+    private static let gap: CGFloat = 5
     private static let iconSize: CGFloat = 13
 
     func configure(_ new: Content) {

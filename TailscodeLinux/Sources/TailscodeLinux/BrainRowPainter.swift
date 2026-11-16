@@ -84,7 +84,8 @@ struct BrainRowPainter {
             showCopy: pointerHere || touch.copiedID == row.id, touch: touch)
         let textLimit = statusLeft - 12
         if row.kind == .tool {
-            let titleWidth = min(BrainDraw.measure(row.title, fonts.title), Self.titleMax)
+            let titleRoom = row.argument.isEmpty ? max(0, textLimit - 83) : Self.titleMax
+            let titleWidth = min(BrainDraw.measure(row.title, fonts.title), titleRoom)
             BrainDraw.line(
                 cr, row.title, font: fonts.title, lineHeight: fonts.lineHeight, x: 83, top: y, height: rowH,
                 width: titleWidth, color: inks.ink, alpha: alpha)

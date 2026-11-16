@@ -29,16 +29,18 @@ extension BrainReadout {
         BrainUI.add(page.header, label, chip, right)
     }
 
+    /// The digest's foot says when the turn began, in the words a step's foot uses for the same
+    /// fact, and how to read a step. The count of steps is the header's, one line of sight above,
+    /// and is not said again here.
     func digestFoot(_ digest: R.Digest, in page: Page) {
-        let steps = BrainUI.label(BrainWords.steps(digest.ticks.count), "bn-fact")
         var began = ""
         if let at = owner.model.turn.startedAt ?? owner.model.steps.compactMap(\.at).min() {
-            began = NeuralReading.clock(at)
+            began = NeuralReading.turnBegan(NeuralReading.clock(at))
         }
         let clock = BrainUI.label(began, "bn-fact")
         let hint = BrainUI.label(BrainWords.hoverHint, "bn-fact", ellipsize: true)
         gtk_label_set_xalign(op(hint), 1)
-        BrainUI.add(page.foot, steps, clock, BrainUI.spacer(), hint)
+        BrainUI.add(page.foot, clock, BrainUI.spacer(), hint)
     }
 
     func buildDigest(_ digest: R.Digest, in page: Page) {
@@ -49,10 +51,7 @@ extension BrainReadout {
         gtk_box_append(ptr(body), headline)
 
         let bars = section()
-        gtk_box_append(
-            ptr(bars),
-            labelRow(
-                BrainWords.whereTheWorkWent, right: rightLabel(BrainWords.steps(digest.ticks.count))))
+        gtk_box_append(ptr(bars), labelRow(BrainWords.whereTheWorkWent))
         for bar in digest.zoneBars { gtk_box_append(ptr(bars), zoneBarRow(bar)) }
         gtk_box_append(ptr(bars), timeline(digest))
         gtk_box_append(ptr(body), bars)

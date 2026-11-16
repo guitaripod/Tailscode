@@ -67,6 +67,7 @@ extension BrainStage {
         layered = true
         needsFull = true
         submitted = nil
+        gtk_widget_queue_draw(leader)
         if let composer, !inFlight, hasDrawn {
             let (w, h) = (surfaceSize.width, surfaceSize.height)
             composer.pair.interior.bytes.withUnsafeBufferPointer {
@@ -85,6 +86,7 @@ extension BrainStage {
         layered = false
         needsFull = true
         submitted = nil
+        gtk_widget_queue_draw(leader)
         owner.relayout()
         owner.redrawNow()
     }
@@ -119,6 +121,9 @@ extension BrainStage {
         cairo_set_operator(cr, CAIRO_OPERATOR_OVER)
         BrainPainter.paint(cr, width: Int32(logical.width), height: Int32(logical.height), scene: scene, inks: inks)
         lay(composer.pair.front.bytes, operator: CAIRO_OPERATOR_OVER)
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER)
+        BrainPainter.paintLabels(
+            cr, width: Int32(logical.width), height: Int32(logical.height), scene: scene, inks: inks)
         cairo_destroy(cr)
         cairo_surface_mark_dirty(surface)
         gtk_widget_queue_draw(merged)
@@ -207,6 +212,7 @@ extension BrainStage {
         if !Self.debugSkip.contains("nodes"), nodesDue(time, state: state.scale) {
             if layered {
                 gtk_widget_queue_draw(nodes)
+                gtk_widget_queue_draw(leader)
             } else if inFlight {
                 recomposePending = true
             } else {
@@ -358,6 +364,8 @@ extension BrainStage {
         next.cursor = owner.ringed(model.pinnedStep)
         next.preview = model.browseState.hovered.flatMap { $0 == model.pinnedStep ? nil : owner.ringed($0) }
         next.usedZones = Set(model.steps.map(\.zone))
+        next.labels = NeuralZoneLabels.rects(
+            draws: next.draws, magnify: BrainPainter.labelMagnify(width: Double(logical.width)))
         next.zoom = scale
         let center = (zone ?? .think).center
         next.zoomCenter = zone == nil ? NeuralPoint(320, 210) : center
@@ -381,8 +389,15 @@ extension BrainStage {
         nodeDraws += 1
     }
 
+    /// The leader's layer is the one above the head's front, so while the head is three layers
+    /// (a dive) the zones' names are drawn here, under the line; a head drawn as one picture has
+    /// them in that picture, and a head on the move has them on the traveller.
     func drawLeader(_ cr: OpaquePointer, width: Int32, height: Int32) {
         let begun = DispatchTime.now().uptimeNanoseconds
+        if layered, !owner.isMoving {
+            BrainPainter.paintLabels(
+                cr, width: Int32(logical.width), height: Int32(logical.height), scene: scene, inks: inks)
+        }
         owner.paintLeader(cr, width: Double(width), height: Double(height))
         leaderNanoseconds += DispatchTime.now().uptimeNanoseconds - begun
         leaderDraws += 1

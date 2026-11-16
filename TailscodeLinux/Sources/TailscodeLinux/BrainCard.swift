@@ -257,6 +257,37 @@ final class BrainCard: @unchecked Sendable {
         return Double(textHeight + buttonsHeight) + (narrow ? 6 : 0) + Self.needAir
     }
 
+    /// How tall the band is that a live card draws its headline in, centred.
+    static let liveHeadlineBand = 28.0
+
+    /// Where Replay and Rows stand in a wide card: on the headline's own line, their words on the
+    /// baseline its count, its clauses and Megatron's name share, so the card's first line reads
+    /// as one line from its left end to its right. The column of words is centred in the card, so
+    /// that line is lower on a card of two lines than on one of three, and the buttons follow it.
+    /// A live card draws its headline centred in a band, and the buttons are centred in the same.
+    func buttonsTop(cardHeight: Double, textWidth: Double, buttonsHeight: Double) -> Double {
+        let fallback = 8.0
+        guard hasContent, let row = settledHeadWidgets.first else { return fallback }
+        let column = Int32(max(1, textWidth.rounded()))
+        var wordsHeight: Int32 = 0
+        gtk_widget_measure(text, GTK_ORIENTATION_VERTICAL, column, nil, &wordsHeight, nil, nil)
+        var rowHeight: Int32 = 0
+        var rowBaseline: Int32 = -1
+        gtk_widget_measure(row, GTK_ORIENTATION_VERTICAL, column, nil, &rowHeight, nil, &rowBaseline)
+        var buttonBaseline: Int32 = -1
+        gtk_widget_measure(replay, GTK_ORIENTATION_VERTICAL, -1, nil, nil, nil, &buttonBaseline)
+        let columnTop = max(0, (cardHeight - Double(wordsHeight)) / 2)
+        let top: Double
+        if card.live != nil {
+            top = columnTop + (Self.liveHeadlineBand - buttonsHeight) / 2
+        } else if rowBaseline >= 0, buttonBaseline >= 0 {
+            top = columnTop + Double(rowBaseline - buttonBaseline)
+        } else {
+            top = columnTop + (Double(rowHeight) - buttonsHeight) / 2
+        }
+        return min(max(4, top.rounded()), max(4, cardHeight - buttonsHeight - 4))
+    }
+
     /// What a card of this width shows: Core's reading of the width, limited to what the narrow
     /// composition has room for.
     var parts: Set<NeuralBrainCard.Part> {
@@ -429,7 +460,7 @@ final class BrainCard: @unchecked Sendable {
         let headStack = gtk_overlay_new()!
         gtk_overlay_set_child(op(headStack), settledHead)
         let headCanvas = makeLiveCanvas(isHead: true)
-        gtk_widget_set_size_request(headCanvas, -1, 28)
+        gtk_widget_set_size_request(headCanvas, -1, Int32(Self.liveHeadlineBand))
         gtk_widget_set_halign(headCanvas, GTK_ALIGN_FILL)
         gtk_widget_set_valign(headCanvas, GTK_ALIGN_START)
         gtk_overlay_add_overlay(op(headStack), headCanvas)

@@ -257,7 +257,9 @@ final class BrainStepRowView: UIControl {
                 attributes: [
                     .font: titleFont, .foregroundColor: ink, .paragraphStyle: Self.truncating,
                 ])
-            let titleWidth = min(ceil(title.size().width), 168, max(60, (limit - Self.titleX) * 0.62))
+            let titleRoom = row.argument.isEmpty
+                ? max(0, limit - Self.titleX) : min(168, max(60, (limit - Self.titleX) * 0.62))
+            let titleWidth = min(ceil(title.size().width), titleRoom)
             let titleSize = title.size()
             title.draw(
                 in: CGRect(
@@ -323,7 +325,7 @@ final class BrainStepRowView: UIControl {
     private func drawGlyph(_ cg: CGContext, _ shape: NeuralShape, at center: CGPoint, color: UIColor) {
         cg.saveGState()
         cg.translateBy(x: center.x, y: center.y)
-        cg.addPath(BrainShapes.path(shape, radius: 6.2))
+        cg.addPath(BrainShapes.glyph(shape, radius: 6.2))
         cg.setFillColor(color.withAlphaComponent(0.18).cgColor)
         cg.setStrokeColor(color.cgColor)
         cg.setLineWidth(1.4)

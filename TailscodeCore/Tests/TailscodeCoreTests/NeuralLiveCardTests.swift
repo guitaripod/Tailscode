@@ -99,6 +99,29 @@ struct NeuralLiveCardTests {
         #expect(compact.trailing == .none && compact.title == "Running the tests")
     }
 
+    @Test("a line never says the same words twice: a title that already names its argument keeps it to itself")
+    func nowLineSaysItsWordsOnce() throws {
+        let words = "Watch the cut and confirm the first tap lands on the riff"
+        let asking = L.running([
+            [V.bash("ls")],
+            [.tool(ToolCall(
+                id: "t", name: "Task", status: .running, input: .object(["description": .string(words)]),
+                output: nil))],
+        ])
+        let line = try #require(asking.liveCard).line(now: NF.date(3), lastActivity: NF.date(3))
+        #expect(line.title.hasPrefix("Asking an agent: Watch the cut"))
+        #expect(line.argument == nil)
+        #expect(NeuralHuman.says("Asking an agent: Watch the cut and confirm the first tap lands on\u{2026}", argument: words))
+        #expect(NeuralHuman.says("Searching the web for gtk4 snapshot nodes", argument: "gtk4 snapshot nodes"))
+        #expect(!NeuralHuman.says("Running the tests", argument: "swift test --parallel"))
+        #expect(NeuralHuman.says("Used the frames-cli skill", argument: "frames-cli"))
+        #expect(NeuralHuman.says("Ran pwd", argument: "pwd"))
+        #expect(!NeuralHuman.says("Ran the tests", argument: "st"))
+        #expect(!NeuralHuman.says("Looked at files", argument: "ls ~/Dev/film"))
+        #expect(!NeuralHuman.says("Ran ffprobe", argument: "ffprobe -v error -show_entries format=duration"))
+        #expect(!NeuralHuman.says("Fetching example.com", argument: "https://example.com/docs/page"))
+    }
+
     @Test("an error's output stays amber")
     func errorOutput() throws {
         let model = L.running([[.tool(ToolCall(

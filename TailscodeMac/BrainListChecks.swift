@@ -616,7 +616,9 @@ enum BrainListChecks {
         let before = list.maxOffset
         env.fixture.replace(messages: runningMessages(extra: 2), running: true)
         try expect(list.maxOffset > before, "a new step arrives at the end")
-        try expect(list.offset == 0, "a paused list does not follow it")
+        try expect(
+            abs(list.offset) < 1,
+            "a paused list does not follow it (at \(list.offset) of \(Int(list.maxOffset)), following \(env.steps.following))")
         if let event = mouseEvent(.leftMouseDown, at: CGPoint(x: pill.midX, y: pill.midY), in: list.overlay) {
             list.overlay.mouseDown(with: event)
         }

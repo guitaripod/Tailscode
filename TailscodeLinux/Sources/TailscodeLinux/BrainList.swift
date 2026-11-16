@@ -587,6 +587,8 @@ final class BrainList: @unchecked Sendable {
         cairo_rectangle(cr, 0, viewTop, listWidth + scrollbarRoom, viewHeight)
         cairo_clip(cr)
         var drawn = 0
+        let fade = edgeFade(viewHeight: viewHeight)
+        if fade != nil { cairo_push_group(cr) }
         if list.visibleCount == 0 {
             if list.total > 0 { paintEmpty(cr, list: list, inks: inks, width: listWidth) }
         } else {
@@ -633,6 +635,7 @@ final class BrainList: @unchecked Sendable {
                 if top(ofPosition: position) - scroll > viewHeight + 48 { break }
             }
         }
+        if let fade { fadeEdges(cr, fade, top: viewTop, height: viewHeight) }
         if list.showsFollowPill { paintPill(cr, inks: inks) }
         paintScrollbar(cr, inks: inks, width: listWidth)
         cairo_restore(cr)
@@ -732,6 +735,36 @@ final class BrainList: @unchecked Sendable {
             top: rect.y, height: rect.height, color: inks.ink)
         let textWidth = BrainDraw.measure(BrainWords.followingPaused, fonts.pill)
         BrainDraw.keyCap(cr, "End", x: rect.x + 12 + textWidth + 8, midY: rect.y + rect.height / 2, fonts: fonts, inks: inks)
+    }
+
+    /// How far the rows fade toward an edge they continue past, in points: the last row in view is
+    /// usually cut by the edge, and a row cut hard reads as a drawing fault where one that fades
+    /// reads as a list with more below.
+    static let edgeFadeBelow = 22.0
+    static let edgeFadeAbove = 12.0
+
+    /// The edges the rows run past right now, nil when they fit or a move is revealing them.
+    private func edgeFade(viewHeight: Double) -> (above: Bool, below: Bool)? {
+        guard reveal == nil, maxScroll > 0.5, viewHeight > Self.edgeFadeBelow * 2 else { return nil }
+        let above = scroll > 0.5
+        let below = scroll < maxScroll - 0.5
+        return above || below ? (above, below) : nil
+    }
+
+    /// Lays the rows drawn since the group was pushed through a mask that lets them go at the
+    /// edges they run past. The rows fade to nothing rather than to a colour, so whatever the pane
+    /// has behind the list, a sky included, shows through unchanged.
+    private func fadeEdges(
+        _ cr: OpaquePointer, _ fade: (above: Bool, below: Bool), top: Double, height: Double
+    ) {
+        cairo_pop_group_to_source(cr)
+        guard let mask = cairo_pattern_create_linear(0, top, 0, top + height) else { return }
+        cairo_pattern_add_color_stop_rgba(mask, 0, 0, 0, 0, fade.above ? 0 : 1)
+        cairo_pattern_add_color_stop_rgba(mask, fade.above ? Self.edgeFadeAbove / height : 0, 0, 0, 0, 1)
+        cairo_pattern_add_color_stop_rgba(mask, fade.below ? 1 - Self.edgeFadeBelow / height : 1, 0, 0, 0, 1)
+        cairo_pattern_add_color_stop_rgba(mask, 1, 0, 0, 0, fade.below ? 0 : 1)
+        cairo_mask(cr, mask)
+        cairo_pattern_destroy(mask)
     }
 
     private func paintScrollbar(_ cr: OpaquePointer, inks: BrainInks, width: Double) {
