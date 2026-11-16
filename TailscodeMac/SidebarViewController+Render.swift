@@ -148,6 +148,7 @@ extension SidebarViewController {
             observations,
             authoritativeProfileIDs: listedFromNetwork
                 ? Set(observations.map(\.profileID)) : [])
+        MacNotifier.withdrawRead()
         let archivedKeys = ArchivedChatStore.all()
         let isArchived: (SessionRowModel) -> Bool = {
             archivedKeys.contains(ArchivedChatStore.key($0.entry.profileID, $0.entry.session.id))

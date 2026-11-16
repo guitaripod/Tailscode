@@ -175,6 +175,39 @@ enum NotificationManager {
         }
     }
 
+    /// Takes down every banner whose chat has been read anywhere since it appeared: the read mark
+    /// travels through the servers, so a chat read at the desk stops interrupting here at the next
+    /// listing (`NoticeWithdrawal`).
+    static func withdrawRead() async {
+        let center = UNUserNotificationCenter.current()
+        let delivered = await center.deliveredNotifications()
+        let shown = delivered.compactMap { notice -> NoticeWithdrawal.Shown? in
+            guard let sessionID = notice.request.content.userInfo["sessionID"] as? String else {
+                return nil
+            }
+            return NoticeWithdrawal.Shown(
+                identifier: notice.request.identifier, sessionID: sessionID, shownAt: notice.date)
+        }
+        let stale = NoticeWithdrawal.stale(shown, isUnread: SessionSeenStore.unreadEvaluator())
+        guard !stale.isEmpty else { return }
+        center.removeDeliveredNotifications(withIdentifiers: stale)
+        MidgarLog.info("notifications: \(stale.count) read elsewhere taken down", category: .lifecycle)
+    }
+
+    /// Takes down every banner about these chats, which a bridge says were read or looked at on
+    /// another device.
+    static func withdrawDelivered(sessionIDs: Set<String>) async -> Int {
+        guard !sessionIDs.isEmpty else { return 0 }
+        let center = UNUserNotificationCenter.current()
+        let delivered = await center.deliveredNotifications()
+        let identifiers = delivered.filter {
+            ($0.request.content.userInfo["sessionID"] as? String).map(sessionIDs.contains) ?? false
+        }.map(\.request.identifier)
+        guard !identifiers.isEmpty else { return 0 }
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        return identifiers.count
+    }
+
     /// Emptying the list answers every notice in it, in both places a notice lives.
     ///
     /// The list is only half of where a notice is kept. `adoptDelivered` files whatever Notification

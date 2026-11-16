@@ -151,6 +151,7 @@ extension MainWindow {
             observations,
             authoritativeProfileIDs: listedFromNetwork
                 ? Set(observations.map(\.profileID)) : [])
+        Notifier.shared.withdrawRead()
         let candidates: [(row: SessionRowModel, archived: Bool)] = rows.map {
             (
                 $0,

@@ -139,6 +139,27 @@ final class MacNotifier: NSObject {
         }
     }
 
+    /// Takes down every banner whose chat has been read anywhere since it appeared, the phone
+    /// included: the read mark travels through the servers, so this runs on every listing
+    /// (`NoticeWithdrawal`).
+    static func withdrawRead() {
+        let isUnread = SessionSeenStore.unreadEvaluator()
+        Task { @MainActor in
+            let center = UNUserNotificationCenter.current()
+            let delivered = await center.deliveredNotifications()
+            let shown = delivered.compactMap { notice -> NoticeWithdrawal.Shown? in
+                guard let sessionID = notice.request.content.userInfo["sessionID"] as? String else {
+                    return nil
+                }
+                return NoticeWithdrawal.Shown(
+                    identifier: notice.request.identifier, sessionID: sessionID, shownAt: notice.date)
+            }
+            let stale = NoticeWithdrawal.stale(shown, isUnread: isUnread)
+            guard !stale.isEmpty else { return }
+            center.removeDeliveredNotifications(withIdentifiers: stale)
+        }
+    }
+
     /// Raised and written down in one step: a notice nobody happened to be at the screen for is
     /// the whole event lost otherwise, so what banners also goes to the list that keeps it until
     /// someone looks.

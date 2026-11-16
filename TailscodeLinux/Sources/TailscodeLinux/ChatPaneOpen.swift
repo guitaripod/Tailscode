@@ -108,6 +108,7 @@ extension ChatPane {
         resumeTask = nil
         renderAttachments()
         ActivityInbox.clear(sessionID: entry.session.id)
+        Notifier.shared.clearNotices(sessionID: entry.session.id)
         rushing = false
         windowLimit = 400
         windowWidened = false

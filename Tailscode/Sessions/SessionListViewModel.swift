@@ -423,6 +423,7 @@ final class SessionListViewModel {
                     isActive: $0.session.isActive == true, updatedAt: $0.session.updatedAt)
             },
             authoritativeProfileIDs: Set(fresh.keys))
+        Task { await NotificationManager.withdrawRead() }
         if changed {
             MidgarLog.info(
                 "loaded \(entries.count) sessions across \(sources.count) servers", category: .session)

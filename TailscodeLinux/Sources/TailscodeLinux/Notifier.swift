@@ -28,6 +28,9 @@ final class Notifier: @unchecked Sendable {
     private var onAnswer: (@Sendable (String, QuestionRequest, [[String]], String) -> Void)?
     private var daemonID: [String: UInt32] = [:]
     private var standing: [UInt32: Standing] = [:]
+    /// Every notice about a chat still up on the desktop, by identifier: which chat, and when it
+    /// went up, so one whose chat has been read since can be taken down.
+    private var raised: [String: NoticeWithdrawal.Shown] = [:]
     private let serversLock = NSLock()
     private var serverNames: [String: String] = [:]
 
@@ -204,7 +207,42 @@ final class Notifier: @unchecked Sendable {
     /// longer exists.
     private func forget(id: UInt32) {
         guard let notice = standing.removeValue(forKey: id) else { return }
-        if daemonID[notice.identifier] == id { daemonID[notice.identifier] = nil }
+        if daemonID[notice.identifier] == id {
+            daemonID[notice.identifier] = nil
+            raised[notice.identifier] = nil
+        }
+    }
+
+    /// Takes down every notice whose chat has been read anywhere since it went up, the phone
+    /// included: the read mark travels through the servers, so this runs on every listing
+    /// (`NoticeWithdrawal`).
+    func withdrawRead() {
+        let stale = NoticeWithdrawal.stale(
+            Array(raised.values), isUnread: SessionSeenStore.unreadEvaluator())
+        takeDown(stale)
+    }
+
+    /// Opening a chat answers every notice about it still up on the desktop.
+    func clearNotices(sessionID: String) {
+        takeDown(raised.values.filter { $0.sessionID == sessionID }.map(\.identifier))
+    }
+
+    private func takeDown(_ identifiers: [String]) {
+        guard !identifiers.isEmpty else { return }
+        for identifier in identifiers {
+            raised[identifier] = nil
+            if let id = daemonID.removeValue(forKey: identifier) {
+                standing[id] = nil
+                tailscode_desktop_notify_close(id)
+            }
+            if let app = application { g_application_withdraw_notification(app, identifier) }
+        }
+    }
+
+    private func noteRaised(_ notice: Outgoing) {
+        guard let sessionID = notice.sessionID, !sessionID.isEmpty else { return }
+        raised[notice.identifier] = NoticeWithdrawal.Shown(
+            identifier: notice.identifier, sessionID: sessionID, shownAt: Date())
     }
 
     private func handle(id: UInt32, action: String) {
@@ -478,10 +516,12 @@ final class Notifier: @unchecked Sendable {
                 sessionID: notice.sessionID, decision: notice.decision, question: notice.question,
                 choices: notice.choices, retryPrompt: notice.retryPrompt, rich: notice.rich,
                 isTest: notice.isTest)
+            noteRaised(notice)
             if let app = application { g_application_withdraw_notification(app, notice.identifier) }
             return
         }
         sendFallback(notice, body: words.plain, imagePath: image)
+        noteRaised(notice)
     }
 
     private static let retryActionID = "retry"
@@ -566,6 +606,7 @@ final class Notifier: @unchecked Sendable {
         guard !identifiers.isEmpty else { return }
         ActivityInbox.withdraw(identifiers)
         for identifier in identifiers {
+            raised[identifier] = nil
             if let id = daemonID.removeValue(forKey: identifier) {
                 standing[id] = nil
                 tailscode_desktop_notify_close(id)

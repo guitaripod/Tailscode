@@ -110,6 +110,18 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             completionHandler(.noData)
             return
         }
+        let read = NoticeWithdrawal.sessions(inPush: userInfo)
+        guard read.isEmpty else {
+            nonisolated(unsafe) let complete = completionHandler
+            Task { @MainActor in
+                let taken = await NotificationManager.withdrawDelivered(sessionIDs: read)
+                MidgarLog.info(
+                    "push: \(taken) notice(s) taken down, their chats read elsewhere",
+                    category: .connection)
+                complete(taken > 0 ? .newData : .noData)
+            }
+            return
+        }
         let applied = UsagePushPayload.apply(userInfo: userInfo)
         MidgarLog.info(
             "push: silent notification applied \(applied) usage snapshot(s)", category: .connection)
