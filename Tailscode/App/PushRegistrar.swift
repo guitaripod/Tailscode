@@ -42,6 +42,11 @@ enum PushRegistrar {
     /// same as `false`, and `covers(profileID:)` reads it that way.
     private(set) static var delivers: [URL: Bool] = [:]
 
+    /// Whether each bridge took this installation's Live Activity start token. A bridge that has
+    /// not — an older one, or one that updated since it was last told — is told again whenever the
+    /// app comes forward, so it starts cards from its next turn without the app being relaunched.
+    private(set) static var startsCards: [URL: Bool] = [:]
+
     static var ackedBridgeURLs: Set<URL> {
         Set(states.filter { $0.value == .registered }.keys)
     }
@@ -97,6 +102,7 @@ enum PushRegistrar {
     static func unregister(from backend: any CodingAgentBackend, baseURL: URL, name: String) {
         states.removeValue(forKey: baseURL)
         delivers.removeValue(forKey: baseURL)
+        startsCards.removeValue(forKey: baseURL)
         guard let token = UserDefaults.standard.string(forKey: tokenKey) else { return }
         let registration = DevicePushRegistration(
             token: token, environment: environment, liveActivity: forgetting)
@@ -117,6 +123,7 @@ enum PushRegistrar {
             let baseURL = entry.profile.baseURL
             states.removeValue(forKey: baseURL)
             delivers.removeValue(forKey: baseURL)
+            startsCards.removeValue(forKey: baseURL)
             Task {
                 if (try? await backend.unregisterDeviceToken(registration)) != nil {
                     MidgarLog.info(
@@ -144,11 +151,14 @@ enum PushRegistrar {
         -> [(profile: ConnectionProfile, backend: any CodingAgentBackend)]
     {
         var seen = Set<URL>()
+        let owesStartToken = LiveActivityStartToken.current != nil
         return ConnectionController.shared.allBackends().filter { entry in
-            entry.profile.backend == .claudeCode
+            let url = entry.profile.baseURL
+            let settled = ackedBridgeURLs.contains(url) && (!owesStartToken || startsCards[url] == true)
+            return entry.profile.backend == .claudeCode
                 && !entry.profile.id.hasPrefix(DemoWorld.profilePrefix)
-                && !(skippingAcked && ackedBridgeURLs.contains(entry.profile.baseURL))
-                && seen.insert(entry.profile.baseURL).inserted
+                && !(skippingAcked && settled)
+                && seen.insert(url).inserted
         }
     }
 
@@ -171,6 +181,7 @@ enum PushRegistrar {
                     let receipt = try await backend.registerDeviceTokenReceipt(registration)
                     states[baseURL] = .registered
                     delivers[baseURL] = receipt.delivers
+                    startsCards[baseURL] = receipt.startsCards
                     MidgarLog.info(
                         "push: device token registered with \(name) (delivers=\(receipt.delivers.map(String.init) ?? "unknown"))",
                         category: .connection
@@ -178,6 +189,7 @@ enum PushRegistrar {
                 } catch {
                     states[baseURL] = Self.classify(error)
                     delivers.removeValue(forKey: baseURL)
+                    startsCards.removeValue(forKey: baseURL)
                     MidgarLog.error(
                         "push: registration with \(name) failed: \(error.localizedDescription)", category: .connection)
                 }

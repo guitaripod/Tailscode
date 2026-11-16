@@ -128,11 +128,13 @@ final class SessionActivity {
     }
 
     /// Whether a conversation has a turn running, as well as this device can tell: first-hand for
-    /// one it streams, and from the listing otherwise — active with no work carried in the
-    /// background and no agents out, which is how a listing reads a turn rather than work left
-    /// running between turns.
+    /// one it streams, then the listing's own word where the server gives one (claude-bridge says
+    /// whether the turn is open, whatever agents or background work also run), and otherwise
+    /// active with no work carried in the background and no agents out, which is the nearest a
+    /// listing that does not say comes to a turn.
     private func turnRunning(_ session: AgentSession) -> Bool {
         if retained[session.id] != nil { return status(for: session.id) == .running }
+        if let turnOpen = session.turnOpen { return turnOpen }
         return session.isActive == true && (session.backgroundWork?.tasks ?? 0) == 0
             && (session.activeAgents ?? 0) == 0
     }
