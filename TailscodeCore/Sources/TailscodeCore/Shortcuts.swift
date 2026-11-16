@@ -323,16 +323,18 @@ public enum ShortcutRegistry {
             action: .scrollUp, contexts: [.normal], defaults: ["k"]),
         .init(
             id: "scroll.halfDown", title: Localized.text("Half page down"), category: .conversation,
-            action: .halfPageDown, contexts: [.normal], defaults: ["ctrl+d"]),
+            action: .halfPageDown, contexts: [.normal], defaults: ["ctrl+d", "pagedown"]),
         .init(
             id: "scroll.halfUp", title: Localized.text("Half page up"), category: .conversation,
-            action: .halfPageUp, contexts: [.normal], defaults: ["ctrl+u"]),
+            action: .halfPageUp, contexts: [.normal], defaults: ["ctrl+u", "pageup"]),
         .init(
             id: "scroll.top", title: Localized.text("Top of the conversation"),
-            category: .conversation, action: .scrollTop, contexts: [.normal], defaults: ["g g"]),
+            category: .conversation, action: .scrollTop, contexts: [.normal],
+            defaults: ["g g", "home"]),
         .init(
             id: "scroll.bottom", title: Localized.text("Bottom of the conversation"),
-            category: .conversation, action: .scrollBottom, contexts: [.normal], defaults: ["G"]),
+            category: .conversation, action: .scrollBottom, contexts: [.normal],
+            defaults: ["G", "end"]),
         .init(
             id: "prompt.previous", title: Localized.text("Previous prompt"),
             category: .conversation, action: .previousPrompt, contexts: [.normal],

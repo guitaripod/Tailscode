@@ -24,6 +24,10 @@ enum UIKeyChords {
         case .keyboardRightArrow: keyval = 0xFF53
         case .keyboardDeleteOrBackspace: keyval = Keymap.backspace
         case .keyboardSpacebar: keyval = 0x20
+        case .keyboardPageUp: keyval = Keymap.pageUp
+        case .keyboardPageDown: keyval = Keymap.pageDown
+        case .keyboardHome: keyval = Keymap.home
+        case .keyboardEnd: keyval = Keymap.end
         default:
             guard let scalar = key.charactersIgnoringModifiers.unicodeScalars.first,
                 scalar.value >= 0x20
