@@ -98,7 +98,9 @@ enum Kit {
     /// 0.57.0 lets a device hand a server what it needs to start its Live Activities.
     /// 0.58.0 says whether a listed conversation's own turn is open, and whether a bridge took the
     /// device's Live Activity start token.
-    static let version = Version(0, 58, 0)
+    /// 0.59.0 says when a desk's person is at it, so a phone can stay quiet while they are.
+    /// 0.60.0 lets a phone hand a held notice to its bridge and dates each look a desk reports.
+    static let version = Version(0, 60, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

@@ -35,6 +35,13 @@ let hasWebKit =
         .split(separator: ":")
         .contains { FileManager.default.fileExists(atPath: "\($0)/webkitgtk-6.0.pc") }
 
+/// The compositor's own word on input idle is what tells the phone the person is at this desk on
+/// Wayland, where no D-Bus service will say. Optional like the rest; without it the desk falls back
+/// to GNOME's idle monitor or the freedesktop screen saver, and says so when neither answers.
+let hasWayland =
+    FileManager.default.fileExists(atPath: "/usr/include/wayland-client.h")
+    && FileManager.default.fileExists(atPath: "/usr/include/gtk-4.0/gdk/wayland/gdkwayland.h")
+
 var appDependencies: [Target.Dependency] = [
     "CAdw",
     "CGtkShim",
@@ -48,6 +55,14 @@ var shimDependencies: [Target.Dependency] = ["CAdw", "CGdkPixbuf"]
 var shimSettings: [CSetting] = []
 var shimLinkerSettings: [LinkerSetting] = [.linkedLibrary("epoxy")]
 var targets: [Target] = []
+var shimExcluded: [String] = []
+
+if hasWayland {
+    shimSettings.append(.define("TAILSCODE_HAS_WAYLAND", to: "1"))
+    shimLinkerSettings.append(.linkedLibrary("wayland-client"))
+} else {
+    shimExcluded += ["ext-idle-notify-v1-protocol.c", "ext-idle-notify-v1-client-protocol.h"]
+}
 
 if hasMpv {
     appSettings.append(.define("HAS_MPV"))
@@ -108,8 +123,8 @@ targets += [
         providers: [.apt(["libgdk-pixbuf-2.0-dev"]), .yum(["gdk-pixbuf2-devel"])]
     ),
     .target(
-        name: "CGtkShim", dependencies: shimDependencies, cSettings: shimSettings,
-        linkerSettings: shimLinkerSettings),
+        name: "CGtkShim", dependencies: shimDependencies, exclude: shimExcluded,
+        cSettings: shimSettings, linkerSettings: shimLinkerSettings),
     .target(name: "CSherpa", linkerSettings: [.linkedLibrary("dl")]),
     .executableTarget(
         name: "TailscodeLinux",
@@ -197,7 +212,9 @@ enum Kit {
     /// 0.57.0 lets a device hand a server what it needs to start its Live Activities.
     /// 0.58.0 says whether a listed conversation's own turn is open, and whether a bridge took the
     /// device's Live Activity start token.
-    static let version = Version(0, 58, 0)
+    /// 0.59.0 says when a desk's person is at it, so a phone can stay quiet while they are.
+    /// 0.60.0 lets a phone hand a held notice to its bridge and dates each look a desk reports.
+    static let version = Version(0, 60, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
