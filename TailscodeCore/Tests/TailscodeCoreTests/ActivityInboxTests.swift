@@ -257,6 +257,87 @@ extension DeviceStores {
           isUnread: { _, _ in false }, now: later) == nil)
     }
 
+    @Test("A request whose chat is at rest was answered, however it was answered")
+    func restingChatAnsweredItsRequest() {
+      let raised = Date(timeIntervalSince1970: 1_000)
+      let later = raised.addingTimeInterval(ActivityInbox.listingLag + 1)
+      let soon = raised.addingTimeInterval(ActivityInbox.listingLag - 1)
+      let entries = [notice("s1", at: raised, reason: .needsAnswer)]
+      let resting = ActivityObservation(
+        profileID: "p1", sessionID: "s1", title: "A chat", isActive: false,
+        updatedAt: Date(timeIntervalSince1970: 1_100), atRest: true)
+      let unknown = ActivityObservation(
+        profileID: "p1", sessionID: "s1", title: "A chat", isActive: false,
+        updatedAt: Date(timeIntervalSince1970: 1_100))
+      let carrying = ActivityObservation(
+        profileID: "p1", sessionID: "s1", title: "A chat", isActive: false,
+        updatedAt: Date(timeIntervalSince1970: 1_100), carried: 1, atRest: true)
+      #expect(
+        ActivityInbox.reconciled(entries, rows: [resting], authoritative: ["p1"], now: later)
+          == [])
+      #expect(
+        ActivityInbox.reconciled(entries, rows: [resting], authoritative: ["p1"], now: soon)
+          == nil, "a listing from before the question was asked cannot answer it")
+      #expect(
+        ActivityInbox.reconciled(entries, rows: [unknown], authoritative: ["p1"], now: later)
+          == nil, "a server that cannot say whether a turn is open has not said it closed")
+      #expect(
+        ActivityInbox.reconciled(entries, rows: [carrying], authoritative: ["p1"], now: later)
+          == nil)
+    }
+
+    @Test("An answered request stays settled against the banner that filed it")
+    func answeredRequestDoesNotComeBack() {
+      fresh()
+      let raised = Date(timeIntervalSince1970: 1_000)
+      let later = raised.addingTimeInterval(ActivityInbox.listingLag + 1)
+      let asked = notice("s1", at: raised, reason: .needsAnswer)
+      ActivityInbox.record([asked])
+      ActivityInbox.reconcile(
+        [
+          ActivityObservation(
+            profileID: "p1", sessionID: "s1", title: "A chat", isActive: false,
+            updatedAt: Date(timeIntervalSince1970: 1_100), atRest: true)
+        ], authoritativeProfileIDs: ["p1"], now: later)
+      #expect(ActivityInbox.all().isEmpty)
+      ActivityInbox.record([asked])
+      #expect(ActivityInbox.all().isEmpty)
+      fresh()
+    }
+
+    @Test("A chat a server says was read elsewhere settles its finished news, not its requests")
+    func readElsewhereByPush() {
+      fresh()
+      ActivityInbox.record([
+        alert("done:s1", session: "s1"),
+        alert("question:1", session: "s1", reason: .needsAnswer),
+        alert("done:s2", session: "s2"),
+      ])
+      ActivityInbox.settleRead(sessionIDs: ["s1"])
+      #expect(Set(ActivityInbox.all().map(\.identifier)) == ["question:1", "done:s2"])
+      ActivityInbox.record([
+        MissedActivity(
+          identifier: "done:s1", profileID: "p1", sessionID: "s1", title: "A chat", body: "b",
+          reason: .turnEnded, at: Date().addingTimeInterval(-60))
+      ])
+      #expect(ActivityInbox.all().count == 2, "the banner it came from cannot file it again")
+      fresh()
+    }
+
+    @Test("A server removed from this device takes its news with it")
+    func removedServerIsForgotten() {
+      fresh()
+      ActivityInbox.record([alert("done:s1", session: "s1")])
+      ActivityInbox.record([
+        MissedActivity(
+          identifier: "done:s9", profileID: "p9", sessionID: "s9", title: "Elsewhere", body: "b",
+          reason: .turnEnded)
+      ])
+      ActivityInbox.forget(profileID: "p9")
+      #expect(ActivityInbox.all().map(\.profileID) == ["p1"])
+      fresh()
+    }
+
     @Test("A listing that cannot say when a chat moved never calls it read")
     func unknownMomentIsNotRead() {
       let raised = Date(timeIntervalSince1970: 1_000)

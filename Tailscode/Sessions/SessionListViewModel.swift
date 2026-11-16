@@ -420,7 +420,8 @@ final class SessionListViewModel {
             entries.map {
                 ActivityObservation(
                     profileID: $0.profileID, sessionID: $0.session.id, title: $0.session.title,
-                    isActive: $0.session.isActive == true, updatedAt: $0.session.updatedAt)
+                    isActive: $0.session.isActive == true, updatedAt: $0.session.updatedAt,
+                    atRest: $0.session.isActive == false)
             },
             authoritativeProfileIDs: Set(fresh.keys))
         Task { await NotificationManager.withdrawRead() }

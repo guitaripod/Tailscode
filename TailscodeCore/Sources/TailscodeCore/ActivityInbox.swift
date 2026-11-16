@@ -302,6 +302,7 @@ public enum ActivityInbox {
                 $0.profileID == entry.profileID && $0.sessionID == entry.sessionID
             }
             return isRead(entry, in: row, isUnread: isUnread, now: now)
+                || isAnswered(entry, in: row, now: now)
         }
         markCleared(read.map(\.identifier), at: now)
         write(next)
@@ -334,6 +335,10 @@ public enum ActivityInbox {
                 changed = true
                 continue
             }
+            if isAnswered(entry, in: row, now: now) {
+                changed = true
+                continue
+            }
             if let isUnread, isRead(entry, in: row, isUnread: isUnread, now: now) {
                 changed = true
                 continue
@@ -363,6 +368,39 @@ public enum ActivityInbox {
             now.timeIntervalSince(entry.at) > listingLag
         else { return false }
         return !isUnread(row.sessionID, updatedAt)
+    }
+
+    /// Whether a request is no longer waiting on anybody: its conversation is at rest, as a listing
+    /// made well after the request was raised says, and a question or an approval is only ever
+    /// asked from inside a turn that stays open until it is answered. However it was answered —
+    /// on another machine, by a timeout, by the turn being stopped — it is not something to go
+    /// back to, and a request a push filed under its conversation's name has no other way out.
+    static func isAnswered(_ entry: MissedActivity, in row: ActivityObservation?, now: Date) -> Bool {
+        guard entry.isBlocking, let row, row.atRest, now.timeIntervalSince(entry.at) > listingLag
+        else { return false }
+        return true
+    }
+
+    /// Chats a server says were read on another device: their finished news is settled here too,
+    /// as the next listing would settle it, and remembered as settled so the banner it came from
+    /// cannot file it again. A request still waiting on a person stays, since a look answers
+    /// nothing.
+    public static func settleRead(sessionIDs: Set<String>, at now: Date = Date()) {
+        guard !sessionIDs.isEmpty else { return }
+        let current = all()
+        let read = current.filter { !$0.isBlocking && sessionIDs.contains($0.sessionID) }
+        guard !read.isEmpty else { return }
+        let dropped = Set(read.map(\.identifier))
+        markCleared(Array(dropped), at: now)
+        write(current.filter { !dropped.contains($0.identifier) })
+    }
+
+    /// A server this device no longer has: nothing on it can be gone back to from here.
+    public static func forget(profileID: String) {
+        let current = all()
+        let kept = current.filter { $0.profileID != profileID }
+        guard kept.count != current.count else { return }
+        write(kept)
     }
 
     /// A request answered on the server is no longer something you missed. The notifier withdraws

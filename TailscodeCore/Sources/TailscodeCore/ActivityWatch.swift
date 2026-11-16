@@ -58,10 +58,13 @@ public struct ActivityObservation: Sendable {
     /// Background tasks and working agents the listing says the session still holds. A row whose
     /// own turn closed while its agents work is not a chat that finished.
     public let carried: Int
+    /// The server said outright that nothing runs in the conversation. A server that could not
+    /// tell leaves it false: not knowing whether a turn is open is not knowing it closed.
+    public let atRest: Bool
 
     public init(
         profileID: String, sessionID: String, title: String, isActive: Bool,
-        updatedAt: Date? = nil, carried: Int = 0
+        updatedAt: Date? = nil, carried: Int = 0, atRest: Bool = false
     ) {
         self.profileID = profileID
         self.sessionID = sessionID
@@ -69,6 +72,7 @@ public struct ActivityObservation: Sendable {
         self.isActive = isActive
         self.updatedAt = updatedAt
         self.carried = carried
+        self.atRest = atRest && !isActive && carried == 0
     }
 
     /// A listed session as the watch reads it: open, or holding agents or background work.
@@ -76,7 +80,8 @@ public struct ActivityObservation: Sendable {
         self.init(
             profileID: profileID, sessionID: session.id, title: title,
             isActive: session.isActive == true, updatedAt: session.updatedAt,
-            carried: (session.backgroundWork?.tasks ?? 0) + (session.activeAgents ?? 0))
+            carried: (session.backgroundWork?.tasks ?? 0) + (session.activeAgents ?? 0),
+            atRest: session.isActive == false)
     }
 }
 
