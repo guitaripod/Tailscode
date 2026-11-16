@@ -193,7 +193,8 @@ enum Kit {
     /// 0.54.0 carries what a chat's last answer said, for a list row nobody has read.
     /// 0.55.0 carries the limiter's verdict on a usage window, so a refusal is told apart from a
     /// reading rounded up to 100 %.
-    static let version = Version(0, 55, 0)
+    /// 0.56.0 lets a Live Activity's registration say what its server does when the turn ends.
+    static let version = Version(0, 56, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
