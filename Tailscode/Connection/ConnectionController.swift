@@ -252,6 +252,8 @@ final class ConnectionController {
                 from: pushBackend, baseURL: deleted.baseURL, name: deleted.name)
         }
         SavedChatStore.removeAll(profileID: id)
+        ActivityInbox.forget(profileID: id)
+        AppActivityController.shared.withdraw(profileID: id)
         ProAccess.shared.forgetServer(id)
         restingMayHaveChanged()
         mutated()

@@ -89,6 +89,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         DeskHold.shared.cameForward()
         ProAccess.shared.refreshProWeek()
         Task { await AppActivityController.shared.catchUp() }
+        NotificationManager.syncBadge()
         coordinator?.handleControlRouteIfNeeded()
         PushRegistrar.reregisterIfNeeded()
         UpdateMonitor.checkIfDue()
@@ -106,6 +107,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
+        NotificationManager.syncBadge()
         UsageBackgroundRefresh.schedule()
         HapticEngine.shared.relinquish()
     }

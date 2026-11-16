@@ -150,28 +150,39 @@ enum NotificationManager {
         let center = UNUserNotificationCenter.current()
         center.removeDeliveredNotifications(withIdentifiers: identifiers)
         center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        syncBadge()
     }
 
     /// Takes a notice down from Notification Center and nothing else: the Missed list still holds
     /// it, which is the point of a notice that lost its place to another.
     static func removeDelivered(_ identifiers: [String]) {
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: identifiers)
+        syncBadge()
     }
 
-    /// Opening a conversation answers every notice about it, in both places a notice lives.
+    /// Opening a conversation answers every notice about it, in every place a notice lives.
     ///
     /// The inbox alone is not enough now that it adopts what Notification Center kept: a banner
     /// left standing after the chat has been read is a notice about nothing, and the next adoption
-    /// pass would file it all over again.
+    /// pass would file it all over again. A notice still waiting to go out — an ending held back a
+    /// few seconds in case the work starts again, or one held while the person is at a desk — is
+    /// about the same chat, and would arrive after it was read.
     static func clearNotices(sessionID: String) {
+        let raised = ActivityInbox.all().filter { $0.sessionID == sessionID }.map(\.identifier)
         ActivityInbox.clear(sessionID: sessionID)
         let center = UNUserNotificationCenter.current()
+        if !raised.isEmpty {
+            DeskHold.shared.withdraw(raised)
+            center.removePendingNotificationRequests(withIdentifiers: raised)
+        }
         center.getDeliveredNotifications { delivered in
             let identifiers = delivered.filter {
                 $0.request.content.userInfo["sessionID"] as? String == sessionID
             }.map(\.request.identifier)
-            guard !identifiers.isEmpty else { return }
-            center.removeDeliveredNotifications(withIdentifiers: identifiers)
+            if !identifiers.isEmpty {
+                center.removeDeliveredNotifications(withIdentifiers: identifiers)
+            }
+            Task { @MainActor in syncBadge() }
         }
     }
 
@@ -192,19 +203,24 @@ enum NotificationManager {
         guard !stale.isEmpty else { return }
         center.removeDeliveredNotifications(withIdentifiers: stale)
         MidgarLog.info("notifications: \(stale.count) read elsewhere taken down", category: .lifecycle)
+        await refreshBadge()
     }
 
     /// Takes down every banner about these chats, which a bridge says were read or looked at on
-    /// another device.
+    /// another device, settles the finished news the app holds about them, and puts the icon's
+    /// number right before the system takes this wake back.
     static func withdrawDelivered(sessionIDs: Set<String>) async -> Int {
         guard !sessionIDs.isEmpty else { return 0 }
+        ActivityInbox.settleRead(sessionIDs: sessionIDs)
         let center = UNUserNotificationCenter.current()
         let delivered = await center.deliveredNotifications()
         let identifiers = delivered.filter {
             ($0.request.content.userInfo["sessionID"] as? String).map(sessionIDs.contains) ?? false
         }.map(\.request.identifier)
-        guard !identifiers.isEmpty else { return 0 }
-        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        if !identifiers.isEmpty {
+            center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        }
+        await refreshBadge()
         return identifiers.count
     }
 
@@ -223,8 +239,10 @@ enum NotificationManager {
             let identifiers = delivered.filter {
                 ($0.request.content.userInfo["sessionID"] as? String)?.isEmpty == false
             }.map(\.request.identifier)
-            guard !identifiers.isEmpty else { return }
-            center.removeDeliveredNotifications(withIdentifiers: identifiers)
+            if !identifiers.isEmpty {
+                center.removeDeliveredNotifications(withIdentifiers: identifiers)
+            }
+            Task { @MainActor in syncBadge() }
         }
     }
 
@@ -253,17 +271,31 @@ enum NotificationManager {
             else { continue }
             let raised = notice.request.identifier
             let fromServer = notice.request.trigger is UNPushNotificationTrigger
+            let reason =
+                fromServer
+                ? reason(of: NoticeWire(userInfo: content.userInfo))
+                : reason(forIdentifier: raised)
             adopted.append(
                 MissedActivity(
-                    identifier: fromServer ? "done:\(sessionID)" : raised,
+                    identifier: fromServer ? pushedIdentifier(reason, sessionID: sessionID) : raised,
                     profileID: profileID, sessionID: sessionID, title: content.title,
-                    body: content.body,
-                    reason: fromServer
-                        ? reason(of: NoticeWire(userInfo: content.userInfo))
-                        : reason(forIdentifier: raised),
-                    at: notice.date))
+                    body: content.body, reason: reason, at: notice.date))
         }
         ActivityInbox.record(adopted, liveSessionIDs: liveSessionIDs)
+        await refreshBadge()
+    }
+
+    /// What a pushed notice is filed under. A bridge sends every notice about a chat under one
+    /// name, so Notification Center keeps only the latest; filed under that one name too, a
+    /// question that followed a finished turn would be taken for the turn and dropped. A turn's
+    /// ending keeps the name the phone's own notice for it would have had, so the same turn is
+    /// never listed twice by two machines that both noticed it.
+    private static func pushedIdentifier(_ reason: MissedActivity.Reason, sessionID: String) -> String {
+        switch reason {
+        case .needsAnswer: return "ask:\(sessionID)"
+        case .needsApproval: return "approve:\(sessionID)"
+        case .turnEnded, .turnFailed: return "done:\(sessionID)"
+        }
     }
 
     /// What a pushed notice was about, read from the notice it carries; one from a bridge that
@@ -354,20 +386,62 @@ enum NotificationManager {
         {
             content.attachments = [attachment]
         }
-        let pending = ActivityInbox.all().count
-        if pending > 0 { content.badge = NSNumber(value: pending) }
         let request = UNNotificationRequest(
             identifier: identifier, content: content,
             trigger: delay.map { UNTimeIntervalNotificationTrigger(timeInterval: max(1, $0), repeats: false) })
         DeskHold.shared.route(request, holdable: kind.waitsAtDesk)
     }
 
-    /// Keeps the app icon's badge and the app group's copy of it equal to what the Missed list
-    /// holds, which is what the notification service counts up from when it badges a push.
+    /// Puts the app icon's number right, soon: see `refreshBadge`.
     static func syncBadge() {
-        let count = ActivityInbox.all().count
-        NoticeBadge.set(count)
-        UNUserNotificationCenter.current().setBadgeCount(count)
+        Task { await refreshBadge() }
+    }
+
+    private static var badgeRun = 0
+
+    /// Sets the app icon's number to the chats the app holds as news, and leaves the same chats
+    /// where the notification service counts from when it badges a push.
+    ///
+    /// The number is set here and nowhere else in the app — never written into a notice, where it
+    /// would be frozen at the moment the notice was made — and set again whenever anything it
+    /// counts may have moved: the app coming forward or going back, a banner taken down, a chat
+    /// read here or elsewhere, a listing settling what was news. A later run supersedes one still
+    /// waiting on Notification Center, so the last word is always the newest.
+    static func refreshBadge() async {
+        guard LockedBoot.isOpen else { return }
+        badgeRun += 1
+        let run = badgeRun
+        let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
+        guard run == badgeRun else { return }
+        let chats = badgeChats(
+            delivered: delivered.map {
+                (identifier: $0.request.identifier, userInfo: $0.request.content.userInfo)
+            })
+        NoticeBadge.set(chats: chats)
+        try? await UNUserNotificationCenter.current().setBadgeCount(chats.count)
+    }
+
+    /// The chats the icon counts: each one the inbox holds news for on a server this device
+    /// still has, and each one a notice still standing in Notification Center is about, since a
+    /// push the app has not been opened to file yet is news all the same while one whose chat was
+    /// read has been taken down. A chat counts once however many notices are about it; a notice
+    /// about a planned resume or a test is about no news.
+    private static func badgeChats(
+        delivered: [(identifier: String, userInfo: [AnyHashable: Any])]
+    ) -> Set<String> {
+        let servers = Set(ConnectionController.shared.profiles.map(\.id))
+        var chats = Set(
+            ActivityInbox.all().lazy.filter { servers.contains($0.profileID) }.map(\.sessionID))
+        for notice in delivered
+        where !notice.identifier.hasPrefix("resume:") && !notice.identifier.hasPrefix("test:") {
+            guard let sessionID = notice.userInfo["sessionID"] as? String, !sessionID.isEmpty
+            else { continue }
+            if let owner = NoticeOwners.profileID(for: sessionID), !servers.contains(owner) {
+                continue
+            }
+            chats.insert(sessionID)
+        }
+        return chats
     }
 
     /// Puts a notice on the moment a spent window reopens.
