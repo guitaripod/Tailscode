@@ -194,7 +194,8 @@ enum Kit {
     /// 0.55.0 carries the limiter's verdict on a usage window, so a refusal is told apart from a
     /// reading rounded up to 100 %.
     /// 0.56.0 lets a Live Activity's registration say what its server does when the turn ends.
-    static let version = Version(0, 56, 0)
+    /// 0.57.0 lets a device hand a server what it needs to start its Live Activities.
+    static let version = Version(0, 57, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
