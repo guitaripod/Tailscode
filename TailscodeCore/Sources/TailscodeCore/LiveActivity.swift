@@ -255,7 +255,7 @@ public struct LiveActivityReading: Sendable, Equatable {
 
     /// Every tool call the latest turn made, searched back only as far as the last thing the
     /// person said.
-    static func turnCalls(in state: ConversationState) -> [ToolCall] {
+    public static func turnCalls(in state: ConversationState) -> [ToolCall] {
         var calls: [ToolCall] = []
         for message in state.messages.reversed() {
             if message.role == .user { break }
