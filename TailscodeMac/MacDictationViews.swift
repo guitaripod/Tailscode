@@ -264,7 +264,11 @@ final class MacDictationButton: NSView {
 
     /// An indeterminate wait turns the quarter arc; Reduced Motion holds it still.
     private func spin(reduce: Bool) {
-        guard !reduce, ring.animation(forKey: "spin") == nil else { return }
+        guard !reduce else {
+            ring.removeAnimation(forKey: "spin")
+            return
+        }
+        guard ring.animation(forKey: "spin") == nil else { return }
         let spin = CABasicAnimation(keyPath: "transform.rotation.z")
         spin.fromValue = 0
         spin.toValue = -Double.pi * 2

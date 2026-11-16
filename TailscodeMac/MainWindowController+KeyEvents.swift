@@ -122,6 +122,15 @@ extension MainWindowController {
         Seatbelts.shared.finish(panes: splitPanes.paneCount)
     }
 
+    /// ↑ in an empty box takes the last thing written back for rewriting. Only from an empty box:
+    /// in a half-typed paragraph that key is moving the caret, and taking it would be the worse
+    /// bug by far.
+    private func takesBackLastWritten(
+        _ event: NSEvent, control: Bool, shift: Bool, in composer: ComposerView
+    ) -> Bool {
+        event.keyCode == 126 && !control && !shift && composer.takeBackQueued()
+    }
+
     private func handle(_ event: NSEvent) -> NSEvent? {
         lastKeyCode = event.keyCode
         if splitPanes.orderedPanes.contains(where: { $0.composer.dictation.handleKey(event) }) { return nil }
@@ -248,10 +257,7 @@ extension MainWindowController {
             }
         }
 
-        // ↑ in an empty box takes the last thing written back for rewriting. Only from an empty
-        // box: in a half-typed paragraph that key is moving the caret, and taking it would be the
-        // worse bug by far.
-        if event.keyCode == 126, !control, !shift, composer.takeBackQueued() { return true }
+        if takesBackLastWritten(event, control: control, shift: shift, in: composer) { return true }
 
         if isReturn, event.modifierFlags.contains(.option), !shift, !control {
             presentAskLater(from: pane)

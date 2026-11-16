@@ -4,9 +4,9 @@ import CodingAgentKitApple
 import TailscodeCore
 
 extension SidebarViewController {
+    /// Typing again is the way back to the list: results are about words that were submitted, and
+    /// leaving them up while the box says something else would be a lie about both.
     @objc func filterChanged() {
-        // Typing again is the way back to the list: results are about words that were submitted,
-        // and leaving them up while the box says something else would be a lie about both.
         if searchBoard != nil || searchRunning { leaveTranscriptSearch(render: false) }
         filter = searchField.stringValue
         cursor = 0

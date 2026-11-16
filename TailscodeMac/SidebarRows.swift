@@ -186,19 +186,26 @@ enum SidebarCellFactory {
             return cell
         case .searchHeader(let query, let count, let running):
             let cell = reuse("searchHeader", in: tableView) { SidebarHeaderCell() }
-            // No button: the heading itself is the way back, because a result list is left by
-            // clicking away from it and a second control there is one more thing to read.
-            cell.configure(
-                title: running
-                    ? Localized.text("SEARCHING “%@” — CLICK TO GO BACK", query)
-                    : Localized.text("“%@” — CLICK TO GO BACK", query),
-                count: running ? nil : count)
+            headSearchResults(cell, query: query, count: count, running: running)
             return cell
         case .searchResult(let result):
             let cell = reuse("searchResult", in: tableView) { SidebarSearchResultCell() }
             cell.configure(with: result)
             return cell
         }
+    }
+
+    /// The heading over what a search found. It has no button: the heading itself is the way back,
+    /// because a result list is left by clicking away from it and a second control there is one
+    /// more thing to read.
+    private static func headSearchResults(
+        _ cell: SidebarHeaderCell, query: String, count: Int, running: Bool
+    ) {
+        cell.configure(
+            title: running
+                ? Localized.text("SEARCHING “%@” — CLICK TO GO BACK", query)
+                : Localized.text("“%@” — CLICK TO GO BACK", query),
+            count: running ? nil : count)
     }
 
     private static func reuse<T: NSView>(

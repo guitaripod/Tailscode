@@ -57,6 +57,17 @@ extension TranscriptViewController {
         }
     }
 
+    /// A prompt written while a turn runs is held here, not handed over: a message you can still
+    /// change is worth more than a message one place further along.
+    private var holdsWhatIsWritten: Bool {
+        lastState?.status == .running || lastState?.compaction?.isRunning == true || handoff.isOpen
+    }
+
+    /// Whether something written earlier is still waiting, which a new prompt goes behind: after
+    /// a turn that failed the waiting messages stay where they are, and a new one sent straight
+    /// through would overtake them. The queue handing out its own head is not a new prompt.
+    private var somethingWaitsAhead: Bool { !draining && !queueDisplay.isEmpty }
+
     func sendPrompt(
         _ text: String, model: ModelSelection?, effort: String?,
         attachments: [PromptAttachment], reusing: UUID? = nil, spoken: Bool = false
@@ -82,11 +93,7 @@ extension TranscriptViewController {
             return
         }
         let send = QueuedSend(text: text, model: model, effort: effort, attachments: attachments)
-        // A prompt written while a turn runs is held here, not handed over: a message you can
-        // still change is worth more than a message one place further along.
-        if lastState?.status == .running || lastState?.compaction?.isRunning == true
-            || handoff.isOpen
-        {
+        if holdsWhatIsWritten || (reusing == nil && somethingWaitsAhead) {
             hold(send)
             MacHaptics.shared.play(.send)
             if let state = lastState { apply(state: state, rows: lastFullRows) }

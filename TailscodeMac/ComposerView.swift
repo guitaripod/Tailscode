@@ -276,6 +276,12 @@ final class ComposerView: NSView {
         }
     }
 
+    /// Emptying the box is how a message being rewritten is taken back, so a send with nothing in
+    /// it is a real action while one is open, and nothing at all otherwise.
+    private func hasSomethingToSend(text: String, attachments: [PendingAttachment]) -> Bool {
+        !text.isEmpty || !attachments.isEmpty || isEditingQueued?() == true
+    }
+
     /// The send path: trim, keep nothing the draft store would resurrect, let a typed slash
     /// command go where the palette would send it, and only then hand the prompt out. The
     /// attachments ride only with a real prompt — a slash command consumes none of them.
@@ -283,9 +289,7 @@ final class ComposerView: NSView {
         let text = composedText
         let commandText = PasteFold.inline(editor.text, pastes: pastes)
         let outgoing = attachments
-        // Emptying the box is how a message being rewritten is taken back, so a send with nothing
-        // in it is a real action while one is open — and nothing at all otherwise.
-        guard !text.isEmpty || !outgoing.isEmpty || isEditingQueued?() == true else { return }
+        guard hasSomethingToSend(text: text, attachments: outgoing) else { return }
         if !pastes.isEmpty {
             pastes = []
             syncChips()
@@ -295,7 +299,7 @@ final class ComposerView: NSView {
         vim.reset(to: "", cursor: 0, mode: .insert)
         updateVimUI()
         dismissCompletion()
-        if handleSlashCommand(commandText) { return }
+        if isEditingQueued?() != true, handleSlashCommand(commandText) { return }
         let words = carry?.wrapped(with: text) ?? text
         attachments = []
         carry = nil

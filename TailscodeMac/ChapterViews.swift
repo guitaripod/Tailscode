@@ -143,6 +143,7 @@ final class ChapterRowControl: NSView, KeyboardPressable {
     let line: ChapterLine
     private let onPress: () -> Void
     private let column = NSStackView()
+    private let badge = NSView()
 
     init(_ line: ChapterLine, onPress: @escaping () -> Void) {
         self.line = line
@@ -151,19 +152,16 @@ final class ChapterRowControl: NSView, KeyboardPressable {
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
         layer?.cornerRadius = 9
-        if line.isCurrent {
-            layer?.backgroundColor = MacTheme.Color.accent.withAlphaComponent(0.12).cgColor
-        }
         let number = RowKit.label(
             "\(line.number)", font: MacTheme.Ramp.font(.metricLabel),
-            color: line.isCurrent ? .white : MacTheme.Color.secondaryLabel)
+            color: line.isCurrent ? MacTheme.Color.onAccent : MacTheme.Color.secondaryLabel)
         number.alignment = .center
-        let badge = NSView()
         badge.wantsLayer = true
         badge.layer?.cornerRadius = 10
         badge.layer?.borderWidth = line.isCurrent ? 0 : 1
-        badge.layer?.borderColor = MacTheme.Color.tertiaryLabel.cgColor
-        badge.layer?.backgroundColor = line.isCurrent ? MacTheme.Color.accent.cgColor : nil
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(wear), name: MacTheme.Chrome.didRepaint, object: nil)
+        wear()
         badge.translatesAutoresizingMaskIntoConstraints = false
         number.translatesAutoresizingMaskIntoConstraints = false
         badge.addSubview(number)
@@ -227,6 +225,23 @@ final class ChapterRowControl: NSView, KeyboardPressable {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// The lit chapter's wash and its badge, in the colours of the face the row is wearing now. A
+    /// layer keeps the answer a token gave when it was asked, so they are asked again whenever the
+    /// appearance or the theme changes under an open popover.
+    @objc private func wear() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor =
+                line.isCurrent ? MacTheme.Color.accent.withAlphaComponent(0.12).cgColor : nil
+            badge.layer?.borderColor = MacTheme.Color.tertiaryLabel.cgColor
+            badge.layer?.backgroundColor = line.isCurrent ? MacTheme.Color.accent.cgColor : nil
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        wear()
+    }
 
     override var acceptsFirstResponder: Bool { line.anchorID != nil }
     override var canBecomeKeyView: Bool { acceptsFirstResponder }

@@ -201,7 +201,7 @@ extension TranscriptViewController {
             if !rows.isEmpty { rows.append(TranscriptRow(key: "retry:break", kind: .turnBreak)) }
             rows.append(TranscriptRow(key: "retry", kind: .providerRetry(card)))
         }
-        // What has been written and not sent sits at the very end, in the order it will go.
+        /// What has been written and not sent sits at the very end, in the order it will go.
         let waiting = queueDisplay
         for (index, row) in waiting.rows.enumerated() {
             rows.append(

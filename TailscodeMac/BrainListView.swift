@@ -46,6 +46,13 @@ final class BrainListView: NSView, BrainKeyTaker {
     private var shownOnce = false
     private(set) var manualScrolls = 0
     static let scrollDuration = 0.16
+    /// How far the rows fade toward an edge they continue past, in points: the last row in view is
+    /// usually cut by the edge, and a row cut hard reads as a drawing fault where one that fades
+    /// reads as a list with more below.
+    static let edgeFadeBelow: CGFloat = 22
+    static let edgeFadeAbove: CGFloat = 12
+    private let edgeFade = CAGradientLayer()
+    private(set) var fadedEdges: (above: Bool, below: Bool) = (false, false)
 
     init(host: BrainSurfaceHost) {
         self.host = host
@@ -119,6 +126,7 @@ final class BrainListView: NSView, BrainKeyTaker {
             x: 0, y: BrainListHeader.height + rowsHeight + CGFloat(NeuralStageMetrics.listFootPadding),
             width: width, height: CGFloat(NeuralStageMetrics.listHintHeight))
         syncDocument()
+        syncEdgeFade()
         if !shownOnce, viewportHeight > 0 {
             shownOnce = true
             if let cursor = snapshot.cursor {
@@ -138,6 +146,39 @@ final class BrainListView: NSView, BrainKeyTaker {
         if clamped != offset { jump(to: clamped) }
         scrollTarget = min(max(scrollTarget, 0), maxOffset)
         rows.syncPulses()
+        syncEdgeFade()
+    }
+
+    /// Lets the rows go at the edges they run past: a mask on the scroller, so they fade to
+    /// nothing rather than to a colour and whatever the pane has behind the list shows through.
+    /// A list that fits, or one a move is still revealing, wears no mask at all.
+    private func syncEdgeFade() {
+        let height = viewportHeight
+        let overflows = revealRows == nil && maxOffset > 0.5 && height > Self.edgeFadeBelow * 2
+        let above = overflows && offset > 0.5
+        let below = overflows && offset < maxOffset - 0.5
+        fadedEdges = (above, below)
+        guard above || below else {
+            if scroll.layer?.mask != nil { scroll.layer?.mask = nil }
+            return
+        }
+        scroll.wantsLayer = true
+        let topFirst = scroll.layer?.contentsAreFlipped() ?? true
+        let upper = above ? Self.edgeFadeAbove / height : 0
+        let lower = below ? 1 - Self.edgeFadeBelow / height : 1
+        let clear = NSColor.black.withAlphaComponent(0).cgColor
+        let solid = NSColor.black.cgColor
+        let stops: [(CGFloat, CGColor)] = [(0, above ? clear : solid), (upper, solid), (lower, solid), (1, below ? clear : solid)]
+        let ordered = topFirst ? stops : stops.reversed().map { (1 - $0.0, $0.1) }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        edgeFade.frame = scroll.bounds
+        edgeFade.startPoint = CGPoint(x: 0.5, y: 0)
+        edgeFade.endPoint = CGPoint(x: 0.5, y: 1)
+        edgeFade.colors = ordered.map(\.1)
+        edgeFade.locations = ordered.map { NSNumber(value: Double($0.0)) }
+        if scroll.layer?.mask !== edgeFade { scroll.layer?.mask = edgeFade }
+        CATransaction.commit()
     }
 
 
@@ -216,6 +257,7 @@ final class BrainListView: NSView, BrainKeyTaker {
         headerAlpha = alpha
         header.alphaValue = CGFloat(alpha)
         guard changed else { return }
+        syncEdgeFade()
         guard let reveal, reveal.count > 0, previous == nil || previous?.count == reveal.count else {
             if reveal != nil || previous.map({ !isSettled($0) }) ?? true { rows.needsDisplay = true }
             return
@@ -273,6 +315,7 @@ final class BrainListView: NSView, BrainKeyTaker {
         let y = offset
         guard abs(y - lastOffset) > 0.01 else { return }
         lastOffset = y
+        syncEdgeFade()
         if scroll.isUserScrolling {
             scrollTarget = y
             if snapshot.list.following {

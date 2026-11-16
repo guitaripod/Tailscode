@@ -363,6 +363,9 @@ final class TranscriptViewController: NSViewController {
         }
         hoverBar.toast = { [weak self] text in self?.onToast?(text) }
         context.copyAnswer = { [weak self] rowKey in self?.copyAnswer(ofRowKey: rowKey) }
+        context.promptWords = { [weak self] messageID in
+            self?.lastState?.messages.first { $0.id == messageID }.map(MessageHoverBar.words(of:))
+        }
         hoverBar.locateCode = { [weak self] point in self?.codeTarget(at: point) }
         hoverBar.blocked = { [weak self] in self?.railController.isOpen ?? false }
 

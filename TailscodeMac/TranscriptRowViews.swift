@@ -224,9 +224,9 @@ final class PromptRow: NSView {
     }
 
     @objc private func copyWords() {
-        guard let text else { return }
+        guard let words = context.promptWords?(messageID) ?? text else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        NSPasteboard.general.setString(words, forType: .string)
     }
 }
 

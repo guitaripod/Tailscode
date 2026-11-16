@@ -244,7 +244,7 @@ enum ParityManifest {
             return .varies(
                 direct: .implemented("WebSlotView"),
                 appStore: .notApplicable(
-                    "no chooser row offers a page, no layout restores one, and there is no other way in, so this copy holds no browser at all"),
+                    "no chooser row offers a page, no layout restores one, and there is no other way in, so nobody can open a browser in this copy; the slot's code is still compiled into it and nothing calls it"),
                 because:
                     "WebTarget takes any address, a bare host, or words to look up, which is the whole of what the age rating means by unrestricted web access — and the person who asked for this build says he has never opened a page in a pane on either desktop. A feature nobody uses is not worth re-rating a shared record over, so the store copy simply does not have one.")
         case .imageGenSlot:

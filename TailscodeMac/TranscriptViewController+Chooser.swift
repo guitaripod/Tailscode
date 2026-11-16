@@ -44,12 +44,16 @@ extension TranscriptViewController {
         calls.restyle()
     }
 
-    func applyUIScale() {
-        // Every row is rebuilt at a new size, so a canvas holding a place in the old ones is
-        // holding a place that no longer exists.
+    /// Every row is rebuilt at a new size, so a canvas holding a place in the old ones is holding
+    /// a place that no longer exists.
+    private func forgetKeptPlaces() {
         keptPages = [:]
         keptOrder = []
         releaseFreshCanvas(animated: false)
+    }
+
+    func applyUIScale() {
+        forgetKeptPlaces()
         rowBuilder.invalidate()
         MacMarkdown.invalidate()
         Self.codeMemo = nil

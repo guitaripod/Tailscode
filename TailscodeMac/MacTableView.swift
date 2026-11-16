@@ -127,6 +127,14 @@ final class MacTableView: NSView {
         refreshFade()
     }
 
+    /// Every band is the width of the card, not of its own words: a row washed only as far as its
+    /// longest cell is a smear rather than a row, and the rule between the header and the body
+    /// has no width of its own at all.
+    private func layBandsAtCardWidth() {
+        grid.alignment = .width
+        grid.distribution = .fill
+    }
+
     private func build() {
         card.translatesAutoresizingMaskIntoConstraints = false
         card.wantsLayer = true
@@ -134,11 +142,7 @@ final class MacTableView: NSView {
         card.layer?.cornerCurve = .continuous
         card.layer?.masksToBounds = true
         grid.orientation = .vertical
-        // Every band is the width of the card, not of its own words: a row washed only as far as
-        // its longest cell is a smear rather than a row, and the rule between the header and the
-        // body has no width of its own at all.
-        grid.alignment = .width
-        grid.distribution = .fill
+        layBandsAtCardWidth()
         grid.spacing = 0
         grid.translatesAutoresizingMaskIntoConstraints = false
 

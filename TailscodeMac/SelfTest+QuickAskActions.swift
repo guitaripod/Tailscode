@@ -254,12 +254,16 @@ extension SelfTest {
         panel.setContentSize(NSSize(width: 640, height: 480))
         panel.contentView?.layoutSubtreeIfNeeded()
         let short = panel.listScroll.frame.height
-        panel.setContentSize(NSSize(width: 720, height: 820))
+        let room = (panel.screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame.height ?? 900
+        let given = min(820, room.rounded(.down))
+        panel.setContentSize(NSSize(width: 720, height: given))
         panel.contentView?.layoutSubtreeIfNeeded()
         let tall = panel.listScroll.frame.height
-        try expect(tall >= short + 300, "a taller panel is a taller list: \(short) → \(tall)")
         try expect(
-            abs(panel.frame.height - 820) < 1 && abs(panel.frame.width - 720) < 1,
+            given >= 600 && tall >= short + (given - 480) - 40,
+            "a taller panel is a taller list: \(short) → \(tall) for a panel \(given) tall on a screen with \(room)")
+        try expect(
+            abs(panel.frame.height - given) < 1 && abs(panel.frame.width - 720) < 1,
             "and the panel keeps the size it was given: \(panel.frame.size)")
         try expect(
             panel.contentMinSize.width == QuickAskGeometry.minimumWidth
@@ -295,13 +299,15 @@ extension SelfTest {
         try expect(
             abs(landed.x - pointer.x) < 1 && abs(landed.y - pointer.y) < 1,
             "it opens with the head of the question box under the pointer: \(landed) for \(pointer)")
+        let inset = CGFloat(QuickAskGeometry.inset)
+        let stood = min(700, (area.height - 2 * inset).rounded(.down))
         panel.setFrame(
-            NSRect(x: area.minX + 120, y: area.maxY - 90 - 700, width: 760, height: 700), display: false)
+            NSRect(x: area.minX + 120, y: area.maxY - inset - stood, width: 760, height: stood), display: false)
         panel.sizeChosen()
         panel.remember()
         let left = QuickAskPlacementStore.load()
         try expect(
-            left.width == 760 && left.height == 700 && left.spots.isEmpty,
+            left.width == 760 && left.height == Double(stood) && left.spots.isEmpty,
             "the size is kept as it was left, and the place is not: \(left)")
         panel.place(at: NSPoint(x: area.maxX - 2, y: area.minY + 2), near: nil)
         try expect(

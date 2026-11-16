@@ -599,6 +599,9 @@ enum BrainListChecks {
         try expect(env.steps.isLive, "the running turn is live")
         try expect(env.steps.isFollowing, "a live list follows")
         try expect(list.offset == list.maxOffset, "it sits at the newest step")
+        try expect(
+            list.fadedEdges.above && !list.fadedEdges.below,
+            "with the rows above it fading at the edge they run past, and none below")
         try expect(!env.steps.showsFollowPill, "and says nothing about following")
         try expect(list.pulseCountForChecks >= 1, "the step still out wears a breathing mark")
         try expect(
@@ -609,6 +612,8 @@ enum BrainListChecks {
         try expect(!env.steps.following, "a person's scroll pauses following")
         try expect(env.steps.showsFollowPill, "and the pill appears")
         try expect(list.offset == 0, "the list stays where the person put it")
+        try expect(
+            !list.fadedEdges.above && list.fadedEdges.below, "and now it is the rows below that fade")
         drawPass(list.overlay)
         let pill = list.overlay.pillRect
         try expect(

@@ -27,7 +27,8 @@ extension BrainCardView {
         let replayWidth = buttonWidth(replayTitle, icon: true)
         let isLive = content.card.live != nil
         let rowsWidth = buttonWidth(isLive ? Localized.text("Open") : rowsTitle, icon: false)
-        let top: CGFloat = compact ? 6 : 8
+        let centerY: CGFloat = compact ? 20 : 29
+        let top = centerY - buttonHeight / 2
         var buttonsLeft = textRight
         if !narrow {
             let rows = CGRect(x: textRight - rowsWidth, y: top, width: rowsWidth, height: buttonHeight)
@@ -44,7 +45,6 @@ extension BrainCardView {
         let wordmarkSize = out.wordmark.size()
         out.wordmarkSize = CGSize(width: ceil(wordmarkSize.width), height: ceil(wordmarkSize.height))
 
-        let centerY: CGFloat = compact ? 20 : 29
         out.headlineCenterY = centerY
         var chipsTop: CGFloat = compact ? 38 : 52
         let chipHeight: CGFloat = compact ? 22 : 24

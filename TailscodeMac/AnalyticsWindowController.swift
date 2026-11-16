@@ -287,6 +287,10 @@ final class AnalyticsWindowController: NSWindowController {
         }
     }
 
+    /// Thirteen months and thirty days are the same chart at different grains, and a column sized
+    /// for the denser one leaves the coarser one a row of pins against a wide card.
+    private static func barWidth(columns: Int) -> CGFloat { columns <= 16 ? 26 : 10 }
+
     private func dailySection(_ analytics: UsageAnalytics) -> NSView {
         let bars = NSStackView()
         bars.orientation = .horizontal
@@ -294,9 +298,7 @@ final class AnalyticsWindowController: NSWindowController {
         bars.distribution = .fill
         bars.spacing = 2
         bars.translatesAutoresizingMaskIntoConstraints = false
-        // Thirteen months and thirty days are the same chart at different grains, and a column
-        // sized for the denser one leaves the coarser one a row of pins against a wide card.
-        let barWidth: CGFloat = analytics.days.count <= 16 ? 26 : 10
+        let barWidth = Self.barWidth(columns: analytics.days.count)
         for day in analytics.days {
             let zero = day.share <= 0
             let fill =

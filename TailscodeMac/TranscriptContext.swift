@@ -36,6 +36,10 @@ final class TranscriptContext {
     /// The words of the answer a row belongs to, onto the pasteboard — what the hover capsule's
     /// Copy does, reachable from the row's accessibility actions.
     var copyAnswer: ((String) -> Void)?
+    /// The whole of a person's message as they would copy it, by the message's id: every piece of
+    /// it with each long paste in its place and no tags. A prompt is drawn as several rows when it
+    /// holds a paste, and Copy on any of them is Copy of the message.
+    var promptWords: ((String) -> String?)?
     /// Called with a just-opened disclosure row: the transcript scrolls the minimum needed to
     /// show the opened body, never past the point where the clicked header would leave the top.
     var revealRow: ((NSView) -> Void)?

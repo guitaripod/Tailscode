@@ -274,6 +274,27 @@ final class UsageFooterView: NSView {
 /// the provider reports. Which cards, in what order and whether the lead shows is
 /// ``QuotaBoard``'s; this decides only how a card is drawn. Opens on what the footer already
 /// knows, then refetches so the numbers are current; the refresh button asks again.
+/// The board's ground: the canvas, asked again each time AppKit redraws the layer, which is what
+/// it does when the system turns from light to dark under an open board. A colour handed to the
+/// layer once is the answer of the face that was in force then, and a theme change was the only
+/// thing that ever asked again.
+@MainActor
+private final class UsageBoardGround: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        layer?.backgroundColor = MacTheme.Color.canvas.cgColor
+    }
+}
+
 @MainActor
 final class UsagePanelViewController: NSViewController {
     private let boardBar = NSStackView()
@@ -373,9 +394,7 @@ final class UsagePanelViewController: NSViewController {
         content.spacing = 0
         content.translatesAutoresizingMaskIntoConstraints = false
 
-        let container = NSView()
-        container.wantsLayer = true
-        container.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
+        let container = UsageBoardGround()
         container.addSubview(content)
         NSLayoutConstraint.activate([
             content.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -405,7 +424,7 @@ final class UsagePanelViewController: NSViewController {
     }
 
     @objc private func boardChanged() {
-        view.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
+        view.needsDisplay = true
         renderCards()
     }
 

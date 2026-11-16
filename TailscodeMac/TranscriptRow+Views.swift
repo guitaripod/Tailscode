@@ -107,7 +107,7 @@ extension TranscriptRow {
         (label as? RowKit.ProseLabel)?.verbs = { [weak context] in
             var verbs = [
                 RowKit.verb(Localized.text("Copy")) {
-                    RowKit.copyToClipboard(text)
+                    RowKit.copyToClipboard(context?.promptWords?(messageID) ?? text)
                     context?.toast?(Localized.text("Copied"))
                 }
             ]

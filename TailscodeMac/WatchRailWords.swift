@@ -29,6 +29,14 @@ final class WatchChipView: NSView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    /// The chip is a button, so VoiceOver's press does what a click on it does. The count at the
+    /// end of the rail is not one and answers no.
+    override func accessibilityPerformPress() -> Bool {
+        guard let chip, !isCount, let onPress else { return false }
+        onPress(chip)
+        return true
+    }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
         isCount ? nil : (frame.contains(point) ? self : nil)
     }

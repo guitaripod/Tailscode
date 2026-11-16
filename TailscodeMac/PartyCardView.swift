@@ -217,6 +217,9 @@ final class PartyCardView: NSView {
         self.card = card
         measured = PartyMetrics.measure(card)
         super.init(frame: .zero)
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(motionPreferenceChanged),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
         wantsLayer = true
         addSubview(face)
         face.wantsLayer = true
@@ -419,6 +422,12 @@ final class PartyCardView: NSView {
     /// so two cards, or the same card after a redraw, are always at the same point of the breath.
     func setBreathing(_ on: Bool) {
         breathing = on
+        applyBreathing()
+    }
+
+    /// Reduce Motion was turned on or off while the card stood: the breath is asked for again, so
+    /// a halo that was pulsing holds still at once rather than at the party's next change.
+    @objc private func motionPreferenceChanged() {
         applyBreathing()
     }
 

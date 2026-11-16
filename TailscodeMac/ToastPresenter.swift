@@ -145,9 +145,11 @@ final class ToastPresenter {
             }
             let glass = current.glass
             self.showing = nil
-            await NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.3
-                glass.animator().alphaValue = 0
+            if MotionBudget.animationAllowed {
+                await NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.3
+                    glass.animator().alphaValue = 0
+                }
             }
             glass.removeFromSuperview()
             self.draining = false

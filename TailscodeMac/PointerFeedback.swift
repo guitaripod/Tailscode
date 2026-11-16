@@ -124,6 +124,13 @@ final class PressSurface: NSView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// The press, for an owner that names this surface a button: VoiceOver's press is the click.
+    override func accessibilityPerformPress() -> Bool {
+        guard let onPress else { return false }
+        onPress()
+        return true
+    }
+
     override func layout() {
         super.layout()
         plate.frame = NSRect(
