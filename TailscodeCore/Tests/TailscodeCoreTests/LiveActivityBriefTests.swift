@@ -281,4 +281,22 @@ struct LiveActivityBriefTests {
         #expect(line == AgentFinish.line(outcome: .done, duration: nil, tools: 14, files: 2))
         #expect(!line.contains("6m"))
     }
+
+    @Test("Running chats get cards waiting-on-you first, then the latest, never muted or twice, within the room left")
+    func follow() {
+        let older = Self.now.addingTimeInterval(-60)
+        let running = [
+            LiveActivityFollow.Candidate(sessionID: "a", movedAt: older),
+            LiveActivityFollow.Candidate(sessionID: "b", movedAt: Self.now),
+            LiveActivityFollow.Candidate(sessionID: "c", movedAt: older, waitsOnYou: true),
+            LiveActivityFollow.Candidate(sessionID: "d", movedAt: Self.now),
+            LiveActivityFollow.Candidate(sessionID: "e", movedAt: Self.now),
+            LiveActivityFollow.Candidate(sessionID: "b", movedAt: Self.now),
+        ]
+        #expect(
+            LiveActivityFollow.choose(running, following: ["d"], muted: ["e"], standing: 1, limit: 4)
+                == ["c", "b", "a"])
+        #expect(LiveActivityFollow.choose(running, following: [], muted: [], standing: 4).isEmpty)
+        #expect(LiveActivityFollow.choose([], following: [], muted: [], standing: 0).isEmpty)
+    }
 }

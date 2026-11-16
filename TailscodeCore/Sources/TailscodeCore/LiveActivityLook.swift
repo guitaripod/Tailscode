@@ -113,6 +113,27 @@ public enum LiveActivitySettings {
         StoreNotice.post(didChange)
     }
 
+    public static let followsElsewhereKey = "tailscode.liveActivity.followsElsewhere"
+
+    /// Whether a card also follows turns this device did not send: one sent from a desktop or
+    /// another phone, drained from a queue, run on a schedule, or begun by the machine itself.
+    /// On until somebody turns it off.
+    public static var followsElsewhere: Bool {
+        defaults.object(forKey: followsElsewhereKey) as? Bool ?? true
+    }
+
+    public static func setFollowsElsewhere(_ value: Bool) {
+        defaults.set(value, forKey: followsElsewhereKey)
+        StoreNotice.post(didChange)
+    }
+
+    public static var followsElsewhereTitle: String { Localized.text("Follow turns started elsewhere") }
+
+    public static var followsElsewhereExplanation: String {
+        Localized.text(
+            "A card also appears for chats working while Tailscode is open, up to four at once, and — from claude-bridge — for turns sent from a desktop, a queue or a schedule while the phone is locked. Muted chats never get one.")
+    }
+
     public static var sizeTitle: String { Localized.text("Card size") }
     public static var endingTitle: String { Localized.text("When a turn ends") }
     public static var screenTitle: String { Localized.text("Live Activity") }
@@ -289,5 +310,43 @@ public enum LiveActivityHeadline {
             steps.removeAll { $0.id == shown.id }
         }
         return Array(steps.reversed().prefix(limit))
+    }
+}
+
+/// Which running conversations get a card while the app is in front, for the turns this device
+/// did not send. A turn waiting on the person comes first, then the one that moved last; a muted
+/// chat, one already followed and one past `limit` cards standing get none.
+public enum LiveActivityFollow {
+    public struct Candidate: Sendable, Equatable {
+        public let sessionID: String
+        public let movedAt: Date
+        public let waitsOnYou: Bool
+
+        public init(sessionID: String, movedAt: Date, waitsOnYou: Bool = false) {
+            self.sessionID = sessionID
+            self.movedAt = movedAt
+            self.waitsOnYou = waitsOnYou
+        }
+    }
+
+    /// The most cards the app keeps standing at once for turns it follows by itself.
+    public static let limit = 4
+
+    public static func choose(
+        _ running: [Candidate], following: Set<String>, muted: Set<String>, standing: Int,
+        limit: Int = LiveActivityFollow.limit
+    ) -> [String] {
+        let room = max(0, limit - standing)
+        guard room > 0 else { return [] }
+        var seen = Set<String>()
+        return running
+            .filter { !following.contains($0.sessionID) && !muted.contains($0.sessionID) }
+            .filter { seen.insert($0.sessionID).inserted }
+            .sorted { lhs, rhs in
+                if lhs.waitsOnYou != rhs.waitsOnYou { return lhs.waitsOnYou }
+                return lhs.movedAt > rhs.movedAt
+            }
+            .prefix(room)
+            .map(\.sessionID)
     }
 }
