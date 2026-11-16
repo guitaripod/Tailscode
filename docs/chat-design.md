@@ -28,6 +28,18 @@ picture.
    maximum line. Where room runs out the least important thing yields first (a band segment, a
    lane, a hint), and what is live or blocks the turn never does.
 
+8. **Media moves; chrome appears.** A picture that is pressed is the thing that travels, out of its
+   tile and home to the tile of the page being shown (`PictureFlight`); the viewer around it only
+   fades, and nothing that was not on screen slides in beside it.
+9. **The feed has two voices and a margin.** The reader's prompt and the agent's answer are the
+   voices. What a machine wrote on the way (a model change, a restart, work coming back) is a
+   note between turns, never a prompt.
+10. **History costs what it is worth.** A long prompt folds (`PromptFold`); an answer does not.
+11. **A thing can be acted on where it is.** What the viewer can do to a picture, its tile can
+    (`PictureVerbs`).
+
+The reasoning, the looks and the mocks behind 8 to 11 are in `docs/chat-feed.md`.
+
 ## Anatomy, top to bottom
 
 | Zone | Holds | Rule |
