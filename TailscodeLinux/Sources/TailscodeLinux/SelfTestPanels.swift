@@ -67,6 +67,7 @@ extension SelfTest {
                 css.contains(palette.findHit), !css.contains("Optional(")
             else { throw SelfTestFailure("\(palette.name): css does not carry the palette") }
             try checkLabelSemantics(css, palette)
+            try checkScenery(css, palette)
         }
         let sample = "**bold** and `code` and *soft*"
         func render(_ palette: Palette) -> String {
@@ -82,6 +83,46 @@ extension SelfTest {
             throw SelfTestFailure("markup cache does not respect the palette")
         }
         return AppTheme.all.count
+    }
+
+    /// A theme with scenery writes its sky into the sheet and clears the panes over it; a theme
+    /// with none writes the sheet it always did. The sky's pictures are part of the sheet, so
+    /// GTK's own parser reading it clean is the proof they decode.
+    static func checkScenery(_ css: String, _ palette: Palette) throws {
+        let clears = ".tile-shell, .chat-pane.canvas, .chat-pane .transcript { background-color: transparent; }"
+        guard let scenery = palette.scenery else {
+            guard !css.contains(clears), !css.contains("data:image/png") else {
+                throw SelfTestFailure("\(palette.name): draws a sky it does not have")
+            }
+            return
+        }
+        guard css.contains(clears), css.contains("tile-canvas.pane-canvas {"),
+            !css.contains("\ntile-canvas {")
+        else {
+            throw SelfTestFailure(
+                "\(palette.name): its sky is not the pane canvas's own, or the panes do not clear")
+        }
+        switch scenery.sky {
+        case .stars(let field):
+            let pictures = css.components(separatedBy: "url(\"data:image/png;base64,").count - 1
+            guard pictures == field.layers.count, !field.layers.isEmpty else {
+                throw SelfTestFailure(
+                    "\(palette.name): \(pictures) star pictures for \(field.layers.count) layers")
+            }
+        case .suns(let suns):
+            let discs = css.components(separatedBy: "radial-gradient(circle ").count - 1
+            guard css.contains("headerbar.content-header {"), discs == suns.suns.count else {
+                throw SelfTestFailure("\(palette.name): its suns are not on the horizon")
+            }
+        }
+        guard css.contains(".composer:focus-within { background-size: 100% 2px;") else {
+            throw SelfTestFailure("\(palette.name): the box's edge does not strike on focus")
+        }
+        if let problems = css.withCString({ tailscode_css_problems($0) }) {
+            let text = String(cString: problems)
+            g_free(problems)
+            throw SelfTestFailure("\(palette.name) scenery: \(text)")
+        }
     }
 
     /// Two meanings that wear the same colour are one meaning to a reader. Every signal slot has

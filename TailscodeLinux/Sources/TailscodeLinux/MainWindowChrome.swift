@@ -288,6 +288,7 @@ extension MainWindow {
         gtk_widget_set_visible(chip, 0)
         adw_header_bar_pack_end(op(header), chip)
         liveChipHold = Gtk.WeakWidget(chip)
+        Gtk.addClass(header, "content-header")
         adw_toolbar_view_add_top_bar(op(toolbar), header)
         contentHeader = header
 

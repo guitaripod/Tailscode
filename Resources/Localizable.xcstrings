@@ -626020,6 +626020,107 @@
           }
         }
       }
+    },
+    "Blades over deep space, and two suns over the dunes by day": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blades over deep space, and two suns over the dunes by day"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klingen über dem tiefen All, und bei Tag zwei Sonnen über den Dünen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sables sobre el espacio profundo, y de día dos soles sobre las dunas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Des lames au-dessus de l’espace profond, et le jour deux soleils sur les dunes"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lame sullo spazio profondo, e di giorno due soli sulle dune"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "深宇宙に光る刃、昼は砂丘にかかるふたつの太陽"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "깊은 우주 위의 검, 낮에는 모래 언덕 위 두 개의 태양"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ostrza nad głębią kosmosu, a za dnia dwa słońca nad wydmami"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lâminas sobre o espaço profundo, e de dia dois sóis sobre as dunas"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "深空之上的光刃，白天则是沙丘上的两轮太阳"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "深空之上的光刃，白天則是沙丘上的兩輪太陽"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klingor över djup rymd, och om dagen två solar över dynerna"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klinger over det dybe rum, og om dagen to sole over klitterne"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klinger over det dype rommet, og om dagen to soler over sanddynene"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Säilät syvän avaruuden yllä, ja päivällä kaksi aurinkoa dyynien yllä"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blöð yfir djúpum geimnum, og á daginn tvær sólir yfir sandöldunum"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

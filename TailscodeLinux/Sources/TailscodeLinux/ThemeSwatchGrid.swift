@@ -89,6 +89,9 @@ final class ThemeSwatchGrid: @unchecked Sendable {
         cairo_stroke(cr)
 
         let railWidth = width * 0.27
+        if let scenery = palette.scenery {
+            paintSky(scenery.sky, cr, left: 7 + railWidth, width: width, height: height)
+        }
         agentsRoundedRect(cr, x: 7, y: 7, width: railWidth, height: height - 14, radius: 6)
         ink(palette.canvasRaised).set(cr)
         cairo_fill(cr)
@@ -121,5 +124,48 @@ final class ThemeSwatchGrid: @unchecked Sendable {
             ink(hex).set(cr)
             cairo_fill(cr)
         }
+    }
+
+    /// A theme that is a place shows the place on its card: a few of its own stars, taken from
+    /// each layer in the order it draws them and scaled down, or its two suns going down behind
+    /// the card's lower edge, which is the only horizon a card has. A card is looked at rather
+    /// than read, so the sky is drawn a little brighter than it is behind a conversation, where
+    /// it has to stay out of the way.
+    private static func paintSky(
+        _ sky: Scenery.Sky, _ cr: OpaquePointer, left: Double, width: Double, height: Double
+    ) {
+        cairo_save(cr)
+        agentsRoundedRect(cr, x: 1, y: 1, width: width - 2, height: height - 2, radius: 9)
+        cairo_clip(cr)
+        switch sky {
+        case .stars(let field):
+            let room = width - left - 6
+            let shown = [5, 5, 3]
+            for (index, layer) in field.layers.enumerated() {
+                let side = Double(layer.tile)
+                let count = index < shown.count ? shown[index] : 2
+                for star in field.stars(in: layer).prefix(count) {
+                    let x = left + 3 + star.x / side * room
+                    let y = 5 + star.y / side * (height - 10)
+                    cairo_arc(cr, x, y, max(0.6, star.radius * 0.85), 0, 2 * .pi)
+                    PartyInk(hex: star.tint).set(cr, alpha: min(1, star.alpha * 1.8))
+                    cairo_fill(cr)
+                }
+            }
+        case .suns(let suns):
+            let widest = max(suns.suns.map(\.radius).max() ?? 1, 1)
+            for (index, sun) in suns.suns.enumerated() {
+                let radius = 8 * sun.radius / widest
+                let x = width - 22 - Double(index) * 20
+                let y = height - 1 - sun.rise * 0.6
+                cairo_arc(cr, x, y, radius * 1.8, 0, 2 * .pi)
+                PartyInk(hex: sun.corona).set(cr, alpha: 0.32)
+                cairo_fill(cr)
+                cairo_arc(cr, x, y, radius, 0, 2 * .pi)
+                PartyInk(hex: sun.core).set(cr, alpha: sun.alpha)
+                cairo_fill(cr)
+            }
+        }
+        cairo_restore(cr)
     }
 }

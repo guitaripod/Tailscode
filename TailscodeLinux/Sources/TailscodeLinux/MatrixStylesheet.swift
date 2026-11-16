@@ -117,8 +117,10 @@ struct MatrixStylesheet {
 
     func brandOmp(in palette: Palette) -> String { MatrixTheme.brandOmp(in: palette) }
 
+    /// A theme with no scenery is written exactly as it was before there was any: the scenery
+    /// section joins the sheet only when it has something to say.
     var sheet: String {
-        [
+        let sections = [
             chromeRules(),
             transcriptRules(),
             cardRules(),
@@ -128,7 +130,8 @@ struct MatrixStylesheet {
             agentsRules(),
             settingsRules(),
             keycapRules(),
-        ].joined(separator: "\n")
+        ]
+        return (sections + [sceneryRules()].filter { !$0.isEmpty }).joined(separator: "\n")
     }
 
     func chromeRules() -> String {

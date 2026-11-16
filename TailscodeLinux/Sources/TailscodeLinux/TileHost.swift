@@ -93,6 +93,7 @@ final class TileHost: PaneTiling, @unchecked Sendable {
             self?.solve(width: width, height: height, sink: sink)
         }
         gtk_overlay_set_child(op(container), canvas.widget)
+        Gtk.addClass(canvas.widget, "pane-canvas")
         tailscode_set_accessible_label(canvas.widget, Localized.text("Panes"))
         buildOverlays()
         let pane = makePane(layout.focusedPane)

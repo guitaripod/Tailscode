@@ -183,6 +183,7 @@ enum ParityManifest {
                     "the four per-area sizes exist as spin rows, but there is no preview, no preset, no per-area reset and no stored-size wording from Core's TypeArea/TypePreset yet")
         case .typeRamp: return .implemented("TypeCSS")
         case .themePicker: return .implemented("MatrixTheme")
+        case .themeScenery: return .implemented("sceneryRules")
         case .settingsSurface: return .implemented("Preferences")
         case .goalControl: return .implemented("goal-line")
         case .firstRunSetup: return .implemented("FirstRunDialog")

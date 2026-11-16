@@ -200,6 +200,8 @@ enum ParityManifest {
         case .uiScale: return .implemented("Theme")
         case .typeRamp: return .implemented("Theme.Ramp")
         case .themePicker: return .implemented("ThemePickerViewController")
+        case .themeScenery:
+            return .gap("Outer Rim opens on Linux first: AppTheme.linuxFirst keeps it out of this catalog until the transcript's ground draws a StarField and the navigation bar's lower edge carries TwinSuns, both of which sit under glass here and have not been drawn or looked at")
         case .settingsSurface: return .implemented("SettingsViewController")
         case .goalControl: return .implemented("updateGoalChip")
         case .firstRunSetup: return .implemented("ServerSetupViewController")

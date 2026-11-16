@@ -230,6 +230,10 @@ void tailscode_emit_clicked(GtkWidget *button);
 gboolean tailscode_accessible_has_label(GtkWidget *widget, const char *expected);
 gboolean tailscode_accessible_state_is(GtkWidget *widget, int which, int value);
 
+/// A picture in straight RGBA, `width * height * 4` bytes, as a `data:image/png` address for a
+/// stylesheet's `url()`. A string to `g_free`, or NULL when there is no picture to encode.
+char *tailscode_rgba_data_url(const unsigned char *rgba, int width, int height);
+
 /// Every complaint GTK's own parser makes about a stylesheet — errors and warnings both, one
 /// "line:column message" per line — as a string to `g_free`, or NULL when the sheet parses clean.
 char *tailscode_css_problems(const char *css);

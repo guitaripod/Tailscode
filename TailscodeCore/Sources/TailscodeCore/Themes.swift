@@ -56,6 +56,9 @@ public struct Palette: Equatable, Sendable {
     public let terminalFg: String
     public let terminalBg: String
     public let ansi: [String]
+    /// What this face draws besides its colours, for the few themes that are a place as well as
+    /// a palette. Most are not.
+    public let scenery: Scenery?
 
     public init(
         name: String, isDark: Bool,
@@ -66,7 +69,8 @@ public struct Palette: Equatable, Sendable {
         info: String, special: String,
         codeBg: String, subagentBg: String, findHit: String,
         ansi: [String],
-        terminalFg: String? = nil, terminalBg: String? = nil
+        terminalFg: String? = nil, terminalBg: String? = nil,
+        scenery: Scenery? = nil
     ) {
         self.name = name
         self.isDark = isDark
@@ -93,6 +97,7 @@ public struct Palette: Equatable, Sendable {
         self.terminalFg = terminalFg ?? text
         self.terminalBg = terminalBg ?? canvas
         self.ansi = ansi
+        self.scenery = scenery
     }
 
     /// The palette as the app actually draws it: every slot walked to its contrast floor, and only
@@ -159,9 +164,21 @@ public struct AppTheme: Equatable, Sendable {
 
     public func palette(dark: Bool) -> Palette { dark ? self.dark : light }
 
-    public static let all: [AppTheme] = [
+    /// Every theme this client offers.
+    public static let all: [AppTheme] = everywhere + linuxFirst
+
+    static let everywhere: [AppTheme] = [
         .rosePine, .tokyoNight, .everforest, .gruvbox, .nord, .solarized, .suomi, .phosphor,
     ]
+
+    /// Themes that open on the Linux desktop before the other two clients draw them. A theme
+    /// with scenery is only whole where its scenery is drawn, and a catalog that offered its
+    /// colours alone would be offering half of it.
+    #if os(Linux)
+    static let linuxFirst: [AppTheme] = [.outerRim]
+    #else
+    static let linuxFirst: [AppTheme] = []
+    #endif
 
     public static let fallback = AppTheme.rosePine
 
@@ -458,9 +475,26 @@ public enum ThemeReport {
                 for slot in slots(authored: authored, corrected: palette) {
                     lines.append("    " + slot)
                 }
+                if let scenery = palette.scenery {
+                    lines.append("    scenery   " + place(scenery))
+                }
             }
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// What a face draws besides its colours, in the numbers its sky is held to.
+    private static func place(_ scenery: Scenery) -> String {
+        switch scenery.sky {
+        case .stars(let field):
+            let tiles = field.layers.map { "\($0.count) in \($0.tile)" }.joined(separator: ", ")
+            let lit = field.layers.map { field.bitmap($0).litShare }.max() ?? 0
+            return String(
+                format: "stars (%@)  most lit tile %.2f%%  (ceiling %.2f%%)", tiles, lit * 100,
+                Scenery.litShareCeiling * 100)
+        case .suns(let suns):
+            return "\(suns.suns.count) suns on the horizon"
+        }
     }
 
     private static func slots(authored: Palette, corrected: Palette) -> [String] {

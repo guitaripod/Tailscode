@@ -180,6 +180,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case uiScale
     case typeRamp
     case themePicker
+    case themeScenery
     case settingsSurface
     case goalControl
     case firstRunSetup

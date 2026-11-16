@@ -40,7 +40,7 @@ Free is the whole core with one server; **Pro** is a one-time $14.99 purchase fo
 - **iPhone** — Lock Screen and Dynamic Island Live Activities pushed by claude-bridge, a turn that ends while the app is closed still says so (the phone holds a wait on the server over the tailnet, no relay), each device choosing what it hears (finished work once it settles, every turn, failures only or never, with a minimum length and muted chats), quota widgets and Control Center tiles, a home board, quick ask from the icon, haptics with meaning, on-device prompt enhance.
 - **iPad** — a sidebar of places, servers and pinned chats beside the chat list and the conversation, folding into the phone's single stack whenever the window narrows and back without closing anything; drag a chat out for a window of its own.
 - **Desktops** — tiling splits with vim-grade verbs, a terminal, file tree, browser and video panes, a global chord that summons quick ask from any program, vim in the composer. Quick ask runs your own actions (templates with `{clipboard}`, `{link}`, `{session}`, `{screen}`, `{file}`, `{latest:~/Downloads}` tokens, each on its own machine and model, kept in `quick-actions.json`), knows a copied link by its site, grabs a region of the screen, sends files on the same machine by path, and asks the whole party at once side by side.
-- **Eight themes with two faces each**, one typography ramp, ten languages, Liquid Glass where the platform draws it.
+- **Eight themes with two faces each**, and on Linux a ninth that is a place as well as a palette (Outer Rim: stars behind the transcript by night, two suns on the horizon by day), one typography ramp, ten languages, Liquid Glass where the platform draws it.
 
 ## Requirements
 

@@ -1196,6 +1196,28 @@ static void tailscode_css_note(
         error ? error->message : "?");
 }
 
+/// A picture in straight RGBA as the text of a `data:` address a stylesheet can name, so a
+/// background a theme paints procedurally is part of the sheet itself rather than a file beside
+/// it that can go stale or missing. Encoded by GDK's own PNG writer and decoded by its own
+/// reader; the caller frees the text.
+char *tailscode_rgba_data_url(const unsigned char *rgba, int width, int height) {
+    if (!rgba || width <= 0 || height <= 0) return NULL;
+    GBytes *pixels = g_bytes_new(rgba, (gsize)width * (gsize)height * 4);
+    GdkTexture *texture = gdk_memory_texture_new(
+        width, height, GDK_MEMORY_R8G8B8A8, pixels, (gsize)width * 4);
+    g_bytes_unref(pixels);
+    GBytes *png = gdk_texture_save_to_png_bytes(texture);
+    g_object_unref(texture);
+    if (!png) return NULL;
+    gsize length = 0;
+    const guchar *data = g_bytes_get_data(png, &length);
+    char *encoded = g_base64_encode(data, length);
+    g_bytes_unref(png);
+    char *address = g_strconcat("data:image/png;base64,", encoded, NULL);
+    g_free(encoded);
+    return address;
+}
+
 char *tailscode_css_problems(const char *css) {
     GtkCssProvider *provider = gtk_css_provider_new();
     GString *log = g_string_new(NULL);
