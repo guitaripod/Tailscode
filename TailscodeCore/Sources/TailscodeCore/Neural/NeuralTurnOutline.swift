@@ -192,7 +192,6 @@ extension NeuralTurns {
         var answers: [String] = []
         var boards: [String] = []
         var kept = Set<String>()
-        var lastAnswer = -1
         var position = 0
         for message in messages {
             for part in message.parts {
@@ -220,21 +219,11 @@ extension NeuralTurns {
                         let id = partID(message, part)
                         answers.append(id)
                         kept.insert(id)
-                        lastAnswer = position
                     }
-                case .other, .file:
+                case .file:
+                    kept.insert(partID(message, part))
+                case .other:
                     break
-                }
-            }
-        }
-        if lastAnswer >= 0 {
-            position = 0
-            for message in messages {
-                for part in message.parts {
-                    defer { position += 1 }
-                    if classes[position] == .file, position > lastAnswer {
-                        kept.insert(partID(message, part))
-                    }
                 }
             }
         }

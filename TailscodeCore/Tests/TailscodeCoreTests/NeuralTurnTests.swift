@@ -464,7 +464,7 @@ struct NeuralTurnTests {
         #expect(turn.memberPartIDs == ["m1:p0", "m1:p1", "m1:p2", "m1:p3", "m1:p4"])
     }
 
-    @Test("file, compaction, note and unknown parts are never steps but the turn consumes them")
+    @Test("file, compaction, note and unknown parts are never steps; the turn consumes all but the file")
     func nonSteps() {
         let messages = [
             Fixtures.user(0),
@@ -481,13 +481,13 @@ struct NeuralTurnTests {
         let turn = NeuralTurns.partition(messages: messages, running: false)[0]
         #expect(turn.steps.count == 1)
         #expect(turn.answerPartIDs == ["m1:p4"])
-        #expect(turn.memberPartIDs == ["m1:p0", "m1:p1", "m1:p2", "m1:p3"])
+        #expect(turn.memberPartIDs == ["m1:p1", "m1:p2", "m1:p3"])
     }
 
-    /// A tool's picture and a note the server wrote while the turn ran are the turn's work, so the
-    /// brain consumes them with its steps. A picture the agent delivered after its answer is the
-    /// answer's own, and keeps its row.
-    @Test("a tool's picture and a note go with the brain, a delivered picture does not")
+    /// A note the server wrote while the turn ran is the turn's work, so the brain consumes it with
+    /// its steps. A picture is what the reader is meant to see, whether a tool read it mid-turn or
+    /// the agent delivered it after its answer, so every picture keeps its row.
+    @Test("a note goes with the brain, every picture keeps its row")
     func workPartsGoWithTheBrain() {
         let picture = MessagePart.Kind.file(FileReference(path: "shot.png", mime: "image/png"))
         let delivered = MessagePart.Kind.file(FileReference(path: "out.png", mime: "image/png"))
@@ -507,7 +507,8 @@ struct NeuralTurnTests {
         let turn = NeuralTurns.partition(messages: messages, running: false)[0]
         #expect(turn.steps.count == 1)
         #expect(turn.answerPartIDs == ["m3:p0"])
-        #expect(turn.memberPartIDs.contains("m1:p1"))
+        #expect(!turn.memberPartIDs.contains("m1:p1"))
+        #expect(turn.memberPartIDs.contains("m1:p0"))
         #expect(turn.memberPartIDs.contains("n2:note"))
         #expect(!turn.memberPartIDs.contains("m3:p0"))
         #expect(!turn.memberPartIDs.contains("m3:p1"))

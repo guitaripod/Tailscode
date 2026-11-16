@@ -179,22 +179,11 @@ public enum NeuralTurns {
         markRecovered(&steps)
         let answersSet = Set(answers)
         let cards = Set(steps.filter(\.isCard).map(\.id))
-        var lastAnswer: (message: Int, part: Int)?
-        for (messageIndex, message) in messages.enumerated() {
-            for (partIndex, part) in message.parts.enumerated()
-            where answersSet.contains("\(message.id):\(part.id)") {
-                lastAnswer = (messageIndex, partIndex)
-            }
-        }
-        for (messageIndex, message) in messages.enumerated() {
-            for (partIndex, part) in message.parts.enumerated() {
+        for message in messages {
+            for part in message.parts {
                 let id = "\(message.id):\(part.id)"
                 if answersSet.contains(id) || cards.contains(id) || shown.contains(id) { continue }
-                if case .file = part.kind,
-                    lastAnswer.map({ (messageIndex, partIndex) > $0 }) ?? false
-                {
-                    continue
-                }
+                if Self.isSeen(part) { continue }
                 members.insert(id)
             }
         }
@@ -210,6 +199,15 @@ public enum NeuralTurns {
             endedAt: outcome == .running ? nil : last.completedAt,
             modelID: messages.reversed().lazy.compactMap(\.modelID).first,
             effort: messages.reversed().lazy.compactMap(\.reasoningEffort).first)
+    }
+
+    /// A picture or file in a turn is something the reader is meant to see: an agent shows a
+    /// person a screenshot or a chart by looking at it, so the picture it read mid-turn is the one
+    /// its answer then talks about. It keeps its row in the chat, wherever in the turn it arrived,
+    /// instead of disappearing into the brain with the step that read it.
+    static func isSeen(_ part: MessagePart) -> Bool {
+        if case .file = part.kind { return true }
+        return false
     }
 
     private static func append(
