@@ -101,7 +101,7 @@ enum Kit {
     /// 0.59.0 says when a desk's person is at it, so a phone can stay quiet while they are.
     /// 0.60.0 lets a phone hand a held notice to its bridge and dates each look a desk reports.
     /// 0.61.0 reads a bridge's notice (work the agent left running coming back) into a note.
-    static let version = Version(0, 61, 0)
+    static let version = Version(0, 62, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
