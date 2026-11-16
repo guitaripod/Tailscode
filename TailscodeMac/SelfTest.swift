@@ -71,6 +71,15 @@ enum SelfTest {
         }
 
         do {
+            let checks = try await checkDesk()
+            report(
+                "desk: \(checks) claims hold — muted chats are listed by name and unmute one by one, the session answers at once, and a beat tells a server who is here and when the desk leaves")
+        } catch {
+            report("desk: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkModelDial()
             report("model dial: \(checks) pairs, previews and keys draw as the state says")
         } catch {

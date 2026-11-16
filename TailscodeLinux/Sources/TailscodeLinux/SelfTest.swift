@@ -691,6 +691,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkDesk()
+            report("desk: \(checks) claims hold — the phone's wishes and muted names are kept, the session answers at once, and a beat reads the desk")
+        } catch {
+            report("desk: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkMachine()
             report("machine: \(checks) claims hold — agents read and proved, the registry, schedules soonest first, a carry across agents, Ask later and every window")
         } catch {

@@ -49,6 +49,15 @@ enum NotificationManager {
             case .turnComplete, .approval, .question: return nil
             }
         }
+
+        /// The news a person at their computer hears there instead; a usage warning is about the
+        /// account, not the work, and is not held.
+        var waitsAtDesk: Bool {
+            switch self {
+            case .turnComplete, .approval, .question: return true
+            case .usage, .runningLow: return false
+            }
+        }
     }
 
     /// Tells the system what each kind of notification is and which buttons it carries, from the
@@ -135,6 +144,7 @@ enum NotificationManager {
     /// withdrawn once its request is no longer pending.
     static func withdraw(identifiers: [String]) {
         guard !identifiers.isEmpty else { return }
+        DeskHold.shared.withdraw(identifiers)
         ActivityInbox.withdraw(identifiers)
         for identifier in identifiers { NoticeSlots.release(identifier: identifier) }
         let center = UNUserNotificationCenter.current()
@@ -316,7 +326,7 @@ enum NotificationManager {
         let request = UNNotificationRequest(
             identifier: identifier, content: content,
             trigger: delay.map { UNTimeIntervalNotificationTrigger(timeInterval: max(1, $0), repeats: false) })
-        UNUserNotificationCenter.current().add(request)
+        DeskHold.shared.route(request, holdable: kind.waitsAtDesk)
     }
 
     /// Keeps the app icon's badge and the app group's copy of it equal to what the Missed list

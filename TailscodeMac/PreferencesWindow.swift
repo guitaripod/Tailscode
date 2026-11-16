@@ -42,6 +42,9 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
     var actions = Actions()
     let permissionState = NSTextField(wrappingLabelWithString: "")
+    let noticeSummary = NSTextField(wrappingLabelWithString: "")
+    let deskState = NSTextField(wrappingLabelWithString: "")
+    let mutedChats = NSStackView()
     let permissionButton = NSButton(title: "", target: nil, action: nil)
     let cacheState = NSTextField(wrappingLabelWithString: "")
     let cacheButton = NSButton(title: "", target: nil, action: nil)
@@ -56,6 +59,8 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     /// not on the main actor.
     private nonisolated(unsafe) var accountsWatch: (any NSObjectProtocol)?
     private nonisolated(unsafe) var summonWatch: (any NSObjectProtocol)?
+    private nonisolated(unsafe) var noticeWatch: (any NSObjectProtocol)?
+    private nonisolated(unsafe) var deskWatch: (any NSObjectProtocol)?
 
     init(
         onComposerChanged: @escaping @MainActor () -> Void,
@@ -90,11 +95,23 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         ) { [weak self] _ in
             MainThread.call { self?.renderSummon() }
         }
+        noticeWatch = NotificationCenter.default.addObserver(
+            forName: NoticeRulesKeys.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainThread.call { self?.renderNotices() }
+        }
+        deskWatch = NotificationCenter.default.addObserver(
+            forName: DeskBeat.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainThread.call { self?.renderDeskState() }
+        }
     }
 
     deinit {
         if let accountsWatch { NotificationCenter.default.removeObserver(accountsWatch) }
         if let summonWatch { NotificationCenter.default.removeObserver(summonWatch) }
+        if let noticeWatch { NotificationCenter.default.removeObserver(noticeWatch) }
+        if let deskWatch { NotificationCenter.default.removeObserver(deskWatch) }
     }
 
     @available(*, unavailable)

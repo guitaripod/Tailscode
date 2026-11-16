@@ -24,6 +24,9 @@ final class SettingsViewController: UIViewController {
     var facts = SettingsFacts.read()
     var hasDeferredSnapshot = false
     var lastScrollAt: CFTimeInterval = 0
+    var deskAnswer: DeskLookout.Answer?
+    var deskAsked = false
+    var deskTimer: Timer?
 
     /// A page of Settings, the first one unless told otherwise, optionally pointing at the row a
     /// search led to.
@@ -62,6 +65,13 @@ final class SettingsViewController: UIViewController {
         applySnapshot()
         refreshEnvironment()
         Task { await ServerHealthMonitor.checkAll() }
+        followDesk()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        deskTimer?.invalidate()
+        deskTimer = nil
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -149,6 +159,16 @@ final class SettingsViewController: UIViewController {
             self, selector: #selector(themeChanged), name: ThemeSelection.didChange, object: nil)
         center.addObserver(
             self, selector: #selector(updatesChanged), name: UpdateMonitor.didChange, object: nil)
+        center.addObserver(
+            self, selector: #selector(rulesChanged), name: NoticeRulesKeys.didChange, object: nil)
+    }
+
+    /// A rule changed somewhere else — a chat muted from its menu while this page is open — and
+    /// the page that lists them says so at once.
+    @objc private func rulesChanged() {
+        guard page == .notifications else { return }
+        scheduleSnapshot()
+        reconfigure([.noticeSummary, .deskStatus])
     }
 
     /// The software row and the per-server marks are the same fact seen at two widths, so one

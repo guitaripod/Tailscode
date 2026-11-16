@@ -219,6 +219,7 @@ enum ParityManifest {
         case .activityNotifications: return .implemented("NotificationManager")
         case .noticeRules: return .implemented("AppPreferences.noticeRules")
         case .chatMute: return .implemented("NoticeMute.action")
+        case .deskQuiet: return .implemented("DeskHold")
         case .missedActivity:
             return .partial(
                 "ChatRowNews",

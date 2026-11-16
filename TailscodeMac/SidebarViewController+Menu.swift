@@ -235,7 +235,7 @@ extension SidebarViewController: NSMenuDelegate {
 
     @objc private func menuToggleMuted() {
         guard let model = menuModel else { return }
-        MacNotifier.toggleMute(model.entry.session.id)
+        MacNotifier.toggleMute(model.entry.session.id, name: model.entry.session.title)
     }
 
     @objc private func menuScopeProject() {

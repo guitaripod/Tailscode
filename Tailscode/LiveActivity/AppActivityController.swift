@@ -917,7 +917,7 @@ final class AppActivityController {
     private func endingAlert(_ sessionID: String, _ state: State, _ entry: Entry) -> AlertConfiguration? {
         let ending = LiveActivitySettings.ending
         guard ending.alerts, UIApplication.shared.applicationState != .active,
-            !AppPreferences.noticeRules.isMuted(sessionID)
+            !AppPreferences.noticeRules.isMuted(sessionID), !DeskHold.shared.atDeskLately
         else { return nil }
         let headline = LiveActivityHeadline.line(
             detail: state.detail.flatMap(LiveActivityDetail.init(rawValue:)),

@@ -29,12 +29,18 @@ extension SettingsViewController {
                 (.discovery, [.tailnetToken, .tailnetScan]),
             ]
         case .notifications:
-            var muted: [Item] = []
-            if !AppPreferences.noticeRules.muted.isEmpty { muted = [.unmuteAll] }
+            let rules = AppPreferences.noticeRules
+            var muted: [Item] = rules.mutedChats.map { Item.mutedChat($0.id) }
+            if rules.muted.count > 1 { muted.append(.unmuteAll) }
+            var desk: [Item] = [.toggle(.quietAtDesk)]
+            if rules.quietAtDesk { desk.append(.deskAway) }
+            desk.append(.deskStatus)
             return [
+                (.summary, [.noticeSummary]),
                 (.permission, [.notificationPermission, .backgroundRefresh]),
                 (.finished, [.noticeFinish, .noticeMinimum]),
                 (.needsYou, [.toggle(.notifyApprovals)]),
+                (.desk, desk),
                 (.muted, muted),
                 (.usageAlerts, [.toggle(.notifyUsage), .toggle(.notifyRunningLow)]),
                 (.liveActivities, [.toggle(.liveActivities), .liveActivityLook]),
@@ -287,6 +293,17 @@ extension SettingsViewController {
         case .unmuteAll:
             return "\(NoticeRulesWords.mutedTitle) "
                 + String(localized: "mute unmute silence chats quiet", comment: "search keywords")
+        case .mutedChat(let id):
+            return "\(NoticeRulesWords.mutedTitle) \(AppPreferences.noticeRules.mutedNames[id] ?? "") "
+                + String(localized: "mute unmute silence chats quiet", comment: "search keywords")
+        case .noticeSummary:
+            return NoticeRulesWords.summary(AppPreferences.noticeRules, desk: true)
+        case .deskAway:
+            return "\(NoticeRulesWords.awayTitle) \(NoticeRulesWords.awaySubtitle) "
+                + Localized.text("desk computer mac pc desktop away idle presence quiet phone")
+        case .deskStatus:
+            return "\(NoticeRulesWords.deskGroupTitle) "
+                + Localized.text("desk computer mac pc desktop away idle presence quiet phone")
         case .chatDensity:
             return "\(ChatDensitySetting.title) "
                 + String(

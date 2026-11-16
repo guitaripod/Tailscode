@@ -164,8 +164,8 @@ extension PreferencesWindow {
     @objc func unmuteAllChats(_ sender: NSButton) {
         var rules = MacNotifier.rules
         rules.muted = []
+        rules.mutedNames = [:]
         MacNotifier.setRules(rules)
-        sender.isEnabled = false
     }
 
     @objc func notifyNeedsChanged(_ sender: NSButton) {

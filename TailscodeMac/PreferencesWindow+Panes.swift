@@ -346,6 +346,9 @@ extension PreferencesWindow {
     private func notificationsPane() -> NSView {
         let column = newColumn()
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Notifications")))
+        noticeSummary.font = MacTheme.Ramp.font(.panelLabel)
+        noticeSummary.textColor = .secondaryLabelColor
+        column.addArrangedSubview(noticeSummary)
         permissionButton.title = Localized.text("Open System Settings…")
         permissionButton.target = self
         permissionButton.action = #selector(openNotificationSettings)
@@ -372,14 +375,6 @@ extension PreferencesWindow {
                 title: NoticeRulesWords.needsYouTitle,
                 subtitle: NoticeRulesWords.needsYouSubtitle,
                 value: rules.needsYou, action: #selector(notifyNeedsChanged)))
-        if !rules.muted.isEmpty {
-            let unmute = NSButton(
-                title: NoticeRulesWords.unmuteAll, target: self, action: #selector(unmuteAllChats))
-            column.addArrangedSubview(
-                buttonRow(
-                    title: NoticeRulesWords.mutedTitle,
-                    subtitle: NoticeRulesWords.mutedCount(rules.muted.count), button: unmute))
-        }
         column.addArrangedSubview(
             switchRow(
                 title: Localized.text("Running low"),
@@ -393,6 +388,29 @@ extension PreferencesWindow {
                 title: Localized.text("Prove the path"),
                 subtitle: Localized.text("Sends one notification two seconds from now"),
                 button: test))
+
+        gap(column)
+        column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Your phone")))
+        column.addArrangedSubview(
+            switchRow(
+                title: NoticeRulesWords.deskReportsTitle,
+                subtitle: NoticeRulesWords.deskReportsSubtitle,
+                value: MacDeskSense.enabled, action: #selector(deskReportsChanged)))
+        deskState.font = MacTheme.Ramp.font(.panelLabel)
+        deskState.textColor = .secondaryLabelColor
+        column.addArrangedSubview(indented(deskState))
+        renderDeskState()
+
+        gap(column)
+        column.addArrangedSubview(MacDialogs.sectionHeader(NoticeRulesWords.mutedTitle))
+        column.addArrangedSubview(
+            MacDialogs.detailLabel(NoticeRulesWords.mutedFooter, wraps: true))
+        mutedChats.orientation = .vertical
+        mutedChats.alignment = .leading
+        mutedChats.spacing = MacTheme.Spacing.s
+        column.addArrangedSubview(mutedChats)
+        mutedChats.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+        renderNotices()
 
         gap(column)
         column.addArrangedSubview(MacDialogs.sectionHeader(Localized.text("Haptics")))

@@ -132,7 +132,7 @@ extension ChatViewController {
                     Theme.Haptics.tap()
                     SessionPinStore.toggle(profileID: profileID, sessionID: sessionID)
                 },
-                NoticeMute.action(sessionID: sessionID),
+                NoticeMute.action(sessionID: sessionID, title: self.viewModel.session.title),
                 UIAction(
                     title: String(localized: "Mark as unread"),
                     image: UIImage(systemName: "envelope.badge")

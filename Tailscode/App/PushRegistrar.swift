@@ -67,6 +67,12 @@ enum PushRegistrar {
 
     static var hasToken: Bool { UserDefaults.standard.string(forKey: tokenKey) != nil }
 
+    /// The APNs token bridges know this device by, while pushes from them are on.
+    static var activeToken: String? {
+        guard AppPreferences.pushAlertsEnabled else { return nil }
+        return UserDefaults.standard.string(forKey: tokenKey)
+    }
+
     static func register(tokenHex: String) {
         if UserDefaults.standard.string(forKey: tokenKey) != tokenHex {
             states.removeAll()
@@ -175,7 +181,8 @@ enum PushRegistrar {
             let baseURL = entry.profile.baseURL
             let registration = DevicePushRegistration(
                 token: token, environment: environment, rules: rules,
-                liveActivity: LiveActivityStartToken.starter(for: entry.profile))
+                liveActivity: LiveActivityStartToken.starter(for: entry.profile),
+                deviceID: LiveActivityDevice.id)
             Task {
                 do {
                     let receipt = try await backend.registerDeviceTokenReceipt(registration)

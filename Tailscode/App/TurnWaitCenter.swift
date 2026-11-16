@@ -31,7 +31,11 @@ final class TurnWaitCenter {
         var sessionID: String
         var backend: String
         var armedAt: Date
+        /// `desk` for a wait on the person leaving their desk; absent for a turn's.
+        var kind: String?
     }
+
+    nonisolated private static let deskKind = "desk"
 
     private struct Armed {
         let task: URLSessionTask
@@ -206,6 +210,37 @@ final class TurnWaitCenter {
             "turnwait armed profile=\(profileID) session=\(sessionID)", category: .connection)
     }
 
+    /// One wait on the person leaving their desk, held on a server that keeps desks, so what the
+    /// phone held back while they were there goes out once they are not. Armed from the
+    /// background it is the system's to start when it likes, which can be late; a server that can
+    /// push takes the notice instead (`DeskHold`), and this is what remains without one.
+    func armDeskWait(profileID: String, backend: any CodingAgentBackend, awayAfter: TimeInterval) async {
+        let key = Self.key(profileID, Self.deskKind)
+        guard !armed.keys.contains(where: { $0.hasSuffix("|\(Self.deskKind)") }), !arming.contains(key)
+        else { return }
+        arming.insert(key)
+        defer { arming.remove(key) }
+        guard let request = try? await backend.deskAwayRequest(awayAfter: awayAfter) else { return }
+        let session = await session.value
+        let info = TaskInfo(
+            profileID: profileID, sessionID: Self.deskKind, backend: "desk", armedAt: Date(),
+            kind: Self.deskKind)
+        guard let description = Self.encode(info) else { return }
+        let task = session.downloadTask(with: request.request)
+        task.taskDescription = description
+        armed[key] = Armed(task: task, armedAt: info.armedAt)
+        task.resume()
+        MidgarLog.info("desk wait armed on profile=\(profileID)", category: .connection)
+    }
+
+    /// The person came back to the phone: nothing waits for them to leave a desk any more.
+    func cancelDeskWait() {
+        for key in armed.keys where key.hasSuffix("|\(Self.deskKind)") {
+            cancelling.insert(key)
+            armed.removeValue(forKey: key)?.task.cancel()
+        }
+    }
+
     /// The conversation was watched to its end from here, so the wait held for it is redundant —
     /// cancelled rather than left to complete on its own and risk a second, later notification.
     /// Marked in `cancelling` first: the completion this cancellation produces carries no news
@@ -269,6 +304,18 @@ final class TurnWaitCenter {
                 "turnwait completion for a wait this device cancelled on purpose profile=\(info.profileID) session=\(info.sessionID); not re-arming",
                 category: .lifecycle
             )
+            return
+        }
+        if info.kind == Self.deskKind {
+            let presence = error == nil ? try? DeskPresence.decode(status: status, body: data) : nil
+            if let error {
+                MidgarLog.info(
+                    "desk wait ended without an answer: \(error.localizedDescription)", category: .connection)
+            }
+            let backend = ConnectionController.shared.profiles
+                .first { $0.id == info.profileID }
+                .flatMap { ConnectionController.shared.makeBackend(for: $0) }
+            await DeskHold.shared.waitAnswered(presence, profileID: info.profileID, backend: backend)
             return
         }
         guard

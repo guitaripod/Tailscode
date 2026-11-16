@@ -55,7 +55,8 @@ extension SettingsViewController {
         case midgar, alerts, network, experience, accounts, pro, support
         case servers, addServer, demo, testServers
         case tailnetStatus, discovery
-        case permission, finished, needsYou, muted, usageAlerts, liveActivities, push, testNotice
+        case summary, permission, finished, needsYou, desk, muted, usageAlerts, liveActivities, push
+        case testNotice
         case composer, dictation, agentSteps, answers, resume
         case theme, density
         case keys
@@ -69,6 +70,7 @@ extension SettingsViewController {
             case .dictation: return DictationReading.settingsTitle
             case .agentSteps: return String(localized: "Agent steps")
             case .muted: return NoticeRulesWords.mutedTitle
+            case .desk: return NoticeRulesWords.deskGroupTitle
             case .answers: return String(localized: "Answers")
             case .usageAlerts: return String(localized: "Usage")
             case .results(let page): return page.title
@@ -84,6 +86,7 @@ extension SettingsViewController {
         case dictationChatWords
         case notifyApprovals, notifyUsage, notifyRunningLow, serverPush
         case liveActivities
+        case quietAtDesk
 
         var title: String {
             switch self {
@@ -100,6 +103,7 @@ extension SettingsViewController {
             case .notifyRunningLow: return String(localized: "Running low")
             case .serverPush: return String(localized: "Push from servers")
             case .liveActivities: return String(localized: "Live Activities")
+            case .quietAtDesk: return NoticeRulesWords.quietAtDeskTitle
             }
         }
 
@@ -134,6 +138,9 @@ extension SettingsViewController {
                         "Keeps this device registered with claude-bridge, which pushes turn alerts and refreshes the usage widget while the app is closed"
                 )
             case .liveActivities: return String(localized: "Live turn progress on the Lock Screen")
+            case .quietAtDesk:
+                return "\(NoticeRulesWords.quietAtDeskSubtitle) \(NoticeRulesWords.deskGroupDescription) "
+                    + Localized.text("desk computer mac pc desktop away idle presence quiet phone")
             }
         }
 
@@ -152,6 +159,7 @@ extension SettingsViewController {
             case .notifyRunningLow: return AppPreferences.notifyRunningLow
             case .serverPush: return AppPreferences.pushAlertsEnabled
             case .liveActivities: return AppPreferences.liveActivitiesEnabled
+            case .quietAtDesk: return AppPreferences.noticeRules.quietAtDesk
             }
         }
 
@@ -179,6 +187,10 @@ extension SettingsViewController {
                 AppPreferences.liveActivitiesEnabled = value
                 if !value { AppActivityController.shared.withdrawAll() }
                 PushRegistrar.rulesChanged()
+            case .quietAtDesk:
+                var rules = AppPreferences.noticeRules
+                rules.quietAtDesk = value
+                AppPreferences.noticeRules = rules
             }
         }
     }
@@ -215,6 +227,10 @@ extension SettingsViewController {
         case noticeFinish
         case noticeMinimum
         case unmuteAll
+        case noticeSummary
+        case deskAway
+        case deskStatus
+        case mutedChat(String)
         case pro
         case viewLogs
         case testAll

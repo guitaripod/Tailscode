@@ -35,7 +35,11 @@ final class MacNotifier: NSObject {
 
     static func isMuted(_ sessionID: String) -> Bool { rules.isMuted(sessionID) }
 
-    static func toggleMute(_ sessionID: String) { setRules(rules.togglingMute(sessionID)) }
+    static func toggleMute(_ sessionID: String, name: String? = nil) {
+        setRules(rules.togglingMute(sessionID, name: name))
+    }
+
+    static func unmute(_ sessionID: String) { setRules(rules.unmuting(sessionID)) }
 
     static var notifyRunningLow: Bool {
         UserDefaults.standard.object(forKey: "pref.notify.runningLow") as? Bool ?? true
@@ -368,6 +372,7 @@ extension MacNotifier: UNUserNotificationCenterDelegate {
         let action = response.actionIdentifier
         nonisolated(unsafe) let complete = completionHandler
         Task { @MainActor in
+            if let sessionID { MacDeskSense.look(sessionID) }
             switch action {
             case AlertCategory.approveActionID, AlertCategory.denyActionID:
                 await Self.decide(

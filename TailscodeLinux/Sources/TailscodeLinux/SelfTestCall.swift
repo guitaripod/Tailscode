@@ -162,6 +162,7 @@ extension SelfTest {
                 report("agents watch: \(try checkAgentsWatch()) claims hold")
             case "clock": report("clock: \(try checkClock()) claims hold")
             case "notices": report("notice rules: \(try checkNoticeRules()) claims hold")
+            case "desk": report("desk: \(try checkDesk()) claims hold")
             case "machine": report("machine: \(try checkMachine()) claims hold")
             case "shutdown": report("shutdown: \(try checkShutdown()) claims hold")
             case "share": report("analytics share: \(try checkAnalyticsShare()) claims hold")
@@ -184,7 +185,7 @@ extension SelfTest {
         }
     }
 
-    private static func runBlocking<T: Sendable>(_ work: @escaping @Sendable () async throws -> T) throws -> T {
+    static func runBlocking<T: Sendable>(_ work: @escaping @Sendable () async throws -> T) throws -> T {
         let box = BlockingBox<T>()
         let done = DispatchSemaphore(value: 0)
         Task {

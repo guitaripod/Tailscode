@@ -100,7 +100,7 @@ extension SessionListViewController: UICollectionViewDelegate {
                 ) { [weak self] _ in
                     self?.togglePinned(entry)
                 })
-            actions.append(NoticeMute.action(sessionID: entry.session.id))
+            actions.append(NoticeMute.action(sessionID: entry.session.id, title: entry.session.title))
             let isUnread = SessionSeenStore.unreadEvaluator()(
                 entry.session.id, entry.session.updatedAt)
             actions.append(

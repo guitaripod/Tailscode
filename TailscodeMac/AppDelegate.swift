@@ -54,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controller?.openSession(withID: sessionID)
         }
         MacNotifier.shared.onOpenUsage = { [weak controller] in controller?.presentUsageWindow() }
+        MacDeskSense.start()
         FirstRunWindow.hooks = FirstRunWindow.Hooks(
             saved: { [weak controller] in
                 Task { [weak controller] in await controller?.sidebar.refresh() }
@@ -195,6 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The last chance there is. Quitting must never be what eats a prompt, so every open pane's
     /// composer is written before the process goes.
     func applicationWillTerminate(_ notification: Notification) {
+        MacDeskSense.leave()
         stashDrafts()
         main?.prepareToQuit()
     }

@@ -40,6 +40,7 @@ public enum SessionSeenStore {
         MarkIntentStore.note(
             sessionID: sessionID, profileID: SessionOwners.profile(of: sessionID), mark: .read,
             on: true)
+        DeskLooks.note(sessionID)
     }
 
     /// Rewinds the "last looked" mark to just before the session's latest change, so the row

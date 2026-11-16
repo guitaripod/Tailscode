@@ -5,7 +5,7 @@ import UIKit
 /// menu. The words are Core's, so the desktops say the same.
 @MainActor
 enum NoticeMute {
-    static func action(sessionID: String) -> UIAction {
+    static func action(sessionID: String, title: String? = nil) -> UIAction {
         let muted = AppPreferences.noticeRules.isMuted(sessionID)
         return UIAction(
             title: NoticeRulesWords.muteTitle(muted: muted),
@@ -13,7 +13,7 @@ enum NoticeMute {
             image: UIImage(systemName: muted ? "bell" : "bell.slash")
         ) { _ in
             Theme.Haptics.tap()
-            AppPreferences.noticeRules = AppPreferences.noticeRules.togglingMute(sessionID)
+            AppPreferences.noticeRules = AppPreferences.noticeRules.togglingMute(sessionID, name: title)
             AppActivityController.shared.reregister(sessionID)
         }
     }

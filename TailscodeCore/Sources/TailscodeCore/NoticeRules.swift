@@ -31,21 +31,40 @@ public struct NoticeRules: Sendable, Equatable, Codable {
     /// Chats whose finished work says nothing, by session id. Session ids are the server's own and
     /// are unique across machines, which is what lets a bridge read the same list.
     public var muted: Set<String>
+    /// What each muted chat was called when it was muted, so the list of them reads as chats
+    /// rather than ids long after the chat left every listing. Only ever a label.
+    public var mutedNames: [String: String]
+    /// A phone or a tablet stays quiet while its person is at a computer running Tailscode, which
+    /// tells them itself, and hears what they left unread once they go (`DeskPresence`). Read
+    /// only by a device that registers for pushes; a computer is the desk.
+    public var quietAtDesk: Bool
+    /// How long a computer may see no keyboard or pointer input before its person counts as gone
+    /// from it. A locked screen, a sleeping machine or a quit app is gone at once.
+    public var awayAfter: TimeInterval
 
     public init(
         finish: Finish = .settled, minimumWork: TimeInterval = 0, needsYou: Bool = true,
-        muted: Set<String> = []
+        muted: Set<String> = [], mutedNames: [String: String] = [:], quietAtDesk: Bool = true,
+        awayAfter: TimeInterval = NoticeRules.defaultAwayAfter
     ) {
         self.finish = finish
         self.minimumWork = minimumWork
         self.needsYou = needsYou
         self.muted = muted
+        self.mutedNames = mutedNames
+        self.quietAtDesk = quietAtDesk
+        self.awayAfter = awayAfter
     }
 
     public static let standard = NoticeRules()
 
     /// The lengths a person chooses from; anything finer is noise nobody would tune.
     public static let minimumChoices: [TimeInterval] = [0, 30, 120, 600]
+
+    /// How long a computer may sit untouched before its person counts as away from it. Short
+    /// enough that walking off is noticed soon, long enough that reading at the desk is not.
+    public static let awayChoices: [TimeInterval] = [60, 120, 300, 600]
+    public static let defaultAwayAfter: TimeInterval = 120
 
     /// Whether finished work earns a notice: what the person chose, how long it ran, and whether
     /// the chat is muted. A failure ignores the minimum, because a fast failure is still the end
@@ -64,11 +83,41 @@ public struct NoticeRules: Sendable, Equatable, Codable {
 
     public func isMuted(_ sessionID: String) -> Bool { muted.contains(sessionID) }
 
-    /// The same choices with one chat's mute flipped.
-    public func togglingMute(_ sessionID: String) -> NoticeRules {
+    /// The same choices with one chat's mute flipped, remembering what the chat was called while
+    /// it stays muted.
+    public func togglingMute(_ sessionID: String, name: String? = nil) -> NoticeRules {
         var next = self
-        if next.muted.remove(sessionID) == nil { next.muted.insert(sessionID) }
+        if next.muted.remove(sessionID) == nil {
+            next.muted.insert(sessionID)
+            let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !trimmed.isEmpty { next.mutedNames[sessionID] = String(trimmed.prefix(120)) }
+        } else {
+            next.mutedNames[sessionID] = nil
+        }
         return next
+    }
+
+    /// The same choices with one chat unmuted, whatever it was.
+    public func unmuting(_ sessionID: String) -> NoticeRules {
+        var next = self
+        next.muted.remove(sessionID)
+        next.mutedNames[sessionID] = nil
+        return next
+    }
+
+    /// The muted chats in the order a list shows them: by the name each was muted under, a chat
+    /// muted with no name after every named one.
+    public var mutedChats: [(id: String, name: String?)] {
+        muted.map { ($0, mutedNames[$0]) }.sorted { left, right in
+            switch (left.1, right.1) {
+            case let (l?, r?):
+                let order = l.localizedCaseInsensitiveCompare(r)
+                return order == .orderedSame ? left.0 < right.0 : order == .orderedAscending
+            case (.some, nil): return true
+            case (nil, .some): return false
+            case (nil, nil): return left.0 < right.0
+            }
+        }
     }
 
     /// What a bridge is told when this device registers for pushes, so the server holding the
@@ -77,7 +126,8 @@ public struct NoticeRules: Sendable, Equatable, Codable {
         let named = sessionIDs.map { muted.intersection($0) } ?? muted
         return DevicePushRules(
             finish: finish.rawValue, minimumWork: Int(minimumWork.rounded()), needsYou: needsYou,
-            muted: named.sorted())
+            muted: named.sorted(), quietAtDesk: quietAtDesk,
+            awayAfter: Int(awayAfter.rounded()))
     }
 }
 
@@ -88,6 +138,9 @@ public enum NoticeRulesKeys {
     public static let finish = "tailscode.notify.finish"
     public static let minimumWork = "tailscode.notify.minimumWork"
     public static let muted = "tailscode.notify.muted"
+    public static let mutedNames = "tailscode.notify.mutedNames"
+    public static let quietAtDesk = "tailscode.notify.quietAtDesk"
+    public static let awayAfter = "tailscode.notify.awayAfter"
     /// The switches the rules grew out of, still read: a person who turned finished turns off
     /// before the rules existed keeps them off, and the approvals switch is the needs-you switch.
     public static let legacyTurnComplete = "pref.notify.turnComplete"
@@ -100,10 +153,15 @@ public enum NoticeRulesKeys {
             (value(finish) as? String).flatMap(NoticeRules.Finish.init(rawValue:))
             ?? ((value(legacyTurnComplete) as? Bool) == false ? .never : .settled)
         let minimum = (value(minimumWork) as? NSNumber)?.doubleValue ?? 0
+        let mutedIDs = Set(value(muted) as? [String] ?? [])
+        let names = (value(mutedNames) as? [String: String] ?? [:]).filter { mutedIDs.contains($0.key) }
+        let away = (value(awayAfter) as? NSNumber)?.doubleValue ?? NoticeRules.defaultAwayAfter
         return NoticeRules(
             finish: finish, minimumWork: max(0, minimum),
             needsYou: value(needsYou) as? Bool ?? true,
-            muted: Set(value(muted) as? [String] ?? []))
+            muted: mutedIDs, mutedNames: names,
+            quietAtDesk: value(quietAtDesk) as? Bool ?? true,
+            awayAfter: max(30, away))
     }
 
     /// Writes every key, the legacy switch included, so a build from before the rules that reads
@@ -114,6 +172,10 @@ public enum NoticeRulesKeys {
         store(needsYou, rules.needsYou)
         store(legacyTurnComplete, rules.finish != .never)
         store(muted, rules.muted.isEmpty ? nil : rules.muted.sorted())
+        let names = rules.mutedNames.filter { rules.muted.contains($0.key) }
+        store(mutedNames, names.isEmpty ? nil : names)
+        store(quietAtDesk, rules.quietAtDesk)
+        store(awayAfter, Int(rules.awayAfter.rounded()))
     }
 }
 

@@ -131,12 +131,12 @@ extension SettingsViewController {
     /// its footer says right now, so a footer that changes its words never changes the layout.
     private func hasFooter(_ section: Section) -> Bool {
         switch section {
-        case .servers, .discovery, .permission, .finished, .needsYou, .muted, .usageAlerts,
+        case .servers, .discovery, .permission, .finished, .needsYou, .desk, .muted, .usageAlerts,
             .liveActivities, .push, .testNotice, .composer, .dictation, .agentSteps, .answers, .resume, .density,
             .keys, .report, .legal:
             return true
         case .midgar, .alerts, .network, .experience, .accounts, .pro, .support, .addServer, .demo,
-            .testServers, .tailnetStatus, .theme, .logs, .version, .feedback, .results:
+            .testServers, .tailnetStatus, .theme, .logs, .version, .feedback, .results, .summary:
             return false
         }
     }
@@ -180,8 +180,10 @@ extension SettingsViewController {
             return "\(NoticeRulesWords.groupDescription) \(NoticeRulesWords.minimumSubtitle)"
         case .needsYou:
             return String(localized: "Tells you when an agent is waiting on you, even in a muted chat.")
+        case .desk:
+            return NoticeRulesWords.deskGroupDescription
         case .muted:
-            return NoticeRulesWords.mutedCount(AppPreferences.noticeRules.muted.count)
+            return NoticeRulesWords.mutedFooter
         case .usageAlerts:
             return String(
                 localized:
@@ -239,7 +241,7 @@ extension SettingsViewController {
         case .legal:
             return "\(Self.copyright)\n" + String(localized: "Coding agents over Tailscale.")
         case .midgar, .alerts, .network, .experience, .accounts, .pro, .support, .addServer, .demo,
-            .testServers, .tailnetStatus, .theme, .logs, .version, .feedback, .results:
+            .testServers, .tailnetStatus, .theme, .logs, .version, .feedback, .results, .summary:
             return nil
         }
     }
@@ -475,6 +477,33 @@ extension SettingsViewController {
             cell.accessories = [.disclosureIndicator()]
         case .unmuteAll:
             action(&content, NoticeRulesWords.unmuteAll)
+        case .noticeSummary:
+            content = UIListContentConfiguration.cell()
+            content.text = NoticeRulesWords.summary(AppPreferences.noticeRules, desk: true)
+            content.textProperties.font = .preferredFont(forTextStyle: .subheadline)
+            content.textProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: "bell.badge")
+            content.imageProperties.tintColor = Theme.Color.secondaryLabel
+        case .deskAway:
+            content = quiet(.valueCell())
+            content.text = NoticeRulesWords.awayTitle
+            content.secondaryText = NoticeRulesWords.away(AppPreferences.noticeRules.awayAfter)
+            cell.accessories = [.disclosureIndicator()]
+        case .deskStatus:
+            content = UIListContentConfiguration.cell()
+            content.text = deskStatusLine
+            content.textProperties.font = .preferredFont(forTextStyle: .subheadline)
+            content.textProperties.color = Theme.Color.secondaryLabel
+            content.image = UIImage(systemName: deskAtComputer ? "desktopcomputer" : "iphone")
+            content.imageProperties.tintColor =
+                deskAtComputer ? Theme.Color.accent : Theme.Color.secondaryLabel
+        case .mutedChat(let id):
+            content = quiet(.valueCell())
+            content.text = AppPreferences.noticeRules.mutedNames[id] ?? NoticeRulesWords.unnamedChat
+            content.secondaryText = NoticeRulesWords.mutedRowAction
+            content.secondaryTextProperties.color = Theme.Color.accent
+            content.image = UIImage(systemName: "bell.slash")
+            content.imageProperties.tintColor = Theme.Color.secondaryLabel
         case .chatDensity:
             content = quiet(.valueCell())
             content.text = ChatDensitySetting.title

@@ -262,7 +262,7 @@ extension MainWindow {
             (NoticeRulesWords.muteTitle(muted: muted), NoticeRulesWords.muteDetail(muted: muted),
              { [weak self] in
                  Gtk.onMain { [weak self] in
-                     Notifier.toggleMute(entry.session.id)
+                     Notifier.toggleMute(entry.session.id, name: entry.session.title)
                      self?.renderSidebar()
                  }
              }))

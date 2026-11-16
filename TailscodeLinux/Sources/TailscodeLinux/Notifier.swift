@@ -102,7 +102,18 @@ final class Notifier: @unchecked Sendable {
 
     static func isMuted(_ sessionID: String) -> Bool { rules.isMuted(sessionID) }
 
-    static func toggleMute(_ sessionID: String) { setRules(rules.togglingMute(sessionID)) }
+    static func toggleMute(_ sessionID: String, name: String? = nil) {
+        setRules(rules.togglingMute(sessionID, name: name))
+    }
+
+    static func unmute(_ sessionID: String) { setRules(rules.unmuting(sessionID)) }
+
+    static func setDeskRules(quiet: Bool? = nil, awayAfter: TimeInterval? = nil) {
+        var next = rules
+        if let quiet { next.quietAtDesk = quiet }
+        if let awayAfter { next.awayAfter = awayAfter }
+        setRules(next)
+    }
 
     private func adopt(_ rules: NoticeRules) {
         watchLock.lock()
@@ -198,6 +209,7 @@ final class Notifier: @unchecked Sendable {
 
     private func handle(id: UInt32, action: String) {
         guard let notice = standing[id] else { return }
+        if let sessionID = notice.sessionID { DeskSense.look(sessionID) }
         switch action {
         case AlertCategory.approveActionID, AlertCategory.denyActionID:
             guard let decision = notice.decision else { return }
@@ -226,6 +238,7 @@ final class Notifier: @unchecked Sendable {
     private func handle(id: UInt32, reply: String) {
         let words = reply.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !words.isEmpty, let notice = standing[id] else { return }
+        if let sessionID = notice.sessionID { DeskSense.look(sessionID) }
         if notice.isTest {
             raiseEcho(words)
         } else if let question = notice.question, let profileID = notice.profileID {

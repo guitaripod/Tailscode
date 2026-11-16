@@ -33,7 +33,7 @@ extension SettingsViewController: UICollectionViewDelegate {
     private func isSelectable(at indexPath: IndexPath) -> Bool {
         if case .results(let page)? = section(at: indexPath), page != .root { return true }
         switch dataSource.itemIdentifier(for: indexPath) {
-        case .midgar, .toggle, .tailnetScan, .version, nil: return false
+        case .midgar, .toggle, .tailnetScan, .version, .noticeSummary, .deskStatus, nil: return false
         case .notificationPermission:
             return notificationStatus == .notDetermined || notificationStatus == .denied
         case .backgroundRefresh: return backgroundRefreshDetail().actionable
@@ -172,6 +172,12 @@ extension SettingsViewController: UICollectionViewDelegate {
             chooseNoticeMinimum()
         case .unmuteAll:
             confirmUnmuteAll(from: indexPath)
+        case .deskAway:
+            chooseAway()
+        case .mutedChat(let id):
+            unmuteChat(id)
+        case .noticeSummary, .deskStatus:
+            break
         case .chatDensity:
             chooseDensity()
         case .activityStyle:

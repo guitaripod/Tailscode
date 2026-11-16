@@ -85,6 +85,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         AppActivityController.shared.setInFront(true)
+        DeskHold.shared.cameForward()
         ProAccess.shared.refreshProWeek()
         Task { await AppActivityController.shared.catchUp() }
         coordinator?.handleControlRouteIfNeeded()
@@ -100,6 +101,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneWillResignActive(_ scene: UIScene) {
         AppActivityController.shared.setInFront(false)
         TurnWaitCenter.shared.armForBackground()
+        DeskHold.shared.wentBack()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

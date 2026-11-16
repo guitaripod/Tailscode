@@ -92,8 +92,13 @@ extension SettingsViewController {
     /// pushes off makes every per-bridge row read "Turned off" immediately rather
     /// than after the next visit.
     func toggleDidChange(_ toggle: Toggle) {
-        guard toggle == .serverPush else { return }
-        applySnapshot()
+        switch toggle {
+        case .serverPush, .quietAtDesk:
+            applySnapshot()
+            reconfigure([.noticeSummary, .deskStatus])
+        default:
+            break
+        }
     }
 
     /// The mark the writing hand wears while it is still being proven, carried on the row rather
@@ -177,6 +182,68 @@ extension SettingsViewController {
             })
     }
 
+    /// What the desks say right now, beside the switch: the servers are asked when the page
+    /// appears and again every fifteen seconds while it is open.
+    func followDesk() {
+        guard page == .notifications else { return }
+        refreshDesk()
+        deskTimer?.invalidate()
+        deskTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshDesk() }
+        }
+    }
+
+    private func refreshDesk() {
+        Task { [weak self] in
+            let answer = await DeskHold.shared.look()
+            guard let self else { return }
+            self.deskAnswer = answer
+            self.deskAsked = true
+            self.reconfigure([.deskStatus])
+        }
+    }
+
+    var deskStatusLine: String {
+        guard deskAsked else { return Localized.text("Checking…") }
+        let rules = AppPreferences.noticeRules
+        return NoticeRulesWords.deskStatus(
+            deskAnswer?.presence, awayAfter: rules.awayAfter, quiet: rules.quietAtDesk)
+    }
+
+    var deskAtComputer: Bool {
+        deskAnswer?.presence.occupied(awayAfter: AppPreferences.noticeRules.awayAfter) != nil
+    }
+
+    /// How long a computer may sit untouched before the person counts as away from it: four
+    /// lengths, each with the sentence that says what it is for.
+    func chooseAway() {
+        Theme.Haptics.tap()
+        let choices = NoticeRules.awayChoices
+        push(
+            SettingsChoiceViewController(
+                title: NoticeRulesWords.awayTitle,
+                options: choices.map {
+                    .init(title: NoticeRulesWords.away($0), detail: NoticeRulesWords.awayDetail($0))
+                },
+                selected: choices.firstIndex(of: AppPreferences.noticeRules.awayAfter) ?? 1,
+                footer: NoticeRulesWords.awaySubtitle
+            ) { index in
+                var rules = AppPreferences.noticeRules
+                rules.awayAfter = choices[index]
+                AppPreferences.noticeRules = rules
+            })
+    }
+
+    /// One chat unmuted from its row. Muting it again is a press in the chat's own menu, so this
+    /// asks nothing.
+    func unmuteChat(_ id: String) {
+        Theme.Haptics.selection()
+        AppPreferences.noticeRules = AppPreferences.noticeRules.unmuting(id)
+        AppActivityController.shared.reregister(id)
+        applySnapshot()
+        reconfigure([.noticeSummary])
+    }
+
     /// Unmuting every chat cannot be taken back in one tap, so it is asked once, from the row.
     func confirmUnmuteAll(from indexPath: IndexPath) {
         Theme.Haptics.tap()
@@ -189,8 +256,10 @@ extension SettingsViewController {
                 Theme.Haptics.selection()
                 var rules = AppPreferences.noticeRules
                 rules.muted = []
+                rules.mutedNames = [:]
                 AppPreferences.noticeRules = rules
                 self?.applySnapshot()
+                self?.reconfigure([.noticeSummary])
             })
         sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))
         sheet.popoverPresentationController?.sourceView = collectionView

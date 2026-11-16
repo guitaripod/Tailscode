@@ -819,3 +819,4 @@ long tailscode_soak_rows(void);
 #include "stage.h"
 #include "frames.h"
 #include "wallpaint.h"
+#include "desk.h"

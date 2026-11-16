@@ -165,6 +165,7 @@ Gtk.connect(UnsafeMutableRawPointer(app), "activate") {
         let window = MainWindow()
         mainWindow = window
         window.present(in: app)
+        DeskSense.start()
         Summon.shared.start { mainWindow?.summonQuickAsk() }
         Gtk.after(1500) { Gtk.onMain { mainWindow?.prepareQuickAsk() } }
     }
@@ -239,6 +240,7 @@ if let link = pendingConnectLink {
 /// and it touches no widget because by here there may be none left.
 Gtk.connect(UnsafeMutableRawPointer(app), "shutdown") {
     Gtk.markQuitting()
+    DeskSense.leave()
     mainWindow?.tearDown()
     DraftStore.flush()
     SettingsFile.flush()
