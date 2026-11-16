@@ -566,16 +566,18 @@ extension SelfTest {
         gtk_widget_measure(
             widget, GTK_ORIENTATION_VERTICAL, -1, &leastHeight, &naturalHeight,
             &ignoredC, &ignoredD)
+        let expected = PictureGalleryLayout.grid(
+            count: 8, side: side, available: ImagePreview.deskWidth).snapped()
         try expect(
-            Int(naturalHeight) == Int(side.rounded()),
-            "a gallery is one picture tall, never the pixels it holds: \(naturalWidth) × \(naturalHeight)")
+            Int(naturalHeight) == Int(expected.height.rounded()),
+            "a gallery is one small tile tall, never the pixels it holds: \(naturalWidth) × \(naturalHeight)")
         try expect(
             Int(naturalWidth) <= Int(ImagePreview.deskWidth) + 4,
             "a gallery never asks for more row than it was given, bar the rounding of its tiles: \(naturalWidth)")
         let tiles = galleryFixed(of: widget).map(gtkWidgetChildren(of:)) ?? []
         try expect(
-            tiles.count == 8,
-            "eight pictures rest as one grid of small tiles, all of them drawn: \(tiles.count)")
+            tiles.count == expected.tiles.count && expected.tiles.count + expected.hidden == 8,
+            "eight pictures rest as one strip of small squares, the rest counted: \(tiles.count)")
         try expect(
             tailscode_accessible_has_label(
                 tiles[1],

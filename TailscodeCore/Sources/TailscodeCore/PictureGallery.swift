@@ -1,27 +1,23 @@
 import Foundation
 
-/// The pictures an agent made, as one grid of small tiles rather than a poster per picture.
+/// The pictures an agent made, as one compact strip rather than a poster per picture.
 ///
-/// A turn that looked at sixteen screenshots used to spend sixteen pictures of height on them and
-/// push the answer off the page; the pictures are one fact about the turn, so they rest as a single
-/// block — a strip when the pictures are few, a two-row sheet when they are many, never taller than
-/// one picture — and a press on a tile opens that picture in the viewer, paged, where it can
-/// actually be read. The arrangement is arithmetic, so a client only places views at the rectangles
-/// it is handed and asks again when its width changes.
+/// A turn that looked at sixteen screenshots used to spend sixteen pictures of height on them, and
+/// then a two-row sheet as tall as one picture, which still read as a wall in the middle of a
+/// conversation. The pictures are one fact about the turn, so they rest as a single row of small
+/// rounded squares under the turn's card, and a press on a tile opens that picture in the viewer,
+/// paged, where it can actually be read. The arrangement is arithmetic, so a client only places
+/// views at the rectangles it is handed and asks again when its width changes.
 ///
 /// The contract every client draws, in one place:
-/// - The block is always `side` tall whatever the pictures turn out to be, so a row's height never
-///   waits on a picture's pixels and a landing picture redraws a tile without remeasuring the row.
-/// - A lone picture is one tile as wide as its own shape asks (`PictureShape`) and the row
-///   allows, flush left. It is fitted whole inside that tile, so it is letterboxed only when its
-///   shape is wider than the row can hold at that height; it is never cropped.
-/// - Pictures that fit one row at no less than `narrowestStripShare` of a picture each (two or
-///   three on any row, a handful on a wide one) are a strip of squares, flush left, each as wide
-///   as it is tall and narrower only when the row cannot hold them side by side; they are not
-///   stretched to the row.
-/// - More pictures are two rows of crops (`widestSheetTile` wide at most), spread to the row's
-///   width up to `maximumColumns` columns and shrunk to `narrowestTile` before any are counted.
-/// - What the grid cannot draw is counted in a corner chip on the last tile (`badge(on:textWidth:)`),
+/// - A lone picture is one tile as tall as `side` and as wide as its own shape asks
+///   (`PictureShape`) and the row allows, flush left. It is fitted whole inside that tile, so it is
+///   letterboxed only when its shape is wider than the row can hold at that height; it is never
+///   cropped, and the block is `side` tall whatever the picture turns out to be.
+/// - Two pictures or more are one row of squares `stripSide(for:)` tall, `stripGap` apart, flush
+///   left, as many as the row holds (never more than `maximumColumns`). The block is that one tile
+///   tall, so a turn's pictures cost a line or two of text, not a picture.
+/// - What the row cannot draw is counted in a corner chip on the last tile (`badge(on:textWidth:)`),
 ///   never over the whole tile.
 public enum PictureGalleryLayout: Sendable {
     public struct Tile: Sendable, Equatable {
@@ -108,39 +104,36 @@ public enum PictureGalleryLayout: Sendable {
         max(0, min(metrics.imageMaxHeight, width))
     }
 
-    /// The air between two tiles: two points of gutter, so a grid reads as one block of pictures
-    /// rather than a shelf of separate ones.
-    public static let tileGap: Double = 2
+    /// The air between two tiles of a strip: enough that each rounded square reads as its own
+    /// picture and its own press.
+    public static let stripGap: Double = 6
 
-    /// The narrowest a two-row tile may be drawn before the grid stops taking more columns and
-    /// counts the rest: a tile has to stay a picture and a press.
-    public static let narrowestTile: Double = 40
+    /// How tall a strip of several pictures is as a share of the block a lone picture gets.
+    public static let stripShare = 0.4
 
-    /// The narrowest a one-row tile may be as a share of the block's height before the pictures
-    /// take a second row instead: a strip of needle-thin crops is not a gallery, a sheet is.
-    /// A strip tile is never wider than the block is tall.
-    public static let narrowestStripShare = 0.5
+    /// The smallest and largest a strip tile may be drawn: small enough that a turn's pictures cost
+    /// a line or two of text, large enough to tell one screenshot from another.
+    public static let smallestStripTile: Double = 56
+    public static let largestStripTile: Double = 104
 
-    /// How many tiles a two-row sheet may draw across, so a wall-sized window does not turn a
-    /// group of pictures into a bead curtain of thumbnails.
+    /// How many tiles a strip may draw across, so a wall-sized window does not turn a turn's
+    /// pictures into a bead curtain of thumbnails.
     public static let maximumColumns = 12
 
-    /// How much wider than tall a tile may be: a sheet grows into the row's width when there is
-    /// room, and stops before its crops stop looking like pictures.
-    public static let widestSheetTile = 1.25
+    /// The side of a strip tile for a block `side` tall.
+    public static func stripSide(for side: Double) -> Double {
+        min(side, max(smallestStripTile, min(largestStripTile, side * stripShare)))
+    }
 
     /// Rectangles for `count` pictures in a block `side` tall and `available` wide, a gutter of
     /// `gap` between neighbours.
     ///
-    /// A lone picture keeps its own shape instead of being cropped — one screenshot squared would
-    /// hide most of what it is — and is given `maxWidth` to spread into, which is the row's own
-    /// width. A few pictures are one strip of squares while each tile stays at least
-    /// `narrowestStripShare` of the height wide, shrinking together when the row is short of room;
-    /// more of them are a two-row grid that takes as many columns as the row has room for, shrinking
-    /// the tiles to `narrowestTile` before it counts the rest on the last one's corner. Either way
-    /// the block is one picture tall, never more.
+    /// A lone picture keeps its own shape instead of being cropped (one screenshot squared would
+    /// hide most of what it is) and is given `maxWidth` to spread into, which is the row's own
+    /// width. Several pictures are one row of `stripSide(for:)` squares, as many as fit, and the
+    /// last one's corner counts the rest.
     public static func grid(
-        count: Int, side: Double, available: Double = 0, gap: Double = tileGap,
+        count: Int, side: Double, available: Double = 0, gap: Double = stripGap,
         shape: Double? = nil, maxWidth: Double? = nil
     ) -> Arrangement {
         guard count > 0, side > 0 else { return .empty }
@@ -150,34 +143,66 @@ public enum PictureGalleryLayout: Sendable {
             return Arrangement(
                 tiles: [Tile(index: 0, x: 0, y: 0, width: width, height: side)], hidden: 0)
         }
-        let room = available > 0 ? available : side
-        let strip = (room - Double(count - 1) * gap) / Double(count)
-        if strip >= side * narrowestStripShare {
-            let width = min(side, strip)
-            let tiles = (0..<count).map { index in
-                Tile(
-                    index: index, x: Double(index) * (width + gap), y: 0, width: width,
-                    height: side)
-            }
-            return Arrangement(tiles: tiles, hidden: 0)
-        }
-        let height = (side - gap) / 2
-        guard height > 0 else {
-            return Arrangement(
-                tiles: [Tile(index: 0, x: 0, y: 0, width: side, height: side)],
-                hidden: max(0, count - 1))
-        }
-        let fitting = max(1, Int(((room + gap) / (narrowestTile + gap)).rounded(.down)))
-        let columns = max(1, min(maximumColumns, min((count + 1) / 2, fitting)))
-        let shown = min(count, columns * 2)
-        let share = (room - Double(columns - 1) * gap) / Double(columns)
-        let width = max(1, min(height * widestSheetTile, share))
+        let tile = stripSide(for: side)
+        let room = available > 0 ? available : tile
+        let fitting = max(1, Int(((room + gap) / (tile + gap)).rounded(.down)))
+        let shown = min(count, fitting, maximumColumns)
+        let width = min(tile, room)
         let tiles = (0..<shown).map { index in
-            Tile(
-                index: index, x: Double(index % columns) * (width + gap),
-                y: Double(index / columns) * (height + gap), width: width, height: height)
+            Tile(index: index, x: Double(index) * (width + gap), y: 0, width: width, height: tile)
         }
         return Arrangement(tiles: tiles, hidden: count - shown)
+    }
+}
+
+/// Where a turn's pictures are drawn: together, directly under the turn's card.
+///
+/// An agent looks at a picture between steps, so the pictures of one turn arrive between the notes
+/// and cards the chat keeps, and each run of them used to become its own gallery: three walls of
+/// thumbnails in one turn, none of them next to the card that holds the work. A turn's pictures
+/// are one thing to see, so every picture after a card moves up to stand right under it, in the
+/// order it arrived, and the client's gallery fold then makes them one strip. A boundary (the
+/// person's next prompt, a turn break) ends the turn; a picture before any card stays where it is.
+public enum TurnPictureGathering {
+    public enum Mark: Sendable, Equatable {
+        case card
+        case picture
+        case boundary
+        case other
+    }
+
+    /// The order to draw rows in, as indices into `marks`.
+    public static func order(_ marks: [Mark]) -> [Int] {
+        var order: [Int] = []
+        order.reserveCapacity(marks.count)
+        var insertion: Int?
+        for (index, mark) in marks.enumerated() {
+            switch mark {
+            case .card:
+                order.append(index)
+                insertion = order.count
+            case .picture:
+                if let at = insertion {
+                    order.insert(index, at: at)
+                    insertion = at + 1
+                } else {
+                    order.append(index)
+                }
+            case .boundary:
+                insertion = nil
+                order.append(index)
+            case .other:
+                order.append(index)
+            }
+        }
+        return order
+    }
+
+    /// `rows` with every turn's pictures moved under its card.
+    public static func gathered<Row>(_ rows: [Row], mark: (Row) -> Mark) -> [Row] {
+        let marks = rows.map(mark)
+        guard marks.contains(.card), marks.contains(.picture) else { return rows }
+        return order(marks).map { rows[$0] }
     }
 }
 

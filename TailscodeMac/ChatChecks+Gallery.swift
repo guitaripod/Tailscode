@@ -32,15 +32,16 @@ extension ChatChecks {
             gathered[0].key == "m:a", "a gallery keeps the key of its first picture")
         try expect(TranscriptRow.gallery(gathered) == gathered, "gathering is idempotent")
         let side = PictureGalleryLayout.side(metrics: ChatLayout.metrics, width: ImagePreview.deskWidth)
-        let sheet = PictureGalleryLayout.grid(count: 10, side: side, available: 420)
+        let strip = PictureGalleryLayout.grid(count: 10, side: side, available: 420)
+        let tile = PictureGalleryLayout.stripSide(for: side)
         try expect(
-            sheet.tiles.count == 10 && sheet.hidden == 0 && sheet.height <= side + 0.001
-                && Set(sheet.tiles.map(\.y)) == [0, 91],
-            "ten pictures in a row are a grid of two rows, one picture tall: \(sheet.tiles.count) tiles, \(sheet.height) tall")
+            Set(strip.tiles.map(\.y)) == [0] && abs(strip.height - tile) < 0.001
+                && strip.tiles.count + strip.hidden == 10,
+            "ten pictures are one row of small squares: \(strip.tiles.count) tiles, \(strip.height) tall")
         let crowded = PictureGalleryLayout.grid(count: 26, side: side, available: 420)
         try expect(
             crowded.hidden > 0 && crowded.tiles.count + crowded.hidden == 26,
-            "a grid takes the columns it can and counts the rest: \(crowded.tiles.count) + \(crowded.hidden)")
+            "a strip takes the tiles the row holds and counts the rest: \(crowded.tiles.count) + \(crowded.hidden)")
         try expect(
             PictureGalleryReading.spoken(count: 2, names: ["a.png", "b.png"]) == "2 pictures, a.png, b.png",
             "the gallery says how many pictures it holds and which")
@@ -96,11 +97,11 @@ extension ChatChecks {
         column.layoutSubtreeIfNeeded()
 
         let side = CGFloat(PictureGalleryLayout.side(metrics: ChatLayout.metrics, width: 420))
-        try expect(
-            gallery.frame.width == 420 && gallery.frame.height == side,
-            "in a column a gallery takes the row's width and one picture's height: \(gallery.frame.size)")
         let placed = PictureGalleryLayout.grid(
             count: 26, side: Double(side), available: 420)
+        try expect(
+            gallery.frame.width == 420 && abs(gallery.frame.height - CGFloat(placed.height)) < 0.5,
+            "in a column a gallery takes the row's width and one small tile's height: \(gallery.frame.size)")
         if let second = placed.tiles.dropFirst().first,
             let view = gallery as? PictureGalleryRowView.GalleryView,
             let pressed = view.picture(
@@ -113,7 +114,7 @@ extension ChatChecks {
         }
 
         let width = Int(420)
-        let height = Int(side.rounded())
+        let height = Int(CGFloat(placed.height).rounded())
         guard width > 0, height > 0,
             let rep = NSBitmapImageRep(
                 bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,

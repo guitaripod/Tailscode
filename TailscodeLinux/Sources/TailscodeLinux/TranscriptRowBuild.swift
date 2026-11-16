@@ -242,11 +242,25 @@ extension TranscriptRow {
         return gallery(Preferences.compactTools ? fuse(all) : all)
     }
 
+    /// What a row is to the gathering of a turn's pictures: the turn's card, a picture the agent
+    /// made, the person's own words or files that end a turn, or anything else.
+    static func pictureMark(_ row: TranscriptRow) -> TurnPictureGathering.Mark {
+        switch row.kind {
+        case .brain: return .card
+        case .file(let reference, let mine):
+            if mine { return .boundary }
+            return (reference.mime ?? "").hasPrefix("image/") ? .picture : .other
+        case .userText, .pastedText, .turnBreak: return .boundary
+        default: return .other
+        }
+    }
+
     /// Consecutive pictures the agent made become one gallery. A picture that is the person's own
     /// stays where it is — it belongs to the prompt it was sent with — and so does anything that is
     /// not an image. The gallery is named after its first picture, so a picture arriving beside it
     /// changes the gallery's value and not its identity.
     static func gallery(_ rows: [TranscriptRow]) -> [TranscriptRow] {
+        let rows = TurnPictureGathering.gathered(rows, mark: pictureMark)
         func picture(_ row: TranscriptRow) -> GalleryPicture? {
             guard case .file(let reference, let mine) = row.kind, !mine,
                 (reference.mime ?? "").hasPrefix("image/")

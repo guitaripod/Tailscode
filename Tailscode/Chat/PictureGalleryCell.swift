@@ -268,7 +268,12 @@ final class PictureThumb: UIImageView {
         clipsToBounds = true
         layer.cornerRadius = Theme.Radius.control
         layer.cornerCurve = .continuous
+        layer.borderWidth = 1 / UIScreen.main.scale
+        layer.borderColor = UIColor.separator.cgColor
         backgroundColor = Theme.Color.assistantBubble
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (thumb: PictureThumb, _) in
+            thumb.layer.borderColor = UIColor.separator.cgColor
+        }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }

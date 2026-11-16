@@ -307,7 +307,7 @@ enum ChatRowBuilder {
         #if DEBUG
             let t2 = ContinuousClock.now
         #endif
-        let docked = dockPictures(railed)
+        let docked = dockPictures(TurnPictureGathering.gathered(railed, mark: Self.pictureMark))
         #if DEBUG
             let t3 = ContinuousClock.now
             BuilderTimings.fuse += Self.ms(t1 - t0)
@@ -410,6 +410,17 @@ enum ChatRowBuilder {
         }
         close(followed: false)
         return docked
+    }
+
+    /// What a row is to the gathering of a turn's pictures: the turn's card, a picture the agent
+    /// made, the person's own words or files that end a turn, or anything else.
+    private static func pictureMark(_ row: ChatRow) -> TurnPictureGathering.Mark {
+        if row.role == .user { return .boundary }
+        switch row.content {
+        case .brain: return .card
+        case .image: return .picture
+        default: return .other
+        }
     }
 
     /// Gathers consecutive pictures the agent made into one row, named after the first, so a
