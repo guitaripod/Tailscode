@@ -24,12 +24,49 @@ import MidgarCore
             if arguments.contains("--away-face") {
                 return UIHostingController(rootView: FaceWall())
             }
+            if arguments.contains("--away-unbounded") {
+                let drawn = drawUnbounded()
+                MidgarLog.info("away unbounded: \(drawn) views drawn under unbounded proposals", category: .ui)
+                return UIHostingController(rootView: Text(verbatim: "away unbounded: \(drawn)"))
+            }
             if let flag = arguments.firstIndex(of: "--neural-share") {
                 let dark = !(arguments.indices.contains(flag + 1) && arguments[flag + 1] == "light")
                 let look = arguments.indices.contains(flag + 2) ? arguments[flag + 2] : "app"
                 return SharePreview(dark: dark, lookID: look)
             }
             return nil
+        }
+
+        /// Draws every sample card at every size, and a usage bar, under the proposals a system
+        /// surface may make that the Lock Screen never does: a width without bound, a height
+        /// without bound, both, and none at all. A view that turns such a size into a position
+        /// ends the widget's process (`view origin is invalid`), three times for every update, and
+        /// nothing on the phone's own screen shows it; here the same views either draw or bring
+        /// this launch down where it can be seen. Returns how many were drawn.
+        private static func drawUnbounded() -> Int {
+            let proposals = [
+                ProposedViewSize(width: .infinity, height: 160), ProposedViewSize(width: 360, height: .infinity),
+                ProposedViewSize(width: .infinity, height: .infinity), ProposedViewSize.unspecified,
+            ]
+            var drawn = 0
+            func draw(_ view: some View) {
+                for proposal in proposals {
+                    let renderer = ImageRenderer(content: view)
+                    renderer.proposedSize = proposal
+                    _ = renderer.cgImage
+                    drawn += 1
+                }
+            }
+            for size in LiveActivitySize.allCases {
+                for sample in CardSamples.all() {
+                    let model = CardModel(
+                        state: sample.state, title: sample.title, server: CardSamples.server,
+                        isStale: sample.name == "QUIET", seedKey: sample.title)
+                    draw(LockScreenCard(model: model, size: size, drawsGround: true))
+                }
+            }
+            draw(GaugeBar(fraction: 0.4, color: .accentColor))
+            return drawn
         }
 
         /// Every sample card at every size, with its expanded island and the compact island it

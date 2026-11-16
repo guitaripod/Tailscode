@@ -438,12 +438,12 @@ struct CardPlan: View {
                 .foregroundStyle(inks.text.opacity(0.9))
                 .contentTransition(.numericText())
                 .fixedSize()
-            GeometryReader { proxy in
+            FiniteGeometry { size in
                 ZStack(alignment: .leading) {
                     Capsule().fill(ink.opacity(0.18))
                     Capsule()
                         .fill(ink)
-                        .frame(width: max(4, proxy.size.width * plan.fraction))
+                        .frame(width: max(4, size.width * plan.fraction))
                 }
             }
             .frame(width: 44, height: 4)

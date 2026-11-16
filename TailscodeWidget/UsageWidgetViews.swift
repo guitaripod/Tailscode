@@ -122,6 +122,26 @@ struct WidgetPalette {
     }
 }
 
+/// A `GeometryReader` that builds its content only for a size it can be placed in.
+///
+/// A widget's view is not drawn only where it is seen. The system also measures and archives it
+/// under proposals no screen makes, a width or a height without bound among them, and a reader
+/// handed such a size hands it on: a child laid out against an infinite width has an origin that
+/// is not a number, and SwiftUI ends the process on it (`view origin is invalid`). The extension
+/// then dies three times for every update and nothing on the phone shows it. A size without bound
+/// has nothing to draw in anyway, so the reader stays empty for one.
+struct FiniteGeometry<Content: View>: View {
+    @ViewBuilder let content: (CGSize) -> Content
+
+    var body: some View {
+        GeometryReader { proxy in
+            if proxy.size.width.isFinite, proxy.size.height.isFinite {
+                content(proxy.size)
+            }
+        }
+    }
+}
+
 /// The bar a window's fullness fills. A window with almost nothing spent still shows a sliver, so a
 /// row never reads as a missing bar; a wall fills it outright.
 ///
@@ -149,8 +169,8 @@ struct GaugeBar: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width
+        FiniteGeometry { size in
+            let width = size.width
             ZStack(alignment: .leading) {
                 ZStack(alignment: .leading) {
                     Capsule().fill(track)
@@ -169,7 +189,7 @@ struct GaugeBar: View {
                         .fill(tickInk.opacity(pace?.tickApproximate == true ? 0.55 : 1))
                         .frame(
                             width: Self.tickWidth,
-                            height: geometry.size.height + Self.tickOverhang * 2
+                            height: size.height + Self.tickOverhang * 2
                         )
                         .offset(x: min(max(width * CGFloat(tick), 1), width - 1) - Self.tickWidth / 2)
                 }
@@ -184,6 +204,7 @@ struct HatchFill: View {
 
     var body: some View {
         Canvas { context, size in
+            guard size.width.isFinite, size.height.isFinite else { return }
             var path = Path()
             let step = 5.5 * 2.0.squareRoot()
             var x = -size.height

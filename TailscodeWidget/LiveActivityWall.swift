@@ -190,7 +190,7 @@ struct CardGround: View {
             mesh
             Canvas { context, size in grid(&context, size) }
             if !reduced {
-                GeometryReader { proxy in motes(in: proxy.size) }
+                FiniteGeometry { size in motes(in: size) }
             }
         }
         .accessibilityHidden(true)
@@ -218,6 +218,7 @@ struct CardGround: View {
     }
 
     private func grid(_ context: inout GraphicsContext, _ size: CGSize) {
+        guard size.width.isFinite, size.height.isFinite else { return }
         let step: CGFloat = 18
         var path = Path()
         var x: CGFloat = step
