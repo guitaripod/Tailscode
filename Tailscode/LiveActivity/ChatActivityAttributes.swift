@@ -49,4 +49,7 @@ struct ChatActivityAttributes: ActivityAttributes {
     let sessionID: String
     let sessionTitle: String
     let serverName: String
+    /// The profile the conversation lives on, so a card a server started while the app slept
+    /// hands its token back to that server. Absent from cards from before it.
+    var profileID: String?
 }

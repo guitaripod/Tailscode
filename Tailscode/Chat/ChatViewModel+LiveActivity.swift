@@ -1,6 +1,7 @@
 import TailscodeCore
 import CodingAgentKit
 import Foundation
+import MidgarCore
 
 extension ChatViewModel {
     func reconcileOptimisticState(with state: ConversationState) {
@@ -16,14 +17,20 @@ extension ChatViewModel {
         }
     }
 
-    /// Drives the conversation's Live Activity once one exists. Only a send from this device opens
-    /// one (`deliver`): merely observing a session that is live on the server must not, since such
-    /// sessions can run for hours on another machine's behalf. A card that does exist follows every
-    /// turn of its conversation — the next one takes it back wherever it was started — and a turn
-    /// that ends settles it rather than taking it down, because the ending is the news. A send still
-    /// on its way is not an ending, whatever the server's last state said.
+    /// Drives the conversation's Live Activity. A send from this device opens one (`deliver`), and
+    /// so does a turn running when the person has the chat on screen — sent from a desktop, a
+    /// queue or the machine itself — unless they turned that off or muted the chat. A card that
+    /// exists follows every turn of its conversation — the next one takes it back wherever it was
+    /// started — and a turn that ends settles it rather than taking it down, because the ending is
+    /// the news. A send still on its way is not an ending, whatever the server's last state said.
     func syncLiveActivity(with state: ConversationState) {
         let cards = AppActivityController.shared
+        if state.status == .idle || state.status == .stable { cardFollowTried = false }
+        if state.status == .running, !cards.follows(session.id), !cardFollowTried, followsHere {
+            cardFollowTried = true
+            MidgarLog.info("Live Activity opened for a turn running in the chat on screen \(session.id)", category: .chat)
+            openCard(startedAt: LiveActivityReading.live(in: state).startedAt)
+        }
         guard cards.follows(session.id) else { return }
         if state.status == .running {
             turnSawRunning = true
@@ -37,7 +44,15 @@ extension ChatViewModel {
         }
         guard state.status == .idle || state.status == .stable, !optimisticThinking, !cardSettled
         else { return }
+        if cardFollowed, !turnSawRunning {
+            MidgarLog.info("Live Activity withdrawn: the turn it was opened for was not running \(session.id)", category: .chat)
+            cardFollowed = false
+            cards.withdraw(session.id)
+            cards.decline(session.id)
+            return
+        }
         cardSettled = true
+        cardFollowed = false
         turnSawRunning = false
         let brief = readCardBrief(state, now: Date(), settled: true)
         cardPulse.reset()
@@ -104,47 +119,41 @@ extension ChatViewModel {
     }
 
     /// Where the card's push token goes: to the server, which keeps the card current while this
-    /// process is asleep. A simulator build is unsigned, and asking for a token there refuses the
-    /// card outright rather than starting one without it.
+    /// process is asleep.
     func cardPushSink(title: String) -> AppActivityController.PushTokenSink? {
-        #if targetEnvironment(simulator)
-            return nil
-        #else
-            let backend = self.backend
-            let sessionID = session.id
-            return { token, startedAt in
-                #if DEBUG
-                    let environment = "development"
-                #else
-                    let environment = "production"
-                #endif
-                let endAlert = await Self.cardEndAlert(sessionID: sessionID)
-                try? await backend.registerLiveActivity(
-                    LiveActivityRegistration(
-                        token: token, environment: environment, startedAt: startedAt, title: title,
-                        endAlert: endAlert),
-                    for: sessionID)
-            }
-        #endif
-    }
-
-    /// What the server that pushes the card is asked to do at the ending, read when the token is
-    /// handed over so a change in Settings, a mute or the app coming forward reaches it with the
-    /// next hand-over: nothing for a chat the person muted, or while the app is in front.
-    @MainActor
-    private static func cardEndAlert(sessionID: String) -> String? {
-        guard !AppPreferences.noticeRules.isMuted(sessionID), !AppActivityController.shared.inFront
-        else { return nil }
-        return LiveActivitySettings.ending.wire
+        AppActivityController.tokenSink(backend: backend, sessionID: session.id, title: title)
     }
 
     /// Whether the server this chat talks to pushes the card's ending itself, alert included.
-    var cardServerAlerts: Bool {
-        #if targetEnvironment(simulator)
-            return false
-        #else
-            return PushRegistrar.covers(profileID: contextID)
-        #endif
+    var cardServerAlerts: Bool { AppActivityController.serverAlerts(profileID: contextID) }
+
+    /// Whether a turn running in this chat, sent from anywhere, gets a card here: the chat is on
+    /// screen in the app in front, cards are on, turns started elsewhere are followed, and the
+    /// chat is not muted.
+    private var followsHere: Bool {
+        isBound && !optimisticThinking && AppPreferences.liveActivitiesEnabled
+            && AppActivityController.allowed
+            && LiveActivitySettings.followsElsewhere
+            && !AppPreferences.noticeRules.isMuted(session.id)
+            && !AppActivityController.shared.declined.contains(session.id)
+            && AppActivityController.shared.isBeingRead(session.id)
+    }
+
+    /// Opens the conversation's card for a turn this device did not send, its clock from when the
+    /// turn began.
+    func openCard(startedAt: Date?) {
+        let title =
+            AgentSession.isPlaceholderTitle(displayTitle)
+            ? String(localized: "Agent session") : displayTitle
+        AppActivityController.shared.start(
+            sessionID: session.id, sessionTitle: title, serverName: serverName,
+            profileID: contextID, startedAt: startedAt, onPushToken: cardPushSink(title: title),
+            serverAlerts: cardServerAlerts)
+        turnSawRunning = false
+        cardSettled = false
+        cardFollowed = true
+        cardPulse.reset()
+        heldCardBrief = nil
     }
 }
 

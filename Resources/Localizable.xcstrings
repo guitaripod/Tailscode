@@ -625718,103 +625718,305 @@
         }
       }
     },
-    "The island opens only while Tailscode is not on screen, never for a chat you muted, and once per ending. An iPhone without a Dynamic Island shows the card as a banner instead, and an Apple Watch shows the chat’s name and how it ended.": {
+    "Follow turns started elsewhere": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The island opens only while Tailscode is not on screen, never for a chat you muted, and once per ending. An iPhone without a Dynamic Island shows the card as a banner instead, and an Apple Watch shows the chat’s name and how it ended."
+            "value": "Follow turns started elsewhere"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Die Dynamic Island öffnet sich nur, während Tailscode nicht im Vordergrund ist, nie für einen stummgeschalteten Chat und einmal pro Ende. Ein iPhone ohne Dynamic Island zeigt die Karte stattdessen als Banner, und eine Apple Watch zeigt den Namen des Chats und wie er endete."
+            "value": "Anderswo gestartete Züge verfolgen"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "La Dynamic Island solo se abre mientras Tailscode no está en pantalla, nunca para un chat silenciado y una vez por cada final. Un iPhone sin Dynamic Island muestra la tarjeta como banner, y un Apple Watch muestra el nombre del chat y cómo terminó."
+            "value": "Seguir turnos iniciados en otro lugar"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "La Dynamic Island ne s’ouvre que lorsque Tailscode n’est pas à l’écran, jamais pour une conversation rendue muette, et une fois par fin. Un iPhone sans Dynamic Island affiche la carte sous forme de bannière, et une Apple Watch affiche le nom de la conversation et la façon dont elle s’est terminée."
+            "value": "Suivre les tours lancés ailleurs"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "La Dynamic Island si apre solo mentre Tailscode non è sullo schermo, mai per una chat silenziata e una volta per ogni conclusione. Un iPhone senza Dynamic Island mostra la scheda come banner, e un Apple Watch mostra il nome della chat e come è finita."
+            "value": "Segui i turni avviati altrove"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dynamic Island が開くのは Tailscode が画面に表示されていないときだけで、ミュート中のチャットでは開かず、終了ごとに1回です。Dynamic Island のない iPhone ではカードをバナーで表示し、Apple Watch ではチャット名と終わり方を表示します。"
+            "value": "他の場所で始まったターンを追跡"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dynamic Island는 Tailscode가 화면에 없을 때만 열리며, 음소거한 채팅에는 열리지 않고, 턴이 끝날 때마다 한 번만 열립니다. Dynamic Island가 없는 iPhone에서는 카드가 배너로 표시되고, Apple Watch에서는 채팅 이름과 끝난 방식이 표시됩니다."
+            "value": "다른 곳에서 시작된 턴 따라가기"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dynamic Island otwiera się tylko wtedy, gdy Tailscode nie jest na ekranie, nigdy dla wyciszonego czatu i raz przy każdym zakończeniu. iPhone bez Dynamic Island pokazuje zamiast tego kartę jako baner, a Apple Watch pokazuje nazwę czatu i sposób zakończenia."
+            "value": "Śledź tury rozpoczęte gdzie indziej"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "A Dynamic Island só abre enquanto o Tailscode não está na tela, nunca para um chat silenciado e uma vez por término. Um iPhone sem Dynamic Island mostra o cartão como banner, e um Apple Watch mostra o nome do chat e como ele terminou."
+            "value": "Acompanhar turnos iniciados em outro lugar"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "只有在 Tailscode 不在屏幕上时灵动岛才会展开，从不为已静音的聊天展开，每次结束只展开一次。没有灵动岛的 iPhone 会改为以横幅显示卡片，Apple Watch 则显示聊天名称和结束方式。"
+            "value": "跟随在其他地方发起的回合"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "只有在 Tailscode 不在螢幕上時動態島才會展開，從不為已靜音的對話展開，每次結束只展開一次。沒有動態島的 iPhone 會改為以橫幅顯示卡片，Apple Watch 則顯示對話名稱和結束方式。"
+            "value": "追蹤在其他地方發起的回合"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dynamic Island öppnas bara när Tailscode inte är på skärmen, aldrig för en tyst chatt och en gång per avslut. En iPhone utan Dynamic Island visar kortet som ett banner i stället, och en Apple Watch visar chattens namn och hur den slutade."
+            "value": "Följ turer som startats på annan plats"
           }
         },
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dynamic Island åbner sig kun, mens Tailscode ikke er på skærmen, aldrig for en chat du har slået lyden fra, og én gang pr. afslutning. En iPhone uden Dynamic Island viser i stedet kortet som et banner, og et Apple Watch viser chattens navn og hvordan den sluttede."
+            "value": "Følg ture startet andetsteds"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dynamic Island åpner seg bare mens Tailscode ikke er på skjermen, aldri for en chat du har dempet, og én gang per avslutning. En iPhone uten Dynamic Island viser kortet som et banner i stedet, og en Apple Watch viser navnet på chatten og hvordan den endte."
+            "value": "Følg turer startet andre steder"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dynamic Island avautuu vain, kun Tailscode ei ole näytöllä, ei koskaan mykistetylle keskustelulle ja kerran jokaista päättymistä kohti. iPhone ilman Dynamic Islandia näyttää kortin bannerina, ja Apple Watch näyttää keskustelun nimen ja sen, miten se päättyi."
+            "value": "Seuraa muualla aloitettuja vuoroja"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dynamic Island opnast aðeins á meðan Tailscode er ekki á skjánum, aldrei fyrir spjall sem þú hefur þaggað og einu sinni fyrir hvern endi. iPhone-sími án Dynamic Island sýnir spjaldið sem borða í staðinn og Apple Watch sýnir heiti spjallsins og hvernig því lauk."
+            "value": "Fylgjast með umferðum sem hófust annars staðar"
+          }
+        }
+      }
+    },
+    "A card also appears for chats working while Tailscode is open, up to four at once, and — from claude-bridge — for turns sent from a desktop, a queue or a schedule while the phone is locked. Muted chats never get one.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A card also appears for chats working while Tailscode is open, up to four at once, and — from claude-bridge — for turns sent from a desktop, a queue or a schedule while the phone is locked. Muted chats never get one."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Karte erscheint auch für Chats, die bei geöffnetem Tailscode arbeiten, bis zu vier gleichzeitig, und — von claude-bridge — für Züge, die vom Desktop, aus einer Warteschlange oder einem Zeitplan gesendet werden, während das iPhone gesperrt ist. Stummgeschaltete Chats erhalten nie eine."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "También aparece una tarjeta para los chats que trabajan mientras Tailscode está abierto, hasta cuatro a la vez, y —desde claude-bridge— para los turnos enviados desde un escritorio, una cola o una programación mientras el teléfono está bloqueado. Los chats silenciados nunca tienen una."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une carte apparaît aussi pour les conversations qui travaillent pendant que Tailscode est ouvert, jusqu’à quatre à la fois, et — depuis claude-bridge — pour les tours envoyés depuis un ordinateur, une file d’attente ou une planification pendant que le téléphone est verrouillé. Les conversations en sourdine n’en reçoivent jamais."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una scheda compare anche per le chat che lavorano mentre Tailscode è aperto, fino a quattro alla volta, e — da claude-bridge — per i turni inviati da un desktop, una coda o una pianificazione mentre il telefono è bloccato. Le chat silenziate non ne ricevono mai una."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode を開いている間に作業中のチャットにもカードが表示され、同時に最大4件までです。claude-bridge からは、電話がロックされている間にデスクトップ、キュー、スケジュールから送られたターンにも表示されます。通知をオフにしたチャットには表示されません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode를 열어 둔 동안 작업 중인 채팅에도 카드가 최대 4개까지 표시되며, claude-bridge에서 보낸 턴은 휴대폰이 잠겨 있는 동안 데스크톱, 대기열 또는 예약에서 보낸 것도 표시됩니다. 알림을 끈 채팅에는 카드가 표시되지 않습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Karta pojawia się także dla czatów, które działają, gdy Tailscode jest otwarty, do czterech naraz, a z claude-bridge także dla tur wysłanych z komputera, z kolejki lub harmonogramu, gdy telefon jest zablokowany. Wyciszone czaty nigdy jej nie dostają."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um cartão também aparece para os chats em andamento enquanto o Tailscode está aberto, até quatro ao mesmo tempo, e — a partir do claude-bridge — para os turnos enviados de um computador, de uma fila ou de um agendamento enquanto o telefone está bloqueado. Conversas silenciadas nunca recebem um."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 Tailscode 时正在运行的聊天也会显示卡片，最多同时四张；手机锁定时，由 claude-bridge 从电脑、队列或计划任务发出的回合也会显示。已静音的聊天从不显示卡片。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟 Tailscode 時正在執行的聊天也會顯示卡片，最多同時四張；手機鎖定時，由 claude-bridge 從電腦、佇列或排程發出的回合也會顯示。已靜音的聊天從不顯示卡片。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ett kort visas också för chattar som arbetar medan Tailscode är öppet, upp till fyra åt gången, och — från claude-bridge — för turer som skickats från en dator, en kö eller ett schema medan telefonen är låst. Tystade chattar får aldrig ett."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Et kort vises også for chats, der arbejder, mens Tailscode er åben, op til fire ad gangen, og — fra claude-bridge — for ture sendt fra en computer, en kø eller en plan, mens telefonen er låst. Chats, du har slået lyden fra for, får aldrig et."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Et kort vises også for chatter som jobber mens Tailscode er åpent, opptil fire om gangen, og — fra claude-bridge — for turer sendt fra en datamaskin, en kø eller en plan mens telefonen er låst. Dempede chatter får aldri et."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kortti näkyy myös keskusteluille, jotka toimivat Tailscoden ollessa auki, enintään neljä kerrallaan, ja claude-bridgeltä myös vuoroille, jotka on lähetetty tietokoneelta, jonosta tai aikataulusta puhelimen ollessa lukittuna. Mykistettyihin keskusteluihin ei koskaan tule korttia."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spjald birtist einnig fyrir spjall sem vinna meðan Tailscode er opið, allt að fjögur í einu, og — frá claude-bridge — fyrir umferðir sem sendar eru úr tölvu, biðröð eða áætlun meðan síminn er læstur. Þöggaðir spjallar fá aldrei spjald."
+          }
+        }
+      }
+    },
+    "The island opens only while Tailscode is not on screen, never for a chat you muted, and once per ending. An iPhone without a Dynamic Island shows the card as a banner instead, and an Apple Watch shows the chat’s name and how it ended. A card claude-bridge starts while the phone is locked arrives silently.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The island opens only while Tailscode is not on screen, never for a chat you muted, and once per ending. An iPhone without a Dynamic Island shows the card as a banner instead, and an Apple Watch shows the chat’s name and how it ended. A card claude-bridge starts while the phone is locked arrives silently."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Dynamic Island öffnet sich nur, solange Tailscode nicht auf dem Bildschirm ist, nie für einen stummgeschalteten Chat und einmal pro Ende. Ein iPhone ohne Dynamic Island zeigt die Karte stattdessen als Banner, und eine Apple Watch zeigt den Namen des Chats und wie er endete. Eine Karte, die claude-bridge bei gesperrtem iPhone startet, kommt lautlos an."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La Dynamic Island se abre solo mientras Tailscode no está en pantalla, nunca para un chat silenciado y una vez por cada final. Un iPhone sin Dynamic Island muestra la tarjeta como un banner, y un Apple Watch muestra el nombre del chat y cómo terminó. Una tarjeta que claude-bridge inicia con el teléfono bloqueado llega en silencio."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La Dynamic Island ne s’ouvre que lorsque Tailscode n’est pas à l’écran, jamais pour une conversation en sourdine, et une fois par fin. Un iPhone sans Dynamic Island affiche la carte sous forme de bannière, et une Apple Watch affiche le nom de la conversation et la façon dont elle s’est terminée. Une carte lancée par claude-bridge pendant que le téléphone est verrouillé arrive en silence."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La Dynamic Island si apre solo mentre Tailscode non è sullo schermo, mai per una chat silenziata e una volta per ogni conclusione. Un iPhone senza Dynamic Island mostra la scheda come banner, e un Apple Watch mostra il nome della chat e come si è conclusa. Una scheda avviata da claude-bridge mentre il telefono è bloccato arriva in silenzio."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island は Tailscode が画面に表示されていないときだけ開き、通知をオフにしたチャットでは開かず、終了ごとに 1 回だけ開きます。Dynamic Island のない iPhone ではバナーとしてカードが表示され、Apple Watch にはチャット名と終了の仕方が表示されます。電話がロックされている間に claude-bridge が開始したカードは、サイレントで届きます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island는 Tailscode가 화면에 없을 때만 열리며, 알림을 끈 채팅에서는 열리지 않고, 완료될 때마다 한 번만 열립니다. Dynamic Island가 없는 iPhone에서는 카드가 배너로 표시되고, Apple Watch에는 채팅 이름과 완료 방식이 표시됩니다. 휴대폰이 잠겨 있는 동안 claude-bridge가 시작한 카드는 소리 없이 도착합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island otwiera się tylko wtedy, gdy Tailscode nie jest na ekranie, nigdy dla wyciszonego czatu i raz na zakończenie. iPhone bez Dynamic Island pokazuje kartę jako baner, a Apple Watch pokazuje nazwę czatu i sposób zakończenia. Karta, którą claude-bridge uruchomi, gdy telefon jest zablokowany, przychodzi po cichu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A Dynamic Island abre somente enquanto o Tailscode não está na tela, nunca para um chat silenciado e uma vez por término. Um iPhone sem Dynamic Island mostra o cartão como um banner, e um Apple Watch mostra o nome do chat e como ele terminou. Um cartão que o claude-bridge inicia com o telefone bloqueado chega em silêncio."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有在 Tailscode 不在屏幕上时灵动岛才会展开，已静音的聊天从不展开，每次结束展开一次。没有灵动岛的 iPhone 会改以横幅显示卡片，Apple Watch 则显示聊天名称和结束方式。手机锁定时由 claude-bridge 发起的卡片会静默送达。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有在 Tailscode 不在畫面上時動態島才會展開，已靜音的聊天從不展開，每次結束展開一次。沒有動態島的 iPhone 會改以橫幅顯示卡片，Apple Watch 則顯示聊天名稱和結束方式。手機鎖定時由 claude-bridge 發起的卡片會靜默送達。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island öppnas bara medan Tailscode inte syns på skärmen, aldrig för en tystad chatt och en gång per avslut. En iPhone utan Dynamic Island visar kortet som en banderoll i stället, och en Apple Watch visar chattens namn och hur den slutade. Ett kort som claude-bridge startar medan telefonen är låst kommer tyst."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island åbner kun, mens Tailscode ikke er på skærmen, aldrig for en chat, du har slået lyden fra, og én gang per afslutning. En iPhone uden Dynamic Island viser kortet som en banner i stedet, og et Apple Watch viser chattens navn og hvordan den endte. Et kort, claude-bridge starter, mens telefonen er låst, kommer lydløst."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island åpner seg bare mens Tailscode ikke er på skjermen, aldri for en chat du har dempet, og én gang per avslutning. En iPhone uten Dynamic Island viser kortet som en banner i stedet, og en Apple Watch viser chattens navn og hvordan den endte. Et kort claude-bridge starter mens telefonen er låst, kommer stille."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island avautuu vain, kun Tailscode ei ole näytöllä, ei koskaan mykistetylle keskustelulle ja kerran per päättyminen. iPhone ilman Dynamic Islandia näyttää kortin sen sijaan bannerina, ja Apple Watch näyttää keskustelun nimen ja sen, miten se päättyi. Kortti, jonka claude-bridge käynnistää puhelimen ollessa lukittuna, saapuu äänettömästi."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island opnast aðeins meðan Tailscode er ekki á skjánum, aldrei fyrir þöggaðan spjall og einu sinni fyrir hvert lok. iPhone án Dynamic Island sýnir spjaldið sem borða í staðinn og Apple Watch sýnir heiti spjallsins og hvernig því lauk. Spjald sem claude-bridge startar meðan síminn er læstur berst hljóðlaust."
           }
         }
       }

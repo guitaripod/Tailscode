@@ -46,6 +46,14 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             MainActor.assumeIsolated { TailscodeShortcuts.updateAppShortcutParameters() }
         }
         Task { await AppActivityController.shared.adoptStanding() }
+        AppActivityController.observeStarts()
+        AppActivityController.observeAuthorization()
+        LiveActivityStartToken.observe()
+        NotificationCenter.default.addObserver(
+            forName: ProAccess.didChange, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { PushRegistrar.rulesChanged() }
+        }
         TurnWaitCenter.shared.start()
         UsageBackgroundRefresh.register()
         UsageBackgroundRefresh.schedule()

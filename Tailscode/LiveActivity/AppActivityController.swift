@@ -89,6 +89,53 @@ final class AppActivityController {
         return true
     }
 
+    /// Conversations whose card the person swiped away or read: what they said about this turn, so
+    /// nothing here opens another for it until the conversation is seen at rest.
+    private(set) var declined: Set<String> = []
+
+    /// The conversation is at rest, as the listing says, so its next turn may have a card again.
+    /// Only the listing says so: a chat's own idle states would clear the mark the moment the
+    /// card was read, and a listing that has not caught up yet would open it again.
+    func rested(_ sessionID: String) {
+        declined.remove(sessionID)
+    }
+
+    /// Opens no card by itself for the conversation until it is at rest.
+    func decline(_ sessionID: String) {
+        declined.insert(sessionID)
+    }
+
+    /// Whether iOS lets the app show Live Activities, as last read off the main thread: the
+    /// person can turn them off for the app in iOS Settings, and a start asked for then is refused
+    /// on every try. Assumed allowed until the first read says otherwise.
+    nonisolated(unsafe) private(set) static var allowed = true
+
+    /// Reads iOS's answer off the main thread and follows it for the life of the process, handing
+    /// the bridges the change so they stop starting cards nobody can see.
+    static func observeAuthorization() {
+        Task.detached(priority: .utility) {
+            let first = ActivityAuthorizationInfo().areActivitiesEnabled
+            await MainActor.run { authorizationChanged(first) }
+            for await enabled in ActivityAuthorizationInfo().activityEnablementUpdates {
+                await MainActor.run { authorizationChanged(enabled) }
+            }
+        }
+    }
+
+    private static func authorizationChanged(_ enabled: Bool) {
+        guard enabled != allowed else { return }
+        allowed = enabled
+        MidgarLog.info("Live Activities \(enabled ? "allowed" : "turned off") in iOS Settings", category: .chat)
+        PushRegistrar.rulesChanged()
+    }
+
+    /// How many cards are live or being asked for: what the cards this device opens by itself for
+    /// turns it did not send are counted against.
+    var liveCount: Int {
+        starting.count
+            + entries.filter { !$0.value.retired && !current($0.key, $0.value).isSettled }.count
+    }
+
     /// Whether the conversation has a card, standing or still being asked for: what it says in the
     /// moment the platform takes to answer is held and said to the card once it exists.
     func follows(_ sessionID: String) -> Bool {
@@ -113,12 +160,20 @@ final class AppActivityController {
     /// foreground, which is why it happens at the send rather than when the server reports the
     /// turn running. The platform is asked off the main thread, so the card exists a moment after
     /// this returns; whatever the conversation says in that moment is held and said to it then.
+    ///
+    /// `startedAt` is when the turn began, for a card opened on a turn that was already running —
+    /// one this device did not send — so its clock tells the turn's age rather than the card's.
     func start(
-        sessionID: String, sessionTitle: String, serverName: String,
-        onPushToken: PushTokenSink? = nil, serverAlerts: Bool = false
+        sessionID: String, sessionTitle: String, serverName: String, profileID: String? = nil,
+        startedAt turnBegan: Date? = nil, onPushToken: PushTokenSink? = nil,
+        serverAlerts: Bool = false
     ) {
         guard AppPreferences.liveActivitiesEnabled else {
             MidgarLog.info("Live Activity disabled in settings", category: .chat)
+            return
+        }
+        guard Self.allowed else {
+            MidgarLog.info("Live Activity turned off for the app in iOS Settings", category: .chat)
             return
         }
         if isTracking(sessionID), var entry = entries[sessionID] {
@@ -147,7 +202,9 @@ final class AppActivityController {
         }
         if !ProAccess.shared.hasProAccess {
             let others = entries.filter { $0.key != sessionID && !$0.value.retired }
-            guard others.allSatisfy({ current($0.key, $0.value).isSettled }) else {
+            guard others.allSatisfy({ current($0.key, $0.value).isSettled }),
+                !starting.keys.contains(where: { $0 != sessionID })
+            else {
                 MidgarLog.info("second concurrent Live Activity gated (free tier)", category: .chat)
                 return
             }
@@ -156,8 +213,8 @@ final class AppActivityController {
         let attributes = ChatActivityAttributes(
             sessionID: sessionID,
             sessionTitle: sessionTitle.isEmpty ? String(localized: "Agent session") : sessionTitle,
-            serverName: serverName)
-        let startedAt = Date()
+            serverName: serverName, profileID: profileID)
+        let startedAt = min(turnBegan ?? Date(), Date())
         let state = Self.liveState(
             LiveActivityReading(detail: .thinking), startedAt: startedAt, toolCount: 0, title: nil)
         let request = CardRequest(
@@ -278,7 +335,10 @@ final class AppActivityController {
             )
         }
         let revived = shown.isSettled
-        let startedAt = revived ? min(reading.startedAt ?? Date(), Date()) : shown.startedAt
+        let startedAt =
+            revived
+            ? min(reading.startedAt ?? Date(), Date())
+            : Self.earlier(shown.startedAt, reading.startedAt)
         let toolCount = revived ? reading.toolCount : max(shown.toolCount, reading.toolCount)
         let state = Self.liveState(
             reading, startedAt: startedAt, toolCount: toolCount, title: entry.title,
@@ -322,6 +382,7 @@ final class AppActivityController {
         guard isTracking(sessionID), var entry = entries[sessionID] else { return }
         if isBeingRead(sessionID) {
             MidgarLog.info("Live Activity read as it ended for \(sessionID)", category: .chat)
+            declined.insert(sessionID)
             dismiss(sessionID, entry)
             return
         }
@@ -369,6 +430,7 @@ final class AppActivityController {
         guard let entry = entries[sessionID] else { return }
         guard entry.retired || current(sessionID, entry).isSettled else { return }
         MidgarLog.info("Live Activity read for \(sessionID)", category: .chat)
+        declined.insert(sessionID)
         dismiss(sessionID, entry)
     }
 
@@ -546,11 +608,25 @@ final class AppActivityController {
             let standing = newestFirst.filter { Self.isStanding($0.platform) }
             guard let kept = standing.first ?? newestFirst.first else { continue }
             extras += found.map(\.activity).filter { $0.id != kept.activity.id }
+            let attributes = kept.activity.attributes
+            let sink = attributes.profileID.flatMap {
+                Self.tokenSink(
+                    profileID: $0, sessionID: sessionID,
+                    title: kept.state.title ?? attributes.sessionTitle)
+            }
             entries[sessionID] = Entry(
                 activity: kept.activity, state: kept.state, card: kept.state,
                 platform: kept.platform, title: kept.state.title, pushedAt: .distantPast,
-                pushToken: kept.pushToken, retired: !Self.isStanding(kept.platform))
-            watch(kept.activity, sessionID: sessionID)
+                pushToken: kept.pushToken, onPushToken: sink,
+                serverAlerts: attributes.profileID.map(Self.serverAlerts(profileID:)) ?? false,
+                retired: !Self.isStanding(kept.platform))
+            watch(kept.activity, sessionID: sessionID, tokens: false)
+            if let sink, let token = kept.pushToken, Self.isStanding(kept.platform),
+                !kept.state.isSettled
+            {
+                hand(token, startedAt: kept.state.startedAt, to: sink, for: sessionID)
+            }
+            if sink != nil, Self.isStanding(kept.platform) { followTokensLater(sessionID) }
             if Self.isStanding(kept.platform), let endedAt = kept.state.endedAt {
                 scheduleRetirement(sessionID, settledAt: endedAt)
             }
@@ -645,7 +721,9 @@ final class AppActivityController {
     /// platform ends it, after which it is nobody's to write to. Every stream is subscribed off
     /// the main thread, because subscribing waits on ActivityKit's own queue while holding a lock
     /// that queue needs to hand an update over, and a main thread caught in that never returns.
-    private func watch(_ activity: Activity<ChatActivityAttributes>, sessionID: String) {
+    private func watch(
+        _ activity: Activity<ChatActivityAttributes>, sessionID: String, tokens: Bool = true
+    ) {
         let card = Card(activity: activity)
         let id = activity.id
         let contents = Task.detached { [weak self] in
@@ -661,7 +739,69 @@ final class AppActivityController {
             }
         }
         entries[sessionID]?.watchers = [contents, lifecycle]
-        followTokens(sessionID)
+        if tokens { followTokens(sessionID) }
+    }
+
+    /// Follows a card's tokens once the launch has settled: a card taken up at launch hands over
+    /// the token it already has at once, and listens for the next only after ActivityKit has
+    /// finished handing the launch's tokens over, which is when subscribing deadlocks its queue.
+    private func followTokensLater(_ sessionID: String) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            self?.followTokens(sessionID)
+        }
+    }
+
+    /// A card ActivityKit just started: one this process asked for, which it already follows, or
+    /// one a server started while the app slept, which is taken up and its token handed back so
+    /// the server can keep it current. A second card for a conversation that has one, a card the
+    /// person turned off, and one past the free tier's single live card are ended at once.
+    func adoptStarted(_ started: StartedCard) async {
+        let activity = started.activity
+        let sessionID = activity.attributes.sessionID
+        var waited = 0
+        while starting[sessionID] != nil, waited < 60 {
+            try? await Task.sleep(for: .milliseconds(500))
+            waited += 1
+        }
+        if let entry = entries[sessionID], entry.activity.id == activity.id { return }
+        let read = await Self.offMain("a started card") {
+            (state: started.activity.content.state, platform: started.activity.activityState,
+             token: started.activity.pushToken.map(Self.hex))
+        }
+        guard Self.isStanding(read.platform) else { return }
+        let standing = entries[sessionID].map { !$0.retired && !current(sessionID, $0).isSettled } ?? false
+        let duplicate = standing || starting[sessionID] != nil
+        let refused =
+            !AppPreferences.liveActivitiesEnabled || !LiveActivitySettings.followsElsewhere
+            || AppPreferences.noticeRules.isMuted(sessionID)
+            || (!ProAccess.shared.hasProAccess
+                && (entries.contains { $0.key != sessionID && !$0.value.retired && !current($0.key, $0.value).isSettled }
+                    || starting.keys.contains { $0 != sessionID }))
+        guard !duplicate, !refused else {
+            MidgarLog.info(
+                "Live Activity a server started for \(sessionID) ended (\(duplicate ? "one stands" : "not wanted"))",
+                category: .chat)
+            let ending = Handles(activities: [activity])
+            Task.detached { await ending.endAll() }
+            return
+        }
+        if let lingering = entries[sessionID] { dismiss(sessionID, lingering) }
+        let title = read.state.title ?? activity.attributes.sessionTitle
+        let sink = activity.attributes.profileID.flatMap {
+            Self.tokenSink(profileID: $0, sessionID: sessionID, title: title)
+        }
+        entries[sessionID] = Entry(
+            activity: activity, state: read.state, card: read.state, platform: read.platform,
+            title: read.state.title, pushedAt: .distantPast, pushToken: read.token,
+            onPushToken: sink,
+            serverAlerts: activity.attributes.profileID.map(Self.serverAlerts(profileID:)) ?? true)
+        watch(activity, sessionID: sessionID, tokens: false)
+        if let sink, let token = read.token {
+            hand(token, startedAt: read.state.startedAt, to: sink, for: sessionID)
+        }
+        if sink != nil { followTokensLater(sessionID) }
+        MidgarLog.info("Live Activity a server started was taken up for \(sessionID)", category: .chat)
     }
 
     /// Listens for the tokens the server needs to reach the card, from the moment there is
@@ -721,6 +861,7 @@ final class AppActivityController {
         entry.platform = state
         entries[sessionID] = entry
         if state == .dismissed {
+            declined.insert(sessionID)
             forget(sessionID)
             return false
         }
@@ -823,6 +964,15 @@ final class AppActivityController {
         return still(a) == still(b)
     }
 
+    /// The turn's start as the transcript records it, when that is earlier than the card's own: a
+    /// card opened on a turn already running starts its clock when it was opened until the
+    /// transcript says when the turn really began. Never more than a day back, which no turn is.
+    private static func earlier(_ shown: Date, _ transcript: Date?) -> Date {
+        guard let transcript, transcript < shown, shown.timeIntervalSince(transcript) < 86_400
+        else { return shown }
+        return transcript
+    }
+
     private static func sameMoment(_ a: Date, _ b: Date) -> Bool {
         abs(a.timeIntervalSince(b)) < 1
     }
@@ -853,7 +1003,7 @@ final class AppActivityController {
         return LiveActivityQuiet.staleDate(moved: moved, now: now, ceiling: staleAfter)
     }
 
-    private nonisolated static func hex(_ token: Data) -> String {
+    nonisolated static func hex(_ token: Data) -> String {
         token.map { String(format: "%02x", $0) }.joined()
     }
 

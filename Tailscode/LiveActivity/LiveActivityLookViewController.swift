@@ -70,8 +70,21 @@ final class LiveActivityLookViewController: UIViewController {
             rows.addArrangedSubview(row)
         }
         stack.addArrangedSubview(rows)
+        stack.setCustomSpacing(Theme.Spacing.xl, after: rows)
+        stack.addArrangedSubview(follow)
         stack.addArrangedSubview(footnote())
     }
+
+    private lazy var follow: LiveActivityFollowRow = {
+        let row = LiveActivityFollowRow()
+        row.onChange = { value in
+            LiveActivitySettings.setFollowsElsewhere(value)
+            HapticEngine.shared.play(.send, strength: AppPreferences.hapticIntensity)
+            MidgarLog.info("Live Activity follows turns started elsewhere: \(value)", category: .ui)
+            PushRegistrar.rulesChanged()
+        }
+        return row
+    }()
 
     private func intro() -> UILabel {
         let label = UILabel()
@@ -98,7 +111,7 @@ final class LiveActivityLookViewController: UIViewController {
         label.textAlignment = .center
         label.text = String(
             localized:
-                "The island opens only while Tailscode is not on screen, never for a chat you muted, and once per ending. An iPhone without a Dynamic Island shows the card as a banner instead, and an Apple Watch shows the chat’s name and how it ended."
+                "The island opens only while Tailscode is not on screen, never for a chat you muted, and once per ending. An iPhone without a Dynamic Island shows the card as a banner instead, and an Apple Watch shows the chat’s name and how it ended. A card claude-bridge starts while the phone is locked arrives silently."
         )
         return label
     }
@@ -138,7 +151,73 @@ final class LiveActivityLookViewController: UIViewController {
         for card in sizeCards { card.setChosen(card.size == size) }
         let ending = LiveActivitySettings.ending
         for row in endingRows { row.setChosen(row.ending == ending) }
+        follow.setOn(LiveActivitySettings.followsElsewhere)
     }
+}
+
+/// The switch for cards on turns this device did not send, with what it covers under it.
+@MainActor
+final class LiveActivityFollowRow: UIView {
+    private let glass = Theme.Glass.view()
+    private let name = UILabel()
+    private let summary = UILabel()
+    private let toggle = UISwitch()
+
+    var onChange: ((Bool) -> Void)?
+
+    init() {
+        super.init(frame: .zero)
+        build()
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    private func build() {
+        glass.layer.cornerRadius = Theme.Radius.card
+        glass.layer.cornerCurve = .continuous
+        glass.clipsToBounds = true
+        glass.isUserInteractionEnabled = false
+        glass.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(glass)
+
+        name.text = LiveActivitySettings.followsElsewhereTitle
+        name.font = Theme.Ramp.font(.rowTitleStrong)
+        name.numberOfLines = 0
+        summary.text = LiveActivitySettings.followsElsewhereExplanation
+        summary.font = Theme.Ramp.font(.panelDetail)
+        summary.textColor = Theme.Color.secondaryLabel
+        summary.numberOfLines = 0
+        toggle.onTintColor = Theme.Color.accent
+        toggle.setContentHuggingPriority(.required, for: .horizontal)
+        toggle.setContentCompressionResistancePriority(.required, for: .horizontal)
+        toggle.addTarget(self, action: #selector(changed), for: .valueChanged)
+        toggle.accessibilityLabel = LiveActivitySettings.followsElsewhereTitle
+
+        let words = UIStackView(arrangedSubviews: [name, summary])
+        words.axis = .vertical
+        words.spacing = Theme.Spacing.xs
+        let row = UIStackView(arrangedSubviews: [words, toggle])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = Theme.Spacing.m
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+
+        NSLayoutConstraint.activate([
+            glass.topAnchor.constraint(equalTo: topAnchor),
+            glass.bottomAnchor.constraint(equalTo: bottomAnchor),
+            glass.leadingAnchor.constraint(equalTo: leadingAnchor),
+            glass.trailingAnchor.constraint(equalTo: trailingAnchor),
+            row.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.m),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Theme.Spacing.m),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Spacing.l),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.l),
+        ])
+    }
+
+    func setOn(_ value: Bool) { toggle.isOn = value }
+
+    @objc private func changed() { onChange?(toggle.isOn) }
 }
 
 /// A Lock Screen card as it will stand, on a dark wallpaper so its own ground reads.

@@ -98,7 +98,8 @@ enum PushRegistrar {
         states.removeValue(forKey: baseURL)
         delivers.removeValue(forKey: baseURL)
         guard let token = UserDefaults.standard.string(forKey: tokenKey) else { return }
-        let registration = DevicePushRegistration(token: token, environment: environment)
+        let registration = DevicePushRegistration(
+            token: token, environment: environment, liveActivity: forgetting)
         Task {
             if (try? await backend.unregisterDeviceToken(registration)) != nil {
                 MidgarLog.info(
@@ -108,7 +109,8 @@ enum PushRegistrar {
     }
 
     private static func unregisterAll(token: String) {
-        let registration = DevicePushRegistration(token: token, environment: environment)
+        let registration = DevicePushRegistration(
+            token: token, environment: environment, liveActivity: forgetting)
         for entry in bridges(skippingAcked: false) {
             let backend = entry.backend
             let name = entry.profile.name
@@ -122,6 +124,12 @@ enum PushRegistrar {
                 }
             }
         }
+    }
+
+    /// What a bridge reads as "forget this installation's start token" when the device leaves it.
+    private static var forgetting: LiveActivityStarter {
+        LiveActivityStarter(
+            token: "", deviceID: LiveActivityDevice.id, profileID: "", profileName: "", follows: false)
     }
 
     private static var environment: String {
@@ -146,8 +154,7 @@ enum PushRegistrar {
 
     private static func upload(_ token: String, skippingAcked: Bool = true) {
         guard AppPreferences.pushAlertsEnabled else { return }
-        let registration = DevicePushRegistration(
-            token: token, environment: environment, rules: AppPreferences.noticeRules.wire())
+        let rules = AppPreferences.noticeRules.wire()
         let bridges = bridges(skippingAcked: skippingAcked)
         guard !bridges.isEmpty else { return }
         MidgarLog.info(
@@ -156,6 +163,9 @@ enum PushRegistrar {
             let backend = entry.backend
             let name = entry.profile.name
             let baseURL = entry.profile.baseURL
+            let registration = DevicePushRegistration(
+                token: token, environment: environment, rules: rules,
+                liveActivity: LiveActivityStartToken.starter(for: entry.profile))
             Task {
                 do {
                     let receipt = try await backend.registerDeviceTokenReceipt(registration)

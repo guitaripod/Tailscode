@@ -305,6 +305,13 @@ final class ChatViewModel {
     /// The card's brief as last read, with what it was read from, so a streamed token that changes
     /// nothing the brief says does not read the turn again.
     var heldCardBrief: CardBriefing?
+    /// The card was opened for a turn this device did not send, on the strength of a listing or
+    /// a running state: if the turn turns out not to have been running, the card is taken down
+    /// rather than settled on an ending that never happened.
+    var cardFollowed = false
+    /// A card was already asked for this turn on the chat on screen, so a refused one is not asked
+    /// for again on every streamed state.
+    var cardFollowTried = false
 
     /// The messages written while a turn was running. Held here rather than handed to the server
     /// precisely so they can still be changed: the next thing you type is the thing you most often

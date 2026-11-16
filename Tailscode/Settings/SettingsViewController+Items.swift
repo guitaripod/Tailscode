@@ -178,6 +178,7 @@ extension SettingsViewController {
             case .liveActivities:
                 AppPreferences.liveActivitiesEnabled = value
                 if !value { AppActivityController.shared.withdrawAll() }
+                PushRegistrar.rulesChanged()
             }
         }
     }

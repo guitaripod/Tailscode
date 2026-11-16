@@ -17,6 +17,9 @@ extension HomeViewController {
             SessionActivity.shared.wakeLiveCards(entries: self.viewModel.entries) {
                 self.viewModel.backend(forProfileID: $0)
             }
+            SessionActivity.shared.followRunning(entries: self.viewModel.entries) {
+                self.viewModel.backend(forProfileID: $0)
+            }
         }
         viewModel.onError = { [weak self] message in
             self?.refreshControl.endRefreshing()

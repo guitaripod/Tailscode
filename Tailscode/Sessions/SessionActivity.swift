@@ -67,6 +67,94 @@ final class SessionActivity {
         }
     }
 
+    /// Opens a card for every conversation the listing says is working while the app is in front —
+    /// a turn sent from a desktop, drained from a queue, run on a schedule or begun by the machine
+    /// itself — so leaving the app leaves every turn in progress on the Lock Screen, and wakes a
+    /// view model to follow each one to its end. Only while cards for turns started elsewhere are
+    /// on; never for a muted chat, and never more than `LiveActivityFollow.limit` standing at once.
+    func followRunning(
+        entries: [SessionEntry], backend: (String) -> (any CodingAgentBackend)?
+    ) {
+        guard UIApplication.shared.applicationState == .active,
+            AppPreferences.liveActivitiesEnabled, LiveActivitySettings.followsElsewhere,
+            AppActivityController.allowed
+        else { return }
+        let cards = AppActivityController.shared
+        for entry in entries where entry.session.isActive != true { cards.rested(entry.session.id) }
+        let running = entries.filter { entry in
+            entry.session.archived != true && !entry.session.isSubagent
+                && !entry.profileID.hasPrefix(DemoWorld.profilePrefix)
+                && turnRunning(entry.session)
+        }
+        rewatch(running, following: cards, backend: backend)
+        guard !running.isEmpty else { return }
+        let candidates = running.map { entry in
+            LiveActivityFollow.Candidate(
+                sessionID: entry.session.id, movedAt: entry.session.updatedAt,
+                waitsOnYou: status(for: entry.session.id) == .awaitingApproval)
+        }
+        let following = Set(running.map(\.session.id).filter { cards.follows($0) })
+            .union(cards.declined)
+        let chosen = LiveActivityFollow.choose(
+            candidates, following: following, muted: AppPreferences.noticeRules.muted,
+            standing: cards.liveCount,
+            limit: ProAccess.shared.hasProAccess ? LiveActivityFollow.limit : 1)
+        for sessionID in chosen {
+            guard let entry = running.first(where: { $0.session.id == sessionID }),
+                let backend = backend(entry.profileID)
+            else { continue }
+            let title =
+                AgentSession.isPlaceholderTitle(entry.session.title)
+                ? String(localized: "Agent session") : entry.session.title
+            cards.start(
+                sessionID: sessionID, sessionTitle: title, serverName: entry.profileName,
+                profileID: entry.profileID,
+                onPushToken: AppActivityController.tokenSink(
+                    backend: backend, sessionID: sessionID, title: title),
+                serverAlerts: AppActivityController.serverAlerts(profileID: entry.profileID))
+            MidgarLog.info("Live Activity opened for a turn working elsewhere \(sessionID)", category: .chat)
+            if let held = retained[sessionID] {
+                held.cardFollowed = true
+                continue
+            }
+            let viewModel = ChatViewModel(
+                backend: backend, session: entry.session, contextID: entry.profileID,
+                serverName: entry.profileName)
+            viewModel.isBound = false
+            viewModel.cardFollowed = true
+            retained[sessionID] = viewModel
+            viewModel.start()
+        }
+    }
+
+    /// Whether a conversation has a turn running, as well as this device can tell: first-hand for
+    /// one it streams, and from the listing otherwise — active with no work carried in the
+    /// background and no agents out, which is how a listing reads a turn rather than work left
+    /// running between turns.
+    private func turnRunning(_ session: AgentSession) -> Bool {
+        if retained[session.id] != nil { return status(for: session.id) == .running }
+        return session.isActive == true && (session.backgroundWork?.tasks ?? 0) == 0
+            && (session.activeAgents ?? 0) == 0
+    }
+
+    /// A card that is live for a running turn nothing here is watching any more — its stream gave
+    /// up — gets a view model again, so it still settles when the turn ends.
+    private func rewatch(
+        _ running: [SessionEntry], following cards: AppActivityController,
+        backend: (String) -> (any CodingAgentBackend)?
+    ) {
+        for entry in running where retained[entry.session.id] == nil && cards.isTracking(entry.session.id) {
+            guard let backend = backend(entry.profileID) else { continue }
+            let viewModel = ChatViewModel(
+                backend: backend, session: entry.session, contextID: entry.profileID,
+                serverName: entry.profileName)
+            viewModel.isBound = false
+            retained[entry.session.id] = viewModel
+            MidgarLog.info("live card rewatch session=\(entry.session.id)", category: .chat)
+            viewModel.start()
+        }
+    }
+
     /// Wakes a view model for every conversation whose Live Activity a previous process left live,
     /// so the turn it follows is watched to its end and the card settles when it does — rather than
     /// standing at whatever it last said until the platform ends it hours later. Each is woken once
