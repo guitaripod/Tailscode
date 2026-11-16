@@ -38,6 +38,10 @@ enum UsageBackgroundRefresh {
     /// `BGAppRefreshTask` predates Sendable but `setTaskCompleted` is documented
     /// thread-safe, so handing it into the MainActor task is fine.
     private static func handle(_ task: BGAppRefreshTask) {
+        guard LockedBoot.isOpen else {
+            task.setTaskCompleted(success: false)
+            return
+        }
         schedule()
         nonisolated(unsafe) let task = task
         let work = Task { @MainActor in

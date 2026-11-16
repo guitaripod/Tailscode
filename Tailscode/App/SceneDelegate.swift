@@ -14,6 +14,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         options connectionOptions: UIScene.ConnectionOptions
     ) {
         guard let windowScene = scene as? UIWindowScene else { return }
+        LockedBoot.open(forAWindow: true)
         let window = TouchReportingWindow(windowScene: windowScene)
         if WatchScene.wants(connectionOptions, session: session) {
             installWatch(in: window)

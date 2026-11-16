@@ -10,6 +10,16 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     ) -> Bool {
         TailscodeLogging.configure()
         MidgarLog.info("didFinishLaunching", category: .lifecycle)
+        UNUserNotificationCenter.current().delegate = NotificationRouter.shared
+        UsageBackgroundRefresh.register()
+        LockedBoot.begin(application) { [self] in boot(application) }
+        return true
+    }
+
+    /// Everything a launch does that reads what the app has saved, which `LockedBoot` holds back
+    /// while a restarted phone has not been unlocked. What iOS wants in place before a launch
+    /// returns (the notification delegate, the background task's registration) is not here.
+    private func boot(_ application: UIApplication) {
         let lockGuard = BackgroundTaskLockGuard(application: application)
         UsageWidgetStore.installSuspensionGuard(lockGuard)
         #if DEBUG
@@ -27,7 +37,6 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         TailscodeMidgar.shared.start()
         ProAccess.shared.start()
         GameCenterCoordinator.shared.startWhenIdle()
-        UNUserNotificationCenter.current().delegate = NotificationRouter.shared
         NotificationManager.registerCategories()
         NotificationManager.syncBadge()
         #if DEBUG
@@ -55,10 +64,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             MainActor.assumeIsolated { PushRegistrar.rulesChanged() }
         }
         TurnWaitCenter.shared.start()
-        UsageBackgroundRefresh.register()
         UsageBackgroundRefresh.schedule()
         application.registerForRemoteNotifications()
-        return true
     }
 
     /// The system relaunched or resumed this process to deliver what a background `URLSession`
@@ -69,7 +76,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
         completionHandler: @escaping () -> Void
     ) {
-        guard identifier == TurnWaitCenter.sessionIdentifier else {
+        guard identifier == TurnWaitCenter.sessionIdentifier, LockedBoot.isOpen else {
             completionHandler()
             return
         }
@@ -99,6 +106,10 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
+        guard LockedBoot.isOpen else {
+            completionHandler(.noData)
+            return
+        }
         let applied = UsagePushPayload.apply(userInfo: userInfo)
         MidgarLog.info(
             "push: silent notification applied \(applied) usage snapshot(s)", category: .connection)
