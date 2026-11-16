@@ -20,11 +20,11 @@ import UserNotifications
 final class TurnWaitCenter {
     static let shared = TurnWaitCenter()
 
-    static let sessionIdentifier = "com.guitaripod.tailscode.turnwait"
-    private static let maxConcurrentWaits = 8
+    nonisolated static let sessionIdentifier = "com.guitaripod.tailscode.turnwait"
+    nonisolated private static let maxConcurrentWaits = 8
     /// Comfortably past the bridges' own three-hour hold, so a `running` answer is read as the cap
     /// having been hit server-side rather than this session giving up first.
-    private static let resourceTimeout: TimeInterval = 3 * 60 * 60 + 5 * 60
+    nonisolated private static let resourceTimeout: TimeInterval = 3 * 60 * 60 + 5 * 60
 
     private struct TaskInfo: Codable {
         var profileID: String
@@ -48,14 +48,21 @@ final class TurnWaitCenter {
     }
 
     private let sessionDelegate = TurnWaitSessionDelegate()
-    private lazy var session: URLSession = {
-        let config = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
+    /// The background session, built off the main thread: making one waits on `nsurlsessiond`,
+    /// which can take longer than the launch watchdog's 30 seconds while the phone is still booting.
+    private lazy var session: Task<URLSession, Never> = {
+        let delegate = sessionDelegate
+        return Task.detached(priority: .userInitiated) { Self.makeSession(delegate: delegate) }
+    }()
+
+    nonisolated private static func makeSession(delegate: TurnWaitSessionDelegate) -> URLSession {
+        let config = URLSessionConfiguration.background(withIdentifier: sessionIdentifier)
         config.sessionSendsLaunchEvents = true
         config.isDiscretionary = false
-        config.httpMaximumConnectionsPerHost = Self.maxConcurrentWaits
-        config.timeoutIntervalForResource = Self.resourceTimeout
-        return URLSession(configuration: config, delegate: sessionDelegate, delegateQueue: nil)
-    }()
+        config.httpMaximumConnectionsPerHost = maxConcurrentWaits
+        config.timeoutIntervalForResource = resourceTimeout
+        return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+    }
 
     private var armed: [String: Armed] = [:]
     /// Keys claimed between the synchronous decision to arm and `armAsync` actually storing an
@@ -87,7 +94,7 @@ final class TurnWaitCenter {
     /// Materializes the background session so its delegate reconnects to whatever the daemon is
     /// still holding for `sessionIdentifier` — an ordinary launch with waits still in flight, or
     /// one the system caused by delivering an answer. Idempotent: the session is a `lazy var`, so
-    /// this only ever builds it once per process.
+    /// this only ever starts building it once per process, and never blocks the caller.
     func start() {
         _ = session
     }
@@ -179,8 +186,8 @@ final class TurnWaitCenter {
             let request = try? await backend.turnWaitRequest(
                 for: sessionID, until: Self.waitsForSettledWork ? .workSettles : .turnEnds)
         else { return }
+        let session = await session.value
         guard armed[key] == nil else { return }
-        start()
         let kind =
             ConnectionController.shared.profiles.first { $0.id == profileID }?.backend.rawValue
             ?? "unknown"
