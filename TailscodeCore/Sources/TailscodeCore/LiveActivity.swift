@@ -146,10 +146,15 @@ public struct LiveActivityReading: Sendable, Equatable {
     /// The head the turn has drawn so far, as counts; nil for a reading made from an outcome this
     /// device decided rather than from a transcript.
     public let glyph: NeuralGlyphWire?
+    /// The prompt the turn answers, by its id: which turn this is, said without a clock. A card
+    /// settled on one prompt and read again on another is following a new turn, however the
+    /// phone's clock and the server's disagree about when either happened.
+    public let prompt: String?
 
     public init(
         detail: LiveActivityDetail, tool: String? = nil, toolCount: Int = 0, background: Int = 0,
-        startedAt: Date? = nil, endedAt: Date? = nil, glyph: NeuralGlyphWire? = nil
+        startedAt: Date? = nil, endedAt: Date? = nil, glyph: NeuralGlyphWire? = nil,
+        prompt: String? = nil
     ) {
         self.detail = detail
         self.tool = tool
@@ -158,6 +163,7 @@ public struct LiveActivityReading: Sendable, Equatable {
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.glyph = glyph
+        self.prompt = prompt
     }
 
     public var line: String { detail.line(tool: tool, toolCount: toolCount, background: background) }
@@ -180,12 +186,14 @@ public struct LiveActivityReading: Sendable, Equatable {
         let tool = (calls.last { $0.status == .running } ?? calls.last)?.name
         return LiveActivityReading(
             detail: detail, tool: tool, toolCount: calls.count, startedAt: turnStart(in: state),
-            glyph: glyph(in: state, activity: ActivityKind.inFlight(in: state)))
+            glyph: glyph(in: state, activity: ActivityKind.inFlight(in: state)),
+            prompt: turnPrompt(in: state))
     }
 
     /// How a turn that has just ended is remembered. A question it left waiting outranks
-    /// everything, because the turn ended in order to ask it; then a failure, a turn the machine
-    /// cut off, and a turn that came back with nothing — each of which reads as a finished one if
+    /// everything, because the turn ended in order to ask it; then a turn somebody stopped by
+    /// hand, on any machine, which is no news to them; then a failure, a turn the machine cut
+    /// off, and a turn that came back with nothing — each of which reads as a finished one if
     /// nobody says otherwise.
     public static func settled(from state: ConversationState) -> LiveActivityReading {
         let answer = turnAnswer(in: state)
@@ -194,6 +202,8 @@ public struct LiveActivityReading: Sendable, Equatable {
             detail = .question
         } else if !state.pendingPermissions.isEmpty {
             detail = .approval
+        } else if answer?.isHaltedByHand == true {
+            detail = .cancelled
         } else if state.lastFailure != nil {
             detail = .failed
         } else if state.interruption != nil {
@@ -207,7 +217,8 @@ public struct LiveActivityReading: Sendable, Equatable {
             detail: detail, toolCount: turnCalls(in: state).count,
             background: state.backgroundWork?.tasks ?? 0, endedAt: answer?.completedAt,
             glyph: glyph(
-                in: state, activity: ActivityKind.inFlight(in: state), ending: ending(of: detail)))
+                in: state, activity: ActivityKind.inFlight(in: state), ending: ending(of: detail)),
+            prompt: turnPrompt(in: state))
     }
 
     /// The head the latest turn leaves, read from the turn alone so a streamed token costs the
@@ -276,6 +287,11 @@ public struct LiveActivityReading: Sendable, Equatable {
             if message.role == .assistant, message.completedAt == nil { opened = message.createdAt }
         }
         return opened
+    }
+
+    /// The id of the last thing the person said, which names the turn answering it.
+    static func turnPrompt(in state: ConversationState) -> String? {
+        state.messages.last { $0.role == .user }?.id
     }
 
     /// The latest turn's answer, or nil when the person spoke last.

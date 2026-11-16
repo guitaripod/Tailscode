@@ -171,6 +171,28 @@ struct LiveActivityTests {
         #expect(reading.detail.phase == "approval")
     }
 
+    @Test("A turn somebody stopped, on any machine, settles as stopped and never as done")
+    func stoppedByHand() {
+        let stopped = LiveActivityReading.settled(
+            from: Self.state(
+                .idle,
+                [Self.prompt(), Self.answer([Self.call("a", "Bash", .completed)], finish: "aborted")]))
+        #expect(stopped.detail == .cancelled)
+        let finished = LiveActivityReading.settled(
+            from: Self.state(
+                .idle, [Self.prompt(), Self.answer([Self.text("done")], finish: "stop")]))
+        #expect(finished.detail == .finished)
+    }
+
+    @Test("A reading names its turn by the prompt it answers, live and settled alike")
+    func turnIsNamedByItsPrompt() {
+        let first = [Self.prompt("u1"), Self.answer([Self.text("one")])]
+        #expect(LiveActivityReading.settled(from: Self.state(.idle, first)).prompt == "u1")
+        let next = first + [Self.prompt("u2")]
+        #expect(LiveActivityReading.live(in: Self.state(.running, next)).prompt == "u2")
+        #expect(LiveActivityReading.live(in: Self.state(.running, [])).prompt == nil)
+    }
+
     @Test("A failure, a cut-off and an empty answer each read as what they were")
     func endingsThatAreNotDone() {
         var failing = Self.state(.idle, [Self.prompt(), Self.answer([Self.text("partial")])])
