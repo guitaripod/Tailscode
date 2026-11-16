@@ -183,8 +183,15 @@ struct LockScreenCard: View {
                 StandardCard(model: model)
             }
             .frame(height: Self.largeHeight - Self.largeMargin * 2, alignment: .top)
-            .clipped()
+            .mask { Self.foot }
         }
+    }
+
+    /// Cuts only what a level spills below the tile's foot: the orb's rainbow and glow reach past
+    /// its frame into the margins, and a plain clip would shave them off the side and the top.
+    private static var foot: some View {
+        Rectangle()
+            .padding(EdgeInsets(top: -largeMargin, leading: -margin, bottom: 0, trailing: -margin))
     }
 }
 
