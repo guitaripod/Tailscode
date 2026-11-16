@@ -89,6 +89,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     private var accessoryToAttach: NSLayoutConstraint?
     private var accessoryToBar: NSLayoutConstraint?
     private let heatLine = CAGradientLayer()
+    private let strike = StrikeLine()
     private var lastMeasuredWidth: CGFloat = 0
     private let auraHost = UIView()
     private lazy var aura = UltracodeAura(around: auraHost, cornerRadius: 23)
@@ -263,6 +264,8 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         heatLine.endPoint = CGPoint(x: 1, y: 0.5)
         heatLine.isHidden = true
         layer.addSublayer(heatLine)
+        layer.addSublayer(strike.layer)
+        strike.wear(traitCollection)
 
         let focusTap = UITapGestureRecognizer(target: self, action: #selector(focusInput))
         focusTap.cancelsTouchesInView = false
@@ -271,6 +274,8 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
         registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: ComposerView, _) in
             view.enhanceBadge.layer.borderColor = Theme.Color.background.cgColor
+            view.strike.wear(view.traitCollection)
+            view.refreshStrike(animated: false)
         }
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
             (view: ComposerView, _) in
@@ -338,6 +343,15 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         ]
         heatLine.isHidden = false
         setNeedsLayout()
+        refreshStrike(animated: false)
+    }
+
+    /// The box's edge is struck while it holds the keyboard, unless a hot level's line already
+    /// has that edge.
+    private func refreshStrike(animated: Bool) {
+        strike.set(
+            struck: textView.isFirstResponder && heatColor == nil,
+            animated: animated && !UIAccessibility.isReduceMotionEnabled)
     }
 
     @objc private func focusInput() { textView.becomeFirstResponder() }
@@ -397,6 +411,10 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         heatLine.frame = CGRect(
             x: barFrame.minX + 26, y: barFrame.minY, width: max(0, barFrame.width - 52), height: 1.5)
         CATransaction.commit()
+        strike.place(
+            CGRect(
+                x: barFrame.minX + 26, y: barFrame.minY, width: max(0, barFrame.width - 52),
+                height: 1.5))
         if textView.bounds.width != lastMeasuredWidth {
             updateHeight()
         }
@@ -407,7 +425,12 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     }
 
     func textViewDidBeginEditing(_ textView: UITextView) {
+        refreshStrike(animated: true)
         delegate?.composerDidBeginEditing()
+    }
+
+    func textViewDidEndEditing(_ textView: UITextView) {
+        refreshStrike(animated: true)
     }
 
     func textView(

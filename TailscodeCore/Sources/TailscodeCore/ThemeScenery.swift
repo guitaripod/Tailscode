@@ -10,8 +10,8 @@ import Foundation
 /// own meaning: a lit blade is the rule that was already the accent, and the scan lines lie on
 /// the cards that were already the identity colour.
 ///
-/// A theme with scenery is only whole where its scenery is drawn, so a client that cannot draw it
-/// does not offer the theme (`AppTheme.all`).
+/// A theme with scenery is only whole where its scenery is drawn, so it joins `AppTheme.all` when
+/// every client draws it and not before.
 public struct Scenery: Equatable, Sendable {
     public enum Sky: Equatable, Sendable {
         case stars(StarField)
@@ -117,7 +117,9 @@ public struct StarField: Equatable, Sendable {
     }
 
     /// One layer as a picture a client lays as a repeating background. A star that crosses the
-    /// tile's edge is drawn again on the far side, so the tile meets itself without a seam.
+    /// tile's edge is drawn again on the far side, so the tile meets itself without a seam. A
+    /// client that draws for itself takes `stars(in:)` instead and lights each one as its own
+    /// disc, which needs no picture kept and is sharp at any density.
     public func bitmap(_ layer: Layer) -> SceneryBitmap {
         var canvas = SceneryCanvas(side: layer.tile)
         for star in stars(in: layer) {

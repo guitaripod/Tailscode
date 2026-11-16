@@ -127,6 +127,7 @@ SHOTS=(
   "widgets-store|--demo --widget-preview-store||6"
   "08-usage|--demo --usage||7"
   "09-chats|--demo|TAILSCODE_OPEN_CHATS=1|7"
+  "theme|--demo|TAILSCODE_SETTINGS_SECTION=theme TAILSCODE_HIDE_DEMO_BADGE=1|8"
   "02-dial|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=pick:claude-opus-4-8+level:xhigh+pins+star:claude-haiku-4-5 TAILSCODE_OPEN_MODELS=1 TAILSCODE_MODELS_DELAY=12|17"
   "10-models|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_OPEN_MODELS=1|9"
   "11-compaction|--demo|TAILSCODE_OPEN_SESSION=demo-c4|9"

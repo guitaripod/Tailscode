@@ -176,6 +176,7 @@ enum WorkflowCardView {
         let card = GroundView(
             around: body, cornerRadius: MacTheme.Radius.control,
             fill: MacTheme.Color.subagentBackground)
+        ScanLinesView.install(in: card, slot: \.accent, cornerRadius: MacTheme.Radius.control)
         guard let run else {
             body.addArrangedSubview(
                 RowKit.label(

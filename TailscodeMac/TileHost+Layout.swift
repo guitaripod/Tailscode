@@ -46,7 +46,10 @@ extension TileHost {
                 continue
             }
             let frame = NSRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height)
-            if shell.frame != frame { shell.frame = frame }
+            if shell.frame != frame {
+                shell.frame = frame
+                panes[id]?.sky.needsDisplay = true
+            }
             if shell.isHidden { shell.isHidden = false }
         }
         placeDividers(placement)

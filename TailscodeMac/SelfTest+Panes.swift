@@ -220,6 +220,7 @@ extension SelfTest {
                 == CascadeTint.hex(MacTheme.Color.accent),
             "the wave leads with an accent the tokens do not know")
         checks += 1
+        checks += try checkScenery()
         return checks
     }
 

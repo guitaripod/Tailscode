@@ -149,6 +149,9 @@ extension TranscriptViewController {
         column.translatesAutoresizingMaskIntoConstraints = false
 
         let card = MacTheme.glass(around: column, cornerRadius: MacTheme.Radius.card)
+        let strike = StrikeLineView()
+        strike.install(on: column, inset: MacTheme.Radius.card)
+        composer.onFocusChanged = { [weak strike] focused in strike?.set(focused: focused) }
         let band = MacTheme.glass(around: statusBand, cornerRadius: MacTheme.Radius.card)
         band.isHidden = true
         bandGlass = band

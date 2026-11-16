@@ -32,6 +32,7 @@ targetTemplates:
       - path: Tailscode/Support/DialTour.swift
       - path: Shared/Midgar
       - path: Shared/Neural
+      - path: Shared/Scenery
       - path: Resources/Neural/ntex
         type: folder
         buildPhase: resources
@@ -128,6 +129,7 @@ targets:
       - path: TailscodeWidget/LiveActivityIsland.swift
       - path: Shared/Midgar
       - path: Shared/Neural
+      - path: Shared/Scenery
       - path: Resources/Neural/ntex
         type: folder
         buildPhase: resources

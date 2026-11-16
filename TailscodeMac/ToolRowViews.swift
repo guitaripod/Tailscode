@@ -587,6 +587,8 @@ enum SubagentRowView {
             let card = GroundView(
                 around: body, cornerRadius: CGFloat(ChatChrome.Radius.card),
                 fill: MacTheme.Color.subagentBackground)
+            ScanLinesView.install(
+                in: card, slot: \.info, cornerRadius: CGFloat(ChatChrome.Radius.card))
             guard let context else { return RowKit.inset(card, leading: 26) }
             if let rows = context.subagentRows[call.id] {
                 if rows.isEmpty {

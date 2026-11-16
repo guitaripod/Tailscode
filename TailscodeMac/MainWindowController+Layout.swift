@@ -53,6 +53,7 @@ extension MainWindowController {
         let transcriptItem = NSSplitViewItem(viewController: splitPanes)
         transcriptItem.minimumThickness = 240
         contentSplit.addSplitViewItem(transcriptItem)
+        horizonSuns.install(over: splitPanes.view)
         #if !TAILSCODE_MAS
             let terminal = NSSplitViewItem(viewController: terminalPane)
             terminal.minimumThickness = 120

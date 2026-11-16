@@ -9,6 +9,7 @@ final class ChatViewController: UIViewController {
 
     let viewModel: ChatViewModel
     var collectionView: UICollectionView!
+    let skyView = SkyView()
     var transcriptBottom: NSLayoutConstraint!
     var dataSource: UICollectionViewDiffableDataSource<Section, String>!
     let composer = ComposerView()
@@ -183,6 +184,7 @@ final class ChatViewController: UIViewController {
     var streamingActivityID: String?
     var expandedAgentGroups: Set<String> = []
     let navTitleStack = UIStackView()
+    let horizonSuns = HorizonSunsView()
     /// What the turn is doing, in the same symbol and the same motion the desks use — a terminal
     /// while a shell runs, a raised hand while it waits on you. A bare spinner said only that
     /// something was happening, which is the one thing the reader could already see.

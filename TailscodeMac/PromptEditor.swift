@@ -324,6 +324,13 @@ final class PromptEditor: NSView {
 
     var hasFocus: Bool { window?.firstResponder === textView }
 
+    /// Told when the box takes the keyboard and when it gives it up, for the edge a theme
+    /// strikes while it holds it.
+    var onFocusChanged: ((Bool) -> Void)? {
+        get { textView.onFocusChanged }
+        set { textView.onFocusChanged = newValue }
+    }
+
     /// Whether an input method is still composing in the box — a Japanese or Chinese candidate
     /// open, a Korean syllable not yet committed. Return, Escape, Tab and the arrows belong to the
     /// input method until then: a Return that sent the message instead of committing the
@@ -637,11 +644,20 @@ final class FocusingField: NSView {
 final class PastingTextView: NSTextView {
     var onPaste: (() -> Bool)?
     var onPointerFocus: (() -> Void)?
+    /// Told when the box takes the keyboard and when it gives it up.
+    var onFocusChanged: ((Bool) -> Void)?
 
     override func becomeFirstResponder() -> Bool {
         let took = super.becomeFirstResponder()
         if took, NSApp.currentEvent?.type == .leftMouseDown { onPointerFocus?() }
+        if took { onFocusChanged?(true) }
         return took
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let gave = super.resignFirstResponder()
+        if gave { onFocusChanged?(false) }
+        return gave
     }
 
     override func paste(_ sender: Any?) {

@@ -85,8 +85,22 @@ extension ChatViewController {
         navTitleStack.spacing = 0
         navTitleStack.isAccessibilityElement = true
         navTitleStack.accessibilityTraits = .header
+        installHorizonSuns()
         navigationItem.titleView = navTitleStack
         refreshNavAccessibility()
+    }
+
+    /// The suns stand behind the middle of the title, on the bar's lower edge: half a bar below
+    /// the title's own middle, wherever the title's height puts its foot. A phone's bar has no
+    /// stretch of its own to give them, its two ends being buttons, and the title's ink reads
+    /// on a sun as it reads on the sand.
+    private func installHorizonSuns() {
+        horizonSuns.translatesAutoresizingMaskIntoConstraints = false
+        navTitleStack.insertSubview(horizonSuns, at: 0)
+        NSLayoutConstraint.activate([
+            horizonSuns.centerXAnchor.constraint(equalTo: navTitleStack.centerXAnchor),
+            horizonSuns.bottomAnchor.constraint(equalTo: navTitleStack.centerYAnchor, constant: 22),
+        ])
     }
 
     func refreshNavAccessibility() {

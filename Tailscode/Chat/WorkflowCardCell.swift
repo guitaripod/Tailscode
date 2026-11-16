@@ -16,7 +16,8 @@ final class WorkflowCardCell: UICollectionViewCell {
     static let reuseID = "WorkflowCardCell"
 
     private let container = UIView()
-    private let rail = UIView()
+    private let rail = BladeRailView()
+    private let scanLines = ScanLinesView()
     private let iconView = UIImageView()
     private let titleLabel = UILabel()
     private let headlineLabel = UILabel()
@@ -76,8 +77,10 @@ final class WorkflowCardCell: UICollectionViewCell {
         glass.isUserInteractionEnabled = false
         glass.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(glass)
+        scanLines.install(in: container, above: glass)
 
-        rail.backgroundColor = Theme.Color.accent
+        rail.tone = Theme.Color.accent
+        scanLines.tone = rail.tone
         rail.translatesAutoresizingMaskIntoConstraints = false
 
         iconView.image = UIImage(
@@ -267,7 +270,8 @@ final class WorkflowCardCell: UICollectionViewCell {
     private func wearEnding(of run: WorkflowRun) {
         let icon = run.activityIcon
         mark.show(icon, spoken: nil)
-        rail.backgroundColor = run.isLive ? Theme.Color.accent : icon.tone.color
+        rail.tone = run.isLive ? Theme.Color.accent : icon.tone.color
+        scanLines.tone = rail.tone
         let ended = icon.tone == .danger ? Theme.Color.danger : Theme.Color.secondaryLabel
         headlineLabel.textColor = run.isLive ? Theme.Color.accent : ended
     }

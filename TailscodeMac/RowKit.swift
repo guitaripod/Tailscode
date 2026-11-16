@@ -221,9 +221,38 @@ enum RowKit {
     /// without it. Drawing the ground asks the token again every time, which is the only moment
     /// the answer is actually known.
     final class Ground: NSView {
-        var fill: NSColor?
+        var fill: NSColor? {
+            didSet { light() }
+        }
         var stroke: NSColor?
         var radius: CGFloat = 0
+        /// Whether this ground is a signal drawn as a bar: the rule beside a prompt. Under a
+        /// theme that lights its blades such a bar is a core lifted toward white inside its own
+        /// colour's light, and under any other it is the plain bar it always was.
+        var blade = false {
+            didSet { light() }
+        }
+        private var lit = false
+
+        private func light() {
+            let glow = blade ? (scenery?.bladeGlow ?? 0) : 0
+            guard glow > 0, let fill else {
+                if lit { shadow = nil }
+                lit = false
+                return
+            }
+            lit = true
+            wantsLayer = true
+            layer?.masksToBounds = false
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                let spill = NSShadow()
+                spill.shadowColor = (fill.usingColorSpace(.sRGB) ?? fill).withAlphaComponent(0.95)
+                spill.shadowBlurRadius = CGFloat(glow) * 0.6
+                spill.shadowOffset = .zero
+                shadow = spill
+            }
+            needsDisplay = true
+        }
 
         override init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
@@ -235,6 +264,7 @@ enum RowKit {
 
         override func viewDidChangeEffectiveAppearance() {
             super.viewDidChangeEffectiveAppearance()
+            light()
             needsDisplay = true
         }
 
@@ -243,7 +273,8 @@ enum RowKit {
             let path = NSBezierPath(
                 roundedRect: bounds.insetBy(dx: inset, dy: inset), xRadius: radius, yRadius: radius)
             if let fill {
-                fill.setFill()
+                let core = lit ? fill.usingColorSpace(.sRGB)?.blended(withFraction: 0.55, of: .white) : nil
+                (core ?? fill).setFill()
                 path.fill()
             }
             if let stroke {

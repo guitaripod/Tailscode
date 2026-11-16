@@ -267,6 +267,7 @@ final class TranscriptViewController: NSViewController {
     var answeringQuestions: Set<String> = []
     var findMatches: [Int] = []
     var findCursor = 0
+    let sky = SkyView()
     var highlightedView: NSView?
     /// What the highlighted row's own layer said before the mark was written over it. A row view is
     /// often the card itself — a code block's ground and its corner, a seam's border — so clearing
@@ -309,6 +310,7 @@ final class TranscriptViewController: NSViewController {
         configureCanvas()
         configureScroll()
         container.addSubview(scrollView)
+        sky.install(under: container)
 
         emptyLabel.stringValue = Localized.text("Pick a conversation")
         emptyLabel.font = MacTheme.Ramp.font(.panelLabel)

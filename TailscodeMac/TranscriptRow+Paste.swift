@@ -63,6 +63,7 @@ extension TranscriptRow {
 
         let rule = RowKit.Ground(frame: .zero)
         rule.fill = MacTheme.Color.accent
+        rule.blade = true
         let row = PromptRow(messageID: messageID, text: paste.text, context: context)
         row.addSubview(rule)
         row.addSubview(fold)

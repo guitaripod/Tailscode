@@ -10,7 +10,7 @@ extension ChatViewController {
         config.backgroundColor = .clear
         let layout = TranscriptLayout(config: config)
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
-        collectionView.backgroundColor = Theme.Color.background
+        collectionView.backgroundColor = Theme.Color.transcriptGround
         collectionView.keyboardDismissMode = .interactive
         collectionView.alwaysBounceVertical = true
         collectionView.allowsSelection = false
@@ -91,6 +91,14 @@ extension ChatViewController {
             QueuePausedCell.self, forCellWithReuseIdentifier: QueuePausedCell.reuseID)
 
         collectionView.translatesAutoresizingMaskIntoConstraints = false
+        skyView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(skyView)
+        NSLayoutConstraint.activate([
+            skyView.topAnchor.constraint(equalTo: view.topAnchor),
+            skyView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            skyView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            skyView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
         view.addSubview(collectionView)
         composerAccessories.onHeightChange = { [weak self] in self?.updateTranscriptInsets() }
         contentSizeWatch = collectionView.observe(\.contentSize, options: [.old, .new]) {

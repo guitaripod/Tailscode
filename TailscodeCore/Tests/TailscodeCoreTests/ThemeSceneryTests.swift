@@ -189,19 +189,11 @@ import Testing
         #expect(AppTheme.outerRim.dark.corrected().scenery == night)
     }
 
-    /// A theme with scenery is offered only where its scenery is drawn, and nothing that is
-    /// offered everywhere may depend on one.
-    @Test func onlyTheDeskThatDrawsItOffersIt() {
-        for theme in AppTheme.everywhere {
-            #expect(theme.dark.scenery == nil && theme.light.scenery == nil)
-        }
-        #expect(AppTheme.linuxFirst.allSatisfy { $0.dark.scenery != nil || $0.light.scenery != nil })
-        #if os(Linux)
+    /// A theme with scenery is in the catalog every client reads, which is a promise that
+    /// every client draws it; the capability registry is where a client that does not says so.
+    @Test func theCatalogOffersItEverywhere() {
         #expect(AppTheme.all.contains(.outerRim))
         #expect(AppTheme.named("outerrim") == .outerRim)
-        #else
-        #expect(!AppTheme.all.contains(.outerRim))
-        #expect(AppTheme.named("outerrim") == AppTheme.fallback)
-        #endif
+        #expect(AppTheme.all.filter { $0.dark.scenery != nil || $0.light.scenery != nil } == [.outerRim])
     }
 }

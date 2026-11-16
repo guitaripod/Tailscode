@@ -45,6 +45,29 @@ final class ThemePickerViewController: UIViewController {
         }
     }
 
+    private var showedChosen = false
+
+    override func viewIsAppearing(_ animated: Bool) {
+        super.viewIsAppearing(animated)
+        guard !showedChosen else { return }
+        showedChosen = true
+        showChosen()
+    }
+
+    /// The list opens with the theme being worn on screen. The catalog is longer than a phone
+    /// is tall, and a picker that opens with its own answer below the fold makes the person go
+    /// looking for what they already chose. A chosen card that is already in view moves nothing.
+    private func showChosen() {
+        let chosen: Item =
+            ThemeSelection.usesSystemPalette ? .system : .theme(ThemeSelection.themeID)
+        guard let path = dataSource.indexPath(for: chosen) else { return }
+        collectionView.layoutIfNeeded()
+        guard let frame = collectionView.layoutAttributesForItem(at: path)?.frame else { return }
+        let seen = collectionView.bounds.inset(by: collectionView.adjustedContentInset)
+        guard !seen.contains(frame) else { return }
+        collectionView.scrollToItem(at: path, at: .centeredVertically, animated: false)
+    }
+
     private func buildCollectionView() {
         var layout = UICollectionLayoutListConfiguration.themed(.insetGrouped)
         layout.headerMode = .supplementary
@@ -183,6 +206,7 @@ extension ThemePickerViewController: UICollectionViewDelegate {
 @MainActor
 final class ThemeSwatchCell: UICollectionViewListCell {
     private let card = UIView()
+    private let sky = SkyCardView()
     private let nameLabel = UILabel()
     private let blurbLabel = UILabel()
     private let signals = UIStackView()
@@ -200,6 +224,8 @@ final class ThemeSwatchCell: UICollectionViewListCell {
         card.layer.borderWidth = 1
         card.clipsToBounds = true
         contentView.addSubview(card)
+        sky.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(sky)
 
         nameLabel.font = Theme.Ramp.font(.cardTitle)
         nameLabel.numberOfLines = 1
@@ -231,6 +257,10 @@ final class ThemeSwatchCell: UICollectionViewListCell {
                 equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.s),
             card.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             card.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            sky.topAnchor.constraint(equalTo: card.topAnchor),
+            sky.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+            sky.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            sky.trailingAnchor.constraint(equalTo: card.trailingAnchor),
             stack.topAnchor.constraint(equalTo: card.topAnchor, constant: inset),
             stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -inset),
             stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: inset),
@@ -243,6 +273,7 @@ final class ThemeSwatchCell: UICollectionViewListCell {
 
     func show(_ theme: AppTheme, palette: Palette, chosen: Bool) {
         card.backgroundColor = UIColor(hex: palette.canvas)
+        sky.scenery = palette.scenery
         card.layer.borderColor =
             (chosen ? UIColor(hex: palette.accent) : UIColor(hex: palette.rule))?.cgColor
         card.layer.borderWidth = chosen ? 2 : 1
@@ -264,6 +295,7 @@ final class ThemeSwatchCell: UICollectionViewListCell {
     /// none: it is the app's own tokens, which is what the rest of the list is being compared to.
     func showSystem(chosen: Bool) {
         card.backgroundColor = Theme.Color.groupedSurface
+        sky.scenery = nil
         card.layer.borderColor =
             (chosen ? Theme.Color.accent : Theme.Color.separator).cgColor
         card.layer.borderWidth = chosen ? 2 : 1

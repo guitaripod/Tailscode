@@ -206,7 +206,8 @@ final class SubagentCardCell: UICollectionViewCell {
     static let reuseID = "SubagentCardCell"
 
     private let container = UIView()
-    private let rail = UIView()
+    private let rail = BladeRailView()
+    private let scanLines = ScanLinesView()
     private let iconView = UIImageView()
     private let titleLabel = UILabel()
     private let typeBadge = PaddedLabel()
@@ -236,8 +237,10 @@ final class SubagentCardCell: UICollectionViewCell {
         glass.isUserInteractionEnabled = false
         glass.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(glass)
+        scanLines.install(in: container, above: glass)
 
-        rail.backgroundColor = Theme.Color.accent
+        rail.tone = Theme.Color.accent
+        scanLines.tone = rail.tone
         rail.translatesAutoresizingMaskIntoConstraints = false
 
         iconView.image = UIImage(
@@ -362,7 +365,8 @@ final class SubagentCardCell: UICollectionViewCell {
         statusLabel.text = card.statusText
         statusLabel.textColor = card.statusColor
         statusDot.backgroundColor = card.statusColor
-        rail.backgroundColor = card.isActive ? Theme.Color.success : Theme.Color.accent
+        rail.tone = card.isActive ? Theme.Color.success : Theme.Color.accent
+        scanLines.tone = rail.tone
         iconView.tintColor = card.isActive ? Theme.Color.success : Theme.Color.accent
         if let type = card.agentType, !type.isEmpty {
             typeBadge.text = type

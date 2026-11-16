@@ -177,6 +177,10 @@ final class ComposerView: NSView {
 
     var promptEditor: PromptEditor { editor }
     var editorHasFocus: Bool { editor.hasFocus }
+    var onFocusChanged: ((Bool) -> Void)? {
+        get { editor.onFocusChanged }
+        set { editor.onFocusChanged = newValue }
+    }
     var editorIsComposing: Bool { editor.isComposing }
 
     var vimEnabled: Bool { Self.vimPreferred }

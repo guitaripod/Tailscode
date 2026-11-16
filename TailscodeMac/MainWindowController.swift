@@ -13,6 +13,7 @@ final class MainWindowController: NSWindowController {
     /// The panes: the frame-placed canvas, or for one release the nested split controllers it
     /// replaced when `tailscode.legacyTiling` is set.
     let splitPanes: any PaneTiling = MainWindowController.makeTiling()
+    let horizonSuns = HorizonSunsView()
     /// The toolbar's `Live 2 of 5`.
     let liveChip = LiveChip()
     var liveChipItem: NSToolbarItem?

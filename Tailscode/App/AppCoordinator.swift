@@ -190,18 +190,27 @@ final class AppCoordinator: NSObject {
     #if DEBUG
         /// Opens Settings at a page on launch, so each page can be screenshotted
         /// without driving touches.
+        /// `TAILSCODE_SETTINGS_SECTION=<page>` opens Settings on a page. Two slugs name a screen
+        /// one press past a page, because a picture of it should not need a finger:
+        /// `live-activity` and `theme`.
         private func openSettingsForDebug(slug: String) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                guard slug == "live-activity" else {
+                let deeper: (page: SettingsViewController.Page, screen: UIViewController)?
+                switch slug {
+                case "live-activity": deeper = (.notifications, LiveActivityLookViewController())
+                case "theme": deeper = (.appearance, ThemePickerViewController())
+                default: deeper = nil
+                }
+                guard let deeper else {
                     self?.openSettings(page: SettingsViewController.Page(slug: slug))
                     return
                 }
-                self?.openSettings(page: .notifications)
+                self?.openSettings(page: deeper.page)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
                     let presenter = self?.home?.navigationController ?? self?.home
                     guard let nav = presenter?.presentedViewController as? UINavigationController
                     else { return }
-                    nav.pushViewController(LiveActivityLookViewController(), animated: false)
+                    nav.pushViewController(deeper.screen, animated: false)
                 }
             }
         }

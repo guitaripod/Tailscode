@@ -164,21 +164,10 @@ public struct AppTheme: Equatable, Sendable {
 
     public func palette(dark: Bool) -> Palette { dark ? self.dark : light }
 
-    /// Every theme this client offers.
-    public static let all: [AppTheme] = everywhere + linuxFirst
-
-    static let everywhere: [AppTheme] = [
+    public static let all: [AppTheme] = [
         .rosePine, .tokyoNight, .everforest, .gruvbox, .nord, .solarized, .suomi, .phosphor,
+        .outerRim,
     ]
-
-    /// Themes that open on the Linux desktop before the other two clients draw them. A theme
-    /// with scenery is only whole where its scenery is drawn, and a catalog that offered its
-    /// colours alone would be offering half of it.
-    #if os(Linux)
-    static let linuxFirst: [AppTheme] = [.outerRim]
-    #else
-    static let linuxFirst: [AppTheme] = []
-    #endif
 
     public static let fallback = AppTheme.rosePine
 

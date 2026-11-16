@@ -98,6 +98,7 @@ extension TranscriptRow {
     {
         let rule = RowKit.Ground(frame: .zero)
         rule.fill = MacTheme.Color.accent
+        rule.blade = true
 
         let label = RowKit.attributedLabel(
             MacMarkdown.plainWithLinks(

@@ -321,6 +321,7 @@ final class PendingSendRowView: NSView {
     }
 
     private func paint(now: Date) {
+        rule.blade = true
         rule.fill =
             plan != nil
             ? MacTheme.Color.warning

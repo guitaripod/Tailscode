@@ -12,6 +12,12 @@ enum Theme {
     /// one of the choices and is what this app looked like before it had any others.
     enum Color {
         static let background = ThemePalette.color(\.canvas, system: .systemBackground)
+        /// What the transcript's list is filled with: the canvas, or nothing at all under a theme
+        /// whose canvas is a sky, because the sky is drawn beneath the list and a filled list
+        /// would cover it.
+        static let transcriptGround = UIColor { traits in
+            traits.scenery == nil ? background.resolvedColor(with: traits) : .clear
+        }
         static let secondaryBackground = ThemePalette.color(
             \.canvasRaised, system: .secondarySystemBackground)
         static let groupedBackground = ThemePalette.color(
