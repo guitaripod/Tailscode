@@ -21,6 +21,10 @@ final class MediaViewer {
     private var previousEar: ((String) -> Void)?
     private var listening = false
     private var toast: ((String) -> Void)?
+    /// Where the conversation draws the pictures being shown, when they came from one.
+    private var stands: ((String) -> PictureStand?)?
+    /// Draws again the tile whose picture is in the viewer.
+    private var putBack: (() -> Void)?
 
     init(stack: SheetStack = .shared) {
         self.stack = stack
@@ -28,7 +32,10 @@ final class MediaViewer {
             content: NSView(), toolbar: NSView(), dialogName: MediaViewerWords.dialogName,
             closeLabel: MediaViewerWords.closeLabel, lightsDown: true)
         presenter = SheetPresenter(sheet: sheet, stack: stack)
-        presenter.onDismissed = { [weak self] in self?.surface?.leave() }
+        presenter.onDismissed = { [weak self] in
+            self?.surface?.leave()
+            self?.flyHome()
+        }
         presenter.onClosed = { [weak self] in self?.sheetClosed() }
     }
 
@@ -37,17 +44,97 @@ final class MediaViewer {
     var state: StudioSheetState { presenter.state }
 
     /// Raises the gallery on `items` at `startKey`, or, when a viewer is up, points it there.
+    /// `stands` says where the conversation draws these pictures: with it the sheet arrives in
+    /// place while the picture that was pressed flies out of its tile, and the page being shown
+    /// flies home when the viewer closes (`PictureFlight`). Without it the sheet rises.
     func showPictures(
         items: [ImageViewer.Item], startKey: String, host: NSWindow?,
-        fetch: @escaping (FileReference, String) -> Void, toast: ((String) -> Void)?
+        fetch: @escaping (FileReference, String) -> Void,
+        stands: ((String) -> PictureStand?)? = nil, toast: ((String) -> Void)?
     ) {
         guard !items.isEmpty else { return }
+        takeOut(nil)
+        self.stands = stands
         if let gallery = surface as? PictureGalleryView {
             gallery.retarget(items: items, startKey: startKey, fetch: fetch)
             present(gallery, host: host, toast: toast)
+            takeOut(gallery.currentItem.key)
             return
         }
-        present(PictureGalleryView(items: items, startKey: startKey, fetch: fetch), host: host, toast: toast)
+        let gallery = PictureGalleryView(items: items, startKey: startKey, fetch: fetch)
+        gallery.onTurned = { [weak self, weak gallery] in
+            guard let self, let gallery else { return }
+            self.sheet.endFlight()
+            gallery.setPageShown(true)
+            self.takeOut(gallery.currentItem.key)
+        }
+        present(gallery, host: host, toast: toast)
+    }
+
+    /// One tile is out of the chat at a time: the one whose picture the viewer is showing.
+    private func takeOut(_ key: String?) {
+        putBack?()
+        putBack = nil
+        guard let key, let stand = stands?(key) else { return }
+        stand.setOut(true)
+        putBack = { stand.setOut(false) }
+    }
+
+    /// The flight of the page being shown, out of its tile or home to it, when that tile is in
+    /// sight, the page is fitted whole and motion is allowed.
+    private func flightPlan(opening: Bool) -> FlightPictureView.Plan? {
+        guard !presenter.reducedMotion(), let gallery = surface as? PictureGalleryView,
+            let stand = stands?(gallery.currentItem.key), let tile = stand.frame(in: sheet),
+            let picture = stand.picture, let stage = gallery.pageFrame(in: sheet)
+        else { return nil }
+        return FlightPictureView.Plan(
+            picture: picture, tile: tile, stage: stage, tileRadius: stand.radius, opening: opening)
+    }
+
+    /// Chooses how a rising sheet comes, once it is laid out in its window and before it moves: in
+    /// place, with the pressed picture planned to fly, for pictures of a conversation; rising, as
+    /// the Studio's sheet does, for everything else.
+    private func chooseArrival(for surface: ViewerSurface) {
+        sheet.endFlight()
+        guard stands != nil, surface is PictureGalleryView else {
+            sheet.arrival = .rise
+            return
+        }
+        sheet.arrival = .inPlace
+        sheet.layoutSubtreeIfNeeded()
+        surface.arrive()
+        guard let plan = flightPlan(opening: true) else {
+            sheet.inPlaceSpans.arriving = PictureFlight.fadeDuration
+            return
+        }
+        sheet.inPlaceSpans.arriving = PictureFlight.openDuration
+        sheet.plan(plan)
+    }
+
+    /// Starts the planned flight out of the tile, in the same turn the sheet began to arrive.
+    private func flyOut() {
+        guard sheet.arrival == .inPlace, let gallery = surface as? PictureGalleryView else { return }
+        takeOut(gallery.currentItem.key)
+        guard let plan = flightPlan(opening: true) else { return }
+        gallery.setPageShown(false)
+        sheet.fly(plan) { [weak self, weak gallery] in
+            gallery?.setPageShown(true)
+            self?.sheet.endFlight()
+        }
+    }
+
+    /// The sheet is about to leave: the page being shown flies home when its tile is in sight,
+    /// and the sheet fades where it stands when it is not.
+    private func flyHome() {
+        guard sheet.arrival == .inPlace else { return }
+        sheet.endFlight()
+        guard let plan = flightPlan(opening: false) else {
+            sheet.inPlaceSpans.leaving = PictureFlight.fadeDuration
+            return
+        }
+        sheet.inPlaceSpans.leaving = PictureFlight.closeDuration
+        (surface as? PictureGalleryView)?.setPageShown(false)
+        sheet.fly(plan) {}
     }
 
     /// Raises the player on a clip. `save` and `share` are the lane's own, so the clip is saved and shared
@@ -72,10 +159,18 @@ final class MediaViewer {
             surface = next
             sheet.setContent(next, toolbar: next.toolbar)
         }
-        let effect = presenter.show(in: window, ready: { _ = window.makeFirstResponder(next.focusTarget) })
+        var arrived = false
+        let effect = presenter.show(
+            in: window,
+            prepare: {
+                self.chooseArrival(for: next)
+                arrived = self.sheet.arrival == .inPlace
+            },
+            ready: { _ = window.makeFirstResponder(next.focusTarget) })
         switch effect {
         case .animateIn:
             listen()
+            flyOut()
         case .changeLane:
             _ = window.makeFirstResponder(next.focusTarget)
         default:
@@ -87,7 +182,7 @@ final class MediaViewer {
             }
         }
         sheet.layoutSubtreeIfNeeded()
-        next.arrive()
+        if !arrived { next.arrive() }
     }
 
     /// The window the viewer rises in: the one a sheet is already standing in — a viewer opened over the
@@ -128,6 +223,10 @@ final class MediaViewer {
         if listening { ImageStore.shared.onStored = previousEar }
         previousEar = nil
         listening = false
+        takeOut(nil)
+        stands = nil
+        sheet.endFlight()
+        sheet.arrival = .rise
         surface?.finish()
         surface = nil
         toast = nil
@@ -160,8 +259,15 @@ final class MediaViewer {
 
     #if DEBUG
         func hold(at progress: Double, closing: Bool) {
+            if sheet.arrival == .inPlace, let plan = flightPlan(opening: !closing) {
+                (surface as? PictureGalleryView)?.setPageShown(false)
+                sheet.plan(plan)
+            }
             presenter.hold(at: progress, closing: closing)
         }
+
+        /// Where the picture in the air is drawn, for a check that reads a held frame.
+        var flightFrame: NSRect? { sheet.flightFrame }
     #endif
 }
 
@@ -203,8 +309,10 @@ enum ImageViewer {
     /// One gallery at a time: opening a second picture points the one that is up at it.
     static func present(
         items: [Item], startKey: String, host: NSWindow?,
-        fetch: @escaping (FileReference, String) -> Void, toast: ((String) -> Void)?
+        fetch: @escaping (FileReference, String) -> Void,
+        stands: ((String) -> PictureStand?)? = nil, toast: ((String) -> Void)?
     ) {
-        MediaViewer.shared.showPictures(items: items, startKey: startKey, host: host, fetch: fetch, toast: toast)
+        MediaViewer.shared.showPictures(
+            items: items, startKey: startKey, host: host, fetch: fetch, stands: stands, toast: toast)
     }
 }

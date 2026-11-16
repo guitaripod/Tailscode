@@ -143,6 +143,9 @@ extension SelfTest {
         do {
             switch name {
             case "party": report("party: \(try checkPartyCards()) claims hold")
+            case "viewer": report("media viewer: \(try checkMediaViewer()) claims hold")
+            case "sheet": report("studio sheet: \(try checkStudioSheet()) claims hold")
+            case "notes": report("transcript notes: \(try checkTranscriptNotes()) claims hold")
             case "quickask": report("quick ask party: \(try checkQuickAskParty()) claims hold")
             case "quickaskactions": report("quick ask actions: \(try checkQuickAskActions()) claims hold")
             case "keyboard": report("keyboard: \(try checkKeyboardRebind()) claims hold")

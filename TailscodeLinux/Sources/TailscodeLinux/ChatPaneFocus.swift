@@ -583,6 +583,70 @@ extension ChatPane {
         presentImage(key: first.key, name: first.name)
     }
 
+    /// What a picture offers where it stands (`PictureVerbs`): open it, take it, keep it, and the
+    /// path its agent knows it by. The bytes are the server's own, read from this device's cache;
+    /// while they are not here yet the verb asks for them and says so.
+    func presentPictureMenu(
+        key: String, name: String, reference: FileReference, bits: UInt, x: Double, y: Double
+    ) {
+        guard let raw = UnsafeMutableRawPointer(bitPattern: bits) else { return }
+        let rows = PictureVerbs.pointer(hasPath: reference.path != nil).map { verb in
+            (title: verb.title, detail: String?.none, action: { @Sendable [weak self] in
+                Gtk.onMain { [weak self] in
+                    self?.perform(verb, key: key, name: name, reference: reference)
+                }
+            })
+        }
+        Gtk.contextMenu(on: ptr(raw), x: x, y: y, rows: rows)
+    }
+
+    /// Opens the menu of the n-th picture the conversation draws, as a right click on its tile
+    /// would, for a harness whose pointer cannot raise a popover.
+    func driverPictureMenu(_ index: Int) {
+        let items = galleryItems()
+        guard items.indices.contains(index), let tile = context.pictureTiles.tile(for: items[index].key)
+        else {
+            FileHandle.standardOutput.write(Data("PICMENU none\n".utf8))
+            return
+        }
+        let item = items[index]
+        let button = gtk_widget_get_ancestor(tile.widget, gtk_button_get_type()) ?? tile.widget
+        presentPictureMenu(
+            key: item.key, name: item.name, reference: item.reference,
+            bits: UInt(bitPattern: button), x: 20, y: 20)
+        let verbs = PictureVerbs.pointer(hasPath: item.reference.path != nil).map(\.rawValue)
+        var raised = false
+        var child = gtk_widget_get_first_child(button)
+        while let widget = child {
+            if gtk_widget_get_ancestor(widget, gtk_popover_get_type()) == widget {
+                raised = gtk_widget_get_visible(widget) != 0
+            }
+            child = gtk_widget_get_next_sibling(widget)
+        }
+        FileHandle.standardOutput.write(
+            Data("PICMENU \(item.key) \(verbs.joined(separator: ",")) raised=\(raised)\n".utf8))
+    }
+
+    private func perform(_ verb: PictureVerb, key: String, name: String, reference: FileReference) {
+        switch verb {
+        case .open:
+            presentImage(key: key, name: name)
+        case .copyPath:
+            guard let path = reference.path else { return }
+            Gtk.copyToClipboard(path)
+            host?.toast(Localized.text("Copied"))
+        case .copy, .saveToDownloads:
+            guard let data = ImageCache.load(reference) else {
+                fetchImage(reference, key: key, urgent: true)
+                host?.toast(PictureDesk.stillLoading)
+                return
+            }
+            host?.toast(verb == .copy ? PictureDesk.copy(data) : PictureDesk.save(data, named: name))
+        case .saveToPhotos, .saveToFiles, .share:
+            break
+        }
+    }
+
     /// The keys of the conversation's pictures in reading order, so a harness can name one.
     var galleryKeys: [String] { galleryItems().map(\.key) }
 

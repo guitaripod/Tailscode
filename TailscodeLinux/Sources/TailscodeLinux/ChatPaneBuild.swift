@@ -578,6 +578,12 @@ extension ChatPane {
         context.openImage = { [weak self] key, name in
             Gtk.onMain { [weak self] in self?.presentImage(key: key, name: name) }
         }
+        context.presentPictureMenu = { [weak self] key, name, reference, bits, x, y in
+            Gtk.onMain { [weak self] in
+                self?.presentPictureMenu(
+                    key: key, name: name, reference: reference, bits: bits, x: x, y: y)
+            }
+        }
         context.toast = { [weak self] text in
             Gtk.onMain { [weak self] in self?.host?.toast(text) }
         }

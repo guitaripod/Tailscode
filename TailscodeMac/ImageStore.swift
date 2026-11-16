@@ -219,6 +219,13 @@ enum ImageRowView {
                 pixels: CGSize(width: entry.pixelWidth, height: entry.pixelHeight),
                 maxHeight: maxHeight, maxWidth: PictureThumb.widest)
             let imageView = PictureView(image: entry.image)
+            imageView.pictureKey = key
+            let toast = context.toast
+            imageView.pictureMenu = {
+                PictureDesk.menu(
+                    key: key, name: name, reference: reference,
+                    open: { context.openImage?(key, name) }, say: { toast?($0) })
+            }
             imageView.imageScaling = .scaleProportionallyUpOrDown
             imageView.wantsLayer = true
             imageView.layer?.cornerRadius = CGFloat(ChatChrome.Radius.control)
@@ -267,8 +274,21 @@ enum ImageRowView {
     /// A thumbnail that opens the way a button does: clicked, pressed with Space or Return once Full
     /// Keyboard Access puts it in the Tab loop, or pressed by VoiceOver. A picture that only a
     /// mouse could open was a picture a keyboard user could see and never reach.
-    final class PictureView: NSImageView, KeyboardPressable {
+    final class PictureView: NSImageView, KeyboardPressable, PictureStanding {
         var onPress: (() -> Void)?
+        /// The picture this thumbnail is, as the conversation's gallery names it.
+        var pictureKey: String?
+        /// What a right click on the thumbnail offers.
+        var pictureMenu: (() -> NSMenu)?
+
+        override func menu(for event: NSEvent) -> NSMenu? { pictureMenu?() ?? super.menu(for: event) }
+
+        func pictureStand(for key: String) -> PictureStand? {
+            guard key == pictureKey, let image else { return nil }
+            return PictureStand(
+                view: self, rect: bounds, radius: CGFloat(ChatChrome.Radius.control), picture: image,
+                setOut: { [weak self] out in self?.alphaValue = out ? 0 : 1 })
+        }
 
         override init(frame frameRect: NSRect) {
             super.init(frame: frameRect)

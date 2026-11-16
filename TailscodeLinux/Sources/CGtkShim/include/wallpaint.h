@@ -101,6 +101,17 @@ void tailscode_snap_motes(
     GtkSnapshot *snapshot, const double *motes, int count, double halo, double halo_share, double red,
     double green, double blue);
 
+/// Draws a texture stretched over the rectangle, filtered both ways, so a picture drawn at any
+/// size between a thumbnail's and a window's is smooth on every frame of the way.
+void tailscode_snap_texture(
+    GtkSnapshot *snapshot, GdkTexture *texture, double x, double y, double width, double height);
+
+/// Where `widget` stands in `space`, an ancestor or a sibling under the same root, as x, y, width
+/// and height in `out`, followed by the share of its area (0…1) that shows through every scroller
+/// it is inside: a tile scrolled out of its transcript is laid out and mapped and not in sight.
+/// False when either is not laid out.
+gboolean tailscode_widget_sight_in(GtkWidget *widget, GtkWidget *space, double *out);
+
 /// Clips what follows to a rounded rectangle; `gtk_snapshot_pop` ends it.
 void tailscode_snap_push_rounded_clip(
     GtkSnapshot *snapshot, double x, double y, double width, double height, double radius);

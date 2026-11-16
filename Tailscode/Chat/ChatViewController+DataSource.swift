@@ -179,9 +179,11 @@ extension ChatViewController {
         case .timestamp(let text):
             return self.bubble(collectionView, indexPath, text, .system, reasoning: false, timestamp: true)
         case .text(let text):
+            let fold = row.role == .user ? self.promptFold(text, row: id) : nil
             return self.bubble(
-                collectionView, indexPath, text, row.role, reasoning: false,
-                cascade: self.cascade.tail(for: id, traits: self.traitCollection))
+                collectionView, indexPath, fold?.shown ?? text, row.role, reasoning: false,
+                cascade: self.cascade.tail(for: id, traits: self.traitCollection),
+                foldLine: fold?.line)
         case .code(let block):
             let cell = collectionView.dequeueReusableCell(
                 withReuseIdentifier: CodeBlockCell.reuseID, for: indexPath) as! CodeBlockCell
@@ -361,12 +363,13 @@ extension ChatViewController {
     func bubble(
         _ collectionView: UICollectionView, _ indexPath: IndexPath, _ text: String,
         _ role: MessageRole, reasoning: Bool, timestamp: Bool = false,
-        cascade: CascadeTail? = nil
+        cascade: CascadeTail? = nil, foldLine: (words: String, address: URL)? = nil
     ) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(
             withReuseIdentifier: TextBubbleCell.reuseID, for: indexPath) as! TextBubbleCell
         cell.configure(
-            text: text, role: role, reasoning: reasoning, timestamp: timestamp, cascade: cascade)
+            text: text, role: role, reasoning: reasoning, timestamp: timestamp, cascade: cascade,
+            foldLine: foldLine)
         cell.linkDelegate = self
         return cell
     }

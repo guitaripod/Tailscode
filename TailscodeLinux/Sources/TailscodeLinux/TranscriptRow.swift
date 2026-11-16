@@ -62,6 +62,11 @@ final class TranscriptContext: @unchecked Sendable {
     /// A workflow agent is fetched by its own id: it has no spawning call to name it.
     var requestWorkflowAgent: (@Sendable (String) -> Void)?
     var openImage: (@Sendable (String, String) -> Void)?
+    /// A right click on a picture: its key, its name, where it came from, the widget's bits and
+    /// the point pressed. The pane owns the menu because it holds the bytes and the notices.
+    var presentPictureMenu: (@Sendable (String, String, FileReference, UInt, Double, Double) -> Void)?
+    /// Where this transcript's pictures stand, for the viewer to open them out of and put them back.
+    let pictureTiles = PictureTiles()
     var presentText:
         (@Sendable (_ title: String, _ subtitle: String?, _ body: String, _ mono: Bool) -> Void)?
     /// A short confirmation the window floats over everything — "Command copied".

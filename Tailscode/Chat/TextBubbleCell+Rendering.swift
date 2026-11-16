@@ -3,9 +3,11 @@ import TailscodeCore
 import UIKit
 
 extension TextBubbleCell {
+    /// `foldLine` is the line under a long prompt that shows the rest of it or folds it again:
+    /// its words and the address a press on it is told by (`PromptFold`).
     func configure(
         text: String, role: MessageRole, reasoning: Bool, timestamp: Bool = false,
-        cascade: CascadeTail? = nil
+        cascade: CascadeTail? = nil, foldLine: (words: String, address: URL)? = nil
     ) {
         let isUser = role == .user
         contentChanged()
@@ -77,9 +79,13 @@ extension TextBubbleCell {
             bubble.backgroundColor = Theme.Color.userBubble
             textView.textColor = Theme.Color.onAccent
             textView.font = Theme.Ramp.font(.prompt)
-            textView.attributedText = NSAttributedString(
+            let words = NSMutableAttributedString(
                 string: text,
                 attributes: Theme.Ramp.attributes(.prompt, color: Theme.Color.onAccent))
+            if let foldLine {
+                words.append(Self.foldLine(foldLine.words, address: foldLine.address))
+            }
+            textView.attributedText = words
             textView.linkTextAttributes = [.foregroundColor: Theme.Color.onAccent]
         } else {
             bubble.backgroundColor = .clear
@@ -101,6 +107,22 @@ extension TextBubbleCell {
                 wearsAnswerStyle = true
             }
         }
+    }
+
+    /// The line under a long prompt that opens or folds it: its words as a link on a line tall
+    /// enough for a finger, because a link is pressed by its line and a line of small type is a
+    /// smaller target than a hand is owed.
+    private static func foldLine(_ words: String, address: URL) -> NSAttributedString {
+        let font = Theme.Ramp.font(.rowStamp)
+        let height = max(CGFloat(ChatChrome.chip(on: .touch).height), font.lineHeight)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.minimumLineHeight = height
+        paragraph.maximumLineHeight = height
+        var line = Theme.Ramp.attributes(.rowStamp, color: Theme.Color.onAccent)
+        line[.link] = address
+        line[.paragraphStyle] = paragraph
+        line[.baselineOffset] = (height - font.lineHeight) / 2
+        return NSAttributedString(string: "\n" + words, attributes: line)
     }
 
     /// A frame of the wave. When the glyphs did not change, only colours move, so the storage is

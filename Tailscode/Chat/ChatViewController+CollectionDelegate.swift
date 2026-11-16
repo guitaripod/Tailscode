@@ -252,8 +252,8 @@ extension ChatViewController: UICollectionViewDelegate {
             return stats.line
         case .linkRail(let run):
             return run.addresses.joined(separator: "\n")
-        case .pictures(let files):
-            return files.compactMap { $0.filename ?? $0.mime }.joined(separator: "\n")
+        case .pictures:
+            return nil
         case .failed(let turn):
             return turn.reason
         case .chapterHeading(let heading):

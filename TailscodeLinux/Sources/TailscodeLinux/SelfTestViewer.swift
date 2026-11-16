@@ -379,6 +379,65 @@ extension SelfTest {
         studio.dismiss()
         _ = pump(2.0) { studio.state == .closed }
 
+        let standing = PictureTiles()
+        var drawn: [String: UnsafeMutablePointer<GtkWidget>] = [:]
+        if let content = gtk_widget_get_parent(main.entry) {
+            for key in ["a", "b"] {
+                let tile = gtk_drawing_area_new()!
+                gtk_widget_set_size_request(tile, 64, 64)
+                gtk_widget_set_halign(tile, GTK_ALIGN_START)
+                gtk_box_append(ptr(content), tile)
+                standing.stand(tile, for: key, fitted: false)
+                drawn[key] = tile
+            }
+        }
+        _ = pump(0.3)
+        func near(_ a: PictureFlight.Rect, _ b: PictureFlight.Rect) -> Bool {
+            abs(a.x - b.x) < 1 && abs(a.y - b.y) < 1 && abs(a.width - b.width) < 1
+                && abs(a.height - b.height) < 1
+        }
+        func out(_ key: String) -> Bool { drawn[key].map { gtk_widget_get_opacity($0) == 0 } ?? false }
+        MediaViewer.present(items: pages(["a", "b"]), startKey: "a", tiles: standing, notice: { _ in })
+        guard let flown = MediaViewer.current, let tileA = drawn["a"], let tileB = drawn["b"] else {
+            throw SelfTestFailure("media viewer: a viewer opened from a tile is not up")
+        }
+        try expect(flown.sheetLayer.arrival == .inPlace, "a viewer opened from a tile arrives in place")
+        flown.sheetLayer.hold(at: 0)
+        _ = pump(0.3)
+        let home = flown.sheetLayer.bounds(of: tileA)
+        try expect(
+            flown.flightReading.map { reading in home.map { near(reading.frame, $0) } ?? false } == true
+                && flown.flightReading?.opening == true,
+            "the flight starts on the tile it was pressed in")
+        try expect(out("a"), "and the tile is not drawn while its picture is out")
+        flown.sheetLayer.hold(at: 1)
+        try expect(
+            flown.flightReading.map { near($0.frame, $0.stage) && $0.stage.width > 64 } == true,
+            "it ends exactly on the rectangle the page fits the picture into")
+        try expect(
+            flown.flightReading.map { abs($0.stage.width / $0.stage.height - 1.6) < 0.01 } == true,
+            "which has the picture's own shape")
+        flown.sheetLayer.hold(at: 0.3)
+        try expect(
+            flown.flightReading.map { $0.frame.width > 64 && $0.frame.width < $0.stage.width } == true,
+            "part of the way out it is between the two")
+        flown.sheetLayer.release()
+        try expect(pump(2.0) { flown.sheetLayer.state == .open }, "the sheet comes to rest")
+        try expect(flown.flightReading == nil && out("a"), "nothing is in the air at rest, and the tile stays out")
+        flown.perform(.next)
+        try expect(!out("a") && out("b"), "turning the page puts that tile back and takes out the one being shown")
+        flown.stagedLeave(at: 0)
+        let homeB = flown.sheetLayer.bounds(of: tileB)
+        try expect(
+            flown.flightReading.map { reading in
+                !reading.opening && (homeB.map { near(reading.frame, $0) } ?? false)
+            } == true,
+            "closing flies home to the tile of the page being shown, not the one opened")
+        flown.perform(.close)
+        try expect(pump(2.0) { MediaViewer.current == nil }, "the viewer leaves")
+        try expect(!out("b") && !out("a"), "and both tiles are drawn again")
+        try expect(stack.viewerLayer.arrival == .rise, "the layer is the Studio's to raise again")
+
         return checks
     }
 

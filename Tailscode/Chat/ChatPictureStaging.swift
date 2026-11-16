@@ -33,11 +33,40 @@
                     url: "staged://picture/\(index)", filename: "shot-\(index + 1).png")
             }
             for (index, file) in files.enumerated() {
-                AttachmentImageStore.shared.store(picture(index), for: file)
+                let drawn = picture(index)
+                AttachmentImageStore.shared.store(drawn, for: file, data: drawn.pngData())
             }
             return ChatRow(
                 id: "staged:pictures", messageID: "staged", role: .assistant,
                 content: .pictures(files))
+        }
+
+        /// `TAILSCODE_OPEN_PICTURE=<tile>[:<page>[:<seconds>]]` presses a tile of the staged strip
+        /// four seconds after the chat opens, as a hand would, then turns to a page if one is
+        /// named and closes after the seconds given, so the viewer's way out of a tile and its way
+        /// home can be filmed with nothing touching the screen.
+        static func drive(_ chat: ChatViewController) {
+            guard let plan = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_PICTURE"] else {
+                return
+            }
+            let fields = plan.split(separator: ":").map(String.init)
+            let tile = fields.first.flatMap(Int.init) ?? 0
+            let page = fields.count > 1 ? Int(fields[1]) : nil
+            let close = fields.count > 2 ? Double(fields[2]) : nil
+            Task { [weak chat] in
+                try? await Task.sleep(for: .seconds(4))
+                guard let chat,
+                    let strip = chat.collectionView.visibleCells
+                        .compactMap({ $0 as? PictureGalleryCell }).first
+                else { return }
+                chat.pictureGalleryCell(strip, didTapPictureAt: tile)
+                guard let close else { return }
+                try? await Task.sleep(for: .seconds(1.5))
+                let viewer = chat.presentedViewController as? ImageViewerViewController
+                if let page { viewer?.stagedTurn(to: page) }
+                try? await Task.sleep(for: .seconds(close))
+                viewer?.stagedClose()
+            }
         }
 
         private static func picture(_ index: Int) -> UIImage {

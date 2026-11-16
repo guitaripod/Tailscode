@@ -13,6 +13,9 @@ import TailscodeCore
 /// depth so the Studio's edge shows above it. One viewer exists at a time; asking for another while
 /// it is up changes what it shows, with no motion.
 ///
+/// Over a conversation the sheet does not rise: it arrives in place while the picture that was
+/// pressed flies out of its tile, and leaves while the page being shown flies home (`ViewerFlight`).
+///
 /// A page paints the preview texture the transcript already holds and sharpens when the original's
 /// full-resolution decode lands, so a page turn is instant. What a save or a copy hands over is the
 /// original bytes, never the preview, whose size is the transcript's rather than the picture's.
@@ -56,8 +59,11 @@ final class MediaViewer: @unchecked Sendable {
 
     /// Shows `items`, on the one with `startKey`. A viewer already up is re-targeted to them with no
     /// motion; otherwise one rises on the first free layer of the window's stack.
+    ///
+    /// `tiles` is where the conversation draws these pictures, when they came from one: the
+    /// viewer opens the picture out of its tile and puts the page being shown back in its own.
     static func present(
-        items: [Item], startKey: String, landing: Landing? = nil,
+        items: [Item], startKey: String, landing: Landing? = nil, tiles: PictureTiles? = nil,
         notice: @escaping @Sendable (String) -> Void
     ) {
         guard !items.isEmpty, let stack = SheetStack.shared else {
@@ -67,12 +73,15 @@ final class MediaViewer: @unchecked Sendable {
         let start = items.firstIndex { $0.key == startKey } ?? 0
         if let viewer = open {
             viewer.retarget(items: items, start: start, landing: landing, notice: notice)
+            viewer.flight.retarget(tiles: tiles, showing: viewer.currentKey)
             viewer.layer.present()
             return
         }
         let viewer = MediaViewer(
-            stack: stack, items: items, start: start, landing: landing, notice: notice)
+            stack: stack, items: items, start: start, landing: landing, tiles: tiles,
+            notice: notice)
         open = viewer
+        viewer.flight.arrive(with: viewer.flightPicture)
         viewer.layer.present()
     }
 
@@ -80,6 +89,8 @@ final class MediaViewer: @unchecked Sendable {
     private var pager: ViewerPager
     private(set) var zoom = ViewerZoom.fit
     private let layer: SheetLayer
+    private let flight: ViewerFlight
+    private var bar: UnsafeMutablePointer<GtkWidget>?
     private var notice: @Sendable (String) -> Void
     private var stopListening: (@Sendable () -> Void)?
     private var noticeText: String?
@@ -111,13 +122,14 @@ final class MediaViewer: @unchecked Sendable {
     private(set) var renders = 0
 
     private init(
-        stack: SheetStack, items: [Item], start: Int, landing: Landing?,
+        stack: SheetStack, items: [Item], start: Int, landing: Landing?, tiles: PictureTiles?,
         notice: @escaping @Sendable (String) -> Void
     ) {
         self.items = items
         self.pager = ViewerPager(count: items.count, index: start)
         self.notice = notice
         self.layer = stack.viewerLayer
+        self.flight = ViewerFlight(layer: stack.viewerLayer, tiles: tiles)
         self.driving = ProcessInfo.processInfo.environment["TAILSCODE_DRIVE"] != nil
         previousButton = Gtk.button("‹", css: ["viewer-button"], onClick: {})
         nextButton = Gtk.button("›", css: ["viewer-button"], onClick: {})
@@ -146,6 +158,19 @@ final class MediaViewer: @unchecked Sendable {
             gtk_widget_grab_focus(self.scroller)
         }
         layer.onClosed = { [weak self] in self?.tearDown() }
+        layer.willLeave = { [weak self] in
+            guard let self else { return }
+            self.flight.leave(with: self.flightPicture)
+        }
+        flight.room = { [weak self] in self?.pictureRoom }
+        flight.setWords = { [weak self] presence in
+            guard let bar = self?.bar else { return }
+            gtk_widget_set_opacity(bar, presence)
+        }
+        flight.setPage = { [weak self] shown in
+            guard let self else { return }
+            gtk_widget_set_opacity(self.holder, shown ? 1 : 0)
+        }
         layer.keys = { [weak self] keyval, state in
             self?.handleKey(keyval: keyval, state: state) ?? false
         }
@@ -163,6 +188,7 @@ final class MediaViewer: @unchecked Sendable {
 
     private func makeToolbar() -> UnsafeMutablePointer<GtkWidget> {
         let bar = gtk_center_box_new()!
+        self.bar = bar
         Gtk.addClass(bar, "studio-sheet-bar")
         Gtk.addClass(bar, "viewer-bar")
         gtk_widget_set_size_request(bar, -1, Int32(StudioSheetMetrics.toolbarHeight))
@@ -244,9 +270,30 @@ final class MediaViewer: @unchecked Sendable {
 
     private var currentItem: Item { items[pager.index] }
 
+    /// The page being shown as a flight draws it: the texture on hand and the picture's shape.
+    private var flightPicture: ViewerFlight.Picture? {
+        let item = currentItem
+        let shown = texture(for: item)
+        guard shown.bits != 0, let size = pixelSize(of: item), size.0 > 0, size.1 > 0 else { return nil }
+        return ViewerFlight.Picture(
+            key: item.key, bits: shown.bits, aspect: Double(size.0) / Double(size.1))
+    }
+
+    /// The room a page fits its picture into: the canvas less the margin a picture keeps from
+    /// its edges, in the window's coordinates. A flight ends on the picture fitted into this.
+    private var pictureRoom: PictureFlight.Rect? {
+        guard let canvas = layer.bounds(of: scroller) else { return nil }
+        let margin = Double(Self.canvasMargin)
+        return PictureFlight.Rect(
+            x: canvas.x + margin, y: canvas.y + margin, width: canvas.width - 2 * margin,
+            height: canvas.height - 2 * margin)
+    }
+
     private func tearDown() {
         stopListening?()
         stopListening = nil
+        flight.finish()
+        layer.willLeave = nil
         dropFull()
         items.forEach { $0.release() }
         layer.uninstall()
@@ -291,6 +338,7 @@ final class MediaViewer: @unchecked Sendable {
         default: pager.last()
         }
         zoom = .fit
+        flight.turned(to: currentKey)
         render()
     }
 
@@ -479,33 +527,19 @@ final class MediaViewer: @unchecked Sendable {
 
     private func copy() {
         guard let data = currentItem.original() else {
-            say(Localized.text("Still loading — try again in a moment."))
+            say(PictureDesk.stillLoading)
             return
         }
-        data.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return }
-            tailscode_clipboard_set_image_png(base, gsize(data.count))
-        }
-        say(ImageGenWords.copiedNotice)
+        say(PictureDesk.copy(data))
     }
 
     private func save() {
         let item = currentItem
         guard let data = item.original() else {
-            say(Localized.text("Still loading — try again in a moment."))
+            say(PictureDesk.stillLoading)
             return
         }
-        let filename = ImageBytes.exportFilename(item.name, data: data)
-        let target = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Downloads", isDirectory: true)
-            .appendingPathComponent(filename)
-        try? FileManager.default.createDirectory(
-            at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let wrote = (try? data.write(to: target)) != nil
-        say(
-            wrote
-                ? Localized.text("Saved %@", target.path)
-                : Localized.text("Could not write %@", target.path))
+        say(PictureDesk.save(data, named: item.name))
     }
 
     /// A key while the viewer is the topmost sheet. Esc and Ctrl+W close it and Tab stays inside it
@@ -552,7 +586,21 @@ final class MediaViewer: @unchecked Sendable {
         guard let index = items.firstIndex(where: { $0.key == key }) else { return }
         pager = ViewerPager(count: items.count, index: index)
         zoom = .fit
+        flight.turned(to: currentKey)
         render()
+    }
+
+    /// Holds the sheet part of the way home, with the page's picture in the air, for a harness
+    /// that photographs the way back.
+    func stagedLeave(at presence: Double) {
+        flight.leave(with: flightPicture)
+        layer.hold(at: presence, leaving: true)
+    }
+
+    var flightSummary: String { flight.summary }
+
+    var flightReading: (frame: PictureFlight.Rect, origin: PictureFlight.Rect, stage: PictureFlight.Rect, opening: Bool)? {
+        flight.reading
     }
 }
 

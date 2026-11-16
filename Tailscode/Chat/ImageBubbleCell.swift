@@ -13,7 +13,7 @@ protocol ImageBubbleCellDelegate: AnyObject {
 /// small (``ImagePreview``) — you already know what you handed over, and a tap still opens it full
 /// size. Press and hold for the things you do with a picture, or drag it straight into another
 /// app. The pictures an agent made are a `PictureGalleryCell`.
-final class ImageBubbleCell: UICollectionViewCell {
+final class ImageBubbleCell: UICollectionViewCell, PictureHoming {
     static let reuseID = "ImageBubbleCell"
     weak var delegate: ImageBubbleCellDelegate?
     /// Called once the bytes land, so the list can re-measure a row that was
@@ -42,6 +42,15 @@ final class ImageBubbleCell: UICollectionViewCell {
     }
 
     var displayedImage: UIImage? { imageView.image }
+
+    /// The bubble holds one picture, so any index asks for it.
+    func pictureHome(at index: Int) -> PictureHome? {
+        layoutIfNeeded()
+        guard imageView.image != nil else { return nil }
+        return PictureHome(
+            view: imageView, pixels: imageView.bounds, cornerRadius: Theme.Radius.bubble,
+            image: imageView.image)
+    }
     var imageContainer: UIView { imageView }
 
     var payload: ImagePayload? {

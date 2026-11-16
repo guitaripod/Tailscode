@@ -40,6 +40,23 @@ class SheetView: NSView {
     private let edge = SheetEdge()
     private var token = 0
     private var reduced = false
+    private var leaving = false
+    private let flight = FlightPictureView()
+    private var flightPlan: FlightPictureView.Plan?
+
+    /// How a sheet comes and goes: rising from below the window as the Studio does, or in place,
+    /// where it only fades while a picture is flown over it (`PictureFlight`).
+    enum Arrival {
+        case rise
+        case inPlace
+    }
+
+    /// Chosen by the owner before a show or a dismissal; a sheet rises unless told otherwise.
+    var arrival: Arrival = .rise
+    /// How long an in-place sheet takes to come and to go.
+    var inPlaceSpans: (arriving: Double, leaving: Double) = (
+        PictureFlight.openDuration, PictureFlight.closeDuration
+    )
     private var observers: [NSObjectProtocol] = []
     private var layoutObservation: NSKeyValueObservation?
     private var hiddenBehind: [(view: NSView, wasHidden: Bool)] = []
@@ -70,6 +87,7 @@ class SheetView: NSView {
         if lightsDown { body.appearance = NSAppearance(named: .darkAqua) }
         addSubview(scrim)
         addSubview(carrier)
+        addSubview(flight)
         carrier.addSubview(body)
         body.layer?.insertSublayer(edgeShadow, at: 0)
         body.addSubview(face)
@@ -326,11 +344,31 @@ class SheetView: NSView {
     /// Sets how present the sheet is with no animation: 0 is away below the window, 1 is at rest.
     func apply(presence value: Double) {
         presence = min(1, max(0, value))
+        guard arrival == .rise else {
+            applyInPlace()
+            return
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         scrim.dim.layer?.opacity = Float(StudioSheetMotion.scrimOpacity(progress: presence, appearance: appearanceFace))
         carrier.layer?.sublayerTransform = CATransform3DMakeTranslation(0, slide(at: presence), 0)
         carrier.layer?.opacity = Float(StudioSheetMotion.sheetOpacity(progress: presence, reduced: reduced))
+        CATransaction.commit()
+    }
+
+    /// An in-place sheet stands where it rests and is as present as the dark behind a flight: in
+    /// before its own words on the way in, lifting across most of the way out. With motion reduced
+    /// it is a plain cross-fade. A flight that is planned stands at the same instant.
+    private func applyInPlace() {
+        let dark = reduced ? presence : PictureFlight.backdrop(time: presence, opening: !leaving)
+        let words = reduced || flightPlan == nil ? 1 : PictureFlight.chrome(time: presence, opening: !leaving)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        scrim.dim.layer?.opacity = Float(StudioSheetMotion.scrimAlpha(for: appearanceFace) * dark)
+        carrier.layer?.sublayerTransform = CATransform3DIdentity
+        carrier.layer?.opacity = Float(dark)
+        sheetToolbar.layer?.opacity = Float(words)
+        if let flightPlan { flight.stand(in: flightPlan, time: presence) }
         CATransaction.commit()
     }
 
@@ -357,6 +395,10 @@ class SheetView: NSView {
     /// Runs the one motion from where the sheet is now to rest (`opening`) or to away, then calls
     /// `completion` once, unless another motion or a cancel superseded it first.
     func animate(opening: Bool, reduced reducedMotion: Bool, completion: @escaping () -> Void) {
+        guard arrival == .rise else {
+            animateInPlace(opening: opening, reduced: reducedMotion, completion: completion)
+            return
+        }
         let from = currentPresence
         let to = opening ? 1.0 : 0.0
         reduced = reducedMotion
@@ -411,13 +453,127 @@ class SheetView: NSView {
     }
 
     /// Stops a motion where it stands and settles the sheet at `presence`, so a held frame is exactly
-    /// the arithmetic's value for it.
-    func cancelMotion(settingPresence value: Double) {
+    /// the arithmetic's value for it. `leaving` says which way an in-place sheet was going, which
+    /// decides how dark it is at that presence.
+    func cancelMotion(settingPresence value: Double, leaving held: Bool = false) {
         token += 1
+        leaving = held
         scrim.dim.layer?.removeAnimation(forKey: Self.motionKey)
         carrier.layer?.removeAnimation(forKey: Self.motionKey)
         carrier.layer?.removeAnimation(forKey: "studio.sheet.fade")
+        sheetToolbar.layer?.removeAnimation(forKey: Self.motionKey)
+        flight.layer?.removeAllAnimations()
         apply(presence: value)
+    }
+
+    /// The in-place motion: the sheet stands at rest and its darkness and its words follow
+    /// `PictureFlight`'s two ramps on a straight clock, as keyframes the compositor runs.
+    private func animateInPlace(opening: Bool, reduced reducedMotion: Bool, completion: @escaping () -> Void) {
+        reduced = reducedMotion
+        leaving = !opening
+        token += 1
+        let mine = token
+        let duration =
+            reducedMotion
+            ? PictureFlight.reducedDuration : (opening ? inPlaceSpans.arriving : inPlaceSpans.leaving)
+        let alpha = StudioSheetMotion.scrimAlpha(for: appearanceFace)
+        let end: Double = opening ? 1 : 0
+        let dark: (values: [Double], times: [Double]) =
+            reducedMotion
+            ? ([1 - end, end], [0, 1])
+            : (opening
+                ? ([0, 1, 1], [0, PictureFlight.backdropEnd, 1])
+                : ([1, 1, 0], [0, PictureFlight.backdropHold, 1]))
+        let words: (values: [Double], times: [Double]) =
+            opening
+            ? ([0, 0, 1], [0, PictureFlight.chromeStart, 1])
+            : ([1, 0, 0], [0, PictureFlight.chromeLeave, 1])
+        let fadesWords = !reducedMotion && flightPlan != nil
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        CATransaction.setCompletionBlock { [weak self] in
+            MainThread.call {
+                guard let self, self.token == mine else { return }
+                completion()
+            }
+        }
+        presence = end
+        scrim.dim.layer?.opacity = Float(alpha * end)
+        carrier.layer?.sublayerTransform = CATransform3DIdentity
+        carrier.layer?.opacity = Float(end)
+        sheetToolbar.layer?.opacity = Float(fadesWords ? end : 1)
+        func ramp(_ values: [Double], _ times: [Double], scale: Double = 1) -> CAKeyframeAnimation {
+            let motion = CAKeyframeAnimation(keyPath: "opacity")
+            motion.values = values.map { $0 * scale }
+            motion.keyTimes = times.map { NSNumber(value: $0) }
+            motion.calculationMode = .linear
+            motion.duration = duration
+            return motion
+        }
+        scrim.dim.layer?.add(ramp(dark.values, dark.times, scale: alpha), forKey: Self.motionKey)
+        carrier.layer?.add(ramp(dark.values, dark.times), forKey: Self.motionKey)
+        if fadesWords {
+            sheetToolbar.layer?.add(ramp(words.values, words.times), forKey: Self.motionKey)
+        }
+        CATransaction.commit()
+    }
+
+    /// Flies a picture between its tile and the page, both in this view's own coordinates, on
+    /// `PictureFlight`'s curve for the way it is going. The compositor moves the layer; the
+    /// picture fills it at every size. `landed` runs once it has arrived, unless another flight
+    /// or a cancel took its place.
+    func fly(_ plan: FlightPictureView.Plan, landed: @escaping @MainActor @Sendable () -> Void) {
+        flightPlan = plan
+        leaving = !plan.opening
+        let from = plan.opening ? plan.tile : plan.stage
+        let to = plan.opening ? plan.stage : plan.tile
+        let radius: (from: CGFloat, to: CGFloat) =
+            plan.opening ? (plan.tileRadius, 0) : (0, plan.tileRadius)
+        sheetToolbar.wantsLayer = true
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        flight.picture = plan.picture
+        flight.frame = from
+        flight.layer?.cornerRadius = radius.from
+        flight.isHidden = false
+        CATransaction.commit()
+        let curve = PictureFlight.curve(opening: plan.opening)
+        let mine = token
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = PictureFlight.duration(opening: plan.opening, reduced: false)
+            context.timingFunction = CAMediaTimingFunction(
+                controlPoints: Float(curve.x1), Float(curve.y1), Float(curve.x2), Float(curve.y2))
+            context.allowsImplicitAnimation = true
+            flight.frame = to
+            flight.layer?.cornerRadius = radius.to
+        }, completionHandler: { [weak self] in
+            MainThread.call {
+                guard let self, self.token == mine, self.flightPlan != nil else { return }
+                landed()
+            }
+        })
+    }
+
+    /// Takes the picture out of the air: the page, or the tile, has it again.
+    func endFlight() {
+        flightPlan = nil
+        flight.layer?.removeAllAnimations()
+        flight.isHidden = true
+        flight.picture = nil
+        sheetToolbar.layer?.removeAnimation(forKey: Self.motionKey)
+        sheetToolbar.layer?.opacity = 1
+    }
+
+    /// Where the picture in the air is drawn right now and whether one is, for a check.
+    var flightFrame: NSRect? { flightPlan == nil || flight.isHidden ? nil : flight.frame }
+
+    /// Plans a flight without starting it, so a held frame can stand part of the way along it.
+    func plan(_ plan: FlightPictureView.Plan) {
+        flightPlan = plan
+        sheetToolbar.wantsLayer = true
+        flight.picture = plan.picture
+        flight.isHidden = false
     }
 
     /// A window-space point where a press lands on the scrim and on neither the sheet nor the title
@@ -760,7 +916,7 @@ final class SheetPresenter {
             } else {
                 state = .opening
             }
-            sheet.cancelMotion(settingPresence: progress)
+            sheet.cancelMotion(settingPresence: progress, leaving: closing)
         }
     #endif
 

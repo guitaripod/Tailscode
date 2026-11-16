@@ -19,6 +19,7 @@ enum MediaViewerCheck {
         stack(expect)
         stacked(expect)
         gallery(expect)
+        flight(expect)
         clip(expect)
         return failures
     }
@@ -258,6 +259,84 @@ enum MediaViewerCheck {
         controller.dismiss()
         controller.motionFinished()
         window.close()
+    }
+
+    /// A picture opened from a conversation flies out of its tile and home to the tile of the page
+    /// being shown, and the sheet around it arrives in place rather than rising.
+    private static func flight(_ expect: (Bool, String) -> Void) {
+        let stack = SheetStack()
+        let viewer = MediaViewer(stack: stack)
+        viewer.presenter.reducedMotion = { false }
+        let (window, _) = offscreen(1180, 760)
+        let pictures = items(3, tag: "m5flight")
+        let tiles = pictures.enumerated().map { index, _ in
+            NSView(frame: NSRect(x: 40 + CGFloat(index) * 70, y: 300, width: 64, height: 64))
+        }
+        tiles.forEach { window.contentView?.addSubview($0) }
+        var out: [String: Bool] = [:]
+        let stands: (String) -> PictureStand? = { key in
+            guard let index = pictures.firstIndex(where: { $0.key == key }),
+                let entry = ImageStore.shared.entry(forKey: key)
+            else { return nil }
+            return PictureStand(
+                view: tiles[index], rect: tiles[index].bounds, radius: 10, picture: entry.preview,
+                setOut: { out[key] = $0 })
+        }
+        viewer.showPictures(
+            items: pictures, startKey: pictures[0].key, host: window, fetch: { _, _ in }, stands: stands, toast: nil)
+        guard let view = viewer.surface as? PictureGalleryView else {
+            expect(false, "pictures of a conversation build a gallery")
+            return
+        }
+        expect(viewer.sheet.arrival == .inPlace, "a viewer opened from a tile arrives in place")
+        expect(viewer.sheet.motionSummary == nil && viewer.sheet.isMoving, "it does not travel: nothing slides in beside the picture")
+        expect(out[pictures[0].key] == true, "the tile is not drawn while its picture is out")
+        let tile = tiles[0].convert(tiles[0].bounds, to: viewer.sheet)
+        let page = view.pageFrame(in: viewer.sheet) ?? .zero
+        viewer.hold(at: 0, closing: false)
+        expect(near(viewer.flightFrame, tile), "the flight starts on the tile: \(viewer.flightFrame ?? .zero) against \(tile)")
+        viewer.hold(at: 1, closing: false)
+        expect(
+            page.width > tile.width && near(viewer.flightFrame, page),
+            "and ends exactly where the page draws the picture: \(viewer.flightFrame ?? .zero) against \(page)")
+        viewer.hold(at: 0.3, closing: false)
+        let partway = viewer.flightFrame ?? .zero
+        expect(
+            partway.width > tile.width && partway.width < page.width,
+            "part of the way out it is between the two: \(partway.width)")
+        viewer.presenter.motionFinished()
+        viewer.sheet.cancelMotion(settingPresence: 1)
+        viewer.sheet.endFlight()
+        view.setPageShown(true)
+
+        _ = viewer.press(.last)
+        expect(
+            out[pictures[0].key] == false && out[pictures[2].key] == true,
+            "turning the page puts the first tile back and takes out the one being shown")
+        expect(viewer.flightFrame == nil, "nothing is in the air at rest")
+        let lastTile = tiles[2].convert(tiles[2].bounds, to: viewer.sheet)
+        viewer.hold(at: 0, closing: true)
+        expect(
+            near(viewer.flightFrame, lastTile),
+            "closing flies home to the tile of the page being shown, not the one opened: \(viewer.flightFrame ?? .zero) against \(lastTile)")
+        viewer.presenter.motionFinished()
+        expect(viewer.state == .closed && out[pictures[2].key] == false, "and the tile is drawn again once it is home")
+        expect(viewer.sheet.arrival == .rise && viewer.flightFrame == nil, "the sheet is the Studio's to raise again")
+
+        tiles[1].removeFromSuperview()
+        viewer.showPictures(
+            items: pictures, startKey: pictures[1].key, host: window, fetch: { _, _ in }, stands: stands, toast: nil)
+        expect(
+            viewer.sheet.arrival == .inPlace && viewer.flightFrame == nil,
+            "a picture whose tile is not in sight still arrives in place, with nothing flown")
+        viewer.presenter.teardown()
+        window.close()
+    }
+
+    private static func near(_ frame: NSRect?, _ other: NSRect) -> Bool {
+        guard let frame else { return false }
+        return abs(frame.minX - other.minX) < 1 && abs(frame.minY - other.minY) < 1
+            && abs(frame.width - other.width) < 1 && abs(frame.height - other.height) < 1
     }
 
     private static func gallery(_ expect: (Bool, String) -> Void) {

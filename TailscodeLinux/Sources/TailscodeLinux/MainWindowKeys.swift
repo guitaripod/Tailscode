@@ -321,6 +321,10 @@ extension MainWindow {
         case "release": viewer?.sheetLayer.release()
         case _ where argument.hasPrefix("hold"):
             if let presence = Double(argument.dropFirst(4)) { viewer?.sheetLayer.hold(at: presence) }
+        case _ where argument.hasPrefix("leave"):
+            if let presence = Double(argument.dropFirst(5)) { viewer?.stagedLeave(at: presence) }
+        case "flight":
+            FileHandle.standardOutput.write(Data("FLIGHT \(viewer?.flightSummary ?? "no viewer")\n".utf8))
         case _ where argument.hasPrefix("key:"):
             driveKey(String(argument.dropFirst(4)), through: stack)
         default:

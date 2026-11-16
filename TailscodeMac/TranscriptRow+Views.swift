@@ -100,9 +100,18 @@ extension TranscriptRow {
         rule.fill = MacTheme.Color.accent
         rule.blade = true
 
+        let font = MacTheme.Ramp.font(.prompt)
+        let words: (String) -> NSAttributedString = {
+            MacMarkdown.plainWithLinks($0, font: font, color: MacTheme.Color.label)
+        }
+        let foldKey = PromptFold.key(messageID: messageID)
+        let columns = PromptFold.columns(
+            width: Double(max(0, (context.columnWidth?() ?? 0) - promptIndent)),
+            fontSize: Double(font.pointSize), monospaced: false)
+        var opened = context.isExpanded(foldKey)
+        let reading = PromptFold.read(text, columns: columns, expanded: opened)
         let label = RowKit.attributedLabel(
-            MacMarkdown.plainWithLinks(
-                text, font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.label))
+            words(reading.folded ? PromptFold.cut(text, columns: columns) : text))
         let row = PromptRow(messageID: messageID, text: text, context: context)
         (label as? RowKit.ProseLabel)?.verbs = { [weak context] in
             var verbs = [
@@ -128,9 +137,40 @@ extension TranscriptRow {
                 equalTo: rule.trailingAnchor, constant: MacTheme.Spacing.s + 2),
             label.trailingAnchor.constraint(equalTo: row.trailingAnchor),
             label.topAnchor.constraint(equalTo: row.topAnchor),
-            label.bottomAnchor.constraint(equalTo: row.bottomAnchor),
+        ])
+        guard let title = reading.toggleLabel else {
+            label.bottomAnchor.constraint(equalTo: row.bottomAnchor).isActive = true
+            return row
+        }
+        let onToggle = context.onToggle
+        let shown = RowKit.Weak(label)
+        let button = RowKit.Weak<NSButton>(nil)
+        let toggle = RowKit.linkButton(foldTitle(title, folded: reading.folded)) {
+            opened.toggle()
+            onToggle?(foldKey, opened)
+            let next = PromptFold.read(text, columns: columns, expanded: opened)
+            shown.value?.attributedStringValue = words(
+                next.folded ? PromptFold.cut(text, columns: columns) : text)
+            button.value?.title = foldTitle(next.toggleLabel ?? "", folded: next.folded)
+        }
+        button.value = toggle
+        toggle.font = MacTheme.Ramp.font(.codeAction)
+        toggle.contentTintColor = MacTheme.Color.secondaryLabel
+        row.addSubview(toggle)
+        NSLayoutConstraint.activate([
+            toggle.leadingAnchor.constraint(equalTo: label.leadingAnchor),
+            toggle.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 2),
+            toggle.bottomAnchor.constraint(equalTo: row.bottomAnchor),
         ])
         return row
+    }
+
+    /// The room a prompt's words lose to its rule and the gap beside it.
+    @MainActor private static var promptIndent: CGFloat { 2 + MacTheme.Spacing.s + 2 }
+
+    /// The fold line's words behind the mark that says which way it goes.
+    private static func foldTitle(_ words: String, folded: Bool) -> String {
+        (folded ? "⌄ " : "⌃ ") + words
     }
 
     /// A row that is not itself built as a ``PromptRow`` still gets "Undo from here" when it is

@@ -319,6 +319,41 @@ void tailscode_snap_motes(
     }
 }
 
+void tailscode_snap_texture(
+    GtkSnapshot *snapshot, GdkTexture *texture, double x, double y, double width, double height) {
+    if (texture == NULL || width <= 0 || height <= 0) return;
+    graphene_rect_t bounds = GRAPHENE_RECT_INIT((float)x, (float)y, (float)width, (float)height);
+    gtk_snapshot_append_scaled_texture(snapshot, texture, GSK_SCALING_FILTER_TRILINEAR, &bounds);
+}
+
+gboolean tailscode_widget_sight_in(GtkWidget *widget, GtkWidget *space, double *out) {
+    graphene_rect_t bounds;
+    if (widget == NULL || space == NULL || out == NULL) return FALSE;
+    if (!gtk_widget_get_mapped(widget) || !gtk_widget_get_mapped(space)) return FALSE;
+    if (!gtk_widget_compute_bounds(widget, space, &bounds)) return FALSE;
+    out[0] = bounds.origin.x;
+    out[1] = bounds.origin.y;
+    out[2] = bounds.size.width;
+    out[3] = bounds.size.height;
+    graphene_rect_t seen = bounds;
+    gboolean in_sight = TRUE;
+    for (GtkWidget *above = gtk_widget_get_parent(widget); above != NULL && above != space;
+         above = gtk_widget_get_parent(above)) {
+        graphene_rect_t port;
+        if (!GTK_IS_SCROLLED_WINDOW(above)) continue;
+        if (!gtk_widget_compute_bounds(above, space, &port)) continue;
+        if (!graphene_rect_intersection(&seen, &port, &seen)) {
+            in_sight = FALSE;
+            break;
+        }
+    }
+    double area = (double)bounds.size.width * (double)bounds.size.height;
+    out[4] = in_sight && area > 0
+        ? ((double)seen.size.width * (double)seen.size.height) / area
+        : 0;
+    return TRUE;
+}
+
 void tailscode_snap_push_rounded_clip(
     GtkSnapshot *snapshot, double x, double y, double width, double height, double radius) {
     GskRoundedRect shape = rounded(x, y, width, height, radius);

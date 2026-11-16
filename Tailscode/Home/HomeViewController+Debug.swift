@@ -110,7 +110,7 @@ extension HomeViewController {
                 present(UINavigationController(rootViewController: picker), animated: false)
             case "imageviewer":
                 let viewer = ImageViewerViewController(
-                    items: DuoFixtures.gallery(), startIndex: 1, backend: nil, from: nil)
+                    items: DuoFixtures.gallery(), startIndex: 1, backend: nil)
                 present(viewer, animated: false)
             default:
                 break

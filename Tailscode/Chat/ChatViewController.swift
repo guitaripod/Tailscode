@@ -325,6 +325,7 @@ final class ChatViewController: UIViewController {
         viewModel.start()
         viewModel.restoreHeldMessages()
         #if DEBUG
+            ChatPictureStaging.drive(self)
             if let auto = ProcessInfo.processInfo.environment["TAILSCODE_AUTOSEND"] {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(2))

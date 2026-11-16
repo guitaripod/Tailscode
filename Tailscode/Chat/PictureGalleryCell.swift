@@ -5,6 +5,9 @@ import UIKit
 @MainActor
 protocol PictureGalleryCellDelegate: AnyObject {
     func pictureGalleryCell(_ cell: PictureGalleryCell, didTapPictureAt index: Int)
+    /// What a long press on one of the strip's pictures offers, which is what a lone picture offers.
+    func pictureGalleryCell(_ cell: PictureGalleryCell, menuFor payload: ImagePayload, from view: UIView)
+        -> UIMenu
 }
 
 /// The pictures an agent made, as one grid of small tiles rather than a poster each: a turn that
@@ -20,11 +23,13 @@ protocol PictureGalleryCellDelegate: AnyObject {
 /// a picture arriving never changes it: the block is always one picture tall, and a lone picture's
 /// real shape moves only its width, which the cell lays out again by itself. Tiles are made as the layout asks for them, so a group of seventeen scoped
 /// to six on a phone loads six pictures rather than seventeen.
-final class PictureGalleryCell: UICollectionViewCell {
+final class PictureGalleryCell: UICollectionViewCell, PictureHoming {
     static let reuseID = "PictureGalleryCell"
     weak var delegate: PictureGalleryCellDelegate?
 
     private var tiles: [PictureThumb] = []
+    /// The tile a long press landed on, which is the one its menu lifts.
+    private weak var menuTile: PictureThumb?
     private var placed: [PictureGalleryLayout.Tile] = []
     private var files: [FileReference] = []
     private var backend: (any CodingAgentBackend)?
@@ -42,6 +47,7 @@ final class PictureGalleryCell: UICollectionViewCell {
         isAccessibilityElement = false
         contentView.addGestureRecognizer(
             UITapGestureRecognizer(target: self, action: #selector(pressed)))
+        contentView.addInteraction(UIContextMenuInteraction(delegate: self))
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -118,18 +124,32 @@ final class PictureGalleryCell: UICollectionViewCell {
     }
 
     @objc private func pressed(_ gesture: UITapGestureRecognizer) {
-        let point = gesture.location(in: contentView)
-        guard let tile = placed.first(where: {
-            CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height)
-                .offsetBy(dx: Self.inset, dy: gapAbove)
-                .contains(point)
-        }) else { return }
+        guard let tile = tile(at: gesture.location(in: contentView)) else { return }
         open(tile.index)
     }
 
     private func open(_ index: Int) {
         Theme.Haptics.tap()
         delegate?.pictureGalleryCell(self, didTapPictureAt: index)
+    }
+
+    /// The tile a point of the content lands on, among the ones drawn.
+    private func tile(at point: CGPoint) -> PictureGalleryLayout.Tile? {
+        placed.first {
+            CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height)
+                .offsetBy(dx: Self.inset, dy: gapAbove)
+                .contains(point)
+        }
+    }
+
+    /// A tile's picture as something to save, copy or share: the full picture when this device
+    /// has decoded it and the tile's own pixels until then, with the server's bytes behind either.
+    private func payload(at index: Int) -> ImagePayload? {
+        guard files.indices.contains(index), tiles.indices.contains(index) else { return nil }
+        let store = AttachmentImageStore.shared
+        guard let image = store.cached(files[index]) ?? tiles[index].image else { return nil }
+        return ImagePayload(
+            image: image, data: store.cachedData(files[index]), filename: files[index].displayName)
     }
 
     /// One accessibility element per tile drawn, each named for its own picture and opening that
@@ -223,6 +243,21 @@ final class PictureGalleryCell: UICollectionViewCell {
         }
     }
 
+    /// The tile's rectangle and, for a lone picture fitted inside its tile, the part of it the
+    /// picture covers. A picture the strip only counts has no tile and so no home.
+    func pictureHome(at index: Int) -> PictureHome? {
+        layoutIfNeeded()
+        guard placed.contains(where: { $0.index == index }), tiles.indices.contains(index),
+            !tiles[index].isHidden
+        else { return nil }
+        let tile = tiles[index]
+        let pixels = PictureHome.pixels(of: tile.image, in: tile.bounds, fitted: files.count == 1)
+        let covered = abs(pixels.width - tile.bounds.width) < 1 && abs(pixels.height - tile.bounds.height) < 1
+        return PictureHome(
+            view: tile, pixels: pixels, cornerRadius: covered ? Theme.Radius.control : 0,
+            image: tile.image)
+    }
+
     /// The chip that counts what the grid could not draw, made once and moved with the last tile.
     private func badgeLabel() -> UILabel {
         if let badge { return badge }
@@ -238,6 +273,49 @@ final class PictureGalleryCell: UICollectionViewCell {
         contentView.addSubview(label)
         badge = label
         return label
+    }
+}
+
+extension PictureGalleryCell: UIContextMenuInteractionDelegate {
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configurationForMenuAtLocation location: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard let tile = tile(at: location), let payload = payload(at: tile.index), let delegate,
+            tiles.indices.contains(tile.index)
+        else { return nil }
+        let pressed = tiles[tile.index]
+        menuTile = pressed
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) {
+            [weak self] _ in
+            guard let self else { return nil }
+            return delegate.pictureGalleryCell(self, menuFor: payload, from: pressed)
+        }
+    }
+
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configuration: UIContextMenuConfiguration,
+        highlightPreviewForItemWithIdentifier identifier: NSCopying
+    ) -> UITargetedPreview? {
+        tilePreview()
+    }
+
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configuration: UIContextMenuConfiguration,
+        dismissalPreviewForItemWithIdentifier identifier: NSCopying
+    ) -> UITargetedPreview? {
+        tilePreview()
+    }
+
+    /// The one tile under the finger lifts, not the row it is in.
+    private func tilePreview() -> UITargetedPreview? {
+        guard let tile = menuTile, tile.window != nil else { return nil }
+        let parameters = UIPreviewParameters()
+        parameters.visiblePath = UIBezierPath(
+            roundedRect: tile.bounds, cornerRadius: Theme.Radius.control)
+        return UITargetedPreview(view: tile, parameters: parameters)
     }
 }
 

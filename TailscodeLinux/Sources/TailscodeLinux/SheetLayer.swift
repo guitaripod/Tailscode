@@ -47,6 +47,26 @@ final class SheetLayer: @unchecked Sendable {
     private var opener: UnsafeMutablePointer<GtkWidget>?
     private var tick: guint = 0
     private var motionReduced = false
+    private var leaving = false
+
+    /// How a sheet comes and goes: rising from below the window as the Studio does, or in place,
+    /// where it only fades and whoever owns it flies something over it (`PictureFlight`).
+    enum Arrival {
+        case rise
+        case inPlace
+    }
+
+    /// Chosen by the owner before a show or a dismissal; a sheet rises unless told otherwise.
+    var arrival: Arrival = .rise
+    /// How long an in-place sheet takes to come and to go.
+    var inPlaceSpans: (arriving: Double, leaving: Double) = (
+        PictureFlight.openDuration, PictureFlight.closeDuration
+    )
+    /// Every frame of an in-place sheet: how present it is on a straight clock, and whether it is
+    /// arriving. The owner draws what flies and fades its own words from this.
+    var onPresence: ((Double, Bool) -> Void)?
+    /// The sheet has come to rest, open.
+    var onArrived: (() -> Void)?
 
     private(set) var state: StudioSheetState = .closed
     private(set) var frame = StudioSheetGeometry.frame(windowWidth: 0, windowHeight: 0, titlebar: 0)
@@ -298,6 +318,10 @@ final class SheetLayer: @unchecked Sendable {
     }
 
     private func place() {
+        guard arrival == .rise else {
+            placeInPlace()
+            return
+        }
         let rise = StudioSheetMotion.translation(
             progress: progress, sheetHeight: frame.height, reduced: motionReduced)
         tailscode_fixed_place(host, sheet, 0, rise.rounded())
@@ -305,6 +329,46 @@ final class SheetLayer: @unchecked Sendable {
             sheet, StudioSheetMotion.sheetOpacity(progress: progress, reduced: motionReduced))
         gtk_widget_set_opacity(
             scrim, StudioSheetMotion.scrimOpacity(progress: progress, appearance: appearance))
+    }
+
+    /// An in-place sheet stands where it rests and is only as present as the dark behind a flight:
+    /// in before the owner's words when arriving, lifting across most of the way when leaving.
+    /// With motion reduced it is a plain cross-fade.
+    private func placeInPlace() {
+        tailscode_fixed_place(host, sheet, 0, 0)
+        let dark =
+            motionReduced
+            ? min(1, max(0, progress)) : PictureFlight.backdrop(time: progress, opening: !leaving)
+        gtk_widget_set_opacity(sheet, dark)
+        gtk_widget_set_opacity(scrim, StudioSheetMotion.scrimAlpha(for: appearance) * dark)
+        onPresence?(progress, !leaving)
+    }
+
+    /// Where a widget of this window stands in the overlay every sheet is laid out in, or nil
+    /// when less than `inSight` of it shows through the scrollers it is inside.
+    func bounds(of widget: UnsafeMutablePointer<GtkWidget>, inSight: Double = 0)
+        -> PictureFlight.Rect?
+    {
+        var out = [Double](repeating: 0, count: 5)
+        guard tailscode_widget_sight_in(widget, overlay, &out) != 0, out[4] >= inSight else {
+            return nil
+        }
+        return PictureFlight.Rect(x: out[0], y: out[1], width: out[2], height: out[3])
+    }
+
+    /// Puts a widget over everything in the window, sheets included, without it being measured
+    /// or pressed: where an owner draws what flies.
+    func float(_ widget: UnsafeMutablePointer<GtkWidget>) {
+        gtk_widget_set_can_target(widget, 0)
+        gtk_widget_set_can_focus(widget, 0)
+        gtk_widget_set_hexpand(widget, 1)
+        gtk_widget_set_vexpand(widget, 1)
+        gtk_overlay_add_overlay(op(overlay), widget)
+        gtk_overlay_set_measure_overlay(op(overlay), widget, 0)
+    }
+
+    func unfloat(_ widget: UnsafeMutablePointer<GtkWidget>) {
+        gtk_overlay_remove_overlay(op(overlay), widget)
     }
 
     /// The face of the app the scrim is drawn over, as the desktop resolves it.
@@ -321,9 +385,10 @@ final class SheetLayer: @unchecked Sendable {
 
     /// Draws the sheet at a presence between 0 (away) and 1 (at rest) with no clock running, for
     /// the headless driver that photographs the middle of the motion.
-    func hold(at presence: Double) {
+    func hold(at presence: Double, leaving: Bool = false) {
         stopClock()
         motionReduced = !RepeatingMotion.allowed
+        self.leaving = leaving
         progress = min(1, max(0, presence))
         place()
     }
@@ -337,13 +402,14 @@ final class SheetLayer: @unchecked Sendable {
     private func run(to target: Double, opening: Bool) {
         stopClock()
         motionReduced = !RepeatingMotion.allowed
+        leaving = !opening
         let from = progress
         let distance = abs(target - from)
         guard distance > 0 else {
             settle(target)
             return
         }
-        let span = StudioSheetMotion.duration(opening: opening, reduced: motionReduced) * distance
+        let span = length(opening: opening) * distance
         let link = Link(self, from: from, target: target, opening: opening, span: span)
         _ = Gtk.releaseInstalled
         tick = tailscode_add_owned_tick(
@@ -392,16 +458,27 @@ final class SheetLayer: @unchecked Sendable {
             settle(link.target)
             return false
         }
-        let share = StudioSheetMotion.eased(elapsed / link.span, opening: link.opening)
+        let done = elapsed / link.span
+        let share = arrival == .rise ? StudioSheetMotion.eased(done, opening: link.opening) : done
         progress = link.from + (link.target - link.from) * share
         place()
         return true
+    }
+
+    /// How long the whole of a motion lasts for the way this sheet comes and goes.
+    private func length(opening: Bool) -> Double {
+        if motionReduced { return StudioSheetMotion.reducedDuration }
+        switch arrival {
+        case .rise: return StudioSheetMotion.duration(opening: opening, reduced: false)
+        case .inPlace: return opening ? inPlaceSpans.arriving : inPlaceSpans.leaving
+        }
     }
 
     private func settle(_ target: Double) {
         progress = target
         place()
         apply(.finished)
+        if target >= 1, state == .open { onArrived?() }
     }
 
     func stopClock() {

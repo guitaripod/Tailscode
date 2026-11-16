@@ -220,6 +220,8 @@ final class PictureGalleryView: ViewerSurface {
     private var nextButton: NSButton?
     private var paneWhenFitted: CGSize = .zero
     private var magnifyObserver: NSObjectProtocol?
+    /// The gallery turned to another page.
+    var onTurned: (() -> Void)?
 
     init(items: [ImageViewer.Item], startKey: String, fetch: @escaping (FileReference, String) -> Void) {
         self.items = items
@@ -351,9 +353,25 @@ final class PictureGalleryView: ViewerSurface {
     }
 
     private func go(_ move: (inout ViewerPager) -> Void) {
+        let before = pager.index
         move(&pager)
         zoom.fit()
         render()
+        if pager.index != before { onTurned?() }
+    }
+
+    /// Where the page draws its picture right now, in `space`, while the whole picture is fitted
+    /// in the pane: the rectangle a flight ends on and leaves from. Nil for a page with no
+    /// picture yet and for one the reader has zoomed, which has no one rectangle to speak of.
+    func pageFrame(in space: NSView) -> NSRect? {
+        guard imageView.image != nil, zoom.mode == .fit, imageView.frame.width > 0 else { return nil }
+        layoutSubtreeIfNeeded()
+        return imageView.convert(imageView.bounds, to: space)
+    }
+
+    /// Whether the page's own picture is drawn, which it is not while the same picture is in the air.
+    func setPageShown(_ shown: Bool) {
+        imageView.alphaValue = shown ? 1 : 0
     }
 
     func toggleZoom() {
@@ -427,39 +445,11 @@ final class PictureGalleryView: ViewerSurface {
     /// The original bytes on the pasteboard, under the type they actually are — never the bitmap a
     /// bubble downsampled to display.
     func copyPicture() {
-        guard let entry = ImageStore.shared.entry(forKey: currentItem.key) else {
-            say(Localized.text("Still loading — try again in a moment."))
-            return
-        }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        if !entry.data.isEmpty, let ext = ImageBytes.sniffedExtension(entry.data),
-            let type = UTType(filenameExtension: ext)
-        {
-            pasteboard.setData(entry.data, forType: NSPasteboard.PasteboardType(type.identifier))
-        } else {
-            pasteboard.writeObjects([entry.image])
-        }
-        say(ImageGenWords.copiedNotice)
+        say(PictureDesk.copy(key: currentItem.key))
     }
 
-    /// The person's own Downloads folder, asked of the file manager rather than built out of a home
-    /// path: inside a container the home directory *is* the container, so a hand-built path writes
-    /// the picture where nobody will ever look for it under a toast naming a folder it is not in.
     func savePicture() {
-        let item = currentItem
-        guard let entry = ImageStore.shared.entry(forKey: item.key) else {
-            say(Localized.text("Still loading — try again in a moment."))
-            return
-        }
-        let filename = ImageBytes.exportFilename(item.name, data: entry.data)
-        guard let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
-            say(Localized.text("This Mac has no Downloads folder to write to."))
-            return
-        }
-        let target = downloads.appendingPathComponent(filename)
-        let wrote = (try? entry.data.write(to: target)) != nil
-        say(wrote ? Localized.text("Saved %@", target.path) : Localized.text("Could not write %@", target.path))
+        say(PictureDesk.save(key: currentItem.key, named: currentItem.name))
     }
 }
 

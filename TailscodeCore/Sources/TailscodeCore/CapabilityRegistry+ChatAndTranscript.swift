@@ -151,6 +151,18 @@ extension CapabilityRegistry {
             spec:
                 "Tapping a picture opens a gallery over every image in the conversation — paged, zoomable to 1:1 — and any save/share hands over the server's original bytes, never a re-encode."),
         CapabilityDefinition(
+            id: .pictureFlight, area: "transcript", title: "A picture opens from where it is",
+            spec:
+                "The picture that was pressed is what moves: the tile's own pixels, drawn filling a frame that travels from the tile to the rectangle the viewer fits the picture into (PictureFlight), so a strip's square crop opens into the whole picture and the last frame is what the viewer draws. The tile it left is not drawn while it is out. The backdrop is in by 45 % of the flight and the viewer's words arrive in the last 45 %; leaving runs them backwards. It goes home to the tile of the page being shown, not the one opened, and a picture whose tile is off screen fades in place. Nothing slides in beside it, and reduced motion is a cross-fade."),
+        CapabilityDefinition(
+            id: .pictureActions, area: "transcript", title: "A picture can be acted on where it is",
+            spec:
+                "A lone picture and every tile of a strip answer alike (PictureVerbs): a desktop's right click or menu key offers Open, Copy image, Save to Downloads and Copy path; the phone's long press lifts the tile under the finger and offers Save to Photos, Copy, Save to Files and Share. Copy on a picture is always the picture, never its filename."),
+        CapabilityDefinition(
+            id: .promptFold, area: "transcript", title: "A long prompt folds",
+            spec:
+                "A prompt that would run past ten lines at the width it is drawn shows seven, ends on an ellipsis and carries a fold line (PromptFold): Show more opens it in place with the reading position held, Show less folds it again, and the choice is kept beside the transcript's other expansions. Copy and find still read the whole prompt."),
+        CapabilityDefinition(
             id: .subagentCards, area: "transcript", title: "Subagents inline",
             spec:
                 "A subagent renders as a card docked at its spawning tool call, expanding in place; a wide fan-out collapses behind one group row; never a separate chat. The row's live line is StatusFacts.liveDetail(_:at:under:), and its clock belongs to the agent rather than to whoever is reading: a sidecar goes on claiming it is working for as long as its window lasts, so the spawning call bounds it — AgentHold(call) — and an agent under a call that is over stopped when the call stopped, at the latest. Otherwise a four-minute errand reopened a week later reads as seven days and grows again every time the transcript is drawn."),

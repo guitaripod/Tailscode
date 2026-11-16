@@ -114,6 +114,7 @@ enum PictureGalleryView {
             Gtk.addClass(opener, "flat")
             Gtk.addClass(opener, "picture-gallery-tile")
             gtk_widget_set_size_request(opener, Int32(tile.width), Int32(tile.height))
+            gtk_widget_set_overflow(opener, GTK_OVERFLOW_HIDDEN)
             gtk_button_set_child(ptr(opener), content)
 
             let name = PictureGalleryView.filename(of: picture.reference)
@@ -124,6 +125,10 @@ enum PictureGalleryView {
             let open = context.openImage
             let key = picture.key
             Gtk.connect(UnsafeMutableRawPointer(opener), "clicked") { open?(key, name) }
+            let menu = context.presentPictureMenu
+            let reference = picture.reference
+            let bits = UInt(bitPattern: opener)
+            Gtk.onRightClickCapture(opener) { x, y in menu?(key, name, reference, bits, x, y) }
             return opener
         }
 
@@ -142,6 +147,7 @@ enum PictureGalleryView {
                 gtk_picture_set_content_fit(
                     op(drawn), fitted ? GTK_CONTENT_FIT_CONTAIN : GTK_CONTENT_FIT_COVER)
                 gtk_widget_set_size_request(drawn, width, height)
+                context.pictureTiles.stand(drawn, for: picture.key, fitted: fitted)
                 frame = drawn
             } else {
                 let waiting = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)

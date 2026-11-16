@@ -199,6 +199,8 @@ extension MainWindow {
             FileHandle.standardOutput.write(Data("SECTIONS \(described)\n".utf8))
         case "gallery":
             self.activePane.driverOpenGallery()
+        case "picmenu":
+            self.activePane.driverPictureMenu(Int(argument) ?? 0)
         case "viewer":
             self.driveViewer(argument)
         case "newchat":

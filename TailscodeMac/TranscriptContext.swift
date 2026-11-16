@@ -33,6 +33,8 @@ final class TranscriptContext {
     /// spinner and elapsed reading in one frame agrees.
     var workflowNow: Date = Date()
     var onToggle: ((String, Bool) -> Void)?
+    /// How wide the column a row is drawn in is right now, for a row whose shape depends on it.
+    var columnWidth: (() -> CGFloat)?
     /// The words of the answer a row belongs to, onto the pasteboard — what the hover capsule's
     /// Copy does, reachable from the row's accessibility actions.
     var copyAnswer: ((String) -> Void)?

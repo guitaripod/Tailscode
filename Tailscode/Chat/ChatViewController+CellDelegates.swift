@@ -1,5 +1,6 @@
 import CodingAgentKit
 import SafariServices
+import TailscodeCore
 import UIKit
 
 extension ChatViewController: PictureGalleryCellDelegate {
@@ -11,8 +12,14 @@ extension ChatViewController: PictureGalleryCellDelegate {
         let start = items.firstIndex { $0.id == Self.pictureID(row: rowID, index: index) } ?? 0
         present(
             ImageViewerViewController(
-                items: items, startIndex: start, backend: viewModel.backend, from: cell),
+                items: items, startIndex: start, backend: viewModel.backend, homes: pictureHomes),
             animated: false)
+    }
+
+    func pictureGalleryCell(
+        _ cell: PictureGalleryCell, menuFor payload: ImagePayload, from view: UIView
+    ) -> UIMenu {
+        imageMenu(for: payload, from: view)
     }
 }
 
@@ -24,7 +31,7 @@ extension ChatViewController: ImageBubbleCellDelegate {
         guard !items.isEmpty else { return }
         present(
             ImageViewerViewController(
-                items: items, startIndex: start, backend: viewModel.backend, from: view),
+                items: items, startIndex: start, backend: viewModel.backend, homes: pictureHomes),
             animated: false)
     }
 
@@ -33,29 +40,29 @@ extension ChatViewController: ImageBubbleCellDelegate {
     }
 
     /// What a long-press on a picture offers, named for the file it is a picture of.
+    /// The same verbs, in Core's order, on a lone picture and on every tile of a strip.
     fileprivate func imageMenu(for payload: ImagePayload, from source: UIView) -> UIMenu {
         UIMenu(
             title: payload.filename,
-            children: [
-                UIAction(
-                    title: String(localized: "Save to Photos"),
-                    image: UIImage(systemName: "square.and.arrow.down")
-                ) { [weak self] _ in self?.saveToPhotos(payload) },
-                UIAction(
-                    title: String(localized: "Copy"), image: UIImage(systemName: "doc.on.doc")
-                ) { _ in
-                    ImageExport.copy(payload)
-                    Theme.Haptics.success()
-                },
-                UIAction(
-                    title: String(localized: "Save to Files"),
-                    image: UIImage(systemName: "folder")
-                ) { [weak self] _ in self?.exportToFiles(payload, from: source) },
-                UIAction(
-                    title: String(localized: "Share"),
-                    image: UIImage(systemName: "square.and.arrow.up")
-                ) { [weak self] _ in self?.shareImage(payload, from: source) },
-            ])
+            children: PictureVerbs.touch.map { verb in
+                UIAction(title: verb.title, image: UIImage(systemName: verb.symbol)) {
+                    [weak self, weak source] _ in
+                    guard let self, let source else { return }
+                    self.perform(verb, on: payload, from: source)
+                }
+            })
+    }
+
+    private func perform(_ verb: PictureVerb, on payload: ImagePayload, from source: UIView) {
+        switch verb {
+        case .saveToPhotos: saveToPhotos(payload)
+        case .copy:
+            ImageExport.copy(payload)
+            Theme.Haptics.success()
+        case .saveToFiles: exportToFiles(payload, from: source)
+        case .share: shareImage(payload, from: source)
+        case .open, .saveToDownloads, .copyPath: break
+        }
     }
 
     /// Every picture in the conversation, in the order it was said, so the
@@ -92,6 +99,29 @@ extension ChatViewController: ImageBubbleCellDelegate {
     }
 
     fileprivate static func pictureID(row: String, index: Int) -> String { "\(row)#\(index)" }
+
+    /// The row a gallery picture is drawn in and its place among that row's pictures: a lone
+    /// picture is its row, a strip's picture is its row and a number.
+    private func pictureAddress(_ id: String) -> (row: String, index: Int) {
+        if rowsByID[id] != nil { return (id, 0) }
+        guard let mark = id.lastIndex(of: "#"), let index = Int(id[id.index(after: mark)...]) else {
+            return (id, 0)
+        }
+        return (String(id[..<mark]), index)
+    }
+
+    /// Where a picture of this conversation stands right now, asked by the viewer each time it
+    /// needs to know: when it opens out of a tile and when it puts a picture back.
+    var pictureHomes: (String) -> PictureHome? {
+        { [weak self] id in
+            guard let self else { return nil }
+            let address = self.pictureAddress(id)
+            guard let path = self.dataSource.indexPath(for: address.row),
+                let cell = self.collectionView.cellForItem(at: path) as? PictureHoming
+            else { return nil }
+            return cell.pictureHome(at: address.index)
+        }
+    }
 
     func saveToPhotos(_ payload: ImagePayload) {
         Task { [weak self] in
@@ -132,6 +162,10 @@ extension ChatViewController: ImageBubbleCellDelegate {
 
 extension ChatViewController: TextBubbleCellDelegate {
     func textBubbleCell(_ cell: TextBubbleCell, didTapLink url: URL) {
+        if let row = Self.promptFoldRow(url) {
+            togglePromptFold(row)
+            return
+        }
         if let path = TextBubbleCell.path(fromActionURL: url) {
             presentPathActions(path, from: cell)
             return

@@ -22,6 +22,8 @@ enum PictureGalleryRowView {
         let open = context.openImage
         let request = context.requestImage
         view.onOpen = { picture in open?(picture.key, name(of: picture.reference)) }
+        let toast = context.toast
+        view.say = { toast?($0) }
         view.request = { picture in request?(picture.reference, picture.key) }
         view.toolTip = spoken
         return view
@@ -38,8 +40,12 @@ enum PictureGalleryRowView {
     /// pictures and a block of twenty crop-clipped image views is twenty constraints for no extra
     /// behaviour; the rectangles come from Core, asked again whenever the row is resized, and each
     /// tile is drawn from the picture's preview rather than its full bitmap.
-    final class GalleryView: NSView {
+    final class GalleryView: NSView, PictureStanding {
         var onOpen: ((TranscriptRow.GalleryPicture) -> Void)?
+        /// Where the words of a copy or a save made from a tile's menu go.
+        var say: ((String) -> Void)?
+        /// The picture that is in the viewer, and so is not drawn here.
+        private var outKey: String?
         var request: ((TranscriptRow.GalleryPicture) -> Void)?
 
         private let pictures: [TranscriptRow.GalleryPicture]
@@ -185,6 +191,16 @@ enum PictureGalleryRowView {
 
         override func mouseDown(with event: NSEvent) {}
 
+        /// A right click on a tile offers what the viewer offers for that picture, here.
+        override func menu(for event: NSEvent) -> NSMenu? {
+            guard let tile = tile(at: convert(event.locationInWindow, from: nil)) else { return nil }
+            let picture = pictures[tile.index]
+            return PictureDesk.menu(
+                key: picture.key, name: names[tile.index], reference: picture.reference,
+                open: { [weak self] in self?.onOpen?(picture) },
+                say: { [weak self] in self?.say?($0) })
+        }
+
         override func mouseUp(with event: NSEvent) {
             guard let picture = picture(at: convert(event.locationInWindow, from: nil)) else {
                 return
@@ -247,7 +263,36 @@ enum PictureGalleryRowView {
             }
         }
 
+        /// The middle of every tile drawn, in reading order, for a check that presses one.
+        var tileCentres: [NSPoint] {
+            tiles.map { NSPoint(x: rect(of: $0).midX, y: rect(of: $0).midY) }
+        }
+
+        /// Where a picture this strip draws a tile for is, and nothing for one it only counts.
+        func pictureStand(for key: String) -> PictureStand? {
+            guard let tile = tiles.first(where: { pictures[$0.index].key == key }),
+                let entry = ImageStore.shared.entry(forKey: key)
+            else { return nil }
+            let whole = rect(of: tile)
+            let covered = PictureStand.covered(
+                by: entry.preview.size, in: whole, fitted: tiles.count == 1)
+            return PictureStand(
+                view: self, rect: covered,
+                radius: covered == whole ? CGFloat(ChatChrome.Radius.control) : 0,
+                picture: entry.preview,
+                setOut: { [weak self] out in self?.setOut(key, out) })
+        }
+
+        private func setOut(_ key: String, _ out: Bool) {
+            guard out || outKey == key else { return }
+            outKey = out ? key : nil
+            if let tile = tiles.first(where: { pictures[$0.index].key == key }) {
+                setNeedsDisplay(rect(of: tile))
+            }
+        }
+
         private func draw(picture: TranscriptRow.GalleryPicture, tile: PictureGalleryLayout.Tile) {
+            guard picture.key != outKey else { return }
             let rect = rect(of: tile)
             let clip = NSBezierPath(
                 roundedRect: rect, xRadius: CGFloat(ChatChrome.Radius.control),

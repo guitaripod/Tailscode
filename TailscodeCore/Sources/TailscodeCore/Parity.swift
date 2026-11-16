@@ -78,6 +78,9 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case compactActivity
     case imageParts
     case imageViewer
+    case pictureFlight
+    case pictureActions
+    case promptFold
     case subagentCards
     case workflowCard
     case taskBoard

@@ -250,7 +250,11 @@ extension TranscriptRow {
             css: "prompt-text")
         gtk_widget_set_hexpand(label, 1)
         gtk_box_append(ptr(row), rule)
-        gtk_box_append(ptr(row), label)
+        gtk_box_append(
+            ptr(row),
+            PromptFoldView.make(
+                label, text: text, key: PromptFold.key(messageID: messageID), context: context,
+                markup: { PangoMarkdown.plainWithLinks($0, accent: MatrixTheme.palette.accent) }))
         let bits = UInt(bitPattern: row)
         Gtk.onRightClickCapture(row) { x, y in context.presentMessageMenu?(messageID, bits, x, y) }
         return row

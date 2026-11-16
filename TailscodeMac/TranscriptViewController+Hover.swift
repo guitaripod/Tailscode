@@ -94,22 +94,27 @@ extension TranscriptViewController {
             }
         }
 
-        /// A real click, handed to the application, on the n-th picture the transcript shows, so the
-        /// viewer is opened the way a hand opens it. The press lands where the tile is, not on a verb.
+        /// A real click, handed to the application, on the n-th picture the transcript draws, a
+        /// lone thumbnail or a tile of a strip, so the viewer is opened the way a hand opens it.
+        /// The press lands where the picture is, not on a verb.
         func stageViewer(_ index: Int) {
             view.layoutSubtreeIfNeeded()
-            var tiles: [ImageRowView.PictureView] = []
+            var places: [(view: NSView, point: NSPoint)] = []
             func collect(_ node: NSView) {
-                if let tile = node as? ImageRowView.PictureView { tiles.append(tile) }
+                if let tile = node as? ImageRowView.PictureView {
+                    places.append((tile, NSPoint(x: tile.bounds.midX, y: tile.bounds.midY)))
+                } else if let strip = node as? PictureGalleryRowView.GalleryView {
+                    places += strip.tileCentres.map { (strip, $0) }
+                }
                 node.subviews.forEach(collect)
             }
             collect(canvas)
-            guard tiles.indices.contains(index), let window = view.window else {
+            guard places.indices.contains(index), let window = view.window else {
                 FileHandle.standardError.write(Data("stage: no picture tile \(index)\n".utf8))
                 return
             }
-            let tile = tiles[index]
-            let point = tile.convert(NSPoint(x: tile.bounds.midX, y: tile.bounds.midY), to: nil)
+            let place = places[index]
+            let point = place.view.convert(place.point, to: nil)
             for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
                 guard
                     let event = NSEvent.mouseEvent(

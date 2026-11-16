@@ -164,6 +164,59 @@ extension ChatViewController {
     /// push the very card they opened out from under them — and the view moves only as far as
     /// `revealToggledRow` needs to show the opened body, never past the tapped header. Their own
     /// next prompt, or the jump pill, is what re-engages following.
+    /// How a prompt is drawn at the width its bubble has now: the words to show and, under a long
+    /// one, the fold line and where a press on it leads (`PromptFold`). Nil for a prompt short
+    /// enough to show whole.
+    func promptFold(_ text: String, row id: String) -> (shown: String, line: (words: String, address: URL))? {
+        let width = max(0, collectionView.bounds.width * 0.82 - 2 * Theme.Spacing.m)
+        let columns = PromptFold.columns(
+            width: Double(width), fontSize: Double(Theme.Ramp.font(.prompt).pointSize),
+            monospaced: false)
+        let reading = PromptFold.read(
+            text, columns: columns, expanded: expandedReasoning.contains(Self.promptFoldKey(id)))
+        guard let words = reading.toggleLabel, let address = Self.promptFoldAddress(id) else {
+            return nil
+        }
+        let shown = reading.folded ? PromptFold.cut(text, columns: columns) : text
+        return (shown, ((reading.folded ? "⌄ " : "⌃ ") + words, address))
+    }
+
+    static func promptFoldKey(_ id: String) -> String { PromptFold.key(messageID: id) }
+
+    private static let promptFoldScheme = "tailscode-fold"
+
+    private static func promptFoldAddress(_ id: String) -> URL? {
+        var parts = URLComponents()
+        parts.scheme = promptFoldScheme
+        parts.host = "prompt"
+        parts.queryItems = [URLQueryItem(name: "row", value: id)]
+        return parts.url
+    }
+
+    /// The row a fold line's address names, when the address is one.
+    static func promptFoldRow(_ address: URL) -> String? {
+        guard address.scheme == promptFoldScheme else { return nil }
+        return URLComponents(url: address, resolvingAgainstBaseURL: false)?
+            .queryItems?.first { $0.name == "row" }?.value
+    }
+
+    /// Opens a long prompt or folds it again, where it stands: the row is drawn again at its
+    /// other height and the reader's place is left to the list, which keeps the rows above still.
+    func togglePromptFold(_ id: String) {
+        userScrolledUp = true
+        let key = Self.promptFoldKey(id)
+        if expandedReasoning.contains(key) {
+            expandedReasoning.remove(key)
+        } else {
+            expandedReasoning.insert(key)
+        }
+        Theme.Haptics.selection()
+        var snapshot = dataSource.snapshot()
+        guard snapshot.indexOfItem(id) != nil else { return }
+        snapshot.reconfigureItems([id])
+        dataSource.apply(snapshot, animatingDifferences: false)
+    }
+
     func toggleReasoning(_ id: String) {
         userScrolledUp = true
         let opened = !expandedReasoning.contains(id)

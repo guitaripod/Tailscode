@@ -40,7 +40,7 @@ enum ImageGallery {
                     handler(key)
                 }
                 return { context.onImageStored = previous }
-            }, notice: notice)
+            }, tiles: context.pictureTiles, notice: notice)
     }
 
     /// The server's own bytes for a page, from the disk cache. A preview the store still holds

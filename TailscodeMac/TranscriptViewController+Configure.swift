@@ -277,6 +277,7 @@ extension TranscriptViewController {
             self.context.expanded.set(key, open: open)
             self.followsBottom = false
         }
+        context.columnWidth = { [weak self] in self?.canvas.bounds.width ?? 0 }
         context.revealRow = { [weak self] row in
             DispatchQueue.main.async { [weak self] in self?.revealDisclosure(row) }
         }
@@ -299,6 +300,7 @@ extension TranscriptViewController {
             ImageViewer.present(
                 items: items, startKey: key, host: self.view.window,
                 fetch: { [weak self] reference, key in self?.fetchImage(reference, key: key) },
+                stands: { [weak self] key in self?.canvas.pictureStand(under: key) },
                 toast: { [weak self] text in self?.onToast?(text) })
         }
         context.presentText = { [weak self] title, subtitle, body, mono in

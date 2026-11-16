@@ -42,11 +42,11 @@ extension ImageStudioViewController {
                     })
             }
             return ImageViewerViewController(
-                items: pages, startIndex: start, backend: nil, from: nil
-            ) { page in
-                guard let kept = await shelf.item(named: page.id) else { return nil }
-                return await shelf.original(of: kept)
-            }
+                items: pages, startIndex: start, backend: nil,
+                fetch: { page in
+                    guard let kept = await shelf.item(named: page.id) else { return nil }
+                    return await shelf.original(of: kept)
+                })
         }
         let pages = slot.pictures.map { made in
             GalleryImage(
@@ -57,7 +57,7 @@ extension ImageStudioViewController {
                 localData: FileManager.default.contents(atPath: made.path))
         }
         let start = pages.firstIndex(where: { $0.id == exhibit.id }) ?? 0
-        return ImageViewerViewController(items: pages, startIndex: start, backend: nil, from: nil)
+        return ImageViewerViewController(items: pages, startIndex: start, backend: nil)
     }
 
     func putOnStage(_ exhibit: ImageExhibit) {

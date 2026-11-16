@@ -1,4 +1,5 @@
 import CodingAgentKit
+import TailscodeCore
 import UIKit
 import VisionKit
 
@@ -13,18 +14,22 @@ struct GalleryImage: Hashable, Sendable {
 }
 
 /// Full-screen viewer for the pictures in a conversation: it opens out of the
-/// bubble that was tapped, swipes across every other image in the chat, zooms to
+/// tile that was tapped, swipes across every other image in the chat, zooms to
 /// the pixel, lifts text out of a screenshot, and puts the picture in the photo
-/// library, the pasteboard, or another app. A downward drag hands it back to the
-/// chat, so dismissing feels like putting the image down rather than closing a
-/// modal.
+/// library, the pasteboard, or another app. Closing it, or dragging it down,
+/// puts the picture back in the tile it lives in now, which is the tile of the
+/// page being shown and not the one that was opened (`PictureFlight`).
 final class ImageViewerViewController: UIViewController {
     private let items: [GalleryImage]
     /// The server the pictures are fetched from, where they came from one. A picture this device
     /// made itself is already on disk, so the studio opens the same viewer with nothing behind it.
     private let backend: (any CodingAgentBackend)?
-    private let sourceView: UIView?
-    private let sourceIndex: Int
+    /// Where a picture of the conversation stands right now, asked each time it matters.
+    private let homes: ((String) -> PictureHome?)?
+    /// The tile whose picture is in the viewer, and so is not drawn in the chat.
+    private weak var outView: UIView?
+    /// The page the flown tile's pixels are still standing in front of, while its own load.
+    private var posterIndex: Int?
     private var index: Int
 
     private let backdrop = UIView()
@@ -54,13 +59,12 @@ final class ImageViewerViewController: UIViewController {
 
     init(
         items: [GalleryImage], startIndex: Int, backend: (any CodingAgentBackend)?,
-        from sourceView: UIView?, fetch: Fetch? = nil
+        homes: ((String) -> PictureHome?)? = nil, fetch: Fetch? = nil
     ) {
         self.items = items
         self.index = max(0, min(startIndex, items.count - 1))
-        self.sourceIndex = self.index
         self.backend = backend
-        self.sourceView = sourceView
+        self.homes = homes
         self.fetch = fetch
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .horizontal
@@ -102,6 +106,9 @@ final class ImageViewerViewController: UIViewController {
         view.addSubview(transitionView)
 
         buildChrome()
+        backdrop.alpha = 0
+        collectionView.alpha = 0
+        for bar in chrome { bar.alpha = 0 }
 
         pagerBottom = collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         NSLayoutConstraint.activate([
@@ -148,7 +155,12 @@ final class ImageViewerViewController: UIViewController {
         super.viewDidAppear(animated)
         guard !didAnimateIn else { return }
         didAnimateIn = true
-        animateIn()
+        arrive()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        takeOut(nil)
     }
 
     private func buildChrome() {
@@ -389,9 +401,9 @@ final class ImageViewerViewController: UIViewController {
             backdrop.alpha = 1 - progress * 0.8
             for bar in chrome { bar.alpha = (chromeHidden ? 0 : 1) * (1 - progress) }
         case .ended, .cancelled:
-            let velocity = gesture.velocity(in: view).y
-            if abs(translation.y) > 130 || abs(velocity) > 900 {
-                dismissViewer(thrownDown: velocity >= 0)
+            let velocity = gesture.velocity(in: view)
+            if abs(translation.y) > 130 || abs(velocity.y) > 900 {
+                dismissViewer(thrownDown: velocity.y >= 0, velocity: velocity)
             } else {
                 UIView.animate(
                     withDuration: 0.34, delay: 0, usingSpringWithDamping: 0.82,
@@ -408,80 +420,222 @@ final class ImageViewerViewController: UIViewController {
     }
 
 
-    /// Starts as a copy of the tapped thumbnail and springs up to full size, so
-    /// the image appears to grow out of the bubble instead of fading in over it.
-    private func animateIn() {
-        guard let source = sourceView, source.window != nil, let image = currentCell?.image,
-            let target = currentCell.map({
-                $0.fittedFrame(in: collectionView.bounds.size)
-                    .offsetBy(dx: collectionView.frame.minX, dy: collectionView.frame.minY)
-            })
-        else { return }
-        let origin = source.convert(source.bounds, to: view)
-        guard target.width > 0, target.height > 0, origin.width > 0 else { return }
-        transitionView.image = image
-        transitionView.frame = origin
-        transitionView.layer.cornerRadius = Theme.Radius.bubble
+    /// Draws `view` in the chat again and stops drawing the next one: one tile is out at a time,
+    /// the one whose picture the viewer is showing.
+    private func takeOut(_ view: UIView?) {
+        guard outView !== view else { return }
+        outView?.alpha = 1
+        outView = view
+        view?.alpha = 0
+    }
+
+    private var currentHome: PictureHome? {
+        items.indices.contains(index) ? homes?(items[index].id) : nil
+    }
+
+    /// The home of the page being shown and where it is on this screen, while it is in sight.
+    private func homeInSight() -> (home: PictureHome, frame: CGRect)? {
+        guard let home = currentHome, let frame = home.frame(in: view) else { return nil }
+        return (home, frame)
+    }
+
+    /// Where a page fits a picture of this size: the page's own arithmetic, so the last frame of
+    /// a flight is the first frame of the page.
+    private func stage(for size: CGSize) -> CGRect {
+        ImagePageCell.fittedFrame(of: size, in: collectionView.bounds.size)
+            .offsetBy(dx: collectionView.frame.minX, dy: collectionView.frame.minY)
+    }
+
+    /// Opens the picture out of its tile: the tile's own pixels fly to where the page fits them
+    /// while the dark and then the bars arrive around it, so nothing waits for a decode and no
+    /// frame is black before the motion. With no tile in sight, or with motion reduced, the
+    /// viewer appears where it stands.
+    private func arrive() {
+        view.layoutIfNeeded()
+        let reduced = UIAccessibility.isReduceMotionEnabled
+        guard !reduced, let start = homeInSight(),
+            let picture = start.home.image ?? currentCell?.image
+        else {
+            appearInPlace(reduced: reduced)
+            return
+        }
+        let target = stage(for: picture.size)
+        guard target.width > 0, target.height > 0 else {
+            appearInPlace(reduced: reduced)
+            return
+        }
+        transitionView.image = picture
+        transitionView.frame = start.frame
+        transitionView.layer.cornerRadius = start.home.cornerRadius
+        transitionView.alpha = 1
         transitionView.isHidden = false
         collectionView.isHidden = true
-        backdrop.alpha = 0
-        for bar in chrome { bar.alpha = 0 }
-        UIView.animate(
-            withDuration: 0.42, delay: 0, usingSpringWithDamping: 0.86, initialSpringVelocity: 0.4,
-            options: [.allowUserInteraction]
-        ) {
+        collectionView.alpha = 1
+        takeOut(start.home.view)
+        let flight = UIViewPropertyAnimator(
+            duration: PictureFlight.springDuration,
+            timingParameters: UISpringTimingParameters(dampingRatio: PictureFlight.springDamping))
+        flight.addAnimations {
             self.transitionView.frame = target
             self.transitionView.layer.cornerRadius = 0
+        }
+        flight.addCompletion { _ in self.landed() }
+        flight.startAnimation()
+        surround(arriving: true, over: PictureFlight.springDuration)
+    }
+
+    /// The dark and the bars around a flight `length` seconds long, on a straight clock: the dark
+    /// is in before the bars begin, and on the way home the bars go first and the dark lifts
+    /// across the rest, so the chat the picture is going back to shows while it goes.
+    private func surround(arriving: Bool, over length: TimeInterval) {
+        let bars: CGFloat = arriving && !chromeHidden ? 1 : 0
+        let dark = arriving ? (0, PictureFlight.backdropEnd) : (PictureFlight.backdropHold, 1)
+        let words = arriving ? (PictureFlight.chromeStart, 1) : (0, PictureFlight.chromeLeave)
+        let fades = UIViewPropertyAnimator(duration: length, curve: .linear)
+        fades.addAnimations {
+            UIView.animateKeyframes(
+                withDuration: length, delay: 0, options: [.calculationModeLinear]
+            ) {
+                UIView.addKeyframe(
+                    withRelativeStartTime: dark.0, relativeDuration: dark.1 - dark.0
+                ) { self.backdrop.alpha = arriving ? 1 : 0 }
+                UIView.addKeyframe(
+                    withRelativeStartTime: words.0, relativeDuration: words.1 - words.0
+                ) { for bar in self.chrome { bar.alpha = bars } }
+            }
+        }
+        fades.startAnimation()
+    }
+
+    /// The flight is over and the page takes the picture's place. A page still loading keeps the
+    /// tile's pixels in front of it until its own arrive, so the picture never turns into a
+    /// spinner in the reader's hand.
+    private func landed() {
+        collectionView.isHidden = false
+        guard currentCell?.image == nil else {
+            transitionView.isHidden = true
+            return
+        }
+        posterIndex = index
+    }
+
+    /// Takes the tile's pixels from in front of a page that has its own now, or that the reader
+    /// has started to turn.
+    fileprivate func dropPoster() {
+        guard posterIndex != nil else { return }
+        posterIndex = nil
+        transitionView.isHidden = true
+    }
+
+    private func appearInPlace(reduced: Bool) {
+        takeOut(currentHome?.view)
+        collectionView.alpha = 0
+        if !reduced {
+            let scale = 1 - PictureFlight.fadeShrink
+            collectionView.transform = CGAffineTransform(scaleX: scale, y: scale)
+        }
+        UIView.animate(
+            withDuration: reduced ? PictureFlight.reducedDuration : PictureFlight.fadeDuration,
+            delay: 0, options: [.curveEaseOut]
+        ) {
+            self.collectionView.alpha = 1
+            self.collectionView.transform = .identity
             self.backdrop.alpha = 1
-            for bar in self.chrome { bar.alpha = 1 }
-        } completion: { _ in
-            self.collectionView.isHidden = false
-            self.transitionView.isHidden = true
+            for bar in self.chrome { bar.alpha = self.chromeHidden ? 0 : 1 }
         }
     }
 
-    /// Reverses the entry animation into the bubble it came from when that
-    /// bubble is still the picture on screen; anything else keeps its momentum
-    /// and fades, because there is nowhere honest to put it back.
-    fileprivate func dismissViewer(thrownDown: Bool = true) {
+    /// Puts the picture back in the tile it lives in now, carrying the finger's speed when a drag
+    /// let go of it. With no tile in sight there is nowhere honest to put it: it fades where it
+    /// stands, and one that was thrown keeps its direction as it does.
+    fileprivate func dismissViewer(thrownDown: Bool = true, velocity: CGPoint = .zero) {
         guard !isDismissing else { return }
         isDismissing = true
-        let image = currentCell?.image
-        let frame = currentCell?.imageFrame(in: view)
-        let origin = homeFrame()
+        let pageImage = currentCell?.image
+        let standing = posterIndex == index
+        let image = pageImage ?? (standing ? transitionView.image : nil)
+        let from =
+            pageImage != nil
+            ? currentCell?.imageFrame(in: view) ?? view.bounds
+            : (standing ? transitionView.frame : view.bounds)
+        posterIndex = nil
         transitionView.image = image
-        transitionView.frame = frame ?? view.bounds
+        transitionView.frame = from
         transitionView.layer.cornerRadius = 0
+        transitionView.alpha = 1
         transitionView.isHidden = image == nil
         collectionView.isHidden = true
+        let reduced = UIAccessibility.isReduceMotionEnabled
+        guard !reduced, image != nil, let home = homeInSight() else {
+            leaveInPlace(thrown: velocity == .zero ? nil : thrownDown, reduced: reduced, from: from)
+            return
+        }
+        takeOut(home.home.view)
+        let flight = UIViewPropertyAnimator(
+            duration: Self.homewardDuration,
+            timingParameters: UISpringTimingParameters(
+                dampingRatio: Self.homewardDamping,
+                initialVelocity: Self.relative(velocity, from: from, to: home.frame)))
+        flight.addAnimations {
+            self.transitionView.frame = home.frame
+            self.transitionView.layer.cornerRadius = home.home.cornerRadius
+        }
+        flight.addCompletion { _ in
+            self.takeOut(nil)
+            self.dismiss(animated: false)
+        }
+        flight.startAnimation()
+        surround(arriving: false, over: PictureFlight.closeDuration)
+    }
+
+    /// The spring that carries a picture home: a little longer than the fades around it, because
+    /// a spring spends its last third settling on the spot.
+    private static let homewardDuration: TimeInterval = 0.34
+    private static let homewardDamping: CGFloat = 0.9
+
+    /// A finger's speed as the spring wants it: as a share of the way still to go on each axis,
+    /// held to what a hand can do so a flick across a short distance does not fling the picture.
+    private static func relative(_ velocity: CGPoint, from: CGRect, to: CGRect) -> CGVector {
+        func share(_ speed: CGFloat, _ distance: CGFloat) -> CGFloat {
+            abs(distance) > 1 ? min(max(speed / distance, -12), 12) : 0
+        }
+        return CGVector(
+            dx: share(velocity.x, to.midX - from.midX), dy: share(velocity.y, to.midY - from.midY))
+    }
+
+    private func leaveInPlace(thrown down: Bool?, reduced: Bool, from: CGRect) {
+        let length = reduced ? PictureFlight.reducedDuration : (down == nil ? PictureFlight.fadeDuration : 0.3)
         UIView.animate(
-            withDuration: 0.3, delay: 0, options: [.curveEaseInOut],
+            withDuration: length, delay: 0, options: [.curveEaseInOut],
             animations: {
-                if let origin {
-                    self.transitionView.frame = origin
-                    self.transitionView.layer.cornerRadius = Theme.Radius.bubble
-                } else {
-                    self.transitionView.frame = (frame ?? self.view.bounds).offsetBy(
-                        dx: 0, dy: thrownDown ? 420 : -420)
-                    self.transitionView.alpha = 0
+                if let down, !reduced {
+                    self.transitionView.frame = from.offsetBy(dx: 0, dy: down ? 420 : -420)
+                } else if !reduced {
+                    let inset = PictureFlight.fadeShrink / 2
+                    self.transitionView.frame = from.insetBy(
+                        dx: from.width * inset, dy: from.height * inset)
                 }
+                self.transitionView.alpha = 0
                 self.backdrop.alpha = 0
                 for bar in self.chrome { bar.alpha = 0 }
             },
-            completion: { _ in self.dismiss(animated: false) })
+            completion: { _ in
+                self.takeOut(nil)
+                self.dismiss(animated: false)
+            })
     }
 
-    /// Where the picture belongs when the viewer closes: the bubble it was
-    /// opened from, and only while that bubble is both on screen and still
-    /// showing this image.
-    private func homeFrame() -> CGRect? {
-        guard index == sourceIndex, let source = sourceView, let window = source.window else {
-            return nil
+    #if DEBUG
+        /// Turns to a page and closes, as a hand would, for a launch that films the viewer.
+        func stagedTurn(to page: Int) {
+            guard items.indices.contains(page), collectionView.bounds.width > 0 else { return }
+            dropPoster()
+            collectionView.setContentOffset(
+                CGPoint(x: CGFloat(page) * collectionView.bounds.width, y: 0), animated: false)
         }
-        let frame = source.convert(source.bounds, to: window)
-        guard window.bounds.intersects(frame), frame.width > 0 else { return nil }
-        return view.convert(frame, from: window)
-    }
+
+        func stagedClose() { dismissViewer() }
+    #endif
 }
 
 extension ImageViewerViewController: UICollectionViewDataSource {
@@ -498,6 +652,7 @@ extension ImageViewerViewController: UICollectionViewDataSource {
         cell.onLoaded = { [weak self] hasText in
             guard let self else { return }
             if hasText { self.pagesWithText.insert(indexPath.item) }
+            if indexPath.item == self.posterIndex { self.dropPoster() }
             guard indexPath.item == self.index else { return }
             self.updateChromeContent()
         }
@@ -514,8 +669,14 @@ extension ImageViewerViewController: UICollectionViewDelegate {
         let page = Int((scrollView.contentOffset.x / collectionView.bounds.width).rounded())
         guard page != index, items.indices.contains(page) else { return }
         index = page
+        takeOut(currentHome?.view)
         currentCell?.setLiveText(liveTextOn)
         updateChromeContent()
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        guard scrollView === collectionView else { return }
+        dropPoster()
     }
 
     func collectionView(
@@ -728,12 +889,13 @@ final class ImagePageCell: UICollectionViewCell {
         return CGSize(width: width, height: height)
     }
 
-    func fittedFrame(in bounds: CGSize) -> CGRect {
-        guard let image else { return .zero }
-        let size = Self.fitted(image.size, in: bounds)
+    /// Where a page as large as `bounds` draws a picture of this size at rest.
+    static func fittedFrame(of size: CGSize, in bounds: CGSize) -> CGRect {
+        guard size.width > 0, size.height > 0, bounds.width > 0, bounds.height > 0 else { return .zero }
+        let fitted = Self.fitted(size, in: bounds)
         return CGRect(
-            x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2,
-            width: size.width, height: size.height)
+            x: (bounds.width - fitted.width) / 2, y: (bounds.height - fitted.height) / 2,
+            width: fitted.width, height: fitted.height)
     }
 
     func imageFrame(in view: UIView) -> CGRect {

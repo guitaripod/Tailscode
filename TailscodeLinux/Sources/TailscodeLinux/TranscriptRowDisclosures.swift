@@ -111,6 +111,7 @@ extension TranscriptRow {
             gtk_picture_set_content_fit(op(picture), GTK_CONTENT_FIT_CONTAIN)
             gtk_widget_set_size_request(picture, fitted.0, fitted.1)
             Gtk.addClass(picture, "image-part")
+            context.pictureTiles.stand(picture, for: key, fitted: true)
             let opener = gtk_button_new()!
             Gtk.addClass(opener, "flat")
             gtk_widget_set_halign(opener, GTK_ALIGN_START)
@@ -119,6 +120,9 @@ extension TranscriptRow {
             Gtk.connect(UnsafeMutableRawPointer(opener), "clicked") {
                 open?(key, name)
             }
+            let menu = context.presentPictureMenu
+            let bits = UInt(bitPattern: opener)
+            Gtk.onRightClickCapture(opener) { x, y in menu?(key, name, reference, bits, x, y) }
             gtk_box_append(ptr(column), opener)
             let dims = context.dimensions(forKey: key) ?? (width, height)
             gtk_box_append(
