@@ -96,7 +96,9 @@ enum Kit {
     /// reading rounded up to 100 %.
     /// 0.56.0 lets a Live Activity's registration say what its server does when the turn ends.
     /// 0.57.0 lets a device hand a server what it needs to start its Live Activities.
-    static let version = Version(0, 57, 0)
+    /// 0.58.0 says whether a listed conversation's own turn is open, and whether a bridge took the
+    /// device's Live Activity start token.
+    static let version = Version(0, 58, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
