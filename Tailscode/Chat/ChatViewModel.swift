@@ -285,6 +285,9 @@ final class ChatViewModel {
     /// window that opens while the phone is in a pocket is still explained rather than lost.
     var resume = ResumeLedger()
     var resumeClock: Task<Void, Never>?
+    /// A view model nobody has on screen, waiting out the settle grace before it lets its
+    /// conversation go.
+    var restingStop: Task<Void, Never>?
     /// How many times this conversation has already been sent into the wall and bounced. A plan
     /// that fires and dies produces a *fresh* failure, and reading each fresh failure as a first
     /// attempt is how a bounded retry becomes an unbounded one — so the count lives here, beside

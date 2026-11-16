@@ -23,6 +23,7 @@ extension ChatViewModel {
         streamTask = Task { [weak self] in
             guard let self else { return }
             for await state in await self.conversation.states() {
+                guard generation == self.streamGeneration else { break }
                 if state.connection == .live { self.streamRestarts = 0 }
                 self.reconcileOptimisticState(with: state)
                 if self.state.status == .running, state.status != .running {
@@ -67,15 +68,41 @@ extension ChatViewModel {
                 self.handOverQueue()
                 if state.status != .running { self.flushQueue() }
                 self.syncLiveActivity(with: state)
-                if state.status != .unknown, !self.isBusy, !awaiting, !self.isBound,
-                    self.queue.isEmpty, self.resume.isEmpty
-                {
-                    self.stop()
+                if self.canRest(awaiting: awaiting) {
+                    self.stopOnceRested()
+                } else {
+                    self.restingStop?.cancel()
+                    self.restingStop = nil
                 }
             }
             self.handleStreamTermination(generation: generation)
         }
         Task { await loadDefaultModelIfNeeded() }
+    }
+
+    /// Whether a view model nobody has on screen has nothing left to watch: the turn is over,
+    /// nothing waits on the person, and nothing this device holds is still to go.
+    private func canRest(awaiting: Bool) -> Bool {
+        state.status != .unknown && !isBusy && !awaiting && !isBound && queue.isEmpty
+            && resume.isEmpty
+    }
+
+    /// Lets the conversation go once it has stayed at rest for the settle grace. A turn that ends
+    /// is often followed at once by the next — a prompt the server held in its queue, a send from
+    /// the desk — and that turn takes the card back; a card taken back with nothing left to watch
+    /// it would say it is working long after the work had ended.
+    private func stopOnceRested() {
+        guard restingStop == nil else { return }
+        let generation = streamGeneration
+        restingStop = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(WorkSettle.grace))
+            guard let self, !Task.isCancelled, generation == self.streamGeneration else { return }
+            self.restingStop = nil
+            let awaiting =
+                self.state.pendingPermissions.first != nil || self.state.pendingQuestions.first != nil
+            guard self.canRest(awaiting: awaiting) else { return }
+            self.stop()
+        }
     }
 
     /// What this device can honestly say about the turn: the reading every client shares, raised

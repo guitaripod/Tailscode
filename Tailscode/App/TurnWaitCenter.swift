@@ -449,6 +449,14 @@ final class TurnWaitCenter {
                 endedAt: result.endedAt),
             title: result.title)
 
+        if detail == .cancelled {
+            MidgarLog.info(
+                "turnwait profile=\(info.profileID) session=\(info.sessionID) was stopped by hand; a stopped turn is no news and nothing banners",
+                category: .lifecycle
+            )
+            return
+        }
+
         let (kind, identifier, reason) = Self.notification(for: result, sessionID: info.sessionID)
 
         if kind == .turnComplete, Self.waitsForSettledWork, result.settled == nil,

@@ -8,6 +8,8 @@ extension ChatViewModel {
         streamGeneration += 1
         streamTask?.cancel()
         streamTask = nil
+        restingStop?.cancel()
+        restingStop = nil
         resumeClock?.cancel()
         resumeClock = nil
         SessionActivity.shared.stoppedWatching(self)

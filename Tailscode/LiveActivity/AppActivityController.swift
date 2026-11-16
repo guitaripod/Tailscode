@@ -53,6 +53,10 @@ final class AppActivityController {
         var retired = false
         var retirement: Task<Void, Never>?
         var watchers: [Task<Void, Never>] = []
+        /// The prompt of the turn this process last settled the card on, and the ending it wrote
+        /// for it: while the card still shows that ending, a reading for a different prompt is a
+        /// new turn, whatever the two clocks behind the ending and the new turn's start say.
+        var settledTurn: (prompt: String, endedAt: Date)?
     }
 
     private var entries: [String: Entry] = [:]
@@ -89,20 +93,42 @@ final class AppActivityController {
         return true
     }
 
-    /// Conversations whose card the person swiped away or read: what they said about this turn, so
-    /// nothing here opens another for it until the conversation is seen at rest.
-    private(set) var declined: Set<String> = []
+    /// Conversations whose card the person swiped away or read, and until when: what they said
+    /// about this turn, so nothing here opens another for it.
+    private var declines: [String: Date] = [:]
+
+    /// How long reading a card about a turn that has already ended keeps another from opening.
+    /// The turn is over, so the only card the mark can stop is one a listing still saying it runs
+    /// would open; the next turn may begin before any listing has seen the rest between them, and
+    /// must have its card.
+    static let readTurnHold: TimeInterval = 30
+
+    /// Conversations no card is opened for by this process right now.
+    var declined: Set<String> {
+        let now = Date()
+        return Set(declines.lazy.filter { $0.value > now }.map(\.key))
+    }
 
     /// The conversation is at rest, as the listing says, so its next turn may have a card again.
     /// Only the listing says so: a chat's own idle states would clear the mark the moment the
     /// card was read, and a listing that has not caught up yet would open it again.
     func rested(_ sessionID: String) {
-        declined.remove(sessionID)
+        declines[sessionID] = nil
     }
 
-    /// Opens no card by itself for the conversation until it is at rest.
+    /// Opens no card by itself for the conversation until it is at rest: the turn the card was
+    /// opened for is still running, and the person said no to it.
     func decline(_ sessionID: String) {
-        declined.insert(sessionID)
+        declines[sessionID] = .distantFuture
+    }
+
+    /// The card was read or swiped away after its turn had ended: held only as long as a listing
+    /// can lag behind the ending.
+    private func declineEnded(_ sessionID: String) {
+        let now = Date()
+        declines = declines.filter { $0.value > now }
+        declines[sessionID] = max(
+            declines[sessionID] ?? .distantPast, now.addingTimeInterval(Self.readTurnHold))
     }
 
     /// Whether iOS lets the app show Live Activities, as last read off the main thread: the
@@ -325,7 +351,7 @@ final class AppActivityController {
         if let title, !title.isEmpty { entry.title = title }
         let shown = current(sessionID, entry)
         if let endedAt = shown.endedAt {
-            guard let began = reading.startedAt, began > endedAt else {
+            guard Self.beganAfter(endedAt, reading, settled: entry.settledTurn) else {
                 entries[sessionID] = entry
                 return
             }
@@ -354,6 +380,7 @@ final class AppActivityController {
         if revived {
             entry.retirement?.cancel()
             entry.retirement = nil
+            entry.settledTurn = nil
         }
         entry.state = state
         entry.pushedAt = Date()
@@ -382,7 +409,7 @@ final class AppActivityController {
         guard isTracking(sessionID), var entry = entries[sessionID] else { return }
         if isBeingRead(sessionID) {
             MidgarLog.info("Live Activity read as it ended for \(sessionID)", category: .chat)
-            declined.insert(sessionID)
+            declineEnded(sessionID)
             dismiss(sessionID, entry)
             return
         }
@@ -409,6 +436,7 @@ final class AppActivityController {
             detail: reading.detail.rawValue,
             background: reading.background > 0 ? reading.background : nil,
             brief: Self.settledBrief(brief ?? shown.brief))
+        entry.settledTurn = reading.prompt.map { ($0, endedAt) }
         guard !(shown.isSettled && Self.sameFacts(state, shown)) else {
             entries[sessionID] = entry
             scheduleRetirement(sessionID, settledAt: endedAt)
@@ -430,7 +458,7 @@ final class AppActivityController {
         guard let entry = entries[sessionID] else { return }
         guard entry.retired || current(sessionID, entry).isSettled else { return }
         MidgarLog.info("Live Activity read for \(sessionID)", category: .chat)
-        declined.insert(sessionID)
+        declineEnded(sessionID)
         dismiss(sessionID, entry)
     }
 
@@ -440,6 +468,14 @@ final class AppActivityController {
         if whileStarting(sessionID, { $0.withdrawn = true }) { return }
         guard let entry = entries[sessionID] else { return }
         dismiss(sessionID, entry)
+    }
+
+    /// Takes down every card about a server this device no longer has: nothing here can follow
+    /// its turns or open its chats any more.
+    func withdraw(profileID: String) {
+        for (sessionID, entry) in entries where entry.activity.attributes.profileID == profileID {
+            withdraw(sessionID)
+        }
     }
 
     /// Takes every card down — Live Activities were just turned off in Settings, and a card left
@@ -861,7 +897,11 @@ final class AppActivityController {
         entry.platform = state
         entries[sessionID] = entry
         if state == .dismissed {
-            declined.insert(sessionID)
+            if entry.retired || current(sessionID, entry).isSettled {
+                declineEnded(sessionID)
+            } else {
+                decline(sessionID)
+            }
             forget(sessionID)
             return false
         }
@@ -929,6 +969,23 @@ final class AppActivityController {
             title: LocalizedStringResource(stringLiteral: title),
             body: LocalizedStringResource(stringLiteral: headline),
             sound: ending == .expandWithSound ? .default : .named(LiveActivityEnding.silentSound))
+    }
+
+    /// Whether a running reading is for a turn that began after the card's ending. A prompt other
+    /// than the one this process settled the card on says so outright, while the card still shows
+    /// that settle: the ending may be the phone's clock and the start the server's, and a turn
+    /// that follows at once — a queued prompt, a send from the desk — can start before the phone
+    /// heard the last one end. Otherwise only the turn's start can say, as the transcript has it.
+    private static func beganAfter(
+        _ endedAt: Date, _ reading: LiveActivityReading, settled: (prompt: String, endedAt: Date)?
+    ) -> Bool {
+        if let settled, let prompt = reading.prompt, prompt != settled.prompt,
+            abs(settled.endedAt.timeIntervalSince(endedAt)) < 1
+        {
+            return true
+        }
+        guard let began = reading.startedAt else { return false }
+        return began > endedAt
     }
 
     /// Whether a live card's moment of last moving has run far enough ahead of what it shows that
