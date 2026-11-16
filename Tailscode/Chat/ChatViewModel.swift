@@ -300,6 +300,11 @@ final class ChatViewModel {
     /// Whether the turn this chat last watched has been put to rest on the Lock Screen already, so
     /// a conversation that sits idle is not settled again on every state it streams.
     var cardSettled = false
+    /// The moments this chat's running turn was seen to move, for its card's pulse.
+    var cardPulse = LiveActivityPulse()
+    /// The card's brief as last read, with what it was read from, so a streamed token that changes
+    /// nothing the brief says does not read the turn again.
+    var heldCardBrief: CardBriefing?
 
     /// The messages written while a turn was running. Held here rather than handed to the server
     /// precisely so they can still be changed: the next thing you type is the thing you most often

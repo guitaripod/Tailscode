@@ -124,7 +124,8 @@ targets:
       - path: TailscodeWidget/UsageWidgetViews.swift
       - path: TailscodeWidget/UsageWidgetConfiguration.swift
       - path: TailscodeWidget/LiveActivityViews.swift
-      - path: TailscodeWidget/NeuralGlyphView.swift
+      - path: TailscodeWidget/LiveActivityWall.swift
+      - path: TailscodeWidget/LiveActivityIsland.swift
       - path: Shared/Midgar
       - path: Shared/Neural
       - path: Resources/Neural/ntex
@@ -135,6 +136,8 @@ targets:
       - path: Resources/InfoPlist.xcstrings
         buildPhase: resources
       - path: Resources/AppShortcuts.xcstrings
+        buildPhase: resources
+      - path: Resources/Sounds/LiveActivityQuiet.caf
         buildPhase: resources
     dependencies:
       - package: CodingAgentKit

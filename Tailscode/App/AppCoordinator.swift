@@ -192,7 +192,17 @@ final class AppCoordinator: NSObject {
         /// without driving touches.
         private func openSettingsForDebug(slug: String) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                self?.openSettings(page: SettingsViewController.Page(slug: slug))
+                guard slug == "live-activity" else {
+                    self?.openSettings(page: SettingsViewController.Page(slug: slug))
+                    return
+                }
+                self?.openSettings(page: .notifications)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                    let presenter = self?.home?.navigationController ?? self?.home
+                    guard let nav = presenter?.presentedViewController as? UINavigationController
+                    else { return }
+                    nav.pushViewController(LiveActivityLookViewController(), animated: false)
+                }
             }
         }
 

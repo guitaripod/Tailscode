@@ -1,36 +1,18 @@
 import SwiftUI
 import TailscodeCore
+import WidgetKit
 
 extension ChatActivityAttributes.ContentState.Phase {
-    var label: String {
-        switch self {
-        case .thinking: return String(localized: "Thinking")
-        case .tool: return String(localized: "Running tool")
-        case .responding: return String(localized: "Writing")
-        case .approval: return String(localized: "Needs approval")
-        case .done: return String(localized: "Done")
-        case .error: return String(localized: "Failed")
-        }
-    }
-
     /// The face an activity started by an older app process falls back to, spelled in the same
     /// vocabulary Core authors for these states.
-    var fallbackSymbol: String {
+    var fallback: LiveActivityFace {
         switch self {
-        case .thinking: return "brain"
-        case .tool: return "wrench.and.screwdriver"
-        case .responding: return "text.alignleft"
-        case .approval: return "hand.raised"
-        case .done: return "checkmark.circle"
-        case .error: return "exclamationmark.triangle"
-        }
-    }
-
-    var fallbackTone: ActivityTone {
-        switch self {
-        case .thinking, .tool, .responding, .done: return .live
-        case .approval: return .attention
-        case .error: return .danger
+        case .thinking: return LiveActivityFace(symbol: "brain", tone: .live)
+        case .tool: return LiveActivityFace(symbol: "wrench.and.screwdriver", tone: .live)
+        case .responding: return LiveActivityFace(symbol: "text.alignleft", tone: .live)
+        case .approval: return LiveActivityFace(symbol: "hand.raised", tone: .attention)
+        case .done: return LiveActivityFace(symbol: "checkmark.circle", tone: .live)
+        case .error: return LiveActivityFace(symbol: "exclamationmark.triangle", tone: .danger)
         }
     }
 }
@@ -41,28 +23,11 @@ extension ChatActivityAttributes.ContentState {
     /// language rather than the server's.
     var reading: LiveActivityDetail? { detail.flatMap(LiveActivityDetail.init(rawValue:)) }
 
+    /// The one short line a screen reader and the smallest presentations say.
     var line: String {
         guard let reading else { return statusText }
         return reading.line(
             tool: isSettled ? nil : lastTool, toolCount: toolCount, background: background ?? 0)
-    }
-
-    /// The app computes the face where Core lives — a running shell wears the terminal here
-    /// exactly as it does in the transcript — and a card whose sender did not say is given the
-    /// face its detail wears, then its phase's.
-    var faceSymbol: String {
-        symbol ?? reading?.face(tool: isSettled ? nil : lastTool).symbol ?? phase.fallbackSymbol
-    }
-
-    var faceTone: ActivityTone {
-        tone.flatMap(ActivityTone.init(rawValue:))
-            ?? reading?.face(tool: isSettled ? nil : lastTool).tone ?? phase.fallbackTone
-    }
-
-    /// The head to draw: the one the app sent, or the plain one with an eye in the card's tone.
-    var glyphPlan: NeuralGlyphPlan {
-        glyph?.plan()
-            ?? .plain(eyeTone: glyph?.eyeTone ?? NeuralTone(rawValue: faceTone.rawValue) ?? .quiet)
     }
 
     /// Stopped for the person — a live approval or a question the turn ended on. The island says
@@ -70,100 +35,486 @@ extension ChatActivityAttributes.ContentState {
     var isWaitingOnYou: Bool { phase == .approval }
 }
 
-extension ActivityTone {
-    /// The same four meanings every other badge resolves, in the island's own colours — no theme
-    /// reaches the Lock Screen.
-    var cardColor: Color {
-        switch self {
-        case .live: return .green
-        case .attention: return .orange
-        case .danger: return .red
-        case .quiet: return .secondary
+/// One card read once for every presentation that draws it: its face, its colours and its words.
+/// Built from what the card shows rather than from the system's context so the in-app preview and
+/// the Lock Screen draw the very same card.
+struct CardModel {
+    let state: ChatActivityAttributes.ContentState
+    let title: String
+    let server: String
+    let inks: CardInks
+    let look: LiveActivityLook
+    let headline: String
+    /// When the card was last seen to move, once it has been still long enough to say so.
+    let quietSince: Date?
+    /// A live card the platform called stale with no moment to count from: the old "waiting for
+    /// updates" card a server from before the brief leaves.
+    let unheard: Bool
+    let seed: UInt64
+
+    init(
+        state: ChatActivityAttributes.ContentState, title: String, server: String, isStale: Bool,
+        seedKey: String, inks: CardInks = .current
+    ) {
+        self.state = state
+        self.title = state.title ?? title
+        self.server = server
+        self.inks = inks
+        let live = !state.isSettled
+        let moved = state.brief?.moved
+        quietSince = live && isStale && !state.isWaitingOnYou ? moved : nil
+        unheard = live && isStale && !state.isWaitingOnYou && moved == nil
+        look = LiveActivityLook.read(
+            detail: state.reading, settled: state.isSettled, background: state.background ?? 0,
+            tool: state.lastTool, quietSince: quietSince, fallback: state.phase.fallback)
+        headline = LiveActivityHeadline.line(
+            detail: state.reading, statusText: state.statusText, brief: state.brief,
+            tool: state.lastTool, toolCount: state.toolCount, background: state.background ?? 0,
+            settled: state.isSettled)
+        seed = Self.fnv(seedKey)
+    }
+
+    var ink: Color { unheard ? inks.dim : inks.ink(look) }
+    var brief: LiveActivityBrief? { state.brief }
+    var ultra: Bool { brief?.ultra == true }
+    var isLive: Bool { !state.isSettled }
+
+    /// Where the ground and the aura stand: moved on by every update a live card receives and held
+    /// where the turn left it once it settles, so a settled card never moves.
+    var phase: Double {
+        let anchor = state.endedAt ?? brief?.moved ?? state.startedAt
+        return anchor.timeIntervalSinceReferenceDate / 7
+    }
+
+    var meta: String {
+        var parts = [server]
+        if let model = brief?.modelWord { parts.append(model) }
+        return parts.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    /// What the card says under its line, by priority: the ask, the agent's last words once it
+    /// has finished, or nothing.
+    var askLead: String? { LiveActivityHeadline.askLead(state.reading) }
+    var ask: String? { askLead == nil ? nil : brief?.ask }
+    var said: String? { state.isSettled ? brief?.said : nil }
+    var counts: String? { brief?.countsLine(toolCount: state.toolCount) }
+
+    /// The right of the card's foot: how full the context is while the turn runs, and once it has
+    /// ended whatever its line has not already said — a finished line counts the tools and the
+    /// files, so only the lines they changed are left.
+    var footNote: String? {
+        if isLive { return contextLine ?? counts }
+        if state.reading == .finished { return brief?.linesChanged }
+        return counts
+    }
+
+    var contextLine: String? {
+        guard let fill = brief?.fill, isLive else { return nil }
+        return Localized.text("%lld%% context", Int((fill * 100).rounded()))
+    }
+
+    func steps(_ limit: Int) -> [LiveActivityStep] {
+        LiveActivityHeadline.listed(
+            brief: brief, detail: state.reading, settled: state.isSettled, limit: limit)
+    }
+
+    var accessibilitySummary: String {
+        [title, look.word, headline].joined(separator: ", ")
+    }
+
+    /// A stable seed per conversation: Swift's own hash is salted per process, and the motes must
+    /// sit in the same places on every redraw.
+    private static func fnv(_ text: String) -> UInt64 {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in text.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        return hash
+    }
+}
+
+/// The card on the Lock Screen, in the size the person chose, drawn the way a wall tile is.
+struct LockScreenCard: View {
+    let model: CardModel
+    let size: LiveActivitySize
+    /// Draws the wall's ground whatever the environment says: the app's own previews are not on a
+    /// Lock Screen, and there is no container behind them to say so.
+    var drawsGround = false
+
+    @Environment(\.showsWidgetContainerBackground) private var showsBackground
+    @Environment(\.isLuminanceReduced) private var reduced
+
+    static let corner: CGFloat = 22
+    static let margin: CGFloat = 14
+    static let largeHeight: CGFloat = 160
+    /// The vertical margin of the compact and large cards: the compact one is a single row, and
+    /// the large one spends every point it can on the tile.
+    static let largeMargin: CGFloat = 12
+
+    var body: some View {
+        content
+            .padding(.horizontal, Self.margin)
+            .padding(.vertical, size == .standard ? Self.margin : Self.largeMargin)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                if showsBackground || drawsGround {
+                    CardGround(
+                        inks: model.inks, ink: model.ink, phase: model.phase, seed: model.seed,
+                        live: model.isLive)
+                }
+            }
+            .overlay {
+                if model.ultra { CardAura(turn: model.phase * 2, corner: Self.corner) }
+            }
+            .environment(\.colorScheme, .dark)
+            .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private var content: some View {
+        switch size {
+        case .compact: CompactCard(model: model)
+        case .standard: StandardCard(model: model)
+        case .large:
+            ViewThatFits(in: .vertical) {
+                ForEach(0..<LargeCard.levels, id: \.self) { level in
+                    LargeCard(model: model, level: level)
+                }
+                StandardCard(model: model)
+            }
+            .frame(height: Self.largeHeight - Self.largeMargin * 2, alignment: .top)
+            .clipped()
         }
     }
 }
 
-/// The card on the Lock Screen, written over what it shows rather than over the system's context
-/// so the same view can be looked at in the app.
-struct LockScreenView: View {
-    let state: ChatActivityAttributes.ContentState
-    let title: String
-    let serverName: String
-    let isStale: Bool
+/// One slim row: the orb, the conversation and its line, and the clock.
+struct CompactCard: View {
+    let model: CardModel
 
     var body: some View {
         HStack(spacing: 12) {
-            HeadIcon(state: state, width: 44, dimmed: isStale && !state.isSettled)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(state.title ?? title)
+            CardOrb(model: model, size: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.title)
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(model.inks.text)
                     .lineLimit(1)
-                StatusText(state: state, isStale: isStale)
-                    .font(.caption)
+                CardHeadline(model: model, font: .footnote.weight(.medium), lines: 1, tinted: true)
+            }
+            Spacer(minLength: 6)
+            VStack(alignment: .trailing, spacing: 2) {
+                CardClock(model: model, font: .footnote.weight(.semibold))
+                CardWord(model: model)
+                    .font(.caption2)
+            }
+        }
+    }
+}
+
+/// The line in large type, who answers, and the turn's pulse.
+struct StandardCard: View {
+    let model: CardModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CardHeader(model: model, orb: 36)
+            CardHeadline(model: model, font: .title3.weight(.semibold), lines: 2, tinted: false)
+            if let ask = model.ask {
+                Text(ask)
+                    .font(.system(.footnote, design: .monospaced))
+                    .foregroundStyle(model.ink)
                     .lineLimit(1)
-                if let endedAt = state.endedAt {
-                    EndedAgo(endedAt: endedAt)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                } else if let tool = state.lastTool {
-                    ToolLabel(tool: tool, state: state)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    .truncationMode(.middle)
+            }
+            CardFoot(model: model)
+        }
+    }
+}
+
+/// The whole tile: the line, then what it waits on, how it ended, or its plan and latest steps,
+/// over its pulse. `level` is how much it gives up to fit the platform's 160 points: none at 0,
+/// then a step at a time, the plan, and the ask's and the last words' lines.
+struct LargeCard: View {
+    let model: CardModel
+    let level: Int
+
+    static let levels = 7
+
+    private var steps: Int { max(0, 3 - level) }
+    private var plan: Bool { level < 4 }
+    private var askLines: Int { max(1, 4 - level) }
+    private var saidLines: Int { level < 3 ? 3 : (level < 5 ? 2 : 1) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            CardHeader(model: model, orb: 32)
+            CardHeadline(model: model, font: .title3.weight(.semibold), lines: 2, tinted: false)
+            VStack(alignment: .leading, spacing: 4) {
+                if let lead = model.askLead, let ask = model.ask {
+                    CardAsk(lead: lead, ask: ask, ink: model.ink, lines: askLines)
+                } else if model.state.isSettled {
+                    CardEnding(model: model, lines: saidLines)
+                } else {
+                    if plan, let board = model.brief?.plan {
+                        CardPlan(plan: board, ink: model.ink, inks: model.inks)
+                    }
+                    CardSteps(steps: model.steps(steps), inks: model.inks, ink: model.ink)
                 }
             }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 3) {
-                ElapsedView(state: state, isStale: isStale)
-                Text(serverName)
+            .frame(maxHeight: .infinity, alignment: .top)
+            CardFoot(model: model, saysWords: false)
+        }
+    }
+}
+
+/// The orb, the conversation's name, the word for its state with the machine and the model, and
+/// the clock.
+struct CardHeader: View {
+    let model: CardModel
+    let orb: CGFloat
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            CardOrb(model: model, size: orb)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(model.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(model.inks.text)
+                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    CardWord(model: model)
+                    if !model.meta.isEmpty {
+                        Text("·").foregroundStyle(model.inks.dim)
+                        Text(model.meta).foregroundStyle(model.inks.dim).lineLimit(1)
+                    }
+                }
+                .font(.caption2)
+            }
+            Spacer(minLength: 6)
+            VStack(alignment: .trailing, spacing: 1) {
+                CardClock(model: model, font: .callout.weight(.semibold))
+                if let endedAt = model.state.endedAt {
+                    EndedAgo(endedAt: endedAt)
+                        .font(.caption2)
+                        .foregroundStyle(model.inks.dim)
+                }
+            }
+        }
+    }
+}
+
+/// The wall's word for the card's state, in its ink; a turn waiting on the person and a card that
+/// has heard nothing count how long beside it.
+struct CardWord: View {
+    let model: CardModel
+
+    var body: some View {
+        Group {
+            if model.unheard {
+                Text(String(localized: "Waiting for updates…"))
+            } else if let since = model.quietSince ?? (model.state.isWaitingOnYou ? model.brief?.moved : nil) {
+                HStack(spacing: 4) {
+                    Text(model.look.word)
+                    Text(timerInterval: since...Date.distantFuture, countsDown: false)
+                        .fixedSize()
+                }
+            } else {
+                Text(model.look.word)
+            }
+        }
+        .foregroundStyle(model.ink)
+        .monospacedDigit()
+        .lineLimit(1)
+        .contentTransition(.opacity)
+    }
+}
+
+/// The card's line. A new line pushes the old one up, the wall's step landing.
+struct CardHeadline: View {
+    let model: CardModel
+    let font: Font
+    let lines: Int
+    let tinted: Bool
+
+    @Environment(\.isLuminanceReduced) private var reduced
+
+    var body: some View {
+        Text(model.headline)
+            .font(font)
+            .foregroundStyle(tinted ? model.ink : model.inks.text)
+            .lineLimit(lines)
+            .minimumScaleFactor(0.8)
+            .id(model.headline)
+            .transition(.push(from: .bottom))
+            .animation(CardMotion.spring(reduced), value: model.headline)
+    }
+}
+
+/// The turn's clock: running while it works, stopped where it stopped once it ended.
+struct CardClock: View {
+    let model: CardModel
+    let font: Font
+
+    var body: some View {
+        Group {
+            if let endedAt = model.state.endedAt {
+                FrozenClock(startedAt: model.state.startedAt, endedAt: endedAt)
+                    .foregroundStyle(model.ink)
+            } else {
+                Text(timerInterval: model.state.startedAt...Date.distantFuture, countsDown: false)
+                    .foregroundStyle(model.inks.text.opacity(0.85))
+            }
+        }
+        .font(font)
+        .monospacedDigit()
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+        .multilineTextAlignment(.trailing)
+        .frame(maxWidth: 64, alignment: .trailing)
+    }
+}
+
+/// What a turn waits on, whole as far as the card has room: the command in the wall's monospaced
+/// type under its small-capitals lead.
+struct CardAsk: View {
+    let lead: String
+    let ask: String
+    let ink: Color
+    let lines: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(lead.uppercased())
+                .font(.caption2.weight(.bold))
+                .tracking(0.6)
+                .foregroundStyle(ink)
+            Text(ask)
+                .font(.system(.footnote, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(lines)
+                .truncationMode(.middle)
+        }
+    }
+}
+
+/// How the turn ended, past its line: what the agent said last, or the steps it ended on when it
+/// said nothing.
+struct CardEnding: View {
+    let model: CardModel
+    var lines = 2
+
+    var body: some View {
+        if let said = model.said {
+            Text("\u{201C}\(said)\u{201D}")
+                .font(.footnote)
+                .foregroundStyle(model.inks.text.opacity(0.82))
+                .lineLimit(lines)
+        } else {
+            CardSteps(steps: model.steps(max(lines - 1, 1)), inks: model.inks, ink: model.ink)
+        }
+    }
+}
+
+/// The agent's plan: how far through as a bar, and the item in hand.
+struct CardPlan: View {
+    let plan: LiveActivityPlan
+    let ink: Color
+    let inks: CardInks
+
+    @Environment(\.isLuminanceReduced) private var reduced
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(plan.headline)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(inks.text.opacity(0.9))
+                .contentTransition(.numericText())
+                .fixedSize()
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(ink.opacity(0.18))
+                    Capsule()
+                        .fill(ink)
+                        .frame(width: max(4, proxy.size.width * plan.fraction))
+                }
+            }
+            .frame(width: 44, height: 4)
+            .animation(CardMotion.spring(reduced), value: plan.fraction)
+            if let current = plan.current {
+                Text("▸ \(current)")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(inks.text.opacity(0.75))
                     .lineLimit(1)
             }
         }
-        .padding(14)
     }
 }
 
-/// The turn's head where the card used to wear a tinted circle: on the Lock Screen and in the
-/// expanded island. A card whose sender sent no counts draws the plain head with an eye in the
-/// tone the card already carries, which is all that sender said.
-struct HeadIcon: View {
-    let state: ChatActivityAttributes.ContentState
-    let width: CGFloat
-    let dimmed: Bool
+/// The latest steps under the line, newest first and fading with age, each with the wall's mark:
+/// a check for one that came back, a cross for one that failed, a dot for one still out.
+struct CardSteps: View {
+    let steps: [LiveActivityStep]
+    let inks: CardInks
+    let ink: Color
+
+    @Environment(\.isLuminanceReduced) private var reduced
 
     var body: some View {
-        NeuralGlyphView(plan: state.glyphPlan, width: width, dimmed: dimmed)
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
+                HStack(spacing: 5) {
+                    Image(systemName: Self.symbol(step.state))
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(step.state == .failed ? inks.failed : ink)
+                        .frame(width: 10)
+                    Text(step.words)
+                        .font(.caption)
+                        .foregroundStyle(inks.text)
+                        .lineLimit(1)
+                }
+                .opacity(1 - Double(index) * 0.22)
+                .transition(.push(from: .top))
+            }
+        }
+        .animation(CardMotion.spring(reduced), value: steps.map(\.id))
     }
-}
 
-struct StatusText: View {
-    let state: ChatActivityAttributes.ContentState
-    let isStale: Bool
-
-    var body: some View {
-        if isStale && !state.isSettled {
-            Text(String(localized: "Waiting for updates…"))
-                .foregroundStyle(.secondary)
-        } else {
-            Text(state.line)
-                .foregroundStyle(state.faceTone.cardColor)
+    static func symbol(_ state: LiveActivityStep.State) -> String {
+        switch state {
+        case .running: return "circle.fill"
+        case .done: return "checkmark"
+        case .failed: return "xmark"
+        case .stopped: return "stop.fill"
         }
     }
 }
 
-/// The tool the turn last reached for. While that tool is out on the machine the line above
-/// already names it, so it wears the tool's own face; otherwise it is context, and says so.
-struct ToolLabel: View {
-    let tool: String
-    let state: ChatActivityAttributes.ContentState
+/// The card's foot: the pulse on the left — or, on a card with no room above for them, the agent's
+/// last words — and the counts or how full the context is on the right.
+struct CardFoot: View {
+    let model: CardModel
+    var saysWords = true
 
     var body: some View {
-        Label(
-            tool,
-            systemImage: state.phase == .tool ? state.faceSymbol : "wrench.and.screwdriver"
-        )
-        .lineLimit(1)
+        HStack(alignment: .bottom, spacing: 8) {
+            if model.isLive, !model.state.isWaitingOnYou, let beats = model.brief?.beats, !beats.isEmpty {
+                CardBeat(beats: model.quietSince == nil ? beats : beats.map { _ in 0 }, ink: model.ink, height: 12)
+            } else if saysWords, let said = model.said {
+                Text("\u{201C}\(said)\u{201D}")
+                    .font(.caption2)
+                    .foregroundStyle(model.inks.text.opacity(0.7))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            if let right = model.footNote {
+                Text(right)
+                    .font(.caption2)
+                    .foregroundStyle(model.inks.dim)
+                    .lineLimit(1)
+                    .contentTransition(.numericText())
+            }
+        }
     }
 }
 
@@ -196,83 +547,5 @@ struct FrozenClock: View {
         .lineLimit(1)
         .minimumScaleFactor(0.6)
         .multilineTextAlignment(.trailing)
-    }
-}
-
-struct ElapsedView: View {
-    let state: ChatActivityAttributes.ContentState
-    let isStale: Bool
-
-    var body: some View {
-        if let endedAt = state.endedAt {
-            FrozenClock(startedAt: state.startedAt, endedAt: endedAt)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(state.faceTone.cardColor)
-                .frame(maxWidth: 56)
-        } else if isStale {
-            Image(systemName: "clock.badge.exclamationmark")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel(String(localized: "Waiting for updates"))
-        } else {
-            Text(state.startedAt, style: .timer)
-                .font(.subheadline.weight(.medium))
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .frame(maxWidth: 56)
-                .multilineTextAlignment(.trailing)
-        }
-    }
-}
-
-/// The expanded island's centre: the conversation's name over what the turn is doing.
-struct IslandTitle: View {
-    let state: ChatActivityAttributes.ContentState
-    let title: String
-    let isStale: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(state.title ?? title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-            StatusText(state: state, isStale: isStale)
-                .font(.caption)
-                .lineLimit(1)
-        }
-    }
-}
-
-/// The expanded island's foot: what the turn last reached for, or how long ago it ended, with the
-/// count and the machine.
-struct IslandFoot: View {
-    let state: ChatActivityAttributes.ContentState
-    let serverName: String
-
-    var body: some View {
-        HStack(spacing: 6) {
-            if let endedAt = state.endedAt {
-                EndedAgo(endedAt: endedAt)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            } else if let tool = state.lastTool {
-                ToolLabel(tool: tool, state: state)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if state.toolCount > 0, !state.isSettled {
-                Text(String(localized: "\(state.toolCount) tools"))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-            Label(serverName, systemImage: "server.rack")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 4)
     }
 }

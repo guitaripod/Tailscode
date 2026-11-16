@@ -30,6 +30,18 @@ import MidgarCore
                 detail: .writing, tool: nil, toolCount: 9),
         ]
 
+        /// The brief a turn of this kind carries, from the same samples the Settings picker draws.
+        private static func brief(for detail: LiveActivityDetail) -> LiveActivityBrief? {
+            var brief: LiveActivityBrief?
+            switch detail {
+            case .approval: brief = CardSamples.needsYou().state.brief
+            case .tool: brief = CardSamples.working().state.brief
+            default: brief = LiveActivityBrief(moved: Date(), model: "gpt-5.1-codex")
+            }
+            brief?.moved = Date()
+            return brief
+        }
+
         @MainActor
         static func startIfAsked() {
             guard ProcessInfo.processInfo.environment["TAILSCODE_LOCKSCREEN"] != nil else { return }
@@ -43,7 +55,7 @@ import MidgarCore
                         sessionID: card.session,
                         reading: LiveActivityReading(
                             detail: card.detail, tool: card.tool, toolCount: card.toolCount),
-                        title: card.title)
+                        title: card.title, brief: brief(for: card.detail))
                     MidgarLog.info(
                         "lockscreen: card for \(card.session) (\(card.detail.rawValue))",
                         category: .ui

@@ -176,6 +176,10 @@ extension SettingsViewController: UICollectionViewDelegate {
             chooseDensity()
         case .activityStyle:
             chooseActivityStyle()
+        case .liveActivityLook:
+            Theme.Haptics.tap()
+            navigationController?.pushViewController(
+                LiveActivityLookViewController(), animated: true)
         case .midgar, .toggle, .version, .tailnetScan:
             break
         }

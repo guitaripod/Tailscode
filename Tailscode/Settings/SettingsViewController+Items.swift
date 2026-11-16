@@ -210,6 +210,7 @@ extension SettingsViewController {
         case appearance
         case chatDensity
         case activityStyle
+        case liveActivityLook
         case noticeFinish
         case noticeMinimum
         case unmuteAll

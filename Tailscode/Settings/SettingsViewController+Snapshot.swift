@@ -37,7 +37,7 @@ extension SettingsViewController {
                 (.needsYou, [.toggle(.notifyApprovals)]),
                 (.muted, muted),
                 (.usageAlerts, [.toggle(.notifyUsage), .toggle(.notifyRunningLow)]),
-                (.liveActivities, [.toggle(.liveActivities)]),
+                (.liveActivities, [.toggle(.liveActivities), .liveActivityLook]),
                 (.push, [.toggle(.serverPush)] + pushCapableProfiles.map { Item.pushState($0.id) }),
                 (.testNotice, [.testNotification]),
             ]
@@ -292,6 +292,9 @@ extension SettingsViewController {
                 + String(
                     localized: "density compact comfortable spacing rows tight airy",
                     comment: "search keywords")
+        case .liveActivityLook:
+            return "\(LiveActivitySettings.screenTitle) \(LiveActivitySettings.sizeTitle) \(LiveActivitySettings.endingTitle) "
+                + Localized.text("live activity lock screen dynamic island card size compact large expand ending standby watch")
         case .activityStyle:
             return "\(ActivityStyleSetting.title) "
                 + Localized.text("megatron brain head lines tools thinking activity neural nodes style")

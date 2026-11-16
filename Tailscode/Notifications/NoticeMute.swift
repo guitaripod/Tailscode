@@ -14,6 +14,7 @@ enum NoticeMute {
         ) { _ in
             Theme.Haptics.tap()
             AppPreferences.noticeRules = AppPreferences.noticeRules.togglingMute(sessionID)
+            AppActivityController.shared.reregister(sessionID)
         }
     }
 }

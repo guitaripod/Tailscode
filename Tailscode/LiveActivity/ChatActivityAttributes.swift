@@ -37,6 +37,11 @@ struct ChatActivityAttributes: ActivityAttributes {
         /// draw it where they used to draw the face's symbol. Optional and additive: a card a
         /// server wrote carries none, and its head is drawn plain with only an eye in the tone.
         var glyph: NeuralGlyphWire?
+        /// What the card says beyond its line, the way a wall tile with room does: steps, plan,
+        /// last words, files, pulse, model and the ask, as facts the widget writes words from.
+        /// Optional and additive: a card from before it, or from a server that sends none, draws
+        /// its line alone.
+        var brief: LiveActivityBrief?
 
         var isSettled: Bool { endedAt != nil }
     }

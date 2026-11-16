@@ -7,79 +7,54 @@ private func sessionURL(_ context: ActivityViewContext<ChatActivityAttributes>) 
     URL(string: "tailscode://session/\(context.attributes.sessionID)")
 }
 
-/// A settled card has no stale date, so a stale look only applies while a turn is still
-/// (supposedly) running.
-private func staleDim(_ context: ActivityViewContext<ChatActivityAttributes>) -> Bool {
-    context.isStale && !context.state.isSettled
+private func card(_ context: ActivityViewContext<ChatActivityAttributes>) -> CardModel {
+    CardModel(
+        state: context.state, title: context.attributes.sessionTitle,
+        server: context.attributes.serverName, isStale: context.isStale,
+        seedKey: context.attributes.sessionID)
 }
 
 struct LiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: ChatActivityAttributes.self) { context in
-            LockScreenView(
-                state: context.state, title: context.attributes.sessionTitle,
-                serverName: context.attributes.serverName, isStale: context.isStale
-            )
-            .activitySystemActionForegroundColor(.primary)
+            ActivityCardView(model: card(context))
                 .widgetURL(sessionURL(context))
         } dynamicIsland: { context in
-            let state = context.state
+            let model = card(context)
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    HeadIcon(state: state, width: 38, dimmed: staleDim(context))
-                        .padding(.leading, 4)
+                    CardOrb(model: model, size: 46)
+                        .padding(.leading, 6)
+                        .padding(.top, 4)
                         .widgetURL(sessionURL(context))
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    IslandTitle(
-                        state: state, title: context.attributes.sessionTitle,
-                        isStale: context.isStale)
+                    IslandTitle(model: model)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    ElapsedView(state: state, isStale: context.isStale)
-                        .padding(.trailing, 4)
+                    VStack(alignment: .trailing, spacing: 2) {
+                        CardClock(model: model, font: .callout.weight(.semibold))
+                        Text(model.server)
+                            .font(.caption2)
+                            .foregroundStyle(model.inks.dim)
+                            .lineLimit(1)
+                    }
+                    .padding(.trailing, 6)
+                    .padding(.top, 4)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    IslandFoot(state: state, serverName: context.attributes.serverName)
+                    IslandBottom(model: model)
                 }
             } compactLeading: {
-                Image(systemName: state.faceSymbol)
-                    .font(.caption2)
-                    .foregroundStyle(state.faceTone.cardColor.opacity(staleDim(context) ? 0.4 : 1))
-                    .accessibilityLabel(state.line)
+                IslandDot(model: model, size: 22)
             } compactTrailing: {
-                if state.isWaitingOnYou {
-                    Image(systemName: state.faceSymbol)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(state.faceTone.cardColor)
-                        .accessibilityLabel(state.line)
-                } else if let endedAt = state.endedAt {
-                    FrozenClock(startedAt: state.startedAt, endedAt: endedAt)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(state.faceTone.cardColor)
-                        .frame(maxWidth: 44)
-                } else if context.isStale {
-                    Image(systemName: "clock.badge.exclamationmark")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel(String(localized: "Waiting for updates"))
-                } else {
-                    Text(state.startedAt, style: .timer)
-                        .font(.caption2.weight(.medium))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                        .frame(maxWidth: 44)
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
-                }
+                IslandTrailing(model: model)
             } minimal: {
-                Image(systemName: state.faceSymbol)
-                    .font(.caption2)
-                    .foregroundStyle(state.faceTone.cardColor.opacity(staleDim(context) ? 0.4 : 1))
-                    .accessibilityLabel(state.line)
+                IslandDot(model: model, size: 22)
             }
+            .keylineTint(model.ink)
+            .contentMargins(.horizontal, 14, for: .expanded)
         }
+        .supplementalActivityFamilies([.small])
     }
 }
-

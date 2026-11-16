@@ -113,9 +113,11 @@ extension ChatViewModel {
             ? AgentSession.provisionalTitle(fromPrompt: text) : displayTitle
         AppActivityController.shared.start(
             sessionID: session.id, sessionTitle: activityTitle, serverName: serverName,
-            onPushToken: cardPushSink(title: activityTitle))
+            onPushToken: cardPushSink(title: activityTitle), serverAlerts: cardServerAlerts)
         turnSawRunning = false
         cardSettled = false
+        cardPulse.reset()
+        heldCardBrief = nil
         let resolvedModel = model ?? selectedModel
         let resolvedEffort = ModelEffort.surviving(
             effort ?? currentEffort, options: reasoningEffortOptions)

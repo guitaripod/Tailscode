@@ -188,7 +188,8 @@ extension SettingsViewController {
                     "Usage warnings come once per window when a plan limit passes 90%. Running low tells you when an account-wide window is on course to run out before it resets."
             )
         case .liveActivities:
-            return String(localized: "Shows a turn’s progress on the Lock Screen while it runs.")
+            return Localized.text(
+                "Follows a turn on the Lock Screen and in the Dynamic Island in the Agents wall’s colours, at the size you choose, and can open the island when it ends.")
         case .push:
             return String(
                 localized:
@@ -483,6 +484,11 @@ extension SettingsViewController {
             content = quiet(.valueCell())
             content.text = ActivityStyleSetting.title
             content.secondaryText = ActivityStyleSetting.current.title
+            cell.accessories = [.disclosureIndicator()]
+        case .liveActivityLook:
+            content = quiet(.valueCell())
+            content.text = LiveActivitySettings.sizeTitle
+            content.secondaryText = LiveActivitySettings.size.title
             cell.accessories = [.disclosureIndicator()]
         case .pro:
             content = quiet(.subtitleCell())

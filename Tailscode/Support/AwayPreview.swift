@@ -32,67 +32,8 @@ import MidgarCore
             return nil
         }
 
-        private struct Sample {
-            let state: ChatActivityAttributes.ContentState
-            let title: String
-            let name: String
-        }
-
-        private static var samples: [Sample] {
-            let now = Date()
-            func state(
-                _ phase: ChatActivityAttributes.ContentState.Phase, text: String, tool: String?,
-                count: Int, detail: LiveActivityDetail, symbol: String, tone: ActivityTone,
-                ended: TimeInterval? = nil, ran: TimeInterval, glyph: NeuralGlyphWire?
-            ) -> ChatActivityAttributes.ContentState {
-                let began = now.addingTimeInterval(-ran)
-                return ChatActivityAttributes.ContentState(
-                    phase: phase, statusText: text, lastTool: tool, toolCount: count,
-                    startedAt: began, endedAt: ended.map { began.addingTimeInterval($0) },
-                    title: nil, symbol: symbol, tone: tone.rawValue, detail: detail.rawValue,
-                    background: nil, glyph: glyph)
-            }
-            return [
-                Sample(
-                    state: state(
-                        .tool, text: "Reading", tool: "Read", count: 4, detail: .tool,
-                        symbol: "doc.text", tone: .live, ran: 72,
-                        glyph: NeuralGlyphWire(
-                            zones: [1, 3, 0, 1, 0, 0], active: NeuralZone.sense.rawValue,
-                            eye: NeuralTone.live.rawValue)),
-                    title: "Fix the Linux build", name: "WORKING"),
-                Sample(
-                    state: state(
-                        .approval, text: "Approval", tool: "Bash", count: 6, detail: .approval,
-                        symbol: "hand.raised", tone: .attention, ran: 220,
-                        glyph: NeuralGlyphWire(
-                            zones: [1, 3, 0, 2, 0, 0], active: NeuralZone.shell.rawValue,
-                            eye: NeuralTone.attention.rawValue)),
-                    title: "Fix the Linux build", name: "NEEDS YOU"),
-                Sample(
-                    state: state(
-                        .error, text: "Failed", tool: nil, count: 6, detail: .failed,
-                        symbol: "exclamationmark.triangle", tone: .danger, ended: 151, ran: 400,
-                        glyph: NeuralGlyphWire(
-                            zones: [1, 3, 0, 5, 0, 0], failed: 1 << NeuralZone.shell.rawValue,
-                            active: NeuralZone.shell.rawValue, eye: NeuralTone.danger.rawValue)),
-                    title: "Fix the Linux build", name: "FAILED"),
-                Sample(
-                    state: state(
-                        .done, text: "Done", tool: nil, count: 25, detail: .finished,
-                        symbol: "checkmark.circle", tone: .live, ended: 505, ran: 900,
-                        glyph: NeuralGlyphWire(
-                            zones: [2, 3, 2, 18, 2, 2], eye: NeuralTone.identity.rawValue,
-                            hue: "#d97757", hueLight: "#d97757", reads: 3)),
-                    title: "Fix the Linux build", name: "DONE"),
-                Sample(
-                    state: state(
-                        .tool, text: "Running Bash", tool: "Bash", count: 9, detail: .tool,
-                        symbol: "terminal", tone: .live, ran: 41, glyph: nil),
-                    title: "A card a server wrote (no head sent)", name: "PLAIN"),
-            ]
-        }
-
+        /// Every sample card at every size, with its expanded island and the compact island it
+        /// shrinks to, the way the Lock Screen and the Dynamic Island will draw them.
         private struct LockWall: View {
             let dark: Bool
 
@@ -106,10 +47,20 @@ import MidgarCore
                     ).ignoresSafeArea()
                     ScrollView {
                         VStack(alignment: .leading, spacing: 10) {
-                            ForEach(AwayPreview.samples, id: \.name) { sample in
-                                Text(sample.name).font(.caption2.monospaced()).opacity(0.6)
-                                lockCard(sample)
-                                island(sample)
+                            ForEach(sizes, id: \.self) { size in
+                                ForEach(CardSamples.all(), id: \.name) { sample in
+                                    Text("\(size.rawValue.uppercased()) · \(sample.name)")
+                                        .font(.caption2.monospaced()).opacity(0.6)
+                                    LockScreenCard(model: model(sample), size: size, drawsGround: true)
+                                        .clipShape(RoundedRectangle(cornerRadius: LockScreenCard.corner, style: .continuous))
+                                }
+                            }
+                            if showsIslands {
+                                ForEach(CardSamples.all(), id: \.name) { sample in
+                                    Text("ISLAND · \(sample.name)").font(.caption2.monospaced()).opacity(0.6)
+                                    IslandPreview(sample: sample)
+                                    compact(sample)
+                                }
                             }
                         }
                         .padding(.horizontal, 16)
@@ -119,23 +70,33 @@ import MidgarCore
                 .preferredColorScheme(dark ? .dark : .light)
             }
 
-            private func lockCard(_ sample: Sample) -> some View {
-                LockScreenView(
-                    state: sample.state, title: sample.title, serverName: "arch", isStale: false
-                )
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            /// `TAILSCODE_CARD_SIZE` narrows the photograph to one size, or to the islands alone.
+            private var only: String? { ProcessInfo.processInfo.environment["TAILSCODE_CARD_SIZE"] }
+
+            private var sizes: [LiveActivitySize] {
+                guard let only, !only.isEmpty else { return LiveActivitySize.allCases }
+                return LiveActivitySize(rawValue: only).map { [$0] } ?? []
             }
 
-            private func island(_ sample: Sample) -> some View {
-                HStack(spacing: 10) {
-                    HeadIcon(state: sample.state, width: 38, dimmed: false)
-                    IslandTitle(state: sample.state, title: sample.title, isStale: false)
-                    Spacer(minLength: 0)
-                    ElapsedView(state: sample.state, isStale: false)
+            private var showsIslands: Bool { only == nil || only == "" || only == "island" }
+
+            private func model(_ sample: CardSamples.Sample) -> CardModel {
+                CardModel(
+                    state: sample.state, title: sample.title, server: CardSamples.server,
+                    isStale: sample.name == "QUIET", seedKey: sample.title)
+            }
+
+            private func compact(_ sample: CardSamples.Sample) -> some View {
+                let model = model(sample)
+                return HStack(spacing: 0) {
+                    IslandDot(model: model, size: 22)
+                    Spacer(minLength: 120)
+                    IslandClock(model: model)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color.black, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+                .padding(.horizontal, 10)
+                .frame(height: 36)
+                .background(Color.black, in: Capsule())
+                .frame(width: 250)
                 .environment(\.colorScheme, .dark)
             }
         }

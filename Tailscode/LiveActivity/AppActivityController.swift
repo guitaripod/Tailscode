@@ -45,6 +45,9 @@ final class AppActivityController {
         var pushToken: String?
         var onPushToken: PushTokenSink?
         var followsTokens = false
+        /// The server the card's token goes to pushes its ending itself — alert and all — so this
+        /// process leaves the alert to it rather than opening the island twice.
+        var serverAlerts = false
         /// Ended — by this process or by a push — and possibly still on the Lock Screen, where only
         /// a read takes it down early.
         var retired = false
@@ -62,8 +65,13 @@ final class AppActivityController {
     private let readers = NSMapTable<UIViewController, NSString>(
         keyOptions: .weakMemory, valueOptions: .strongMemory)
 
-    /// How long a live card may go unheard from before it admits it is waiting for news.
+    /// The longest a live card goes before the platform redraws it as quiet, whatever it last
+    /// said moved; a card waiting on the person waits this long before it admits it heard nothing.
     private static let staleAfter: TimeInterval = 1800
+    /// How far the moment a live card last moved may run ahead of what it shows before it is
+    /// written again: the card counts "nothing new" from it, so it must not fall far behind a turn
+    /// that is streaming words with nothing else changing.
+    private static let movedDrift: TimeInterval = 15
     /// How often a live card that says the same thing is written again anyway, so its stale date
     /// moves on while the turn really is running.
     private static let refreshAfter: TimeInterval = 600
@@ -79,6 +87,12 @@ final class AppActivityController {
             return false
         }
         return true
+    }
+
+    /// Whether the conversation has a card, standing or still being asked for: what it says in the
+    /// moment the platform takes to answer is held and said to the card once it exists.
+    func follows(_ sessionID: String) -> Bool {
+        starting[sessionID] != nil || isTracking(sessionID)
     }
 
     /// Conversations whose card is live with nothing in this process having written to it — the
@@ -101,7 +115,7 @@ final class AppActivityController {
     /// this returns; whatever the conversation says in that moment is held and said to it then.
     func start(
         sessionID: String, sessionTitle: String, serverName: String,
-        onPushToken: PushTokenSink? = nil
+        onPushToken: PushTokenSink? = nil, serverAlerts: Bool = false
     ) {
         guard AppPreferences.liveActivitiesEnabled else {
             MidgarLog.info("Live Activity disabled in settings", category: .chat)
@@ -117,6 +131,7 @@ final class AppActivityController {
             entry.state = state
             entry.pushedAt = startedAt
             if let onPushToken { entry.onPushToken = onPushToken }
+            entry.serverAlerts = onPushToken != nil && serverAlerts
             entries[sessionID] = entry
             write(sessionID, entry.activity, state)
             if let token = entry.pushToken, let sink = entry.onPushToken {
@@ -151,7 +166,8 @@ final class AppActivityController {
         starting[sessionID] = Deferred()
         Task {
             await open(
-                sessionID, request, state: state, startedAt: startedAt, onPushToken: onPushToken)
+                sessionID, request, state: state, startedAt: startedAt, onPushToken: onPushToken,
+                serverAlerts: onPushToken != nil && serverAlerts)
         }
     }
 
@@ -185,8 +201,8 @@ final class AppActivityController {
     /// still settle the card it was about to get, and a conversation withdrawn in that time must
     /// not be left with one.
     private struct Deferred {
-        var update: (reading: LiveActivityReading, title: String?)?
-        var settle: (reading: LiveActivityReading, title: String?)?
+        var update: (reading: LiveActivityReading, title: String?, brief: LiveActivityBrief?)?
+        var settle: (reading: LiveActivityReading, title: String?, brief: LiveActivityBrief?)?
         var withdrawn = false
     }
 
@@ -202,7 +218,7 @@ final class AppActivityController {
     /// ends — and brings the controller up to date with whatever happened meanwhile.
     private func open(
         _ sessionID: String, _ request: CardRequest, state: State, startedAt: Date,
-        onPushToken: PushTokenSink?
+        onPushToken: PushTokenSink?, serverAlerts: Bool
     ) async {
         var answer = await Self.offMain("a new card") { Self.ask(request) }
         if case .refused(let error) = answer, Self.isFull(error), let oldest = oldestSettled() {
@@ -225,14 +241,14 @@ final class AppActivityController {
             }
             entries[sessionID] = Entry(
                 activity: activity, state: state, card: state, pushedAt: startedAt,
-                onPushToken: onPushToken)
+                onPushToken: onPushToken, serverAlerts: serverAlerts)
             watch(activity, sessionID: sessionID)
             MidgarLog.info("Live Activity started for \(sessionID)", category: .chat)
             if let held = deferred?.update {
-                update(sessionID: sessionID, reading: held.reading, title: held.title)
+                update(sessionID: sessionID, reading: held.reading, title: held.title, brief: held.brief)
             }
             if let held = deferred?.settle {
-                settle(sessionID: sessionID, reading: held.reading, title: held.title)
+                settle(sessionID: sessionID, reading: held.reading, title: held.title, brief: held.brief)
             }
         }
     }
@@ -243,8 +259,11 @@ final class AppActivityController {
     /// that arrives late for the turn that already ended — a stream catching up after the phone
     /// slept, a resync replaying what it held — is not a new turn, and must not stand the card
     /// back up over an ending the bridge already told it about.
-    func update(sessionID: String, reading: LiveActivityReading, title: String?) {
-        if whileStarting(sessionID, { $0.update = (reading, title) }) { return }
+    func update(
+        sessionID: String, reading: LiveActivityReading, title: String?,
+        brief: LiveActivityBrief? = nil
+    ) {
+        if whileStarting(sessionID, { $0.update = (reading, title, brief) }) { return }
         guard isTracking(sessionID), var entry = entries[sessionID] else { return }
         if let title, !title.isEmpty { entry.title = title }
         let shown = current(sessionID, entry)
@@ -263,10 +282,12 @@ final class AppActivityController {
         let toolCount = revived ? reading.toolCount : max(shown.toolCount, reading.toolCount)
         let state = Self.liveState(
             reading, startedAt: startedAt, toolCount: toolCount, title: entry.title,
-            carrying: revived ? nil : shown.glyph)
+            brief: brief ?? (revived ? nil : shown.brief))
         let becameWaiting = reading.detail.wantsYou && (revived || shown.phase != .approval)
         let due = Date().timeIntervalSince(entry.pushedAt) > Self.refreshAfter
-        guard becameWaiting || due || revived || !Self.sameFacts(state, shown) else {
+        guard becameWaiting || due || revived || !Self.sameFacts(state, shown)
+            || Self.movedOn(state, from: shown)
+        else {
             entries[sessionID] = entry
             return
         }
@@ -278,7 +299,7 @@ final class AppActivityController {
         entry.pushedAt = Date()
         entries[sessionID] = entry
         let alert: AlertConfiguration? =
-            becameWaiting
+            becameWaiting && AppPreferences.noticeRules.admitsAsk(sessionID: sessionID)
             ? AlertConfiguration(
                 title: reading.detail == .question
                     ? LocalizedStringResource("The agent has a question")
@@ -293,8 +314,11 @@ final class AppActivityController {
     /// The turn ended: the card settles on how, and stays for somebody to read it. One that ends
     /// with its conversation on screen has been read already, and one somebody stopped was never
     /// news; both go at once.
-    func settle(sessionID: String, reading: LiveActivityReading, title: String?) {
-        if whileStarting(sessionID, { $0.settle = (reading, title) }) { return }
+    func settle(
+        sessionID: String, reading: LiveActivityReading, title: String?,
+        brief: LiveActivityBrief? = nil
+    ) {
+        if whileStarting(sessionID, { $0.settle = (reading, title, brief) }) { return }
         guard isTracking(sessionID), var entry = entries[sessionID] else { return }
         if isBeingRead(sessionID) {
             MidgarLog.info("Live Activity read as it ended for \(sessionID)", category: .chat)
@@ -323,7 +347,7 @@ final class AppActivityController {
             title: entry.title, symbol: face.symbol, tone: face.tone.rawValue,
             detail: reading.detail.rawValue,
             background: reading.background > 0 ? reading.background : nil,
-            glyph: reading.glyph ?? shown.glyph.map { $0.retoned(Self.eye(of: face.tone)) })
+            brief: Self.settledBrief(brief ?? shown.brief))
         guard !(shown.isSettled && Self.sameFacts(state, shown)) else {
             entries[sessionID] = entry
             scheduleRetirement(sessionID, settledAt: endedAt)
@@ -332,7 +356,8 @@ final class AppActivityController {
         entry.state = state
         entry.pushedAt = now
         entries[sessionID] = entry
-        write(sessionID, entry.activity, state)
+        let alert = shown.isSettled || entry.serverAlerts ? nil : endingAlert(sessionID, state, entry)
+        write(sessionID, entry.activity, state, alert: alert)
         scheduleRetirement(sessionID, settledAt: endedAt)
         MidgarLog.info(
             "Live Activity settled for \(sessionID) (\(reading.detail.rawValue))", category: .chat)
@@ -396,6 +421,40 @@ final class AppActivityController {
         entry.state = state
         entries[sessionID] = entry
         write(sessionID, entry.activity, state)
+    }
+
+    /// Draws every standing card again in the look the person just chose. The widget reads the
+    /// size from the shared container when it draws, so writing what each card already shows is
+    /// what makes it draw again.
+    func redrawAll() {
+        for (sessionID, entry) in entries where !entry.retired {
+            write(sessionID, entry.activity, current(sessionID, entry))
+        }
+    }
+
+    /// Hands every standing card's token to its server again, so a server that pushes the ending
+    /// learns the person's new choice for it; the server reads a token it already holds for the
+    /// same turn as an address and changes nothing else.
+    func reregisterAll() {
+        for sessionID in entries.keys { reregister(sessionID) }
+    }
+
+    /// Hands one conversation's card token to its server again — the chat was muted or unmuted.
+    func reregister(_ sessionID: String) {
+        guard let entry = entries[sessionID], !entry.retired, let token = entry.pushToken,
+            let sink = entry.onPushToken
+        else { return }
+        hand(token, startedAt: current(sessionID, entry).startedAt, to: sink, for: sessionID)
+    }
+
+    /// Whether the app is in front, where an ending is seen in the app itself. A server that pushes
+    /// the ending is told to leave the island closed while it is, and told again when it is not.
+    private(set) var inFront = false
+
+    func setInFront(_ value: Bool) {
+        guard value != inFront else { return }
+        inFront = value
+        reregisterAll()
     }
 
     /// Moves every card whose time is up along: a settled card nobody came for leaves the Dynamic
@@ -686,7 +745,7 @@ final class AppActivityController {
 
     private static func liveState(
         _ reading: LiveActivityReading, startedAt: Date, toolCount: Int, title: String?,
-        carrying glyph: NeuralGlyphWire? = nil
+        brief: LiveActivityBrief? = nil
     ) -> State {
         let face = reading.face
         return State(
@@ -694,13 +753,49 @@ final class AppActivityController {
             statusText: reading.detail.line(tool: reading.tool, toolCount: toolCount),
             lastTool: reading.tool, toolCount: toolCount, startedAt: startedAt, endedAt: nil,
             title: title, symbol: face.symbol, tone: face.tone.rawValue,
-            detail: reading.detail.rawValue, background: nil,
-            glyph: reading.glyph ?? glyph.map { $0.retoned(eye(of: face.tone)) })
+            detail: reading.detail.rawValue, background: nil, brief: brief)
     }
 
-    /// The tone the head's eye wears for a card whose state names only the face's meaning.
-    private static func eye(of tone: ActivityTone) -> NeuralTone {
-        NeuralTone(rawValue: tone.rawValue) ?? .quiet
+    /// What an ended card keeps of its brief: its steps, its words, its files, who answered and the
+    /// question it stopped on, and not the pulse, the plan or the moment it last moved, which belong
+    /// to a turn that is still going. claude-bridge settles a card to exactly this shape.
+    private static func settledBrief(_ brief: LiveActivityBrief?) -> LiveActivityBrief? {
+        guard var brief else { return nil }
+        brief.beat = nil
+        brief.moved = nil
+        brief.fill = nil
+        brief.ultra = nil
+        brief.plan = nil
+        return brief.isEmpty ? nil : brief
+    }
+
+    /// The alert that opens the Dynamic Island on how the turn ended, when the person asked for it
+    /// and somebody can be looking: never with the app in front, where the island is not shown for
+    /// the app's own card, and never for a chat they muted. The title and body are what an Apple
+    /// Watch shows; the island draws the card itself.
+    private func endingAlert(_ sessionID: String, _ state: State, _ entry: Entry) -> AlertConfiguration? {
+        let ending = LiveActivitySettings.ending
+        guard ending.alerts, UIApplication.shared.applicationState != .active,
+            !AppPreferences.noticeRules.isMuted(sessionID)
+        else { return nil }
+        let headline = LiveActivityHeadline.line(
+            detail: state.detail.flatMap(LiveActivityDetail.init(rawValue:)),
+            statusText: state.statusText, brief: state.brief, tool: nil, toolCount: state.toolCount,
+            background: state.background ?? 0, settled: state.isSettled)
+        let title = state.title ?? entry.activity.attributes.sessionTitle
+        MidgarLog.info("Live Activity alerts its ending for \(sessionID) (\(ending.rawValue))", category: .chat)
+        return AlertConfiguration(
+            title: LocalizedStringResource(stringLiteral: title),
+            body: LocalizedStringResource(stringLiteral: headline),
+            sound: ending == .expandWithSound ? .default : .named(LiveActivityEnding.silentSound))
+    }
+
+    /// Whether a live card's moment of last moving has run far enough ahead of what it shows that
+    /// its "nothing new" clock would be wrong without a write.
+    private static func movedOn(_ state: State, from shown: State) -> Bool {
+        guard !state.isSettled, let moved = state.brief?.moved else { return false }
+        guard let before = shown.brief?.moved else { return true }
+        return moved.timeIntervalSince(before) > movedDrift
     }
 
     /// Whether two states draw the same card. The words and the face are written from the detail
@@ -710,9 +805,22 @@ final class AppActivityController {
     private static func sameFacts(_ a: State, _ b: State) -> Bool {
         a.phase == b.phase && a.detail == b.detail && a.lastTool == b.lastTool
             && a.toolCount == b.toolCount && a.title == b.title && a.background == b.background
-            && a.glyph == b.glyph
+            && sameBrief(a.brief, b.brief)
             && sameMoment(a.startedAt, b.startedAt) && a.isSettled == b.isSettled
             && sameMoment(a.endedAt ?? a.startedAt, b.endedAt ?? b.startedAt)
+    }
+
+    /// Whether two briefs draw the same card, leaving out the pulse and the moment it last moved:
+    /// those ride along with writes the facts call for, and `movedOn` keeps the moment honest.
+    private static func sameBrief(_ a: LiveActivityBrief?, _ b: LiveActivityBrief?) -> Bool {
+        func still(_ brief: LiveActivityBrief?) -> LiveActivityBrief? {
+            guard var brief else { return nil }
+            brief.beat = nil
+            brief.moved = nil
+            if let fill = brief.fill { brief.fill = (fill * 100).rounded() / 100 }
+            return brief.isEmpty ? nil : brief
+        }
+        return still(a) == still(b)
     }
 
     private static func sameMoment(_ a: Date, _ b: Date) -> Bool {
@@ -729,9 +837,20 @@ final class AppActivityController {
         let detail = state.detail.flatMap(LiveActivityDetail.init(rawValue:))
         let relevance = detail?.relevance ?? (state.isSettled ? 10 : 50)
         return ActivityContent(
-            state: state,
-            staleDate: state.isSettled ? nil : Date().addingTimeInterval(staleAfter),
+            state: state, staleDate: staleDate(state, detail: detail, now: Date()),
             relevanceScore: relevance)
+    }
+
+    /// When the platform redraws a live card as having heard nothing: the wall's quiet threshold
+    /// after it last moved, so a stall reads as one on the Lock Screen as it does on the wall. A
+    /// card waiting on the person is not quiet — it is waiting — and a settled one never goes
+    /// stale, because an ending does not get older in any way a person needs warning of.
+    private static func staleDate(_ state: State, detail: LiveActivityDetail?, now: Date) -> Date? {
+        guard !state.isSettled else { return nil }
+        guard detail?.wantsYou != true, let moved = state.brief?.moved else {
+            return now.addingTimeInterval(staleAfter)
+        }
+        return LiveActivityQuiet.staleDate(moved: moved, now: now, ceiling: staleAfter)
     }
 
     private nonisolated static func hex(_ token: Data) -> String {

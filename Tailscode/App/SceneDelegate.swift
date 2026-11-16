@@ -84,6 +84,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
+        AppActivityController.shared.setInFront(true)
         ProAccess.shared.refreshProWeek()
         Task { await AppActivityController.shared.catchUp() }
         coordinator?.handleControlRouteIfNeeded()
@@ -97,6 +98,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// a foreground request rather than a merely discretionary one — after this, arming has to
     /// wait for whatever the system feels like giving it.
     func sceneWillResignActive(_ scene: UIScene) {
+        AppActivityController.shared.setInFront(false)
         TurnWaitCenter.shared.armForBackground()
     }
 

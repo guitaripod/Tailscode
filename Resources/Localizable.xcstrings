@@ -623899,6 +623899,1925 @@
           }
         }
       }
+    },
+    "Asks": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Asks"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fragt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pregunta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demande"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiede"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "質問"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "질문"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pyta"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pergunta"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提问"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提問"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frågar"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørger"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spør"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kysyy"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spyr"
+          }
+        }
+      }
+    },
+    "Away": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Away"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nicht erreichbar"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin conexión"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Injoignable"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non raggiungibile"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オフライン"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "연결 끊김"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Niedostępny"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inacessível"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离线"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "離線"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ej nåbar"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utilgængelig"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utilgjengelig"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tavoittamattomissa"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekki tengdur"
+          }
+        }
+      }
+    },
+    "Card size": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Card size"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kartengröße"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tamaño de la tarjeta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Taille de la carte"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dimensione della scheda"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "カードのサイズ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "카드 크기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rozmiar karty"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tamanho do cartão"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "卡片大小"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "卡片大小"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kortstorlek"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kortstørrelse"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kortstørrelse"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kortin koko"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stærð spjalds"
+          }
+        }
+      }
+    },
+    "Follows a turn on the Lock Screen and in the Dynamic Island in the Agents wall’s colours, at the size you choose, and can open the island when it ends.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Follows a turn on the Lock Screen and in the Dynamic Island in the Agents wall’s colours, at the size you choose, and can open the island when it ends."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verfolgt einen Durchlauf auf dem Sperrbildschirm und in der Dynamic Island in den Farben der Agents-Wand, in der Größe, die du wählst, und kann die Insel öffnen, wenn er endet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sigue un turno en la pantalla de bloqueo y en la Dynamic Island con los colores del muro de agentes, al tamaño que elijas, y puede abrir la isla cuando termina."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suit un tour sur l’écran verrouillé et dans la Dynamic Island, aux couleurs du mur des agents, à la taille de votre choix, et peut ouvrir l’île à la fin."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segue un turno sulla schermata di blocco e nella Dynamic Island con i colori del muro degli agenti, alla dimensione che scegli, e può aprire l’isola quando finisce."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ロック画面と Dynamic Island で、Agentsウォールの色により、選んだサイズでターンを追い、終わるとアイランドを開けます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "잠금 화면과 Dynamic Island에서 선택한 크기로, Agents 월의 색상으로 턴을 따라가며, 턴이 끝나면 아일랜드를 열 수 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Śledzi turę na ekranie blokady i w Dynamic Island, w kolorach ściany agentów, w wybranym rozmiarze, i może otworzyć wyspę, gdy tura się skończy."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acompanha um turno na tela de bloqueio e na Dynamic Island nas cores do mural de agentes, no tamanho que você escolher, e pode abrir a ilha quando ele termina."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在锁定屏幕和灵动岛上以 Agents 墙的颜色跟随一轮对话，大小由你选择，结束时可以打开灵动岛。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在鎖定畫面和動態島上，以 Agents 牆的顏色追蹤一輪對話，大小由你選擇，結束時可以打開動態島。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Följer en tur på låsskärmen och i Dynamic Island i färgerna från Agents-väggen, i den storlek du väljer, och kan öppna ön när den tar slut."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Følger en tur på låseskærmen og i Dynamic Island i farverne fra Agents-væggen, i den størrelse du vælger, og kan åbne øen, når den slutter."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Følger en tur på låseskjermen og i Dynamic Island i fargene til Agents-veggen, i størrelsen du velger, og kan åpne øya når den er ferdig."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seuraa vuoroa lukitusnäytöllä ja Dynamic Islandilla Agents-seinän väreissä, valitsemassasi koossa, ja voi avata saaren, kun vuoro päättyy."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fylgist með umferð á læsiskjánum og í Dynamic Island í litum Agents-veggsins, í þeirri stærð sem þú velur, og getur opnað eyjuna þegar henni lýkur."
+          }
+        }
+      }
+    },
+    "Live Activity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live Activity"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live-Aktivität"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actividad en vivo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activité en direct"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attività in tempo reale"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブアクティビティ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "실시간 현황"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktywność na żywo"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atividade ao vivo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "实时活动"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "即時動態"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live-aktivitet"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live-aktivitet"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liveaktivitet"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live-toiminto"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lifandi virkni"
+          }
+        }
+      }
+    },
+    "Nothing new": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing new"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nichts Neues"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada nuevo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien de nouveau"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Niente di nuovo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新着なし"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새 소식 없음"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brak nowości"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada novo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有新内容"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沒有新內容"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inget nytt"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Intet nyt"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingenting nytt"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ei uutta"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekkert nýtt"
+          }
+        }
+      }
+    },
+    "One slim row: what the agent is doing and the turn’s clock.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One slim row: what the agent is doing and the turn’s clock."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine schmale Zeile: was der Agent gerade tut und die Uhr des Durchlaufs."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una fila fina: lo que hace el agente y el reloj del turno."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une ligne fine : ce que fait l’agent et la durée du tour."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una riga sottile: cosa sta facendo l’agente e il tempo del turno."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "細い1行: エージェントの作業内容とターンの経過時間。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "얇은 한 줄: 에이전트가 하고 있는 일과 턴의 경과 시간."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeden cienki wiersz: co robi agent i czas tury."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma linha fina: o que o agente está fazendo e o tempo do turno."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一行精简信息：代理正在做什么，以及这一轮的计时。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一行精簡資訊：代理正在做什麼，以及這一輪的計時。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En smal rad: vad agenten gör och turens klocka."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En tynd række: hvad agenten laver, og turens ur."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En smal rad: hva agenten gjør og klokken for turen."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yksi kapea rivi: mitä agentti tekee ja vuoron kello."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein mjó lína: hvað umboðsmaðurinn er að gera og klukka umferðarinnar."
+          }
+        }
+      }
+    },
+    "Open the island": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the island"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island öffnen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir la Dynamic Island"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir la Dynamic Island"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri la Dynamic Island"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island を開く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island 열기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otwórz Dynamic Island"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir a Dynamic Island"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开灵动岛"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打開動態島"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öppna Dynamic Island"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åbn Dynamic Island"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne Dynamic Island"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avaa Dynamic Island"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opna Dynamic Island"
+          }
+        }
+      }
+    },
+    "Open the island with a sound": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the island with a sound"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island mit Ton öffnen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir la Dynamic Island con sonido"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir la Dynamic Island avec un son"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri la Dynamic Island con un suono"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サウンド付きで Dynamic Island を開く"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "소리와 함께 Dynamic Island 열기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otwórz Dynamic Island z dźwiękiem"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir a Dynamic Island com som"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "带声音打开灵动岛"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "帶聲音打開動態島"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öppna Dynamic Island med ljud"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åbn Dynamic Island med lyd"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne Dynamic Island med lyd"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avaa Dynamic Island äänellä"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opna Dynamic Island með hljóði"
+          }
+        }
+      }
+    },
+    "Stay closed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stay closed"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geschlossen lassen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantener cerrada"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rester fermée"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resta chiusa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "閉じたままにする"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "닫힌 상태 유지"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pozostaw zamkniętą"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manter fechada"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保持收起"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保持收起"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Håll stängd"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hold lukket"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hold lukket"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pidä suljettuna"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hafa lokaða"
+          }
+        }
+      }
+    },
+    "The Dynamic Island opens on how the turn ended and the Lock Screen lights up, silently. A notification still brings its own sound.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Dynamic Island opens on how the turn ended and the Lock Screen lights up, silently. A notification still brings its own sound."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Dynamic Island öffnet sich, je nachdem, wie der Durchlauf endete, und der Sperrbildschirm leuchtet lautlos auf. Eine Benachrichtigung bringt weiterhin ihren eigenen Ton mit."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La Dynamic Island se abre según cómo terminó el turno, y la pantalla de bloqueo se ilumina en silencio. Una notificación sigue teniendo su propio sonido."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La Dynamic Island s’ouvre selon la façon dont le tour s’est terminé, et l’écran verrouillé s’allume en silence. Une notification garde son propre son."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La Dynamic Island si apre in base a come è finito il turno, e la schermata di blocco si accende in silenzio. Una notifica mantiene il suo suono."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターンの終わり方に応じて Dynamic Island が開き、ロック画面が静かに点灯します。通知には従来どおり独自の通知音が鳴ります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "턴이 끝난 방식에 따라 Dynamic Island가 열리고, 잠금 화면이 소리 없이 켜집니다. 알림은 여전히 자체 소리와 함께 옵니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island otwiera się zależnie od tego, jak zakończyła się tura, a ekran blokady rozświetla się bez dźwięku. Powiadomienie nadal ma własny dźwięk."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A Dynamic Island abre conforme o turno terminou, e a tela de bloqueio acende em silêncio. Uma notificação ainda traz o próprio som."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "灵动岛会根据这一轮的结束方式展开，锁定屏幕无声亮起。通知仍会带有它自己的声音。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動態島會依這一輪的結束方式展開，鎖定畫面無聲亮起。通知仍會帶有它自己的聲音。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island öppnas efter hur turen slutade, och låsskärmen tänds tyst. En avisering har fortfarande sitt eget ljud."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island åbner sig efter, hvordan turen sluttede, og låseskærmen lyser op lydløst. En notifikation har stadig sin egen lyd."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island åpner seg etter hvordan turen endte, og låseskjermen lyser opp stille. Et varsel har fortsatt sin egen lyd."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island avautuu sen mukaan, miten vuoro päättyi, ja lukitusnäyttö syttyy äänettömästi. Ilmoituksella on edelleen oma äänensä."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island opnast eftir því hvernig umferðinni lauk og læsiskjárinn kviknar án hljóðs. Tilkynning hefur þó enn sitt eigið hljóð."
+          }
+        }
+      }
+    },
+    "The Dynamic Island opens on how the turn ended with the notification sound.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Dynamic Island opens on how the turn ended with the notification sound."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Dynamic Island öffnet sich, je nachdem, wie der Durchlauf endete, mit dem Benachrichtigungston."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La Dynamic Island se abre según cómo terminó el turno, con el sonido de notificación."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La Dynamic Island s’ouvre selon la façon dont le tour s’est terminé, avec le son de notification."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La Dynamic Island si apre in base a come è finito il turno, con il suono di notifica."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターンの終わり方に応じて Dynamic Island が開き、通知音が鳴ります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "턴이 끝난 방식에 따라 Dynamic Island가 열리며 알림음이 울립니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island otwiera się zależnie od tego, jak zakończyła się tura, z dźwiękiem powiadomienia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A Dynamic Island abre conforme o turno terminou, com o som de notificação."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "灵动岛会根据这一轮的结束方式展开，并伴随通知声音。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "動態島會依這一輪的結束方式展開，並伴隨通知聲音。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island öppnas efter hur turen slutade, med aviseringsljudet."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island åbner sig efter, hvordan turen sluttede, med notifikationslyden."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island åpner seg etter hvordan turen endte, med varselslyden."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island avautuu sen mukaan, miten vuoro päättyi, ilmoitusäänen kanssa."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island opnast eftir því hvernig umferðinni lauk, með tilkynningahljóðinu."
+          }
+        }
+      }
+    },
+    "The card follows a turn on the Lock Screen and in the Dynamic Island in the Agents wall’s colours and words. It stays after the turn ends until you open the chat.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The card follows a turn on the Lock Screen and in the Dynamic Island in the Agents wall’s colours and words. It stays after the turn ends until you open the chat."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Karte verfolgt einen Durchlauf auf dem Sperrbildschirm und in der Dynamic Island in den Farben und Worten der Agents-Wand. Sie bleibt nach dem Ende des Durchlaufs, bis du den Chat öffnest."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La tarjeta sigue un turno en la pantalla de bloqueo y en la Dynamic Island con los colores y las palabras del muro de agentes. Se queda después de que termina el turno hasta que abres el chat."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La carte suit un tour sur l’écran verrouillé et dans la Dynamic Island, avec les couleurs et les mots du mur des agents. Elle reste après la fin du tour, jusqu’à ce que vous ouvriez la conversation."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La scheda segue un turno sulla schermata di blocco e nella Dynamic Island, con i colori e le parole del muro degli agenti. Resta dopo la fine del turno finché non apri la chat."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "カードはロック画面と Dynamic Island で、Agentsウォールの色と言葉でターンを追います。ターンが終わっても、チャットを開くまで残ります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "카드는 잠금 화면과 Dynamic Island에서 Agents 월의 색상과 문구로 턴을 따라갑니다. 턴이 끝난 뒤에도 채팅을 열 때까지 남아 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Karta śledzi turę na ekranie blokady i w Dynamic Island, w kolorach i słowach ściany agentów. Zostaje po zakończeniu tury, aż otworzysz czat."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O cartão acompanha um turno na tela de bloqueio e na Dynamic Island, nas cores e palavras do mural de agentes. Ele permanece depois que o turno termina, até você abrir o chat."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "卡片会在锁定屏幕和灵动岛上，以 Agents 墙的颜色和文字跟随一轮对话。这一轮结束后，卡片会保留，直到你打开聊天。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "卡片會在鎖定畫面和動態島上，以 Agents 牆的顏色和文字追蹤一輪對話。這一輪結束後，卡片會保留，直到你打開聊天。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kortet följer en tur på låsskärmen och i Dynamic Island i färgerna och orden från Agents-väggen. Det finns kvar när turen är slut, tills du öppnar chatten."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kortet følger en tur på låseskærmen og i Dynamic Island i farverne og ordene fra Agents-væggen. Det bliver, når turen er slut, indtil du åbner chatten."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kortet følger en tur på låseskjermen og i Dynamic Island i fargene og ordene til Agents-veggen. Det blir værende etter at turen er ferdig, til du åpner chatten."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kortti seuraa vuoroa lukitusnäytöllä ja Dynamic Islandilla Agents-seinän väreillä ja sanoilla. Se pysyy vuoron päätyttyä, kunnes avaat keskustelun."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spjaldið fylgist með umferð á læsiskjánum og í Dynamic Island í litum og orðum Agents-veggsins. Það helst eftir að umferðinni lýkur þar til þú opnar spjallið."
+          }
+        }
+      }
+    },
+    "The card settles in place without opening.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The card settles in place without opening."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Karte setzt sich an ihrem Platz fest, ohne sich zu öffnen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La tarjeta se asienta en su sitio sin abrirse."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La carte se fixe sur place sans s’ouvrir."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La scheda si sistema al suo posto senza aprirsi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "カードは開かずにその場に収まります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "카드는 펼쳐지지 않고 제자리에 자리 잡습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Karta osiada na miejscu, bez otwierania."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O cartão se fixa no lugar sem abrir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "卡片会停留在原位，不会展开。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "卡片會停留在原位，不會展開。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kortet lägger sig på plats utan att öppnas."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kortet falder til ro på sin plads uden at åbne sig."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kortet legger seg på plass uten å åpne seg."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kortti asettuu paikalleen avautumatta."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spjaldið sest á sinn stað án þess að opnast."
+          }
+        }
+      }
+    },
+    "The line in large type, who is answering, and the last minute of the agent’s pulse.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The line in large type, who is answering, and the last minute of the agent’s pulse."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Zeile in großer Schrift, wer antwortet und die letzte Minute der Aktivität des Agenten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La línea en letra grande, quién responde y el último minuto de actividad del agente."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La ligne en gros caractères, qui répond, et la dernière minute d’activité de l’agent."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La riga in caratteri grandi, chi sta rispondendo e l’ultimo minuto di attività dell’agente."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "大きな文字の1行、応答している相手、エージェントの直近1分の動き。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "큰 글씨의 한 줄, 응답 중인 대상, 에이전트의 마지막 1분 활동."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wiersz dużą czcionką, kto odpowiada i ostatnia minuta aktywności agenta."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A linha em letra grande, quem está respondendo e o último minuto de atividade do agente."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "大字显示的一行、正在回复的对象，以及代理最近一分钟的动态。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "大字顯示的一行、正在回覆的對象，以及代理最近一分鐘的動態。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Raden i stor text, vem som svarar och agentens senaste minuts aktivitet."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Linjen med stor skrift, hvem der svarer, og agentens seneste minuts aktivitet."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Linjen med stor skrift, hvem som svarer, og agentens siste minutt med aktivitet."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suurella tekstillä näkyvä rivi, kuka vastaa ja agentin viimeisen minuutin aktiivisuus."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Línan með stóru letri, hver svarar og síðasta mínútan í virkni umboðsmannsins."
+          }
+        }
+      }
+    },
+    "The whole tile, as the Agents wall draws it: the plan, the latest steps, and what the agent said when it finished.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The whole tile, as the Agents wall draws it: the plan, the latest steps, and what the agent said when it finished."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die ganze Kachel, so wie die Agents-Wand sie zeichnet: der Plan, die letzten Schritte und was der Agent beim Abschluss gesagt hat."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La tarjeta completa, tal como la dibuja el muro de agentes: el plan, los últimos pasos y lo que dijo el agente al terminar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La vignette entière, telle que le mur des agents la dessine : le plan, les dernières étapes et ce que l’agent a dit en terminant."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’intera scheda, come la disegna il muro degli agenti: il piano, gli ultimi passaggi e ciò che l’agente ha detto al termine."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agentsウォールが描くとおりのタイル全体: 計画、直近のステップ、完了時にエージェントが言ったこと。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agents 월이 그리는 그대로의 타일 전체: 계획, 최근 단계, 완료되었을 때 에이전트가 한 말."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cały kafelek, tak jak rysuje go ściana agentów: plan, ostatnie kroki i to, co agent powiedział po zakończeniu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O bloco inteiro, como o mural de agentes o desenha: o plano, os passos mais recentes e o que o agente disse ao terminar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完整的卡片，与 Agents 墙上的样子一致：计划、最近的步骤，以及代理完成时说的话。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完整的卡片，與 Agents 牆上的樣子一致：計畫、最近的步驟，以及代理完成時說的話。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hela kakeln, så som Agents-väggen ritar den: planen, de senaste stegen och vad agenten sa när den var klar."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hele flisen, som Agents-væggen tegner den: planen, de seneste trin og hvad agenten sagde, da den var færdig."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hele flisen, slik Agents-veggen tegner den: planen, de siste stegene og det agenten sa da den var ferdig."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koko ruutu sellaisena kuin Agents-seinä sen piirtää: suunnitelma, viimeisimmät vaiheet ja se, mitä agentti sanoi valmistuessaan."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öll flísin eins og Agents-veggurinn teiknar hana: áætlunin, nýjustu skrefin og það sem umboðsmaðurinn sagði þegar hann lauk störfum."
+          }
+        }
+      }
+    },
+    "When a turn ends": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When a turn ends"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn ein Durchlauf endet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuando termina un turno"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quand un tour se termine"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando un turno finisce"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターンが終わったとき"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "턴이 끝나면"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gdy tura się kończy"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando um turno termina"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一轮结束时"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一輪結束時"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "När en tur tar slut"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Når en tur slutter"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Når en tur er ferdig"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kun vuoro päättyy"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Þegar umferð lýkur"
+          }
+        }
+      }
+    },
+    "live activity lock screen dynamic island card size compact large expand ending standby watch": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "live activity lock screen dynamic island card size compact large expand ending standby watch"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "live-aktivität sperrbildschirm dynamic island kartengröße kompakt groß erweitern ende standby watch"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "actividad en vivo pantalla de bloqueo dynamic island tamaño de la tarjeta compacta grande expandir fin en espera watch"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "activité en direct écran verrouillé dynamic island taille de la carte compacte grande développer fin veille watch"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "attività in tempo reale schermata di blocco dynamic island dimensione scheda compatta grande espandi fine standby watch"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ライブアクティビティ live activity ロック画面 lock screen dynamic island カード サイズ コンパクト 大きい 展開 終了 スタンバイ watch"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "실시간 현황 live activity 잠금 화면 lock screen dynamic island 카드 크기 컴팩트 큰 펼치기 종료 대기 watch"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "aktywność na żywo ekran blokady dynamic island rozmiar karty kompaktowa duża rozwiń koniec tryb czuwania watch"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "atividade ao vivo tela de bloqueio dynamic island tamanho do cartão compacta grande expandir fim standby watch"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "实时活动 live activity 锁定屏幕 lock screen 灵动岛 dynamic island 卡片大小 紧凑 大 展开 结束 待机 watch"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "即時動態 live activity 鎖定畫面 lock screen 動態島 dynamic island 卡片大小 精簡 大 展開 結束 待機 watch"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "live-aktivitet live activity låsskärm lock screen dynamic island kortstorlek kompakt stor expandera slut standby watch"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "live-aktivitet live activity låseskærm lock screen dynamic island kortstørrelse kompakt stor udvid slut standby watch"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "liveaktivitet live activity låseskjerm lock screen dynamic island kortstørrelse kompakt stor utvid slutt standby watch"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "live-toiminto live activity lukitusnäyttö lock screen dynamic island kortin koko kompakti suuri laajenna loppu valmiustila watch"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "lifandi virkni live activity læsiskjár lock screen dynamic island stærð spjalds þétt stór stækka lok biðstaða watch"
+          }
+        }
+      }
+    },
+    "The island opens only while Tailscode is not on screen, never for a chat you muted, and once per ending. An iPhone without a Dynamic Island shows the card as a banner instead, and an Apple Watch shows the chat’s name and how it ended.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The island opens only while Tailscode is not on screen, never for a chat you muted, and once per ending. An iPhone without a Dynamic Island shows the card as a banner instead, and an Apple Watch shows the chat’s name and how it ended."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Dynamic Island öffnet sich nur, während Tailscode nicht im Vordergrund ist, nie für einen stummgeschalteten Chat und einmal pro Ende. Ein iPhone ohne Dynamic Island zeigt die Karte stattdessen als Banner, und eine Apple Watch zeigt den Namen des Chats und wie er endete."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La Dynamic Island solo se abre mientras Tailscode no está en pantalla, nunca para un chat silenciado y una vez por cada final. Un iPhone sin Dynamic Island muestra la tarjeta como banner, y un Apple Watch muestra el nombre del chat y cómo terminó."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La Dynamic Island ne s’ouvre que lorsque Tailscode n’est pas à l’écran, jamais pour une conversation rendue muette, et une fois par fin. Un iPhone sans Dynamic Island affiche la carte sous forme de bannière, et une Apple Watch affiche le nom de la conversation et la façon dont elle s’est terminée."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La Dynamic Island si apre solo mentre Tailscode non è sullo schermo, mai per una chat silenziata e una volta per ogni conclusione. Un iPhone senza Dynamic Island mostra la scheda come banner, e un Apple Watch mostra il nome della chat e come è finita."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island が開くのは Tailscode が画面に表示されていないときだけで、ミュート中のチャットでは開かず、終了ごとに1回です。Dynamic Island のない iPhone ではカードをバナーで表示し、Apple Watch ではチャット名と終わり方を表示します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island는 Tailscode가 화면에 없을 때만 열리며, 음소거한 채팅에는 열리지 않고, 턴이 끝날 때마다 한 번만 열립니다. Dynamic Island가 없는 iPhone에서는 카드가 배너로 표시되고, Apple Watch에서는 채팅 이름과 끝난 방식이 표시됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island otwiera się tylko wtedy, gdy Tailscode nie jest na ekranie, nigdy dla wyciszonego czatu i raz przy każdym zakończeniu. iPhone bez Dynamic Island pokazuje zamiast tego kartę jako baner, a Apple Watch pokazuje nazwę czatu i sposób zakończenia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A Dynamic Island só abre enquanto o Tailscode não está na tela, nunca para um chat silenciado e uma vez por término. Um iPhone sem Dynamic Island mostra o cartão como banner, e um Apple Watch mostra o nome do chat e como ele terminou."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有在 Tailscode 不在屏幕上时灵动岛才会展开，从不为已静音的聊天展开，每次结束只展开一次。没有灵动岛的 iPhone 会改为以横幅显示卡片，Apple Watch 则显示聊天名称和结束方式。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有在 Tailscode 不在螢幕上時動態島才會展開，從不為已靜音的對話展開，每次結束只展開一次。沒有動態島的 iPhone 會改為以橫幅顯示卡片，Apple Watch 則顯示對話名稱和結束方式。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island öppnas bara när Tailscode inte är på skärmen, aldrig för en tyst chatt och en gång per avslut. En iPhone utan Dynamic Island visar kortet som ett banner i stället, och en Apple Watch visar chattens namn och hur den slutade."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island åbner sig kun, mens Tailscode ikke er på skærmen, aldrig for en chat du har slået lyden fra, og én gang pr. afslutning. En iPhone uden Dynamic Island viser i stedet kortet som et banner, og et Apple Watch viser chattens navn og hvordan den sluttede."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island åpner seg bare mens Tailscode ikke er på skjermen, aldri for en chat du har dempet, og én gang per avslutning. En iPhone uten Dynamic Island viser kortet som et banner i stedet, og en Apple Watch viser navnet på chatten og hvordan den endte."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island avautuu vain, kun Tailscode ei ole näytöllä, ei koskaan mykistetylle keskustelulle ja kerran jokaista päättymistä kohti. iPhone ilman Dynamic Islandia näyttää kortin bannerina, ja Apple Watch näyttää keskustelun nimen ja sen, miten se päättyi."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dynamic Island opnast aðeins á meðan Tailscode er ekki á skjánum, aldrei fyrir spjall sem þú hefur þaggað og einu sinni fyrir hvern endi. iPhone-sími án Dynamic Island sýnir spjaldið sem borða í staðinn og Apple Watch sýnir heiti spjallsins og hvernig því lauk."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

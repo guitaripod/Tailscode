@@ -16,6 +16,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             lockGuard.holdProvidersLockIfAsked()
         #endif
         ReviewPromptPolicy.migrateIfNeeded()
+        LiveActivitySettings.suiteName = UsageWidgetStore.suiteName
         FieldMetrics.shared.start()
         MainStallMonitor.shared.start()
         MemoryRelief.install()
