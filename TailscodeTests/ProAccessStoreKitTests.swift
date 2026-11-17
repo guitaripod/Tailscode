@@ -48,9 +48,12 @@ struct ProAccessStoreKitTests {
 
         let launched = try earlier.relaunched()
         #expect(!launched.access.isPro)
-        await launched.access.refreshEntitlements()
 
-        #expect(launched.access.isPro)
+        #expect(
+            await eventually {
+                await launched.access.refreshEntitlements()
+                return launched.access.isPro
+            })
         await launched.store.stop()
     }
 
@@ -131,11 +134,21 @@ struct ProAccessStoreKitTests {
 
         #expect(!harness.access.isPro)
         #expect(await harness.store.entitlements.isEmpty)
-        #expect(await harness.accountToken(of: tip) == Self.midgarToken)
         #expect(
             await eventually(timeout: Self.finishAllowance) {
                 !(await unfinishedProductIDs()).contains(tip)
             })
+        await harness.store.stop()
+    }
+
+    @Test(arguments: ProOffer.retiredTipIDs)
+    func aRetiredTipCarriesTheMidgarID(_ tip: String) async throws {
+        let harness = try StoreHarness()
+        await harness.access.refreshEntitlements()
+
+        let receipt = try await harness.receipt(for: tip)
+
+        #expect(receipt.appAccountToken == Self.midgarToken)
         await harness.store.stop()
     }
 

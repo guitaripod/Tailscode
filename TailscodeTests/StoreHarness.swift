@@ -65,6 +65,18 @@ struct StoreHarness {
         return try await access.purchase(product, confirmIn: scene)
     }
 
+    /// Buys `id` through the store and hands back the receipt of the purchase itself. A consumable the
+    /// store has finished may already be gone from StoreKit's own lists, so what it was bought with can
+    /// only be read from what the purchase returned.
+    func receipt(for id: String) async throws -> MidgarPurchaseReceipt {
+        let scene = try #require(UIApplication.shared.connectedScenes.first)
+        let result = try await store.purchaseReceipt(id, confirmIn: scene)
+        guard case .purchased(let receipt) = result else {
+            throw StoreHarnessError.notPurchased(id)
+        }
+        return receipt
+    }
+
     /// The `appAccountToken` of the latest transaction StoreKit holds for `id`.
     func accountToken(of id: String) async -> UUID? {
         guard case .verified(let transaction)? = await Transaction.latest(for: id) else { return nil }
@@ -155,5 +167,24 @@ final class LedgerStub: URLProtocol {
         default:
             return (404, "{}")
         }
+    }
+}
+
+enum StoreHarnessError: Error {
+    case notPurchased(String)
+}
+
+extension MidgarPurchaseReceipt {
+    /// The `appAccountToken` the signed transaction carries, read from the payload of its JWS.
+    var appAccountToken: UUID? {
+        let parts = signedTransaction.split(separator: ".")
+        guard parts.count == 3 else { return nil }
+        var base64 = parts[1].replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
+        guard let data = Data(base64Encoded: base64),
+            let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let token = payload["appAccountToken"] as? String
+        else { return nil }
+        return UUID(uuidString: token)
     }
 }
