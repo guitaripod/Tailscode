@@ -60,6 +60,54 @@ struct ChatListSectionsTests {
         #expect(bucket(-5 * hour) == .today, "a chat stamped into this device's future reads as today")
     }
 
+    /// The landmark spelled out the slow way: walk back one calendar day at a time until the day
+    /// the chat moved in, then ask the calendar for its month and year.
+    private static func landmark(of date: Date, now: Date, calendar: Calendar) -> RecentBucket {
+        let day = calendar.startOfDay(for: date)
+        if day >= calendar.startOfDay(for: now) { return .today }
+        for back in 1...30 {
+            let walked = calendar.date(byAdding: .day, value: -back, to: calendar.startOfDay(for: now))!
+            guard calendar.startOfDay(for: walked) <= day else { continue }
+            return back == 1 ? .yesterday : back <= 7 ? .week : .month
+        }
+        let then = calendar.dateComponents([.era, .year, .month], from: date)
+        let current = calendar.dateComponents([.era, .year], from: now)
+        guard then.era == current.era, then.year == current.year else { return .year(then.year!) }
+        return .named(year: then.year!, month: then.month!)
+    }
+
+    @Test(
+        "A listing is filed by calendar days, months and years in every calendar and zone",
+        arguments: [
+            (Calendar.Identifier.gregorian, "UTC"), (.gregorian, "Europe/Helsinki"),
+            (.gregorian, "America/Sao_Paulo"), (.gregorian, "Pacific/Apia"), (.japanese, "Asia/Tokyo"),
+            (.hebrew, "Asia/Jerusalem"), (.islamicUmmAlQura, "Asia/Riyadh"),
+        ])
+    func filerAgreesWithOneAtATime(identifier: Calendar.Identifier, zone: String) {
+        var calendar = Calendar(identifier: identifier)
+        calendar.timeZone = TimeZone(identifier: zone)!
+        let moments = [
+            DateComponents(year: 2026, month: 11, day: 14, hour: 22, minute: 48),
+            DateComponents(year: 2018, month: 11, day: 5, hour: 0, minute: 30),
+            DateComponents(year: 2027, month: 1, day: 2, hour: 0, minute: 5),
+            DateComponents(year: 2026, month: 3, day: 30, hour: 12),
+        ]
+        for components in moments {
+            var gregorian = Calendar(identifier: .gregorian)
+            gregorian.timeZone = calendar.timeZone
+            let now = gregorian.date(from: components)!
+            var filer = RecentBucket.Filer(now: now, calendar: calendar)
+            var offset: TimeInterval = -2 * hour
+            while offset < 4 * 365 * day {
+                let date = now.addingTimeInterval(-offset)
+                #expect(
+                    filer.bucket(of: date) == Self.landmark(of: date, now: now, calendar: calendar),
+                    "\(identifier) \(zone) now=\(now) date=\(date)")
+                offset += offset < 40 * day ? 1_733 : 37_337
+            }
+        }
+    }
+
     @Test("Landmarks read newest first, months by name and earlier years by number")
     func landmarksInOrder() {
         let buckets: [RecentBucket] = [

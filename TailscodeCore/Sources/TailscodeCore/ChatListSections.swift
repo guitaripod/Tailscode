@@ -28,20 +28,81 @@ public enum RecentBucket: Hashable, Sendable {
         }
     }
 
+    /// Days are counted as calendar days, so a day a clock change made 23 hours long is still one
+    /// day back: counted in hours from its first moment, the yesterday that began an hour late
+    /// read as today.
     public static func of(_ date: Date, now: Date = Date(), calendar: Calendar = .current)
         -> RecentBucket
     {
-        let today = calendar.startOfDay(for: now)
-        let day = calendar.startOfDay(for: date)
-        let days = calendar.dateComponents([.day], from: day, to: today).day ?? 0
-        if days <= 0 { return .today }
-        if days == 1 { return .yesterday }
-        if days <= 7 { return .week }
-        if days <= 30 { return .month }
-        let then = calendar.dateComponents([.year, .month], from: date)
-        let year = then.year ?? 0
-        guard year == calendar.component(.year, from: now) else { return .year(year) }
-        return .named(year: year, month: then.month ?? 1)
+        var filer = Filer(now: now, calendar: calendar)
+        return filer.bucket(of: date)
+    }
+
+    /// Files a whole listing against one now. The starts of the landmark days, of this year's
+    /// months and of the years before are found once, so filing a chat is a few comparisons rather
+    /// than four calendar calls: a list redrawn on every turn that starts or stops spent more on
+    /// finding which day each of its chats was in than on anything it drew.
+    public struct Filer: Sendable {
+        private let calendar: Calendar
+        private let today: Date
+        private let yesterday: Date
+        private let weekAgo: Date
+        private let monthAgo: Date
+        private let yearStart: Date
+        private let thisYear: Int
+        private let months: [(start: Date, month: Int)]
+        private var years: [(start: Date, year: Int)] = []
+
+        public init(now: Date = Date(), calendar: Calendar = .current) {
+            self.calendar = calendar
+            let today = calendar.startOfDay(for: now)
+            self.today = today
+            yesterday = Self.dayStart(1, before: today, in: calendar)
+            weekAgo = Self.dayStart(7, before: today, in: calendar)
+            monthAgo = Self.dayStart(30, before: today, in: calendar)
+            yearStart = calendar.dateInterval(of: .year, for: now)?.start ?? today
+            thisYear = calendar.component(.year, from: now)
+            var months: [(start: Date, month: Int)] = []
+            var cursor = calendar.dateInterval(of: .month, for: now)?.start
+            while let start = cursor, start >= yearStart, months.count < 24 {
+                months.append((start, calendar.component(.month, from: start)))
+                cursor = calendar.dateInterval(of: .month, for: start.addingTimeInterval(-1))?.start
+            }
+            self.months = months
+        }
+
+        public mutating func bucket(of date: Date) -> RecentBucket {
+            if date >= today { return .today }
+            if date >= yesterday { return .yesterday }
+            if date >= weekAgo { return .week }
+            if date >= monthAgo { return .month }
+            if date >= yearStart {
+                let month = months.first { $0.start <= date }?.month
+                return .named(year: thisYear, month: month ?? calendar.component(.month, from: date))
+            }
+            return .year(year(of: date))
+        }
+
+        /// The first moment of the day `days` before `today`: a day added to a midnight that a
+        /// clock change skipped lands inside the right day but not at its start.
+        private static func dayStart(_ days: Int, before today: Date, in calendar: Calendar) -> Date {
+            guard let inside = calendar.date(byAdding: .day, value: -days, to: today) else { return today }
+            return calendar.startOfDay(for: inside)
+        }
+
+        /// The year of a date before this one, from the starts of the years walked back to it,
+        /// each found once and kept for the rest of the listing.
+        private mutating func year(of date: Date) -> Int {
+            if let known = years.first(where: { $0.start <= date }) { return known.year }
+            var floor = years.last?.start ?? yearStart
+            while date < floor, years.count < 64,
+                let start = calendar.dateInterval(of: .year, for: floor.addingTimeInterval(-1))?.start
+            {
+                years.append((start, calendar.component(.year, from: start)))
+                floor = start
+            }
+            return years.first { $0.start <= date }?.year ?? calendar.component(.year, from: date)
+        }
     }
 
     public func title(calendar: Calendar = .current, locale: Locale = .current) -> String {
@@ -167,6 +228,7 @@ public func groupIntoListSections(
     _ rows: [SessionRowModel], now: Date = Date(), calendar: Calendar = .current
 ) -> [(ChatListSection, [SessionRowModel])] {
     var out: [(ChatListSection, [SessionRowModel])] = []
+    var filer = RecentBucket.Filer(now: now, calendar: calendar)
     for (section, members) in groupIntoSections(rows) {
         switch section {
         case .needsYou: out.append((.needsYou, members))
@@ -176,8 +238,7 @@ public func groupIntoListSections(
         case .recent:
             var filed: [RecentBucket: [SessionRowModel]] = [:]
             for row in members {
-                let bucket = RecentBucket.of(
-                    row.entry.session.updatedAt, now: now, calendar: calendar)
+                let bucket = filer.bucket(of: row.entry.session.updatedAt)
                 filed[bucket, default: []].append(row)
             }
             for bucket in filed.keys.sorted(by: { $0.rank < $1.rank }) {
