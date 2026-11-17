@@ -1,3 +1,4 @@
+import CodingAgentKit
 import TailscodeCore
 import CodingAgentKitApple
 import UIKit
@@ -31,7 +32,26 @@ extension SessionListViewController {
     /// Rebuilds both bars wholesale on every change, which is why the Select button and the
     /// selecting-mode bars live here: anything hung on `navigationItem` from somewhere else is
     /// wiped the next time the listing moves. Never add a bar item outside this method.
+    /// What the bar buttons are made from. A listing push changes none of it nearly every time,
+    /// and every new set of buttons is a glass bar laid out again; on a phone held sideways the
+    /// column's foot toolbar went with it.
+    struct ChromeSpec: Equatable {
+        let servers: [String]
+        let column: Bool
+        let foot: Bool
+        let archived: Bool
+        let empty: Bool
+    }
+
     func updateComposeButton() {
+        let spec = isSelecting
+            ? nil
+            : ChromeSpec(
+                servers: viewModel.servers.map { "\($0.id)\u{1}\($0.name)\u{1}\($0.backend.rawValue)" },
+                column: showsAsColumn, foot: wantsFoot,
+                archived: !showsAsColumn && archivedCount() > 0, empty: viewModel.entries.isEmpty)
+        guard spec == nil || spec != drawnChrome else { return }
+        drawnChrome = spec
         guard !isSelecting else {
             navigationItem.leftBarButtonItem = selectAllItem()
             navigationItem.rightBarButtonItems = [
@@ -207,32 +227,53 @@ extension SessionListViewController {
         ])
     }
 
+    /// One chip as the bar draws it.
+    struct ChipSpec: Equatable {
+        let filter: ChatFilter
+        let title: String
+        let isSelected: Bool
+        let backend: AgentType?
+    }
+
+    /// The chips are glass buttons, and the bar used to throw every one away and make it again
+    /// on each listing and activity tick, hidden or not: a column beside a conversation keeps its
+    /// bar hidden and still paid for it a dozen times a minute. The bar is built only when it can
+    /// be seen and what it says has changed.
     func rebuildChips() {
-        guard mayRender() else { return }
+        guard mayRender(), !chipBar.isHidden else { return }
+        let specs = chipSpecs()
+        guard specs != drawnChips else { return }
+        drawnChips = specs
         chipStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        chipStack.addArrangedSubview(
-            chip(title: String(localized: "All"), isSelected: filter == .all) { [weak self] in
-            self?.setFilter(.all)
-            })
+        for spec in specs {
+            chipStack.addArrangedSubview(
+                chip(
+                    title: spec.title, isSelected: spec.isSelected,
+                    tint: spec.filter == .live ? Theme.Color.success : nil,
+                    icon: spec.backend.flatMap(Self.serverIcon(for:))
+                ) { [weak self] in self?.setFilter(spec.filter) })
+        }
+    }
+
+    private func chipSpecs() -> [ChipSpec] {
+        var specs = [
+            ChipSpec(filter: .all, title: String(localized: "All"), isSelected: filter == .all, backend: nil)
+        ]
         let liveCount = filterableEntries().count(where: isLive)
         if liveCount > 0 || filter == .live {
-            chipStack.addArrangedSubview(
-                chip(
-                    title: String(localized: "Live · \(liveCount)"), isSelected: filter == .live,
-                    tint: Theme.Color.success
-                ) {
-                    [weak self] in self?.setFilter(.live)
-                })
+            specs.append(
+                ChipSpec(
+                    filter: .live, title: String(localized: "Live · \(liveCount)"),
+                    isSelected: filter == .live, backend: nil))
         }
-        guard scope == nil else { return }
+        guard scope == nil else { return specs }
         for profile in viewModel.servers {
-            chipStack.addArrangedSubview(
-                chip(
-                    title: profile.name,
-                    isSelected: filter == .profile(profile.id),
-                    icon: Self.serverIcon(for: profile.backend)
-                ) { [weak self] in self?.setFilter(.profile(profile.id)) })
+            specs.append(
+                ChipSpec(
+                    filter: .profile(profile.id), title: profile.name,
+                    isSelected: filter == .profile(profile.id), backend: profile.backend))
         }
+        return specs
     }
 
     func chip(
@@ -314,6 +355,7 @@ extension SessionListViewController {
         chipBar.isHidden = showsAsColumn && scope == nil
         chipBarHeight.constant = chipBar.isHidden ? 0 : 36
         chipBarTop.constant = chipBar.isHidden ? 0 : Theme.Spacing.s
+        rebuildChips()
         updateTitle()
         updateComposeButton()
         refreshVisibleRows()
@@ -339,9 +381,7 @@ extension SessionListViewController {
         guard isViewLoaded, dataSource != nil, showsAsColumn, !isSelecting else { return }
         let selected = collectionView.indexPathsForSelectedItems ?? []
         guard revealing || selected.isEmpty else { return }
-        let wanted = openKey.flatMap { key in
-            visibleEntries.first { ChatSelection.key($0) == key }
-        }.flatMap { dataSource.indexPath(for: $0) }
+        let wanted = openKey.flatMap { dataSource.indexPath(for: $0) }
         for indexPath in selected where indexPath != wanted {
             collectionView.deselectItem(at: indexPath, animated: false)
         }

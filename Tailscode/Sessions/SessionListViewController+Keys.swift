@@ -157,7 +157,9 @@ extension SessionListViewController: KeyActionHost {
     private func moveCursor(to index: Int) {
         guard visibleEntries.indices.contains(index) else { return }
         keyCursor = index
-        guard let indexPath = dataSource.indexPath(for: visibleEntries[index]) else { return }
+        guard let indexPath = dataSource.indexPath(for: ChatSelection.key(visibleEntries[index])) else {
+            return
+        }
         collectionView.selectItem(
             at: indexPath, animated: true, scrollPosition: .centeredVertically)
     }

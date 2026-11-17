@@ -235,9 +235,10 @@ extension SessionListViewController {
     }
 
     private func refreshRow(_ entry: SessionEntry) {
+        let key = ChatSelection.key(entry)
         var snapshot = dataSource.snapshot()
-        guard snapshot.indexOfItem(entry) != nil else { return }
-        snapshot.reconfigureItems([entry])
+        guard snapshot.indexOfItem(key) != nil else { return }
+        snapshot.reconfigureItems([key])
         dataSource.apply(snapshot, animatingDifferences: false)
     }
 

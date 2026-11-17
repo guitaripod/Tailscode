@@ -51,8 +51,7 @@ extension SessionListViewController {
         }
         if showsAsColumn { config.headerTopPadding = Theme.Spacing.s }
         config.trailingSwipeActionsConfigurationProvider = { [weak self] indexPath in
-            guard let self, !self.isSelecting,
-                let entry = self.dataSource.itemIdentifier(for: indexPath)
+            guard let self, !self.isSelecting, let entry = self.entry(at: indexPath)
             else { return nil }
             var actions: [UIContextualAction] = []
             if self.viewModel.supportsMultipleSessions(entry) {
@@ -96,8 +95,7 @@ extension SessionListViewController {
             return config
         }
         config.leadingSwipeActionsConfigurationProvider = { [weak self] indexPath in
-            guard let self, !self.isSelecting,
-                let entry = self.dataSource.itemIdentifier(for: indexPath)
+            guard let self, !self.isSelecting, let entry = self.entry(at: indexPath)
             else { return nil }
             let isSaved = SavedChatStore.contains(entry)
             let save = UIContextualAction(
@@ -122,27 +120,22 @@ extension SessionListViewController {
             (list: SessionListViewController, _) in
             list.refreshVisibleHeaders()
         }
-        let cell = UICollectionView.CellRegistration<ChatRowCell, SessionEntry> {
-            [weak self] cell, _, entry in
-            guard let self else { return }
-            let row = self.rowModels[ChatSelection.key(entry)]
-                ?? SessionRowModel(
-                    entry: entry, unreachable: false, unread: false, saved: false,
-                    presence: self.presence(for: entry))
+        let cell = UICollectionView.CellRegistration<ChatRowCell, String> {
+            [weak self] cell, _, key in
+            guard let self, let row = self.rowModels[key] else { return }
             self.configure(cell, with: row)
         }
 
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
-            collectionView, indexPath, entry in
-            collectionView.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: entry)
+            collectionView, indexPath, key in
+            collectionView.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: key)
         }
         let header = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
             elementKind: UICollectionView.elementKindSectionHeader
         ) { [weak self] view, _, indexPath in
-            guard let self else { return }
-            let sections = self.dataSource.snapshot().sectionIdentifiers
-            guard sections.indices.contains(indexPath.section) else { return }
-            self.dress(view, as: sections[indexPath.section])
+            guard let self, let section = self.dataSource.sectionIdentifier(for: indexPath.section)
+            else { return }
+            self.dress(view, as: section)
         }
         dataSource.supplementaryViewProvider = { collectionView, _, indexPath in
             collectionView.dequeueConfiguredReusableSupplementary(using: header, for: indexPath)
@@ -190,13 +183,12 @@ extension SessionListViewController {
     /// redraws no header on its own.
     func refreshVisibleHeaders() {
         let kind = UICollectionView.elementKindSectionHeader
-        let sections = dataSource.snapshot().sectionIdentifiers
         for path in collectionView.indexPathsForVisibleSupplementaryElements(ofKind: kind) {
-            guard sections.indices.contains(path.section),
+            guard let section = dataSource.sectionIdentifier(for: path.section),
                 let view = collectionView.supplementaryView(forElementKind: kind, at: path)
                     as? UICollectionViewListCell
             else { continue }
-            dress(view, as: sections[path.section])
+            dress(view, as: section)
         }
     }
 

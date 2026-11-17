@@ -12,7 +12,7 @@ final class SessionListViewController: UIViewController {
 
     let viewModel: SessionListViewModel
     var collectionView: UICollectionView!
-    var dataSource: UICollectionViewDiffableDataSource<ChatListSection, SessionEntry>!
+    var dataSource: UICollectionViewDiffableDataSource<ChatListSection, String>!
     let refreshControl = UIRefreshControl()
     let searchController = UISearchController(searchResultsController: nil)
     let chipBar = UIScrollView()
@@ -73,6 +73,23 @@ final class SessionListViewController: UIViewController {
     /// What the whole listing already says, so no row repeats it: one server's name written on
     /// every row of a one-server fleet is the word a reader's eye lands on and learns nothing from.
     var vocabulary: ChatListVocabulary = .full
+
+    /// The row models of the last render, so a render rebuilds only the chats whose inputs moved
+    /// and redraws only the rows whose model was rebuilt.
+    var rowCache = SessionRowModelCache()
+    /// Spaces the renders that listings, activity and read marks ask for, so a burst of them
+    /// draws the list once at its start and once at its end.
+    var renderPacing = RenderCoalescer()
+    /// What the chip bar and the bar buttons were last built from, so a listing that changed
+    /// neither rebuilds neither.
+    var drawnChips: [ChipSpec]?
+    var drawnChrome: ChromeSpec?
+    /// What each waiting turn was asking when its row was drawn, the one thing a row shows that
+    /// can change while its model stays the same.
+    var drawnAsks: [String: ApprovalAsk] = [:]
+    /// What this device was watching when the list was last drawn, so an activity tick that
+    /// changed nothing the rows show draws nothing.
+    var renderedActivity: ActivityReading?
 
     var selection = ChatSelection()
     var isSelecting = false

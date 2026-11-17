@@ -4,7 +4,7 @@ import UIKit
 extension SessionListViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         if !showsAsColumn || isSelecting { collectionView.deselectItem(at: indexPath, animated: true) }
-        guard let entry = dataSource.itemIdentifier(for: indexPath) else { return }
+        guard let entry = entry(at: indexPath) else { return }
         keyCursor = visibleEntries.firstIndex(of: entry)
         guard !isSelecting else {
             toggleMark(entry)
@@ -18,7 +18,7 @@ extension SessionListViewController: UICollectionViewDelegate {
         contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint
     ) -> UIContextMenuConfiguration? {
         guard !isSelecting, let indexPath = indexPaths.first,
-            let entry = dataSource.itemIdentifier(for: indexPath)
+            let entry = entry(at: indexPath)
         else { return nil }
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) {
             [weak self] _ in
@@ -195,7 +195,7 @@ extension SessionListViewController: UICollectionViewDragDelegate {
         at indexPath: IndexPath
     ) -> [UIDragItem] {
         guard !isSelecting, SceneRouting.supportsMultipleWindows,
-            let entry = dataSource.itemIdentifier(for: indexPath),
+            let entry = entry(at: indexPath),
             let url = SceneRouting.sessionURL(entry.session.id)
         else { return [] }
         let provider = NSItemProvider()
