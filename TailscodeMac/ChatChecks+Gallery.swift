@@ -30,6 +30,18 @@ extension ChatChecks {
             "consecutive agent pictures gather, a person's own does not: \(described)")
         try expect(
             gathered[0].key == "m:a", "a gallery keeps the key of its first picture")
+        let lines = TranscriptRow.gallery([
+            TranscriptRow(key: "m:a", kind: .file(picture("a.png"), mine: false, messageID: "m")),
+            TranscriptRow(key: "m:t", kind: .reasoning("between")),
+            TranscriptRow(key: "m:b", kind: .file(picture("b.png"), mine: false, messageID: "m")),
+        ])
+        let lineNames = lines.map { row -> String in
+            if case .pictures(let pictures) = row.kind { return pictures.map(\.key).joined(separator: ",") }
+            return "other"
+        }
+        try expect(
+            lineNames == ["m:a,m:b", "other"],
+            "with Megatron off a turn's pictures still gather into one strip at its first: \(lineNames)")
         try expect(TranscriptRow.gallery(gathered) == gathered, "gathering is idempotent")
         let side = PictureGalleryLayout.side(metrics: ChatLayout.metrics, width: ImagePreview.deskWidth)
         let strip = PictureGalleryLayout.grid(count: 10, side: side, available: 420)

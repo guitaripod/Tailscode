@@ -526,10 +526,11 @@ extension SelfTest {
             }
         }
         try expect(
-            described == ["gallery:m:a,m:b", "prose", "gallery:m:c", "mine", "file", "gallery:m:d"],
-            "consecutive agent pictures share one row, a person's own and a document stay as they were: \(described)")
+            described == ["gallery:m:a,m:b,m:c", "prose", "mine", "file", "gallery:m:d"],
+            "a turn's pictures share one row at its first, with no Megatron card to stand under; a person's own ends the turn and a document stays as it was: \(described)")
         try expect(
-            gather[0].key == "m:a" && gather[0].holdsPicture("m:b") && !gather[0].holdsPicture("m:c"),
+            gather[0].key == "m:a" && gather[0].holdsPicture("m:b") && gather[0].holdsPicture("m:c")
+                && !gather[0].holdsPicture("m:d"),
             "a gallery is named after its first picture and knows which pixels it draws")
         try expect(
             TranscriptRow.gallery(gather) == gather,

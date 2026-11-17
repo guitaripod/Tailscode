@@ -155,14 +155,17 @@ public enum PictureGalleryLayout: Sendable {
     }
 }
 
-/// Where a turn's pictures are drawn: together, directly under the turn's card.
+/// Where a turn's pictures are drawn: together, in one place, whichever way the turn's work is drawn.
 ///
 /// An agent looks at a picture between steps, so the pictures of one turn arrive between the notes
 /// and cards the chat keeps, and each run of them used to become its own gallery: three walls of
-/// thumbnails in one turn, none of them next to the card that holds the work. A turn's pictures
-/// are one thing to see, so every picture after a card moves up to stand right under it, in the
-/// order it arrived, and the client's gallery fold then makes them one strip. A boundary (the
-/// person's next prompt, a turn break) ends the turn; a picture before any card stays where it is.
+/// thumbnails in one turn, none of them next to the work that made them. A turn's pictures are one
+/// thing to see, so every picture after the turn's anchor moves up to stand right under it, in the
+/// order it arrived, and the client's gallery fold then makes them one strip. The anchor is the
+/// turn's Megatron card when it has one, and the turn's first picture when its work is drawn as
+/// lines, so the strip is the same strip with Megatron on or off and a picture arriving later
+/// changes the strip rather than adding a row. A boundary (the person's next prompt, a turn break)
+/// ends the turn.
 public enum TurnPictureGathering {
     public enum Mark: Sendable, Equatable {
         case card
@@ -187,6 +190,7 @@ public enum TurnPictureGathering {
                     insertion = at + 1
                 } else {
                     order.append(index)
+                    insertion = order.count
                 }
             case .boundary:
                 insertion = nil
@@ -198,10 +202,11 @@ public enum TurnPictureGathering {
         return order
     }
 
-    /// `rows` with every turn's pictures moved under its card.
+    /// `rows` with every turn's pictures moved under its card, or under its first picture when the
+    /// turn has no card.
     public static func gathered<Row>(_ rows: [Row], mark: (Row) -> Mark) -> [Row] {
         let marks = rows.map(mark)
-        guard marks.contains(.card), marks.contains(.picture) else { return rows }
+        guard marks.contains(.picture) else { return rows }
         return order(marks).map { rows[$0] }
     }
 }

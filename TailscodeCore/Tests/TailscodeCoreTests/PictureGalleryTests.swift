@@ -184,6 +184,31 @@ import Testing
         #expect(TurnPictureGathering.order(marks) == [0, 1, 3, 5, 6, 2, 4, 7])
     }
 
+    @Test func aTurnWithoutACardGathersItsPicturesAtItsFirstOne() {
+        let marks: [TurnPictureGathering.Mark] = [
+            .boundary, .other, .picture, .other, .picture, .other, .picture, .other,
+        ]
+        #expect(TurnPictureGathering.order(marks) == [0, 1, 2, 4, 6, 3, 5, 7])
+        let twoTurns: [TurnPictureGathering.Mark] = [
+            .boundary, .picture, .other, .picture, .boundary, .other, .picture, .other, .picture,
+        ]
+        #expect(TurnPictureGathering.order(twoTurns) == [0, 1, 3, 2, 4, 5, 6, 8, 7])
+        let rows = ["t", "p", "x", "q"]
+        let gathered = TurnPictureGathering.gathered(rows) { row in
+            (row == "p" || row == "q") ? .picture : .other
+        }
+        #expect(gathered == ["t", "p", "q", "x"])
+    }
+
+    @Test func theStripStandsInTheSamePlaceWhateverArrivesAfterIt() {
+        let lines: [TurnPictureGathering.Mark] = [.boundary, .other, .picture, .other]
+        let grown: [TurnPictureGathering.Mark] = lines + [.picture, .other, .picture]
+        let before = TurnPictureGathering.order(lines)
+        let after = TurnPictureGathering.order(grown)
+        #expect(Array(after.prefix(3)) == Array(before.prefix(3)))
+        #expect(after[3] == 4 && after[4] == 6)
+    }
+
     @Test func aBoundaryEndsTheTurnAndAPictureBeforeAnyCardStays() {
         let marks: [TurnPictureGathering.Mark] = [
             .picture, .card, .picture, .boundary, .other, .picture, .card, .other, .picture,
