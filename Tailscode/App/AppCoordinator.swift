@@ -157,6 +157,7 @@ final class AppCoordinator: NSObject {
             }
             LockScreenShot.startIfAsked()
             ChatOpenBench.runIfRequested(in: window)
+            ActivitySoak.runIfRequested()
             if CommandLine.arguments.contains("--lockwalk") {
                 TourDriver.startLockWalk(in: window)
             }

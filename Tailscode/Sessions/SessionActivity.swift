@@ -393,4 +393,17 @@ final class SessionActivity {
         statuses[sessionID] = .idle
         NotificationCenter.default.post(name: Self.didChange, object: nil)
     }
+
+    #if DEBUG
+        /// A turn starting or stopping on a conversation nothing here is driving, for `ActivitySoak`.
+        func soakFlip(_ sessionID: String) {
+            statuses[sessionID] = status(for: sessionID) == .running ? .idle : .running
+            NotificationCenter.default.post(name: Self.didChange, object: nil)
+        }
+
+        /// The live tick a running turn posts, for `ActivitySoak`.
+        func soakTick() {
+            NotificationCenter.default.post(name: Self.didChange, object: nil)
+        }
+    #endif
 }
