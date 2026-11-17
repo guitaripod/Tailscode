@@ -71,11 +71,11 @@ final class AppActivityController {
 
     /// The longest a live card goes before the platform redraws it as quiet, whatever it last
     /// said moved; a card waiting on the person waits this long before it admits it heard nothing.
-    private static let staleAfter: TimeInterval = 1800
+    static let staleAfter: TimeInterval = 1800
     /// How far the moment a live card last moved may run ahead of what it shows before it is
     /// written again: the card counts "nothing new" from it, so it must not fall far behind a turn
     /// that is streaming words with nothing else changing.
-    private static let movedDrift: TimeInterval = 15
+    static let movedDrift: TimeInterval = 15
     /// How often a live card that says the same thing is written again anyway, so its stale date
     /// moves on while the turn really is running.
     private static let refreshAfter: TimeInterval = 600
@@ -913,43 +913,6 @@ final class AppActivityController {
         return true
     }
 
-    /// Whether the platform refused a card only because too many are standing — the one refusal
-    /// that taking an old settled card down can answer.
-    private static func isFull(_ error: Error) -> Bool {
-        guard let refusal = error as? ActivityAuthorizationError else { return false }
-        return refusal == .targetMaximumExceeded || refusal == .globalMaximumExceeded
-    }
-
-    private static func isStanding(_ platform: ActivityState) -> Bool {
-        platform == .active || platform == .stale
-    }
-
-    private static func liveState(
-        _ reading: LiveActivityReading, startedAt: Date, toolCount: Int, title: String?,
-        brief: LiveActivityBrief? = nil
-    ) -> State {
-        let face = reading.face
-        return State(
-            phase: phase(reading.detail),
-            statusText: reading.detail.line(tool: reading.tool, toolCount: toolCount),
-            lastTool: reading.tool, toolCount: toolCount, startedAt: startedAt, endedAt: nil,
-            title: title, symbol: face.symbol, tone: face.tone.rawValue,
-            detail: reading.detail.rawValue, background: nil, brief: brief)
-    }
-
-    /// What an ended card keeps of its brief: its steps, its words, its files, who answered and the
-    /// question it stopped on, and not the pulse, the plan or the moment it last moved, which belong
-    /// to a turn that is still going. claude-bridge settles a card to exactly this shape.
-    private static func settledBrief(_ brief: LiveActivityBrief?) -> LiveActivityBrief? {
-        guard var brief else { return nil }
-        brief.beat = nil
-        brief.moved = nil
-        brief.fill = nil
-        brief.ultra = nil
-        brief.plan = nil
-        return brief.isEmpty ? nil : brief
-    }
-
     /// The alert that opens the Dynamic Island on how the turn ended, when the person asked for it
     /// and somebody can be looking: never with the app in front, where the island is not shown for
     /// the app's own card, and never for a chat they muted. The title and body are what an Apple
@@ -969,99 +932,6 @@ final class AppActivityController {
             title: LocalizedStringResource(stringLiteral: title),
             body: LocalizedStringResource(stringLiteral: headline),
             sound: ending == .expandWithSound ? .default : .named(LiveActivityEnding.silentSound))
-    }
-
-    /// Whether a running reading is for a turn that began after the card's ending. A prompt other
-    /// than the one this process settled the card on says so outright, while the card still shows
-    /// that settle: the ending may be the phone's clock and the start the server's, and a turn
-    /// that follows at once — a queued prompt, a send from the desk — can start before the phone
-    /// heard the last one end. Otherwise only the turn's start can say, as the transcript has it.
-    private static func beganAfter(
-        _ endedAt: Date, _ reading: LiveActivityReading, settled: (prompt: String, endedAt: Date)?
-    ) -> Bool {
-        if let settled, let prompt = reading.prompt, prompt != settled.prompt,
-            abs(settled.endedAt.timeIntervalSince(endedAt)) < 1
-        {
-            return true
-        }
-        guard let began = reading.startedAt else { return false }
-        return began > endedAt
-    }
-
-    /// Whether a live card's moment of last moving has run far enough ahead of what it shows that
-    /// its "nothing new" clock would be wrong without a write.
-    private static func movedOn(_ state: State, from shown: State) -> Bool {
-        guard !state.isSettled, let moved = state.brief?.moved else { return false }
-        guard let before = shown.brief?.moved else { return true }
-        return moved.timeIntervalSince(before) > movedDrift
-    }
-
-    /// Whether two states draw the same card. The words and the face are written from the detail
-    /// on the phone, so a push that carries the server's English and no face of its own is the
-    /// same card as the one written here, and is not written over again — nor is one whose clock
-    /// lost its fraction of a second on the way through the server.
-    private static func sameFacts(_ a: State, _ b: State) -> Bool {
-        a.phase == b.phase && a.detail == b.detail && a.lastTool == b.lastTool
-            && a.toolCount == b.toolCount && a.title == b.title && a.background == b.background
-            && sameBrief(a.brief, b.brief)
-            && sameMoment(a.startedAt, b.startedAt) && a.isSettled == b.isSettled
-            && sameMoment(a.endedAt ?? a.startedAt, b.endedAt ?? b.startedAt)
-    }
-
-    /// Whether two briefs draw the same card, leaving out the pulse and the moment it last moved:
-    /// those ride along with writes the facts call for, and `movedOn` keeps the moment honest.
-    private static func sameBrief(_ a: LiveActivityBrief?, _ b: LiveActivityBrief?) -> Bool {
-        func still(_ brief: LiveActivityBrief?) -> LiveActivityBrief? {
-            guard var brief else { return nil }
-            brief.beat = nil
-            brief.moved = nil
-            if let fill = brief.fill { brief.fill = (fill * 100).rounded() / 100 }
-            return brief.isEmpty ? nil : brief
-        }
-        return still(a) == still(b)
-    }
-
-    /// The turn's start as the transcript records it, when that is earlier than the card's own: a
-    /// card opened on a turn already running starts its clock when it was opened until the
-    /// transcript says when the turn really began. Never more than a day back, which no turn is.
-    private static func earlier(_ shown: Date, _ transcript: Date?) -> Date {
-        guard let transcript, transcript < shown, shown.timeIntervalSince(transcript) < 86_400
-        else { return shown }
-        return transcript
-    }
-
-    private static func sameMoment(_ a: Date, _ b: Date) -> Bool {
-        abs(a.timeIntervalSince(b)) < 1
-    }
-
-    private static func phase(_ detail: LiveActivityDetail) -> Phase {
-        Phase(rawValue: detail.phase) ?? .thinking
-    }
-
-    /// A live card goes stale when nothing has been heard for a while; a settled one never does,
-    /// because an ending does not get older in any way a person needs warning of.
-    private static func content(_ state: State) -> ActivityContent<State> {
-        let detail = state.detail.flatMap(LiveActivityDetail.init(rawValue:))
-        let relevance = detail?.relevance ?? (state.isSettled ? 10 : 50)
-        return ActivityContent(
-            state: state, staleDate: staleDate(state, detail: detail, now: Date()),
-            relevanceScore: relevance)
-    }
-
-    /// When the platform redraws a live card as having heard nothing: the wall's quiet threshold
-    /// after it last moved, so a stall reads as one on the Lock Screen as it does on the wall. A
-    /// card waiting on the person is not quiet — it is waiting — and a settled one never goes
-    /// stale, because an ending does not get older in any way a person needs warning of.
-    private static func staleDate(_ state: State, detail: LiveActivityDetail?, now: Date) -> Date? {
-        guard !state.isSettled else { return nil }
-        guard detail?.wantsYou != true, let moved = state.brief?.moved else {
-            return now.addingTimeInterval(staleAfter)
-        }
-        return LiveActivityQuiet.staleDate(moved: moved, now: now, ceiling: staleAfter)
-    }
-
-    nonisolated static func hex(_ token: Data) -> String {
-        token.map { String(format: "%02x", $0) }.joined()
     }
 
     private func write(
