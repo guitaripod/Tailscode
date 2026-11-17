@@ -97,6 +97,18 @@ public struct SessionRowModelCache: Sendable {
         var age: String
         var pass: Int
         var model: SessionRowModel
+
+        /// Whether the model kept here was made from exactly these inputs. Asked of the slot where
+        /// it lies, because copying it out to ask copied two whole sessions per row per pass.
+        func holds(
+            _ entry: SessionEntry, unreachable: Bool, unread: Bool, saved: Bool, pinned: Bool,
+            presence: SessionPresence, age: String
+        ) -> Bool {
+            self.unreachable == unreachable && self.unread == unread && self.saved == saved
+                && self.pinned == pinned && self.presence == presence && self.age == age
+                && self.entry.profileName == entry.profileName && self.entry.host == entry.host
+                && self.entry.backendType == entry.backendType && self.entry.session == entry.session
+        }
     }
 
     private var slots: [String: Slot] = [:]
@@ -132,16 +144,14 @@ public struct SessionRowModelCache: Sendable {
         let reading = presence.sidebarReading
         let age = SessionRowModel.age(
             of: entry.session.updatedAt, asOf: unreachable ? (observedAt ?? now) : now)
-        if var slot = slots[key], slot.entry.session == entry.session,
-            slot.entry.profileName == entry.profileName, slot.entry.host == entry.host, slot.entry.backendType == entry.backendType,
-            slot.unreachable == unreachable, slot.unread == unread, slot.saved == saved,
-            slot.pinned == pinned, slot.presence == reading, slot.age == age,
-            entry.session.backgroundWork?.since == nil
+        if entry.session.backgroundWork?.since == nil, let index = slots.index(forKey: key),
+            slots.values[index].holds(
+                entry, unreachable: unreachable, unread: unread, saved: saved, pinned: pinned,
+                presence: reading, age: age)
         {
-            slot.pass = pass
-            slots[key] = slot
+            slots.values[index].pass = pass
             hits += 1
-            return slot.model
+            return slots.values[index].model
         }
         let model = SessionRowModel(
             entry: entry, unreachable: unreachable, unread: unread, saved: saved, pinned: pinned,
