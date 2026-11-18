@@ -215,7 +215,10 @@ enum Kit {
     /// 0.59.0 says when a desk's person is at it, so a phone can stay quiet while they are.
     /// 0.60.0 lets a phone hand a held notice to its bridge and dates each look a desk reports.
     /// 0.61.0 reads a bridge's notice (work the agent left running coming back) into a note.
-    static let version = Version(0, 62, 0)
+    /// 0.62.0 says which answers a person stopped by hand, and when a waited-on turn ended.
+    /// 0.63.0 edits and cancels a prompt waiting in opencode 2's inbox, in its own place in the
+    /// queue and under its own id, so a queued message can be rewritten on opencode too.
+    static let version = Version(0, 63, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
