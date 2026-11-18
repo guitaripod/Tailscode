@@ -463,11 +463,11 @@ public enum SummonState: Sendable, Equatable {
         case .bound(let chord, let reach):
             return Localized.text(
                 "Press %@ in any app to ask a question. %@", chord.display(on: platform),
-                reach.caveat)
+                reach.caveat(on: platform))
         case .reassigned(let chord, let trigger, let reach):
             return Localized.text(
                 "This desktop gave the key to %@ rather than %@. %@", trigger,
-                chord.display(on: platform), reach.caveat)
+                chord.display(on: platform), reach.caveat(on: platform))
         case .awaiting(let chord, let place):
             return Localized.text(
                 "Tailscode asked %@ for %@ and it has not been granted yet. Finish it in that desktop's own shortcut settings, or bind the command below.",
@@ -489,15 +489,30 @@ public enum SummonState: Sendable, Equatable {
 /// How far a claimed key actually reaches, which is not the same question as whether it is
 /// claimed. A key the desktop holds on this app's behalf stops existing the moment the app does,
 /// and a summon that quietly needs the thing it is summoning is worth saying out loud once rather
-/// than discovering on the one morning it is pressed first.
+/// than discovering on the one morning it is pressed first. A desktop that keeps the app standing
+/// with no window — the Mac's menu bar, a Linux session's background hold — is a third answer:
+/// the key still needs the process, and the process is now always there, at login, whether or not
+/// anybody opened the window.
 public enum SummonReach: Sendable, Equatable {
     case always
+    case readyInBackground
     case whileRunning
 
-    public var caveat: String {
+    public func caveat(on platform: SummonPlatform) -> String {
         switch self {
         case .always:
             return Localized.text("Tailscode does not need to be running.")
+        case .readyInBackground:
+            switch platform {
+            case .apple:
+                return Localized.text(
+                    "Tailscode stays in the menu bar and opens at login, so this key answers from every program."
+                )
+            case .linux:
+                return Localized.text(
+                    "Tailscode keeps running in the background, so this key answers from every program."
+                )
+            }
         case .whileRunning:
             return Localized.text("The desktop holds this key only while Tailscode is running.")
         }

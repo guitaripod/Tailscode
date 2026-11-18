@@ -103,6 +103,12 @@ struct GlobalSummonTests {
         #expect(
             SummonState.bound(.standard, reach: .always).detail(on: .linux)?
                 .contains("does not need to be running") == true)
+        #expect(
+            SummonState.bound(.standard, reach: .readyInBackground).detail(on: .linux)?
+                .contains("running in the background") == true)
+        #expect(
+            SummonState.bound(.standard, reach: .readyInBackground).detail(on: .apple)?
+                .contains("menu bar") == true)
         for state: SummonState in [
             .off, .bound(.standard, reach: .always),
             .reassigned(.standard, trigger: "Meta+A", reach: .whileRunning),
