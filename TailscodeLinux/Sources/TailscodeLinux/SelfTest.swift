@@ -27,6 +27,15 @@ public enum SelfTest {
         report("tailnet: \(tailnet.address ?? "no address") · \(tailnet.peers.count) peers")
 
         do {
+            let checks = try checkBackgroundAgent()
+            report(
+                "\(checks) claims hold — an installed copy writes a login entry that starts it hidden, and the chord says how far it reaches")
+        } catch {
+            report("background agent: \(error)")
+            failures += 1
+        }
+
+        do {
             try await checkStores()
             report("stores: ok")
         } catch {

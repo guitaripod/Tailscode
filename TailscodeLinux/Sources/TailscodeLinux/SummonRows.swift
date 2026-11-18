@@ -27,6 +27,17 @@ enum SummonRows {
         }
         adw_preferences_group_add(ptr(group), ptr(toggle))
 
+        let login = SettingsRows.switchRow(
+            title: Localized.text("Start at Login"),
+            subtitle: Localized.text(
+                "Keeps the chord answering from every program with no window open, and is what brings it back after a restart."
+            ),
+            value: BackgroundAgent.isInstalled
+        ) { on in
+            BackgroundAgent.setEnabled(on)
+        }
+        adw_preferences_group_add(ptr(group), login)
+
         let chordRow = adw_action_row_new()!
         adw_preferences_row_set_title(ptr(chordRow), Localized.text("Chord"))
         let parentBits = UInt(bitPattern: window)

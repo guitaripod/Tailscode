@@ -59,6 +59,9 @@ extension MainWindow {
                 let about: @Sendable () -> Void = { [weak self] in
                     Gtk.onMain { [weak self] in AboutWindow.present(parent: self?.window) }
                 }
+                let quit: @Sendable () -> Void = { [weak self] in
+                    Gtk.onMain { [weak self] in self?.quitCleanly() }
+                }
                 let forge: @Sendable () -> Void = { [weak self] in
                     Gtk.onMain { [weak self] in _ = self?.presentForge() }
                 }
@@ -90,6 +93,9 @@ extension MainWindow {
                      Localized.text("What this app and every server is running"), software),
                     (Localized.text("About Tailscode"),
                      Localized.text("Version, what it was built with, diagnostics to paste"), about),
+                    (Localized.text("Quit Tailscode"),
+                     Localized.text("Closing the window leaves the chord answering; this ends it"),
+                     quit),
                 ]
             })
         adw_toolbar_view_add_top_bar(op(toolbar), header)

@@ -69,6 +69,17 @@ extension MainWindow {
         quitCleanly()
     }
 
+    /// The window goes into the background rather than away: hidden, with every widget, stream and
+    /// half-typed draft still in place, because the process is the thing the chord summons. The
+    /// launcher, the chord on a desktop that places a window, a notification or `tailscode --ask`
+    /// bring it back exactly where it was. Quitting is the app menu's own row.
+    func standAside() {
+        stashDrafts()
+        DraftStore.flush()
+        guard let window else { return }
+        gtk_widget_set_visible(ptr(window), 0)
+    }
+
     /// The process was asked to stop — by an update, by the installer or systemd sending
     /// `SIGTERM`, or by a session ending — and leaves the way a person closing the window does:
     /// drafts written down and the launch recorded as a clean exit. Cut down instead, the next
@@ -91,8 +102,12 @@ extension MainWindow {
     /// With another window still up the process lives on, and only this window's work stops.
     func windowDestroyed() {
         tearDown()
+        guard !Gtk.isQuitting else { return }
         guard !otherWindowsStanding() else { return }
+        window = nil
+        if mainWindow === self { mainWindow = nil }
         Gtk.markQuitting()
+        g_application_quit(ptr(app))
     }
 
     func otherWindowsStanding() -> Bool {

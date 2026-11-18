@@ -150,6 +150,7 @@ extension SelfTest {
             case "quickask": report("quick ask party: \(try checkQuickAskParty()) claims hold")
             case "quickaskactions": report("quick ask actions: \(try checkQuickAskActions()) claims hold")
             case "keyboard": report("keyboard: \(try checkKeyboardRebind()) claims hold")
+            case "agent": report("background agent: \(try checkBackgroundAgent()) claims hold")
             case "carry": report("model seam and carry: \(try checkModelSeamAndCarry()) claims hold")
             case "paste": report("folded paste: \(try checkFoldedPaste()) claims hold")
             case "workflow":

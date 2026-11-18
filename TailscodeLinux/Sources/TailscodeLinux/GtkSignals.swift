@@ -38,6 +38,26 @@ extension Gtk {
             instance, signal, unsafeBitCast(callback, to: GCallback.self), box)
     }
 
+    /// A close-request the app answers with yes: the window goes into the background rather than
+    /// away, because the process behind it is what answers the chord with no window at all. The
+    /// closure runs first, so the window's own bookkeeping — drafts, a call being hung up — happens
+    /// while its widgets still exist.
+    static func holdClose(
+        _ instance: UnsafeMutableRawPointer, _ handler: @escaping @Sendable () -> Void
+    ) {
+        _ = releaseInstalled
+        let box = Unmanaged.passRetained(Box(handler)).toOpaque()
+        let callback:
+            @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> gboolean = {
+                _, raw in
+                guard let raw else { return 0 }
+                Unmanaged<Box>.fromOpaque(raw).takeUnretainedValue().work()
+                return 1
+            }
+        tailscode_connect(
+            instance, "close-request", unsafeBitCast(callback, to: GCallback.self), box)
+    }
+
     /// A plain click (release with nothing selected) on any widget. The shim owns the gesture;
     /// the box leaks by design, like every other signal closure here — rows live as long as the
     /// transcript does.

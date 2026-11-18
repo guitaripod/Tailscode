@@ -200,7 +200,7 @@ final class Summon: @unchecked Sendable {
             guard let self else { return }
             if let holder = self.holder(ofKey: code) {
                 guard holder.identity != DesktopIntegration.appID else {
-                    self.publish(.bound(chord, reach: .whileRunning))
+                    self.publish(.bound(chord, reach: BackgroundAgent.reach))
                     return
                 }
                 self.publish(.taken(chord, by: holder.name))
@@ -212,7 +212,7 @@ final class Summon: @unchecked Sendable {
                 return
             }
             AppLog.write(.ui, "summon filled an empty grant with \(chord.spec)")
-            self.publish(.bound(chord, reach: .whileRunning))
+            self.publish(.bound(chord, reach: BackgroundAgent.reach))
         }
         return true
     }
@@ -337,9 +337,9 @@ final class Summon: @unchecked Sendable {
         let asked = chord.display(on: .linux).lowercased()
         let granted = trigger.lowercased().replacingOccurrences(of: "meta", with: "super")
         if granted.contains(asked) || asked.contains(granted) {
-            publish(.bound(chord, reach: .whileRunning))
+            publish(.bound(chord, reach: BackgroundAgent.reach))
         } else {
-            publish(.reassigned(chord, trigger: trigger, reach: .whileRunning))
+            publish(.reassigned(chord, trigger: trigger, reach: BackgroundAgent.reach))
         }
     }
 

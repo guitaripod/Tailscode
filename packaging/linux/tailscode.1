@@ -16,10 +16,19 @@ Running it with no arguments opens the window. A second launch raises the window
 already exists rather than starting a second app. A pairing link, the line an agent bridge
 prints when it finishes installing, is opened the same way: the window that exists asks
 before it adds the machine the link names, and nothing is saved until you say so.
+.PP
+Closing the window does not quit: the app stays in the background so the quick ask chord
+keeps answering, and the launcher, a notification or another launch brings the window back
+exactly where it was. Quit from the app's own menu. An installed copy writes a login entry
+that starts it hidden at every login; the switch for that lives in Settings, under Ask from
+anywhere.
 .SH OPTIONS
 .TP
 \fB--ask\fR
-Open the question box, raising the running window first. Bind this to a key.
+Open the question box. Bind this to a key on desktops whose portal cannot grant one.
+.TP
+\fB--background\fR
+Start hidden and stay standing for the quick ask chord. The login entry uses this.
 .TP
 \fB--connect\fR
 Save a server by address and open it, without touching the setup screen. Given a

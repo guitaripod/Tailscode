@@ -16,7 +16,11 @@ extension MainWindow {
     /// crosses the tailnet — with liveness stripped from the cache, so nothing shown from it can
     /// claim to be running. The tiling tree is restored before the first paint for the same
     /// reason: the window's shape is local state and must never wait on a server.
-    func present(in app: UnsafeMutablePointer<AdwApplication>) {
+    ///
+    /// `showing` is false for a launch that is a question rather than a visit — the autostart
+    /// entry's hidden start, or a cold `--ask` — where the window must exist for the quick ask's
+    /// machines and chats but must not appear behind it.
+    func present(in app: UnsafeMutablePointer<AdwApplication>, showing: Bool = true) {
         Preferences.applyAppearance()
         MatrixTheme.install()
         terminal.applyPalette(MatrixTheme.palette)
@@ -28,6 +32,7 @@ extension MainWindow {
         }
         Task.detached {
             DesktopIntegration.ensureInstalled()
+            BackgroundAgent.adoptOnInstalledCopy()
             KWinPlacement.ensure()
         }
         observeMissedActivity()
@@ -94,7 +99,7 @@ extension MainWindow {
             })
         studioSheet?.onRise = { [weak self] in self?.pendingChords = [] }
         adw_application_window_set_content(ptr(window), root)
-        gtk_window_present(ptr(window))
+        if showing { gtk_window_present(ptr(window)) }
         Trace.stamp("window presented")
         Seatbelts.shared.start(window: window) { [weak self] in
             self?.seatbeltPanes() ?? .empty
@@ -104,9 +109,16 @@ extension MainWindow {
         installKeymap(on: window)
         installPressRouting(on: window)
         installSidebarLifecycle(on: window)
-        Gtk.observe(UnsafeMutableRawPointer(window), "close-request") { [weak self] in
-            VoiceCallRunner.shared.hangUp()
-            self?.stashDrafts()
+        if SummonSettings.isEnabled {
+            Gtk.holdClose(UnsafeMutableRawPointer(window)) { [weak self] in
+                VoiceCallRunner.shared.hangUp()
+                self?.standAside()
+            }
+        } else {
+            Gtk.observe(UnsafeMutableRawPointer(window), "close-request") { [weak self] in
+                VoiceCallRunner.shared.hangUp()
+                self?.stashDrafts()
+            }
         }
         Gtk.connect(UnsafeMutableRawPointer(window), "destroy") { [weak self] in
             self?.windowDestroyed()
@@ -145,7 +157,7 @@ extension MainWindow {
         FirstRunDialog.onLanded = { [weak self] landing in
             Gtk.onMain { [weak self] in self?.land(on: landing) }
         }
-        presentFirstRun()
+        if showing { presentFirstRun() }
         if let seed = ProcessInfo.processInfo.environment["TAILSCODE_COMPOSER"] {
             activePane.insertIntoComposer(seed.replacingOccurrences(of: "\\n", with: "\n"))
         }

@@ -101,7 +101,7 @@ if Arguments.contains("--themes") {
 let knownOptions: Set<String> = [
     "--selftest", "--probe-newchat", "--connect", "--password", "--name", "--opencode", "--omp",
     "--version", "--help", "-h", "--themes", "--force-desktop", "--demo", "--ask",
-    "--gapplication-service", "--flight", "--limits", "--stacks",
+    "--background", "--gapplication-service", "--flight", "--limits", "--stacks",
 ]
 if let stray = Arguments.flags.first(where: {
     $0.hasPrefix("-") && !knownOptions.contains($0)
@@ -164,7 +164,8 @@ Gtk.connect(UnsafeMutableRawPointer(app), "activate") {
         ResourceGuard.apply()
         let window = MainWindow()
         mainWindow = window
-        window.present(in: app)
+        window.present(in: app, showing: !BackgroundAgent.startsHidden && !wantsAsk)
+        BackgroundAgent.hold()
         DeskSense.start()
         Summon.shared.start { mainWindow?.summonQuickAsk() }
         Gtk.after(1500) { Gtk.onMain { mainWindow?.prepareQuickAsk() } }
@@ -201,6 +202,17 @@ AppActions.installAsk(on: UnsafeMutableRawPointer(app)) {
         g_application_activate(ptr(app))
     }
     mainWindow?.summonQuickAsk()
+}
+
+/// A login entry that finds the app already standing is not a second copy and has no window to
+/// raise: it has done its job already, and the process that holds the name keeps holding it.
+if BackgroundAgent.startsHidden, !wantsAsk {
+    var registerError: UnsafeMutablePointer<GError>?
+    g_application_register(ptr(app), nil, &registerError)
+    if let registerError { g_error_free(registerError) }
+    if g_application_get_is_remote(ptr(app)) != 0 {
+        exit(0)
+    }
 }
 
 /// A `--ask` that finds the name already taken hands the request over and gets out of the way.
