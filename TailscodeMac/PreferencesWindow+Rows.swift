@@ -211,6 +211,11 @@ extension PreferencesWindow {
     }
 
     func renderSummon() {
+        let agent = MacAgent.shared
+        loginItemSwitch?.state = agent.loginItem == .off ? .off : .on
+        loginItemSwitch?.isEnabled = agent.loginItem != .unavailable
+        loginItemButton?.isHidden = agent.loginItem != .needsApproval
+        agentState.stringValue = Self.agentLine(agent.loginItem)
         let state = MacSummon.shared.state
         summonButton.title =
             summonRecorder == nil
@@ -223,6 +228,45 @@ extension PreferencesWindow {
     @objc func summonEnabledChanged(_ sender: NSButton) {
         SummonSettings.setEnabled(sender.state == .on)
         MacSummon.shared.refresh()
+    }
+
+    /// What a launch looks like from this preference: a registered login item is an app that is
+    /// already there at every login, which is the difference between a chord that answers in every
+    /// program and one that answers until the next restart.
+    static func agentLine(_ item: MacAgent.LoginItem) -> String {
+        switch item {
+        case .on:
+            return Localized.text(
+                "Tailscode opens at login and stays in the menu bar with no window, so the chord answers from every program."
+            )
+        case .needsApproval:
+            return Localized.text(
+                "Turn Tailscode on in System Settings → General → Login Items, or it will not open at login."
+            )
+        case .off:
+            return Localized.text(
+                "Without this, the chord answers only until Tailscode quits or this Mac restarts."
+            )
+        case .unavailable:
+            return Localized.text("This copy cannot register a login item.")
+        }
+    }
+
+    func agentStateLabel() -> NSTextField {
+        agentState.font = MacTheme.Ramp.font(.panelFootnote)
+        agentState.textColor = MacTheme.Color.secondaryLabel
+        agentState.maximumNumberOfLines = 0
+        agentState.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return agentState
+    }
+
+    @objc func loginItemChanged(_ sender: NSButton) {
+        MacAgent.shared.setEnabled(sender.state == .on)
+        renderSummon()
+    }
+
+    @objc func openLoginItems() {
+        MacAgent.shared.openLoginItems()
     }
 
     /// A chord is picked by pressing it. The monitor swallows the press rather than letting it

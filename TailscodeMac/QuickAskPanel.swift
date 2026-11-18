@@ -38,6 +38,12 @@ import TailscodeCore
 /// The panel is built once and kept: closing puts it away (`standby`) and the next summon brings it
 /// back with what that summon knows (`arrive`), so a chord costs placing and showing a panel rather
 /// than building one.
+///
+/// It is a surface over the desktop rather than a window of the app. A non-activating panel at the
+/// floating level joins the Space the person is on and answers over a full-screen program; the
+/// summon never raises the app's own window, and the program the person came from is put back in
+/// front the moment the box goes without opening a conversation (`MacFocus`). Prompting is a
+/// question over the work, not a visit to another app.
 @MainActor
 final class QuickAskPanel: NSPanel {
     private(set) static weak var frontmost: QuickAskPanel?
@@ -92,6 +98,12 @@ final class QuickAskPanel: NSPanel {
     var draftProfileID: String?
     var keyMonitor: Any?
     var releaseMonitor: Any?
+    /// The panel is a surface, not a window: the click that moves to something else puts it away,
+    /// unless what took the keyboard is this app's own sheet or popover.
+    var resignObserver: NSObjectProtocol?
+    /// Closing tears down the panel's bookkeeping, and the resign that closing itself causes must
+    /// not run it a second time.
+    private var isClosing = false
     let dictationEngines: MacDictationEngines
     private(set) lazy var dictation = MacDictationController(host: self, engines: dictationEngines)
     /// Set once the panel has been put under the pointer, so a panel that never stood on a screen —
@@ -154,6 +166,11 @@ final class QuickAskPanel: NSPanel {
         panel.makeKeyAndOrderFront(nil)
         panel.editor.focus()
         frontmost = panel
+        DispatchQueue.main.async { [weak panel] in
+            guard let panel, panel.isVisible, NSApp.isActive, !panel.isKeyWindow else { return }
+            panel.makeKey()
+            panel.editor.focus()
+        }
     }
 
     /// Builds the panel ahead of the first summon and keeps it out of sight.
@@ -229,7 +246,7 @@ final class QuickAskPanel: NSPanel {
             contentRect: NSRect(
                 x: 0, y: 0, width: QuickAskGeometry.defaultWidth,
                 height: QuickAskGeometry.defaultHeight),
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered, defer: false)
         title = Localized.text("Quick ask")
         titleVisibility = .hidden
@@ -243,7 +260,10 @@ final class QuickAskPanel: NSPanel {
         hasShadow = true
         isFloatingPanel = true
         isReleasedWhenClosed = false
-        collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
+        level = .floating
+        hidesOnDeactivate = false
+        becomesKeyOnlyIfNeeded = false
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         contentMinSize = NSSize(
             width: QuickAskGeometry.minimumWidth, height: QuickAskGeometry.minimumHeight)
 
@@ -430,6 +450,14 @@ final class QuickAskPanel: NSPanel {
                 self.renderStarters()
             }
         }
+        resignObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: self, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !NSApp.isActive, self.isVisible else { return }
+                self.close()
+            }
+        }
     }
 
     /// A centred horizontal stack keeps its top and bottom insets only as a wish, so the list above
@@ -532,6 +560,8 @@ final class QuickAskPanel: NSPanel {
         laterObserver = nil
         if let liveResizeObserver { NotificationCenter.default.removeObserver(liveResizeObserver) }
         liveResizeObserver = nil
+        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
+        resignObserver = nil
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
         if let releaseMonitor { NSEvent.removeMonitor(releaseMonitor) }
@@ -544,6 +574,9 @@ final class QuickAskPanel: NSPanel {
     /// what was copied, the line picked and a notice are let go, so it comes back the way a new one
     /// would.
     override func close() {
+        guard !isClosing else { return }
+        isClosing = true
+        defer { isClosing = false }
         dictation.stopKeepingShown()
         remember()
         super.close()
@@ -569,6 +602,7 @@ final class QuickAskPanel: NSPanel {
         menuCursor.clear()
         paintSelection()
         if Self.frontmost === self { Self.standby = self }
+        MacFocus.restoreUnlessSomethingElseTookIt()
     }
 
     /// Whether an answer that arrives now belongs to the question on screen: the one asked on this

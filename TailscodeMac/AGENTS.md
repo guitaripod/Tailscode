@@ -51,7 +51,8 @@ layout, the shortcut engine, and current-chat state (`currentEntry`, `currentBac
 | File | Owns |
 |---|---|
 | `main.swift` | flags: `--selftest`, `--version`, `--help`, `--connect`, `--flight`, unknown-flag guard |
-| `AppDelegate.swift` | lifecycle only: activation, reconnect-on-active, opens `MainWindowController` |
+| `AppDelegate.swift` | lifecycle only: activation, reconnect-on-active, opens `MainWindowController`; a launch the login item made opens no window and takes no focus |
+| `MacAgent.swift`, `MacMenuBar.swift` | the app kept standing for the chord: the one login item (`SMAppService.mainApp`), the launch-at-login launch it recognises, the reach the summon reports (`SummonReach.readyInBackground`), the focus the palette gives back (`MacFocus`), and the menu bar item that asks on a press and opens its small menu on a right press |
 | `MainMenu.swift` | the whole menu bar; every ⌘ equivalent lives here, one action per item |
 | `MainWindowController.swift` | window, toolbar, split (sidebar / content column with the terminal under the transcript / files inspector), pane toggles + persistence (`tailscode.pane.*`), divider persistence (`tailscode.divider.*`), pane focus + Tab cycle, shortcut dispatch (`MacKeys.chord` → `ShortcutSet.resolve` → `perform(KeyAction)`), open/close of chats, new-chat creation, the servers/settings windows |
 | `SidebarViewController.swift`, `SidebarRows.swift` | the chat list, full Linux parity |

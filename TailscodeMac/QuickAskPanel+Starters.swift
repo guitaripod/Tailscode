@@ -340,6 +340,7 @@ extension QuickAskPanel {
 
     @objc func pickAttachments() {
         guard !asking, abilities.attachments || isLocalAim else { return }
+        MacAgent.claim()
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false

@@ -7,6 +7,7 @@ extension QuickAskPanel {
     /// them. It keeps the aim showing now, and this Mac asks it at the hour.
     func offerLater() {
         guard !asking, gathering == nil else { return }
+        MacAgent.claim()
         let text = editor.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             setStatus(Localized.text("Type the question first, then choose when."), tone: .failure)

@@ -67,11 +67,10 @@ final class MacSummon {
         }
         hotKey = reference
         caution = verdict.note
-        publish(.bound(chord, reach: .whileRunning))
+        publish(.bound(chord, reach: MacAgent.shared.reach))
     }
 
     fileprivate func fire() {
-        NSApp.activate(ignoringOtherApps: true)
         summon?()
     }
 

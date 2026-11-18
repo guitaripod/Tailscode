@@ -74,6 +74,7 @@ extension QuickAskPanel {
     /// that close is the same press.
     func openModelDial() {
         guard !asking else { return }
+        MacAgent.claim()
         partyPopover?.close()
         if let dialPopover, dialPopover.isShown {
             dialPopover.close()

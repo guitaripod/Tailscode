@@ -12,6 +12,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menu: MainMenu?
     private var pendingLinks: [URL] = []
 
+    /// Read before anything is built: whether this launch is the login item's decides whether the
+    /// app shows its window or arrives as a menu bar item with nothing in the way.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        MacAgent.shared.captureLaunchEvent()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
             LiveShot.prepare()
@@ -21,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ReviewPromptPolicy.migrateIfNeeded()
         Self.typeWhatIsTyped()
         NSApp.setActivationPolicy(.regular)
+        MacAgent.shared.start()
         Self.forgetTheKeysForPanesThisCopyLacks()
         #if TAILSCODE_MAS
             Self.keepShortcutsWhereTheContainerCanReachThem()
@@ -34,8 +41,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.appearance = MacTheme.Chrome.appearance
         Seatbelts.shared.start()
         let controller = MainWindowController()
-        controller.showWindow(nil)
         main = controller
+        if MacAgent.shared.launchedAtLogin {
+            controller.prepareForMenuBar()
+        } else {
+            controller.showWindow(nil)
+        }
+        MacMenuBar.shared.start(hub: controller)
         PointerSweep.install()
         let menu = MainMenu(hub: controller)
         menu.install()
@@ -67,10 +79,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let controller else { return }
                 ConnectLinkDoor.show(serverID: id, main: controller)
             })
-        if !MacShot.staysInTheChatWindow, !holdsFirstRunBack {
+        if !MacShot.staysInTheChatWindow, !holdsFirstRunBack, !MacAgent.shared.launchedAtLogin {
             FirstRunWindow.presentIfNeeded()
         }
         openPendingLinks()
+        guard !MacAgent.shared.launchedAtLogin else {
+            MacShot.schedule()
+            return
+        }
         #if DEBUG
             if !LiveShot.holdsBack("activation") { NSApp.activate(ignoringOtherApps: true) }
         #else
@@ -180,6 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// A Mac that slept holds sockets that look alive and deliver nothing; coming back to the
     /// app is the moment to re-dial the stream and re-list the chats.
     func applicationDidBecomeActive(_ notification: Notification) {
+        MacAgent.shared.read()
         ProAccess.shared.refreshProWeek()
         main?.handleDidBecomeActive()
         main?.presentProWeekEndIfDue()
@@ -233,7 +250,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(
         _ sender: NSApplication, hasVisibleWindows: Bool
     ) -> Bool {
-        main?.showWindow(nil)
+        main?.presentMainWindow()
         return true
     }
 

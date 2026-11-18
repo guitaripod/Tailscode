@@ -123,6 +123,7 @@ extension QuickAskPanel {
                 self.continueGathering()
             }
         case .file, .photo:
+            MacAgent.claim()
             let chooser = NSOpenPanel()
             chooser.allowsMultipleSelection = true
             chooser.canChooseDirectories = false
@@ -358,6 +359,7 @@ extension QuickAskPanel {
     }
 
     func newAction() {
+        MacAgent.claim()
         actionSheet = QuickAskActionSheet.present(
             QuickAskAction(id: QuickAskActions.newID(), title: "", prompt: ""), isNew: true,
             current: currentAim(), over: self)
@@ -366,6 +368,7 @@ extension QuickAskPanel {
     /// What is in the box, kept: the words as the template and the aim showing now on offer.
     func saveAsAction() {
         guard !asking, gathering == nil else { return }
+        MacAgent.claim()
         let text = editor.text
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             newAction()
@@ -378,6 +381,7 @@ extension QuickAskPanel {
 
     func editAction(id: String) {
         guard let action = QuickAskActions.action(id: id) else { return }
+        MacAgent.claim()
         actionSheet = QuickAskActionSheet.present(
             action, isNew: false, current: currentAim(), over: self)
     }

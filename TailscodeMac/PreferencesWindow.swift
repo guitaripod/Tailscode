@@ -20,6 +20,9 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     let hapticLabel = NSTextField(labelWithString: "")
     let summonButton = NSButton(title: "", target: nil, action: nil)
     let summonState = NSTextField(wrappingLabelWithString: "")
+    weak var loginItemSwitch: NSButton?
+    weak var loginItemButton: NSButton?
+    let agentState = NSTextField(wrappingLabelWithString: "")
     var summonRecorder: Any?
     let shortcutNote = NSTextField(wrappingLabelWithString: "")
     let shortcutResetDetail = NSTextField(wrappingLabelWithString: "")

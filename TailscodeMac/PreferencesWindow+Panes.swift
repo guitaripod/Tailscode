@@ -506,6 +506,24 @@ extension PreferencesWindow {
         summonButton.action = #selector(recordSummonChord)
         column.addArrangedSubview(
             chordRow(title: Localized.text("Chord"), button: summonButton, detail: summonState))
+        gap(column)
+        let ready = NSButton(
+            checkboxWithTitle: Localized.text("Stay ready in the menu bar"),
+            target: self, action: #selector(loginItemChanged))
+        ready.font = MacTheme.Ramp.font(.panelLabel)
+        loginItemSwitch = ready
+        column.addArrangedSubview(ready)
+        let approve = NSButton(
+            title: Localized.text("Open Login Items…"), target: self,
+            action: #selector(openLoginItems))
+        approve.bezelStyle = .rounded
+        loginItemButton = approve
+        column.addArrangedSubview(approve)
+        let agentNote = NSStackView(views: [agentStateLabel()])
+        agentNote.orientation = .vertical
+        agentNote.alignment = .leading
+        agentNote.edgeInsets = NSEdgeInsets(top: 0, left: 20, bottom: 0, right: 0)
+        column.addArrangedSubview(agentNote)
         renderSummon()
         return scrolled(column)
     }

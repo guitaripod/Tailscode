@@ -168,6 +168,15 @@ enum SelfTest {
         }
 
         do {
+            let checks = try await checkQuickAskPresence()
+            report(
+                "quick ask presence: \(checks) claims hold — the panel stands over the app on the Space in front, over a full-screen program, and never hides behind the conversation")
+        } catch {
+            report("quick ask presence: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try await checkQuickAskActions()
             report(
                 "quick ask actions: \(checks) claims hold — written actions lead, an action's aim lasts one question, {session} lists the chats and names the pick")

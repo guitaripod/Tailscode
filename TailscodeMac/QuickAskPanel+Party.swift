@@ -59,6 +59,7 @@ extension QuickAskPanel {
     /// popover closed itself is the same press.
     func openModelParty() {
         guard !asking else { return }
+        MacAgent.claim()
         if let partyPopover, partyPopover.isShown {
             partyPopover.close()
             return
@@ -219,6 +220,7 @@ extension QuickAskPanel {
     func presentChooser(
         context: ChooserContext, onPick: @escaping @MainActor (ModelPick) -> Void
     ) {
+        MacAgent.claim()
         let server = targetServer
         var adding: (@MainActor (ModelPick) -> String?)?
         if context == .composer {
@@ -307,6 +309,7 @@ extension QuickAskPanel {
 
     /// With six full, the six cards asked "which one makes room?": a press replaces that slot.
     func presentMakeRoom(for preset: ModelPreset) {
+        MacAgent.claim()
         makeRoomPopover?.close()
         let actions = PartyPanelActions(
             take: { [weak self] card in

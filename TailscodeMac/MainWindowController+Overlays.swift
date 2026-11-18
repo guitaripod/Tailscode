@@ -17,12 +17,38 @@ extension MainWindowController {
         cheatsheet.close()
     }
 
-    /// A question that arrived from another app. The window comes forward first because the field
-    /// is inside it: a panel that opened behind whatever was frontmost would take the keystrokes
-    /// meant for the question with it.
+    /// A question that arrived from another app. The panel is its own window at the floating
+    /// level, so it opens over whatever was in front and never raises the main window: the whole
+    /// ceremony is the question, and the program the person was in is put back the moment the box
+    /// goes. The chord is also the way back out — a second press puts the panel away, the way a
+    /// launcher behaves.
+    ///
+    /// The app comes forward for as long as the box is up, because a key window's app is the one
+    /// that receives keys; what it does not do is come forward *with its window* — the panel is
+    /// the only thing that rises, and `MacFocus` hands the keyboard back when it goes.
     func summonQuickAsk() {
-        window?.makeKeyAndOrderFront(nil)
+        if let open = QuickAskPanel.frontmost, open.isVisible {
+            open.close()
+            return
+        }
+        MacFocus.remember()
+        NSApp.activate(ignoringOtherApps: true)
         presentQuickAsk()
+    }
+
+    /// The window, from anywhere the app can be asked for it — the menu bar, the Dock, a question
+    /// that opened a chat. A quick ask never does this: only a conversation does.
+    func presentMainWindow() {
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// A launch the login item made arrives with no window, and the app is still on the job: the
+    /// chord answers, a question opens a chat, a scheduled ask fires. The listing is read here
+    /// rather than waiting for a window nobody may open until noon.
+    func prepareForMenuBar() {
+        Task { [weak self] in await self?.sidebar.refresh() }
     }
 
     /// The chord summons one field and nothing else; the words land in the focused pane as a new
@@ -39,6 +65,7 @@ extension MainWindowController {
                     backend: .claudeCode, baseURL: address))
         }
         guard !profiles.isEmpty else {
+            presentMainWindow()
             presentServers()
             return
         }
@@ -73,7 +100,10 @@ extension MainWindowController {
                 self.mintQuickAsk(
                     on: profile, send: send, attachments: attachments, done: done)
             },
-            { [weak self] entry in self?.sidebar.open(entry) },
+            { [weak self] entry in
+                self?.presentMainWindow()
+                self?.sidebar.open(entry)
+            },
             { [weak self] party, done in self?.mintParty(party, done: done) })
     }
 
@@ -172,6 +202,7 @@ extension MainWindowController {
                 backendType: profile.backend, session: session)
             self.transcript.queueFirstMessage(
                 send, attachments: attachments, forSession: entry.session.id)
+            self.presentMainWindow()
             self.sidebar.noteCreated(entry)
             /// The panel is answered — which is what closes it — only once the conversation is
             /// on screen behind it, and the keyboard is moved after the close rather than
