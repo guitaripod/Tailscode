@@ -629959,6 +629959,1420 @@
           }
         }
       }
+    },
+    "Approve Start at Login…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approve Start at Login…"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillad start ved login…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start beim Anmelden erlauben …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permitir abrir al iniciar sesión…"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salli käynnistys kirjautuessa…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autoriser l'ouverture à la connexion…"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leyfa opnun við innskráningu…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consenti l'apertura all'accesso…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ログイン時の起動を許可…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "로그인 시 실행 허용…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillat start ved pålogging…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zezwól na uruchamianie przy logowaniu…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permitir abrir ao iniciar sessão…"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillåt start vid inloggning…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许登录时启动…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允許登入時啟動…"
+          }
+        }
+      }
+    },
+    "Start at Login": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start at Login"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start ved login"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beim Anmelden starten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir al iniciar sesión"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Käynnistä kirjautuessa"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir à la connexion"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opna við innskráningu"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri all'accesso"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ログイン時に起動"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "로그인 시 실행"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start ved pålogging"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uruchamiaj przy logowaniu"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir ao iniciar sessão"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starta vid inloggning"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录时启动"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登入時啟動"
+          }
+        }
+      }
+    },
+    "Open Login Items…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Login Items…"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åbn login-objekter…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anmeldeobjekte öffnen …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir objetos de inicio…"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avaa kirjautumiskohteet…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir les objets de connexion…"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opna innskráningarhluti…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri elementi di login…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ログイン項目を開く…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "로그인 항목 열기…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne påloggingselementer…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otwórz elementy logowania…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir itens de início…"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öppna inloggningsobjekt…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开登录项…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟登入項目…"
+          }
+        }
+      }
+    },
+    "Stay ready in the menu bar": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stay ready in the menu bar"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vær klar i menulinjen"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In der Menüleiste bereit bleiben"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permanece listo en la barra de menús"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pysy valmiina valikkorivillä"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rester prêt dans la barre des menus"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vertu til í valmyndarstikunni"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resta pronto nella barra dei menu"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メニューバーで待機する"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "메뉴 막대에서 대기"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vær klar i menylinjen"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bądź gotowy na pasku menu"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ficar pronto na barra de menus"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Var redo i menyraden"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在菜单栏中保持待命"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在選單列中保持待命"
+          }
+        }
+      }
+    },
+    "Tailscode opens at login and stays in the menu bar with no window, so the chord answers from every program.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode opens at login and stays in the menu bar with no window, so the chord answers from every program."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode åbner ved login og bliver i menulinjen uden vindue, så genvejen svarer i alle programmer."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode öffnet beim Anmelden und bleibt ohne Fenster in der Menüleiste, sodass die Tastenkombination in jedem Programm antwortet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode se abre al iniciar sesión y permanece en la barra de menús sin ventana, así que la combinación responde en cualquier programa."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode käynnistyy kirjautuessa ja pysyy valikkorivillä ilman ikkunaa, joten pikakuvake vastaa kaikissa ohjelmissa."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode s'ouvre à la connexion et reste dans la barre des menus sans fenêtre, donc le raccourci répond dans chaque application."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode opnast við innskráningu og verður í valmyndarstikunni án glugga, svo flýtileiðin svarar í öllum forritum."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode si apre all'accesso e resta nella barra dei menu senza finestra, quindi la scorciatoia risponde in ogni programma."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode はログイン時に開き、ウィンドウなしでメニューバーに常駐するので、ショートカットはどのアプリでも応答します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode는 로그인 시 열리고 창 없이 메뉴 막대에 상주하므로 단축키가 모든 앱에서 응답합니다."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode åpnes ved pålogging og blir i menylinjen uten vindu, så hurtigtasten svarer i alle programmer."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode uruchamia się przy logowaniu i pozostaje na pasku menu bez okna, więc skrót odpowiada w każdym programie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscode abre ao iniciar sessão e fica na barra de menus sem janela, então o atalho responde em qualquer programa."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode öppnas vid inloggning och stannar i menyraden utan fönster, så genvägen svarar i alla program."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 在登录时启动，并常驻菜单栏且不打开窗口，因此快捷键在所有程序中都能响应。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 在登入時啟動，並常駐選單列且不開啟視窗，因此快速鍵在所有程式中都能回應。"
+          }
+        }
+      }
+    },
+    "Turn Tailscode on in System Settings → General → Login Items, or it will not open at login.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn Tailscode on in System Settings → General → Login Items, or it will not open at login."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slå Tailscode til i Systemindstillinger → Generelt → Login-objekter, ellers åbner det ikke ved login."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktiviere Tailscode in den Systemeinstellungen → Allgemein → Anmeldeobjekte, sonst öffnet es sich nicht beim Anmelden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activa Tailscode en Ajustes del Sistema → General → Ítems de inicio, o no se abrirá al iniciar sesión."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kytke Tailscode päälle kohdassa Järjestelmäasetukset → Yleiset → Kirjautumiskohteet, muuten se ei käynnisty kirjautuessa."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activez Tailscode dans Réglages Système → Général → Ouverture, sinon il ne s'ouvrira pas à la connexion."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kveiktu á Tailscode í Kerfisstillingar → Almennt → Innskráningarhlutir, annars opnast það ekki við innskráningu."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attiva Tailscode in Impostazioni di Sistema → Generali → Elementi login, altrimenti non si aprirà all'accesso."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "システム設定 → 一般 → ログイン項目で Tailscode をオンにしないと、ログイン時に開きません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "시스템 설정 → 일반 → 로그인 항목에서 Tailscode를 켜지 않으면 로그인 시 열리지 않습니다."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slå Tailscode på i Systeminnstillinger → Generelt → Påloggingselementer, ellers åpnes det ikke ved pålogging."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Włącz Tailscode w Ustawienia systemowe → Ogólne → Elementy logowania, inaczej nie uruchomi się przy logowaniu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ative o Tailscode em Ajustes do Sistema → Geral → Itens de Início, ou ele não abrirá ao iniciar sessão."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slå på Tailscode i Systeminställningar → Allmänt → Inloggningsobjekt, annars öppnas det inte vid inloggning."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在“系统设置”→“通用”→“登录项”中开启 Tailscode，否则它不会在登录时启动。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請在「系統設定」→「一般」→「登入項目」中開啟 Tailscode，否則它不會在登入時啟動。"
+          }
+        }
+      }
+    },
+    "Without this, the chord answers only until Tailscode quits or this Mac restarts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Without this, the chord answers only until Tailscode quits or this Mac restarts."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uden dette svarer genvejen kun, indtil Tailscode lukkes, eller denne Mac genstarter."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ohne dies antwortet die Tastenkombination nur, bis Tailscode beendet wird oder dieser Mac neu startet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin esto, la combinación solo responde hasta que Tailscode se cierre o este Mac se reinicie."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ilman tätä pikakuvake vastaa vain siihen asti, kunnes Tailscode suljetaan tai tämä Mac käynnistetään uudelleen."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sans cela, le raccourci ne répond que jusqu'à la fermeture de Tailscode ou au redémarrage de ce Mac."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Án þessa svarar flýtileiðin aðeins þar til Tailscode er lokað eða þessi Mac er endurræstur."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Senza questo, la scorciatoia risponde solo finché Tailscode resta aperto o finché questo Mac non si riavvia."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これがないと、ショートカットは Tailscode を終了するか、この Mac を再起動するまでしか応答しません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기능이 없으면 Tailscode를 종료하거나 이 Mac을 재시동할 때까지만 단축키가 응답합니다."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uten dette svarer hurtigtasten bare til Tailscode avsluttes eller denne Macen starter på nytt."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bez tego skrót odpowiada tylko do zamknięcia Tailscode lub ponownego uruchomienia tego Maca."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sem isto, o atalho só responde até o Tailscode ser encerrado ou este Mac reiniciar."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utan detta svarar genvägen bara tills Tailscode avslutas eller den här Macen startas om."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不开启此项，快捷键只在 Tailscode 退出或这台 Mac 重新启动之前有效。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不開啟此項，快速鍵只在 Tailscode 結束或這台 Mac 重新啟動之前有效。"
+          }
+        }
+      }
+    },
+    "This copy cannot register a login item.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This copy cannot register a login item."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne kopi kan ikke registrere et login-objekt."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Kopie kann kein Anmeldeobjekt registrieren."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta copia no puede registrar un ítem de inicio."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tämä kopio ei voi rekisteröidä kirjautumiskohdetta."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette copie ne peut pas enregistrer d'objet de connexion."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Þetta eintak getur ekki skráð innskráningarhlut."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questa copia non può registrare un elemento di login."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このコピーはログイン項目を登録できません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 사본은 로그인 항목을 등록할 수 없습니다."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne kopien kan ikke registrere et påloggingselement."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ta kopia nie może zarejestrować elementu logowania."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta cópia não pode registrar um item de início."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den här kopian kan inte registrera ett inloggningsobjekt."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此副本无法注册登录项。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此副本無法註冊登入項目。"
+          }
+        }
+      }
+    },
+    "Ask Tailscode — %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask Tailscode — %@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørg Tailscode — %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode fragen — %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preguntar a Tailscode — %@"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kysy Tailscodelta — %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demander à Tailscode — %@"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spyrja Tailscode — %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiedi a Tailscode — %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode に質問 — %@"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode에 질문 — %@"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spør Tailscode — %@"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapytaj Tailscode — %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perguntar ao Tailscode — %@"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fråga Tailscode — %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "询问 Tailscode — %@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "詢問 Tailscode — %@"
+          }
+        }
+      }
+    },
+    "Ask Tailscode": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask Tailscode"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørg Tailscode"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode fragen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preguntar a Tailscode"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kysy Tailscodelta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demander à Tailscode"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spyrja Tailscode"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiedi a Tailscode"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode に質問"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode에 질문"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spør Tailscode"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapytaj Tailscode"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perguntar ao Tailscode"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fråga Tailscode"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "询问 Tailscode"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "詢問 Tailscode"
+          }
+        }
+      }
+    },
+    "Tailscode keeps running in the background, so this key answers from every program.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode keeps running in the background, so this key answers from every program."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode kører videre i baggrunden, så denne tast svarer i alle programmer."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode läuft im Hintergrund weiter, daher antwortet diese Taste in jedem Programm."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode sigue ejecutándose en segundo plano, así que esta tecla responde en cualquier programa."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode jatkaa taustalla, joten tämä näppäin vastaa kaikissa ohjelmissa."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode continue de tourner en arrière-plan, donc cette touche répond dans chaque application."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode heldur áfram í bakgrunni, svo þessi lykill svarar í öllum forritum."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode continua in background, quindi questo tasto risponde in ogni programma."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode はバックグラウンドで動き続けるので、このキーはどのアプリでも応答します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode가 백그라운드에서 계속 실행되므로 이 키는 모든 앱에서 응답합니다."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode kjører videre i bakgrunnen, så denne tasten svarer i alle programmer."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode działa dalej w tle, więc ta kombinacja odpowiada w każdym programie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscode continua em segundo plano, então esta tecla responde em qualquer programa."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode fortsätter i bakgrunden, så den här tangenten svarar i alla program."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 一直在后台运行，因此这个键在所有程序中都能响应。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 一直在背景執行，因此這個鍵在所有程式中都能回應。"
+          }
+        }
+      }
+    },
+    "Tailscode stays in the menu bar and opens at login, so this key answers from every program.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode stays in the menu bar and opens at login, so this key answers from every program."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode bliver i menulinjen og åbner ved login, så denne tast svarer i alle programmer."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode bleibt in der Menüleiste und öffnet beim Anmelden, daher antwortet diese Taste in jedem Programm."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode se queda en la barra de menús y se abre al iniciar sesión, así que esta tecla responde en cualquier programa."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode pysyy valikkorivillä ja käynnistyy kirjautuessa, joten tämä näppäin vastaa kaikissa ohjelmissa."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode reste dans la barre des menus et s'ouvre à la connexion, donc cette touche répond dans chaque application."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode verður í valmyndarstikunni og opnast við innskráningu, svo þessi lykill svarar í öllum forritum."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode resta nella barra dei menu e si apre all'accesso, quindi questo tasto risponde in ogni programma."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode はメニューバーに常駐し、ログイン時に開くので、このキーはどのアプリでも応答します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode는 메뉴 막대에 상주하고 로그인 시 열리므로 이 키는 모든 앱에서 응답합니다."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode blir i menylinjen og åpnes ved pålogging, så denne tasten svarer i alle programmer."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode pozostaje na pasku menu i uruchamia się przy logowaniu, więc ta kombinacja odpowiada w każdym programie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscode fica na barra de menus e abre ao iniciar sessão, então esta tecla responde em qualquer programa."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode stannar i menyraden och öppnas vid inloggning, så den här tangenten svarar i alla program."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 常驻菜单栏并在登录时启动，因此这个键在所有程序中都能响应。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode 常駐選單列並在登入時啟動，因此這個鍵在所有程式中都能回應。"
+          }
+        }
+      }
+    },
+    "Keeps the chord answering from every program with no window open, and is what brings it back after a restart.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keeps the chord answering from every program with no window open, and is what brings it back after a restart."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Holder genvejen svarende i alle programmer uden et åbent vindue og bringer den tilbage efter en genstart."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hält die Tastenkombination auch ohne offenes Fenster in jedem Programm am Antworten und bringt sie nach einem Neustart zurück."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantiene la combinación respondiendo en cualquier programa aunque no haya ventana abierta, y la recupera después de reiniciar."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pitää pikakuvakkeen vastaamassa kaikissa ohjelmissa ilman avointa ikkunaa ja tuo sen takaisin uudelleenkäynnistyksen jälkeen."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Garde le raccourci actif dans chaque application même sans fenêtre ouverte, et le rétablit après un redémarrage."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Heldur flýtileiðinni svarandi í öllum forritum án opins glugga og kemur henni aftur eftir endurræsingu."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantiene la scorciatoia attiva in ogni programma anche senza finestre aperte e la ripristina dopo un riavvio."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ウィンドウを開いていなくてもすべてのアプリでショートカットが応答し、再起動後にも復活させます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "창을 열지 않아도 모든 앱에서 단축키가 응답하게 하고, 재시작 후에도 되살립니다."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Holder hurtigtasten svarer i alle programmer uten åpne vinduer og bringer den tilbake etter en omstart."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utrzymuje skrót odpowiadający w każdym programie bez otwartego okna i przywraca go po ponownym uruchomieniu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantém o atalho respondendo em qualquer programa mesmo sem janela aberta e o traz de volta após reiniciar."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Håller genvägen svarande i alla program utan öppet fönster och tar tillbaka den efter en omstart."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "即使没有打开窗口，也让快捷键在所有程序中照常响应，并在重启后恢复。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "即使沒有開啟視窗，也讓快速鍵在所有程式中照常回應，並在重新啟動後恢復。"
+          }
+        }
+      }
+    },
+    "Closing the window leaves the chord answering; this ends it": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closing the window leaves the chord answering; this ends it"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At lukke vinduet lader genvejen svare; dette afslutter den"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Fenster zu schließen lässt die Tastenkombination weiterarbeiten; dies beendet sie"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrar la ventana deja la combinación respondiendo; esto la termina"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikkunan sulkeminen jättää pikakuvakkeen vastaamaan; tämä lopettaa sen"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fermer la fenêtre laisse le raccourci actif ; ceci l'arrête"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Að loka glugganum heldur flýtileiðinni svarandi; þetta endar hana"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiudere la finestra lascia la scorciatoia attiva; questo la termina"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ウィンドウを閉じてもショートカットは応答し続けます。これはそれを終了します"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "창을 닫아도 단축키는 계속 응답합니다. 이 항목은 앱을 종료합니다"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Å lukke vinduet lar hurtigtasten svare; dette avslutter den"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zamknięcie okna pozostawia skrót odpowiadający; to kończy działanie"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fechar a janela mantém o atalho respondendo; isto o encerra"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Att stänga fönstret låter genvägen svara; detta avslutar den"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭窗口后快捷键仍然可用；此操作会结束它"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "關閉視窗後快速鍵仍然可用；此操作會結束它"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
