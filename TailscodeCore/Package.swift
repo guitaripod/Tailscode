@@ -105,7 +105,7 @@ enum Kit {
     /// 0.63.0 edits and cancels a prompt waiting in opencode 2's inbox, in its own place in the
     /// queue and under its own id, so the phone can rewrite a message queued behind a running turn
     /// the way it already rewrites one a bridge holds.
-    static let version = Version(0, 63, 0)
+    static let version = Version(0, 63, 1)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
