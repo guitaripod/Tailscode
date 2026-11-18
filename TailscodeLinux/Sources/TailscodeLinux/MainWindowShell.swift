@@ -156,10 +156,15 @@ extension MainWindow {
     /// takes the keyboard on its own, so the app is raised first only for a quick ask that is a
     /// window over it, which would otherwise open behind another app's window and lose the
     /// keystrokes that followed; otherwise the app comes forward when a question opens a chat in it.
+    /// The chord is also the way back out: a second press puts the box away, the way a launcher
+    /// toggles, rather than asking the desktop for the same window twice.
     func summonQuickAsk() {
         AskTimer.begin()
+        if let open = QuickAskWindow.open {
+            open.close()
+            return
+        }
         if !QuickAskStage.layerAvailable { raise() }
-        if QuickAskWindow.open != nil { return }
         presentQuickAsk()
     }
 
