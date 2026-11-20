@@ -1,5 +1,6 @@
 import CodingAgentKit
 import Foundation
+import Synchronization
 
 /// Every sentence a client shows about a schedule, so three clients say the same thing about it.
 public enum ScheduleWords {
@@ -136,14 +137,26 @@ public enum ScheduleWords {
     }
 
     static func timeText(_ date: Date, calendar: Calendar) -> String {
-        let format = DateFormatter()
-        format.calendar = calendar
-        format.timeZone = calendar.timeZone
-        format.locale = Locale.current
-        format.dateStyle = .none
-        format.timeStyle = .short
-        return format.string(from: date)
+        let locale = Locale.current
+        let key =
+            "\(calendar.identifier)|\(calendar.timeZone.identifier)|\(locale.identifier)|\(locale.hourCycle)"
+        return timeFormats.withLock { formats in
+            if let format = formats[key] { return format.string(from: date) }
+            let format = DateFormatter()
+            format.calendar = calendar
+            format.timeZone = calendar.timeZone
+            format.locale = locale
+            format.dateStyle = .none
+            format.timeStyle = .short
+            formats[key] = format
+            return format.string(from: date)
+        }
     }
+
+    /// Building a formatter costs more than the line it formats, and Home asks for the next run's
+    /// time on every render — a quarter of its render was spent opening ICU formatters — so one is
+    /// kept per calendar, zone and locale.
+    private static let timeFormats = Mutex<[String: DateFormatter]>([:])
 
     static func weekday(_ index: Int, calendar: Calendar) -> String {
         let names = calendar.standaloneWeekdaySymbols
