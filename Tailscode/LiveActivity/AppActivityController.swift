@@ -57,6 +57,10 @@ final class AppActivityController {
         /// for it: while the card still shows that ending, a reading for a different prompt is a
         /// new turn, whatever the two clocks behind the ending and the new turn's start say.
         var settledTurn: (prompt: String, endedAt: Date)?
+        /// Whether the person asked for this card — a send from here, the chat on screen — or the
+        /// app or a server opened it for a turn elsewhere, which is what decides who gives way when
+        /// iOS will hold no more.
+        var claim: LiveActivityRoom.Claim = .followed
     }
 
     private var entries: [String: Entry] = [:]
@@ -64,6 +68,11 @@ final class AppActivityController {
     private var pendingTokens: [String: UUID] = [:]
     private var tokenHandoffs: [String: Task<Void, Never>] = [:]
     private var starting: [String: Deferred] = [:]
+    /// Cards a server started that are being taken up, by activity: standing but not yet followed.
+    private var adopting: Set<String> = []
+    /// Whether the cards a previous process left have been taken up, before which a card nothing
+    /// here follows is not yet a stray.
+    private var adoptedStanding = false
     /// Every surface showing a conversation and which one, held weakly and asked whether it is in
     /// a window when it matters, so a surface torn down without saying goodbye reads as gone.
     private let readers = NSMapTable<UIViewController, NSString>(
@@ -155,8 +164,13 @@ final class AppActivityController {
         PushRegistrar.rulesChanged()
     }
 
-    /// How many cards are live or being asked for: what the cards this device opens by itself for
-    /// turns it did not send are counted against.
+    /// How many cards are on the Lock Screen or being asked for, live, settled or ended: what the
+    /// cards this device opens by itself for turns it did not send are counted against, because iOS
+    /// counts every one of them against the handful it lets the app keep.
+    var standingCount: Int { starting.count + entries.count }
+
+    /// How many cards are live or being asked for: what the free tier's single card is counted
+    /// against, since its card gives an ending's place to the next turn it follows.
     var liveCount: Int {
         starting.count
             + entries.filter { !$0.value.retired && !current($0.key, $0.value).isSettled }.count
@@ -189,10 +203,12 @@ final class AppActivityController {
     ///
     /// `startedAt` is when the turn began, for a card opened on a turn that was already running —
     /// one this device did not send — so its clock tells the turn's age rather than the card's.
+    /// `claim` says whether the person asked for the card or the app is following a turn elsewhere
+    /// by itself; only the first makes room among cards still running when iOS holds no more.
     func start(
         sessionID: String, sessionTitle: String, serverName: String, profileID: String? = nil,
         startedAt turnBegan: Date? = nil, onPushToken: PushTokenSink? = nil,
-        serverAlerts: Bool = false
+        serverAlerts: Bool = false, claim: LiveActivityRoom.Claim = .asked
     ) {
         guard AppPreferences.liveActivitiesEnabled else {
             MidgarLog.info("Live Activity disabled in settings", category: .chat)
@@ -213,6 +229,7 @@ final class AppActivityController {
             entry.pushedAt = startedAt
             if let onPushToken { entry.onPushToken = onPushToken }
             entry.serverAlerts = onPushToken != nil && serverAlerts
+            if claim == .asked { entry.claim = .asked }
             entries[sessionID] = entry
             write(sessionID, entry.activity, state)
             if let token = entry.pushToken, let sink = entry.onPushToken {
@@ -250,7 +267,7 @@ final class AppActivityController {
         Task {
             await open(
                 sessionID, request, state: state, startedAt: startedAt, onPushToken: onPushToken,
-                serverAlerts: onPushToken != nil && serverAlerts)
+                serverAlerts: onPushToken != nil && serverAlerts, claim: claim)
         }
     }
 
@@ -301,21 +318,28 @@ final class AppActivityController {
     /// ends — and brings the controller up to date with whatever happened meanwhile.
     private func open(
         _ sessionID: String, _ request: CardRequest, state: State, startedAt: Date,
-        onPushToken: PushTokenSink?, serverAlerts: Bool
+        onPushToken: PushTokenSink?, serverAlerts: Bool, claim: LiveActivityRoom.Claim
     ) async {
         var answer = await Self.offMain("a new card") { Self.ask(request) }
-        if case .refused(let error) = answer, Self.isFull(error), let oldest = oldestSettled() {
-            MidgarLog.info("Live Activity refused (\(error)); making room", category: .chat)
-            dismiss(oldest, entries[oldest])
-            let retried = await Self.offMain("a new card") { Self.ask(request) }
-            if case .started = retried { answer = retried }
+        var gaveWay = 0
+        while case .refused(let error) = answer, Self.isFull(error), gaveWay < Self.roomTries,
+            let room = LiveActivityRoom.yielding(roomFacts(besides: sessionID), to: claim)
+        {
+            MidgarLog.info(
+                "Live Activity refused (\(error)) \(await census()); \(room) gives way to \(sessionID)",
+                category: .chat)
+            await giveWay(room)
+            gaveWay += 1
+            answer = await Self.offMain("a new card") { Self.ask(request) }
         }
         let deferred = starting.removeValue(forKey: sessionID)
         switch answer {
         case .disabled:
             MidgarLog.info("Live Activity not authorized", category: .chat)
         case .refused(let error):
-            MidgarLog.error("Live Activity failed to start: \(error)", category: .chat)
+            MidgarLog.error(
+                "Live Activity failed to start for \(sessionID): \(error) \(await census())",
+                category: .chat)
         case .started(let activity):
             guard AppPreferences.liveActivitiesEnabled, deferred?.withdrawn != true else {
                 let ending = Handles(activities: [activity])
@@ -324,7 +348,7 @@ final class AppActivityController {
             }
             entries[sessionID] = Entry(
                 activity: activity, state: state, card: state, pushedAt: startedAt,
-                onPushToken: onPushToken, serverAlerts: serverAlerts)
+                onPushToken: onPushToken, serverAlerts: serverAlerts, claim: claim)
             watch(activity, sessionID: sessionID)
             MidgarLog.info("Live Activity started for \(sessionID)", category: .chat)
             if let held = deferred?.update {
@@ -634,12 +658,14 @@ final class AppActivityController {
     /// Takes up the cards a previous process left behind instead of sweeping them away: a turn
     /// that is still running keeps its card, and one that settled while nobody was here keeps
     /// waiting to be read. A second card for the same conversation — which only a crash between a
-    /// request and its bookkeeping could leave — goes.
+    /// request and its bookkeeping could leave — goes. Run again whenever the app comes forward to
+    /// a card nothing here follows; a card being asked for or taken up is left to that.
     func adoptStanding() async {
         let visible = await Self.offMain("the standing cards") { Self.readStanding() }
+            .filter { !adopting.contains($0.activity.id) }
         var extras: [Activity<ChatActivityAttributes>] = []
         for (sessionID, found) in Dictionary(grouping: visible, by: \.sessionID)
-        where entries[sessionID] == nil {
+        where entries[sessionID] == nil && starting[sessionID] == nil {
             let newestFirst = found.sorted { $0.state.startedAt > $1.state.startedAt }
             let standing = newestFirst.filter { Self.isStanding($0.platform) }
             guard let kept = standing.first ?? newestFirst.first else { continue }
@@ -655,7 +681,7 @@ final class AppActivityController {
                 platform: kept.platform, title: kept.state.title, pushedAt: .distantPast,
                 pushToken: kept.pushToken, onPushToken: sink,
                 serverAlerts: attributes.profileID.map(Self.serverAlerts(profileID:)) ?? false,
-                retired: !Self.isStanding(kept.platform))
+                retired: !Self.isStanding(kept.platform), claim: .followed)
             watch(kept.activity, sessionID: sessionID, tokens: false)
             if let sink, let token = kept.pushToken, Self.isStanding(kept.platform),
                 !kept.state.isSettled
@@ -674,6 +700,7 @@ final class AppActivityController {
             let ending = Handles(activities: extras)
             Task.detached { await ending.endAll() }
         }
+        adoptedStanding = true
         retireExpired()
     }
 
@@ -691,7 +718,45 @@ final class AppActivityController {
             entry.platform = platform
             entries[sessionID] = entry
         }
+        await sweepStrays()
         retireExpired()
+    }
+
+    /// Settles every card iOS lists that nothing here follows, because each one holds one of the
+    /// few places iOS gives the app and none of them would ever move again: a conversation's second
+    /// card and a card the person already read or turned down are ended, and any other card for a
+    /// conversation this process has no card for is taken up the way a launch takes them up. A
+    /// card being asked for, taken up or written to is left alone.
+    private func sweepStrays() async {
+        guard adoptedStanding else { return }
+        let listed = await Self.offMain("the standing cards") { Self.readStanding() }
+        let declined = declined
+        var extras: [Activity<ChatActivityAttributes>] = []
+        var untracked = false
+        for card in listed
+        where !adopting.contains(card.activity.id) && starting[card.sessionID] == nil
+            && pendingWork[card.sessionID] == nil
+        {
+            if let entry = entries[card.sessionID] {
+                guard entry.activity.id != card.activity.id else { continue }
+                MidgarLog.info(
+                    "Live Activity a second card for \(card.sessionID) ended (\(card.platform))",
+                    category: .chat)
+            } else if declined.contains(card.sessionID) {
+                MidgarLog.info(
+                    "Live Activity left standing after it was read ended for \(card.sessionID)",
+                    category: .chat)
+            } else {
+                untracked = true
+                continue
+            }
+            extras.append(card.activity)
+        }
+        if !extras.isEmpty {
+            let ending = Handles(activities: extras)
+            await Task.detached { await ending.endAll() }.value
+        }
+        if untracked { await adoptStanding() }
     }
 
     private func retire(_ sessionID: String) {
@@ -739,12 +804,49 @@ final class AppActivityController {
         entries[sessionID] = entry
     }
 
-    private func oldestSettled() -> String? {
-        entries
-            .filter { current($0.key, $0.value).isSettled }
-            .min { (current($0.key, $0.value).endedAt ?? .distantPast)
-                < (current($1.key, $1.value).endedAt ?? .distantPast) }?
-            .key
+    /// How many cards one start may take down to make its own room: past that iOS is counting
+    /// cards this process cannot see, and taking more of the person's cards down would not help.
+    private static let roomTries = 2
+
+    /// Every standing card but the one being asked for, as `LiveActivityRoom` weighs them.
+    private func roomFacts(besides sessionID: String) -> [LiveActivityRoom.Standing] {
+        entries.compactMap { key, entry in
+            guard key != sessionID else { return nil }
+            let shown = current(key, entry)
+            return LiveActivityRoom.Standing(
+                sessionID: key, claim: entry.claim, endedAt: shown.endedAt,
+                movedAt: max(entry.pushedAt, shown.brief?.moved ?? shown.startedAt),
+                waitsOnYou: shown.isWaitingOnYou)
+        }
+    }
+
+    /// Takes a card down so another can stand, and waits until iOS has it down. A turn still
+    /// running elsewhere is declined until it rests, so following it by itself does not take the
+    /// place straight back.
+    private func giveWay(_ sessionID: String) async {
+        guard let entry = entries[sessionID] else { return }
+        if !current(sessionID, entry).isSettled { decline(sessionID) }
+        dismiss(sessionID, entry)
+        await pendingWork[sessionID]?.value
+    }
+
+    /// What stands when iOS refuses a card, for the log: the cards this process follows by kind,
+    /// and how many iOS itself lists, which says whether it is counting cards nothing here can see.
+    private func census() async -> String {
+        let listed = await Self.offMain("the standing cards") { Self.readStanding().count }
+        var live = 0
+        var settled = 0
+        var ended = 0
+        for (sessionID, entry) in entries {
+            if entry.retired {
+                ended += 1
+            } else if current(sessionID, entry).isSettled {
+                settled += 1
+            } else {
+                live += 1
+            }
+        }
+        return "(following \(live) live, \(settled) settled, \(ended) ended; iOS lists \(listed))"
     }
 
     /// What the card shows. While one of this process's own writes is on its way, that write is
@@ -795,6 +897,8 @@ final class AppActivityController {
     func adoptStarted(_ started: StartedCard) async {
         let activity = started.activity
         let sessionID = activity.attributes.sessionID
+        adopting.insert(activity.id)
+        defer { adopting.remove(activity.id) }
         var waited = 0
         while starting[sessionID] != nil, waited < 60 {
             try? await Task.sleep(for: .milliseconds(500))
@@ -831,7 +935,8 @@ final class AppActivityController {
             activity: activity, state: read.state, card: read.state, platform: read.platform,
             title: read.state.title, pushedAt: .distantPast, pushToken: read.token,
             onPushToken: sink,
-            serverAlerts: activity.attributes.profileID.map(Self.serverAlerts(profileID:)) ?? true)
+            serverAlerts: activity.attributes.profileID.map(Self.serverAlerts(profileID:)) ?? true,
+            claim: .followed)
         watch(activity, sessionID: sessionID, tokens: false)
         if let sink, let token = read.token {
             hand(token, startedAt: read.state.startedAt, to: sink, for: sessionID)

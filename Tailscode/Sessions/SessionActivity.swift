@@ -71,7 +71,8 @@ final class SessionActivity {
     /// a turn sent from a desktop, drained from a queue, run on a schedule or begun by the machine
     /// itself — so leaving the app leaves every turn in progress on the Lock Screen, and wakes a
     /// view model to follow each one to its end. Only while cards for turns started elsewhere are
-    /// on; never for a muted chat, and never more than `LiveActivityFollow.limit` standing at once.
+    /// on and the listing itself still says the turn runs; never for a muted chat, and never past
+    /// `LiveActivityFollow.limit` cards standing at once, ended ones included.
     func followRunning(
         entries: [SessionEntry], backend: (String) -> (any CodingAgentBackend)?
     ) {
@@ -87,20 +88,21 @@ final class SessionActivity {
                 && turnRunning(entry.session)
         }
         rewatch(running, following: cards, backend: backend)
-        guard !running.isEmpty else { return }
-        let candidates = running.map { entry in
+        let opening = running.filter { LiveActivityRoom.listedRunning($0.session) }
+        guard !opening.isEmpty else { return }
+        let candidates = opening.map { entry in
             LiveActivityFollow.Candidate(
                 sessionID: entry.session.id, movedAt: entry.session.updatedAt,
                 waitsOnYou: status(for: entry.session.id) == .awaitingApproval)
         }
-        let following = Set(running.map(\.session.id).filter { cards.follows($0) })
+        let following = Set(opening.map(\.session.id).filter { cards.follows($0) })
             .union(cards.declined)
         let chosen = LiveActivityFollow.choose(
             candidates, following: following, muted: AppPreferences.noticeRules.muted,
-            standing: cards.liveCount,
+            standing: ProAccess.shared.hasProAccess ? cards.standingCount : cards.liveCount,
             limit: ProAccess.shared.hasProAccess ? LiveActivityFollow.limit : 1)
         for sessionID in chosen {
-            guard let entry = running.first(where: { $0.session.id == sessionID }),
+            guard let entry = opening.first(where: { $0.session.id == sessionID }),
                 let backend = backend(entry.profileID)
             else { continue }
             let title =
@@ -111,7 +113,8 @@ final class SessionActivity {
                 profileID: entry.profileID,
                 onPushToken: AppActivityController.tokenSink(
                     backend: backend, sessionID: sessionID, title: title),
-                serverAlerts: AppActivityController.serverAlerts(profileID: entry.profileID))
+                serverAlerts: AppActivityController.serverAlerts(profileID: entry.profileID),
+                claim: .followed)
             MidgarLog.info("Live Activity opened for a turn working elsewhere \(sessionID)", category: .chat)
             if let held = retained[sessionID] {
                 held.cardFollowed = true
@@ -128,15 +131,10 @@ final class SessionActivity {
     }
 
     /// Whether a conversation has a turn running, as well as this device can tell: first-hand for
-    /// one it streams, then the listing's own word where the server gives one (claude-bridge says
-    /// whether the turn is open, whatever agents or background work also run), and otherwise
-    /// active with no work carried in the background and no agents out, which is the nearest a
-    /// listing that does not say comes to a turn.
+    /// one it streams, and otherwise the listing's own word (`LiveActivityRoom.listedRunning`).
     private func turnRunning(_ session: AgentSession) -> Bool {
         if retained[session.id] != nil { return status(for: session.id) == .running }
-        if let turnOpen = session.turnOpen { return turnOpen }
-        return session.isActive == true && (session.backgroundWork?.tasks ?? 0) == 0
-            && (session.activeAgents ?? 0) == 0
+        return LiveActivityRoom.listedRunning(session)
     }
 
     /// A card that is live for a running turn nothing here is watching any more — its stream gave

@@ -315,7 +315,9 @@ public enum LiveActivityHeadline {
 
 /// Which running conversations get a card while the app is in front, for the turns this device
 /// did not send. A turn waiting on the person comes first, then the one that moved last; a muted
-/// chat, one already followed and one past `limit` cards standing get none.
+/// chat, one already followed and one past `limit` cards standing get none. `standing` counts every
+/// card on the Lock Screen, ended ones too, because iOS counts them all against the handful it lets
+/// an app keep.
 public enum LiveActivityFollow {
     public struct Candidate: Sendable, Equatable {
         public let sessionID: String
@@ -329,7 +331,8 @@ public enum LiveActivityFollow {
         }
     }
 
-    /// The most cards the app keeps standing at once for turns it follows by itself.
+    /// The most cards standing before the app stops opening more by itself: one short of the five
+    /// iOS lets an app keep, so a turn the person sends next always has a place to land.
     public static let limit = 4
 
     public static func choose(

@@ -299,4 +299,61 @@ struct LiveActivityBriefTests {
         #expect(LiveActivityFollow.choose(running, following: [], muted: [], standing: 4).isEmpty)
         #expect(LiveActivityFollow.choose([], following: [], muted: [], standing: 0).isEmpty)
     }
+
+    @Test("A full Lock Screen gives up its oldest ending first, and a followed card only to one the person asked for")
+    func room() {
+        let early = Self.now.addingTimeInterval(-3600)
+        let late = Self.now.addingTimeInterval(-60)
+        let followedOld = LiveActivityRoom.Standing(
+            sessionID: "followed-old", claim: .followed, endedAt: nil, movedAt: early)
+        let followedNew = LiveActivityRoom.Standing(
+            sessionID: "followed-new", claim: .followed, endedAt: nil, movedAt: late)
+        let followedAsking = LiveActivityRoom.Standing(
+            sessionID: "followed-asking", claim: .followed, endedAt: nil, movedAt: early - 60,
+            waitsOnYou: true)
+        let asked = LiveActivityRoom.Standing(
+            sessionID: "asked", claim: .asked, endedAt: nil, movedAt: early - 120)
+        let endedQuestion = LiveActivityRoom.Standing(
+            sessionID: "ended-question", claim: .asked, endedAt: early - 600, movedAt: early,
+            waitsOnYou: true)
+        let endedLate = LiveActivityRoom.Standing(
+            sessionID: "ended-late", claim: .asked, endedAt: late, movedAt: late)
+        let endedEarly = LiveActivityRoom.Standing(
+            sessionID: "ended-early", claim: .followed, endedAt: early, movedAt: early)
+
+        let full = [followedOld, followedNew, followedAsking, asked, endedQuestion, endedLate, endedEarly]
+        #expect(LiveActivityRoom.yielding(full, to: .followed) == "ended-early")
+        #expect(LiveActivityRoom.yielding(full, to: .asked) == "ended-early")
+        #expect(LiveActivityRoom.yielding([endedQuestion, endedLate], to: .followed) == "ended-late")
+        #expect(LiveActivityRoom.yielding([endedQuestion], to: .asked) == "ended-question")
+
+        let running = [followedOld, followedNew, followedAsking, asked]
+        #expect(LiveActivityRoom.yielding(running, to: .asked) == "followed-old")
+        #expect(LiveActivityRoom.yielding(running, to: .followed) == nil)
+        #expect(LiveActivityRoom.yielding([followedAsking, asked], to: .asked) == nil)
+        #expect(LiveActivityRoom.yielding([], to: .asked) == nil)
+    }
+
+    @Test("A card opens by itself only while the listing still says the turn is running")
+    func listedRunning() {
+        func session(
+            active: Bool?, turnOpen: Bool? = nil, tasks: Int = 0, agents: Int? = nil
+        ) -> AgentSession {
+            var session = AgentSession(
+                id: "s", agentType: .claudeCode, title: "Chat", createdAt: Self.now,
+                updatedAt: Self.now, isActive: active)
+            session.turnOpen = turnOpen
+            session.backgroundWork = tasks > 0 ? BackgroundWork(tasks: tasks) : nil
+            session.activeAgents = agents
+            return session
+        }
+        #expect(LiveActivityRoom.listedRunning(session(active: true)))
+        #expect(!LiveActivityRoom.listedRunning(session(active: false)))
+        #expect(!LiveActivityRoom.listedRunning(session(active: nil)))
+        #expect(!LiveActivityRoom.listedRunning(session(active: true, tasks: 2)))
+        #expect(!LiveActivityRoom.listedRunning(session(active: true, agents: 1)))
+        #expect(LiveActivityRoom.listedRunning(session(active: true, turnOpen: true, tasks: 2, agents: 1)))
+        #expect(!LiveActivityRoom.listedRunning(session(active: true, turnOpen: false)))
+        #expect(LiveActivityRoom.listedRunning(session(active: false, turnOpen: true)))
+    }
 }

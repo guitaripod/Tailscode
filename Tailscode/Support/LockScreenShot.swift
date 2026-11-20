@@ -44,9 +44,13 @@ import MidgarCore
 
         @MainActor
         static func startIfAsked() {
-            guard ProcessInfo.processInfo.environment["TAILSCODE_LOCKSCREEN"] != nil else { return }
+            guard let mode = ProcessInfo.processInfo.environment["TAILSCODE_LOCKSCREEN"] else { return }
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(1.5))
+                if mode == "room" {
+                    await crowd()
+                    return
+                }
                 for card in cards {
                     AppActivityController.shared.start(
                         sessionID: card.session, sessionTitle: card.title, serverName: card.server)
@@ -62,6 +66,36 @@ import MidgarCore
                     )
                 }
             }
+        }
+
+        /// `TAILSCODE_LOCKSCREEN=room`: fills the Lock Screen with cards the app follows by itself,
+        /// one settled and the rest running, and then asks for one the person sent, so the log
+        /// shows which card iOS refused and which one gave way to it.
+        @MainActor
+        private static func crowd() async {
+            let cards = AppActivityController.shared
+            for index in 1...5 {
+                let session = "room-\(index)"
+                cards.start(
+                    sessionID: session, sessionTitle: "Followed turn \(index)", serverName: "studio",
+                    claim: .followed)
+                try? await Task.sleep(for: .milliseconds(700))
+                cards.update(
+                    sessionID: session,
+                    reading: LiveActivityReading(detail: .tool, tool: "Bash", toolCount: index),
+                    title: nil, brief: brief(for: .tool))
+                if index == 3 {
+                    cards.settle(
+                        sessionID: session, reading: LiveActivityReading(detail: .finished),
+                        title: nil)
+                }
+            }
+            try? await Task.sleep(for: .seconds(1))
+            cards.start(sessionID: "room-asked", sessionTitle: "The turn I sent", serverName: "studio")
+            try? await Task.sleep(for: .seconds(3))
+            cards.start(sessionID: "room-asked-2", sessionTitle: "My second send", serverName: "studio")
+            try? await Task.sleep(for: .seconds(3))
+            MidgarLog.info("lockscreen: room standing \(cards.standingCount)", category: .ui)
         }
     }
 #endif
