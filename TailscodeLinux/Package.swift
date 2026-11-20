@@ -218,7 +218,8 @@ enum Kit {
     /// 0.62.0 says which answers a person stopped by hand, and when a waited-on turn ended.
     /// 0.63.0 edits and cancels a prompt waiting in opencode 2's inbox, in its own place in the
     /// queue and under its own id, so a queued message can be rewritten on opencode too.
-    static let version = Version(0, 63, 1)
+    /// 0.64.0 speaks the experts a claude-bridge keeps (MachineExperts).
+    static let version = Version(0, 64, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
