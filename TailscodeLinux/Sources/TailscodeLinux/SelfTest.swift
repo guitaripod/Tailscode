@@ -130,6 +130,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkSendMoment()
+            report("send moment: \(checks) claims hold: the echo is the server's row from the press, a prompt on its way leaves the turn before it closed, a send that never left waits, a failure changes in place")
+        } catch {
+            report("send moment: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkPartyCards()
             report("party: \(checks) claims hold: six cards, the one in use, a name kept and given back, a swap, a level step, no card on another")
         } catch {

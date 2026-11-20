@@ -39,6 +39,7 @@ extension TranscriptRow {
         guard case .pastedText(_, let messageID) = kind else { return false }
         switch previous.kind {
         case .userText(_, let id), .pastedText(_, let id): return id == messageID
+        case .pendingSend(let send, _): return TranscriptRow.echoMessageID(send.id) == messageID
         default: return false
         }
     }

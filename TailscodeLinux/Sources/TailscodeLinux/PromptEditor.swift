@@ -417,6 +417,14 @@ final class PromptEditor: @unchecked Sendable {
         settleAfterLayout()
     }
 
+    /// The box was just emptied by a send: it is one line tall, which needs no layout to know, so
+    /// it takes that height in this frame — the same frame the prompt starts to rise — rather than
+    /// one idle later, when the transcript is already moving.
+    func settleEmptied() {
+        guard text.isEmpty else { return }
+        measure()
+    }
+
     /// A text view validates the lines of a document written whole in its own idle passes, and
     /// until they are validated it reports the height of the lines it has already laid out. Words
     /// arriving a keystroke at a time are measured again by the next keystroke; a document set in

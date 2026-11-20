@@ -24,6 +24,7 @@ final class LiveEdgeService: LiveEdges, @unchecked Sendable {
         var queue: ConversationQueue?
         var presence: SessionPresence = .running(nil)
         var watched = false
+        var unsent = false
     }
 
     /// How often a conversation with something held is asked about while its turn runs, so a
@@ -64,6 +65,15 @@ final class LiveEdgeService: LiveEdges, @unchecked Sendable {
     func endedSend(_ key: LiveKey) {
         lock.lock()
         records[key, default: Record()].handoff.end()
+        lock.unlock()
+    }
+
+    /// Whether a pane, or the shelf a pane left it on, holds a send of this conversation that did
+    /// not go. The queue waits behind it wherever it is drained, so nothing written later
+    /// overtakes it.
+    func noteUnsent(_ key: LiveKey, _ unsent: Bool) {
+        lock.lock()
+        if records[key]?.unsent != unsent { records[key, default: Record()].unsent = unsent }
         lock.unlock()
     }
 
@@ -146,9 +156,10 @@ final class LiveEdgeService: LiveEdges, @unchecked Sendable {
     func drainInBackground(_ key: LiveKey, after state: ConversationState) {
         lock.lock()
         let busy = records[key]?.sending ?? false
-        records[key, default: Record()].sending = true
+        let behindUnsent = records[key]?.unsent ?? false
+        if !busy, !behindUnsent { records[key, default: Record()].sending = true }
         lock.unlock()
-        guard !busy else { return }
+        guard !busy, !behindUnsent else { return }
         let hub = self.hub
         Task { [weak self] in
             guard let self else { return }

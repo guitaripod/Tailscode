@@ -123,7 +123,7 @@ extension ChatPane {
             let row = lastFullRows.last(where: { $0.key == key }),
             let source = row.streamedText
         else { return false }
-        let sealed = lastState?.status != .running
+        let sealed = !turnOpenNow
         let safe = cascade.renderable(
             row: key, source, sealed: sealed, markdown: row.streamsMarkdown)
         let held = safe == source ? row : row.truncated(to: safe)

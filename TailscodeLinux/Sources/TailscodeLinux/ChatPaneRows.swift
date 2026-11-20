@@ -195,7 +195,7 @@ extension ChatPane {
             index < rowWidgets.count,
             let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
         else { return false }
-        return TranscriptRow.restatePending(on: ptr(raw), send: send, plan: plan)
+        return TranscriptRow.restatePending(on: ptr(raw), send: send, plan: plan, context: context)
     }
 
     func appendRowWidgets(_ rows: ArraySlice<TranscriptRow>) {
@@ -278,8 +278,9 @@ extension ChatPane {
     /// follow each other, and the ceiling keeps a burst from staggering for two seconds.
     func noteEntrance(of widget: UnsafeMutablePointer<GtkWidget>, for row: TranscriptRow) {
         let firstSight = enteredRows.insert(row.key).inserted
-        guard !placeholderShown, !pendingReveal, fillComplete, followsBottom, firstSight,
-            row.announcesArrival, row.key != cascade.key
+        guard !placeholderShown, !pendingReveal, fillComplete,
+            followsBottom || canvasPromptKey != nil, firstSight, row.announcesArrival,
+            row.key != cascade.key
         else { return }
         let now = CascadePainter.now
         let at = min(max(now, nextEntranceAt), now + StreamCascade.entranceCeiling)

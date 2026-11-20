@@ -220,8 +220,9 @@ struct MatrixStylesheet {
             min-width: 2px;
         }
         .pending-rule-failed { background-color: \(danger); }
-        .pending-ink { opacity: 1; transition: opacity 250ms ease-out; }
-        .pending-text-failed { color: \(danger); }
+        .pending-rule { transition: background-color 220ms ease-out, box-shadow 220ms ease-out; }
+        .pending-text { transition: color 220ms ease-out; }
+        .pending-text-failed, .prompt-text.pending-text-failed { color: \(danger); }
         .prompt-glyph { color: \(accent); \(t(.promptGlyph)) }
         .prompt-text { color: \(text); \(t(.prompt)) }
         .agent-text { color: \(text); \(t(.answer)) }

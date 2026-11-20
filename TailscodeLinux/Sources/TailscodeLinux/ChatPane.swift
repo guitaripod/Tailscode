@@ -171,6 +171,9 @@ final class ChatPane: @unchecked Sendable {
     }
     var canvasPromptTop: Double?
     var canvasSettle: FreshCanvasScroll?
+    /// The frame-by-frame wait for a just-sent prompt's row to be allocated, so a new send can
+    /// call off the wait of the one before it.
+    var canvasWatch: FrameWatch?
     /// Where in the transcript the send the canvas rose to was drawn. The rows this device drew
     /// are replaced by the server's own account of the same message, and the canvas follows them
     /// across — but a pending row that was discarded rather than reconciled leaves an *older*
@@ -423,6 +426,23 @@ final class ChatPane: @unchecked Sendable {
     /// or every message written during a turn goes at once and the agent answers only the last.
     var handoff = TurnHandoff()
     var handoffWakeGeneration = 0
+
+    /// Each send's attempt on the wire, named by a token, so an answer is applied only by the
+    /// attempt that is still the current one and a second attempt never starts beside it.
+    var sendTasks: [UUID: SendAttempt] = [:]
+    /// Whether the chat on screen has had a loaded transcript since it was opened — the moment the
+    /// sends held across a quit are put back and every held send may try again.
+    var sendsSawLoad = false
+    /// The clock of every send held for the connection: how many times it has been tried, since
+    /// when, and which wake is the current one.
+    var sendWaits: [UUID: SendWaitClock] = [:]
+    var sendWaitGeneration = 0
+    /// The connection the last applied state reported, so a stream coming back live is noticed
+    /// once and every send held for it is tried at that moment rather than on its next tick.
+    var lastConnection: ConnectionPhase?
+    var witnessGeneration = 0
+    /// What a harness asked the next sends to meet on the wire (`sendfault=` drive verb).
+    var sendFault = SendFault()
 
     var shownWelcome: EmptyWelcome?
 

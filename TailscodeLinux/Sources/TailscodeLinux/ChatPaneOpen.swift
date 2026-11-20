@@ -102,7 +102,7 @@ extension ChatPane {
         attachments = []
         carry = carryStash.removeValue(forKey: Self.preferenceKey(entry))
         pastedImageCount = 0
-        pending.removeAll()
+        shelveSends(leaving: previousEntry.map(LiveKey.init), opening: LiveKey(entry))
         resume.removeAll()
         resumeTask?.cancel()
         resumeTask = nil
@@ -226,7 +226,11 @@ extension ChatPane {
                     return
                 }
                 self.conversation = conversation
-                if let state = self.lastState { self.drainHeldQueue(state) }
+                if let state = self.lastState {
+                    if state.hasLoadedTranscript { self.postSendsAwaitingLoad(state) }
+                    self.drainHeldQueue(state)
+                }
+                self.resumeShelvedSends()
                 continuation.resume(returning: true)
             }
         }
@@ -240,27 +244,28 @@ extension ChatPane {
                     return
                 }
                 let effort = ModelEffort.surviving(self.chosenEffort, options: self.effortOptions())
-                let row = self.pending.begin(
-                    text: words,
-                    userMessages: self.lastState?.messages.count { $0.role == .user } ?? 0)
-                self.openHandoff()
-                self.redrawPending()
-                self.raiseFreshCanvas(for: row.id)
-                if Ultracode.invokes(words) || effort == Ultracode.effortLevel {
-                    self.ultracodeInFlight = true
-                    self.refreshUltracodeAura()
+                if case .prompt = queued.send.kind {
+                    self.deliver(
+                        QueuedSend(
+                            text: words, model: self.chosenModel, effort: effort,
+                            attachments: queued.attachments.map(\.prompt)),
+                        through: conversation)
+                } else {
+                    self.openHandoff()
                 }
                 continuation.resume(returning: (self.chosenModel, effort))
             }
         }
-        switch queued.send.kind {
-        case .prompt:
-            try? await conversation.send(
-                words, model: choice.0, reasoningEffort: choice.1,
-                attachments: queued.attachments.map(\.prompt))
-        case .command(let command, let arguments):
-            try? await conversation.run(
+        guard case .command(let command, let arguments) = queued.send.kind else { return }
+        do {
+            try await conversation.run(
                 command, arguments: arguments, model: choice.0, reasoningEffort: choice.1)
+        } catch {
+            Gtk.onMain { [weak self] in
+                guard let self, self.sessionID == sessionID else { return }
+                self.endHandoff()
+                self.setNotice(AgentErrorText.readable(error))
+            }
         }
     }
 
@@ -362,6 +367,7 @@ extension ChatPane {
         resumeTask?.cancel()
         resumeTask = nil
         dictation.chatChanged()
+        shelveSends(leaving: liveKey, opening: nil)
         entry = nil
         call.chatChanged()
         clearComposer()
@@ -396,6 +402,7 @@ extension ChatPane {
         stashDraft()
         call.shutdown()
         if let entry, presence.isInFlight { host?.keepWatching(entry) }
+        shelveSends(leaving: liveKey, opening: nil)
         leaveFreshCanvas()
         releaseStream()
         FillTurns.cancel(owner: self)

@@ -6,7 +6,10 @@ import Foundation
 import TailscodeCore
 
 extension ChatPane {
+    /// Stop always does something: a send still on its way is called back here, and the server is
+    /// asked to stop in case the prompt already landed and started a turn.
     func stopTurn() {
+        stopSendsInFlight()
         guard let conversation else { return }
         Task { try? await conversation.cancelCurrentTurn() }
     }
@@ -45,7 +48,9 @@ extension ChatPane {
         let key = Self.pendingKey(id)
         canvasPromptKey = key
         canvasPromptTop = nil
-        canvasFloor = renderedRows.lastIndex { $0.key == key } ?? renderedRows.count
+        canvasFloor =
+            renderedRows.lastIndex { $0.key == key || $0.key.hasPrefix(key + ":") }
+            ?? renderedRows.count
         canvasPinned = false
         canvasRising = true
         // Following stays on until there is something to rise to. The row this send just appended
@@ -58,38 +63,44 @@ extension ChatPane {
     }
 
     /// The row this frame appended has no height until the next allocation, and the room cannot
-    /// be measured against a row that is not there yet: ask again frame by frame, briefly.
+    /// be measured against a row that is not there yet: ask again on every frame of the pane's own
+    /// clock, so the rise starts on the very frame the row is first allocated.
+    ///
+    /// Patience is about the page, not the clock. A long conversation is filled a chunk of rows
+    /// at a time with a main-loop hop between chunks, so the row this send just appended has no
+    /// widget — and no measurable height — until the fill reaches it. A wall-clock second is
+    /// gone long before that on a transcript of a few thousand rows, and the rise was given up
+    /// on exactly the conversations it was built for. So the wait runs while the pane is still
+    /// filling, and the clock only starts once it has stopped.
     func awaitFreshCanvasPrompt(attempts: Int) {
-        guard canvasPromptKey != nil else { return }
-        if canvasPrompt() != nil {
-            followsBottom = false
-            settleFreshCanvas()
-            animateFreshCanvas()
-            return
-        }
-        // Patience is about the page, not the clock. A long conversation is filled a chunk of rows
-        // at a time with a main-loop hop between chunks, so the row this send just appended has no
-        // widget — and no measurable height — until the fill reaches it. A wall-clock second is
-        // gone long before that on a transcript of a few thousand rows, and the rise was given up
-        // on exactly the conversations it was built for. So the wait runs while the pane is still
-        // filling, and the clock only starts once it has stopped.
-        guard !fillComplete || isFillingInChunks
-            || Double(attempts) * 0.016 < FreshCanvas.patience,
-            Double(attempts) * 0.016 < FreshCanvas.ceiling
-        else {
-            AppLog.write(
-                .ui,
-                "fresh canvas: prompt row never measured after \(attempts) frames "
-                    + "(filled=\(fillComplete))")
-            canvasPromptKey = nil
-            canvasPinned = false
-            canvasRising = false
-            if canvasPadding > 0 { setCanvasPadding(0) }
-            setFollowing(true)
-            return
-        }
-        Gtk.after(16) { [weak self] in
-            Gtk.onMain { [weak self] in self?.awaitFreshCanvasPrompt(attempts: attempts + 1) }
+        guard canvasPromptKey != nil, let clock = transcriptScroller else { return }
+        canvasWatch?.cancel()
+        let started = CascadePainter.now
+        var settledFill: Double?
+        canvasWatch = FrameWatch.run(on: clock) { [weak self] in
+            guard let self, self.canvasPromptKey != nil else { return true }
+            if self.canvasPrompt() != nil {
+                self.followsBottom = false
+                self.settleFreshCanvas()
+                self.animateFreshCanvas()
+                return true
+            }
+            let now = CascadePainter.now
+            if self.fillComplete, !self.isFillingInChunks, settledFill == nil { settledFill = now }
+            let waited = now - (settledFill ?? now)
+            guard waited < FreshCanvas.patience, now - started < FreshCanvas.ceiling else {
+                AppLog.write(
+                    .ui,
+                    "fresh canvas: prompt row never measured after \(Int((now - started) * 1000)) ms "
+                        + "(filled=\(self.fillComplete))")
+                self.canvasPromptKey = nil
+                self.canvasPinned = false
+                self.canvasRising = false
+                if self.canvasPadding > 0 { self.setCanvasPadding(0) }
+                self.setFollowing(true)
+                return true
+            }
+            return false
         }
     }
 
@@ -102,12 +113,9 @@ extension ChatPane {
     /// to the words rests under the top edge rather than one row above it.
     func canvasPrompt() -> (top: Double, height: Double)? {
         guard let key = canvasPromptKey, let canvas = canvasBox else { return nil }
-        var index = renderedRows.lastIndex { $0.key == key }
+        var index = renderedRows.lastIndex { $0.key == key || $0.key.hasPrefix(key + ":") }
         if index == nil, key.hasPrefix("pending:"),
-            let last = renderedRows.lastIndex(where: {
-                if case .userText = $0.kind { return true }
-                return false
-            }), last >= canvasFloor - 2
+            let last = renderedRows.lastIndex(where: \.isPromptBlock), last >= canvasFloor - 2
         {
             canvasPromptKey = renderedRows[last].key
             index = last
@@ -278,6 +286,8 @@ extension ChatPane {
 
     /// Leaving the chat takes the room with it; the next one opens on its own end.
     func leaveFreshCanvas() {
+        canvasWatch?.cancel()
+        canvasWatch = nil
         canvasSettle?.cancel()
         canvasSettle = nil
         canvasPromptKey = nil

@@ -479,7 +479,7 @@ extension ChatPane {
         if lease != nil {
             feed.rebuild(state)
         } else if !isParked {
-            apply(state: state, rows: rowBuilder.rows(state: state))
+            apply(state: state, rows: paneRows(for: state))
         }
     }
 
@@ -510,7 +510,7 @@ extension ChatPane {
     func rebuildTranscriptRows() {
         guard let state = lastState else { return }
         if lease == nil, !isParked, entry == nil || isScripted {
-            apply(state: state, rows: rowBuilder.rows(state: state))
+            apply(state: state, rows: paneRows(for: state))
         } else {
             feed.rebuild(state)
         }

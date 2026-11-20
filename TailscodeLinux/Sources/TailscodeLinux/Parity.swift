@@ -70,6 +70,7 @@ enum ParityManifest {
         case .followBottom: return .implemented("jumpToBottom")
         case .transcriptFind: return .implemented("findEntry")
         case .userEcho: return .implemented("restatePending")
+        case .sendWhenBack: return .implemented("armSendWait")
         case .freshCanvas: return .implemented("raiseFreshCanvas")
         case .chooserBriefing: return .implemented("showBriefing")
         case .delegateBoard: return .implemented("DelegateWindow")

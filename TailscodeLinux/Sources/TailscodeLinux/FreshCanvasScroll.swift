@@ -77,3 +77,41 @@ final class FreshCanvasScroll: @unchecked Sendable {
         Unmanaged.passUnretained(self).release()
     }
 }
+
+/// Asks a question once a frame, on a widget's own frame clock, until it answers yes. A row
+/// appended this frame is allocated on a later one, and a chained 16 ms timeout polling for it
+/// lands off the compositor's beat — the rise then starts a frame late or two frames in one.
+final class FrameWatch: @unchecked Sendable {
+    private let ask: () -> Bool
+    private var finished = false
+
+    private init(ask: @escaping () -> Bool) {
+        self.ask = ask
+    }
+
+    /// Starts asking on `clock`'s frames. `ask` returns true once it is done.
+    @discardableResult
+    static func run(on clock: UnsafeMutablePointer<GtkWidget>, _ ask: @escaping () -> Bool)
+        -> FrameWatch
+    {
+        let watch = FrameWatch(ask: ask)
+        _ = Gtk.releaseInstalled
+        _ = tailscode_add_owned_tick(
+            clock,
+            { raw in
+                guard let raw else { return 0 }
+                let watch = Unmanaged<FrameWatch>.fromOpaque(raw).takeUnretainedValue()
+                guard !watch.finished else { return 0 }
+                if watch.ask() {
+                    watch.finished = true
+                    return 0
+                }
+                return 1
+            }, Unmanaged.passRetained(watch).toOpaque())
+        return watch
+    }
+
+    func cancel() {
+        finished = true
+    }
+}

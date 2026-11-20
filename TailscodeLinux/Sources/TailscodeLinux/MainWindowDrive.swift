@@ -313,6 +313,58 @@ extension MainWindow {
         case "canvas":
             FileHandle.standardOutput.write(
                 Data("CANVAS \(self.activePane.freshCanvasReading)\n".utf8))
+        case "sendfault":
+            self.activePane.armSendFault(argument)
+            FileHandle.standardOutput.write(Data("SENDFAULT \(argument)\n".utf8))
+        case "queue":
+            let pane = self.activePane
+            pane.hold(QueuedSend(text: argument.isEmpty ? "queued behind the held send" : argument))
+            if let state = pane.lastState {
+                pane.apply(state: state, rows: pane.lastFullRows)
+                pane.drainHeldQueue(state)
+            }
+            FileHandle.standardOutput.write(Data("QUEUE \(pane.sendReading)\n".utf8))
+        case "sendpicture":
+            let pane = self.activePane
+            if let conversation = pane.conversation,
+                let data = FileManager.default.contents(atPath: argument)
+            {
+                pane.enqueueOrRun(
+                    QueuedSend(
+                        text: "",
+                        attachments: [
+                            PromptAttachment(
+                                mime: "image/png",
+                                filename: URL(fileURLWithPath: argument).lastPathComponent,
+                                data: data)
+                        ]),
+                    through: conversation)
+            }
+            FileHandle.standardOutput.write(Data("SENDPICTURE \(pane.sendReading)\n".utf8))
+        case "lastusers":
+            let users = (self.activePane.lastState?.messages ?? []).filter { $0.role == .user }
+            let shown = users.suffix(Int(argument) ?? 3)
+                .map { String($0.text.prefix(40)).replacingOccurrences(of: "\n", with: " ") }
+                .joined(separator: " | ")
+            FileHandle.standardOutput.write(Data("LASTUSERS \(shown)\n".utf8))
+        case "countwords":
+            let wanted = argument.trimmingCharacters(in: .whitespacesAndNewlines)
+            let count =
+                self.activePane.lastState?.messages.count {
+                    $0.role == .user && $0.text.trimmingCharacters(in: .whitespacesAndNewlines) == wanted
+                } ?? 0
+            FileHandle.standardOutput.write(Data("COUNTWORDS \(count) \(wanted)\n".utf8))
+        case "sendstate":
+            FileHandle.standardOutput.write(
+                Data("SENDSTATE \(self.activePane.sendReading) \(self.activePane.echoReading)\n".utf8))
+        case "sendact":
+            let pane = self.activePane
+            if let send = pane.pending.sends.last,
+                let act = PendingSend.Act(rawValue: argument.isEmpty ? "retry" : argument)
+            {
+                pane.actOnPending(send.id, act)
+            }
+            FileHandle.standardOutput.write(Data("SENDACT \(argument) \(pane.sendReading)\n".utf8))
         case "tab":
             _ = self.activePane.handleComposerKey(keyval: Keymap.tab, state: 0)
             FileHandle.standardOutput.write(

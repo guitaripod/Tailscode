@@ -154,6 +154,7 @@ extension SelfTest {
             case "agent": report("background agent: \(try checkBackgroundAgent()) claims hold")
             case "carry": report("model seam and carry: \(try checkModelSeamAndCarry()) claims hold")
             case "paste": report("folded paste: \(try checkFoldedPaste()) claims hold")
+            case "send": report("send moment: \(try checkSendMoment()) claims hold")
             case "workflow":
                 report("workflow card: \(try checkWorkflowCard()) run shapes read correctly")
                 report("workflow card window: \(try checkWorkflowCardWindow()) claims hold for a 660-agent run")

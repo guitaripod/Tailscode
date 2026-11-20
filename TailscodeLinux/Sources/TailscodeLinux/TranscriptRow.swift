@@ -272,12 +272,17 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     }
 
     /// Rows for a state, with the conversation's own account of what it is waiting on.
+    ///
+    /// - Parameter turnOpen: whether the transcript's last turn is open, when the caller knows
+    ///   better than the server's word — a prompt this device sent that has not landed yet leaves
+    ///   the turn before it closed though the server already says it is running
+    ///   (`PendingSendLedger.turnIsOpen`). Nil reads the status alone.
     func rows(
-        state: ConversationState, messages: [ChatMessage]? = nil,
+        state: ConversationState, messages: [ChatMessage]? = nil, turnOpen: Bool? = nil,
         modelName: (ModelSelection) -> String? = { _ in nil }
     ) -> [TranscriptRow] {
         rows(
-            for: messages ?? state.messages, turnOpen: state.status == .running,
+            for: messages ?? state.messages, turnOpen: turnOpen ?? (state.status == .running),
             awaiting: BrainAwaiting.read(state), chapters: state.chapters, modelName: modelName)
     }
 

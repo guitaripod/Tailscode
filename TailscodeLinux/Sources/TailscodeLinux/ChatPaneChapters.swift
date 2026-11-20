@@ -68,7 +68,7 @@ extension ChatPane {
         let state = ConversationState(
             messages: demo.messages, status: .idle, hasLoadedTranscript: true,
             chapters: demo.chapters)
-        apply(state: state, rows: rowBuilder.rows(state: state))
+        apply(state: state, rows: paneRows(for: state))
         updateStatus()
     }
 }

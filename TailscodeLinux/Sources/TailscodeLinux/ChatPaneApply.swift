@@ -64,20 +64,9 @@ extension ChatPane {
         let held = holdsPaintedRows(whenTold: rows, by: state)
         var rows = Self.withoutDocked(held ? lastFullRows : rows)
         dockRevert(&rows, state: state)
-        pending.reconcile(userMessages: userTally.users(in: state.messages))
+        settleSends(with: state)
         armResumeForWalledTurn(state)
-        if !pending.isEmpty {
-            if !rows.isEmpty {
-                rows.append(TranscriptRow(key: "pending:break", kind: .turnBreak))
-            }
-            for send in pending.sends {
-                let plan = resume.plan(for: send.id)
-                rows.append(
-                    TranscriptRow(
-                        key: Self.pendingKey(send.id) + (plan.map { ":wait\($0.attempt)" } ?? ""),
-                        kind: .pendingSend(send, plan)))
-            }
-        }
+        dockPending(&rows)
         // A turn the machine cut off is docked at the very end: it is an account of what already
         // happened, and it belongs below everything that did.
         if let cutOff = interruptedCard(state) {
@@ -102,7 +91,7 @@ extension ChatPane {
         }
         lastFullRows = rows
         noteDoubledRows(rows)
-        let turnOpen = state.status == .running
+        let turnOpen = pending.turnIsOpen(running: state.status == .running)
         let turnEnded = context.turnOpen && !turnOpen
         let sameChat = turnSession == sessionID
         turnSession = sessionID
@@ -134,8 +123,7 @@ extension ChatPane {
                 showPlaceholder(Localized.text("Loading…"))
             }
         } else {
-            applyRows(
-                pacedByCascade(windowed, running: state.status == .running), appended: appended)
+            applyRows(pacedByCascade(windowed, running: turnOpen), appended: appended)
             settleStreamedTail(in: windowed)
             paintCascade()
         }

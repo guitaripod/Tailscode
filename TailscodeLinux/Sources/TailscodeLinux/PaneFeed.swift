@@ -11,6 +11,10 @@ struct PaneBuildContext: Sendable {
     var sessionModel: String?
     var sessionProviderID: String?
     var models: [ModelInfo] = []
+    /// The baseline of the newest prompt this device sent that the transcript does not hold yet
+    /// (`PendingSendLedger.echoBaseline`), so a build can tell the server's running turn from the
+    /// finished one before it without asking the pane.
+    var echoBaseline: Int?
 }
 
 /// One state with its rows and its context fill, built off the main loop for one conversation of
@@ -117,6 +121,9 @@ final class PaneFeed: @unchecked Sendable {
         let profileID = context.profileID
         let rows = builder.rows(
             state: state, messages: messages,
+            turnOpen: PendingSendLedger.turnIsOpen(
+                running: state.status == .running, messages: state.messages,
+                echoBaseline: context.echoBaseline),
             modelName: { selection in
                 ModelCatalogStore.cached(profileID).first { $0.selection == selection }?.name
             })

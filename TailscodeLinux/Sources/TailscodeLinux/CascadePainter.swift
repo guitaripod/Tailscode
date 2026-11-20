@@ -428,13 +428,33 @@ final class CascadePainter: @unchecked Sendable {
 /// superseded run stops at its next frame, and the pane can read where a fade had got to and hand
 /// that opacity to the widget replacing it.
 enum CascadeEntrance {
-    private static let frames = 11
+    /// How long one fade takes, from wherever it starts to full strength.
+    static let duration = 0.22
     private nonisolated(unsafe) static var runs: [UInt: Int] = [:]
     private nonisolated(unsafe) static var lastRun = 0
 
-    /// The widget is referenced for the length of the fade and released at the end, because a row
-    /// can be diffed away mid-animation and a timeout holding a raw pointer into a freed widget is
-    /// a crash rather than a dropped frame.
+    /// One fade on its widget's own frame clock: the opacity is read from the time elapsed rather
+    /// than counted in steps, so a slow frame is a frame further along the curve and never a
+    /// stutter, and the fade lands on the compositor's beat at any refresh rate.
+    private final class Run: @unchecked Sendable {
+        let bits: UInt
+        let run: Int
+        let startsAt: Double
+        let from: Double
+        let onFinish: (@Sendable () -> Void)?
+
+        init(bits: UInt, run: Int, startsAt: Double, from: Double, onFinish: (@Sendable () -> Void)?) {
+            self.bits = bits
+            self.run = run
+            self.startsAt = startsAt
+            self.from = from
+            self.onFinish = onFinish
+        }
+    }
+
+    /// The widget's clock holds the run for the length of the fade and lets go of it at the end, so
+    /// a row diffed away mid-animation takes its clock with it rather than leaving a timeout holding
+    /// a raw pointer into a freed widget.
     ///
     /// `delay` is seconds from now, decided by the pane against its own clock rather than by a
     /// position in one batch. `opacity` is where the fade starts, which is zero for a row nobody
@@ -448,50 +468,53 @@ enum CascadeEntrance {
             return
         }
         gtk_widget_set_opacity(widget, opacity)
-        g_object_ref(UnsafeMutableRawPointer(widget))
         let bits = UInt(bitPattern: widget)
         lastRun += 1
-        let run = lastRun
-        runs[bits] = run
-        let first = startingFrame(for: opacity)
-        Gtk.after(UInt32(max(0, delay) * 1000)) {
-            step(bits, run: run, frame: first, onFinish: onFinish)
-        }
+        let run = Run(
+            bits: bits, run: lastRun, startsAt: CascadePainter.now + max(0, delay),
+            from: min(max(opacity, 0), 1), onFinish: onFinish)
+        runs[bits] = run.run
+        _ = Gtk.releaseInstalled
+        _ = tailscode_add_owned_tick(
+            widget,
+            { raw in
+                guard let raw else { return 0 }
+                return CascadeEntrance.step(Unmanaged<Run>.fromOpaque(raw).takeUnretainedValue())
+                    ? 1 : 0
+            }, Unmanaged.passRetained(run).toOpaque())
     }
 
-    /// Stops the fade running on a widget the pane is about to throw away. The run releases its
-    /// reference on its next frame, which is why the widget stays alive long enough to be read.
+    /// Stops the fade running on a widget the pane is about to throw away. The run ends on its
+    /// next frame, which is why the widget stays alive long enough to be read.
     static func cancel(_ bits: UInt) {
         runs[bits] = nil
     }
 
-    /// Which frame of the fade already shows this much of the row, so a handover continues the
-    /// curve instead of restarting it. The inverse of ``StreamCascade/ease(_:)``.
-    private static func startingFrame(for opacity: Double) -> Int {
-        guard opacity > 0 else { return 0 }
-        let clamped = min(max(opacity, 0), 1)
-        let progress = 1 - pow(1 - clamped, 1.0 / 3.0)
-        return min(frames, Int((progress * Double(frames)).rounded(.down)))
+    /// One frame of a fade; false once it is over.
+    private static func step(_ run: Run) -> Bool {
+        guard runs[run.bits] == run.run,
+            let raw = UnsafeMutableRawPointer(bitPattern: run.bits)
+        else { return false }
+        let widget = raw.assumingMemoryBound(to: GtkWidget.self)
+        let now = CascadePainter.now
+        guard now >= run.startsAt else { return true }
+        let elapsed = (now - run.startsAt) / duration
+        let start = startingProgress(for: run.from)
+        let progress = min(1, start + elapsed * (1 - start))
+        guard progress < 1, gtk_widget_get_parent(widget) != nil else {
+            gtk_widget_set_opacity(widget, 1)
+            runs[run.bits] = nil
+            run.onFinish?()
+            return false
+        }
+        gtk_widget_set_opacity(widget, StreamCascade.ease(progress))
+        return true
     }
 
-    private static func step(
-        _ bits: UInt, run: Int, frame: Int, onFinish: (@Sendable () -> Void)?
-    ) {
-        guard let held = UnsafeMutableRawPointer(bitPattern: bits) else { return }
-        guard runs[bits] == run else {
-            g_object_unref(held)
-            return
-        }
-        let widget = held.assumingMemoryBound(to: GtkWidget.self)
-        let progress = StreamCascade.ease(Double(frame) / Double(frames))
-        gtk_widget_set_opacity(widget, progress)
-        guard frame < frames, gtk_widget_get_parent(widget) != nil else {
-            gtk_widget_set_opacity(widget, 1)
-            runs[bits] = nil
-            g_object_unref(held)
-            onFinish?()
-            return
-        }
-        Gtk.after(16) { step(bits, run: run, frame: frame + 1, onFinish: onFinish) }
+    /// How far along the curve a fade already showing this much of the row is, so a handover
+    /// continues the curve instead of restarting it. The inverse of ``StreamCascade/ease(_:)``.
+    private static func startingProgress(for opacity: Double) -> Double {
+        guard opacity > 0 else { return 0 }
+        return 1 - pow(1 - min(opacity, 1), 1.0 / 3.0)
     }
 }

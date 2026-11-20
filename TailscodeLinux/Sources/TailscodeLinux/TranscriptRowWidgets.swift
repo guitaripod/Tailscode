@@ -43,10 +43,12 @@ extension TranscriptRow {
     /// Whether this row's arrival is worth a fade. A prompt the person typed has been on screen
     /// since they pressed Enter — it is echoed locally and only later confirmed by the server under
     /// the server's own key — so animating it, and the turn break above it, blinks the words they
-    /// just wrote out of the transcript and fades them back in.
+    /// just wrote out of the transcript and fades them back in. The echo itself is the press: it is
+    /// drawn whole on the frame the key went down, and so are the pictures the person sent with it.
     var announcesArrival: Bool {
         switch kind {
-        case .userText, .pastedText, .turnBreak: return false
+        case .userText, .pastedText, .pendingSend, .turnBreak: return false
+        case .file(_, let mine): return !mine
         default: return true
         }
     }

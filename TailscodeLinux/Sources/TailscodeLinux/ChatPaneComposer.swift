@@ -482,6 +482,7 @@ extension ChatPane {
         }
         let buffer = gtk_text_view_get_buffer(ptr(entryView))
         gtk_text_buffer_set_text(buffer, "", 0)
+        editor.settleEmptied()
         if let draftScope { DraftStore.clear(draftScope) }
         vim.reset(to: "", cursor: 0, mode: .insert)
         updateVimBadge()
@@ -515,15 +516,7 @@ extension ChatPane {
             text: sentText, model: chosenModel,
             effort: ModelEffort.surviving(chosenEffort, options: effortOptions()),
             attachments: outgoing.map(\.prompt))
-        // A prompt written while a turn runs is held here, not handed over: a message you can
-        // still change is worth more than a message one place further along.
-        guard lastState?.status != .running, lastState?.compaction?.isRunning != true else {
-            hold(send)
-            if let state = lastState { apply(state: state, rows: lastFullRows) }
-            scrollToBottom()
-            return
-        }
-        deliver(send, through: conversation)
+        enqueueOrRun(send, through: conversation)
         refreshUltracodeAura()
     }
 

@@ -13,7 +13,7 @@ extension ChatPane {
     /// the store atomically, so no other pane, watch or process can send the same message.
     func drainHeldQueue(_ state: ConversationState) {
         handOverQueue()
-        guard let queue, let conversation, !draining,
+        guard let queue, let conversation, !draining, !pending.hasUnsent,
             SendQueueDrain.mayDrain(state, editing: editingQueued != nil, handoff: handoff),
             queue.holdsDeviceHead(routing: queueRouting)
         else { return }
@@ -52,9 +52,10 @@ extension ChatPane {
 
     /// Hands the server every message this device holds for it. Asked on every state, so a
     /// message written offline goes the moment the server answers and one left in the store by a
-    /// version that held everything locally goes on the first connection.
+    /// version that held everything locally goes on the first connection — but never past a send
+    /// of this device's that did not go, which the server's queue would otherwise run first.
     func handOverQueue() {
-        guard let queue, let conversation else { return }
+        guard let queue, let conversation, !pending.hasUnsent else { return }
         let routing = queueRouting
         guard queue.holdsServerBound(routing: routing) else { return }
         Task { [weak self] in
@@ -114,13 +115,21 @@ extension ChatPane {
             through: conversation)
     }
 
+    /// A prompt written while a turn runs, while the last one is still being handed over, or behind
+    /// messages already waiting is held here, not handed over: a message you can still change is
+    /// worth more than a message one place further along, and the order somebody wrote things in
+    /// is the order they go. The page follows the queue only when the reader was already at the
+    /// end; somebody reading higher up keeps their place.
     func enqueueOrRun(_ send: QueuedSend, through conversation: AgentConversation) {
-        guard lastState?.status != .running, lastState?.compaction?.isRunning != true,
-            queueDisplay.isEmpty, !handoff.isOpen
+        guard
+            !SendGate.holdsNewSend(
+                busy: sendsBusy, queueEmpty: queueDisplay.isEmpty,
+                waitingAhead: !pending.waiting.isEmpty)
         else {
+            let following = followsBottom
             hold(send)
             if let state = lastState { apply(state: state, rows: lastFullRows) }
-            scrollToBottom()
+            if following { scrollToBottom() }
             return
         }
         deliver(send, through: conversation)
@@ -147,52 +156,6 @@ extension ChatPane {
         }
     }
 
-    func deliver(
-        _ send: QueuedSend, through conversation: AgentConversation, reusing row: UUID? = nil
-    ) {
-        openHandoff()
-        if send.isCommand {
-            runCommand(send, through: conversation)
-            return
-        }
-        let userMessages = lastState?.messages.count { $0.role == .user } ?? 0
-        let id: UUID
-        if let row, pending.restart(id: row, userMessages: userMessages) != nil {
-            id = row
-        } else {
-            id = pending.begin(
-                text: send.text, attachments: send.attachments, model: send.model,
-                effort: send.effort, userMessages: userMessages).id
-        }
-        redrawPending()
-        raiseFreshCanvas(for: id)
-        if Ultracode.invokes(send.text) || send.effort == Ultracode.effortLevel {
-            ultracodeInFlight = true
-            refreshUltracodeAura()
-        }
-        Task { [weak self] in
-            do {
-                try await conversation.send(
-                    send.text, model: send.model, reasoningEffort: send.effort,
-                    attachments: send.attachments)
-                Gtk.onMain { [weak self] in
-                    guard let self, self.pending.mark(id: id, .accepted) else { return }
-                    self.redrawPending()
-                }
-            } catch {
-                // A send that never left is not a silence: the row keeps the words and says so.
-                Gtk.onMain { [weak self] in
-                    guard let self else { return }
-                    self.endHandoff()
-                    let reason = AgentErrorText.readable(error)
-                    self.pending.mark(id: id, .failed(reason: reason))
-                    self.armResume(row: id, reason: reason)
-                    self.redrawPending()
-                }
-            }
-        }
-    }
-
     /// The key never carries the phase: a send that becomes sent is the same row filling its ink
     /// in, restated in place rather than rebuilt.
     static func pendingKey(_ id: UUID) -> String { "pending:\(id.uuidString)" }
@@ -200,8 +163,15 @@ extension ChatPane {
     /// Redraws what this device is holding without rebuilding the transcript from the server's
     /// account of the conversation — the account did not move, and walking it again to add one
     /// row of one's own is the whole reason a long conversation used to swallow a send.
+    ///
+    /// Before the chat's first state there is no account to redraw onto, and an empty one stood in
+    /// for it must not be kept: a rebuild reads the pane's last state, and one that said "nothing
+    /// loaded" overtook the real transcript arriving in the same moment and left the chat empty
+    /// with every held send waiting on a load that had already happened.
     func redrawPending() {
-        apply(state: lastState ?? ConversationState(), rows: lastFullRows)
+        let known = lastState
+        apply(state: known ?? ConversationState(), rows: lastFullRows)
+        if known == nil { lastState = nil }
         scheduleCaptionWake()
     }
 
@@ -217,7 +187,11 @@ extension ChatPane {
         Gtk.after(wait) { [weak self] in
             Gtk.onMain { [weak self] in
                 guard let self, self.captionWakeGeneration == token else { return }
-                self.restatePendingRows()
+                if self.pendingRowsAllDrawn {
+                    self.restatePendingRows()
+                } else {
+                    self.redrawPending()
+                }
                 self.scheduleCaptionWake()
             }
         }
@@ -230,40 +204,21 @@ extension ChatPane {
                 index < rowWidgets.count,
                 let raw = UnsafeMutableRawPointer(bitPattern: rowWidgets[index])
             else { continue }
-            TranscriptRow.restatePending(on: ptr(raw), send: send, plan: plan, now: now)
+            TranscriptRow.restatePending(
+                on: ptr(raw), send: send, plan: plan, now: now, context: context)
         }
     }
 
-    func actOnPending(_ id: UUID, _ act: PendingSend.Act) {
-        guard let send = pending.send(id: id), send.isFailed else { return }
-        switch act {
-        case .retry:
-            guard let conversation else { return }
-            deliver(
-                QueuedSend(
-                    text: send.text, model: send.model, effort: send.effort,
-                    attachments: send.attachments),
-                through: conversation, reusing: id)
-        case .edit:
-            guard !composerHoldsWords else {
-                setNotice(Localized.text("Send or clear what is in the composer first."))
-                return
-            }
-            pending.remove(id: id)
-            fillComposer(with: send.text)
-            gtk_widget_grab_focus(entryView)
-            if !send.attachments.isEmpty {
-                attachments = send.attachments.map {
-                    PendingAttachment(
-                        name: $0.filename ?? "attachment", mime: $0.mime, data: $0.data ?? Data())
-                }
-                renderAttachments()
-            }
-            redrawPending()
-        case .discard:
-            pending.remove(id: id)
-            redrawPending()
-        }
+    /// Whether every send this pane holds has a row that can speak for it. A send of pictures or
+    /// pastes alone draws its speaking row only once it has something to say, so a caption coming
+    /// due for one of those is a redraw rather than a restate.
+    var pendingRowsAllDrawn: Bool {
+        let drawn = Set(
+            renderedRows.compactMap { row -> UUID? in
+                if case .pendingSend(let send, _) = row.kind { return send.id }
+                return nil
+            })
+        return pending.sends.allSatisfy { drawn.contains($0.id) }
     }
 
     /// Whether this pane waits out a spent window on the person's behalf.
@@ -453,15 +408,17 @@ extension ChatPane {
                 setNotice(ResumeReading.missed(record.plan))
                 continue
             }
-            let restored = pending.begin(
-                text: record.text, attachments: record.attachments, model: record.model,
-                effort: record.effort, userMessages: userMessages, now: record.plan.plannedAt,
-                id: record.id)
-            pending.mark(
-                id: restored.id,
-                .failed(
-                    reason: Localized.text(
-                        "%@ %@ is used up", record.plan.provider, record.plan.window)))
+            if pending.send(id: record.id) == nil {
+                let restored = pending.begin(
+                    text: record.text, attachments: record.attachments, model: record.model,
+                    effort: record.effort, userMessages: userMessages, now: record.plan.plannedAt,
+                    id: record.id)
+                pending.mark(
+                    id: restored.id,
+                    .failed(
+                        reason: Localized.text(
+                            "%@ %@ is used up", record.plan.provider, record.plan.window)))
+            }
             resume.hold(record.plan)
         }
         startResumeClock()
