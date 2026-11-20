@@ -16,14 +16,27 @@ extension ChatViewController {
         return frame
     }
 
+    /// Where the prompt's own plate starts, not its row: a row carries the air above it, and the
+    /// server's row sits under its date with less air than this device's row had under the answer,
+    /// so a prompt aimed by its row moved by the difference the moment the server's account
+    /// replaced it.
     private func unionFrame(of ids: [String]) -> CGRect? {
         var union: CGRect?
+        var top: (y: CGFloat, gap: CGFloat)?
         for id in ids {
             guard let indexPath = dataSource.indexPath(for: id),
                 let attributes = collectionView.layoutAttributesForItem(at: indexPath)
             else { continue }
-            union = union.map { $0.union(attributes.frame) } ?? attributes.frame
+            let frame = attributes.frame
+            union = union.map { $0.union(frame) } ?? frame
+            if frame.minY < top?.y ?? .greatestFiniteMagnitude {
+                top = (frame.minY, appliedGaps[id] ?? 0)
+            }
         }
+        guard var union, let top else { return union }
+        let air = min(top.gap, max(0, union.height - 1))
+        union.origin.y += air
+        union.size.height -= air
         return union
     }
 
@@ -229,18 +242,52 @@ extension ChatViewController {
             return
         }
         UIView.animate(
-            withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.9,
-            initialSpringVelocity: 0.3, options: [.allowUserInteraction, .beginFromCurrentState]
+            withDuration: 0.3, delay: 0.03, options: [.curveEaseOut, .allowUserInteraction]
         ) {
-            self.collectionView.contentOffset = target
             for cell in cells { cell.alpha = 1 }
-        } completion: { [weak self] _ in
-            self?.landFreshCanvas()
+        }
+        glideFreshCanvas(from: collectionView.contentOffset.y, toward: target.y)
+    }
+
+    /// Steps the rise from the display's clock on Core's spring, aiming each frame at where the
+    /// prompt stands now: a row still at its estimate, the room landing a frame late and the
+    /// server's row replacing this device's all move the prompt mid-flight, and a motion aimed
+    /// once arrived somewhere else. Animating the offset in one block instead laid out only the
+    /// page it ended on, and every row the reader passed on the way up was blank.
+    private func glideFreshCanvas(from start: CGFloat, toward first: CGFloat) {
+        canvasGlide?.stop()
+        var glide = CanvasGlidePath(from: start, aim: first)
+        canvasGlide = FrameStepper { [weak self] elapsed in
+            guard let self else { return false }
+            guard self.canvasRising else {
+                self.releaseRiseHold()
+                return false
+            }
+            guard !self.isFingerDown else {
+                self.landFreshCanvas()
+                self.releaseRiseHold()
+                return false
+            }
+            if let frame = self.canvasPromptFrame(), frame.height > 0 {
+                glide.follow(prompt: frame.minY)
+                glide.retarget(self.canvasOffset(for: frame))
+            }
+            let offset = glide.step(progress: CGFloat(FreshCanvas.rise(at: elapsed)))
+            self.isPinningCanvas = true
+            self.collectionView.contentOffset.y = offset
+            self.isPinningCanvas = false
+            #if DEBUG
+                self.traceRise(elapsed: elapsed, offset: offset)
+            #endif
+            guard elapsed < FreshCanvas.riseDuration else {
+                self.landFreshCanvas()
+                self.releaseRiseHold()
+                return false
+            }
+            return true
         }
     }
 
-    /// The motion is over, so the keeping begins: from here the prompt's place is checked against
-    /// the page after every layout instead of being assumed from the scroll that aimed at it.
     private func landFreshCanvas() {
         canvasRising = false
         guard !canvasPromptIDs.isEmpty, !userScrolledUp else { return }
@@ -267,3 +314,61 @@ extension ChatViewController {
         dataSource.apply(snapshot, animatingDifferences: false)
     }
 }
+
+/// The path a rise takes, kept continuous on screen when what it is aiming at moves. Rows that
+/// arrive above the prompt mid-flight — the server's own row with its date over the question —
+/// push the prompt down the page, and the path moves with it so the prompt does not; a new aim
+/// otherwise bends the path from where the page is rather than from where it began.
+struct CanvasGlidePath {
+    private var from: CGFloat
+    private var aim: CGFloat
+    private var progress: CGFloat = 0
+    private var promptTop: CGFloat?
+
+    init(from: CGFloat, aim: CGFloat) {
+        self.from = from
+        self.aim = aim
+    }
+
+    mutating func follow(prompt top: CGFloat) {
+        defer { promptTop = top }
+        guard let promptTop, abs(top - promptTop) > 0.5 else { return }
+        let moved = top - promptTop
+        from += moved
+        aim += moved
+    }
+
+    mutating func retarget(_ next: CGFloat) {
+        guard abs(next - aim) > 0.5, progress < 1 else { return }
+        let here = from + (aim - from) * progress
+        from = (here - next * progress) / (1 - progress)
+        aim = next
+    }
+
+    mutating func step(progress next: CGFloat) -> CGFloat {
+        progress = min(1, max(0, next))
+        return from + (aim - from) * progress
+    }
+}
+
+#if DEBUG
+    extension ChatViewController {
+        /// `TAILSCODE_TRACE_RISE=1` logs where the prompt stands on screen at every frame of a
+        /// rise, so its smoothness is read from the app's own clock rather than from a recording.
+        func traceRise(elapsed: TimeInterval, offset: CGFloat) {
+            guard ProcessInfo.processInfo.environment["TAILSCODE_TRACE_RISE"] == "1" else { return }
+            let screen = canvasPromptIDs.compactMap { id -> CGFloat? in
+                guard let path = dataSource.indexPath(for: id),
+                    let frame = collectionView.layoutAttributesForItem(at: path)?.frame
+                else { return nil }
+                return frame.minY - offset
+            }.min()
+            MidgarLog.info(
+                String(
+                    format: "rise t=%.4f offset=%.1f prompt=%.1f", elapsed, offset,
+                    screen ?? -1),
+                category: .chat)
+        }
+    }
+#endif
+

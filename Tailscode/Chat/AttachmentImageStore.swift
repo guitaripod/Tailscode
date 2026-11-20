@@ -21,6 +21,9 @@ final class AttachmentImageStore {
     /// viewer handed a thumbnail would zoom into a blur.
     private let thumbnails = NSCache<NSString, UIImage>()
     private var thumbnailsInFlight: [String: Task<UIImage?, Never>] = [:]
+    /// The sizes a picture has been cut down to, by its key, so a picture can be handed to the
+    /// name the server gives it with every size already made.
+    private var madeBoxes: [String: Set<ThumbnailBox>] = [:]
 
     private init() {
         thumbnails.countLimit = 160
@@ -35,6 +38,25 @@ final class AttachmentImageStore {
         cache.removeAllObjects()
         originals.removeAllObjects()
         thumbnails.removeAllObjects()
+        madeBoxes.removeAll()
+    }
+
+    /// Gives a picture this device sent to the file the server named it as, bytes, bitmap and
+    /// every thumbnail already made — so the server's row replacing the one drawn at the press
+    /// shows the same picture in the same frame rather than a shimmer and a fetch of bytes this
+    /// device already holds.
+    func hand(_ data: Data, from sent: FileReference, to echoed: FileReference) {
+        guard let from = Self.key(sent), let to = Self.key(echoed), from != to else { return }
+        store(data, key: to)
+        if let image = cache.object(forKey: from as NSString) { store(image, key: to) }
+        for box in madeBoxes[from] ?? [] {
+            guard
+                let thumbnail = thumbnails.object(
+                    forKey: Self.thumbnailKey(from, box) as NSString)
+            else { continue }
+            store(thumbnail: thumbnail, key: Self.thumbnailKey(to, box))
+            madeBoxes[to, default: []].insert(box)
+        }
     }
 
     func cached(_ file: FileReference) -> UIImage? {
@@ -63,6 +85,7 @@ final class AttachmentImageStore {
             let made = await Self.thumbnail(from: data, box: box)
             guard let made else { return nil }
             self?.store(thumbnail: made, key: thumbKey)
+            self?.madeBoxes[key, default: []].insert(box)
             return made
         }
         thumbnailsInFlight[thumbKey] = task

@@ -96,6 +96,12 @@ extension ChatViewController {
     /// the thread, and the newest state is drawn when the wait is over; everything else is drawn
     /// at once.
     func offer(_ state: ConversationState) {
+        if canvasGlide != nil {
+            heldUnderRise = true
+            heldRender?.cancel()
+            heldRender = nil
+            return
+        }
         var growth = lastRenderedState.map { RenderPacer.isGrowth(from: $0, to: state) } ?? false
         #if DEBUG
             if ProcessInfo.processInfo.environment["TAILSCODE_NO_PACER"] != nil { growth = false }
@@ -117,6 +123,20 @@ extension ChatViewController {
         }
     }
 
+    /// The prompt has landed, or stopped where a finger caught it: whatever was held while it rose
+    /// is drawn now, on a page that is holding still.
+    func releaseRiseHold() {
+        canvasGlide = nil
+        if heldUnderRise {
+            heldUnderRise = false
+            pendingUnderRise = false
+            drawTimed(viewModel.state)
+        } else if pendingUnderRise {
+            pendingUnderRise = false
+            renderPending()
+        }
+    }
+
     private func drawTimed(_ state: ConversationState) {
         let started = CACurrentMediaTime()
         render(state)
@@ -134,8 +154,27 @@ extension ChatViewController {
             queueFirstPaint(state)
             return
         }
-        paint(state, rebuilt: rebuildTranscript(state))
+        #if DEBUG
+            let started = CACurrentMediaTime()
+            let rebuilt = rebuildTranscript(state)
+            let built = CACurrentMediaTime()
+            paint(state, rebuilt: rebuilt)
+            traceRender("render", rebuild: built - started, paint: CACurrentMediaTime() - built)
+        #else
+            paint(state, rebuilt: rebuildTranscript(state))
+        #endif
     }
+
+    #if DEBUG
+        /// `TAILSCODE_TRACE_RISE=1` also says what each pass of the send moment cost.
+        func traceRender(_ kind: String, rebuild: CFTimeInterval, paint: CFTimeInterval) {
+            guard ProcessInfo.processInfo.environment["TAILSCODE_TRACE_RISE"] == "1" else { return }
+            MidgarLog.info(
+                String(
+                    format: "%@ rebuild=%.1fms paint=%.1fms rows=%d", kind, rebuild * 1000,
+                    paint * 1000, orderedIDs.count), category: .chat)
+        }
+    #endif
 
     func paint(_ state: ConversationState, rebuilt: TranscriptRebuild) {
         hasPainted = hasPainted || !state.messages.isEmpty
@@ -241,8 +280,18 @@ extension ChatViewController {
     /// thread, and that second used to sit between pressing Send and seeing the words. What is
     /// redrawn here is the handful of rows docked at the end, which is the whole of what changed.
     func renderPending() {
+        if canvasGlide != nil {
+            pendingUnderRise = true
+            return
+        }
+        #if DEBUG
+            let started = CACurrentMediaTime()
+        #endif
         compose(lastRenderedState ?? viewModel.state, rebuild: nil)
         callController.conversationChanged()
+        #if DEBUG
+            traceRender("pending", rebuild: 0, paint: CACurrentMediaTime() - started)
+        #endif
     }
 
     /// What a rebuild leaves behind for the compose pass: the rows as they were, so a repaint can
@@ -300,7 +349,8 @@ extension ChatViewController {
         let facts = makeFacts(state)
         let stalled: Bool
         if case .stalled = facts.phase { stalled = true } else { stalled = false }
-        let reading = brain.reading(of: state, stalled: stalled)
+        let reading = brain.reading(
+            of: state, stalled: stalled, echoPending: viewModel.pending.awaitsEcho)
         let effort = viewModel.displayedEffort
         let effortOptions = viewModel.reasoningEffortOptions
         brainEffort = BrainEffortReading(effort: effort, options: effortOptions)

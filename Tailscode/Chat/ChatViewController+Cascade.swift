@@ -63,7 +63,7 @@ extension ChatViewController {
     /// then take the same row up again from nothing the moment approval came back: the answer
     /// rewinds under the reader, which is a worse lie than the pause.
     private var turnIsOver: Bool {
-        guard !viewModel.isBusy else { return false }
+        guard !viewModel.turnIsLive else { return false }
         let state = viewModel.state
         return state.pendingPermissions.isEmpty && state.pendingQuestions.isEmpty
     }

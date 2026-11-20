@@ -16,7 +16,8 @@ import UIKit
     /// `CHAT_LIFETIME_FAIL`, which is the check that a popped chat is really released.
     ///
     /// `TAILSCODE_BENCH_SCENARIO` stages a state before the pop (`keyboard` focuses the composer,
-    /// `stream` leaves a turn running) and `TAILSCODE_BENCH_SWIPE=1` waits for a real edge swipe
+    /// `stream` leaves a turn running, `send` sends a message at the end of the conversation and
+    /// writes what the rise and the answer after it cost the main thread) and `TAILSCODE_BENCH_SWIPE=1` waits for a real edge swipe
     /// sent from outside instead of popping by call.
     @MainActor
     final class ChatOpenBench {
@@ -156,8 +157,11 @@ import UIKit
                 id: "bench-open", agentType: .claudeCode, title: "Bench long conversation",
                 directory: "/Users/demo/dev/bench", createdAt: Date(), updatedAt: Date(),
                 model: "claude-fable-5")
+            let sends = ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "send"
             let backend = MockBackend(
-                agentType: .claudeCode, scripts: [session.id: script], sessions: [session])
+                agentType: .claudeCode, scripts: [session.id: script],
+                replyTurns: sends ? [Self.script(turns: 1)] : [], interactive: sends,
+                sessions: [session])
             var leakedViews = 0
             if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "plainpush" {
                 let root = UIViewController()
@@ -506,6 +510,14 @@ import UIKit
                 let field = tree.compactMap { $0.view as? UITextView }.last
                 field?.becomeFirstResponder()
                 try? await Task.sleep(for: .seconds(1))
+            case "send":
+                reset()
+                chat.composerDidSend("A question asked at the end of a long conversation, to time the send.")
+                try? await Task.sleep(for: .milliseconds(700))
+                MidgarLog.info("bench send rise \(snapshot())", category: .performance)
+                reset()
+                try? await Task.sleep(for: .seconds(3))
+                MidgarLog.info("bench send answer \(snapshot())", category: .performance)
             default:
                 break
             }

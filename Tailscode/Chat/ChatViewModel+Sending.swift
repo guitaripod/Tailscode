@@ -30,9 +30,12 @@ extension ChatViewModel {
         _ text: String, model: ModelSelection? = nil, effort: String? = nil,
         attachments: [PromptAttachment] = []
     ) {
-        if isBusy {
+        if isBusy || !pending.waiting.isEmpty || queueHeldAfterFailure
+            || queue.holdsDeviceHead(routing: queueRouting)
+        {
             MidgarLog.info(
-                "send queued session=\(session.id) queue=\(queue.count + 1)", category: .chat)
+                "send queued session=\(session.id) queue=\(queue.count + 1) waiting=\(pending.waiting.count)",
+                category: .chat)
             hold(QueuedSend(text: text, model: model, effort: effort, attachments: attachments))
             return
         }
@@ -61,11 +64,18 @@ extension ChatViewModel {
     }
 
     /// Makes the send fail, which is the one state a working server will not show you.
-    nonisolated private static var harnessFault: (any Error)? {
+    /// `TAILSCODE_OFFLINE_SEND=<n>` makes the first n attempts of this launch fail as an offline
+    /// device does, so the row held for the connection can be watched going on its own.
+    nonisolated private static func harnessFault() -> (any Error)? {
         #if DEBUG
-            guard let reason = ProcessInfo.processInfo.environment["TAILSCODE_FAIL_SEND"] else {
-                return nil
+            let environment = ProcessInfo.processInfo.environment
+            if let limit = environment["TAILSCODE_OFFLINE_SEND"].flatMap(Int.init),
+                HarnessOffline.take(upTo: limit)
+            {
+                return AgentError.connection(
+                    TransportWords.sentence(for: URLError(.notConnectedToInternet)))
             }
+            guard let reason = environment["TAILSCODE_FAIL_SEND"] else { return nil }
             return HarnessFault(reason: reason)
         #else
             return nil
@@ -77,18 +87,13 @@ extension ChatViewModel {
         var errorDescription: String? { reason }
     }
 
-    private struct SendTimeout: LocalizedError {
-        var errorDescription: String? {
-            String(localized: "The server didn't respond — check your connection.")
-        }
-    }
-
     func deliver(
         _ text: String, model: ModelSelection?, effort: String?, attachments: [PromptAttachment],
-        reusing row: UUID? = nil
+        reusing row: UUID? = nil, checkFirst: Bool = false
     ) {
         MidgarLog.info(
-            "send session=\(session.id) chars=\(text.count) attachments=\(attachments.count)", category: .chat)
+            "send session=\(session.id) chars=\(text.count) attachments=\(attachments.count) again=\(row != nil)",
+            category: .chat)
         queueHeldAfterFailure = false
         queueHold = nil
         sendTask?.cancel()
@@ -101,6 +106,8 @@ extension ChatViewModel {
         let userCount = state.messages.count { $0.role == .user }
         firstAnswer.sent(promptsBefore: userCount)
         let echoID: UUID
+        let earlier = row.flatMap { pending.send(id: $0) }
+        let retryingWait = earlier?.isWaiting == true
         if let row, pending.restart(id: row, userMessages: userCount) != nil {
             echoID = row
         } else {
@@ -111,16 +118,8 @@ extension ChatViewModel {
         optimisticThinking = true
         if streamTask == nil { start() }
         onPending?()
-        let activityTitle = AgentSession.isPlaceholderTitle(displayTitle)
-            ? AgentSession.provisionalTitle(fromPrompt: text) : displayTitle
-        AppActivityController.shared.start(
-            sessionID: session.id, sessionTitle: activityTitle, serverName: serverName,
-            profileID: contextID, onPushToken: cardPushSink(title: activityTitle),
-            serverAlerts: cardServerAlerts)
+        if !retryingWait { openSendCard(for: text) }
         turnSawRunning = false
-        cardSettled = false
-        cardPulse.reset()
-        heldCardBrief = nil
         let resolvedModel = model ?? selectedModel
         let resolvedEffort = ModelEffort.surviving(
             effort ?? currentEffort, options: reasoningEffortOptions)
@@ -128,71 +127,239 @@ extension ChatViewModel {
             ultracodeInFlight = true
             onModelChange?()
         }
-        let payloadBytes = attachments.reduce(0) { $0 + ($1.data?.count ?? 0) }
-        let sendBound = 15 + payloadBytes / 50_000
+        let conversation = self.conversation
+        let base = SendCourier.through(
+            conversation, text: text, model: resolvedModel, effort: resolvedEffort,
+            attachments: attachments)
+        let courier = SendCourier(
+            bound: base.bound,
+            post: {
+                try await Self.harnessDelay()
+                if let fault = Self.harnessFault() { throw fault }
+                try await base.post()
+            },
+            reread: base.reread)
+        let sent = pending.send(id: echoID)
+        let baseline = min(
+            earlier?.baselineUserCount ?? userCount, sent?.baselineUserCount ?? userCount)
         sendTask = Task {
-            do {
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    group.addTask { [conversation] in
-                        try await Self.harnessDelay()
-                        if let fault = Self.harnessFault { throw fault }
-                        try await conversation.send(
-                            text, model: resolvedModel, reasoningEffort: resolvedEffort,
-                            attachments: attachments)
-                    }
-                    group.addTask {
-                        try await Task.sleep(for: .seconds(sendBound))
-                        throw SendTimeout()
-                    }
-                    try await group.next()
-                    group.cancelAll()
-                }
-                // The server has it. Which is a different fact from the turn having started, and
-                // the row says so rather than sitting on "sending" until the transcript catches up.
-                if generation == sendGeneration, pending.mark(id: echoID, .accepted) {
-                    onPending?()
-                }
-                try? await Task.sleep(for: .seconds(30))
-                guard !Task.isCancelled, generation == sendGeneration, optimisticThinking,
-                    !turnSawRunning
-                else { return }
-                reviveWitness()
-            } catch {
-                let cancelled = error is CancellationError
-                guard generation == sendGeneration else {
-                    pending.remove(id: echoID)
-                    onPending?()
-                    return
-                }
-                optimisticThinking = false
-                if !turnSawRunning {
-                    if cancelled {
-                        AppActivityController.shared.withdraw(session.id)
-                    } else {
-                        settleCard(.sendFailed)
-                    }
-                }
-                if cancelled {
-                    pending.remove(id: echoID)
-                    onPending?()
-                } else {
-                    MidgarLog.error("send failed: \(Self.readable(error))", category: .chat)
-                    let reason = Self.readable(error)
-                    recoverFailedSend(outgoing, row: echoID, reason: reason)
-                    armResume(row: echoID, reason: reason)
-                }
+            let outcome = await courier.run(
+                text: text, attachments: attachments.count, baselineUserCount: baseline,
+                checkFirst: checkFirst)
+            if let sent, pending.send(id: echoID) == nil, case .waiting(let reason) = outcome {
+                pending.reinstate(sent, as: .waiting(reason: reason))
+            } else if let sent, pending.send(id: echoID) == nil, case .failed(let reason) = outcome {
+                pending.reinstate(sent, as: .failed(reason: reason))
             }
+            guard generation == sendGeneration else {
+                landSuperseded(outcome, row: echoID)
+                return
+            }
+            settle(outcome, of: outgoing, row: echoID, retryingWait: retryingWait)
         }
     }
 
-    /// A send the server accepted that no stream has shown starting means this device lost sight
+    /// An attempt a newer send overtook still says what became of its own row, and only of its
+    /// row: the conversation's busy state, its card and its queue belong to the newer send. A row
+    /// the newer send cancelled before an answer came is not left reading "sending" forever, and
+    /// never vanishes with its words — it says it did not go and offers them again.
+    private func landSuperseded(_ outcome: SendOutcome, row: UUID) {
+        guard let send = pending.send(id: row), send.phase == .sending || send.isUnsent else {
+            return
+        }
+        switch outcome {
+        case .accepted:
+            pending.mark(id: row, .accepted)
+        case .arrived:
+            pending.remove(id: row)
+            HeldSendStore.release(row)
+        case .waiting(let reason):
+            pending.mark(id: row, .waiting(reason: reason))
+            armSendWait(row: row, reason: reason)
+        case .failed(let reason):
+            pending.mark(id: row, .failed(reason: reason))
+            HeldSendStore.release(row)
+        case .cancelled:
+            guard send.phase == .sending else { return }
+            pending.mark(id: row, .failed(reason: ""))
+        }
+        onPending?()
+    }
+
+    /// Opens the conversation's Live Activity for a send, titled the way the chat will be.
+    private func openSendCard(for text: String) {
+        let activityTitle = AgentSession.isPlaceholderTitle(displayTitle)
+            ? AgentSession.provisionalTitle(fromPrompt: text) : displayTitle
+        AppActivityController.shared.start(
+            sessionID: session.id, sessionTitle: activityTitle, serverName: serverName,
+            profileID: contextID, onPushToken: cardPushSink(title: activityTitle),
+            serverAlerts: cardServerAlerts)
+        cardSettled = false
+        cardPulse.reset()
+        heldCardBrief = nil
+    }
+
+    /// Does the one thing an attempt's outcome asks for. Everything that decided the outcome is
+    /// Core's, so the three clients read a send the same way.
+    private func settle(
+        _ outcome: SendOutcome, of outgoing: QueuedSend, row: UUID, retryingWait: Bool
+    ) {
+        switch outcome {
+        case .accepted, .arrived:
+            sendWaits[row]?.clock?.cancel()
+            sendWaits[row] = nil
+            HeldSendStore.release(row)
+            if retryingWait { openSendCard(for: outgoing.text) }
+            if outcome == .arrived {
+                MidgarLog.info("send arrived despite the wire session=\(session.id)", category: .chat)
+                pending.remove(id: row)
+            } else {
+                pending.mark(id: row, .accepted)
+            }
+            onPending?()
+            handOverQueue()
+            armSendWitness()
+        case .waiting(let reason):
+            MidgarLog.info(
+                "send held for the connection session=\(session.id) reason=\(reason)", category: .chat)
+            optimisticThinking = false
+            if !turnSawRunning { AppActivityController.shared.withdraw(session.id) }
+            pending.mark(id: row, .waiting(reason: reason))
+            onPending?()
+            armSendWait(row: row, reason: reason)
+        case .failed(let reason):
+            sendWaits[row]?.clock?.cancel()
+            sendWaits[row] = nil
+            HeldSendStore.release(row)
+            optimisticThinking = false
+            if !turnSawRunning { settleCard(.sendFailed) }
+            MidgarLog.error("send failed: \(reason)", category: .chat)
+            recoverFailedSend(outgoing, row: row, reason: reason)
+            armResume(row: row, reason: reason)
+        case .cancelled:
+            optimisticThinking = false
+            if !turnSawRunning { AppActivityController.shared.withdraw(session.id) }
+            pending.remove(id: row)
+            HeldSendStore.release(row)
+            onPending?()
+        }
+    }
+
+    /// Schedules the next attempt at a send held for the connection, on Core's clock, and gives
+    /// it up — as a failure that keeps its words — once the window has passed.
+    func armSendWait(row: UUID, reason: String) {
+        var ticket = sendWaits[row] ?? SendWaitTicket(heldSince: Date())
+        ticket.clock?.cancel()
+        ticket.attempts += 1
+        if SendWait.givesUp(heldSince: ticket.heldSince, now: Date()) {
+            sendWaits[row] = nil
+            HeldSendStore.release(row)
+            pending.mark(id: row, .failed(reason: SendWait.gaveUp(reason)))
+            onPending?()
+            return
+        }
+        keepHeld(row, reason: reason, since: ticket.heldSince)
+        let delay = SendWait.delay(afterAttempts: ticket.attempts)
+        ticket.clock = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            self?.fireSendWait(row)
+        }
+        sendWaits[row] = ticket
+    }
+
+    /// Holds a send behind the turn that is running: it says it goes when the turn ends, goes
+    /// first when it does — ahead of anything written after it — and the time spent waiting for
+    /// a turn is not time the machine was out of reach, so it does not count against the window.
+    func holdBehindTurn(_ row: UUID) {
+        guard let send = pending.send(id: row), send.isUnsent else { return }
+        var ticket = sendWaits[row] ?? SendWaitTicket(heldSince: Date())
+        ticket.clock?.cancel()
+        ticket.clock = nil
+        sendWaits[row] = ticket
+        pending.mark(id: row, .waiting(reason: SendWait.behindTurn))
+        keepHeld(row, reason: SendWait.behindTurn, since: ticket.heldSince)
+        onPending?()
+    }
+
+    /// Writes a held send down so a process ended while it waits — the ordinary end of a process
+    /// on a phone left offline — puts it back when the conversation is next opened.
+    private func keepHeld(_ row: UUID, reason: String, since: Date) {
+        guard let send = pending.send(id: row) else { return }
+        HeldSendStore.hold(
+            HeldSend(
+                send, profileID: contextID, sessionID: session.id, heldSince: since,
+                reason: reason))
+    }
+
+    /// Puts back what this device was holding for the connection when it last ran, and goes on
+    /// trying it on the same clock.
+    func restoreHeldSends() {
+        let records = HeldSendStore.records(profileID: contextID, sessionID: session.id)
+        guard !records.isEmpty else { return }
+        let users = state.messages.count { $0.role == .user }
+        for record in records {
+            guard pending.restore(record, userMessages: users) != nil else { continue }
+            sendWaits[record.id] = SendWaitTicket(heldSince: record.heldSince)
+            armSendWait(row: record.id, reason: record.reason)
+        }
+        MidgarLog.info(
+            "held sends restored session=\(session.id) count=\(records.count)", category: .chat)
+        onPending?()
+    }
+
+    /// Tries a held send again — the oldest first, so words written offline arrive in the order
+    /// they were written, and never into a turn that has started meanwhile.
+    func fireSendWait(_ row: UUID) {
+        guard let send = pending.send(id: row), send.isWaiting else {
+            sendWaits[row]?.clock?.cancel()
+            sendWaits[row] = nil
+            return
+        }
+        guard pending.waiting.first?.id == row else {
+            armSendWait(row: row, reason: Self.waitingReason(send))
+            return
+        }
+        guard !isBusy else {
+            holdBehindTurn(row)
+            return
+        }
+        deliver(
+            send.text, model: send.model ?? selectedModel, effort: send.effort ?? currentEffort,
+            attachments: send.attachments, reusing: row, checkFirst: true)
+    }
+
+    /// Tries the oldest held send now rather than on its clock: the stream came back, or the app
+    /// came to the front, which is when a network that was gone usually is not any more.
+    func nudgeSendWaits() {
+        guard let oldest = pending.waiting.first, !isBusy else { return }
+        MidgarLog.info("send wait nudged session=\(session.id)", category: .chat)
+        fireSendWait(oldest.id)
+    }
+
+    private static func waitingReason(_ send: PendingSend) -> String {
+        if case .waiting(let reason) = send.phase { return reason }
+        return ""
+    }
+
+    /// A send the server accepted that no stream has shown arriving means this device lost sight
     /// of the conversation, never that the machine lost the message: the server already said it
-    /// has it. The conversation marks itself running the moment a send is accepted, so any stream
-    /// that is listening shows it at once; one that is not is brought back, and the server's
-    /// state says what became of the turn from there.
+    /// has it. Whatever stream is listening is redialled, and the server's state says what became
+    /// of the turn from there.
+    private func armSendWitness() {
+        sendWitness?.cancel()
+        sendWitness = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(SendWitness.after))
+            guard !Task.isCancelled, let self else { return }
+            guard !self.pending.unwitnessed(now: Date()).isEmpty else { return }
+            self.reviveWitness()
+        }
+    }
+
     private func reviveWitness() {
         MidgarLog.info(
-            "send unseen for 30 s session=\(session.id) stream=\(streamTask != nil)", category: .chat)
+            "send unseen for \(Int(SendWitness.after)) s session=\(session.id) stream=\(streamTask != nil)",
+            category: .chat)
         guard streamTask != nil else {
             start()
             return
@@ -208,7 +375,7 @@ extension ChatViewModel {
         if optimisticThinking, !turnSawRunning {
             sendTask?.cancel()
             optimisticThinking = false
-            pending.removeAll()
+            pending.removeInFlight()
             AppActivityController.shared.withdraw(session.id)
             onPending?()
             if canAbort { Task { try? await conversation.cancelCurrentTurn() } }
@@ -379,3 +546,20 @@ extension ChatViewModel {
         }
     }
 }
+
+#if DEBUG
+    /// How many sends this launch has failed on purpose for `TAILSCODE_OFFLINE_SEND`.
+    enum HarnessOffline {
+        private static let lock = NSLock()
+        nonisolated(unsafe) private static var taken = 0
+
+        static func take(upTo limit: Int) -> Bool {
+            lock.withLock {
+                guard taken < limit else { return false }
+                taken += 1
+                return true
+            }
+        }
+    }
+#endif
+

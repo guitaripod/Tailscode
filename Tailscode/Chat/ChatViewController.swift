@@ -633,11 +633,18 @@ final class ChatViewController: UIViewController {
     var canvasPinned = false
     /// Guards the pin against the layout pass its own scroll provokes.
     var isPinningCanvas = false
+    /// The frame clock a prompt is rising on, while it rises.
+    var canvasGlide: FrameStepper?
     /// How long a rise keeps asking for geometry that is not there yet.
     var canvasRiseDeadline: CFTimeInterval?
     /// A send that is going again in the row it already has. Its rows are not new to the list, so
     /// nothing about the transcript can tell that anything was sent; this is the send saying so.
     var canvasForcedSend: UUID?
+    /// The rows a send this device is holding is drawn as — its words and its paste cards, made
+    /// by the same builder as the server's own rows so the two are the same shape.
+    var pendingRowsByID: [String: ChatRow] = [:]
+    /// The one wake for the moment a held send's status row next appears on its own.
+    var pendingWake: Task<Void, Never>?
 
     /// Where in the transcript the send the canvas is about was drawn: the pending rows go after
     /// every server row, so the server's own rows for that message can only land there or later.
@@ -694,6 +701,13 @@ final class ChatViewController: UIViewController {
 
     var pacer = RenderPacer()
     var heldRender: DispatchWorkItem?
+    /// A state that arrived while a prompt was rising, drawn when it lands: what changes under a
+    /// rising prompt — the server's echo of the same words, the turn starting, its first words —
+    /// costs the whole conversation to draw, and in a long one that stuttered the motion.
+    var heldUnderRise = false
+    /// The same for a change to what this device is holding, which must not be drawn against an
+    /// account older than the one the held state carries.
+    var pendingUnderRise = false
 
     var hasPainted = false
 

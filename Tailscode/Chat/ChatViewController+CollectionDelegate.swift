@@ -161,7 +161,7 @@ extension ChatViewController: UICollectionViewDelegate {
         }
         guard let message = chatMessage(for: rowID), message.role == .assistant,
             !message.isStreaming,
-            !(viewModel.isBusy && message.id == viewModel.state.messages.last?.id),
+            !(viewModel.turnIsLive && message.id == viewModel.state.messages.last?.id),
             let question = ConversationBrief.question(
                 before: message.id, in: viewModel.state.messages),
             ConversationBrief.typed(question) != nil

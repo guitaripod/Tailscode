@@ -1,4 +1,5 @@
 import MidgarCore
+import TailscodeCore
 import UIKit
 
 final class TextBubbleCell: UICollectionViewCell {
@@ -279,6 +280,35 @@ final class TextBubbleCell: UICollectionViewCell {
         textInsetTrailing.constant = -inner
         syncPlacedInsets()
     }
+
+    /// A prompt this device is still holding is drawn exactly as a sent one; only a send that did
+    /// not go changes, taking the danger tone on its edge over a lighter plate. The change eases
+    /// in and back out on a retry, and then holds still, because a settled state never moves.
+    func paintSendInk(_ ink: PendingSendReading.Ink) {
+        let failed = ink == .failed
+        let border: CGFloat = failed ? 1.5 : 0
+        let fill = failed ? Theme.Color.userBubble.withAlphaComponent(0.45) : Theme.Color.userBubble
+        let wasFailed = bubble.layer.borderWidth > 0
+        bubble.layer.borderColor = Theme.Color.danger.resolvedColor(with: traitCollection).cgColor
+        guard wasFailed != failed, window != nil, !UIAccessibility.isReduceMotionEnabled else {
+            bubble.layer.borderWidth = border
+            bubble.backgroundColor = fill
+            return
+        }
+        let edge = CABasicAnimation(keyPath: "borderWidth")
+        edge.fromValue = bubble.layer.borderWidth
+        edge.toValue = border
+        edge.duration = Self.inkEase
+        edge.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        bubble.layer.add(edge, forKey: "sendInk")
+        bubble.layer.borderWidth = border
+        UIView.animate(
+            withDuration: Self.inkEase, delay: 0,
+            options: [.curveEaseOut, .beginFromCurrentState, .allowUserInteraction]
+        ) { self.bubble.backgroundColor = fill }
+    }
+
+    private static let inkEase: TimeInterval = 0.25
 
     /// A message waiting for its turn: the words in a lighter ink on a plain plate with an outline,
     /// so it reads as not sent without being dimmed below legibility. The row is one element that

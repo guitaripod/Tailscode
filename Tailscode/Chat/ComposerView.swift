@@ -487,10 +487,30 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             return
         }
         Theme.Haptics.send()
+        collapseForSend()
         delegate?.composerDidSend(text)
-        textView.text = ""
         textViewDidChange(textView)
         resyncKeyboard()
+    }
+
+    /// Empties the box and brings it back to one line before the message is handed on, on the same
+    /// spring the prompt rises on, so the transcript's rise is aimed at the page as it will be
+    /// rather than at a box about to snap shut under it — one motion, never a jump and a
+    /// correction. The delegate hears about the empty box after the send, as it always has.
+    private func collapseForSend() {
+        textView.text = ""
+        placeholder.isHidden = false
+        guard !UIAccessibility.isReduceMotionEnabled, window != nil else {
+            updateHeight()
+            return
+        }
+        UIView.animate(
+            withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0.3,
+            options: [.allowUserInteraction, .beginFromCurrentState]
+        ) {
+            self.updateHeight()
+            self.superview?.layoutIfNeeded()
+        }
     }
 
     /// Programmatic `text` mutations while the keyboard is up leave its

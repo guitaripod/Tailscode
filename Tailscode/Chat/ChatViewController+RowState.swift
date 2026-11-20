@@ -283,6 +283,7 @@ extension ChatViewController {
     ) -> CGFloat {
         guard order.indices.contains(index) else { return 0 }
         let id = order[index]
+        if Self.isPendingStatus(id) { return Self.statusGap }
         let previous = index > 0 ? order[index - 1] : nil
         return ChatSpacing.gap(
             from: previous.map(rowClass(ofID:)), to: rowClass(ofID: id),
@@ -309,8 +310,13 @@ extension ChatViewController {
     /// itself; the rows this screen docks at the end — what is being sent, what is waiting, a
     /// question or a permission, a card about the turn — are named by their identity, and the
     /// cards that keep a plate take the block gap.
+    /// How close a held send's status row sits under its words: it is the bubble's caption, not
+    /// a row of its own to anyone reading.
+    static let statusGap: CGFloat = 2
+
     private func rowClass(ofID id: String) -> ChatRowClass {
         if let row = rowsByID[id] { return ChatSpacing.rowClass(of: row) }
+        if let row = pendingRowsByID[id] { return ChatSpacing.rowClass(of: row) }
         if id.hasPrefix("pending:") { return id.contains(":img") ? .picture : .prompt }
         if id.hasPrefix("queued:") { return .prompt }
         if id == Self.liveCompactionID { return .seam }

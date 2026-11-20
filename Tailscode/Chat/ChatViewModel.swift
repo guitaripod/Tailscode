@@ -249,6 +249,12 @@ final class ChatViewModel {
     /// subscription — once the stream terminates, the spinner never outlives it.
     var isBusy: Bool { (streamTask != nil && state.status == .running) || optimisticThinking }
 
+    /// Whether the turn the transcript ends with is the one being written. Busy is not enough: a
+    /// send makes the chat busy at the keystroke and the server calls it running the moment it
+    /// takes the prompt, while the transcript still ends with the answer before it — which, read
+    /// as live, was rebuilt as an open turn and replayed from its first letter under the question.
+    var turnIsLive: Bool { isBusy && !pending.awaitsEcho }
+
     func fork() async throws -> AgentSession {
         try await backend.forkSession(session.id)
     }
@@ -351,10 +357,24 @@ final class ChatViewModel {
     /// thinking state engages, and the Live Activity starts immediately —
     /// ActivityKit only allows starting one while foregrounded, so waiting
     /// for the server's `.running` event breaks the send-and-background flow.
-    /// The delivery itself is bounded to 15s (`prompt_async` returns
-    /// immediately when reachable), so a dead tunnel fails fast instead of
-    /// hanging in the thinking state for minutes.
+    /// The delivery is bounded by Core's `SendBound`, never shorter than the
+    /// transport's own deadline, so a send the server took is not cancelled
+    /// into a failure on a slow link.
     var sendGeneration = 0
+
+    /// Sends held for the connection: since when, how many attempts so far, and the one clock
+    /// that tries each again. The policy is Core's `SendWait`; this owns the clock.
+    var sendWaits: [UUID: SendWaitTicket] = [:]
+    /// Whether the sends held for the connection when the app last ran have been put back yet,
+    /// which waits for a transcript to count their baselines against.
+    var heldSendsRestored = false
+    /// The clock that looks for a send the server took whose prompt the stream never showed.
+    var sendWitness: Task<Void, Never>?
+    /// When the device queue stopped behind a failure, how many times it has been let go since,
+    /// and the clock that lets it go again once the server answers.
+    var queueHoldSince: Date?
+    var queueHoldAttempts = 0
+    var queueHoldClock: Task<Void, Never>?
 
     var knownModels: [ModelInfo] = []
 
@@ -366,3 +386,11 @@ final class ChatViewModel {
     /// banner tap acknowledges the current failure.
     var dismissedFailure: BackendFailure?
 }
+
+/// One send held for the connection.
+struct SendWaitTicket {
+    let heldSince: Date
+    var attempts = 0
+    var clock: Task<Void, Never>?
+}
+

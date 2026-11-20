@@ -45,6 +45,7 @@ extension ChatViewModel {
                     self.onModelChange?()
                 }
                 let displayedBefore = (self.displayedModel, self.displayedEffort)
+                let cameBack = state.connection == .live && self.state.connection != .live
                 self.state = state
                 if let waited = self.firstAnswer.answered(state) {
                     MidgarLog.info(
@@ -56,8 +57,19 @@ extension ChatViewModel {
                 if state.status == .running {
                     self.queueHeldAfterFailure = false
                     self.queueHold = nil
+                    self.queueHoldSince = nil
+                    self.queueHoldAttempts = 0
+                    self.queueHoldClock?.cancel()
                 }
                 self.onState?(state)
+                if state.hasLoadedTranscript, !self.heldSendsRestored {
+                    self.heldSendsRestored = true
+                    self.restoreHeldSends()
+                }
+                if cameBack || (state.status != .running && !self.pending.waiting.isEmpty) {
+                    self.nudgeSendWaits()
+                }
+                if self.queueHeldAfterFailure, state.connection == .live { self.releaseQueueHold() }
                 let awaiting =
                     state.pendingPermissions.first != nil || state.pendingQuestions.first != nil
                 SessionActivity.shared.update(
@@ -84,7 +96,7 @@ extension ChatViewModel {
     /// nothing waits on the person, and nothing this device holds is still to go.
     private func canRest(awaiting: Bool) -> Bool {
         state.status != .unknown && !isBusy && !awaiting && !isBound && queue.isEmpty
-            && resume.isEmpty
+            && resume.isEmpty && pending.waiting.isEmpty
     }
 
     /// Lets the conversation go once it has stayed at rest for the settle grace. A turn that ends

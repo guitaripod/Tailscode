@@ -93,9 +93,9 @@ extension ChatViewController {
                 role: .user, backend: self.viewModel.backend, localData: attachment.data)
             return cell
         }
-        if id.hasPrefix("pending:"),
+        if Self.isPendingStatus(id),
             let send = self.viewModel.pendingSends.first(where: {
-                "pending:\($0.id.uuidString)" == id
+                Self.pendingStatusID($0.id) == id
             })
         {
             let cell = collectionView.dequeueReusableCell(
@@ -103,8 +103,10 @@ extension ChatViewController {
                 as! PendingSendCell
             cell.configure(
                 send, plan: self.viewModel.resumePlan(for: send.id), delegate: self)
-            cell.onResize = { [weak self] in self?.remeasure(id) }
             return cell
+        }
+        if let row = self.pendingRowsByID[id] {
+            return self.pendingCell(collectionView, indexPath, row: row)
         }
         if id == Self.interruptedRowID, let turn = self.interrupted {
             let cell = collectionView.dequeueReusableCell(
@@ -208,7 +210,7 @@ extension ChatViewController {
             let cell = collectionView.dequeueReusableCell(
                 withReuseIdentifier: ActivityGroupCell.reuseID, for: indexPath)
                 as! ActivityGroupCell
-            let streaming = self.viewModel.isBusy && id == self.streamingActivityID
+            let streaming = self.viewModel.turnIsLive && id == self.streamingActivityID
             let toolTap: ((ToolCall) -> Void)? =
                 self.viewModel.supportsSubagents
                 ? { [weak self] call in self?.revealSubagent(spawnedBy: call) } : nil
@@ -373,4 +375,33 @@ extension ChatViewController {
         cell.linkDelegate = self
         return cell
     }
+
+    /// A held send's words or paste card, drawn by the cells the server's own rows use so the
+    /// echo replacing them is the same shape; only a send that did not go wears a different ink.
+    func pendingCell(
+        _ collectionView: UICollectionView, _ indexPath: IndexPath, row: ChatRow
+    ) -> UICollectionViewCell {
+        let send = viewModel.pendingSends.first { row.messageID == "pending:\($0.id.uuidString)" }
+        switch row.content {
+        case .pasted(let paste):
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: PastedTextCell.reuseID, for: indexPath) as! PastedTextCell
+            cell.configure(paste) { [weak self] in
+                self?.present(PastedTextViewController.sheet(paste), animated: true)
+            }
+            return cell
+        case .text(let text):
+            let fold = promptFold(text, row: row.id)
+            let cell = bubble(
+                collectionView, indexPath, fold?.shown ?? text, .user, reasoning: false,
+                foldLine: fold?.line)
+            if let bubble = cell as? TextBubbleCell, let send {
+                bubble.paintSendInk(PendingSendReading.ink(send))
+            }
+            return cell
+        default:
+            return Self.blankCell(collectionView, indexPath)
+        }
+    }
 }
+

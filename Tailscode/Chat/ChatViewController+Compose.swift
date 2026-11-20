@@ -15,15 +15,7 @@ extension ChatViewController {
         withdrawResolvedRequests(
             previousPermission: previousPermissionID, previousQuestion: previousQuestionID)
         var ids = orderedIDs
-        var pendingIDs: [String] = []
-        for send in viewModel.pendingSends {
-            for index in send.pictures.indices {
-                pendingIDs.append("pending:\(send.id.uuidString):img\(index)")
-            }
-            if !send.text.isEmpty || send.pictures.isEmpty {
-                pendingIDs.append("pending:\(send.id.uuidString)")
-            }
-        }
+        let pendingIDs = layOutPendingRows()
         ids.append(contentsOf: pendingIDs)
         let queueDisplay = viewModel.queueDisplay
         for message in queueDisplay.rows { ids.append(message.key) }
@@ -55,9 +47,13 @@ extension ChatViewController {
         Self.logPendingPhantom(state: state, viewModel: viewModel)
         let uniqueIDs = Self.appendingUnique(
             ids.dropFirst(orderedIDs.count), to: orderedIDs, known: rowsByID)
-        let orderUnchanged = renderedIDOrder == uniqueIDs
+        let previousOrder = renderedIDOrder
+        let orderUnchanged = previousOrder == uniqueIDs
         if !orderUnchanged { renderedIDOrder = uniqueIDs }
-        let idSet = orderUnchanged && !lastRenderedIDs.isEmpty ? lastRenderedIDs : Set(uniqueIDs)
+        let sharedPrefix =
+            orderUnchanged ? uniqueIDs.count : Self.sharedPrefix(previousOrder, uniqueIDs)
+        let idSet = Self.renderedSet(
+            uniqueIDs, previous: previousOrder, rendered: lastRenderedIDs, sharedPrefix: sharedPrefix)
         let previouslyRendered = lastRenderedIDs
         let entranceEligible = hasRevealed && !userScrolledUp
         let entranceBubbles =
@@ -65,7 +61,11 @@ extension ChatViewController {
             ? uniqueIDs.filter {
                 !lastRenderedIDs.contains($0)
                     && ($0.hasPrefix("pending:") || $0.hasPrefix("queued:"))
+                    && !Self.isPendingStatus($0)
             } : []
+        let arrivingStatus = uniqueIDs.filter {
+            Self.isPendingStatus($0) && !lastRenderedIDs.contains($0)
+        }
         let entranceThinking =
             entranceEligible && uniqueIDs.contains("thinking")
             && !lastRenderedIDs.contains("thinking")
@@ -85,8 +85,9 @@ extension ChatViewController {
         let goingAgain = canvasForcedSend.map { "pending:\($0.uuidString)" }
         let freshSend = Self.freshSendRows(
             among: pendingIDs.filter { id in
-                !previouslyRendered.contains(id)
-                    || goingAgain.map { id == $0 || id.hasPrefix($0 + ":") } == true
+                !Self.isPendingStatus(id)
+                    && (!previouslyRendered.contains(id)
+                        || goingAgain.map { id == $0 || id.hasPrefix($0 + ":") } == true)
             })
         // A send this device just made rises wherever the reader was standing: they wrote it, and
         // the desktops have always risen on it unconditionally. Only a finger actually on the
@@ -144,7 +145,7 @@ extension ChatViewController {
             changed.append(id)
         }
         settledCascadeRows.removeAll()
-        let streamingID = viewModel.isBusy ? streamingActivityID : nil
+        let streamingID = viewModel.turnIsLive ? streamingActivityID : nil
         if streamingID != lastStreamingID {
             for id in [streamingID, lastStreamingID].compactMap({ $0 })
             where rowsByID[id] != nil && !changed.contains(id) {
@@ -183,6 +184,27 @@ extension ChatViewController {
                     if marked.insert(key).inserted { changed.append(key) }
                 }
             }
+        } else if sharedPrefix > 0, !appliedGaps.isEmpty, appliedGapMetrics == metrics {
+            for id in previousOrder[sharedPrefix...] where !idSet.contains(id) {
+                appliedGaps[id] = nil
+            }
+            for index in sharedPrefix..<uniqueIDs.count {
+                let key = uniqueIDs[index]
+                let gap = gap(before: index, in: uniqueIDs, metrics: metrics)
+                let before = appliedGaps[key]
+                appliedGaps[key] = gap
+                if let before, before != gap, marked.insert(key).inserted { changed.append(key) }
+            }
+            for id in Array(changed) {
+                guard let index = orderIndex(of: id), index < sharedPrefix else { continue }
+                for target in [index, index + 1] where target < sharedPrefix {
+                    let key = uniqueIDs[target]
+                    let gap = gap(before: target, in: uniqueIDs, metrics: metrics)
+                    guard appliedGaps[key] != gap else { continue }
+                    appliedGaps[key] = gap
+                    if marked.insert(key).inserted { changed.append(key) }
+                }
+            }
         } else {
             let gapTable = gaps(for: uniqueIDs, metrics: metrics)
             for id in uniqueIDs {
@@ -206,12 +228,13 @@ extension ChatViewController {
             dataSource.apply(snapshotToApply(), animatingDifferences: false) { [weak self] in
                 guard let self else { return }
                 if handOffEmptyState { self.animateEmptyStateHandoff() }
-                let riders = (entranceBubbles + (entranceThinking ? ["thinking"] : [])).compactMap {
+                let riders = (entranceThinking ? ["thinking"] : []).compactMap {
                     id -> UIView? in
                     guard let index = self.dataSource.snapshot().indexOfItem(id) else { return nil }
                     return self.collectionView.cellForItem(at: IndexPath(item: index, section: 0))?
                         .contentView
                 }
+                self.popSentBubbles(entranceBubbles)
                 self.settleFreshCanvas(fading: riders)
             }
         } else if !entranceBubbles.isEmpty || entranceThinking {
@@ -257,6 +280,7 @@ extension ChatViewController {
                 dataSource.apply(snapshotToApply(), animatingDifferences: animated) { [weak self] in
                     finishApply()
                     self?.restoreReadingPlace(held)
+                    if !arrivingStatus.isEmpty { self?.easeInStatusRows(arrivingStatus) }
                 }
             }
         }
@@ -329,4 +353,30 @@ extension ChatViewController {
             runFind(retarget: false)
         }
     }
+
+    /// How many rows two orders share from the top. A send, a queue change or a card about the
+    /// turn moves only the end of a conversation, and everything above it is the same rows in
+    /// the same places.
+    static func sharedPrefix(_ old: [String], _ new: [String]) -> Int {
+        var index = 0
+        let limit = min(old.count, new.count)
+        while index < limit, old[index] == new[index] { index += 1 }
+        return index
+    }
+
+    /// The set of what is drawn, edited at the end where the order changed rather than hashed
+    /// whole again: a set of every row of a long conversation was most of what a send cost to
+    /// look at before it was drawn.
+    static func renderedSet(
+        _ order: [String], previous: [String], rendered: Set<String>, sharedPrefix: Int
+    ) -> Set<String> {
+        guard !rendered.isEmpty, rendered.count == previous.count else { return Set(order) }
+        guard sharedPrefix < order.count || sharedPrefix < previous.count else { return rendered }
+        guard sharedPrefix > 0 else { return Set(order) }
+        var set = rendered
+        for id in previous[sharedPrefix...] { set.remove(id) }
+        for id in order[sharedPrefix...] { set.insert(id) }
+        return set.count == order.count ? set : Set(order)
+    }
 }
+

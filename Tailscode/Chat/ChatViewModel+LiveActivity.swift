@@ -6,7 +6,10 @@ import MidgarCore
 extension ChatViewModel {
     func reconcileOptimisticState(with state: ConversationState) {
         if state.status == .running { optimisticThinking = false }
-        pending.reconcile(userMessages: state.messages.count { $0.role == .user })
+        let echoed = pending.sends.filter(\.isInFlight)
+        if pending.reconcile(userMessages: state.messages.count { $0.role == .user }) {
+            handPicturesToEcho(of: echoed.filter { pending.send(id: $0.id) == nil }, in: state)
+        }
         retireDeliveredFailures(in: state)
         dropQueueSentElsewhere()
         armResumeForWalledTurn(state)
@@ -195,3 +198,38 @@ struct CardBriefing {
     let fill: Double?
     let fillAt: Date
 }
+
+extension ChatViewModel {
+    /// The pictures of a send whose echo has just landed are given to the files the server named
+    /// them as, in order, so the server's rows draw what the pending rows drew.
+    func handPicturesToEcho(of retired: [PendingSend], in state: ConversationState) {
+        let pictures = retired.flatMap(\.pictures)
+        guard !pictures.isEmpty,
+            let echo = state.messages.last(where: { $0.role == .user })
+        else { return }
+        let files: [FileReference] = echo.parts.compactMap { part in
+            if case .file(let file) = part.kind, file.mime?.hasPrefix("image/") ?? true {
+                return file
+            }
+            return nil
+        }
+        var pendingIndex: [UUID: Int] = [:]
+        let sent: [(file: FileReference, data: Data)] = retired.flatMap { send in
+            send.pictures.compactMap { attachment -> (FileReference, Data)? in
+                let index = pendingIndex[send.id, default: 0]
+                pendingIndex[send.id] = index + 1
+                guard let data = attachment.data else { return nil }
+                return (
+                    FileReference(
+                        path: nil, mime: attachment.mime,
+                        url: "pending:\(send.id.uuidString):\(index)",
+                        filename: attachment.filename), data
+                )
+            }
+        }
+        for (picture, file) in zip(sent, files.suffix(sent.count)) {
+            AttachmentImageStore.shared.hand(picture.data, from: picture.file, to: file)
+        }
+    }
+}
+

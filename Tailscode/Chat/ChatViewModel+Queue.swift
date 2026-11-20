@@ -27,7 +27,7 @@ extension ChatViewModel {
     /// version that held everything locally goes on the first connection.
     func handOverQueue() {
         let routing = queueRouting
-        guard queue.holdsServerBound(routing: routing) else { return }
+        guard queue.holdsServerBound(routing: routing), pending.waiting.isEmpty else { return }
         let queue = queue
         let conversation = conversation
         Task { [weak self] in
@@ -93,7 +93,7 @@ extension ChatViewModel {
 
     func flushQueue() {
         guard !isBusy, queue.holdsDeviceHead(routing: queueRouting), !queueHeldAfterFailure,
-            SendQueueDrain.mayDrain(state)
+            !pending.hasUnsent, SendQueueDrain.mayDrain(state)
         else { return }
         let next = queue.takeDeviceHead(routing: queueRouting)
         guard let next else {
@@ -136,19 +136,64 @@ extension ChatViewModel {
             queue.requeueAtHead(send)
             queueHeldAfterFailure = true
             queueHold = reason
+            queueHoldSince = Date()
+            armQueueRelease()
         }
         onPending?()
+    }
+
+    /// A queue held behind a failure goes again on its own once the server answers: on a stream
+    /// that is live and idle, after Core's wait clock has let the fault cool. Without this a
+    /// device-held queue sat promising it would go "when the server answers" until somebody typed
+    /// something new, which then went first.
+    func armQueueRelease() {
+        queueHoldClock?.cancel()
+        guard queueHeldAfterFailure, let since = queueHoldSince else { return }
+        let wait = SendWait.delay(afterAttempts: queueHoldAttempts + 1)
+        let due = since.addingTimeInterval(wait)
+        queueHoldClock = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(0.1, due.timeIntervalSinceNow)))
+            guard !Task.isCancelled else { return }
+            self?.releaseQueueHold()
+        }
+    }
+
+    /// Lets a held queue go if the conversation can take it now; otherwise waits for the next
+    /// state that says it can, or the next tick of the clock.
+    func releaseQueueHold() {
+        guard queueHeldAfterFailure, let since = queueHoldSince else { return }
+        let wait = SendWait.delay(afterAttempts: queueHoldAttempts + 1)
+        guard Date().timeIntervalSince(since) >= wait else { return armQueueRelease() }
+        guard state.connection == .live, state.status != .running, !isBusy else {
+            queueHoldClock?.cancel()
+            queueHoldClock = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(SendWait.delays.last ?? 30))
+                guard !Task.isCancelled else { return }
+                self?.releaseQueueHold()
+            }
+            return
+        }
+        MidgarLog.info(
+            "queue hold released session=\(session.id) attempt=\(queueHoldAttempts + 1)", category: .chat)
+        queueHoldAttempts += 1
+        queueHeldAfterFailure = false
+        queueHold = nil
+        queueHoldSince = nil
+        queueHoldClock = nil
+        onPending?()
+        flushQueue()
     }
 
     /// A send that errored may still have arrived, and the transcript is the witness that settles
     /// it: a failed row or a held queue head whose words appear as a user message written after
     /// the send began is retired instead of being offered again.
     func retireDeliveredFailures(in state: ConversationState) {
-        guard pending.sends.contains(where: \.isFailed) || queueHeldAfterFailure else { return }
+        guard pending.hasUnsent || queueHeldAfterFailure else { return }
         let userTexts = state.messages.filter { $0.role == .user }.map(\.text)
         var changed = false
-        for send in pending.retireArrived(userTexts: userTexts) {
+        for send in pending.retireArrived(in: state.messages) {
             releaseResume(for: send.id)
+            forgetSendWait(send.id)
             changed = true
         }
         if queueHeldAfterFailure, let baseline = heldBaseline, let head = queue.local.items.first,
@@ -160,6 +205,8 @@ extension ChatViewModel {
             if queue.isEmpty {
                 queueHeldAfterFailure = false
                 queueHold = nil
+                queueHoldSince = nil
+                queueHoldClock?.cancel()
             }
             changed = true
         }
@@ -179,34 +226,50 @@ extension ChatViewModel {
         stopResumeClockIfIdle()
     }
 
-    /// Sends a failed row again, keeping its place and its identity — with a turn now running it
-    /// joins the queue like anything else written during one.
+    /// Sends a failed or held row again, keeping its place and its identity — with a turn now
+    /// running it waits behind that turn as the row it is, and goes first when the turn ends,
+    /// ahead of anything written after it. A failure is checked
+    /// against the transcript first: the row may be standing in for words the server already
+    /// has, and pressing it must not post them twice. A held send never left, so it goes at once.
     func retryPending(id: UUID) {
-        guard let send = pending.send(id: id), send.isFailed else { return }
+        guard let send = pending.send(id: id), send.isUnsent else { return }
         let attachments = send.attachments
         let text = send.text
+        sendWaits[id]?.clock?.cancel()
+        if send.isWaiting { sendWaits[id]?.clock = nil }
         guard !isBusy else {
-            pending.remove(id: id)
-            hold(QueuedSend(text: text, attachments: attachments))
+            holdBehindTurn(id)
             return
         }
         deliver(
             text, model: send.model ?? selectedModel, effort: send.effort ?? currentEffort,
-            attachments: attachments, reusing: id)
+            attachments: attachments, reusing: id, checkFirst: true)
     }
 
     /// Takes a failed row back to be rewritten. The row goes; its words are the caller's now.
     @discardableResult
     func takeBackPending(id: UUID) -> PendingSend? {
+        forgetSendWait(id)
         let taken = pending.remove(id: id)
         if taken != nil { onPending?() }
+        flushQueue()
+        handOverQueue()
         return taken
     }
 
     @discardableResult
     func discardPending(id: UUID) -> PendingSend? {
+        forgetSendWait(id)
         let dropped = pending.remove(id: id)
         if dropped != nil { onPending?() }
+        flushQueue()
+        handOverQueue()
         return dropped
+    }
+
+    private func forgetSendWait(_ id: UUID) {
+        sendWaits[id]?.clock?.cancel()
+        sendWaits[id] = nil
+        HeldSendStore.release(id)
     }
 }

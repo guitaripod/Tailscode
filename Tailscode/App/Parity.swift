@@ -77,6 +77,7 @@ enum ParityManifest {
         case .followBottom: return .implemented("syncFAB")
         case .transcriptFind: return .implemented("runFind")
         case .userEcho: return .implemented("PendingSendCell")
+        case .sendWhenBack: return .implemented("armSendWait")
         case .freshCanvas: return .implemented("openFreshCanvas")
         case .chooserBriefing: return .implemented("ChooserBriefingViewController")
         case .delegateBoard: return .implemented("DelegateBoardViewController")

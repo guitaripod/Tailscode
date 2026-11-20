@@ -65,6 +65,12 @@ extension ChatViewController {
     /// reads as one motion instead of a fade racing the entrance and a scroll snap.
     func animateEmptyStateHandoff() {
         guard !emptyState.isHidden else { return }
+        guard !UIAccessibility.isReduceMotionEnabled else {
+            emptyState.isHidden = true
+            emptyState.alpha = 1
+            emptyState.transform = .identity
+            return
+        }
         UIView.animate(
             withDuration: 0.45, delay: 0, usingSpringWithDamping: 0.85,
             initialSpringVelocity: 0.4, options: [.curveEaseIn, .allowUserInteraction]
@@ -82,6 +88,100 @@ extension ChatViewController {
     /// A sent message springs up from the composer into place, then the
     /// thinking indicator rises in just behind it — the bubble should feel
     /// like it physically leaves the input field.
+    /// The rows a held send is drawn as: its pictures, its words and paste cards in the shape the
+    /// server's own rows will have, and — only while it has something to say — the status row
+    /// under them. Wakes the transcript for the moment that row next appears on its own.
+    func layOutPendingRows() -> [String] {
+        var ids: [String] = []
+        var rows: [String: ChatRow] = [:]
+        let now = Date()
+        var wake: Date?
+        for send in viewModel.pendingSends {
+            let key = "pending:\(send.id.uuidString)"
+            for index in send.pictures.indices { ids.append("\(key):img\(index)") }
+            if !send.text.isEmpty || send.pictures.isEmpty {
+                for row in ChatRowBuilder.promptRows(
+                    CarriedText.typed(send.text), id: key, messageID: key)
+                {
+                    rows[row.id] = row
+                    ids.append(row.id)
+                }
+            }
+            let plan = viewModel.resumePlan(for: send.id)
+            if PendingSendCell.speaks(send, plan: plan, now: now) {
+                ids.append(Self.pendingStatusID(send.id))
+            } else if let next = PendingSendReading.nextCaptionChange(send, now: now) {
+                wake = min(wake ?? next, next)
+            }
+        }
+        pendingRowsByID = rows
+        pendingWake?.cancel()
+        pendingWake = wake.map { at in
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(max(0.05, at.timeIntervalSinceNow + 0.02)))
+                guard !Task.isCancelled else { return }
+                self?.viewModel.onPending?()
+            }
+        }
+        return ids
+    }
+
+    static func pendingStatusID(_ id: UUID) -> String { "pending:\(id.uuidString):status" }
+
+    static func isPendingStatus(_ id: String) -> Bool {
+        id.hasPrefix("pending:") && id.hasSuffix(":status")
+    }
+
+    /// A status row arriving under a bubble — a failure, a send held for the connection, a wait
+    /// that has become news — eases in under the words it is about, and then holds still.
+    func easeInStatusRows(_ ids: [String]) {
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
+        let snapshot = dataSource.snapshot()
+        for id in ids {
+            guard let index = snapshot.indexOfItem(id),
+                let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0))
+            else { continue }
+            let content = cell.contentView
+            content.alpha = 0
+            content.transform = CGAffineTransform(translationX: 0, y: -6)
+            UIView.animate(
+                withDuration: 0.28, delay: 0.04, options: [.curveEaseOut, .allowUserInteraction]
+            ) {
+                content.alpha = 1
+                content.transform = .identity
+            }
+        }
+    }
+
+    /// The words just sent are on screen from the keystroke, at full strength — they leave the
+    /// box and are in the transcript in the same frame. They arrive a touch small, anchored at the
+    /// corner nearest the box they came from, and settle to size on the spring the page rises on,
+    /// so the send reads as the bubble leaving the composer rather than a row appearing.
+    func popSentBubbles(_ ids: [String]) {
+        guard !UIAccessibility.isReduceMotionEnabled, !ids.isEmpty else { return }
+        let snapshot = dataSource.snapshot()
+        for id in ids where !Self.isPendingStatus(id) {
+            guard let index = snapshot.indexOfItem(id),
+                let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0))
+            else { continue }
+            let content = cell.contentView
+            let size = content.bounds.size
+            let scale = Self.sentBubbleScale
+            content.transform = CGAffineTransform(
+                translationX: (1 - scale) * size.width / 2, y: (1 - scale) * size.height / 2
+            ).scaledBy(x: scale, y: scale)
+            UIView.animate(
+                withDuration: FreshCanvas.riseResponse, delay: 0,
+                usingSpringWithDamping: CGFloat(FreshCanvas.riseDamping), initialSpringVelocity: 0.4,
+                options: [.allowUserInteraction, .beginFromCurrentState]
+            ) {
+                content.transform = .identity
+            }
+        }
+    }
+
+    private static let sentBubbleScale: CGFloat = 0.92
+
     func animateSendEntrance(bubbleIDs: [String], includeThinking: Bool) {
         guard !UIAccessibility.isReduceMotionEnabled else { return }
         let snapshot = dataSource.snapshot()

@@ -27,10 +27,13 @@ final class ChatBrainController {
         let awaiting: NeuralAwaiting
     }
 
-    func reading(of state: ConversationState, stalled: Bool) -> Reading {
+    /// `echoPending` is a prompt this device sent that the transcript does not hold yet: the
+    /// server may already call the conversation running, but its last turn is the finished one
+    /// before the prompt, and drawing that as running reopened it under the question.
+    func reading(of state: ConversationState, stalled: Bool, echoPending: Bool = false) -> Reading {
         guard BrainDebug.forcedActivity != nil else {
             return Reading(
-                messages: state.messages, running: state.status == .running,
+                messages: state.messages, running: state.status == .running && !echoPending,
                 awaiting: Self.awaiting(in: state, messages: state.messages, stalled: stalled))
         }
         let staged = BrainDebug.staged(state.messages)

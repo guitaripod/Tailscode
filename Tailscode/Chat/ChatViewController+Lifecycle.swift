@@ -46,13 +46,14 @@ extension ChatViewController {
     }
 
     /// The reader has left this conversation: it stops being bound, stops streaming unless a turn
-    /// is still out, and drops an enhancement in flight. A chat that leaves the screen says so
+    /// is still out or a send is held for the connection — whose clock and words live in the view
+    /// model, and would go with it — and drops an enhancement in flight. A chat that leaves the screen says so
     /// through its own disappearance; one a stack drops while it was buried under another never
     /// appears or disappears, so whoever drops it has to say so here.
     func releaseConversation() {
         callController.chatLeft()
         viewModel.isBound = false
-        if !viewModel.isBusy { viewModel.stop() }
+        if !viewModel.isBusy, viewModel.pending.waiting.isEmpty { viewModel.stop() }
         enhancement.cancel()
         enhanceOverlay?.removeFromSuperview()
         enhanceOverlay = nil
@@ -106,6 +107,7 @@ extension ChatViewController {
         }
         viewModel.resync()
         viewModel.serviceResume()
+        viewModel.nudgeSendWaits()
     }
 }
 
