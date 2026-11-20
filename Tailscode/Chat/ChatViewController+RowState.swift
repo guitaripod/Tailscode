@@ -293,7 +293,7 @@ extension ChatViewController {
     }
 
     private func isStamp(_ id: String) -> Bool {
-        if case .timestamp = rowsByID[id]?.content { return true }
+        if case .timestamp = (rowsByID[id] ?? pendingRowsByID[id])?.content { return true }
         return false
     }
 

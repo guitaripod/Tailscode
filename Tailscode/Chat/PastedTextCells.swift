@@ -8,7 +8,7 @@ import UIKit
 final class PastedTextCell: UICollectionViewCell {
     static let reuseID = "PastedTextCell"
 
-    private let control = UIControl()
+    private let control = PlateControl()
     private let glyph = UIImageView()
     private let title = UILabel()
     private let glimpse = UILabel()
@@ -19,8 +19,6 @@ final class PastedTextCell: UICollectionViewCell {
     override init(frame: CGRect) {
         super.init(frame: frame)
         control.backgroundColor = Theme.Color.userBubble.withAlphaComponent(0.14)
-        control.layer.cornerRadius = Theme.Radius.bubble
-        control.layer.cornerCurve = .continuous
         control.layer.borderWidth = 1
         control.layer.borderColor = Theme.Color.userBubble.withAlphaComponent(0.35).cgColor
         control.addTarget(self, action: #selector(tapped), for: .touchUpInside)
@@ -296,3 +294,12 @@ final class PasteChip: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 }
+
+/// A pressable plate whose corners follow its height (`shapePlate`).
+final class PlateControl: UIControl {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        shapePlate(radius: Theme.Radius.bubble)
+    }
+}
+

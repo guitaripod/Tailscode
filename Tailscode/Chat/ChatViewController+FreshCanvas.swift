@@ -47,8 +47,9 @@ extension ChatViewController {
             let lastUser = orderedIDs.lastIndex(where: { rowsByID[$0]?.role == .user }),
             let messageID = rowsByID[orderedIDs[lastUser]]?.messageID
         else { return nil }
+        let stamp = "ts:\(messageID)"
         let rows = orderedIDs.filter {
-            rowsByID[$0]?.messageID == messageID && rowsByID[$0]?.role == .user
+            $0 == stamp || (rowsByID[$0]?.messageID == messageID && rowsByID[$0]?.role == .user)
         }
         guard let first = rows.first.flatMap({ orderedIDs.firstIndex(of: $0) }),
             first >= canvasFloor - 2

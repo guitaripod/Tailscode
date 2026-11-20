@@ -96,8 +96,14 @@ extension ChatViewController {
         var rows: [String: ChatRow] = [:]
         let now = Date()
         var wake: Date?
+        var dated = lastRenderedState?.messages.last?.createdAt
         for send in viewModel.pendingSends {
             let key = "pending:\(send.id.uuidString)"
+            if let stamp = Self.pendingStamp(for: send, key: key, after: dated) {
+                rows[stamp.id] = stamp
+                ids.append(stamp.id)
+            }
+            dated = max(dated ?? send.startedAt, send.startedAt)
             for index in send.pictures.indices { ids.append("\(key):img\(index)") }
             if !send.text.isEmpty || send.pictures.isEmpty {
                 for row in ChatRowBuilder.promptRows(
@@ -127,6 +133,18 @@ extension ChatViewController {
     }
 
     static func pendingStatusID(_ id: UUID) -> String { "pending:\(id.uuidString):status" }
+
+    /// The date the server's row will wear over these words, by the builder's own rule — a
+    /// message written more than five minutes after the one before it is dated — so the stamp is
+    /// there from the keystroke and rises with the prompt, rather than arriving with the echo above
+    /// a prompt that has already risen and sitting half under the bar.
+    static func pendingStamp(for send: PendingSend, key: String, after previous: Date?) -> ChatRow? {
+        guard let previous, send.startedAt.timeIntervalSince(previous) > ChatRowBuilder.stampGap
+        else { return nil }
+        return ChatRow(
+            id: "\(key):ts", messageID: key, role: .system,
+            content: .timestamp(ChatRowBuilder.relativeTimestamp(send.startedAt)))
+    }
 
     static func isPendingStatus(_ id: String) -> Bool {
         id.hasPrefix("pending:") && id.hasSuffix(":status")
@@ -160,7 +178,7 @@ extension ChatViewController {
     func popSentBubbles(_ ids: [String]) {
         guard !UIAccessibility.isReduceMotionEnabled, !ids.isEmpty else { return }
         let snapshot = dataSource.snapshot()
-        for id in ids where !Self.isPendingStatus(id) {
+        for id in ids where !Self.isPendingStatus(id) && !id.hasSuffix(":ts") {
             guard let index = snapshot.indexOfItem(id),
                 let cell = collectionView.cellForItem(at: IndexPath(item: index, section: 0))
             else { continue }

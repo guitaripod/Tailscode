@@ -31,8 +31,7 @@ final class TextBubbleCell: UICollectionViewCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        bubble.layer.cornerRadius = Theme.Radius.bubble
-        bubble.layer.cornerCurve = .continuous
+        bubble.plateRadius = Theme.Radius.bubble
         bubble.translatesAutoresizingMaskIntoConstraints = false
         textView.isEditable = false
         textView.isScrollEnabled = false

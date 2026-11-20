@@ -11,6 +11,9 @@ final class CodeBlockCell: UICollectionViewCell {
     private let langLabel = UILabel()
     private let copyButton = UIButton(type: .system)
     private let codeScroll = UIScrollView()
+    /// The code's background fading in over the last few points of a line that runs on past the
+    /// block, so a clipped line reads as one that scrolls rather than one that was cut.
+    private let runOn = EdgeFadeView()
     private let codeLabel = DiffWashLabel()
     private let lineNumberLabel = UILabel()
     private let toggleButton = UIButton(type: .system)
@@ -80,7 +83,9 @@ final class CodeBlockCell: UICollectionViewCell {
         toggleButton.addTarget(self, action: #selector(toggleTapped), for: .touchUpInside)
 
         contentView.addSubview(container)
-        [langLabel, copyButton, codeScroll, toggleButton].forEach(container.addSubview)
+        codeScroll.delegate = self
+        runOn.translatesAutoresizingMaskIntoConstraints = false
+        [langLabel, copyButton, codeScroll, runOn, toggleButton].forEach(container.addSubview)
         [lineNumberLabel, codeLabel].forEach(codeScroll.addSubview)
 
         let content = codeScroll.contentLayoutGuide
@@ -113,6 +118,10 @@ final class CodeBlockCell: UICollectionViewCell {
             codeLabel.leadingAnchor.constraint(equalTo: lineNumberLabel.trailingAnchor, constant: Theme.Spacing.s),
             codeLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -Theme.Spacing.s),
 
+            runOn.topAnchor.constraint(equalTo: codeScroll.topAnchor),
+            runOn.bottomAnchor.constraint(equalTo: codeScroll.bottomAnchor),
+            runOn.trailingAnchor.constraint(equalTo: codeScroll.trailingAnchor),
+            runOn.widthAnchor.constraint(equalToConstant: Self.runOnWidth),
             toggleButton.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: Theme.Spacing.m),
             toggleButton.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -Theme.Spacing.m),
         ])
@@ -352,6 +361,11 @@ final class CodeBlockCell: UICollectionViewCell {
         cascadeLaid = nil
     }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        showRunOn()
+    }
+
     private static func lineNumbers(count: Int) -> String {
         (1...count).map { "\($0)" }.joined(separator: "\n")
     }
@@ -448,3 +462,54 @@ final class CodeBlockCell: UICollectionViewCell {
         onToggle?()
     }
 }
+
+extension CodeBlockCell: UIScrollViewDelegate {
+    static let runOnWidth: CGFloat = 28
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        showRunOn()
+    }
+
+    /// Shows the fade only while there is code past the edge: none for a block that fits, and none
+    /// once the reader has scrolled to the end of its longest line.
+    func showRunOn() {
+        let hidden = codeScroll.contentOffset.x + codeScroll.bounds.width
+        let left = codeScroll.contentSize.width - hidden
+        let shown = min(1, max(0, left / Self.runOnWidth))
+        if abs(runOn.alpha - shown) > 0.01 { runOn.alpha = shown }
+    }
+}
+
+/// A strip that fades from clear into the code's own background, redrawn in whichever appearance
+/// the screen is in.
+final class EdgeFadeView: UIView {
+    private let fade = CAGradientLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        fade.startPoint = CGPoint(x: 0, y: 0.5)
+        fade.endPoint = CGPoint(x: 1, y: 0.5)
+        layer.addSublayer(fade)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: EdgeFadeView, _) in
+            view.paint()
+        }
+        paint()
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        fade.frame = bounds
+        CATransaction.commit()
+    }
+
+    private func paint() {
+        let base = Theme.Color.codeBackground.resolvedColor(with: traitCollection)
+        fade.colors = [base.withAlphaComponent(0).cgColor, base.cgColor]
+    }
+}
+

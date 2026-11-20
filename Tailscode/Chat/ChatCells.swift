@@ -124,9 +124,14 @@ final class HairlineAttachment: NSTextAttachment {
 final class BubbleView: UIView {
     var placedContent: UIView?
     var contentInsets: UIEdgeInsets = .zero
+    /// The corner the plate asks for, shaped to its height on every layout (`shapePlate`).
+    var plateRadius: CGFloat? {
+        didSet { setNeedsLayout() }
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        if let plateRadius { shapePlate(radius: plateRadius) }
         guard let placedContent else { return }
         let target = bounds.inset(by: contentInsets)
         if placedContent.frame != target { placedContent.frame = target }
@@ -149,3 +154,27 @@ extension UIFont {
             descriptor: fontDescriptor.addingAttributes([.featureSettings: [settings]]), size: 0)
     }
 }
+
+extension UIView {
+    /// Shapes a plate's corners for the height it has. A continuous corner blends into its edge
+    /// over about one and a half times its radius, and a plate shorter than that — a prompt of one
+    /// line — has no edge to blend into: the curve was squeezed into a lemon, flat across the top
+    /// and bulging at the ends. Such a plate is a true capsule instead, its ends half circles; a
+    /// plate tall enough for the continuous corner keeps it.
+    func shapePlate(radius: CGFloat) {
+        let half = bounds.height / 2
+        guard half > 0 else { return }
+        if half < radius * Self.continuousReach {
+            let corner = min(radius, half)
+            if layer.cornerRadius != corner { layer.cornerRadius = corner }
+            if layer.cornerCurve != .circular { layer.cornerCurve = .circular }
+        } else {
+            if layer.cornerRadius != radius { layer.cornerRadius = radius }
+            if layer.cornerCurve != .continuous { layer.cornerCurve = .continuous }
+        }
+    }
+
+    /// How far past its radius a continuous corner reaches into the edge it meets.
+    static let continuousReach: CGFloat = 1.528
+}
+

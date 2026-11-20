@@ -383,6 +383,8 @@ extension ChatViewController {
     ) -> UICollectionViewCell {
         let send = viewModel.pendingSends.first { row.messageID == "pending:\($0.id.uuidString)" }
         switch row.content {
+        case .timestamp(let text):
+            return bubble(collectionView, indexPath, text, .system, reasoning: false, timestamp: true)
         case .pasted(let paste):
             let cell = collectionView.dequeueReusableCell(
                 withReuseIdentifier: PastedTextCell.reuseID, for: indexPath) as! PastedTextCell

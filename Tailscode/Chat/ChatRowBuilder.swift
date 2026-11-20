@@ -59,7 +59,7 @@ enum ChatRowBuilder {
             }
             let leading = rows.count
             let stamp = lastDate.flatMap { previous in
-                message.createdAt.timeIntervalSince(previous) > 300
+                message.createdAt.timeIntervalSince(previous) > Self.stampGap
                     ? ChatRow(
                         id: "ts:\(message.id)", messageID: message.id, role: .system,
                         content: .timestamp(Self.relativeTimestamp(message.createdAt)))
@@ -640,6 +640,9 @@ enum ChatRowBuilder {
         }
         return (steps, report)
     }
+
+    /// How long after the message before it a message has to come to be dated.
+    static let stampGap: TimeInterval = 300
 
     static func relativeTimestamp(_ date: Date) -> String {
         let time = date.formatted(date: .omitted, time: .shortened)
