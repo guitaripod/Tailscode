@@ -308,8 +308,7 @@ final class TranscriptRowBuilder {
             return nil
         }
         tailRebuilds += 1
-        let folded = TranscriptRow.compactTools ? TranscriptRow.fuse(tail) : tail
-        let result = held.rows + folded
+        let result = held.rows + Self.laidOut(tail)
         if let later = (from..<messages.count).last(where: { messages[$0].role == .user }),
             later > from
         {
@@ -318,11 +317,19 @@ final class TranscriptRowBuilder {
             prefix = Prefix(
                 messages: Array(messages[..<later]), turnOpen: turnOpen,
                 stamp: stamp(of: messages[..<later], brains: brains),
-                rows: held.rows + (TranscriptRow.compactTools ? TranscriptRow.fuse(head) : head),
+                rows: held.rows + Self.laidOut(head),
                 hadRows: held.hadRows || rowCut > 0,
                 prompt: messages[..<later].last { $0.role == .user })
         }
         return result
+    }
+
+    /// Turns laid out on top of the held prefix the way `finish` lays out the whole conversation:
+    /// runs folded and each turn's pictures gathered into its strip. The rows start at a question,
+    /// so no run or turn reaches back into the prefix, and a turn that holds a plan never comes
+    /// here.
+    private static func laidOut(_ rows: [TranscriptRow]) -> [TranscriptRow] {
+        TranscriptRow.gallery(TranscriptRow.compactTools ? TranscriptRow.fuse(rows) : rows)
     }
 
     /// The conversation laid out the plain way, with no memo and no prefix, for the selftest that
