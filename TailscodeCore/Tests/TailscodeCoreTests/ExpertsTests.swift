@@ -263,4 +263,49 @@ struct ExpertCapabilityTests {
         #expect(AppCapability.allCases.contains(.experts))
         #expect(CapabilityRegistry.definition(for: .experts).id == .experts)
     }
+
+    @Test("The editor's front page says what each part holds in one line")
+    func outline() {
+        let empty = ExpertOutline.rows(ExpertDraft(name: ""))
+        #expect(empty.map(\.part) == [.charter, .skills, .notebook, .bench, .guards, .model])
+        #expect(empty.allSatisfy { !$0.isSet })
+        let draft = ExpertDraft(
+            name: "iPadOS", effort: "high", charter: "A map, not a manual.", skills: ["ipados", "ios-dev", "app-store"],
+            notebookPath: "~/notes", bench: [ExpertBenchItem(name: "iPad Pro", kind: .appleDevice)],
+            guards: [ExpertGuard(name: "Layout", command: "swift test")],
+            guardRule: ScheduleRule(kind: .daily, hour: 3, minute: 0),
+            notes: [
+                ExpertDraftNote(title: "a", summary: "", body: ""),
+                ExpertDraftNote(title: "b", summary: "", body: "", lasting: false),
+            ])
+        let rows = ExpertOutline.rows(draft, kept: 1, modelName: "Fable 5", calendar: utc, now: now)
+        let values = Dictionary(uniqueKeysWithValues: rows.map { ($0.part, $0.value) })
+        #expect(rows.map(\.part) == ExpertOutline.Part.allCases)
+        #expect(rows.allSatisfy { $0.isSet })
+        #expect(values[.charter] == "5 words")
+        #expect(values[.skills] == "ipados, ios-dev +1")
+        #expect(values[.notebook] == "~/notes")
+        #expect(values[.notes] == "1 of 2 kept")
+        #expect(values[.bench] == "iPad Pro")
+        #expect(values[.guards]?.hasPrefix("1 guard · every day") == true)
+        #expect(values[.model] == "Fable 5 · high")
+    }
+
+    @Test("A draft from a skill keeps what was already typed")
+    func outlineMerge() {
+        let drafted = ExpertDraft(name: "Releases", glyph: "Re", hue: "green", purpose: "Ships.", directory: "~/a", charter: "Ship it.")
+        let untouched = ExpertOutline.merged(drafted, over: ExpertDraft(name: " "))
+        #expect(untouched == drafted)
+        let typed = ExpertDraft(name: "Store", hue: "pink", purpose: "", directory: "~/b", effort: "max")
+        let merged = ExpertOutline.merged(drafted, over: typed)
+        #expect(merged.name == "Store")
+        #expect(merged.glyph == nil)
+        #expect(merged.hue == "pink")
+        #expect(merged.purpose == "Ships.")
+        #expect(merged.directory == "~/b")
+        #expect(merged.effort == "max")
+        #expect(merged.charter == "Ship it.")
+        #expect(ExpertOutline.canDraft(typed))
+        #expect(!ExpertOutline.canDraft(merged))
+    }
 }

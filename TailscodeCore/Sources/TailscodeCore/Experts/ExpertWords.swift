@@ -46,6 +46,15 @@ public enum ExpertWords {
     public static var folder: String { Localized.text("Folder") }
     public static var notebookFolder: String { Localized.text("Notebook folder") }
     public static var notebookOwn: String { Localized.text("Its own, beside the expert") }
+    public static var notebookOwnShort: String { Localized.text("Its own") }
+    public static var firstNotes: String { Localized.text("First notes") }
+    public static var markAndColour: String { Localized.text("Mark and colour") }
+    public static var letters: String { Localized.text("Letters") }
+    public static var draftFromSkill: String { Localized.text("Draft from a skill") }
+    public static var draftFromSkillDetail: String {
+        Localized.text("The machine writes the charter, the bench and the guards from one.")
+    }
+    public static var folderPlaceholder: String { Localized.text("Folder it works in") }
     public static var model: String { Localized.text("Model") }
     public static var addBenchItem: String { Localized.text("Add a device or service") }
     public static var addGuard: String { Localized.text("Add a guard") }
