@@ -115,12 +115,7 @@ public enum ScheduleWords {
         {
             return Localized.text("Tomorrow %@", time)
         }
-        let format = DateFormatter()
-        format.calendar = calendar
-        format.timeZone = calendar.timeZone
-        format.locale = Locale.current
-        format.setLocalizedDateFormatFromTemplate("EEE d MMM j:mm")
-        return format.string(from: date)
+        return formatted(date, calendar: calendar, template: "EEE d MMM j:mm")
     }
 
     public static func lowered(_ text: String) -> String {
@@ -137,26 +132,38 @@ public enum ScheduleWords {
     }
 
     static func timeText(_ date: Date, calendar: Calendar) -> String {
+        formatted(date, calendar: calendar, template: nil)
+    }
+
+    /// A date in the reader's own words for one calendar: the short time style when `template` is
+    /// nil, else the localized form of the template. Building a formatter costs more than the line
+    /// it formats, and Home asks for the next run's moment on every render — a quarter of its
+    /// render was spent opening ICU formatters — so one is kept per calendar, zone, locale, hour
+    /// cycle and template.
+    private static func formatted(_ date: Date, calendar: Calendar, template: String?) -> String {
         let locale = Locale.current
-        let key =
-            "\(calendar.identifier)|\(calendar.timeZone.identifier)|\(locale.identifier)|\(locale.hourCycle)"
-        return timeFormats.withLock { formats in
-            if let format = formats[key] { return format.string(from: date) }
+        let key = [
+            "\(calendar.identifier)", calendar.timeZone.identifier, locale.identifier,
+            "\(locale.hourCycle)", template ?? "",
+        ].joined(separator: "|")
+        return formats.withLock { kept in
+            if let format = kept[key] { return format.string(from: date) }
             let format = DateFormatter()
             format.calendar = calendar
             format.timeZone = calendar.timeZone
             format.locale = locale
-            format.dateStyle = .none
-            format.timeStyle = .short
-            formats[key] = format
+            if let template {
+                format.setLocalizedDateFormatFromTemplate(template)
+            } else {
+                format.dateStyle = .none
+                format.timeStyle = .short
+            }
+            kept[key] = format
             return format.string(from: date)
         }
     }
 
-    /// Building a formatter costs more than the line it formats, and Home asks for the next run's
-    /// time on every render — a quarter of its render was spent opening ICU formatters — so one is
-    /// kept per calendar, zone and locale.
-    private static let timeFormats = Mutex<[String: DateFormatter]>([:])
+    private static let formats = Mutex<[String: DateFormatter]>([:])
 
     static func weekday(_ index: Int, calendar: Calendar) -> String {
         let names = calendar.standaloneWeekdaySymbols
