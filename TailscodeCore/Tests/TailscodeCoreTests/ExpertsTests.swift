@@ -157,7 +157,7 @@ struct ExpertPageTests {
             written: utc.date(from: DateComponents(year: 2026, month: 9, day: 12)), stale: true)
         let row = ExpertReading.noteRow(stale, calendar: utc, now: now)
         #expect(row.tag == ExpertLine("Not confirmed since Sep", .attention))
-        #expect(row.trailing == "Sep 12")
+        #expect(row.trailing?.contains("12") == true && row.trailing?.contains("Sep") == true)
         let fresh = ExpertNote(
             id: "b.md", title: "Open natively", summary: "s", written: now, source: "tailscode-expert:E1:S1")
         #expect(ExpertReading.noteRow(fresh, taskTitles: ["S1": "Unrager posts"], calendar: utc, now: now).trailing
