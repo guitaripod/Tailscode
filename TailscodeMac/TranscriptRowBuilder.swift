@@ -209,10 +209,13 @@ final class TranscriptRowBuilder {
         return TaskBoard.isBoardCall(call.name)
     }
 
-    /// The rows laid out as a transcript shows them: the plan promoted to a board, the brain's
-    /// superseded board calls dropped, and runs folded.
-    private func finish(_ base: [TranscriptRow], brains: BrainStore?) -> [TranscriptRow] {
-        var all = TranscriptRow.placeBoard(in: base)
+    /// The rows laid out as a transcript shows them: the pictures the agent only looked at left
+    /// out, the plan promoted to a board, the brain's superseded board calls dropped, and runs
+    /// folded.
+    private func finish(
+        _ base: [TranscriptRow], brains: BrainStore?, hiding unshown: Set<String>
+    ) -> [TranscriptRow] {
+        var all = TranscriptRow.placeBoard(in: TranscriptRow.shown(base, hiding: unshown))
         if let brains {
             all.removeAll { row in
                 guard Self.isBoardRow(row) else { return false }
@@ -246,7 +249,8 @@ final class TranscriptRowBuilder {
             base += made.rows
         }
         cache = next
-        let result = finish(base, brains: brains)
+        let unshown = PictureShowing.unshown(in: messages)
+        let result = finish(base, brains: brains, hiding: unshown)
         prefix = nil
         if let cut = messages.lastIndex(where: { $0.role == .user }), cut > 0 {
             let at = starts[cut]
@@ -254,7 +258,8 @@ final class TranscriptRowBuilder {
                 prefix = Prefix(
                     messages: Array(messages[..<cut]), turnOpen: turnOpen,
                     stamp: stamp(of: messages[..<cut], brains: brains),
-                    rows: finish(Array(base[..<at]), brains: brains), hadRows: at > 0,
+                    rows: finish(Array(base[..<at]), brains: brains, hiding: unshown),
+                    hadRows: at > 0,
                     prompt: messages[..<cut].last { $0.role == .user })
             }
         }
@@ -308,7 +313,8 @@ final class TranscriptRowBuilder {
             return nil
         }
         tailRebuilds += 1
-        let result = held.rows + Self.laidOut(tail)
+        let unshown = PictureShowing.unshown(in: messages[from...])
+        let result = held.rows + Self.laidOut(tail, hiding: unshown)
         if let later = (from..<messages.count).last(where: { messages[$0].role == .user }),
             later > from
         {
@@ -317,7 +323,7 @@ final class TranscriptRowBuilder {
             prefix = Prefix(
                 messages: Array(messages[..<later]), turnOpen: turnOpen,
                 stamp: stamp(of: messages[..<later], brains: brains),
-                rows: held.rows + Self.laidOut(head),
+                rows: held.rows + Self.laidOut(head, hiding: unshown),
                 hadRows: held.hadRows || rowCut > 0,
                 prompt: messages[..<later].last { $0.role == .user })
         }
@@ -325,11 +331,12 @@ final class TranscriptRowBuilder {
     }
 
     /// Turns laid out on top of the held prefix the way `finish` lays out the whole conversation:
-    /// runs folded and each turn's pictures gathered into its strip. The rows start at a question,
-    /// so no run or turn reaches back into the prefix, and a turn that holds a plan never comes
-    /// here.
-    private static func laidOut(_ rows: [TranscriptRow]) -> [TranscriptRow] {
-        TranscriptRow.gallery(TranscriptRow.compactTools ? TranscriptRow.fuse(rows) : rows)
+    /// the pictures the agent only looked at left out, runs folded and each turn's pictures
+    /// gathered into its strip. The rows start at a question, so no run or turn reaches back into
+    /// the prefix, and a turn that holds a plan never comes here.
+    private static func laidOut(_ rows: [TranscriptRow], hiding unshown: Set<String>) -> [TranscriptRow] {
+        let shown = TranscriptRow.shown(rows, hiding: unshown)
+        return TranscriptRow.gallery(TranscriptRow.compactTools ? TranscriptRow.fuse(shown) : shown)
     }
 
     /// The conversation laid out the plain way, with no memo and no prefix, for the selftest that
@@ -363,7 +370,9 @@ final class TranscriptRowBuilder {
             }
             all += rows
         }
-        all = TranscriptRow.gallery(TranscriptRow.placeBoard(in: all))
+        let unshown = PictureShowing.unshown(in: messages)
+        all = TranscriptRow.gallery(
+            TranscriptRow.placeBoard(in: TranscriptRow.shown(all, hiding: unshown)))
         return TranscriptRow.compactTools ? TranscriptRow.gallery(TranscriptRow.fuse(all)) : all
     }
 

@@ -41,6 +41,7 @@ enum ChatRowBuilder {
         let writing = messages.last?.id
         var lastPrompt: ChatMessage?
         var brain: BrainLayout.Turn?
+        let unshown = PictureShowing.unshown(in: messages)
         var sighting = TurnPictureGathering.Sighting()
         for message in messages {
             guard seenMessageIDs.insert(message.id).inserted else { continue }
@@ -71,11 +72,13 @@ enum ChatRowBuilder {
             }
             let contentStart = rows.count
             /// A time is put above what a message draws where it stays, and a message the brain took
-            /// whole draws nothing, as does one whose pictures gather up under the turn's card: a
-            /// stamp left standing there is a date over an empty gap, and the next stamp is
-            /// measured from what the reader can see, not from the hidden message.
+            /// whole draws nothing, as does one whose pictures were only looked at or gather up
+            /// under the turn's card: a stamp left standing there is a date over an empty gap, and
+            /// the next stamp is measured from what the reader can see, not from the hidden message.
             func datedBySightedRows() {
-                guard sighting.stays(rows[contentStart...].lazy.map(Self.pictureMark)) else { return }
+                let marks = rows[contentStart...].lazy
+                    .filter { !Self.isUnshown($0, among: unshown) }.map(Self.pictureMark)
+                guard sighting.stays(marks) else { return }
                 if let stamp { rows.insert(stamp, at: leading) }
                 lastDate = max(message.createdAt, lastDate ?? .distantPast)
             }
@@ -301,7 +304,8 @@ enum ChatRowBuilder {
         #if DEBUG
             let t0 = ContinuousClock.now
         #endif
-        let fused = fuseActivity(rows)
+        let fused = fuseActivity(
+            unshown.isEmpty ? rows : rows.filter { !Self.isUnshown($0, among: unshown) })
         #if DEBUG
             let t1 = ContinuousClock.now
         #endif
@@ -412,6 +416,13 @@ enum ChatRowBuilder {
         }
         close(followed: false)
         return docked
+    }
+
+    /// Whether a row is a picture the agent only looked at (`PictureShowing`): drawn nowhere, so a
+    /// turn's strip holds what the agent showed and not every screenshot it checked its work on.
+    private static func isUnshown(_ row: ChatRow, among unshown: Set<String>) -> Bool {
+        guard row.role != .user, case .image = row.content else { return false }
+        return unshown.contains(row.id)
     }
 
     /// What a row is to the gathering of a turn's pictures: the turn's card, a picture the agent

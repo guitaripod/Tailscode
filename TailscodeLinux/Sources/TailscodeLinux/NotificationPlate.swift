@@ -56,14 +56,20 @@ enum NotificationPlate {
     }
 
     /// The newest picture this device has already fetched for the turn that just ended, never an
-    /// earlier turn's and never one the person attached themselves: a notice that shows last
-    /// hour's screenshot for a turn that drew nothing is a wrong answer. A notice must not wait on
-    /// the tailnet, so a picture that is not on disk yet is simply not in the notice.
+    /// earlier turn's, never one the person attached themselves and never one the agent only
+    /// looked at (`PictureShowing`): a notice that shows last hour's screenshot, or a screenshot
+    /// the agent checked its work on, for a turn that showed nothing is a wrong answer. A notice
+    /// must not wait on the tailnet, so a picture that is not on disk yet is simply not in the
+    /// notice.
     static func cachedPicture(in state: ConversationState) -> Data? {
-        for message in state.messages.reversed() {
+        let messages = state.messages
+        let turn = messages.lastIndex { $0.role == .user } ?? messages.startIndex
+        let unshown = PictureShowing.unshown(in: messages[turn...])
+        for message in messages.reversed() {
             if message.role == .user { return nil }
             for part in message.parts.reversed() {
                 guard case .file(let reference) = part.kind, isImage(reference),
+                    !unshown.contains(PictureShowing.key(message: message.id, part: part.id)),
                     let data = ImageCache.load(reference), data.count > 32, data.count < 8_000_000
                 else { continue }
                 return data

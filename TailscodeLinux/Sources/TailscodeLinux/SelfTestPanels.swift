@@ -352,7 +352,24 @@ extension SelfTest {
         guard NotificationPlate.cachedPicture(in: state) == nil else {
             throw SelfTestFailure("a picture the person attached is in the notice")
         }
-        return 6
+        let read = ToolCall(
+            id: "read", name: "Read", status: .completed,
+            input: .object(["file_path": .string(drawn.path ?? "")]))
+        let looked = ChatMessage(
+            id: "looked", role: .assistant, agentType: .claudeCode,
+            parts: [
+                MessagePart(id: "read", kind: .tool(read)), MessagePart(id: "file", kind: .file(drawn)),
+            ], createdAt: now)
+        state.messages = [message("ask", .user, .text("check it")), looked]
+        state.messages.append(message("done", .assistant, .text("Checked, it lines up.")))
+        guard NotificationPlate.cachedPicture(in: state) == nil else {
+            throw SelfTestFailure("a picture the agent only looked at is in the notice")
+        }
+        state.messages[2] = message("done", .assistant, .text("Here it is: notice.png"))
+        guard NotificationPlate.cachedPicture(in: state) == face else {
+            throw SelfTestFailure("a picture the agent named is not in the notice")
+        }
+        return 8
     }
 
     /// The share card is Core geometry painted through cairo: a demo ledger must yield words, a

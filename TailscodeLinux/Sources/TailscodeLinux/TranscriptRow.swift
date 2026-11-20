@@ -330,7 +330,8 @@ final class TranscriptRowBuilder: @unchecked Sendable {
             }
             all += rows
         }
-        all = TranscriptRow.placeBoard(in: all)
+        all = TranscriptRow.placeBoard(
+            in: TranscriptRow.shown(all, hiding: PictureShowing.unshown(in: messages)))
         return TranscriptRow.gallery(Preferences.compactTools ? TranscriptRow.fuse(all) : all)
     }
 }

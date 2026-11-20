@@ -303,6 +303,12 @@ extension ChatPane {
             else { continue }
             context.storePreview(of: data, original: FileReference(path: path), forKey: key)
         }
+        let shown = paths.prefix(30).map { URL(fileURLWithPath: $0).lastPathComponent }
+        if !shown.isEmpty {
+            parts.append(
+                MessagePart(
+                    id: "shown", kind: .text("Here they are: \(shown.joined(separator: ", ")).")))
+        }
         parts.append(
             MessagePart(
                 id: "seam",

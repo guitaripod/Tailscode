@@ -145,6 +145,7 @@ extension SelfTest {
             case "party": report("party: \(try checkPartyCards()) claims hold")
             case "compact": report("compact chat: \(try checkCompactChat()) claims hold")
             case "viewer": report("media viewer: \(try checkMediaViewer()) claims hold")
+            case "plate": report("notification plate: \(try checkNotificationPlate()) claims hold")
             case "sheet": report("studio sheet: \(try checkStudioSheet()) claims hold")
             case "notes": report("transcript notes: \(try checkTranscriptNotes()) claims hold")
             case "quickask": report("quick ask party: \(try checkQuickAskParty()) claims hold")

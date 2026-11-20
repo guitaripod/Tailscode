@@ -238,8 +238,18 @@ extension TranscriptRow {
             }
             all += rows
         }
-        all = placeBoard(in: all)
+        all = placeBoard(in: shown(all, hiding: PictureShowing.unshown(in: messages)))
         return gallery(Preferences.compactTools ? fuse(all) : all)
+    }
+
+    /// The rows without the pictures the agent only looked at (`PictureShowing`), taken out before
+    /// runs fold and pictures gather, so the transcript reads as if they had never arrived.
+    static func shown(_ rows: [TranscriptRow], hiding unshown: Set<String>) -> [TranscriptRow] {
+        guard !unshown.isEmpty else { return rows }
+        return rows.filter { row in
+            guard case .file(_, let mine) = row.kind, !mine else { return true }
+            return !unshown.contains(row.key)
+        }
     }
 
     /// What a row is to the gathering of a turn's pictures: the turn's card, a picture the agent
