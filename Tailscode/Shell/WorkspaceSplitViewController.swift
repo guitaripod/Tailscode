@@ -581,6 +581,8 @@ final class WorkspaceSplitViewController: UISplitViewController {
             case "search": beginSearch()
             case "hide", "show": toggleColumns()
             case "sidebar": show(.primary)
+            case "wall": AgentsPresenter.presentWall(from: self)
+            case "unwall": presentedViewController?.dismiss(animated: true)
             case "new": startNewChat()
             case "pin":
                 let key = argument.split(separator: "/", maxSplits: 1).map(String.init)

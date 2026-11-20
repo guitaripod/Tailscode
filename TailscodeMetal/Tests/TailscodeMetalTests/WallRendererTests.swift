@@ -7,6 +7,18 @@ import TailscodeCore
 @testable import TailscodeMetal
 
 @Suite struct WallRendererTests {
+    @Test func everyWallSharesOneSetOfPipelinesPerFormat() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let first = try #require(WallRenderer.states(device, .bgra8Unorm))
+        let second = try #require(WallRenderer.states(device, .bgra8Unorm))
+        #expect(first.ground === second.ground)
+        #expect(first.point === second.point)
+        let other = try #require(WallRenderer.states(device, .rgba16Float))
+        #expect(other.ground !== first.ground)
+        let renderer = try #require(WallRenderer(device: device))
+        #expect(renderer.plateState === first.plate)
+    }
+
     @Test func busyDemoRendersAWallDistinctFromItsGround() throws {
         let device = try #require(MTLCreateSystemDefaultDevice())
         let now = Date()

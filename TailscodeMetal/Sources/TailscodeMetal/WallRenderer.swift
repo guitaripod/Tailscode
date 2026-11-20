@@ -59,14 +59,7 @@ public final class WallRenderer: @unchecked Sendable {
     public var lastGPUTime: Double { gpuTime.withLock { $0 } }
 
     public init?(device: MTLDevice, pixelFormat: MTLPixelFormat = .bgra8Unorm) {
-        guard let library = WallShaders.library(for: device) else { return nil }
-        guard
-            let ground = Self.pipeline(device, library, "ground_vs", "ground_fs", pixelFormat, .opaque),
-            let plate = Self.pipeline(device, library, "plate_vs", "plate_fs", pixelFormat, .over),
-            let glyph = Self.pipeline(device, library, "glyph_vs", "glyph_fs", pixelFormat, .over),
-            let glow = Self.pipeline(device, library, "glyph_vs", "glyph_fs", pixelFormat, .add),
-            let point = Self.pipeline(device, library, "point_vs", "point_fs", pixelFormat, .add)
-        else { return nil }
+        guard let states = Self.states(device, pixelFormat) else { return nil }
         var made: [Slot] = []
         let stride = Self.instanceFloats * MemoryLayout<Float>.stride
         for _ in 0..<Self.framesInFlight {
@@ -80,11 +73,11 @@ public final class WallRenderer: @unchecked Sendable {
             made.append(Slot(quads: quads, glyphs: glyphs, glows: glows, dots: dots))
         }
         self.device = device
-        groundState = ground
-        plateState = plate
-        glyphState = glyph
-        glowState = glow
-        pointState = point
+        groundState = states.ground
+        plateState = states.plate
+        glyphState = states.glyph
+        glowState = states.glow
+        pointState = states.point
         slots = made
         groundScratch = .allocate(capacity: GroundLayout.floats)
         groundScratch.initialize(repeating: 0, count: GroundLayout.floats)
@@ -93,6 +86,48 @@ public final class WallRenderer: @unchecked Sendable {
     deinit { groundScratch.deallocate() }
 
     enum Blend { case opaque, over, add }
+
+    /// The five pipelines a wall draws with, compiled once per device and pixel format for the
+    /// whole process. Each wall used to compile its own on the main thread as it opened, after the
+    /// shader library itself was compiled from source the first time, which an iPad logged as a
+    /// 120–530 ms stall on opening the wall.
+    struct States: @unchecked Sendable {
+        let ground: MTLRenderPipelineState
+        let plate: MTLRenderPipelineState
+        let glyph: MTLRenderPipelineState
+        let glow: MTLRenderPipelineState
+        let point: MTLRenderPipelineState
+    }
+
+    private static let statesLock = NSLock()
+    nonisolated(unsafe) private static var compiled: [String: States] = [:]
+
+    static func states(_ device: MTLDevice, _ pixelFormat: MTLPixelFormat) -> States? {
+        let key = "\(device.registryID)|\(pixelFormat.rawValue)"
+        statesLock.lock()
+        defer { statesLock.unlock() }
+        if let known = compiled[key] { return known }
+        guard
+            let library = WallShaders.library(for: device),
+            let ground = pipeline(device, library, "ground_vs", "ground_fs", pixelFormat, .opaque),
+            let plate = pipeline(device, library, "plate_vs", "plate_fs", pixelFormat, .over),
+            let glyph = pipeline(device, library, "glyph_vs", "glyph_fs", pixelFormat, .over),
+            let glow = pipeline(device, library, "glyph_vs", "glyph_fs", pixelFormat, .add),
+            let point = pipeline(device, library, "point_vs", "point_fs", pixelFormat, .add)
+        else { return nil }
+        let states = States(ground: ground, plate: plate, glyph: glyph, glow: glow, point: point)
+        compiled[key] = states
+        return states
+    }
+
+    /// Compiles the shader library and the pipelines ahead of the first wall, off the calling
+    /// thread, so opening the wall only draws. Safe to call more than once and from anywhere.
+    public static func prewarm(pixelFormat: MTLPixelFormat = .bgra8Unorm) {
+        DispatchQueue.global(qos: .utility).async {
+            guard let device = MTLCreateSystemDefaultDevice() else { return }
+            _ = states(device, pixelFormat)
+        }
+    }
 
     private static func pipeline(
         _ device: MTLDevice, _ library: MTLLibrary, _ vertex: String, _ fragment: String,

@@ -1,4 +1,5 @@
 import TailscodeCore
+import TailscodeMetal
 import UIKit
 
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -36,6 +37,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.coordinator = coordinator
         coordinator.start()
         Task { @MainActor in BrainPictures.prewarm() }
+        WallRenderer.prewarm()
         if let url = connectionOptions.urlContexts.first?.url {
             coordinator.handle(url)
         }
