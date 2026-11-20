@@ -44,9 +44,7 @@ extension MainWindow {
             tile.listFace = { [weak self] session in self?.listFace(for: session) }
             tile.onDensityChanged = { [weak self] in self?.updateLiveChip() }
         }
-        if let raw = UserDefaults.standard.string(forKey: SplitSnapshot.defaultsKey),
-            let snapshot = SplitSnapshot.decode(raw)
-        {
+        if let snapshot = SplitSnapshot.saved {
             pendingBindings = splitHost.restore(snapshot)
         }
         let plan = Seatbelts.shared.beginLaunch(chatPanes: pendingBindings.count)
@@ -264,5 +262,15 @@ extension MainWindow {
         }
         welcomeFixture = state
         drawWelcome(in: activePane)
+    }
+}
+
+extension SplitSnapshot {
+    /// The arrangement the last window left, read from the settings file alone. A lone pane writes
+    /// no layout, which only ever deletes the key, and the executable-keyed defaults still hold
+    /// whatever arrangement they last wrote to disk: read through them, a split closed long ago
+    /// comes back at every launch.
+    static var saved: SplitSnapshot? {
+        (SettingsFile.stored(forKey: defaultsKey) as? String).flatMap(decode)
     }
 }

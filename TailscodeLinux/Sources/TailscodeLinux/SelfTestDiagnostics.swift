@@ -272,7 +272,34 @@ extension SelfTest {
         var late = RestoreWake(layout: layout)
         late.markReady(c)
         try expect(late.take(now: 0) == .wake(c), "a ready pane never waits on one that is not")
+        checks += try checkSavedLayoutIgnoresStaleDefaults(layout)
         return checks
+    }
+
+    /// A split closed down to one pane deletes the layout from the settings file, and the
+    /// executable-keyed defaults may still hold the arrangement they last wrote to disk. The
+    /// launch reads the file, so a stale copy there never brings the old split back.
+    static func checkSavedLayoutIgnoresStaleDefaults(_ layout: SplitLayout) throws -> Int {
+        let key = SplitSnapshot.defaultsKey
+        let filed = SettingsFile.stored(forKey: key)
+        let defaulted = UserDefaults.standard.object(forKey: key)
+        defer {
+            SettingsFile.set(filed, forKey: key)
+            if let defaulted { UserDefaults.standard.set(defaulted, forKey: key) }
+        }
+        guard let encoded = SplitSnapshot(layout: layout, contents: [:]).encoded else {
+            throw SelfTestFailure("safe restore: the layout would not encode")
+        }
+        SettingsFile.set(nil, forKey: key)
+        UserDefaults.standard.set(encoded, forKey: key)
+        guard SplitSnapshot.saved == nil else {
+            throw SelfTestFailure("safe restore: a layout only the stale defaults hold came back")
+        }
+        SettingsFile.set(encoded, forKey: key)
+        guard SplitSnapshot.saved?.layout.paneIDs == layout.paneIDs else {
+            throw SelfTestFailure("safe restore: the layout the file holds did not come back")
+        }
+        return 2
     }
 
     static func checkParity() throws -> Int {
