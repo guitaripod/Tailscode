@@ -386,12 +386,23 @@ extension HomeViewController {
         let moreCell = UICollectionView.CellRegistration<ChatRowCell, HomeMoreCard> {
             cell, _, card in
             cell.wantsAttention = false
-            var content = UIListContentConfiguration.cell()
-            content.text = String(localized: "See all \(card.count) chats")
+            var content = UIListContentConfiguration.valueCell()
+            content.text = card.foot.title
             content.textProperties.font = Theme.Ramp.font(.control)
             content.textProperties.color = Theme.Color.accent
+            content.secondaryText = card.foot.detail
+            content.secondaryTextProperties.font = Theme.Ramp.font(.panelDetail)
+            content.secondaryTextProperties.color = Theme.Color.tertiaryLabel
             cell.contentConfiguration = content
-            cell.accessories = [.disclosureIndicator()]
+            let chevron = UIImageView(
+                image: UIImage(
+                    systemName: card.foot == .fewer ? "chevron.up" : "chevron.down",
+                    withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)))
+            chevron.tintColor = Theme.Color.tertiaryLabel
+            cell.accessories = [
+                .customView(configuration: .init(customView: chevron, placement: .trailing()))
+            ]
+            cell.accessibilityTraits = .button
         }
         let placeholderCell = UICollectionView.CellRegistration<RecentPlaceholderCell, Int> {
             _, _, _ in
@@ -463,25 +474,40 @@ extension HomeViewController {
     fileprivate func configureHeader(_ view: HomeHeaderView, at indexPath: IndexPath) {
         guard let section = dataSource.sectionIdentifier(for: indexPath.section) else { return }
         let count = dataSource.snapshot().numberOfItems(inSection: section)
+        let reading = bandReadings[section]
         switch section {
         case .needsYou, .asks:
             view.configure(title: String(localized: "Needs you"), count: count, needsYou: true)
         case .working:
-            view.configure(title: String(localized: "Working"), count: count)
+            view.configure(
+                title: String(localized: "Working"), count: reading?.total ?? count,
+                fold: fold(.working))
         case .pinned:
-            view.configure(title: String(localized: "Pinned"), count: count)
+            view.configure(
+                title: String(localized: "Pinned"), count: reading?.total ?? count,
+                fold: fold(.pinned))
         case .saved:
             view.configure(
-                title: String(localized: "Saved"), actionTitle: String(localized: "See all")
+                title: String(localized: "Saved"), count: reading?.fresh, fold: fold(.saved),
+                actionTitle: String(localized: "See all")
             ) { [weak self] in
                 self?.pushSaved()
             }
         case .recent:
             view.configure(
-                title: String(localized: "Recent"),
-                actionTitle: hasUnreadRecents ? String(localized: "Mark read") : nil
+                title: String(localized: "Recent"), count: reading?.fresh,
+                fold: reading == nil ? nil : fold(.recent),
+                door: reading == nil
+                    ? nil
+                    : HomeHeaderView.Door(
+                        symbol: "magnifyingglass", label: String(localized: "Search chats")
+                    ) { [weak self] in
+                        self?.pushChats()
+                    },
+                actionTitle: hasNews ? String(localized: "Mark read") : nil,
+                actionLabel: String(localized: "Mark all as read")
             ) { [weak self] in
-                self?.markRecentsRead()
+                self?.markEverythingRead()
             }
         case .usage:
             view.configure(
@@ -491,6 +517,12 @@ extension HomeViewController {
             }
         case .status, .schedule, .agentNews, .experts, .glance, .alerts, .demoNudge, .proInvitation:
             break
+        }
+    }
+
+    private func fold(_ section: SessionSection) -> HomeHeaderView.Fold {
+        HomeHeaderView.Fold(isShut: HomeFolds.shut().contains(section)) { [weak self] in
+            self?.toggleFold(section)
         }
     }
 

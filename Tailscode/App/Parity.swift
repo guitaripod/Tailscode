@@ -17,6 +17,7 @@ enum ParityManifest {
         case .backgroundStop: return .implemented("stopBackgroundWork")
         case .sessionPinning: return .implemented("togglePinned")
         case .unreadTracking: return .implemented("row.columnMark")
+        case .markAllRead: return .implemented("markEverythingRead")
         case .savedChats: return .implemented("SavedChatsViewController")
         case .savedChatSync: return .implemented("SessionMarkSync")
         case .sessionMarks: return .implemented("SessionMarks")

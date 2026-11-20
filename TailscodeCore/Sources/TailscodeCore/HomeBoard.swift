@@ -115,6 +115,14 @@ public struct HomeBandLimits: Equatable, Sendable {
     /// Home beside a chat list, which already holds every recent conversation in its own column.
     public static let column = HomeBandLimits(working: 10, pinned: 3, saved: 3, recent: 0)
 
+    /// These limits with RECENT opened as far as the person has asked. A board that holds no
+    /// recent chats at all, beside a list that does, has nothing to open.
+    public func reaching(_ reach: HomeReach) -> HomeBandLimits {
+        guard recent > 0 else { return self }
+        return HomeBandLimits(
+            working: working, pinned: pinned, saved: saved, recent: recent + reach.extra)
+    }
+
     /// Nil is no limit.
     public func limit(for section: SessionSection) -> Int? {
         switch section {
@@ -127,6 +135,77 @@ public struct HomeBandLimits: Equatable, Sendable {
     }
 }
 
+/// How far RECENT has been opened past its limit. Every chat is on Home, a press at a time: the
+/// band's foot adds a page under the rows already there, and once nothing is left it offers the
+/// way back to the board's own height. It lasts as long as the screen does and is never saved,
+/// so the board opens at a glance's length.
+public struct HomeReach: Equatable, Sendable {
+    public static let step = 20
+
+    public private(set) var extra = 0
+
+    public init() {}
+
+    public enum Foot: Hashable, Sendable {
+        case more(hidden: Int)
+        case fewer
+
+        public var title: String {
+            switch self {
+            case .more: return Localized.text("Show more")
+            case .fewer: return Localized.text("Show fewer")
+            }
+        }
+
+        public var detail: String? {
+            switch self {
+            case .more(let hidden): return Localized.text("%lld chats", hidden)
+            case .fewer: return nil
+            }
+        }
+    }
+
+    /// What the band's foot offers while `hidden` chats are still below it: nothing when the band
+    /// was never longer than its limit.
+    public func foot(hidden: Int) -> Foot? {
+        if hidden > 0 { return .more(hidden: hidden) }
+        return extra > 0 ? .fewer : nil
+    }
+
+    public mutating func press(_ foot: Foot) {
+        switch foot {
+        case .more: extra += Self.step
+        case .fewer: extra = 0
+        }
+    }
+}
+
+/// Which of Home's bands the person has shut. A shut band keeps its heading, with what it holds
+/// said beside it, and draws no rows; it stays shut until it is opened. What is waiting on the
+/// person is never shut, because a decision must not be hidden.
+public enum HomeFolds {
+    nonisolated(unsafe) private static let defaults = UserDefaults.standard
+    static let storageKey = "tailscode.home.folds"
+
+    public static func canFold(_ section: SessionSection) -> Bool { section != .needsYou }
+
+    public static func shut() -> Set<SessionSection> {
+        Set((defaults.stringArray(forKey: storageKey) ?? []).compactMap(SessionSection.init(rawValue:)))
+            .filter(canFold)
+    }
+
+    /// Shuts an open band or opens a shut one, and says whether it is now shut.
+    @discardableResult
+    public static func toggle(_ section: SessionSection) -> Bool {
+        guard canFold(section) else { return false }
+        var folds = shut()
+        let shuts = folds.insert(section).inserted
+        if !shuts { folds.remove(section) }
+        defaults.set(folds.map(\.rawValue).sorted(), forKey: storageKey)
+        return shuts
+    }
+}
+
 /// Home's bands and the sentence over them, decided once and shared by every client that draws a
 /// board.
 public struct HomeBoard: Equatable, Sendable {
@@ -135,12 +214,18 @@ public struct HomeBoard: Equatable, Sendable {
         public let rows: [SessionRowModel]
         /// How many more the band holds than it shows, so the foot can say "See all 48 chats".
         public let hidden: Int
+        /// How many of the band's chats are unread, the hidden ones counted, so a heading can say
+        /// there is news below its last row.
+        public let fresh: Int
 
-        public init(section: SessionSection, rows: [SessionRowModel], hidden: Int) {
+        public init(section: SessionSection, rows: [SessionRowModel], hidden: Int, fresh: Int = 0) {
             self.section = section
             self.rows = rows
             self.hidden = hidden
+            self.fresh = fresh
         }
+
+        public var total: Int { rows.count + hidden }
     }
 
     public let status: HomeStatus
@@ -156,13 +241,14 @@ public struct HomeBoard: Equatable, Sendable {
         now: Date = Date(), calendar: Calendar = .current
     ) -> HomeBoard {
         let bands: [Band] = groupIntoSections(rows).compactMap { section, members in
+            let fresh = members.count { $0.unread }
             guard let limit = limits.limit(for: section) else {
-                return Band(section: section, rows: members, hidden: 0)
+                return Band(section: section, rows: members, hidden: 0, fresh: fresh)
             }
             guard limit > 0 else { return nil }
             return Band(
                 section: section, rows: Array(members.prefix(limit)),
-                hidden: max(0, members.count - limit))
+                hidden: max(0, members.count - limit), fresh: fresh)
         }
         return HomeBoard(
             status: HomeStatus.reading(rows: rows, offline: offline, now: now, calendar: calendar),

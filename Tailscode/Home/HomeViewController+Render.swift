@@ -7,7 +7,8 @@ extension HomeViewController {
         deferredSnapshot = false
         savedChats = SavedChatStore.all()
         let today = showsToday
-        let limits: HomeBandLimits = today ? .column : .phone
+        let limits = (today ? HomeBandLimits.column : .phone).reaching(recentReach)
+        let folds = today ? [] : HomeFolds.shut()
         let servers = viewModel.servers
         let down = hasLoadedOnce ? servers.filter { viewModel.unreachable.contains($0.id) } : []
         let archived = ArchivedChatStore.all()
@@ -133,26 +134,41 @@ extension HomeViewController {
                 }
             }
         }
+        var readings: [HomeSection: (total: Int, fresh: Int)] = [:]
         for section in today ? [] : [SessionSection.needsYou, .working, .pinned] {
             guard let band = bands[section] else { continue }
             let id = HomeSection(section)
             snapshot.appendSections([id])
+            readings[id] = (band.total, band.fresh)
+            guard !folds.contains(section) else { continue }
             snapshot.appendItems(uniqued(cards(band), in: id), toSection: id)
         }
         if !today, !savedCards.isEmpty {
             snapshot.appendSections([.saved])
-            snapshot.appendItems(
-                uniqued(savedCards.map(HomeItem.saved), in: .saved), toSection: .saved)
+            readings[.saved] = (savedCards.count, savedCards.count { $0.facts.unread })
+            if !folds.contains(.saved) {
+                snapshot.appendItems(
+                    uniqued(savedCards.map(HomeItem.saved), in: .saved), toSection: .saved)
+            }
         }
         if !today, let band = bands[.recent] {
             snapshot.appendSections([.recent])
-            snapshot.appendItems(uniqued(cards(band), in: .recent), toSection: .recent)
-            snapshot.appendItems(
-                [.more(HomeMoreCard(band: .recent, count: rows.count))], toSection: .recent)
+            readings[.recent] = (band.total, band.fresh)
+            if !folds.contains(.recent) {
+                snapshot.appendItems(uniqued(cards(band), in: .recent), toSection: .recent)
+                if let foot = recentReach.foot(hidden: band.hidden) {
+                    snapshot.appendItems(
+                        [.more(HomeMoreCard(band: .recent, foot: foot))], toSection: .recent)
+                }
+            }
         } else if !today, rows.isEmpty, !hasLoadedOnce, !servers.isEmpty, workspace == nil {
             snapshot.appendSections([.recent])
             snapshot.appendItems((0..<3).map(HomeItem.placeholder), toSection: .recent)
         }
+        bandReadings = readings
+        hasNews =
+            !missed.isEmpty || savedCards.contains { $0.facts.unread }
+            || viewModel.entries.contains { isUnread($0.session.id, $0.session.updatedAt) }
 
         let previous = dataSource.snapshot()
         let existing = Set(previous.itemIdentifiers)
@@ -189,23 +205,59 @@ extension HomeViewController {
         consumePendingDeepLink()
     }
 
-    var hasUnreadRecents: Bool {
-        guard dataSource.snapshot().sectionIdentifiers.contains(.recent) else { return false }
-        return dataSource.snapshot().itemIdentifiers(inSection: .recent).contains {
-            if case .chat(let card) = $0 { return card.facts.unread }
-            return false
-        }
+    /// Reads everything at once: every unread chat on every server, under any fold and below any
+    /// foot, the archived and the saved with them, and every notice still standing, so the board,
+    /// Notification Center and the app icon's number all come to rest together. Each chat is told
+    /// to its server like a single press, so it is read on every other device too.
+    func markEverythingRead() {
+        let isUnread = SessionSeenStore.unreadEvaluator()
+        var unread = viewModel.entries
+            .filter { isUnread($0.session.id, $0.session.updatedAt) }.map(\.session.id)
+        unread += SavedChatStore.all()
+            .filter { isUnread($0.sessionID, $0.updatedAt) }.map(\.sessionID)
+        let chats = Array(Set(unread))
+        SessionSeenStore.markSeen(chats)
+        NotificationManager.clearAllNotices()
+        MidgarLog.info("home: everything marked read, \(chats.count) chat(s)", category: .ui)
+        Theme.Haptics.success()
+        renderSnapshot()
     }
 
-    func markRecentsRead() {
-        Theme.Haptics.tap()
-        for item in dataSource.snapshot().itemIdentifiers(inSection: .recent) {
-            if case .chat(let card) = item, card.facts.unread {
-                SessionSeenStore.markSeen(card.entry.session.id)
+    /// Shuts a band or opens it again, the rows leaving and arriving under the heading that stays.
+    func toggleFold(_ section: SessionSection) {
+        let shut = HomeFolds.toggle(section)
+        if shut, section == .recent { recentReach = HomeReach() }
+        renderSnapshot()
+        UIAccessibility.post(
+            notification: .layoutChanged,
+            argument: shut ? String(localized: "Collapsed") : String(localized: "Expanded"))
+    }
+
+    /// The foot of RECENT: another page of chats arrives under the ones already there, each rising
+    /// into its place a beat after the one above it, or the band goes back to the board's height.
+    func pressFoot(_ foot: HomeReach.Foot) {
+        Theme.Haptics.selection()
+        let before = Set(dataSource.snapshot().itemIdentifiers)
+        recentReach.press(foot)
+        renderSnapshot()
+        guard case .more = foot, !UIAccessibility.isReduceMotionEnabled else { return }
+        collectionView.layoutIfNeeded()
+        let arrivals = dataSource.snapshot().itemIdentifiers(inSection: .recent)
+            .filter { !before.contains($0) }
+            .compactMap { dataSource.indexPath(for: $0) }
+            .compactMap { collectionView.cellForItem(at: $0) }
+        for (index, cell) in arrivals.enumerated() {
+            let content = cell.contentView
+            content.alpha = 0
+            content.transform = CGAffineTransform(translationX: 0, y: -12)
+            UIView.animate(
+                withDuration: 0.42, delay: 0.035 * Double(index), usingSpringWithDamping: 0.86,
+                initialSpringVelocity: 0, options: [.allowUserInteraction]
+            ) {
+                content.alpha = 1
+                content.transform = .identity
             }
         }
-        NotificationManager.clearAllNotices()
-        applySnapshot()
     }
 
     /// Home lists a saved chat only while it is something you can actually open.

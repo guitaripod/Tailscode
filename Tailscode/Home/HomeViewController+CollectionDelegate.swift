@@ -45,7 +45,7 @@ extension HomeViewController: UICollectionViewDelegate {
         case .saved(let card):
             openSaved(card.chat)
         case .more(let card):
-            if card.band == .saved { pushSaved() } else { pushChats() }
+            pressFoot(card.foot)
         }
     }
 

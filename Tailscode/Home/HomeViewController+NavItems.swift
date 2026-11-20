@@ -213,10 +213,31 @@ extension HomeViewController {
                 ) { [weak self] _ in self?.openImage() })
         }
         sections.append(UIMenu(options: .displayInline, children: tools))
+        sections.append(chatsMenu())
         let item = UIBarButtonItem(
             image: UIImage(systemName: "ellipsis"), menu: UIMenu(children: sections))
         item.accessibilityLabel = String(localized: "Tools")
         return item
+    }
+
+    /// The whole list and the one press that reads all of it, reachable whatever the board is
+    /// showing: RECENT can be shut, or empty, and its heading with it. The press is asked for each
+    /// time the menu opens, since whether there is anything to read changes under a built menu.
+    private func chatsMenu() -> UIMenu {
+        let all = UIAction(
+            title: String(localized: "All Chats"),
+            image: UIImage(systemName: "bubble.left.and.bubble.right")
+        ) { [weak self] _ in self?.pushChats() }
+        let read = UIDeferredMenuElement.uncached { [weak self] provide in
+            guard let self, self.hasNews else { return provide([]) }
+            provide([
+                UIAction(
+                    title: String(localized: "Mark all as read"),
+                    image: UIImage(systemName: "envelope.open")
+                ) { [weak self] _ in self?.markEverythingRead() }
+            ])
+        }
+        return UIMenu(options: .displayInline, children: [all, read])
     }
 
     /// The dispatcher's door: one server opens its board outright, more than one asks which

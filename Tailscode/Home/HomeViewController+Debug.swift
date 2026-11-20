@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import CodingAgentKit
 import UIKit
@@ -44,6 +45,52 @@ extension HomeViewController {
         func tourAim(serverIndex: Int, directory: String?) {
             guard viewModel.servers.indices.contains(serverIndex) else { return }
             setComposeTarget(profile: viewModel.servers[serverIndex], directory: directory)
+        }
+
+        /// Presses the board's own controls on a clock, so its folds, its foot and its read press can
+        /// be watched on a simulator without a hand: `3000:unseen=86400;5000:more;7000:fold=pinned`
+        /// is milliseconds from launch and a verb each. `unseen` rewinds the read baseline so chats
+        /// read as unread, `more` and `fewer` press RECENT's foot, `fold` presses a band's heading,
+        /// `read` reads everything and `end` scrolls to the last row.
+        func driveBoard(_ script: String) {
+            for step in script.split(separator: ";") {
+                let parts = step.split(separator: ":", maxSplits: 1).map(String.init)
+                guard parts.count == 2, let after = Double(parts[0]) else { continue }
+                let verb = parts[1].split(separator: "=", maxSplits: 1).map(String.init)
+                Task { [weak self] in
+                    try? await Task.sleep(for: .milliseconds(Int(after)))
+                    guard let self else { return }
+                    switch verb[0] {
+                    case "unseen":
+                        SessionSeenStore.tourRewindBaseline(Double(verb.last ?? "") ?? 86_400)
+                        self.renderSnapshot()
+                    case "more":
+                        self.pressFoot(.more(hidden: 0))
+                    case "fewer":
+                        self.pressFoot(.fewer)
+                    case "fold":
+                        guard let band = SessionSection(rawValue: verb.last ?? "") else { return }
+                        self.toggleFold(band)
+                    case "read":
+                        self.markEverythingRead()
+                    case "end":
+                        let last = self.collectionView.numberOfSections - 1
+                        guard last >= 0 else { return }
+                        let item = self.collectionView.numberOfItems(inSection: last) - 1
+                        guard item >= 0 else { return }
+                        self.collectionView.scrollToItem(
+                            at: IndexPath(item: item, section: last), at: .bottom, animated: true)
+                    default:
+                        MidgarLog.info("home drive: no verb \(verb[0])", category: .ui)
+                    }
+                    let snapshot = self.dataSource.snapshot()
+                    let counts = snapshot.sectionIdentifiers.map {
+                        "\($0)=\(snapshot.numberOfItems(inSection: $0))"
+                    }.joined(separator: " ")
+                    MidgarLog.info(
+                        "home drive: \(parts[1]) -> \(counts) news=\(self.hasNews)", category: .ui)
+                }
+            }
         }
 
         /// Puts the ask lane into a named state so each one can be reviewed without a hand:

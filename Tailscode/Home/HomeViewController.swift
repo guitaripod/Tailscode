@@ -97,6 +97,13 @@ final class HomeViewController: UIViewController {
     /// whether anything on it moved, so reconfiguring everything that survived a diff redrew the
     /// whole board on a tick that changed one word.
     var appliedContent: [HomeItem: Int] = [:]
+    /// How far RECENT has been opened past its limit on this screen.
+    var recentReach = HomeReach()
+    /// What each band holds and how much of it is news, read by the headings: a shut band draws no
+    /// rows to count.
+    var bandReadings: [HomeSection: (total: Int, fresh: Int)] = [:]
+    /// Whether anything at all is unread or still filed as news, on any band or under any fold.
+    var hasNews = false
 
     /// Everything the lane decides, resolved once. The two lanes differ by exactly this much —
     /// where the conversation lands, which memory names the model, and which draft is in the box —
@@ -294,6 +301,9 @@ final class HomeViewController: UIViewController {
                     self?.navigationController?.pushViewController(
                         StreamRendererViewController(), animated: false)
                 }
+            }
+            if let script = ProcessInfo.processInfo.environment["TAILSCODE_HOME_DRIVE"] {
+                driveBoard(script)
             }
             if let name = ProcessInfo.processInfo.environment["TAILSCODE_DUO_SCREEN"] {
                 Task { [weak self] in

@@ -4,19 +4,53 @@ import Foundation
 /// sessions that changed after you last looked. Sessions never opened on this
 /// device fall back to an install-time baseline, which keeps pre-existing
 /// history from lighting up all at once on first launch.
+///
+/// The record is bounded, and a mark that falls off its end takes the baseline with it: a chat
+/// read long ago whose mark was dropped would otherwise be judged against the day the app was
+/// installed and light up again, which is how a list fills with old chats nobody has touched.
 public enum SessionSeenStore {
     nonisolated(unsafe) private static let defaults = UserDefaults.standard
     static let seenKey = "tailscode.seen.sessions"
     static let baselineKey = "tailscode.seen.baseline"
-    private static let capacity = 300
+    static let liftedKey = "tailscode.seen.lifted"
+    static let capacity = 1000
 
     /// Posted when another device's read marks arrive through a server, so a screen that draws
     /// unread state can draw it again without being asked to redraw for every chat opened here.
     public static let didSync = Notification.Name("tailscode.seen.didSync")
 
     public static func bootstrapIfNeeded() {
-        guard defaults.object(forKey: baselineKey) == nil else { return }
-        defaults.set(Date().timeIntervalSince1970, forKey: baselineKey)
+        if defaults.object(forKey: baselineKey) == nil {
+            defaults.set(Date().timeIntervalSince1970, forKey: baselineKey)
+        }
+        liftOnce()
+    }
+
+    /// Repairs a record that was trimmed before a trim moved the baseline. The marks it dropped
+    /// were all older than the oldest one it kept, so a record that was full takes that one as its
+    /// baseline, once.
+    private static func liftOnce() {
+        guard !defaults.bool(forKey: liftedKey) else { return }
+        defaults.set(true, forKey: liftedKey)
+        let seen = values()
+        guard seen.count >= retiredCapacity, let oldest = seen.values.min() else { return }
+        lift(to: oldest)
+    }
+
+    private static let retiredCapacity = 300
+
+    private static func lift(to mark: Double) {
+        guard mark > defaults.double(forKey: baselineKey) else { return }
+        defaults.set(mark, forKey: baselineKey)
+    }
+
+    /// Holds the record to its bound, newest marks kept, and moves the baseline up to the newest
+    /// mark dropped so no chat it forgets reads as changed since.
+    private static func trimmed(_ seen: [String: Double]) -> [String: Double] {
+        guard seen.count > capacity else { return seen }
+        let cutoff = seen.values.sorted(by: >)[capacity - 1]
+        if let dropped = seen.values.filter({ $0 < cutoff }).max() { lift(to: dropped) }
+        return seen.filter { $0.value >= cutoff }
     }
 
     #if DEBUG
@@ -30,17 +64,22 @@ public enum SessionSeenStore {
     #endif
 
     public static func markSeen(_ sessionID: String) {
-        var seen = defaults.dictionary(forKey: seenKey) as? [String: Double] ?? [:]
-        seen[sessionID] = Date().timeIntervalSince1970
-        if seen.count > capacity {
-            let cutoff = seen.values.sorted(by: >)[capacity - 1]
-            seen = seen.filter { $0.value >= cutoff }
+        markSeen([sessionID])
+    }
+
+    /// Marks every one of these read in one write, each told to its server like a single press.
+    public static func markSeen(_ sessionIDs: [String]) {
+        guard !sessionIDs.isEmpty else { return }
+        var seen = values()
+        let now = Date().timeIntervalSince1970
+        for sessionID in sessionIDs { seen[sessionID] = now }
+        defaults.set(trimmed(seen), forKey: seenKey)
+        for sessionID in sessionIDs {
+            MarkIntentStore.note(
+                sessionID: sessionID, profileID: SessionOwners.profile(of: sessionID), mark: .read,
+                on: true)
+            DeskLooks.note(sessionID)
         }
-        defaults.set(seen, forKey: seenKey)
-        MarkIntentStore.note(
-            sessionID: sessionID, profileID: SessionOwners.profile(of: sessionID), mark: .read,
-            on: true)
-        DeskLooks.note(sessionID)
     }
 
     /// Rewinds the "last looked" mark to just before the session's latest change, so the row
@@ -65,11 +104,7 @@ public enum SessionSeenStore {
         guard !marks.isEmpty else { return }
         var seen = values()
         for (id, value) in marks { seen[id] = value }
-        if seen.count > capacity {
-            let cutoff = seen.values.sorted(by: >)[capacity - 1]
-            seen = seen.filter { $0.value >= cutoff }
-        }
-        defaults.set(seen, forKey: seenKey)
+        defaults.set(trimmed(seen), forKey: seenKey)
         StoreNotice.post(didSync)
     }
 

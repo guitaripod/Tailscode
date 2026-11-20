@@ -21,6 +21,7 @@ enum ParityManifest {
         case .splitTabs: return .implemented("unsplitAll")
         case .sessionPinning: return .implemented("func togglePinned")
         case .unreadTracking: return .implemented("model.columnMark")
+        case .markAllRead: return .gap("the sidebar reads every chat it is asked to, but only through Select All and Mark as read: no single command sweeps the unread chats and the notices together. SessionSeenStore.markSeen takes the whole list and is Core; the port is one menu command over it")
         case .savedChats: return .implemented("SavedChatStore")
         case .savedChatSync: return .implemented("SessionMarkSync")
         case .sessionMarks: return .implemented("SessionMarks")

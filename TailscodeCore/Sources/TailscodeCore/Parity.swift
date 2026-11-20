@@ -44,6 +44,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case backgroundStop
     case sessionPinning
     case unreadTracking
+    case markAllRead
     case savedChats
     case savedChatSync
     case sessionMarks
