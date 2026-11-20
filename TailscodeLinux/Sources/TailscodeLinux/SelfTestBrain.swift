@@ -166,11 +166,13 @@ extension SelfTest {
         try checkShownWordsStay(expect)
     }
 
-    /// Words the chat showed are never taken back into the brain: the turn's opening words stand
-    /// above its card, a note that grew past the hold before the next call stands below it, and a
-    /// short note after a step, which was never shown, is a node.
+    /// The chat keeps one account of a turn's work: a note that grew past the hold before the next
+    /// call stands below the card, the shorter words before it fold into the brain, a short note
+    /// after a step, which was never shown, is a node, and an answer long enough to be a newer
+    /// account folds the note too.
     private static func checkShownWordsStay(_ expect: (Bool, String) throws -> Void) throws {
         let long = String(repeating: "The server answers on 4096 and the logs are clean. ", count: 8)
+        let report = String(repeating: "Fixed, built and installed; the selftest passes. ", count: 8)
         func part(_ id: String, _ kind: MessagePart.Kind) -> MessagePart { MessagePart(id: id, kind: kind) }
         func bash(_ id: String, _ command: String) -> MessagePart {
             part(
@@ -185,37 +187,55 @@ extension SelfTest {
                 id: id, role: role, agentType: .claudeCode, parts: parts, createdAt: Date(),
                 completedAt: Date())
         }
-        let messages = [
-            message("kq", .user, [part("t", .text("is the server up? then fix the build"))]),
-            message("k1", .assistant, [part("a", .text("Yes, checking first.")), bash("b", "curl :4096")]),
-            message("k2", .assistant, [part("a", .text(long)), bash("b", "swift build")]),
-            message("k3", .assistant, [part("a", .text("Rebuilding.")), bash("b", "swift build")]),
-            message("k4", .assistant, [part("a", .text("Fixed and built."))]),
-        ]
-        let rows = brainBuilder(style: .brain).rows(state: brainState(messages))
-        let prose = rows.enumerated().compactMap { index, row -> (Int, String)? in
-            if case .agentProse(let text, _) = row.kind { return (index, text) }
-            return nil
+        func read(answer: String) throws -> (prose: [(Int, String)], brain: Int, say: [Bool]) {
+            let messages = [
+                message("kq", .user, [part("t", .text("is the server up? then fix the build"))]),
+                message("k1", .assistant, [part("a", .text("Yes, checking first.")), bash("b", "curl :4096")]),
+                message("k2", .assistant, [part("a", .text(long)), bash("b", "swift build")]),
+                message("k3", .assistant, [part("a", .text("Rebuilding.")), bash("b", "swift build")]),
+                message("k4", .assistant, [part("a", .text(answer))]),
+            ]
+            let rows = brainBuilder(style: .brain).rows(state: brainState(messages))
+            let prose = rows.enumerated().compactMap { index, row -> (Int, String)? in
+                if case .agentProse(let text, _) = row.kind { return (index, text) }
+                return nil
+            }
+            guard case .brain(let row)? = rows.first(where: isBrain)?.kind else {
+                throw SelfTestFailure("kept notes: no brain")
+            }
+            return (
+                prose, rows.firstIndex(where: isBrain) ?? -1,
+                row.turn.steps.filter { $0.zone == .say }.map(\.inChat)
+            )
         }
-        let brain = rows.firstIndex(where: isBrain) ?? -1
-        let opener = prose.first { $0.1.contains("Yes, checking first.") }?.0 ?? -1
-        let note = prose.first { $0.1.contains("The server answers on 4096") }?.0 ?? -1
-        let answer = prose.first { $0.1.contains("Fixed and built.") }?.0 ?? -1
+        func index(of words: String, in prose: [(Int, String)]) -> Int {
+            prose.first { $0.1.contains(words) }?.0 ?? -1
+        }
+
+        let short = try read(answer: "Fixed and built.")
+        let note = index(of: "The server answers on 4096", in: short.prose)
+        let answer = index(of: "Fixed and built.", in: short.prose)
         try expect(
-            opener >= 0 && opener < brain,
-            "a turn's opening words stay in the chat above its brain (\(opener) vs \(brain))")
+            note > short.brain && note < answer,
+            "a note that grew past the hold stays below the brain, before a short answer")
         try expect(
-            note > brain && note < answer,
-            "a note that grew past the hold stays below the brain, before the answer")
+            index(of: "Yes, checking first.", in: short.prose) < 0,
+            "the opening words fold into the brain once a longer note follows them")
         try expect(
-            !prose.contains { $0.1.contains("Rebuilding.") },
+            index(of: "Rebuilding.", in: short.prose) < 0,
             "a short note after a step was never shown, so it is a node, not a paragraph")
-        guard case .brain(let row)? = rows.first(where: isBrain)?.kind else {
-            throw SelfTestFailure("kept notes: no brain")
-        }
         try expect(
-            row.turn.steps.filter { $0.zone == .say }.map(\.inChat) == [true, true, false],
-            "every note is still a SAY node, the shown ones marked as in the chat")
+            short.say == [false, true, false],
+            "every note is still a SAY node, only the kept one marked as in the chat")
+
+        let full = try read(answer: report)
+        try expect(
+            index(of: "The server answers on 4096", in: full.prose) < 0
+                && index(of: "Fixed, built and installed", in: full.prose) > full.brain,
+            "an answer long enough to be a newer account folds the note before it")
+        try expect(
+            full.say == [false, false, false],
+            "and every note it folded is still a SAY node")
     }
 
     private static func checkBrainFallbacks(_ expect: (Bool, String) throws -> Void) throws {

@@ -151,6 +151,7 @@ extension NeuralTurns {
         var stopped = false
         var trailingBytes = 0
         var run: [Int] = []
+        var shown: [Int] = []
         for message in messages {
             for part in message.parts {
                 let found: Class
@@ -172,8 +173,12 @@ extension NeuralTurns {
                     found = .other
                 }
                 if found == .step || found == .card {
-                    if !run.isEmpty, wasShown(bytes: trailingBytes, afterStep: lastStep >= 0) {
-                        for position in run { classes[position] = .shownWords }
+                    if !run.isEmpty {
+                        if supersedes(bytes: trailingBytes) { fold(&shown, in: &classes) }
+                        if wasShown(bytes: trailingBytes, afterStep: lastStep >= 0) {
+                            for position in run { classes[position] = .shownWords }
+                            shown.append(contentsOf: run)
+                        }
                     }
                     run.removeAll(keepingCapacity: true)
                     lastStep = classes.count
@@ -182,6 +187,7 @@ extension NeuralTurns {
                 classes.append(found)
             }
         }
+        if supersedes(bytes: trailingBytes) { fold(&shown, in: &classes) }
         let outcome = decide(stopped)
         let holding = holdsTrailingWords(
             running: outcome == .running, hasSteps: lastStep >= 0, bytes: trailingBytes)
@@ -238,6 +244,13 @@ extension NeuralTurns {
             endedAt: outcome == .running ? nil : last.completedAt,
             modelID: messages.reversed().lazy.compactMap(\.modelID).first,
             effort: messages.reversed().lazy.compactMap(\.reasoningEffort).first)
+    }
+
+    /// Hands the notes the chat was showing back to the brain, because newer words took their
+    /// place (`NeuralTurns.supersedes(bytes:)`).
+    private static func fold(_ shown: inout [Int], in classes: inout [Class]) {
+        for position in shown { classes[position] = .words }
+        shown.removeAll(keepingCapacity: true)
     }
 
     private static func noteStep(

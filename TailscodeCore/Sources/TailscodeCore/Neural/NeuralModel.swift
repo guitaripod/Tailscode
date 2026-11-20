@@ -98,7 +98,8 @@ public struct NeuralStep: Identifiable, Sendable, Hashable {
     /// The call also draws a card of its own (a subagent, a board), which the client keeps.
     public var isCard: Bool
     /// A note the chat already showed and keeps showing where it was read: the turn's opening
-    /// words, or words that outgrew `NeuralTurns.heldAnswerBytes` before the next call. The brain
+    /// words, or words that outgrew `NeuralTurns.heldAnswerBytes` before the next call, until the
+    /// agent writes a newer account of the work (`NeuralTurns.supersedes(bytes:)`). The brain
     /// still counts it, and the client keeps its row.
     public var inChat: Bool
     /// The tool call the step was read from; nil for a thought or a note. The readout reads the

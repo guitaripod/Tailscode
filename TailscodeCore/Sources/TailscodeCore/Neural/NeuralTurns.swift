@@ -222,12 +222,14 @@ public enum NeuralTurns {
         steps.append(step)
     }
 
-    /// The notes the chat has already shown, which it keeps showing where they were read, and the
-    /// size of the words after the turn's last step. Words before a turn's first step are shown at
-    /// once (nothing holds them), and words after a step are shown once they outgrow
-    /// `heldAnswerBytes`; either way a call that follows makes them a note, and taking a line
-    /// the person has read back into the brain is what reads as output that vanished. Shorter
-    /// words after a step were held and never shown, so they go into the brain unseen.
+    /// The notes the chat shows where they were read, and the size of the words after the turn's
+    /// last step. Words before a turn's first step are shown at once (nothing holds them), and words
+    /// after a step once they outgrow `heldAnswerBytes`; either way a call that follows makes them a
+    /// note, and taking a line the person has read back into the brain with nothing in its place is
+    /// what reads as output that vanished. Shorter words after a step were held and never shown, so
+    /// they go into the brain unseen. A shown note keeps its place only until the agent writes a
+    /// newer account of the work (`supersedes(bytes:)`): the chat keeps one account per turn, so
+    /// every note before it folds into the brain, where it is still a SAY step.
     static func shownNotes(in readings: [MessageReading]) -> (ids: Set<String>, trailing: Int) {
         var shown = Set<String>()
         var run: [String] = []
@@ -237,8 +239,9 @@ public enum NeuralTurns {
             for item in reading.items {
                 switch item.kind {
                 case .reasoning, .tool:
-                    if !run.isEmpty, wasShown(bytes: bytes, afterStep: sawStep) {
-                        shown.formUnion(run)
+                    if !run.isEmpty {
+                        if supersedes(bytes: bytes) { shown.removeAll(keepingCapacity: true) }
+                        if wasShown(bytes: bytes, afterStep: sawStep) { shown.formUnion(run) }
                     }
                     run.removeAll(keepingCapacity: true)
                     bytes = 0
@@ -249,7 +252,16 @@ public enum NeuralTurns {
                 }
             }
         }
+        if supersedes(bytes: bytes) { shown.removeAll() }
         return (shown, bytes)
+    }
+
+    /// Whether a run of words is a newer account of the turn's work than every note before it, so
+    /// those notes fold into the brain: words that reach `heldAnswerBytes` are a report or the answer
+    /// being written, never a line on the way to the next call. A long turn the harness wakes again
+    /// and again writes a fresh report at each wake, and each one restates the last.
+    static func supersedes(bytes: Int) -> Bool {
+        bytes >= heldAnswerBytes
     }
 
     /// Whether a run of words that a step followed had reached the chat before that step came:
@@ -276,7 +288,8 @@ public enum NeuralTurns {
     /// them at once is what put a line in the chat for as long as it took the next call to arrive
     /// and then took it away into the brain. Held words become the answer when they outgrow
     /// `heldAnswerBytes` or the turn ends, and a note when a call follows, and the steps only ever
-    /// grow. Words that were shown stay shown when a call follows (`shownNotes`).
+    /// grow. Words that were shown stay shown when a call follows, until newer words of substance
+    /// take their place (`shownNotes`).
     static func holdsTrailingWords(running: Bool, hasSteps: Bool, bytes: Int) -> Bool {
         running && hasSteps && bytes > 0 && bytes < heldAnswerBytes
     }

@@ -400,6 +400,73 @@ struct NeuralTurnTests {
         #expect(NeuralLiveCard(model: NeuralBrainModel(turn: unseen)).quote?.words == "Building it.")
     }
 
+    @Test("a newer account of the work folds every note the chat showed before it into the brain")
+    func newerAccountFoldsNotes() {
+        let report = String(repeating: "The iPhone build passed and the selftest runs. ", count: 8)
+        let final = String(repeating: "Both builds are on TestFlight and Linux is installed. ", count: 8)
+        let messages: [ChatMessage] = [
+            Fixtures.user(0),
+            Fixtures.message(1, [.text("Checking the build first."), Fixtures.bash("swift build")]),
+            Fixtures.message(2, [.text(report), Fixtures.bash("swift test")]),
+            Fixtures.message(3, [.text("Uploading."), Fixtures.bash("asc upload")]),
+            Fixtures.message(4, [.text(final)]),
+        ]
+        let turn = NeuralTurns.partition(messages: messages, running: false)[0]
+        #expect(turn.answerPartIDs == ["m4:p0"])
+        #expect(turn.steps.filter { $0.zone == .say }.map(\.inChat) == [false, false, false])
+        #expect(turn.memberPartIDs.isSuperset(of: ["m1:p0", "m2:p0", "m3:p0"]))
+        #expect(turn.anchor == "m1:p0")
+        #expect(NeuralRowPlan(turns: [turn]).skips("m2:p0"))
+
+        let outline = NeuralTurns.outline(messages: Array(messages.dropFirst()), running: false)
+        #expect(outline.consumes("m1:p0"))
+        #expect(outline.consumes("m2:p0"))
+        #expect(!outline.consumes("m4:p0"))
+        #expect(outline.anchor == "m1:p0")
+        #expect(outline.stepCount == turn.steps.count)
+    }
+
+    @Test("a short answer after a report leaves the report where it was read")
+    func shortAnswerKeepsReport() {
+        let report = String(repeating: "The iPhone build passed and the selftest runs. ", count: 8)
+        let messages: [ChatMessage] = [
+            Fixtures.user(0),
+            Fixtures.message(1, [.text("Checking the build first."), Fixtures.bash("swift build")]),
+            Fixtures.message(2, [.text(report), Fixtures.bash("git push")]),
+            Fixtures.message(3, [.text("Pushed.")]),
+        ]
+        let turn = NeuralTurns.partition(messages: messages, running: false)[0]
+        #expect(turn.steps.filter { $0.zone == .say }.map(\.inChat) == [false, true])
+        #expect(turn.answerPartIDs == ["m3:p0"])
+        let outline = NeuralTurns.outline(messages: Array(messages.dropFirst()), running: false)
+        #expect(outline.consumes("m1:p0"))
+        #expect(!outline.consumes("m2:p0"))
+    }
+
+    @Test("the report being written takes the last one's place once it outgrows the hold")
+    func reportTakesPlaceWhileRunning() {
+        let first = String(repeating: "The iPhone compile is running in the background. ", count: 8)
+        let second = String(repeating: "The iPhone compile passed and the Mac build runs. ", count: 8)
+        var messages: [ChatMessage] = [
+            Fixtures.user(0),
+            Fixtures.message(1, [Fixtures.read("a/b/c.swift", out: ["10 lines"])]),
+            Fixtures.message(2, [.text(first), Fixtures.bash("xcodebuild")]),
+            Fixtures.message(3, [.text("The iPhone")], streaming: true),
+        ]
+        var turn = NeuralTurns.partition(messages: messages, running: true)[0]
+        #expect(turn.steps.first { $0.id == "m2:p0" }?.inChat == true)
+        #expect(turn.answerPartIDs.isEmpty)
+
+        messages[3] = Fixtures.message(3, [.text(second)], streaming: true)
+        turn = NeuralTurns.partition(messages: messages, running: true)[0]
+        #expect(turn.steps.first { $0.id == "m2:p0" }?.inChat == false)
+        #expect(turn.memberPartIDs.contains("m2:p0"))
+        #expect(turn.answerPartIDs == ["m3:p0"])
+        let outline = NeuralTurns.outline(messages: Array(messages.dropFirst()), running: true)
+        #expect(outline.consumes("m2:p0"))
+        #expect(outline.answerPartIDs == ["m3:p0"])
+    }
+
     @Test("the outline holds the same words the turn does, and releases them at the same size")
     func outlineHoldsToo() {
         let held = [
