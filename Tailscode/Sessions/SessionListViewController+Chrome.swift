@@ -115,26 +115,67 @@ extension SessionListViewController {
         navigationItem.rightBarButtonItems = items
     }
 
-    /// Whether this list is a column in a window whose bars run down a side. The column keeps
-    /// horizontal bars of its own, and its foot is where the left thumb rests while the right one
-    /// works in the conversation beside it.
+    /// Whether this list is a column whose foot is under a thumb: in a window whose bars run down a
+    /// side, or at the leading edge of a window held sideways in both hands, where the left thumb
+    /// rests while the right one works in the conversation beside it. The column keeps horizontal
+    /// bars of its own either way.
     var wantsFoot: Bool {
-        showsAsColumn && VerticalBar.isPresent(in: splitViewController?.traitCollection)
+        guard showsAsColumn else { return false }
+        return VerticalBar.isPresent(in: splitViewController?.traitCollection) || liesUnderLeadingThumb
+    }
+
+    /// Whether this column is the first thing in a window held sideways in both hands whose leading
+    /// edge is on the glass: no sidebar tiled beside it, and no screen of another app between it and
+    /// the thumb. A sidebar brought out over the column for a moment leaves the foot where it is.
+    private var liesUnderLeadingThumb: Bool {
+        guard let split = splitViewController, view.window != nil else { return false }
+        let reach = view.handReach
+        guard reach.isTwoThumbs, reach.reachesLeading else { return false }
+        return split.displayMode != .twoBesideSecondary
     }
 
     /// Puts search and New chat side by side at the foot of the column when it wants a foot, and
-    /// takes the foot away otherwise. Says whether New chat went there.
+    /// takes the foot away otherwise. Says whether New chat went there. Held in both hands the foot
+    /// also brings out the sidebar, whose own button is at the top of the column, out of reach.
     @discardableResult
     func placeFoot(compose: UIBarButtonItem?) -> Bool {
         let foot = wantsFoot && !isSelecting
         footed = foot
         var items: [UIBarButtonItem]?
-        if foot, #available(iOS 26.0, *) {
+        if foot, liesUnderLeadingThumb {
+            items = [sidebarFootItem(), searchFootItem()] + (compose.map { [$0] } ?? [])
+        } else if foot, #available(iOS 26.0, *) {
             items = [navigationItem.searchBarPlacementBarButtonItem] + (compose.map { [$0] } ?? [])
         }
         if toolbarItems != items { toolbarItems = items }
         syncFootToolbar(animated: false)
         return items != nil && compose != nil
+    }
+
+    /// An iPad keeps the search field at the top of the column, where the system draws it; the foot
+    /// carries a press that puts the cursor in it, so the keyboard comes up under the thumbs.
+    private func searchFootItem() -> UIBarButtonItem {
+        let item = UIBarButtonItem(
+            image: UIImage(systemName: "magnifyingglass"),
+            primaryAction: UIAction { [weak self] _ in
+                Theme.Haptics.tap()
+                self?.beginSearch()
+            })
+        item.accessibilityLabel = String(localized: "Search chats")
+        return item
+    }
+
+    private func sidebarFootItem() -> UIBarButtonItem {
+        let item = UIBarButtonItem(
+            image: UIImage(systemName: "sidebar.leading"),
+            primaryAction: UIAction { [weak self] _ in
+                guard let split = self?.splitViewController else { return }
+                Theme.Haptics.tap()
+                let out = [.twoOverSecondary, .twoDisplaceSecondary, .twoBesideSecondary].contains(split.displayMode)
+                if out { split.hide(.primary) } else { split.show(.primary) }
+            })
+        item.accessibilityLabel = String(localized: "Sidebar")
+        return item
     }
 
     func syncFootToolbar(animated: Bool) {

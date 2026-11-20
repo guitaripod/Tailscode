@@ -213,6 +213,7 @@ enum ParityManifest {
                 because:
                     "Whether there is a shell to read follows whether there is a pane, and the sandboxed copy has none.")
         case .listBesideConversation: return .implemented("NSSplitViewItem(sidebarWithViewController")
+        case .twoThumbReach: return .notApplicable("a Mac is not held in the hands; the pointer reaches every edge of a window alike")
         case .paneDensity: return .implemented("GlanceTileView")
         case .paneArrangements: return .implemented("PaneMenu")
         case .paneOverflow: return .implemented("OverflowStripView")

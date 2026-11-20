@@ -1,3 +1,4 @@
+import TailscodeCore
 import UIKit
 
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -77,6 +78,14 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         completionHandler: @escaping (Bool) -> Void
     ) {
         completionHandler(coordinator?.handleShortcut(shortcutItem) ?? false)
+    }
+
+    @available(iOS 26.0, *)
+    func windowScene(
+        _ windowScene: UIWindowScene, didUpdateEffectiveGeometry previousEffectiveGeometry: UIWindowScene.Geometry
+    ) {
+        guard !windowScene.effectiveGeometry.isInteractivelyResizing else { return }
+        NotificationCenter.default.post(name: HandReach.didChange, object: windowScene)
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {

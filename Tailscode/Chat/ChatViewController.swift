@@ -135,6 +135,7 @@ final class ChatViewController: UIViewController {
     let navStatusRow = UIStackView()
     var lastNotifiedPermissionID: String?
     let fab = UIButton(type: .system)
+    var fabSideConstraints: (leading: NSLayoutConstraint, trailing: NSLayoutConstraint)?
     var rowsAtDeparture: Int?
     let agentsChip = ChatChip(kind: .live)
     let backgroundChip = ChatChip(kind: .live)
@@ -596,6 +597,7 @@ final class ChatViewController: UIViewController {
         super.viewDidLayoutSubviews()
         adaptToFold()
         updateTranscriptInsets()
+        placeFABForHands()
     }
 
     /// When the page was opened onto the end, so that the rows settling in behind it — a cached

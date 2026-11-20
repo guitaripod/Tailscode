@@ -179,6 +179,7 @@ enum ParityManifest {
         case .watchDirectory: return .notApplicable("the board is what an empty video slot shows instead of a text box, and a phone has no slot to show it in; a full-screen browser of what is on would be a different app, not this capability")
         case .watchAccounts: return .notApplicable("nothing on a phone reads a follow list — there is no board and no slot to put one in, so an account here would sign in to feed a surface that does not exist")
         case .listBesideConversation: return .implemented("WorkspaceSplitViewController")
+        case .twoThumbReach: return .implemented("HandReach")
         case .paneDensity: return .notApplicable("one conversation fills a phone; there are no peer panes to share a live budget")
         case .paneArrangements: return .notApplicable("no tiling on a phone; the OS owns window arrangement, and an iPad window shows one conversation beside its list")
         case .paneOverflow: return .notApplicable("no tiling on a phone, so no pane is ever hidden for want of room")

@@ -150,6 +150,7 @@ enum ParityManifest {
         case .terminalPane: return .implemented("TerminalPane")
         case .splitFromTerminal: return .implemented("splitAtTerminal")
         case .listBesideConversation: return .implemented("makeSidebarPane")
+        case .twoThumbReach: return .notApplicable("a desktop is not held in the hands; the pointer reaches every edge of a window alike")
         case .paneDensity: return .implemented("GlanceTile")
         case .paneArrangements: return .implemented("paneMenuSections")
         case .paneOverflow: return .implemented("OverflowStrip")

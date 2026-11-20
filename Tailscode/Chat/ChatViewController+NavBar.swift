@@ -12,13 +12,37 @@ extension ChatViewController {
         fab.isHidden = true
         fab.addTarget(self, action: #selector(fabTapped), for: .touchUpInside)
         view.addSubview(fab)
+        let sides = (
+            leading: fab.leadingAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Theme.Spacing.l),
+            trailing: fab.trailingAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l))
+        fabSideConstraints = sides
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handReachDidChange), name: HandReach.didChange, object: nil)
         NSLayoutConstraint.activate([
-            fab.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Theme.Spacing.l),
+            sides.trailing,
             fab.bottomAnchor.constraint(
                 equalTo: composerAccessories.topAnchor, constant: -Self.fabClearance),
             fab.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
             fab.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
         ])
+    }
+
+    /// The jump control waits on the side of the window a thumb reaches. A window sharing a screen
+    /// held sideways meets the glass on one side only, and when that is the side the conversation
+    /// starts on the control crosses to it; everywhere else it keeps the trailing corner.
+    func placeFABForHands() {
+        guard let sides = fabSideConstraints, view.window != nil else { return }
+        let leading = HandReach.primarySide(for: view, within: 32) == .leading
+        guard sides.leading.isActive != leading else { return }
+        NSLayoutConstraint.deactivate([leading ? sides.trailing : sides.leading])
+        NSLayoutConstraint.activate([leading ? sides.leading : sides.trailing])
+    }
+
+    @objc private func handReachDidChange() {
+        view.setNeedsLayout()
+        collectionView.visibleCells.forEach { $0.setNeedsLayout() }
     }
 
     /// How far the jump control stands above the facts row, or the composer when the row has

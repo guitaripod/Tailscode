@@ -1,4 +1,5 @@
 import CodingAgentKit
+import TailscodeCore
 import UIKit
 
 /// An inline, in-stream approval card for a pending tool permission — replaces the blocking alert
@@ -99,6 +100,30 @@ final class PermissionCell: UICollectionViewCell {
     var gapAbove: CGFloat = 0 {
         didSet { barTop.constant = gapAbove }
     }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        orderDecisionsForHands()
+    }
+
+    /// Held sideways in both hands, the decision made most often sits under the thumb that reaches
+    /// the card — the right one, or the left when the window shares the screen from its left — and
+    /// the refusal at the far end; held the ordinary way the card keeps the order the phone has
+    /// always shown.
+    private func orderDecisionsForHands() {
+        let side =
+            decisionButtons.axis == .horizontal
+            ? HandReach.primarySide(for: contentView, within: Self.edgeSlack) : nil
+        let wanted: [UIButton] =
+            side == .trailing ? [denyButton, alwaysButton, allowButton] : [allowButton, alwaysButton, denyButton]
+        guard !decisionButtons.arrangedSubviews.elementsEqual(wanted, by: ===) else { return }
+        wanted.forEach(decisionButtons.removeArrangedSubview)
+        wanted.forEach(decisionButtons.addArrangedSubview)
+    }
+
+    /// How far in from the window's edge a card may begin and still count as on that edge: the
+    /// transcript's readable margins in a window no wider than one conversation.
+    private static let edgeSlack: CGFloat = 160
 
     /// Three decisions side by side while each has the width for its words, one under another when
     /// the reader's type is large enough that a word would be broken to fit.

@@ -123,6 +123,8 @@ final class SessionListViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(appDidBecomeActive),
             name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handReachDidChange), name: HandReach.didChange, object: nil)
         Task {
             await viewModel.load()
             hasLoadedOnce = true
@@ -135,6 +137,10 @@ final class SessionListViewController: UIViewController {
     @objc private func appDidBecomeActive() {
         guard hasAppeared, viewIfLoaded?.window != nil else { return }
         Task { await viewModel.load() }
+    }
+
+    @objc private func handReachDidChange() {
+        viewIfLoaded?.setNeedsLayout()
     }
 
     override func viewWillAppear(_ animated: Bool) {

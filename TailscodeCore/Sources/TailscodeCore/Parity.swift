@@ -167,6 +167,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case terminalPane
     case splitFromTerminal
     case listBesideConversation
+    case twoThumbReach
     case splitPanes
     case newPaneChooser
     case chatDragToPane
