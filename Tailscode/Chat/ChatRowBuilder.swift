@@ -41,6 +41,7 @@ enum ChatRowBuilder {
         let writing = messages.last?.id
         var lastPrompt: ChatMessage?
         var brain: BrainLayout.Turn?
+        var sighting = TurnPictureGathering.Sighting()
         for message in messages {
             guard seenMessageIDs.insert(message.id).inserted else { continue }
             defer { if message.role == .user { lastPrompt = message } }
@@ -69,11 +70,12 @@ enum ChatRowBuilder {
                     content: .modelSeam(seam)))
             }
             let contentStart = rows.count
-            /// A time is put above what a message draws, and a message the brain took whole draws
-            /// nothing: a stamp left standing over it is a date over an empty gap, and the next
-            /// stamp is measured from what the reader can see, not from the hidden message.
+            /// A time is put above what a message draws where it stays, and a message the brain took
+            /// whole draws nothing, as does one whose pictures gather up under the turn's card: a
+            /// stamp left standing there is a date over an empty gap, and the next stamp is
+            /// measured from what the reader can see, not from the hidden message.
             func datedBySightedRows() {
-                guard rows.count > contentStart else { return }
+                guard sighting.stays(rows[contentStart...].lazy.map(Self.pictureMark)) else { return }
                 if let stamp { rows.insert(stamp, at: leading) }
                 lastDate = max(message.createdAt, lastDate ?? .distantPast)
             }

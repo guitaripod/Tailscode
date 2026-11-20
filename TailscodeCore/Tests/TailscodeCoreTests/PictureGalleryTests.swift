@@ -221,4 +221,16 @@ import Testing
         #expect(gathered == ["p", "c", "q", "x"])
         #expect(TurnPictureGathering.gathered(["x", "y"]) { _ in .other } == ["x", "y"])
     }
+
+    @Test func aMessageOfPicturesThatGatherUnderTheCardLeavesNothingInPlace() {
+        var sighting = TurnPictureGathering.Sighting()
+        let read: [[TurnPictureGathering.Mark]] = [
+            [.boundary], [.card, .other], [.picture, .picture], [], [.other], [.boundary],
+            [.picture], [.picture],
+        ]
+        let stays = read.map { sighting.stays($0) }
+        #expect(
+            stays == [true, true, false, false, true, true, true, false],
+            "pictures after the card move up to it; a turn without a card keeps its first picture in place and gathers the next one up to it")
+    }
 }

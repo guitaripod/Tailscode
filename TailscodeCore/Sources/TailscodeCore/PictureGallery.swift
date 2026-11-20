@@ -209,6 +209,38 @@ public enum TurnPictureGathering {
         guard marks.contains(.picture) else { return rows }
         return order(marks).map { rows[$0] }
     }
+
+    /// Reads a transcript's rows in order, a message at a time, and says whether anything a
+    /// message drew stays where it was drawn once the turn's pictures have gathered: a picture
+    /// that is not the turn's anchor moves up to it, so a message that drew only such pictures
+    /// leaves nothing at its own place, and whatever dates or heads that place stands over a gap.
+    public struct Sighting: Sendable {
+        private var anchored = false
+
+        public init() {}
+
+        /// Whether any of one message's rows, given as their marks, stays in place.
+        public mutating func stays(_ marks: some Sequence<Mark>) -> Bool {
+            var stays = false
+            for mark in marks {
+                switch mark {
+                case .card:
+                    anchored = true
+                    stays = true
+                case .picture:
+                    guard !anchored else { continue }
+                    anchored = true
+                    stays = true
+                case .boundary:
+                    anchored = false
+                    stays = true
+                case .other:
+                    stays = true
+                }
+            }
+            return stays
+        }
+    }
 }
 
 /// What a gallery says: how many pictures it holds, and what its corner counts.
