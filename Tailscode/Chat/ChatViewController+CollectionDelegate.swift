@@ -343,9 +343,21 @@ extension ChatViewController: UIGestureRecognizerDelegate {
         guard gestureRecognizer === transcriptDismissTap else { return true }
         var view = touch.view
         while let candidate = view {
-            if candidate is UITextInput { return false }
+            if Self.takesTyping(candidate) { return false }
             view = candidate.superview
         }
         return true
+    }
+
+    /// Whether a finger landing in this view means to type. Words that can only be read and
+    /// selected — every bubble — are page, not field: left to their own tap, a selectable text view
+    /// takes the keyboard away only once its double tap has timed out, nearly 400 ms after the
+    /// finger lifts.
+    private static func takesTyping(_ view: UIView) -> Bool {
+        switch view {
+        case let textView as UITextView: textView.isEditable
+        case let field as UITextField: field.isEnabled
+        default: view is UITextInput
+        }
     }
 }
