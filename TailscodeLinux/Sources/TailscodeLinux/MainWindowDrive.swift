@@ -900,7 +900,9 @@ extension MainWindow {
                     "STATE follows=\(pane.followsBottom) rows=\(pane.renderedRows.count)/\(pane.lastFullRows.count) value=\(Int(value)) bottom=\(Int(upper))\n"
                     .utf8))
         default:
-            if !self.driveMachine(verb, argument), !self.driveTiles(verb, argument) {
+            if !self.driveMachine(verb, argument), !self.driveExperts(verb, argument),
+                !self.driveTiles(verb, argument)
+            {
                 self.driveLive(verb, argument)
             }
         }

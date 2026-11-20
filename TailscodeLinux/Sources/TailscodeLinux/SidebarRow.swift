@@ -232,6 +232,7 @@ enum SidebarRow {
         gtk_box_append(ptr(titleRow), title)
         let marks = model.titleMarks(under: section)
         for mark in marks { gtk_box_append(ptr(titleRow), flag(mark)) }
+        if model.entry.session.expertID != nil { gtk_box_append(ptr(titleRow), expertFlag(model.entry)) }
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         gtk_box_append(ptr(column), titleRow)
@@ -261,6 +262,15 @@ enum SidebarRow {
         gtk_box_append(ptr(holder), makeMark(marked: marked, onMark: onMark))
         gtk_box_append(ptr(holder), button)
         return holder
+    }
+
+    /// The mark of the expert a conversation is a task of, small after its title; a plain one
+    /// until the shelf has read which expert it is.
+    static func expertFlag(_ entry: SessionEntry) -> UnsafeMutablePointer<GtkWidget> {
+        let row = ExpertDesk.shared.expert(for: entry)
+        let mark = row.map { ExpertMarks.mark($0.expert, size: .tiny) } ?? ExpertMarks.mark("✦", hue: .gray, size: .tiny)
+        gtk_widget_set_tooltip_text(mark, row.map { Localized.text("A task of %@", $0.expert.name) } ?? ExpertWords.title)
+        return mark
     }
 
     /// A small mark after the title. This client is set in type, so a mark is a quiet word rather

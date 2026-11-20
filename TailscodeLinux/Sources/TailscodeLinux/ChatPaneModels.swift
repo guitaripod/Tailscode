@@ -254,6 +254,10 @@ extension ChatPane {
                     guard let held = UnsafeMutablePointer<GtkWidget>(bitPattern: bits) else { return }
                     self?.addToParty(pick, on: held)
                 }
+            },
+            experts: chooserExperts(), expertNote: chooserExpertNote(),
+            onExpert: { [weak self] row in
+                Gtk.onMain { [weak self] in self?.pickedExpert(row) }
             }
         ) { [weak self] pick in
             Gtk.onMain { [weak self] in self?.apply(pick) }

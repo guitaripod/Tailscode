@@ -43,6 +43,7 @@ extension ChatPane {
         Trace.mark(
             "apply state loaded=\(state.hasLoadedTranscript) rows=\(rows.count) status=\(state.status)")
         lastState = state
+        if expertDebrief?.state == .failed { renderDebriefCard() }
         keepRead(state)
         defer { scheduleHoverRefresh() }
         if let entry, spendReading.note(messages: state.messages, for: entry.session.id) {

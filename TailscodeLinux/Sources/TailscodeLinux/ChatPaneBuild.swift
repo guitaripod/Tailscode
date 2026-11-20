@@ -50,6 +50,8 @@ extension ChatPane {
         gtk_box_append(ptr(canvas), transcriptBox)
         Gtk.margins(pendingBox, top: 8)
         gtk_box_append(ptr(canvas), pendingBox)
+        gtk_widget_set_visible(expertBox, 0)
+        gtk_box_append(ptr(canvas), expertBox)
         gtk_scrolled_window_set_child(op(scroller), makeTranscriptViewport(canvas))
         gtk_widget_set_vexpand(scroller, 1)
         Gtk.onPressHold(
@@ -289,6 +291,9 @@ extension ChatPane {
         gtk_label_set_ellipsize(op(vimBadge), PANGO_ELLIPSIZE_NONE)
         gtk_widget_set_valign(vimBadge, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(placeBox), vimBadge)
+        gtk_widget_set_visible(expertMarkSlot, 0)
+        gtk_widget_set_valign(expertMarkSlot, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(placeBox), expertMarkSlot)
         gtk_label_set_wrap(op(destinationLabel), 1)
         gtk_label_set_wrap_mode(op(destinationLabel), PANGO_WRAP_WORD)
         gtk_label_set_ellipsize(op(destinationLabel), PANGO_ELLIPSIZE_NONE)

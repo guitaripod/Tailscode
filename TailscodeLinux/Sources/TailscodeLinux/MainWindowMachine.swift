@@ -27,6 +27,7 @@ extension MainWindow {
 
     func startMachineWatch() {
         refreshScheduleLine()
+        startExpertWatch()
         Gtk.after(8_000) { [weak self] in self?.nudgeAgents() }
         machineBeat()
     }
@@ -35,6 +36,7 @@ extension MainWindow {
         Gtk.after(60_000) { [weak self] in
             guard let self, !Gtk.isQuitting else { return }
             self.refreshScheduleLine()
+            ExpertDesk.shared.refresh()
             self.machineBeat()
         }
     }

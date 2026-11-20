@@ -117,6 +117,19 @@ final class ChatPane: @unchecked Sendable {
     var attachments: [PendingAttachment] = []
     var pastes: [FoldedPaste] = []
     var carry: ConversationBrief?
+    /// An expert task's furniture: its mark beside the destination, the debrief card at the end of
+    /// the transcript, and what the card last drew, so an unchanged read draws nothing.
+    let expertBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    let expertMarkSlot = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
+    var expertDebrief: ExpertDebrief?
+    var expertDrawn: String?
+    var expertGeneration = 0
+    /// Which read of the debrief is the live one, so a drafting debrief is asked about by one
+    /// chain of reads at a time however many things asked.
+    var expertPollSerial = 0
+    var expertBusy = false
+    var expertLater: Set<String> = []
+    var expertWatch: NSObjectProtocol?
     var carryStash: [String: ConversationBrief] = [:]
     var pastedImageCount = 0
 

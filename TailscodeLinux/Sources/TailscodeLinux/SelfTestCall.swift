@@ -171,6 +171,7 @@ extension SelfTest {
             case "notices": report("notice rules: \(try checkNoticeRules()) claims hold")
             case "desk": report("desk: \(try checkDesk()) claims hold")
             case "machine": report("machine: \(try checkMachine()) claims hold")
+            case "experts": report("experts: \(try checkExperts()) claims hold")
             case "shutdown": report("shutdown: \(try checkShutdown()) claims hold")
             case "share": report("analytics share: \(try checkAnalyticsShare()) claims hold")
             case "brain": report("brain: \(try checkBrain()) claims hold")

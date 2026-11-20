@@ -134,6 +134,7 @@ enum ParityManifest {
         case .serverRestartAll: return .implemented("confirmRestartEverything")
         case .machineAgents: return .implemented("MachineAgentsWindow")
         case .machineSchedules: return .implemented("AskLaterDialog")
+        case .experts: return .implemented("ExpertWindow")
         case .serverAutoUpdate: return .implemented("UpdateWatch.setAutoUpdate")
         case .updateCenter: return .implemented("UpdatePanel")
         case .newChat: return .implemented("NewChatWindow")

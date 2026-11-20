@@ -724,6 +724,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkExperts()
+            report("experts: \(checks) claims hold — the shelf in every tone, the page, the notebook, the editor and a draft, a task that carries a chat, a debrief accepted")
+        } catch {
+            report("experts: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkSidebar()
             report("sidebar: \(checks) claims hold — a burst of draws is two, the last request is drawn, a row with no parent is left alone")
         } catch {

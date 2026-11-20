@@ -535,7 +535,7 @@ enum Dialogs {
         return expanded
     }
 
-    private static func buttonRow(
+    static func buttonRow(
         window: UnsafeMutablePointer<GtkWidget>, confirm: UnsafeMutablePointer<GtkWidget>
     ) -> UnsafeMutablePointer<GtkWidget> {
         let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
