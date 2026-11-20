@@ -80,10 +80,17 @@ BUILT=$PWD/.build/release/tailscode
 # The app is single-instance on the session bus, so launching it while the old one is still alive
 # remote-activates the process already running — the script then finds a tailscode, says
 # "restarted", and leaves the person on the binary they just replaced. So the old process is waited
-# out by pid before anything is installed.
-OLD_PIDS=$(pgrep -f "$BIN_DIR/tailscode$" || true)
+# out by pid before anything is installed. The app that stays standing runs as `tailscode
+# --background` (the login launch, window hidden), so a process is matched with or without its
+# arguments, and one that was standing hidden is brought back hidden rather than as a window
+# opening on the person's desk.
+OLD_PIDS=$(pgrep -f "^$BIN_DIR/tailscode( |$)" || true)
 WAS_RUNNING=no
 [ -n "$OLD_PIDS" ] && WAS_RUNNING=yes
+RELAUNCH_ARGS=()
+for pid in $OLD_PIDS; do
+    tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | grep -qx -- --background && RELAUNCH_ARGS=(--background)
+done
 for pid in $OLD_PIDS; do kill "$pid" 2>/dev/null || true; done
 for _ in $(seq 1 50); do
     still=""
@@ -181,12 +188,12 @@ if [ "${1:-}" != "--no-restart" ] && [ "$WAS_RUNNING" = yes ]; then
         systemd-run --user --scope --quiet \
             -u "app-io.github.guitaripod.Tailscode-$$" \
             $DISPLAY_ENV \
-            "$BIN_DIR/tailscode" >/tmp/tailscode-linux-run.log 2>&1 &
+            "$BIN_DIR/tailscode" "${RELAUNCH_ARGS[@]}" >/tmp/tailscode-linux-run.log 2>&1 &
     else
-        nohup "$BIN_DIR/tailscode" >/tmp/tailscode-linux-run.log 2>&1 &
+        nohup "$BIN_DIR/tailscode" "${RELAUNCH_ARGS[@]}" >/tmp/tailscode-linux-run.log 2>&1 &
     fi
     sleep 2
-    NEW_PIDS=$(pgrep -f "$BIN_DIR/tailscode$" || true)
+    NEW_PIDS=$(pgrep -f "^$BIN_DIR/tailscode( |$)" || true)
     for pid in $NEW_PIDS; do
         case " $OLD_PIDS " in *" $pid "*) ;; *) echo "restarted (pid $pid)"; exit 0 ;; esac
     done
