@@ -75,6 +75,7 @@ The reasons and the full designs are in `docs/agent-notes.md`.
 - Money: spend and quota figures are API-equivalent estimates, never a bill, and a projection is never stated as a fact. Delegation is part of Pro but never the general sheet's lead (`DelegateProGate`, `ProOffer.perks`); the direct Mac build and Linux sell and gate nothing, and the demo world is never behind the price.
 - Voice call: the client never plays the model's audio and never leaves the microphone open after a call. GPU figures come from `VoiceRequirements`, never typed into a string. A missing media file's `hf download` line is copied, never run.
 - A feature leaves beta by deleting its `BetaFeature` case, never by hiding it.
+- Experts: an expert's brief rides in the appended system prompt and is written once per task, never into a message or a carry; a debrief is a fork that is never saved; nothing reaches the notebook until the person accepts it, and a retired note is moved with its reason, never deleted. The Experts wire (`/experts`, `/sessions/:id/debrief`) and its JSON keys are added to and never renamed.
 
 ## Reality
 

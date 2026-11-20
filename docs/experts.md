@@ -82,7 +82,7 @@ Home gains an **Experts** section when a machine has one. The iPad and the deskt
 - **New task** on the shelf or the page opens a new chat whose pill wears the expert before the model: *iPadOS · Opus 5.5*. The model chooser gains an **Experts** section above the families, so any composer can start one.
 - Above an empty composer, one line says what the session starts with: *Starts with its charter, the ipados skill, 23 notes, the last 5 tasks, iPad Pro free · 3.1k tokens*. It is a fact, not a setting.
 - **Hand to an expert…** in any chat's menu starts a task with that conversation carried as a brief (`CarryMark`), the way a pick of another machine does.
-- The brief rides in the runner's prompt, beside the client note, and never in the transcript. A carry never takes it along.
+- The brief rides in the appended system prompt, beside the client note, never in a message: the person never reads it in the chat and a carry never takes it along. (Claude Code records its system prompt in its own transcript file, so a task resumed in a terminal keeps its brief.)
 
 ### 3.4 Ending a task: the debrief
 
@@ -105,17 +105,17 @@ Home gains an **Experts** section when a machine has one. The iPad and the deskt
 - `GET /experts/:id/notebook` → `[Note]`: `id` (the file name), `title`, `summary`, `body`, `written`, `confirmed?`, `source?` (session id), `retired? {at, reason}`.
 - `POST /experts`, `PATCH /experts/:id`, `DELETE /experts/:id` (the notebook and the journal stay on disk, and the sheet says so). `POST /experts/draft {session? | skill?}` → an unsaved `Expert` with draft notes.
 - `POST /experts/:id/tasks {text, model?, effort?, carry?, directory?}` → a session; `SessionSummary.expert {id, name}` thereafter.
-- `POST /sessions/:id/debrief` → `Debrief {journal {title, outcome, measured [String], commits [String]}, proposals [{id, op: add|change|retire, note?, title, body, reason}]}`; `GET` returns the stored one. `POST /experts/:id/notebook/accept {accepted [id], edits?}` writes the accepted changes and closes the debrief; a debrief left for later stays in `Expert.pending`.
-- `POST /experts/:id/guards/run`; `GET /experts/:id/bench` proves the bench on demand.
+- `POST /sessions/:id/debrief` → `Debrief {journal {title, outcome, measured [String], commits [String]}, proposals [{id, op: add|change|retire, note?, title, body, reason}]}`; `GET` returns the stored one. `POST /sessions/:id/debrief/accept {accepted [id], skipped? [id], edits? {id: {title?, summary?, body?}}}` writes the accepted changes; with `skipped` absent every other pending proposal is skipped and the debrief closes. A debrief left for later stays counted in `Expert.pending`. `POST /sessions/:id/debrief` answers at once with the debrief in `drafting` and finishes it in the background.
+- `POST /experts/:id/guards/run {guard?}`; `GET /experts/:id/bench` proves the bench on demand (`GET /experts/:id?prove=1` proves it and answers the expert); `GET /experts/:id/brief` answers the brief a task would start with now and its tokens; `GET /experts/skills` lists the skills in `~/.claude/skills`; `GET /experts/:id/journal` the whole journal.
 - A change goes out on `/stream` as `experts`.
 
 ## 5. Inside the bridge
 
 - `ExpertStore` (actor): `~/.claude-bridge/experts/<id>/expert.json`, `journal.jsonl`, and `notebook/` unless one is adopted. Writes are atomic, files are mode 0600, and a retired note moves to `notebook/retired/` with `retired` and `reason` in its front matter. An adopted folder gets the same files and its index line, and the bridge never commits in it (a folder synced by its own job, as `~/claudememory` is, keeps its own history).
-- `ExpertBrief`: the charter; the adopted skills, named so the session loads them first; the notebook's index (each note's title and summary, plus the folder to read the rest from); the last five journal entries; the bench as facts; failing guards. It has a budget of 4,000 tokens: over it, the oldest journal entries go first, then the notes' summaries (titles stay). It is appended through `--append-system-prompt` beside the client note, so it is part of the launch and never of the transcript.
+- `ExpertBrief`: the charter; the adopted skills, named so the session loads them first; the notebook's index (each note's title and summary, plus the folder to read the rest from); the last five journal entries; the bench as facts; failing guards. It has a budget of 4,000 tokens: over it, the oldest journal entries go first, then the notes' summaries (titles stay). It is appended through the one `--append-system-prompt` beside the client note, so it is part of the launch and never a message. It is written to `briefs/<session>.md` when the task starts and every later process of that task reads the same file, so a task's brief never changes under it (and Claude Code keeps the first one it saw anyway).
 - `ClaudeLaunch` gains `expert`, and `serves(_:)` compares it, so a conversation never continues on a process started with another brief.
-- The debrief runs `--resume <task> --fork-session` with an out-of-transcript prompt that asks for JSON in a fixed shape, parses it, and deletes the fork's transcript. If the JSON does not parse, it is asked once more, then the card says the debrief could not be read and offers *Try again*.
-- Guards run through `Scheduler` as a command run instead of a prompt run, keep their last 30 results, and follow schedules' quiet rule: a guard that keeps passing says nothing, and a change from passing to failing is news.
+- The debrief runs `claude -p --no-session-persistence --resume <task> --fork-session --json-schema …` with read-only tools, no MCP servers and hooks off, so the fork is never written to disk, cannot change the machine and is not held up by a Stop hook; the answer is the CLI's `structured_output`. If it does not parse it is asked once more, then the card says the debrief could not be written and offers *Try again*. (Measured: the forked, unsaved call returns the schema's object and leaves the task's transcript unchanged.)
+- Guards keep their own clock on the expert (a `ScheduleRule` in its time zone, ticked every minute, one catch-up within 12 hours like a schedule), run in the person's login shell with a deadline that stops the command and everything it started, keep their last 30 results, and follow schedules' quiet rule: a guard that keeps passing says nothing, and a change from passing to failing is news.
 - Bench provers per kind: `appleDevice` reads `xcrun devicectl list devices --json-output` on a Mac and `pymobiledevice3 usbmux list` on Linux; `lock` asks who holds the lock file and maps that process to the session whose process tree it belongs to; `port` connects; `command` runs a probe with a timeout. They run when a page asks and every five minutes while a client watches, never in the background otherwise.
 
 ## 6. Entry points, per client
@@ -142,14 +142,18 @@ Home gains an **Experts** section when a machine has one. The iPad and the deskt
 - On the iPad, *New task* at the top of the page sat outside both thumbs' reach. It became the composer along the foot, and the experts moved to the sidebar's foot, so starting a task never means letting go of the iPad.
 - Drafting an expert from this session's own chat turned up "port 8795 is taken by another agent" as a note: true that afternoon, false the next day. The draft offers such notes unticked rather than adding them.
 
-## 9. Not in this
+## 9. Proven live (2026-11-20)
+
+A scratch bridge on port 4597 with an expert adopting a scratch notebook that held one note (the secret word) and two guards: the brief came back from `/experts/:id/brief` with the charter, the note's title, the bench as proven (a probe there, a closed port absent) and the guards; the guards ran (one measured 42 ms under its 100 ms line, one failed with its output kept); a task asked for the secret word answered "pelican" from the notebook it was told about; the debrief of that trivial task kept its journal entry and proposed nothing; a second task taught it the build and test commands, and starting a third debriefed the second in the background with one *add* proposal; accepting it wrote the note file and its `MEMORY.md` line, and a fourth task, fresh, answered `make check` from it. No fork transcript was left behind.
+
+## 10. Not in this
 
 - **Drills**: frozen tasks with a verify command, run on a fixed commit in a scratch worktree, to show whether a change to the charter or the notebook made the expert better or worse. They are the delegate packet's shape, and they cost real turns, so they are never automatic. This is the second version.
 - Experts on opencode or on ACP agents (the first version is Claude Code on claude-bridge, the one that takes an appended brief).
 - An expert shared across machines (an expert lives on one machine; another machine gets a copy).
 - Experts handing work to each other, or starting work on their own: a watch reports, and a person starts tasks.
 
-## 10. Implement
+## 11. Implement
 
 1. claude-bridge: `ExpertStore`, `ExpertBrief`, the launch and `serves`, `/experts*`, the debrief on a fork, notebook writes (new and adopted), bench provers, the guard runner in `Scheduler`, tests (a fixture expert, the brief's budget, the debrief's parse and its retry, writes into an adopted folder).
 2. CodingAgentKit: wire types and backend calls, `AgentSession.expert`, a tag.
