@@ -50,21 +50,15 @@ extension HandReach {
 }
 
 extension HandReach {
-    /// The side of `view` the action done most often belongs on while the screen is held in both
-    /// hands, or nil while it is held the ordinary way: the window's outer side when `view` begins
-    /// within `slack` of the window's edge on that side, so the thumb on that edge reaches it, and
-    /// the trailing side otherwise.
+    /// The side the action done most often belongs on while the screen is held sideways in both
+    /// hands, or nil while it is held another way: the side of the window that meets the glass, so
+    /// the thumb resting there reaches it — the leading side of a window sharing the screen from
+    /// its left, the trailing side otherwise. A control that cannot reach that edge itself still
+    /// sits at its nearer end.
     @MainActor
-    static func primarySide(for view: UIView, within slack: CGFloat) -> Side? {
+    static func primarySide(for view: UIView) -> Side? {
         let reach = read(for: view)
-        guard reach.isTwoThumbs else { return nil }
-        guard reach.outerSide == .leading, let window = view.window else { return .trailing }
-        let frame = view.convert(view.bounds, to: window)
-        let gap =
-            view.effectiveUserInterfaceLayoutDirection == .rightToLeft
-            ? window.bounds.width - frame.maxX + view.safeAreaInsets.right
-            : frame.minX + view.safeAreaInsets.left
-        return gap <= slack ? .leading : .trailing
+        return reach.isTwoThumbs ? reach.outerSide : nil
     }
 }
 

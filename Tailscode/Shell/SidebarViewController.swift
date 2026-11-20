@@ -487,6 +487,7 @@ final class SidebarViewController: UIViewController {
             guard let profile = servers.first else { return }
             workspace.showHome(animated: false)
             DelegateGate.open(from: workspace.home, profile: profile)
+            workspace.sidebarDidChoose()
             return
         }
         let sheet = UIAlertController(
@@ -497,6 +498,7 @@ final class SidebarViewController: UIViewController {
                     guard let workspace else { return }
                     workspace.showHome(animated: false)
                     DelegateGate.open(from: workspace.home, profile: profile)
+                    workspace.sidebarDidChoose()
                 })
         }
         sheet.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel))

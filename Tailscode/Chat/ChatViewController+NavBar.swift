@@ -34,7 +34,7 @@ extension ChatViewController {
     /// starts on the control crosses to it; everywhere else it keeps the trailing corner.
     func placeFABForHands() {
         guard let sides = fabSideConstraints, view.window != nil else { return }
-        let leading = HandReach.primarySide(for: view, within: 32) == .leading
+        let leading = HandReach.primarySide(for: view) == .leading
         guard sides.leading.isActive != leading else { return }
         NSLayoutConstraint.deactivate([leading ? sides.trailing : sides.leading])
         NSLayoutConstraint.activate([leading ? sides.leading : sides.trailing])

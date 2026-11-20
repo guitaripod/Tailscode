@@ -113,17 +113,13 @@ final class PermissionCell: UICollectionViewCell {
     private func orderDecisionsForHands() {
         let side =
             decisionButtons.axis == .horizontal
-            ? HandReach.primarySide(for: contentView, within: Self.edgeSlack) : nil
+            ? HandReach.primarySide(for: contentView) : nil
         let wanted: [UIButton] =
             side == .trailing ? [denyButton, alwaysButton, allowButton] : [allowButton, alwaysButton, denyButton]
         guard !decisionButtons.arrangedSubviews.elementsEqual(wanted, by: ===) else { return }
         wanted.forEach(decisionButtons.removeArrangedSubview)
         wanted.forEach(decisionButtons.addArrangedSubview)
     }
-
-    /// How far in from the window's edge a card may begin and still count as on that edge: the
-    /// transcript's readable margins in a window no wider than one conversation.
-    private static let edgeSlack: CGFloat = 160
 
     /// Three decisions side by side while each has the width for its words, one under another when
     /// the reader's type is large enough that a word would be broken to fit.

@@ -88,6 +88,17 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         NotificationCenter.default.post(name: HandReach.didChange, object: windowScene)
     }
 
+    /// Before iPadOS 26 a window moved across the screen is told through this one, which iPadOS 26
+    /// replaced with the geometry update above and stopped calling.
+    @available(iOS, introduced: 13.0, deprecated: 26.0)
+    func windowScene(
+        _ windowScene: UIWindowScene, didUpdate previousCoordinateSpace: any UICoordinateSpace,
+        interfaceOrientation previousInterfaceOrientation: UIInterfaceOrientation,
+        traitCollection previousTraitCollection: UITraitCollection
+    ) {
+        NotificationCenter.default.post(name: HandReach.didChange, object: windowScene)
+    }
+
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         guard let url = URLContexts.first?.url else { return }
         coordinator?.handle(url)
