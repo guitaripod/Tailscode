@@ -198,6 +198,19 @@ public enum ExpertMaking {
         return final
     }
 
+    /// The first words of a task handed a failing guard, the same on every client: which guard,
+    /// on which machine, its command, the end of its last output, and what to do.
+    public static func failureTask(_ item: ExpertGuard, machine: String) -> String {
+        var text = Localized.text("The guard “%@” started failing on %@.", item.name, machine)
+        text += "\n\n" + Localized.text("Its command: `%@`", item.command)
+        if let output = item.last?.output?.trimmingCharacters(in: .whitespacesAndNewlines), !output.isEmpty {
+            let tail = output.split(separator: "\n", omittingEmptySubsequences: false).suffix(40).joined(separator: "\n")
+            text += "\n\n" + Localized.text("Its last output:") + "\n\n```\n" + tail + "\n```"
+        }
+        text += "\n\n" + Localized.text("Find out why and fix it, then run the guard again.")
+        return text
+    }
+
     /// The notes a draft offers ticked: every lasting one.
     public static func defaultTicks(_ draft: ExpertDraft) -> Set<String> {
         Set((draft.notes ?? []).filter { $0.lasting != false }.map(\.title))

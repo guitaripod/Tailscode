@@ -71,6 +71,11 @@ public enum ExpertWords {
     }
 
     public static func taskStarted(_ name: String) -> String { Localized.text("%@ is on it", name) }
+    public static func startsWith(_ name: String) -> String { Localized.text("%@ starts with", name) }
+    public static func handFailure(_ name: String) -> String { Localized.text("Hand the failure to %@", name) }
+    public static var handFailureDetail: String { Localized.text("A new task that starts with the failing output") }
+    /// A machine that keeps experts but did not answer this time.
+    public static func notAnswering(_ machine: String) -> String { Localized.text("%@ is not answering", machine) }
 
     public static func handOverNote(_ source: String) -> String {
         Localized.text("Picking an expert starts a new task with “%@” carried as a brief. This chat stays as it is.", source)
