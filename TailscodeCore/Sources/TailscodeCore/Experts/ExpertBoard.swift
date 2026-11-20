@@ -17,7 +17,9 @@ public struct ExpertRow: Sendable, Hashable, Identifiable {
     public var id: String { "\(profileID)·\(expert.id)" }
     public var hue: ExpertHue { ExpertHue(expert.hue) }
 
-    public func state(now: Date = Date()) -> ExpertLine { ExpertReading.state(expert, now: now) }
+    public func state(calendar: Calendar = .current, now: Date = Date()) -> ExpertLine {
+        ExpertReading.state(expert, calendar: calendar, now: now)
+    }
 }
 
 /// Every machine's experts as one shelf: machines in the order the person keeps them, each
@@ -39,23 +41,33 @@ public struct ExpertBoard: Sendable, Hashable {
     /// The machines that answered and keep experts, in order, so a client knows where a new
     /// expert can be made even before there is one.
     public let machines: [(profileID: String, machine: String)]
+    /// Machines that keep experts but did not answer this time: offline, or out of reach. They
+    /// are not machines that cannot keep experts.
+    public let unanswered: [(profileID: String, machine: String)]
 
-    public init(rows: [ExpertRow], machines: [(profileID: String, machine: String)] = []) {
+    public init(
+        rows: [ExpertRow], machines: [(profileID: String, machine: String)] = [],
+        unanswered: [(profileID: String, machine: String)] = []
+    ) {
         self.rows = rows
         self.machines = machines
+        self.unanswered = unanswered
     }
 
     public static let empty = ExpertBoard(rows: [])
 
     public var isEmpty: Bool { rows.isEmpty }
-    public var keepsExperts: Bool { !machines.isEmpty }
+    /// Whether any machine keeps experts, answering now or not.
+    public var keepsExperts: Bool { !machines.isEmpty || !unanswered.isEmpty }
 
-    public static func make(_ sources: [Source]) -> ExpertBoard {
+    public static func make(
+        _ sources: [Source], unanswered: [(profileID: String, machine: String)] = []
+    ) -> ExpertBoard {
         let rows = sources.flatMap { source in
             source.experts.sorted { $0.createdAt < $1.createdAt }
                 .map { ExpertRow(profileID: source.profileID, machine: source.machine, expert: $0) }
         }
-        return ExpertBoard(rows: rows, machines: sources.map { ($0.profileID, $0.machine) })
+        return ExpertBoard(rows: rows, machines: sources.map { ($0.profileID, $0.machine) }, unanswered: unanswered)
     }
 
     public func row(profileID: String, expertID: String) -> ExpertRow? {
@@ -76,31 +88,49 @@ public struct ExpertBoard: Sendable, Hashable {
     public static func load(_ servers: [(profile: ConnectionProfile, backend: any CodingAgentBackend)]) async
         -> ExpertBoard
     {
-        let sources = await withTaskGroup(of: (Int, Source?).self) { group in
+        enum Answer: Sendable {
+            case kept(Source)
+            case silent(profileID: String, machine: String)
+            case none
+        }
+        let answers = await withTaskGroup(of: (Int, Answer).self) { group in
             for (index, server) in servers.enumerated() {
                 group.addTask {
-                    guard let keeping = server.backend as? any MachineExperts,
-                        let experts = try? await keeping.machineExperts()
-                    else { return (index, nil) }
-                    return (index, Source(profileID: server.profile.id, machine: server.profile.name, experts: experts))
+                    guard let keeping = server.backend as? any MachineExperts else { return (index, .none) }
+                    do {
+                        guard let experts = try await keeping.machineExperts() else { return (index, .none) }
+                        return (index, .kept(Source(profileID: server.profile.id, machine: server.profile.name, experts: experts)))
+                    } catch {
+                        guard server.backend.capabilities.supportsExperts else { return (index, .none) }
+                        return (index, .silent(profileID: server.profile.id, machine: server.profile.name))
+                    }
                 }
             }
-            var found: [(Int, Source)] = []
-            for await (index, source) in group {
-                if let source { found.append((index, source)) }
-            }
+            var found: [(Int, Answer)] = []
+            for await answer in group { found.append(answer) }
             return found.sorted { $0.0 < $1.0 }.map(\.1)
         }
-        return make(sources)
+        var sources: [Source] = []
+        var unanswered: [(profileID: String, machine: String)] = []
+        for answer in answers {
+            switch answer {
+            case .kept(let source): sources.append(source)
+            case .silent(let profileID, let machine): unanswered.append((profileID, machine))
+            case .none: break
+            }
+        }
+        return make(sources, unanswered: unanswered)
     }
 
     public static func == (lhs: ExpertBoard, rhs: ExpertBoard) -> Bool {
         lhs.rows == rhs.rows && lhs.machines.map(\.profileID) == rhs.machines.map(\.profileID)
+            && lhs.unanswered.map(\.profileID) == rhs.unanswered.map(\.profileID)
     }
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(rows)
         hasher.combine(machines.map(\.profileID))
+        hasher.combine(unanswered.map(\.profileID))
     }
 }
 

@@ -52,7 +52,7 @@ public enum ExpertReading {
 
     /// The one state line a shelf row says, in order of what matters most: a task running, notes
     /// waiting, a guard failing, a debrief being written, guards checking, then at rest.
-    public static func state(_ expert: MachineExpert, now: Date = Date()) -> ExpertLine {
+    public static func state(_ expert: MachineExpert, calendar: Calendar = .current, now: Date = Date()) -> ExpertLine {
         if let task = expert.task {
             return ExpertLine(
                 Localized.text("Working on “%@” · %@", task.title, SessionRowModel.age(of: task.updatedAt, asOf: now)),
@@ -62,7 +62,12 @@ public enum ExpertReading {
             return ExpertLine(Localized.text("Idle · %@", ExpertWords.toReview(expert.pending)), .attention)
         }
         if let failing = expert.failingGuards.first {
-            return ExpertLine(Localized.text("Guard failing · %@", failing.name), .failing)
+            var text = Localized.text("Guard failing · %@", failing.name)
+            if let since = failing.failingSince {
+                text += " · " + Localized.text(
+                    "since %@", ScheduleWords.lowered(ScheduleWords.moment(since, calendar: calendar, now: now)))
+            }
+            return ExpertLine(text, .failing)
         }
         if expert.tasks.contains(where: { $0.debrief == .drafting }) {
             return ExpertLine(ExpertWords.debriefDrafting, .active)
@@ -190,8 +195,9 @@ public enum ExpertReading {
         var text: String
         switch run.failure {
         case .metric:
-            let line = item.metric?.atMost.map { Localized.text("over its %@ line", number($0)) }
-                ?? item.metric?.atLeast.map { Localized.text("under its %@ line", number($0)) } ?? ""
+            let unit = item.metric?.unit.map { " \($0)" } ?? ""
+            let line = item.metric?.atMost.map { Localized.text("over its %@ line", number($0) + unit) }
+                ?? item.metric?.atLeast.map { Localized.text("under its %@ line", number($0) + unit) } ?? ""
             text = [measured, line].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         case .timeout:
             text = Localized.text("Stopped after %@", duration(run.seconds))
@@ -316,7 +322,8 @@ public enum ExpertReading {
         case .drafting: return ExpertLine(ExpertWords.debriefDrafting, .active)
         case .failed: return ExpertLine(ExpertWords.debriefFailed, .failing)
         case .settled:
-            return ExpertLine(debrief.proposals.isEmpty ? ExpertWords.debriefNothing : ExpertWords.debriefSettled)
+            let accepted = debrief.proposals.contains { $0.state == .accepted }
+            return ExpertLine(accepted ? ExpertWords.debriefSettled : ExpertWords.debriefNothing)
         case .open:
             let adds = debrief.proposals.filter { $0.op == .add }.count
             let changes = debrief.proposals.filter { $0.op == .change }.count
@@ -388,8 +395,8 @@ public enum ExpertReading {
     public static func duration(_ seconds: Double) -> String {
         let whole = Int(seconds.rounded())
         if whole < 60 { return Localized.text("%d s", whole) }
-        if whole < 3_600 { return Localized.text("%d min", (whole + 30) / 60) }
-        return Localized.text("%d h", whole / 3_600)
+        if whole < 3_570 { return Localized.text("%d min", (whole + 30) / 60) }
+        return Localized.text("%d h", max(1, (whole + 1_800) / 3_600))
     }
 
     static func number(_ value: Double) -> String {

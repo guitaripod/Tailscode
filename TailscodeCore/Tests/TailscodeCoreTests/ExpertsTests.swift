@@ -43,8 +43,9 @@ struct ExpertShelfTests {
             == ExpertLine("Working on “Unrager posts” · 14m", .active))
         #expect(ExpertReading.state(expert(pending: 3, guards: [failing]), now: now)
             == ExpertLine("Idle · 3 notes to review", .attention))
-        #expect(ExpertReading.state(expert(guards: [failing]), now: now)
-            == ExpertLine("Guard failing · AdaptiveLayoutTests", .failing))
+        let failingLine = ExpertReading.state(expert(guards: [failing]), calendar: utc, now: now)
+        #expect(failingLine.tone == .failing)
+        #expect(failingLine.text.hasPrefix("Guard failing · AdaptiveLayoutTests · since today"))
         let passing = ExpertGuard(name: "T", command: "x", last: ExpertGuardRun(at: now, passed: true, seconds: 1))
         #expect(ExpertReading.state(expert(guards: [passing]), now: now).text == "Idle · 23 notes · guards passing")
         #expect(ExpertReading.state(expert(notes: 1), now: now).text == "Idle · 1 note")
@@ -81,6 +82,7 @@ struct ExpertShelfTests {
         ])
         #expect(board.rows.map(\.machine) == ["macbook"])
         #expect(board.machines.map(\.machine) == ["macbook"])
+        #expect(board.unanswered.isEmpty)
     }
 
     @Test("Every hue has a dark and a light value, and an unknown one reads as blue")
@@ -123,7 +125,9 @@ struct ExpertPageTests {
         let over = ExpertGuard(
             name: "Resize", command: "b", metric: metric,
             last: ExpertGuardRun(at: now, passed: false, seconds: 12, value: 450, failure: .metric))
-        #expect(ExpertReading.guardRow(over, calendar: utc, now: now).detail.text.hasPrefix("450 ms · over its 100 line"))
+        #expect(ExpertReading.guardRow(over, calendar: utc, now: now).detail.text.hasPrefix("450 ms · over its 100 ms line"))
+        #expect(ExpertReading.duration(3_580) == "1 h")
+        #expect(ExpertReading.duration(3_500) == "58 min")
         let failing = failingGuard(since: now.addingTimeInterval(-9 * 3_600))
         let failed = ExpertReading.guardRow(failing, calendar: utc, now: now)
         #expect(failed.detail.tone == .failing)
@@ -204,6 +208,11 @@ struct ExpertDebriefTests {
         #expect(ExpertReading.debriefHeadline(debrief([.change]), name: "iPadOS").text == "iPadOS corrected 1 note")
         #expect(ExpertReading.debriefHeadline(debrief([], state: .settled), name: "iPadOS").text
             == "Nothing new for the notebook")
+        var skipped = debrief([.add], state: .settled)
+        skipped.proposals[0].state = .skipped
+        #expect(ExpertReading.debriefHeadline(skipped, name: "iPadOS").text == "Nothing new for the notebook")
+        skipped.proposals[0].state = .accepted
+        #expect(ExpertReading.debriefHeadline(skipped, name: "iPadOS").text == "Notebook updated")
         #expect(ExpertReading.debriefHeadline(debrief([], state: .failed), name: "iPadOS").tone == .failing)
     }
 
