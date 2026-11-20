@@ -260,9 +260,13 @@ final class WorkspaceSplitViewController: UISplitViewController {
         for case let list as SessionListViewController in compactNav.viewControllers {
             list.showsAsColumn = false
         }
-        home.workspaceDidRearrange()
+        if !carrying { home.workspaceDidRearrange() }
         refreshMarks()
     }
+
+    /// Whether the split is between asking to collapse or expand and having done it; Home is asked
+    /// again when it has, so it is not asked on the way.
+    private var carrying = false
 
     /// Columns fold into the phone's stack in the order a person would have walked them: Home,
     /// then the list they chose — when it is anything but the plain list every stack already
@@ -731,6 +735,7 @@ extension WorkspaceSplitViewController: UISplitViewControllerDelegate {
         topColumnForCollapsingToProposedTopColumn proposedTopColumn: UISplitViewController.Column
     ) -> UISplitViewController.Column {
         MidgarLog.info("workspace will collapse", category: .ui)
+        carrying = true
         arrange(collapsed: true)
         return .compact
     }
@@ -741,22 +746,26 @@ extension WorkspaceSplitViewController: UISplitViewControllerDelegate {
             .DisplayMode
     ) -> UISplitViewController.DisplayMode {
         MidgarLog.info("workspace will expand", category: .ui)
+        carrying = true
         arrange(collapsed: false)
         return proposedDisplayMode
     }
 
     /// The screens are carried while the split is still in the arrangement it is leaving, so Home
-    /// is asked again once it has arrived: its bar and its board depend on whether it stands in a
+    /// is asked only once it has arrived: its bar and its board depend on whether it stands in a
     /// column, which reads the arrangement the split now shows. Asked during the move, a phone
     /// turned on its side kept the stack's gear and tools beside a list, and an iPad widened from
-    /// Slide Over did the same.
+    /// Slide Over did the same; asked both times, every carry rebuilt Home's board twice inside
+    /// the frame iPadOS holds a stretched picture of the window for.
     func splitViewControllerDidCollapse(_ svc: UISplitViewController) {
         arrange(collapsed: true)
+        carrying = false
         home.workspaceDidRearrange()
     }
 
     func splitViewControllerDidExpand(_ svc: UISplitViewController) {
         arrange(collapsed: false)
+        carrying = false
         home.workspaceDidRearrange()
         refreshMarks()
     }
