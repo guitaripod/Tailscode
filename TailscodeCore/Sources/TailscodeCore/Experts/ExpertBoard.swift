@@ -158,6 +158,22 @@ public enum ExpertHue: String, Sendable, CaseIterable, Hashable {
 
     /// The glyph is drawn on the hue; yellow is light enough to want dark letters.
     public var wantsDarkGlyph: Bool { self == .yellow }
+
+    /// The colour's name as a person says it, for a picker and for VoiceOver.
+    public var name: String {
+        switch self {
+        case .blue: return Localized.text("Blue")
+        case .orange: return Localized.text("Orange")
+        case .green: return Localized.text("Green")
+        case .purple: return Localized.text("Purple")
+        case .pink: return Localized.text("Pink")
+        case .teal: return Localized.text("Teal")
+        case .indigo: return Localized.text("Indigo")
+        case .red: return Localized.text("Red")
+        case .yellow: return Localized.text("Yellow")
+        case .gray: return Localized.text("Grey")
+        }
+    }
 }
 
 /// The machines a person could make an expert on, and the drafts that start one.

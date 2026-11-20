@@ -399,8 +399,13 @@ public enum ExpertReading {
         return Localized.text("%d h", max(1, (whole + 1_800) / 3_600))
     }
 
+    /// A measured number with no more digits than it has: 2.4, 46, 0.05.
     static func number(_ value: Double) -> String {
-        value == value.rounded() && abs(value) < 1e9 ? String(Int(value)) : String(format: "%.2f", value)
+        if value == value.rounded(), abs(value) < 1e9 { return String(Int(value)) }
+        var text = String(format: "%.2f", value)
+        while text.hasSuffix("0") { text.removeLast() }
+        if text.hasSuffix(".") { text.removeLast() }
+        return text
     }
 
     /// A path with the home folder said as `~`.

@@ -183,6 +183,14 @@ struct ExpertPageTests {
         #expect(ExpertWords.tokens(3_104) == "3.1k tokens, outside the conversation")
     }
 
+    @Test("A measured number keeps only the digits it has")
+    func numbers() {
+        #expect(ExpertReading.number(2.4) == "2.4")
+        #expect(ExpertReading.number(46) == "46")
+        #expect(ExpertReading.number(0.05) == "0.05")
+        #expect(ExpertReading.number(3.10) == "3.1")
+    }
+
     @Test("Paths read with the home folder as a tilde")
     func paths() {
         #expect(ExpertReading.shortPath("/Users/marcus/Dev") == "~/Dev")
