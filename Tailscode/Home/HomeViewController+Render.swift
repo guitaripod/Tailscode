@@ -60,6 +60,10 @@ extension HomeViewController {
                 snapshot.appendSections([.agentNews])
                 snapshot.appendItems([.agentNews(news)], toSection: .agentNews)
             }
+            if let shelf = expertShelf {
+                snapshot.appendSections([.experts])
+                snapshot.appendItems([.experts(shelf)], toSection: .experts)
+            }
         }
         if !showsQuotaCards, !quotas.isEmpty {
             let glance = QuotaGlance.make(
@@ -164,7 +168,8 @@ extension HomeViewController {
         let rowItems = snapshot.itemIdentifiers.filter {
             switch $0 {
             case .chat, .ask, .saved, .placeholder: return true
-            case .status, .schedule, .agentNews, .glance, .quota, .alert, .demoNudge, .proInvitation, .more:
+            case .status, .schedule, .agentNews, .experts, .glance, .quota, .alert, .demoNudge, .proInvitation,
+                .more:
                 return false
             }
         }.count

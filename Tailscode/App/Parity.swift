@@ -148,6 +148,7 @@ enum ParityManifest {
         case .serverRestartAll: return .implemented("restartEverything")
         case .machineAgents: return .implemented("AgentCardViewController")
         case .machineSchedules: return .implemented("AskLaterViewController")
+        case .experts: return .implemented("ExpertDebriefCell")
         case .serverAutoUpdate: return .implemented("UpdateMonitor.setAutoUpdate")
         case .newChat: return .implemented("NewChatViewController")
         case .newChatPathCompletion: return .implemented("NewChatViewController")

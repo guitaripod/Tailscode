@@ -143,6 +143,11 @@ extension ChatViewController {
                 dial: context == .chat || context == .party ? pickerDial() : nil,
                 context: context, onSelect: onSelect)
         modelPicker = picker
+        if context == .chat, ExpertDesk.keepsExperts(viewModel.backend) || !ExpertDesk.shared.board.isEmpty {
+            picker.experts = ExpertDesk.shared.board.rows
+            picker.expertNote = ExpertWords.handOverNote(viewModel.session.title)
+            picker.onExpert = { [weak self] row in self?.handOver(to: row) }
+        }
         picker.onClose = { [weak self] in
             self?.pickerWatch?.cancel()
             self?.pickerWatch = nil

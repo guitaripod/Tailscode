@@ -122,6 +122,13 @@ extension HomeViewController {
             }
             self.retargetCompose(to: pick, from: aim)
         }
+        if context == .composer, onPick == nil {
+            picker.experts = ExpertDesk.shared.board.rows
+            picker.onExpert = { [weak self] row in
+                guard let self else { return }
+                ExpertRouter.newTask(row, text: self.composerBar.currentText, from: self)
+            }
+        }
         let nav = UINavigationController(rootViewController: picker)
         if let sheet = nav.sheetPresentationController {
             sheet.detents = [.medium(), .large()]

@@ -74,6 +74,8 @@ extension ChatViewController {
         collectionView.register(
             InterruptedTurnCell.self, forCellWithReuseIdentifier: InterruptedTurnCell.reuseID)
         collectionView.register(
+            ExpertDebriefCell.self, forCellWithReuseIdentifier: ExpertDebriefCell.reuseID)
+        collectionView.register(
             DesignBoardCell.self, forCellWithReuseIdentifier: DesignBoardCell.reuseID)
         collectionView.register(
             LinkRailCell.self, forCellWithReuseIdentifier: LinkRailCell.reuseID)

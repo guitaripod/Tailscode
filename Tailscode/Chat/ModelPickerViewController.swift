@@ -65,6 +65,13 @@ final class ModelPickerViewController: UIViewController {
     private var didScrollToSelected = false
     var sectionIDs: [String] = []
     var rowsByID: [String: ModelChooserRow] = [:]
+    /// The experts the chooser offers above the models, and what a pick of one does: a new task,
+    /// carrying the chat it was opened from when there is one.
+    var experts: [ExpertRow] = []
+    var onExpert: ((ExpertRow) -> Void)?
+    var expertNote: String?
+    static let expertsSectionID = "experts"
+    static let expertNoteID = "expert-note"
 
     init(
         sources: [ModelSource], selected: ModelSelection?, quotas: [UsageQuota] = [],

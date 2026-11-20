@@ -118,6 +118,9 @@ extension ChatViewController {
                 onDismiss: { [weak self] in self?.viewModel.dismissInterruptedTurn() })
             return cell
         }
+        if id == Self.expertCardRowID, let face = self.expertCard {
+            return expertCardCell(collectionView, indexPath, face: face)
+        }
         if id == Self.retryRowID, let retry = self.retryStanding {
             let cell = collectionView.dequeueReusableCell(
                 withReuseIdentifier: ProviderRetryCell.reuseID, for: indexPath)

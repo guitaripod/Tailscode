@@ -13,6 +13,8 @@ extension HomeViewController {
                     section = Self.plainSection(top: Theme.Spacing.s, bottom: Theme.Spacing.m)
                 case .alerts, .demoNudge, .proInvitation, .agentNews:
                     section = Self.plainSection(top: 0, bottom: Theme.Spacing.m)
+                case .experts:
+                    section = Self.plainSection(top: Theme.Spacing.s, bottom: Theme.Spacing.m)
                 case .schedule:
                     section = Self.plainSection(top: Theme.Spacing.s, bottom: Theme.Spacing.xs)
                 case .asks:
@@ -342,6 +344,16 @@ extension HomeViewController {
             cell.onAdd = { MachineDesk.shared.addNews() }
             cell.onNotNow = { MachineDesk.shared.dismissNews() }
         }
+        let expertsCell = UICollectionView.CellRegistration<ExpertShelfCell, ExpertShelfCard> {
+            [weak self] cell, _, card in
+            cell.configure(card)
+            cell.onOpen = { [weak self] row in self?.openExpert(row) }
+            cell.onAll = { [weak self] in self?.pushExperts() }
+            cell.onNew = { [weak self] source in
+                guard let self else { return }
+                ExpertRouter.newExpert(from: self, sourceView: source)
+            }
+        }
         let demoNudgeCell = UICollectionView.CellRegistration<DemoNudgeCell, DemoNudgeCard> {
             [weak self] cell, _, _ in
             cell.onSetUp = { [weak self] in self?.presentSetup() }
@@ -406,6 +418,9 @@ extension HomeViewController {
             case .agentNews(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: newsCell, for: indexPath, item: card)
+            case .experts(let card):
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: expertsCell, for: indexPath, item: card)
             case .proInvitation(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: proInvitationCell, for: indexPath, item: card)
@@ -474,7 +489,7 @@ extension HomeViewController {
             ) { [weak self] in
                 self?.pushUsage()
             }
-        case .status, .schedule, .agentNews, .glance, .alerts, .demoNudge, .proInvitation:
+        case .status, .schedule, .agentNews, .experts, .glance, .alerts, .demoNudge, .proInvitation:
             break
         }
     }

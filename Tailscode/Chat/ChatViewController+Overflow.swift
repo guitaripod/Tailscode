@@ -161,7 +161,7 @@ extension ChatViewController {
                     image: UIImage(systemName: "magnifyingglass")
                 ) { [weak self] _ in self?.openFind() })
         }
-        children += [commands, jumpMenuElement(), subagents, regenerate, usage, save, marks]
+        children += [commands, jumpMenuElement(), expertMenuElement(), subagents, regenerate, usage, save, marks]
         children.append(
             UIAction(
                 title: String(localized: "Share transcript"),

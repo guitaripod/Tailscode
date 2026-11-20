@@ -110,6 +110,13 @@ extension ModelPickerViewController {
         var snapshot = NSDiffableDataSourceSnapshot<String, String>()
         let before = rowsByID
         rowsByID.removeAll(keepingCapacity: true)
+        let offered = offeredExperts
+        if !offered.isEmpty {
+            snapshot.appendSections([Self.expertsSectionID])
+            var items = offered.map { "expert:\($0.id)" }
+            if expertNote != nil { items.append(Self.expertNoteID) }
+            snapshot.appendItems(items, toSection: Self.expertsSectionID)
+        }
         for section in chooser.sections {
             snapshot.appendSections([section.id])
             snapshot.appendItems(section.rows.map(\.id), toSection: section.id)
@@ -120,7 +127,7 @@ extension ModelPickerViewController {
             return id
         }
         if !changed.isEmpty { snapshot.reloadItems(changed) }
-        sectionIDs = chooser.sections.map(\.id)
+        sectionIDs = (offered.isEmpty ? [] : [Self.expertsSectionID]) + chooser.sections.map(\.id)
         dataSource.apply(snapshot, animatingDifferences: false)
         refreshVisibleHeaders()
         syncFoldItem()
@@ -186,10 +193,30 @@ extension ModelPickerViewController: UICollectionViewDelegate {
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
-        guard let id = dataSource.itemIdentifier(for: indexPath), let row = row(for: id) else {
+        guard let id = dataSource.itemIdentifier(for: indexPath) else { return }
+        if let expert = expert(for: id) {
+            Theme.Haptics.selection()
+            let pick = onExpert
+            dismiss(animated: true) { pick?(expert) }
             return
         }
+        guard let row = row(for: id) else { return }
         commit(row.pick)
+    }
+
+    /// The experts shown: every one while nothing is typed, the ones whose name matches once
+    /// something is.
+    var offeredExperts: [ExpertRow] {
+        guard onExpert != nil else { return [] }
+        let query = chooser.query.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return experts }
+        return experts.filter { $0.expert.name.localizedCaseInsensitiveContains(query) }
+    }
+
+    func expert(for id: String) -> ExpertRow? {
+        guard id.hasPrefix("expert:") else { return nil }
+        let key = String(id.dropFirst("expert:".count))
+        return experts.first { $0.id == key }
     }
 
     /// A pick that only changes this chat is told first and the sheet goes after it. A pick that

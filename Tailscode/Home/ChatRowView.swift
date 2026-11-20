@@ -47,6 +47,9 @@ struct ChatRowFacts: Equatable {
         if row.entry.session.isScheduled == true {
             pieces.insert(Piece(text: "\u{25F7} " + ScheduleWords.title.lowercased(with: .current), isQuiet: false), at: 0)
         }
+        if let expert = ExpertDesk.shared.row(for: row.entry.session, profileID: row.entry.profileID) {
+            pieces.insert(Piece(text: "\u{25C6} " + expert.expert.name, isQuiet: false), at: 0)
+        }
         self.pieces = pieces
         self.age = facets.age
         self.pinned = row.titleMarks(under: section).contains(.pinned)

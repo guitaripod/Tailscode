@@ -17,8 +17,10 @@ extension HomeViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt indexPath: IndexPath)
         -> Bool
     {
-        if case .status = dataSource.itemIdentifier(for: indexPath) { return false }
-        return true
+        switch dataSource.itemIdentifier(for: indexPath) {
+        case .status, .experts: return false
+        default: return true
+        }
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -30,7 +32,7 @@ extension HomeViewController: UICollectionViewDelegate {
             onOpenSettings?()
         case .schedule:
             pushSchedules()
-        case .status, .demoNudge, .proInvitation, .placeholder, .agentNews:
+        case .status, .demoNudge, .proInvitation, .placeholder, .agentNews, .experts:
             break
         case .glance:
             pushUsage()
@@ -61,8 +63,8 @@ extension HomeViewController: UICollectionViewDelegate {
             return sessionMenu(for: card.entry, allowDelete: !card.row.state.isInFlight)
         case .ask(let card):
             return sessionMenu(for: card.entry, allowDelete: false)
-        case .status, .schedule, .agentNews, .glance, .quota, .alert, .demoNudge, .proInvitation, .more,
-            .placeholder:
+        case .status, .schedule, .agentNews, .experts, .glance, .quota, .alert, .demoNudge, .proInvitation,
+            .more, .placeholder:
             return nil
         }
     }

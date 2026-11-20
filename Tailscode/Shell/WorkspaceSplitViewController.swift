@@ -371,7 +371,11 @@ final class WorkspaceSplitViewController: UISplitViewController {
     /// A place that fills the conversation column — usage, a delegate board — replaces what is
     /// there, on top of Home so the back button always leads home.
     func show(place controller: UIViewController, animated: Bool = true) {
-        if let top = detailNav.topViewController, type(of: top) == type(of: controller) { return }
+        if let top = detailNav.topViewController, type(of: top) == type(of: controller) {
+            guard let shown = top as? ExpertViewController, let next = controller as? ExpertViewController,
+                shown.row.id != next.row.id
+            else { return }
+        }
         replaceDetail(with: [home, controller], animated: animated)
     }
 
@@ -515,7 +519,8 @@ final class WorkspaceSplitViewController: UISplitViewController {
                 place: detailPlace(),
                 openChat: (detailNav.topViewController as? ChatViewController).map {
                     SessionPinStore.key($0.contextID, $0.sessionID)
-                }))
+                },
+                openExpert: detailNav.viewControllers.compactMap { $0 as? ExpertViewController }.last?.row.id))
     }
 
     private func listScope() -> SidebarScope? {
@@ -538,6 +543,7 @@ final class WorkspaceSplitViewController: UISplitViewController {
         case is HomeViewController: return .home
         case is UsageViewController, is AnalyticsViewController: return .usage
         case is SchedulesViewController, is ScheduleDetailViewController: return .schedules
+        case is ExpertsViewController: return .experts
         case is DelegateBoardViewController, is DelegateRunViewController: return .delegate
         default: return nil
         }

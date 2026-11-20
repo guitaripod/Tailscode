@@ -25,6 +25,8 @@ extension ChatViewController {
         if revertBanner != nil { ids.append(Self.revertRowID) }
         interrupted = interruptedCard(state)
         if interrupted != nil { ids.append(Self.interruptedRowID) }
+        expertCard = expertCardFace(state)
+        if expertCard != nil { ids.append(Self.expertCardRowID) }
         let lastContentRole: MessageRole? =
             viewModel.pendingSends.isEmpty
             ? orderedIDs.last.flatMap { rowsByID[$0]?.role } : .user
@@ -129,6 +131,10 @@ extension ChatViewController {
             changed.append(Self.interruptedRowID)
         }
         lastInterrupted = interrupted
+        if expertCard != lastExpertCard, !changed.contains(Self.expertCardRowID) {
+            changed.append(Self.expertCardRowID)
+        }
+        lastExpertCard = expertCard
         if retryStanding != lastRetryStanding, !changed.contains(Self.retryRowID) {
             changed.append(Self.retryRowID)
         }
