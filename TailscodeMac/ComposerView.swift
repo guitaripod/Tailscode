@@ -31,6 +31,8 @@ final class ComposerView: NSView {
     var onAttachmentsChanged: (() -> Void)?
     /// A model picked on another machine, move confirmed: the hub opens a new chat there.
     var onMoveToServer: ((String, CarryPlan?) -> Void)?
+    /// An expert picked in the chooser: the hub starts a task there, carrying this conversation.
+    var onHandToExpert: ((ExpertRow) -> Void)?
 
     let completion = CompletionPopover()
     private(set) lazy var dictation = MacDictationController(host: self)

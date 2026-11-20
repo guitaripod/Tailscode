@@ -163,10 +163,13 @@ extension ComposerView {
         sources: [ModelSource], selected: ModelSelection?, quotas: [UsageQuota]? = nil
     ) {
         guard let host = window else { return }
+        let experts: [ExpertRow] = entry == nil ? [] : ExpertDesk.shared.board.rows
+        let handOver: (@MainActor (ExpertRow) -> Void)? = { [weak self] row in self?.onHandToExpert?(row) }
         modelSheet = ModelChooserSheet.present(
             on: host, sources: sources, selected: selected,
             quotas: quotas ?? quotasForModels?() ?? [],
-            onAddToParty: { [weak self] pick in self?.addToParty(pick) }
+            onAddToParty: { [weak self] pick in self?.addToParty(pick) },
+            experts: experts, onExpert: experts.isEmpty ? nil : handOver
         ) { [weak self] pick in
             self?.modelSheet = nil
             self?.handleModelPick(pick)

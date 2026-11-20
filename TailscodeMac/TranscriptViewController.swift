@@ -58,6 +58,8 @@ final class TranscriptViewController: NSViewController {
     let canvas = TranscriptViewController.page()
     var rowColumn = TranscriptColumn()
     let pendingStack = FillingStack()
+    /// The end of an expert's task: Finish task, then the debrief, under the transcript.
+    let debriefSlot = ExpertDebriefSlot()
     let earlierButton = RowKit.ActionButton(title: "") {}
     let statusBand = StatusBandView()
     /// What a popover opened from a band fact points at.

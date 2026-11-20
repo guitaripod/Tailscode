@@ -41,6 +41,8 @@ extension TranscriptViewController {
         canvas.addArrangedSubview(earlierButton)
         canvas.addArrangedSubview(rowColumn)
         canvas.addArrangedSubview(pendingStack)
+        canvas.addArrangedSubview(debriefSlot)
+        debriefSlot.onToast = { [weak self] text in self?.onToast?(text) }
     }
 
     func configureScroll() {
@@ -115,6 +117,10 @@ extension TranscriptViewController {
             }
         }
         composer.onToast = { [weak self] text in self?.onToast?(text) }
+        composer.onHandToExpert = { [weak self] row in
+            guard let self, let host = self.view.window?.windowController as? MainWindowController else { return }
+            host.chooseExpert(row, from: self)
+        }
         composer.onReadPaste = { [weak self] paste in
             let id = paste.id
             self?.presentReader(

@@ -197,6 +197,7 @@ extension MainWindowController {
         let staged = ["--selftest", "--bench"]
         guard !CommandLine.arguments.contains(where: staged.contains) else { return }
         MachineDesk.shared.start()
+        ExpertDesk.shared.start()
     }
 }
 

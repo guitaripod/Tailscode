@@ -104,6 +104,8 @@ extension MainWindowController {
         sidebar.onAddMachine = { FirstRunWindow.present(way: nil) }
         sidebar.onOpenAgents = { [weak self] in self?.presentAgents() }
         sidebar.onOpenScheduled = { [weak self] in self?.presentScheduled() }
+        sidebar.onOpenExperts = { [weak self] row in self?.presentExperts(selecting: row?.id) }
+        sidebar.onNewExpertTask = { [weak self] row in self?.presentExpertTask(row) }
         sidebar.onEntriesChanged = { [weak self] in
             guard let self else { return }
             self.refreshWelcome()

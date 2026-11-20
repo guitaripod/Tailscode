@@ -304,9 +304,12 @@ final class SidebarSessionCell: NSView {
         title.textColor = Self.titleColor(model, chosen: isChosen)
 
         let titleMarks = model.titleMarks(under: dress.section)
-        markCount = titleMarks.count
-        marks.attributedStringValue = Self.markText(titleMarks)
-        marks.toolTip = titleMarks.isEmpty ? nil : titleMarks.map(\.spoken).joined(separator: ", ")
+        let expert = model.entry.session.expertID == nil ? nil : ExpertDesk.shared.row(for: model.entry)
+        markCount = titleMarks.count + (expert == nil ? 0 : 1)
+        marks.attributedStringValue = Self.markText(titleMarks, expert: expert)
+        marks.toolTip =
+            ([expert.map { Localized.text("A task of %@", $0.expert.name) }].compactMap { $0 }
+            + titleMarks.map(\.spoken)).joined(separator: ", ").nilIfBlank
         marks.setAccessibilityElement(false)
 
         if let said = dress.news {
@@ -423,8 +426,15 @@ final class SidebarSessionCell: NSView {
 
     /// The marks after a title as one run of symbols. Glyphs rather than words: the heading says
     /// PINNED once, and a row that wears it elsewhere has only to be recognised, not read.
-    static func markText(_ marks: [ChatRowInk.TitleMark]) -> NSAttributedString {
+    static func markText(_ marks: [ChatRowInk.TitleMark], expert: ExpertRow? = nil) -> NSAttributedString {
         let text = NSMutableAttributedString()
+        if let expert {
+            let side = (12 * MacTheme.UIScale.factor).rounded()
+            let attachment = NSTextAttachment()
+            attachment.image = ExpertMarkView.image(expert, side: side)
+            attachment.bounds = NSRect(x: 0, y: -2, width: side, height: side)
+            text.append(NSAttributedString(attachment: attachment))
+        }
         let face = NSImage.SymbolConfiguration(
             pointSize: (9 * MacTheme.UIScale.factor).rounded(), weight: .semibold
         ).applying(.init(paletteColors: [MacTheme.Color.tertiaryLabel]))
@@ -556,4 +566,8 @@ final class SidebarSessionCell: NSView {
         }
         return text
     }
+}
+
+private extension String {
+    var nilIfBlank: String? { isEmpty ? nil : self }
 }

@@ -52,6 +52,7 @@ extension TranscriptViewController {
         showRows(state: state, rows: rows)
         if turnEnded { replaceRows(where: \.hasOpenWork) }
         renderPendingCards(state)
+        debriefSlot.noteState(running: state.status == .running)
         composer.noteState(state)
         transcriptFill = ContextFill.read(
             messages: state.messages, sessionModel: entry?.session.model,

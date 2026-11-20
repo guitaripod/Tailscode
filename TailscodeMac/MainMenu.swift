@@ -10,6 +10,7 @@ import TailscodeCore
 final class MainMenu: NSObject {
     private unowned let hub: MainWindowController
     private let modelMenu = NSMenu(title: Localized.text("Model"))
+    private let expertTaskMenu = NSMenu(title: Localized.text("New Task With"))
 
     private var paneMenuHolders: [NSMenuItem] = []
     private var keepLiveItem: NSMenuItem?
@@ -72,6 +73,8 @@ final class MainMenu: NSObject {
         let menu = NSMenu(title: Localized.text("File"))
         menu.addItem(item(Localized.text("New Chat"), #selector(newChat), "n"))
         menu.addItem(item(Localized.text("Quick Ask…"), #selector(quickAsk), ""))
+        expertTaskMenu.delegate = self
+        menu.addItem(submenu(Localized.text("New Task With"), expertTaskMenu))
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("Close"), #selector(closeFront(_:)), "w"))
         return holder(menu)
@@ -196,6 +199,10 @@ final class MainMenu: NSObject {
         menu.addItem(.separator())
         menu.addItem(tagged(.rename, Localized.text("Rename…"), #selector(rename), "r"))
         menu.addItem(tagged(.fork, Localized.text("Fork"), #selector(fork), "N"))
+        menu.addItem(.separator())
+        menu.addItem(item(Localized.text("Hand to an Expert…"), #selector(handToExpert), "e", [.command, .option]))
+        menu.addItem(item(Localized.text("Make an Expert from This Chat…"), #selector(makeExpert), ""))
+        menu.addItem(item(Localized.text("Finish Task"), #selector(finishTask), ""))
         menu.addItem(.separator())
         menu.addItem(item(Localized.text("Copy Session ID"), #selector(copySessionID), ""))
         menu.addItem(tagged(.copyPath, Localized.text("Copy Project Path"), #selector(copyProjectPath), ""))
@@ -342,6 +349,7 @@ final class MainMenu: NSObject {
         agentsItem = agents
         menu.addItem(agents)
         menu.addItem(item(Localized.text("Show Scheduled"), #selector(showScheduled), ""))
+        menu.addItem(item(Localized.text("Show Experts"), #selector(showExperts), ""))
         menu.addItem(videoForgeItem())
         menu.addItem(studioItem())
         menu.addItem(delegateItem())
@@ -627,6 +635,20 @@ final class MainMenu: NSObject {
     @objc private func toggleArchiveView() { run(.toggleArchiveView) }
     @objc private func toggleAgents() { hub.toggleAgents() }
     @objc private func showScheduled() { hub.presentScheduled() }
+    @objc private func showExperts() { hub.presentExperts() }
+    @objc private func handToExpert() {
+        if hub.window?.isVisible != true { hub.showWindow(nil) }
+        hub.handToExpert()
+    }
+    @objc private func makeExpert() {
+        if hub.window?.isVisible != true { hub.showWindow(nil) }
+        hub.makeExpertFromChat()
+    }
+    @objc private func finishTask() { hub.finishExpertTask() }
+    @objc fileprivate func newTaskWith(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String, let row = ExpertDesk.shared.row(id: id) else { return }
+        hub.presentExpertTask(row)
+    }
     @objc private func askLater() {
         if hub.window?.isVisible != true { hub.showWindow(nil) }
         hub.presentAskLater()
@@ -763,6 +785,9 @@ extension MainMenu: NSMenuItemValidation {
         if let action = menuItem.action, modelVerbs.contains(action) {
             return hub.window?.isKeyWindow == true && hub.currentEntry != nil
         }
+        if menuItem.action == #selector(handToExpert) { return hub.canHandToExpert }
+        if menuItem.action == #selector(makeExpert) { return hub.canMakeExpertFromChat }
+        if menuItem.action == #selector(finishTask) { return hub.canFinishExpertTask }
         if menuItem.action == #selector(findNext) || menuItem.action == #selector(findPrevious) {
             return hub.window?.isVisible == true && hub.transcript.canStepFind
         }
@@ -871,7 +896,33 @@ extension MainMenu: NSMenuItemValidation {
 
 extension MainMenu: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === expertTaskMenu {
+            rebuildExpertTaskMenu()
+            return
+        }
         guard menu === modelMenu else { return }
         rebuildModelMenu()
+    }
+
+    /// New Task With: every expert every machine keeps, by its mark and name.
+    private func rebuildExpertTaskMenu() {
+        expertTaskMenu.removeAllItems()
+        let rows = ExpertDesk.shared.board.rows
+        guard !rows.isEmpty else {
+            let none = NSMenuItem(title: ExpertWords.empty, action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            expertTaskMenu.addItem(none)
+            return
+        }
+        let machines = Set(rows.map(\.profileID)).count
+        for row in rows {
+            let entry = NSMenuItem(
+                title: (machines > 1 ? "\(row.expert.name) · \(row.machine)" : row.expert.name) + "…",
+                action: #selector(newTaskWith(_:)), keyEquivalent: "")
+            entry.image = ExpertMarkView.image(row, side: 16)
+            entry.representedObject = row.id
+            entry.target = self
+            expertTaskMenu.addItem(entry)
+        }
     }
 }

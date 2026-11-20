@@ -168,6 +168,15 @@ enum SelfTest {
         }
 
         do {
+            let checks = try await checkExperts()
+            report(
+                "experts: \(checks) claims hold — the desk reads every expert, the sidebar and the window say the shelf's line, a page draws its bench, guards and notebook, a task says what it starts with and reaches the machine as the expert's, the debrief names each action and settles")
+        } catch {
+            report("experts: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try await checkQuickAskPresence()
             report(
                 "quick ask presence: \(checks) claims hold — the panel stands over the app on the Space in front, over a full-screen program, and never hides behind the conversation")

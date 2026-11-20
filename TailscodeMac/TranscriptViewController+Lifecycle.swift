@@ -19,6 +19,7 @@ extension TranscriptViewController {
         self.entry = entry
         self.backend = backend
         calls.bind(entry)
+        debriefSlot.bind(entry, backend: backend)
         statusBand.resetSlots()
         editingQueued = nil
         queue = ConversationQueue(profileID: entry.profileID, sessionID: entry.session.id)
@@ -339,6 +340,7 @@ extension TranscriptViewController {
     /// drain slot go with the lifetime that owns them.
     private func releaseClocks() {
         lifetimeArmed = false
+        debriefSlot.stop()
         brains.parkViews(true)
         lease = nil
         drainToken = nil
@@ -388,6 +390,7 @@ extension TranscriptViewController {
         startResumeClock()
         rearmSendClocks()
         refreshTurnFacts()
+        debriefSlot.resume()
         if !findBar.isHidden, !findIndexed { startFindIndex() }
     }
 
@@ -396,7 +399,7 @@ extension TranscriptViewController {
         lease != nil || drainToken != nil || tickerTask != nil || agentStreamTask != nil
             || resumeClock != nil || retryWake != nil || captionWake != nil || tailRepair != nil
             || holdMonitor != nil || cascade.isLinked || lifetime.count > 0 || scrollObserved
-            || sendWitness != nil || sendWaits.values.contains { $0.timer != nil }
+            || sendWitness != nil || sendWaits.values.contains { $0.timer != nil } || debriefSlot.isFollowing
     }
 
     /// Empties the pane deliberately — a deleted or unresolvable session leaves an explanation,
