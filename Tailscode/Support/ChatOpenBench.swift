@@ -199,6 +199,12 @@ import UIKit
                     "bench open done turns=\(turns) cycles=\(cycles)", category: .performance)
                 return
             }
+            if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "resize" {
+                await resizeWalk(backend: backend, session: session)
+                MidgarLog.info(
+                    "bench open done turns=\(turns) cycles=\(cycles)", category: .performance)
+                return
+            }
             if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCENARIO"] == "double" {
                 await doublePush(backend: backend, session: session, in: stack)
                 MidgarLog.info(
@@ -327,6 +333,43 @@ import UIKit
                 "\(got == depth ? "NAV_GUARD_OK" : "NAV_GUARD_FAIL") \(name) depth=\(got) expected=\(depth) gesture[\(popGestureReading(of: stack))] transition=\(stack.transitionCoordinator != nil)",
                 category: .performance
             )
+        }
+
+        /// `TAILSCODE_BENCH_SCENARIO=resize` opens the long chat in the workspace and walks the window
+        /// through the widths a split gives an iPad mini, sideways and upright, timing the layout
+        /// pass at each size and the longest stall in the seconds after it. iPadOS shows the last
+        /// frame stretched into the new tile until the app draws again, so this is how long a split
+        /// looks crushed.
+        private func resizeWalk(backend: MockBackend, session: AgentSession) async {
+            guard let workspace = window.rootViewController as? WorkspaceSplitViewController else { return }
+            let model = ChatViewModel(
+                backend: backend, session: session, contextID: DemoWorld.claudeProfile.id,
+                serverName: "bench")
+            let chat = ChatViewController(viewModel: model)
+            workspace.showConversation(chat, animated: false)
+            await untilOpened(chat)
+            try? await Task.sleep(for: .seconds(3))
+            let screen = window.windowScene?.screen.bounds ?? window.bounds
+            let sizes: [CGSize] = [
+                CGSize(width: 1158, height: 756), CGSize(width: 773, height: 756),
+                CGSize(width: 575, height: 756), CGSize(width: 368, height: 756),
+                CGSize(width: 1158, height: 756), CGSize(width: 756, height: 1158),
+                CGSize(width: 375, height: 1158), CGSize(width: 756, height: 1158),
+            ]
+            for size in sizes {
+                reset()
+                let started = CACurrentMediaTime()
+                workspace.traitOverrides.horizontalSizeClass = size.width < 680 ? .compact : .regular
+                window.bounds = CGRect(origin: .zero, size: size)
+                window.center = CGPoint(x: screen.midX, y: screen.midY)
+                window.transform = size.width > screen.width ? CGAffineTransform(rotationAngle: .pi / 2) : .identity
+                window.layoutIfNeeded()
+                let laid = (CACurrentMediaTime() - started) * 1000
+                try? await Task.sleep(for: .seconds(1.5))
+                MidgarLog.info(
+                    "bench resize to \(Int(size.width))x\(Int(size.height)) layoutMs=\(Int(laid)) rows=\(chat.providedItems.count) \(snapshot())",
+                    category: .performance)
+            }
         }
 
         private func trip(
