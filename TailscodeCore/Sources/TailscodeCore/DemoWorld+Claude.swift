@@ -21,13 +21,13 @@ extension DemoWorld {
             AgentSession(
                 id: "demo-c1", agentType: .claudeCode, title: "Fix the flaky WebSocket reconnect test",
                 directory: "/Users/demo/dev/pulse-server", createdAt: ago(400), updatedAt: ago(120),
-                isActive: true, model: "claude-fable-5", reasoningEffort: "max"),
+                isActive: true, model: "claude-fable-5", reasoningEffort: "max", expertID: demoServerExpertID),
             AgentSession(
                 id: "demo-c3", agentType: .claudeCode, title: "Dark mode for the settings screen",
                 directory: "/Users/demo/dev/pulse-ios", createdAt: ago(1800), updatedAt: ago(1560),
                 model: "claude-sonnet-5", reasoningEffort: "high",
                 lastWords:
-                    "Dark mode is in for Settings: every row reads from the palette now, and the two hard-coded greys are gone."),
+                    "Dark mode is in for Settings: every row reads from the palette now, and the two hard-coded greys are gone.", expertID: demoIPadExpertID),
             AgentSession(
                 id: "demo-c2", agentType: .claudeCode, title: "Migrate CI to self-hosted runners",
                 directory: "/Users/demo/dev/pulse-infra", createdAt: ago(11_000), updatedAt: ago(3300),
@@ -183,7 +183,8 @@ extension DemoWorld {
         schedules: demoSchedules,
         machineAgents: demoAgents,
         agentRegistry: demoRegistry,
-        chapters: chapterDemoEnabled ? [chapterSessionID: chapterDemo.chapters] : [:])
+        chapters: chapterDemoEnabled ? [chapterSessionID: chapterDemo.chapters] : [:],
+        experts: demoExperts)
 
     /// `TAILSCODE_DEMO_CHAPTERS=1` adds one chat that has been through three chapters, among the
     /// demo's older chats, so the headings, the facts row's count and the chapters panel have a
