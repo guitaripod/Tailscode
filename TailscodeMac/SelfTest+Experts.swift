@@ -238,10 +238,29 @@ extension SelfTest {
         defer { entryHost.close() }
         try dumpExperts(entryHost.contentView, "experts-sidebar")
         let editor = ExpertEditorSheet.present(on: host, profile: demo, editing: ipad.expert) { _ in }
-        try dumpExperts(editor.sheet.contentView, "experts-editor")
+        try dumpExperts(editor.sheet.contentView, "editor2-edit")
         let editorAmbiguity = ambiguous(in: editor.sheet.contentView)
         try expect(editorAmbiguity.isEmpty, "the editor lays out with nothing ambiguous: \(editorAmbiguity)")
         try expect(editor.unnamedControls.isEmpty, "every field and menu of the form has a name: \(editor.unnamedControls)")
+        try expect(
+            editor.outlineRows.map(\.part) == [.charter, .skills, .notebook, .bench, .guards, .model]
+                && editor.outlineRows.allSatisfy { !$0.value.isEmpty },
+            "the editor lists every part of an expert with a line on what it holds: \(editor.outlineRows.map(\.value))")
+        try expect(editor.outlineFits, "the list of parts is all in view at the sheet's own size")
+        try expect(
+            editor.selectedPart == .charter && editor.shownParts == [.charter],
+            "the editor opens on the charter and shows that part alone")
+        for part in editor.outlineRows.map(\.part) {
+            editor.select(part)
+            try expect(editor.shownParts == [part], "picking \(part.rawValue) shows its editor alone")
+            let partAmbiguity = ambiguous(in: editor.sheet.contentView)
+            try expect(partAmbiguity.isEmpty, "\(part.rawValue) lays out with nothing ambiguous: \(partAmbiguity)")
+            try dumpExperts(editor.sheet.contentView, "editor2-edit-\(part.rawValue)")
+        }
+        try expect(!editor.offersDraft, "an expert being changed is not offered a draft")
+        try expect(
+            editor.markView.accessibilityLabel() == ExpertWords.markAndColour,
+            "the mark is the press that changes its colour and letters, and says so")
         if let green = editor.swatchViews.first(where: { $0.hue == .green }) {
             try expect(
                 green.accessibilityLabel() == ExpertHue.green.name && green.accessibilityPerformPress()
@@ -251,6 +270,7 @@ extension SelfTest {
             throw SelfTestFailure("the editor offers every colour")
         }
         host.endSheet(editor.sheet)
+        try await checkNewExpertSheet(host, demo: demo, expect: expect)
         try await checkDraftingSheetLetsGo(host, expect: expect)
         let mark = ExpertMarkView.image(ipad, side: 16)
         try expect(mark.size == NSSize(width: 16, height: 16), "an expert's mark draws at any size")
@@ -312,6 +332,43 @@ extension SelfTest {
         try expect(
             !skills.items.isEmpty && skills.items.first?.title != reading,
             "the open submenu fills with the machine's skills: \(skills.items.map(\.title))")
+    }
+
+    /// A new expert opens with nothing but its name to type and an offer to draft it from a skill;
+    /// the draft keeps the name already typed, fills the parts, brings its first notes, and takes
+    /// the offer away.
+    private static func checkNewExpertSheet(
+        _ host: NSWindow, demo: ConnectionProfile, expect: (Bool, String) throws -> Void
+    ) async throws {
+        let blank = ExpertEditorSheet.present(on: host, profile: demo, editing: nil) { _ in }
+        defer { host.endSheet(blank.sheet) }
+        for _ in 0..<60 where blank.draftChoices.isEmpty { try? await Task.sleep(for: .milliseconds(50)) }
+        try dumpExperts(blank.sheet.contentView, "editor2-new")
+        let blankAmbiguity = ambiguous(in: blank.sheet.contentView)
+        try expect(blankAmbiguity.isEmpty, "a new expert's sheet lays out with nothing ambiguous: \(blankAmbiguity)")
+        try expect(
+            blank.offersDraft && !blank.draftChoices.isEmpty,
+            "a new expert is offered a draft from the machine's skills: \(blank.draftChoices)")
+        try expect(blank.outlineRows.allSatisfy { !$0.isSet }, "a new expert's parts all say they hold nothing yet")
+        try expect(blank.outlineFits, "a new expert's parts are all in view")
+        guard let keeping = ExpertDesk.shared.keeping(for: demo.id), let skill = blank.draftChoices.first else {
+            throw SelfTestFailure("the demo machine drafts from a skill")
+        }
+        blank.stage(name: "Typed", charter: "")
+        await blank.draft(from: skill, keeping: keeping).value
+        try dumpExperts(blank.sheet.contentView, "editor2-draft")
+        try expect(blank.nameValue == "Typed", "a draft keeps the name already typed")
+        try expect(
+            blank.outlineRows.first { $0.part == .charter }?.isSet == true,
+            "a draft from a skill writes the charter: \(blank.outlineRows.map(\.value))")
+        try expect(!blank.offersDraft, "the offer to draft goes once there is a charter it would write over")
+        if blank.outlineRows.contains(where: { $0.part == .notes }) {
+            blank.select(.notes)
+            try expect(blank.shownParts == [.notes], "a draft's first notes are a part of their own")
+            try dumpExperts(blank.sheet.contentView, "editor2-draft-notes")
+        }
+        let draftAmbiguity = ambiguous(in: blank.sheet.contentView)
+        try expect(draftAmbiguity.isEmpty, "a drafted expert lays out with nothing ambiguous: \(draftAmbiguity)")
     }
 
     /// A drafting sheet that is cancelled goes, with everything it held.
