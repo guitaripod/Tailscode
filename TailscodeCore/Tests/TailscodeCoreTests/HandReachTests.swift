@@ -3,9 +3,28 @@ import Testing
 @testable import TailscodeCore
 
 @Suite struct HandReachTests {
-    @Test func uprightTabletIsHeldTheOrdinaryWay() {
+    @Test func uprightTabletIsATabletButNotTwoThumbs() {
         let reach = HandReach.read(windowX: 0, windowWidth: 834, screenWidth: 834, screenHeight: 1194)
-        #expect(reach == .ordinary)
+        #expect(reach.hold == .upright)
+        #expect(reach.isTablet)
+        #expect(!reach.isTwoThumbs)
+        #expect(reach.reachesLeading)
+        #expect(reach.reachesTrailing)
+    }
+
+    @Test func miniIsATabletEitherWay() {
+        let sideways = HandReach.read(windowX: 0, windowWidth: 1158, screenWidth: 1158, screenHeight: 756)
+        #expect(sideways.isTwoThumbs)
+        let upright = HandReach.read(windowX: 0, windowWidth: 756, screenWidth: 756, screenHeight: 1158)
+        #expect(upright.hold == .upright)
+        let halfUpright = HandReach.read(windowX: 381, windowWidth: 375, screenWidth: 756, screenHeight: 1158)
+        #expect(!halfUpright.reachesLeading)
+        #expect(halfUpright.reachesTrailing)
+    }
+
+    @Test func phoneUprightAndFoldingPhoneOpenAreOrdinary() {
+        #expect(HandReach.read(windowX: 0, windowWidth: 402, screenWidth: 402, screenHeight: 874) == .ordinary)
+        #expect(HandReach.read(windowX: 0, windowWidth: 951, screenWidth: 951, screenHeight: 669) == .ordinary)
     }
 
     @Test func phoneOnItsSideIsCrossedByEitherThumb() {

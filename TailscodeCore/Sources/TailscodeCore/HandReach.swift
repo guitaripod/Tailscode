@@ -11,9 +11,11 @@ import Foundation
 /// screen every time it moves, never from the model of the device.
 public struct HandReach: Equatable, Sendable {
     public enum Hold: Equatable, Sendable {
-        /// Upright, small, or a window that floats clear of both side edges: the ordinary layout.
+        /// A phone, which either thumb crosses whichever way it is turned: the ordinary layout.
         case ordinary
-        /// A large screen held sideways in both hands.
+        /// A tablet held upright, its lower corners under the thumbs or one hand.
+        case upright
+        /// A tablet held sideways in both hands.
         case twoThumbs
     }
 
@@ -40,9 +42,11 @@ public struct HandReach: Equatable, Sendable {
     public static let ordinary = HandReach(
         hold: .ordinary, outerSide: .trailing, reachesLeading: true, reachesTrailing: true)
 
-    /// How wide a screen held sideways must be before it is held by its ends: a phone on its side
-    /// is crossed by either thumb, a tablet is not.
+    /// How long a screen's long side must be before it is a tablet, held by its edges: a phone on
+    /// its side is crossed by either thumb, a tablet is not. The iPad mini's is 1133 points.
     public static let twoThumbScreenWidth = 1000.0
+    /// How long its short side must be: a folding phone opened flat is wide but not a tablet.
+    public static let tabletShortSide = 700.0
 
     /// How close to a screen edge a window's edge must lie to count as on it; tiled windows keep a
     /// few points of margin from the glass.
@@ -54,7 +58,9 @@ public struct HandReach: Equatable, Sendable {
         windowX: Double, windowWidth: Double, screenWidth: Double, screenHeight: Double,
         rightToLeft: Bool = false
     ) -> HandReach {
-        guard screenWidth > screenHeight, screenWidth >= twoThumbScreenWidth, windowWidth > 0 else {
+        let long = max(screenWidth, screenHeight)
+        let short = min(screenWidth, screenHeight)
+        guard long >= twoThumbScreenWidth, short >= tabletShortSide, windowWidth > 0 else {
             return .ordinary
         }
         let onLeft = windowX <= edgeSlack
@@ -63,9 +69,13 @@ public struct HandReach: Equatable, Sendable {
         let trailing = rightToLeft ? onLeft : onRight
         let outer: Side = leading && !trailing ? .leading : .trailing
         return HandReach(
-            hold: .twoThumbs, outerSide: outer, reachesLeading: leading, reachesTrailing: trailing)
+            hold: screenWidth > screenHeight ? .twoThumbs : .upright, outerSide: outer,
+            reachesLeading: leading, reachesTrailing: trailing)
     }
 
-    /// Whether the screen is held in both hands.
+    /// Whether the screen is a tablet held sideways in both hands.
     public var isTwoThumbs: Bool { hold == .twoThumbs }
+
+    /// Whether the screen is a tablet, held either way.
+    public var isTablet: Bool { hold != .ordinary }
 }

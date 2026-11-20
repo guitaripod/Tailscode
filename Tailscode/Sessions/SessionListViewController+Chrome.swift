@@ -116,21 +116,23 @@ extension SessionListViewController {
     }
 
     /// Whether this list is a column whose foot is under a thumb: in a window whose bars run down a
-    /// side, or at the leading edge of a window held sideways in both hands, where the left thumb
-    /// rests while the right one works in the conversation beside it. The column keeps horizontal
-    /// bars of its own either way.
+    /// side, or at the leading edge of a tablet's window, where the left thumb rests while the right
+    /// one works in the conversation beside it — held sideways in both hands, or upright, where an
+    /// iPad mini is held like a large phone. The foot stays through a turn of the tablet, so its
+    /// buttons never jump between the top and the bottom. The column keeps horizontal bars of its
+    /// own either way.
     var wantsFoot: Bool {
         guard showsAsColumn else { return false }
         return VerticalBar.isPresent(in: splitViewController?.traitCollection) || liesUnderLeadingThumb
     }
 
-    /// Whether this column is the first thing in a window held sideways in both hands whose leading
-    /// edge is on the glass: no sidebar tiled beside it, and no screen of another app between it and
-    /// the thumb. A sidebar brought out over the column for a moment leaves the foot where it is.
+    /// Whether this column is the first thing in a tablet's window whose leading edge is on the
+    /// glass: no sidebar tiled beside it, and no screen of another app between it and the thumb. A
+    /// sidebar brought out over the column for a moment leaves the foot where it is.
     private var liesUnderLeadingThumb: Bool {
         guard let split = splitViewController, view.window != nil else { return false }
         let reach = view.handReach
-        guard reach.isTwoThumbs, reach.reachesLeading else { return false }
+        guard reach.isTablet, reach.reachesLeading else { return false }
         return split.displayMode != .twoBesideSecondary
     }
 
