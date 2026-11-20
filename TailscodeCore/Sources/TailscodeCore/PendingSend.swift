@@ -23,6 +23,10 @@ public struct PendingSend: Sendable, Hashable, Identifiable {
         case accepted
         /// It never left, and the reason is the server's own words wherever there were any.
         case failed(reason: String)
+        /// It could not leave — the device was offline, nothing answered at the machine's address —
+        /// so it is held rather than failed, and goes again on its own when the machine answers.
+        /// The reason is the transport's own sentence for what stood in the way.
+        case waiting(reason: String)
     }
 
     /// What a row in a given phase can actually do about itself. Deliberately empty while a send
@@ -77,12 +81,27 @@ public struct PendingSend: Sendable, Hashable, Identifiable {
         return false
     }
 
+    public var isWaiting: Bool {
+        if case .waiting = phase { return true }
+        return false
+    }
+
     /// Whether the row is still on its way — which is what decides whether the conversation reads
-    /// as busy on a device whose server has not said so yet.
-    public var isInFlight: Bool { !isFailed }
+    /// as busy on a device whose server has not said so yet. A send held for the connection is not
+    /// on its way: nothing is on the wire, and the server's account can never grow past it.
+    public var isInFlight: Bool {
+        switch phase {
+        case .sending, .accepted: return true
+        case .failed, .waiting: return false
+        }
+    }
+
+    /// Whether the row is holding words the server has not been given, and only a transcript that
+    /// shows them can retire it.
+    public var isUnsent: Bool { isFailed || isWaiting }
 
     public var acts: [Act] {
-        isFailed ? [.retry, .edit, .discard] : []
+        isUnsent ? [.retry, .edit, .discard] : []
     }
 }
 
@@ -105,6 +124,51 @@ public struct PendingSendLedger: Sendable, Hashable {
     /// Whether anything here is still on its way, which is not the same as being non-empty: a
     /// ledger holding nothing but failures is a ledger with nothing in flight.
     public var hasInFlight: Bool { sends.contains { $0.isInFlight } }
+
+    /// Whether a prompt this device sent is still missing from the server's account. Until it
+    /// lands, the transcript's last turn is the one *before* it, finished — and the server may
+    /// already say it is running, because a backend marks a conversation busy the moment it takes
+    /// a prompt, before it has written the prompt down.
+    public var awaitsEcho: Bool { hasInFlight }
+
+    /// Whether the transcript's last turn is open: running, and not merely the turn before a
+    /// prompt that has not landed yet. A client that read the server's word alone took the
+    /// finished answer above the question just asked as the one being written — rebuilt it as an
+    /// open turn and replayed its last paragraph from the first letter while the prompt rose.
+    public func turnIsOpen(running: Bool) -> Bool { running && !awaitsEcho }
+
+    /// The highest baseline among the sends still on their way: the transcript holds every prompt
+    /// this device sent once its user messages outnumber it. Nil when nothing is on its way.
+    public var echoBaseline: Int? {
+        sends.lazy.filter(\.isInFlight).map(\.baselineUserCount).max()
+    }
+
+    /// `turnIsOpen(running:)` asked of a state the ledger has not been reconciled against yet,
+    /// which is what a row build made away from the main thread holds: the turn is open when the
+    /// server says it is running and the transcript already carries every prompt this device sent.
+    public static func turnIsOpen(
+        running: Bool, messages: [ChatMessage], echoBaseline: Int?
+    ) -> Bool {
+        guard running else { return false }
+        guard let echoBaseline else { return true }
+        return messages.count { $0.role == .user } > echoBaseline
+    }
+
+    /// Whether anything is holding words the server has not been given: a failure, or a send
+    /// waiting for the connection. Messages queued behind such a row wait with it, because the
+    /// order somebody wrote things in outranks the row they were written on.
+    public var hasUnsent: Bool { sends.contains { $0.isUnsent } }
+
+    /// The sends held for the connection, oldest first.
+    public var waiting: [PendingSend] { sends.filter(\.isWaiting) }
+
+    /// Sends the server took that the transcript still does not carry after `SendWitness.after`:
+    /// the stream that should have shown them is the thing to doubt, never the server.
+    public func unwitnessed(now: Date) -> [PendingSend] {
+        sends.filter {
+            $0.phase == .accepted && now.timeIntervalSince($0.startedAt) >= SendWitness.after
+        }
+    }
 
     public func send(id: UUID) -> PendingSend? { sends.first { $0.id == id } }
 
@@ -149,6 +213,16 @@ public struct PendingSendLedger: Sendable, Hashable {
 
     public mutating func removeAll() {
         sends.removeAll()
+    }
+
+    /// Stop takes back what is on its way and nothing else: a failure or a send waiting for the
+    /// connection is holding words nobody else has, and a Stop meant for the send in flight must
+    /// not take them with it.
+    @discardableResult
+    public mutating func removeInFlight() -> [PendingSend] {
+        let gone = sends.filter(\.isInFlight)
+        sends.removeAll { $0.isInFlight }
+        return gone
     }
 
     /// Retires every row the server's account has caught up with.
@@ -196,6 +270,10 @@ public enum PendingSendReading {
         case .failed:
             return ActivityIcon(
                 symbol: "exclamationmark.triangle", glyph: "!", tone: .danger, motion: .still)
+        case .waiting:
+            return ActivityIcon(
+                symbol: "clock.arrow.circlepath", glyph: "↻", tone: .quiet,
+                motion: .breath(ActivityPulse(period: 2.6, floor: 0.4)))
         }
     }
 
@@ -223,9 +301,11 @@ public enum PendingSendReading {
         }
     }
 
+    /// A send waiting for the connection keeps full ink: it has not failed, it is going, and the
+    /// words are the person's exactly as they will arrive.
     public static func ink(_ send: PendingSend) -> Ink {
         switch send.phase {
-        case .sending, .accepted: return .full
+        case .sending, .accepted, .waiting: return .full
         case .failed: return .failed
         }
     }
@@ -247,6 +327,12 @@ public enum PendingSendReading {
             return trimmed.isEmpty
                 ? Localized.text("Not sent")
                 : Localized.text("Not sent — %@", trimmed)
+        case .waiting(let reason):
+            if reason == SendWait.behindTurn { return reason }
+            let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty
+                ? Localized.text("Sends on its own when the machine answers")
+                : Localized.text("%@ Sends on its own when the machine answers.", trimmed)
         }
     }
 
@@ -260,16 +346,18 @@ public enum PendingSendReading {
         case .accepted:
             let at = send.startedAt.addingTimeInterval(quietAfter)
             return at > now ? at : nil
-        case .failed:
+        case .failed, .waiting:
             return nil
         }
     }
 
-    /// What a row too narrow for the sentence wears instead — only a failure has a word.
+    /// What a row too narrow for the sentence wears instead — a failure, and a send held for the
+    /// connection, which is the other state a reader has to be told rather than shown.
     public static func badge(_ send: PendingSend) -> String? {
         switch send.phase {
         case .sending, .accepted: return nil
         case .failed: return Localized.text("not sent")
+        case .waiting: return Localized.text("waiting")
         }
     }
 
@@ -280,6 +368,7 @@ public enum PendingSendReading {
         case .sending: return Localized.text("Sending")
         case .accepted: return Localized.text("Sent")
         case .failed: return Localized.text("Not sent")
+        case .waiting: return Localized.text("Waiting to send")
         }
     }
 
@@ -303,6 +392,13 @@ public enum PendingSendReading {
         case .edit: return Localized.text("Edit")
         case .discard: return Localized.text("Discard")
         }
+    }
+
+    /// The act as this row offers it: a send held for the connection is not sent *again*, it is
+    /// sent now instead of on its own.
+    public static func title(_ act: PendingSend.Act, for send: PendingSend) -> String {
+        if act == .retry, send.isWaiting { return Localized.text("Send now") }
+        return title(act)
     }
 
     public static func symbol(_ act: PendingSend.Act) -> String {

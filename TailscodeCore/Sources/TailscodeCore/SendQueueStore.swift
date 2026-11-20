@@ -49,6 +49,31 @@ public enum SendQueueStore {
     private static let lock = NSLock()
     private static let fileLock = NSLock()
     nonisolated(unsafe) private static var loaded: [SendQueueRecord]?
+    private static let stampLock = NSLock()
+    /// The file `loaded` was read from or written as. A take or a change reads the queue fresh
+    /// from disk so another process's write is never missed, and with pictures in the queue that
+    /// read is megabytes decoded on the press that queues a message; a file nobody has touched
+    /// since is the one already in memory, so it is not read again.
+    nonisolated(unsafe) private static var stamp: FileStamp?
+
+    private struct FileStamp: Equatable {
+        let file: Int
+        let size: Int
+        let modified: Date
+
+        static func read() -> FileStamp? {
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                let file = (attributes[.systemFileNumber] as? NSNumber)?.intValue,
+                let size = (attributes[.size] as? NSNumber)?.intValue,
+                let modified = attributes[.modificationDate] as? Date
+            else { return nil }
+            return FileStamp(file: file, size: size, modified: modified)
+        }
+    }
+
+    private static func remember(_ next: FileStamp?) {
+        stampLock.withLock { stamp = next }
+    }
 
     static var url: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
@@ -171,6 +196,7 @@ public enum SendQueueStore {
                 SendQueueRecord(profileID: profileID, sessionID: sessionID, items: queue.items))
         }
         loaded = bounded(records)
+        remember(nil)
         let snapshot = loaded ?? []
         lock.unlock()
         write(snapshot)
@@ -188,6 +214,7 @@ public enum SendQueueStore {
             return
         }
         loaded = records
+        remember(nil)
         let snapshot = records
         lock.unlock()
         write(snapshot)
@@ -196,6 +223,7 @@ public enum SendQueueStore {
     public static func removeAll() {
         lock.lock()
         loaded = []
+        remember(nil)
         lock.unlock()
         write([])
     }
@@ -210,10 +238,17 @@ public enum SendQueueStore {
     /// A file that exists but will not decode is put aside rather than treated as absent, so the
     /// next write is not the thing that destroys what a truncated one left behind.
     private static func restoreFromDisk() -> [SendQueueRecord] {
-        guard let data = try? Data(contentsOf: url) else { return [] }
+        let current = FileStamp.read()
+        if let loaded, let current, stampLock.withLock({ stamp == current }) { return loaded }
+        guard let data = try? Data(contentsOf: url) else {
+            remember(nil)
+            return []
+        }
         if let decoded = try? JSONDecoder().decode([SendQueueRecord].self, from: data) {
+            remember(current)
             return decoded
         }
+        remember(nil)
         try? FileManager.default.removeItem(at: unreadableURL)
         try? FileManager.default.moveItem(at: url, to: unreadableURL)
         return []
@@ -235,8 +270,16 @@ public enum SendQueueStore {
         let directory = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(
             at: directory, withIntermediateDirectories: true)
-        guard let data = try? JSONEncoder().encode(records) else { return }
-        try? data.write(to: url, options: .atomic)
+        guard let data = try? JSONEncoder().encode(records) else {
+            remember(nil)
+            return
+        }
+        do {
+            try data.write(to: url, options: .atomic)
+            remember(FileStamp.read())
+        } catch {
+            remember(nil)
+        }
     }
 
     /// Runs `body` holding an exclusive advisory lock on the queue's lock file, which another

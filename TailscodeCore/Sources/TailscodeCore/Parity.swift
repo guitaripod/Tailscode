@@ -98,6 +98,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case followBottom
     case transcriptFind
     case userEcho
+    case sendWhenBack
     case vimComposer
     case slashCompletion
     case slashDispatch

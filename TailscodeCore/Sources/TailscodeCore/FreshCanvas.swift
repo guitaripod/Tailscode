@@ -142,6 +142,31 @@ public enum FreshCanvas {
         return max(0, end - viewport - offset)
     }
 
+    /// The spring a prompt rises on: half a second, damped just short of critical so it arrives
+    /// with a breath of give rather than a mechanical stop.
+    public static let riseResponse: Double = 0.5
+    public static let riseDamping: Double = 0.9
+
+    /// How far along the rise is `elapsed` seconds in, from 0 to 1, solved in closed form so a
+    /// client steps it from its own frame clock. The scroll has to be stepped frame by frame
+    /// rather than handed to a toolkit's animation of the offset: a list animated to a new offset
+    /// lays out only the rows of the page it is going to, so everything the reader passes on the
+    /// way — the rows above the question — blanked out for the length of the motion.
+    public static func rise(at elapsed: Double) -> Double {
+        guard elapsed > 0 else { return 0 }
+        guard elapsed < riseDuration else { return 1 }
+        let omega = 2 * Double.pi / riseResponse
+        let decay = riseDamping * omega
+        let damped = omega * (1 - riseDamping * riseDamping).squareRoot()
+        let envelope = exp(-decay * elapsed)
+        return 1 - envelope * (cos(damped * elapsed) + decay / damped * sin(damped * elapsed))
+    }
+
+    /// When the rise is within a thousandth of where it is going, and a client stops stepping it.
+    public static var riseDuration: Double {
+        log(1000) / (riseDamping * 2 * Double.pi / riseResponse)
+    }
+
     /// How long the transcript takes to settle on a new follow target. The written end moves in
     /// steps of a line — a glyph is on one line or the next — and a viewport that jumped by a
     /// line every time the reveal crossed one read as the page twitching under the writing. So
