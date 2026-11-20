@@ -697,8 +697,61 @@ final class TranscriptViewController: NSViewController {
     /// When the follow last moved, so a glide knows how much time one frame was.
     var followClock: CFTimeInterval?
 
+    /// The attempt each send has on the wire, so Stop can take back what is in flight and a send
+    /// tried again replaces its own attempt rather than racing it.
+    var sendFlights: [UUID: SendFlight] = [:]
+    /// Sends held for the connection, with how many times each has been tried, since when, why,
+    /// and the clock that tries it next.
+    var sendWaits: [UUID: SendWaitHold] = [:]
+    /// Sends written before the conversation's transcript had loaded: drawn at once, posted the
+    /// moment the transcript says how many messages it holds, so a send's baseline is never a
+    /// guess the first real state then contradicts.
+    var heldForTranscript: Set<UUID> = []
+    /// Words a send of another chat in this pane still holds — failed, held for the connection or
+    /// still on its way — kept by chat until that chat is opened here again.
+    var unsentStash: [String: PendingSendLedger] = [:]
+    /// The connection the last state reported, so the moment it comes back live is seen once.
+    var lastConnection: ConnectionPhase?
+    /// The one clock that redials a stream that never showed a prompt the server took.
+    var sendWitness: Task<Void, Never>?
+    /// Whether the conversation's held messages (the resume store) have been put back as rows. They
+    /// wait for the first loaded transcript, so their baseline is the transcript's own count.
+    var heldMessagesRestored = false
+    /// Whether the pane is taking a state in: anything a send does then is drawn by that apply,
+    /// rather than by an apply of its own nested inside it.
+    var settlingSends = false
+    /// What sends through, for a harness that has no server: nil sends through the conversation.
+    var courierFactory: ((AgentConversation, PendingSend) -> SendCourier)?
+
     /// A step asked for while every match sits in rows the window has not drawn: the window widens
     /// to take them in, and the step lands on the nearest one once they are laid out. The count
     /// used to say "3 in earlier rows" while Next and Previous did nothing at all.
     var findStepAfterWidening = false
+}
+
+/// One attempt at a send: a newer attempt replaces it, and an outcome that comes back for an
+/// attempt no longer current is dropped rather than applied over the newer one.
+struct SendFlight {
+    let token: UUID
+    let task: Task<Void, Never>
+}
+
+/// A send held for the connection on one pane.
+struct SendWaitHold {
+    var attempts: Int
+    /// When the machine first could not be reached, moved on by every stretch the send spent behind
+    /// a running turn, so `SendWait.window` counts only the time nobody could be reached.
+    var heldSince: Date
+    var reason: String
+    var attempting = false
+    var timer: Task<Void, Never>?
+    /// Since when the send has been waiting for a turn to end rather than for the network.
+    var behindSince: Date?
+}
+
+/// Whose a send is, captured when it goes so its outcome finds the chat it was written in.
+struct SendOwner: Sendable {
+    let key: String
+    let profileID: String?
+    let sessionID: String?
 }

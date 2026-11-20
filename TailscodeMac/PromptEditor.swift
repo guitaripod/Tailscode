@@ -38,6 +38,9 @@ final class PromptEditor: NSView {
     private let fieldContainer = FocusingField()
     private let placeholderLabel = NSTextField(labelWithString: "")
     private var fieldHeight: NSLayoutConstraint?
+    /// The height the box is easing to after a send, so a measure asked for mid-motion that wants
+    /// the same height leaves the motion alone instead of landing it early.
+    private var settleTarget: CGFloat?
     private var isMeasuring = false
     private var scrollBottom: NSLayoutConstraint?
     private var footer: NSView?
@@ -552,7 +555,25 @@ final class PromptEditor: NSView {
         }
     }
 
-    private func measureField(animated: Bool = false) {
+    /// The box settling to one line as the words it held leave for the transcript: measured at once
+    /// rather than a hop later — an empty box needs no layout to know its height — and moved on the
+    /// same clock as the prompt rising, so the two read as one motion. Reduced motion lands at once.
+    func settleAfterSend(duration: TimeInterval, curve: CAMediaTimingFunction) {
+        guard textView.string.isEmpty else { return }
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, window != nil else {
+            measureField()
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = curve
+            measureField(through: true)
+        } completionHandler: { [weak self] in
+            MainActor.assumeIsolated { self?.settleTarget = nil }
+        }
+    }
+
+    private func measureField(animated: Bool = false, through animator: Bool = false) {
         guard let font = textView.font else { return }
         let line = ceil(font.ascender - font.descender + font.leading)
         let inset = textView.textContainerInset.height * 2 + 2 + footerRoom
@@ -570,8 +591,15 @@ final class PromptEditor: NSView {
             }
             wanted = max(floor, min(ceiling, ceil(used)))
         }
+        if !animator, let settleTarget, abs(settleTarget - wanted) <= 0.5 { return }
         guard let fieldHeight, abs(fieldHeight.constant - wanted) > 0.5 else { return }
-        fieldHeight.constant = wanted
+        if animator {
+            settleTarget = wanted
+            fieldHeight.animator().constant = wanted
+        } else {
+            settleTarget = nil
+            fieldHeight.constant = wanted
+        }
         if animated { superview?.layoutSubtreeIfNeeded() }
         onFieldHeightChanged?()
     }

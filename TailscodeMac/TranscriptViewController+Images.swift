@@ -14,8 +14,11 @@ extension TranscriptViewController {
 
     /// A row with no picture yet says so as it is built; whether those bytes are worth crossing the
     /// tailnet for right now is the transcript's call rather than the row's.
+    ///
+    /// A picture just sent is never fetched: its bytes are in this device's hand, and the server
+    /// has not written them anywhere yet.
     func noteImageWanted(_ reference: FileReference, key: String) {
-        guard ImageStore.shared.entry(forKey: key) == nil else { return }
+        guard ImageStore.shared.entry(forKey: key) == nil, !key.hasPrefix("echo:") else { return }
         wantedImages[key] = reference
         scheduleImageSweep()
     }

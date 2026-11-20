@@ -63,7 +63,10 @@ extension TranscriptViewController {
         respond(to: permission, decision: decision)
     }
 
+    /// Stop always does something: a send still on its way is taken back here, and the server is
+    /// asked to stop in case the prompt already landed.
     func stopTurn() {
+        stopSendsInFlight()
         guard let conversation else { return }
         Task { try? await conversation.cancelCurrentTurn() }
     }

@@ -10,7 +10,9 @@ extension TranscriptViewController {
     /// let go, and the move is one motion on the platform's clock from wherever the reader was.
     func riseFreshCanvas(rowKey: String) {
         canvasKey = rowKey
-        canvasFloor = renderedRows.firstIndex { $0.key == rowKey } ?? renderedRows.count
+        canvasFloor =
+            renderedRows.firstIndex { $0.key == rowKey || $0.key.hasPrefix(rowKey + ":") }
+            ?? renderedRows.count
         canvasRiseDeadline = CACurrentMediaTime() + FreshCanvas.patience
         canvasRising = true
         canvasPinned = false
@@ -53,8 +55,8 @@ extension TranscriptViewController {
         } else {
             NSAnimationContext.runAnimationGroup(
                 { animation in
-                    animation.duration = 0.3
-                    animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    animation.duration = SendMotion.duration
+                    animation.timingFunction = SendMotion.curve
                     clip.animator().setBoundsOrigin(target)
                 },
                 completionHandler: { [weak self] in
@@ -84,16 +86,17 @@ extension TranscriptViewController {
     private func promptBlock() -> NSRect? {
         guard let key = canvasKey else { return nil }
         var index = renderedRows.firstIndex { $0.key == key }
-        if index == nil, key.hasPrefix("echo:"),
-            let last = renderedRows.lastIndex(where: {
-                switch $0.kind {
-                case .userText, .pastedText(_, _, under: false): return true
-                default: return false
-                }
-            }), last >= canvasFloor - 2
-        {
-            canvasKey = renderedRows[last].key
-            index = last
+        if index == nil, key.hasPrefix("echo:") {
+            if let own = renderedRows.lastIndex(where: {
+                $0.key.hasPrefix(key + ":") && $0.isPromptBlock
+            }) {
+                index = own
+            } else if let last = renderedRows.lastIndex(where: {
+                $0.isPromptBlock && !$0.key.hasPrefix("echo:")
+            }), last >= canvasFloor - 2 {
+                canvasKey = renderedRows[last].key
+                index = last
+            }
         }
         guard let index, index < rowViews.count else { return nil }
         var first = index

@@ -240,13 +240,22 @@ final class PendingSendRowView: NSView {
     private let rule = RowKit.Ground(frame: .zero)
     private let column = NSStackView()
     private let words: NSTextField
+    private lazy var fold: NSButton = RowKit.linkButton("") { [weak self] in self?.toggleFold() }
     private let strip = NSStackView()
     private let mark = NSImageView()
     private let caption = NSTextField(labelWithString: "")
     private let acts = NSStackView()
+    private lazy var pulse = ActivityPulse(view: mark)
     private var ink: PendingSendReading.Ink
     private var send: PendingSend
     private var plan: ResumePlan?
+    private var icon: ActivityIcon?
+    private var breathing: ActivityIcon?
+    private var offered: [String] = []
+    private var foldOpen: Bool
+    private var showsStrip = false
+    private var showsActs = false
+    private var fadeToken = 0
     private let context: TranscriptContext
 
     init(send: PendingSend, plan: ResumePlan?, now: Date, context: TranscriptContext) {
@@ -254,28 +263,38 @@ final class PendingSendRowView: NSView {
         self.plan = plan
         self.context = context
         ink = PendingSendReading.ink(send)
-        words = RowKit.attributedLabel(
-            MacMarkdown.plainWithLinks(
-                send.text, font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.label))
+        foldOpen = context.isExpanded(Self.foldKey(send))
+        words = RowKit.attributedLabel(NSAttributedString(string: ""))
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        rule.wantsLayer = true
         column.orientation = .vertical
         column.alignment = .leading
         column.spacing = 2
         column.translatesAutoresizingMaskIntoConstraints = false
         column.addArrangedSubview(words)
 
+        fold.font = MacTheme.Ramp.font(.codeAction)
+        fold.contentTintColor = MacTheme.Color.secondaryLabel
+        column.addArrangedSubview(fold)
+
         strip.orientation = .horizontal
         strip.alignment = .firstBaseline
         strip.spacing = 5
+        strip.wantsLayer = true
         mark.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
+        mark.wantsLayer = true
         caption.font = MacTheme.Ramp.font(.hint)
         strip.addArrangedSubview(mark)
         strip.addArrangedSubview(caption)
+        strip.isHidden = true
         column.addArrangedSubview(strip)
 
         acts.orientation = .horizontal
         acts.spacing = MacTheme.Spacing.m
+        acts.wantsLayer = true
+        acts.isHidden = true
         column.addArrangedSubview(acts)
 
         addSubview(rule)
@@ -293,34 +312,91 @@ final class PendingSendRowView: NSView {
         ])
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
-        words.alphaValue = ink.opacity
-        rule.alphaValue = ink.opacity
-        paint(now: now)
+        writeWords()
+        paint(now: now, animated: false)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    /// The same row, a moment later: the ink moves on the platform's clock when the phase changed,
-    /// and the strip appears or goes as the caption has something to say.
-    func restate(send: PendingSend, plan: ResumePlan?, now: Date) {
-        self.send = send
-        self.plan = plan
-        let next = PendingSendReading.ink(send)
-        if next != ink {
-            ink = next
-            let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-            NSAnimationContext.runAnimationGroup { animation in
-                animation.duration = reduced ? 0 : 0.25
-                animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                animation.allowsImplicitAnimation = true
-                words.animator().alphaValue = next.opacity
-                rule.animator().alphaValue = next.opacity
-            }
-        }
-        paint(now: now)
+    /// Where a reader's open or closed fold is kept: the echo's own key, the way a sent prompt's
+    /// fold is kept under its message.
+    private static func foldKey(_ send: PendingSend) -> String {
+        PromptFold.key(messageID: "echo:\(send.id.uuidString)")
     }
 
-    private func paint(now: Date) {
+    /// The room the words lose to the rule and the gap beside it, the same as a sent prompt's.
+    private static var indent: CGFloat { 2 + MacTheme.Spacing.s + 2 }
+
+    private var columns: Int {
+        PromptFold.columns(
+            width: Double(max(0, (context.columnWidth?() ?? 0) - Self.indent)),
+            fontSize: Double(MacTheme.Ramp.font(.prompt).pointSize), monospaced: false)
+    }
+
+    /// The words exactly as the server's own row will draw them: the prompt face, links live, and
+    /// a long prompt folded with the same line under it, so the swap changes nothing.
+    private func writeWords() {
+        let text = send.text
+        words.isHidden = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let reading = PromptFold.read(text, columns: columns, expanded: foldOpen)
+        words.attributedStringValue = MacMarkdown.plainWithLinks(
+            reading.folded ? PromptFold.cut(text, columns: columns) : text,
+            font: MacTheme.Ramp.font(.prompt), color: MacTheme.Color.label)
+        if let title = reading.toggleLabel {
+            fold.title = (reading.folded ? "⌄ " : "⌃ ") + title
+            fold.isHidden = false
+        } else {
+            fold.isHidden = true
+        }
+    }
+
+    private func toggleFold() {
+        foldOpen.toggle()
+        context.onToggle?(Self.foldKey(send), foldOpen)
+        writeWords()
+    }
+
+    /// The same row, a moment later. Only what changed moves: a new ink crossfades the rule, a line
+    /// or a row of choices that comes or goes fades, and then all of it holds still.
+    func restate(send: PendingSend, plan: ResumePlan?, now: Date) {
+        let textChanged = send.text != self.send.text
+        self.send = send
+        self.plan = plan
+        if textChanged { writeWords() }
+        let next = PendingSendReading.ink(send)
+        let inkChanged = next != ink
+        ink = next
+        paint(now: now, animated: true, inkChanged: inkChanged)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        breathing = nil
+        pulse.apply(nil)
+        breathe()
+    }
+
+    /// The mark moves only while the line it leads is on screen. A hidden strip is taken out of
+    /// its stack, and a motion laid on a mark outside a window never starts, so the motion is laid
+    /// on after the strip is back — and only when what it should be doing changed, because laying
+    /// the same swell on again every paint is how a breath turns into a stutter.
+    private func breathe() {
+        let wanted = window != nil && showsStrip ? icon : nil
+        guard wanted != breathing else { return }
+        breathing = wanted
+        pulse.apply(nil)
+        pulse.apply(wanted)
+    }
+
+    private func paint(now: Date, animated: Bool, inkChanged: Bool = false) {
+        let motion = animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if inkChanged, motion, let layer = rule.layer {
+            let fade = CATransition()
+            fade.type = .fade
+            fade.duration = SendMotion.ink
+            fade.timingFunction = SendMotion.curve
+            layer.add(fade, forKey: "ink")
+        }
         rule.blade = true
         rule.fill =
             plan != nil
@@ -329,32 +405,96 @@ final class PendingSendRowView: NSView {
         rule.needsDisplay = true
         let line = plan.map { ResumeReading.caption($0, now: now) }
             ?? PendingSendReading.caption(send, now: now)
-        let icon = plan == nil ? PendingSendReading.icon(send) : ResumeReading.icon
-        strip.isHidden = line == nil
+        let nextIcon = plan == nil ? PendingSendReading.icon(send) : ResumeReading.icon
         if let line {
             caption.stringValue = line
-            caption.textColor = icon.tone.color
-            mark.image = NSImage(systemSymbolName: icon.symbol, accessibilityDescription: nil)
-            mark.contentTintColor = icon.tone.color
+            caption.textColor = nextIcon.tone.color
+            mark.image = NSImage(systemSymbolName: nextIcon.symbol, accessibilityDescription: nil)
+            mark.contentTintColor = nextIcon.tone.color
             mark.isHidden = mark.image == nil
         }
-        for view in acts.arrangedSubviews { view.removeFromSuperview() }
-        if let plan, let act = context.resumeAct {
-            let id = plan.id
-            for choice in ResumeReading.acts {
-                acts.addArrangedSubview(
-                    RowKit.linkButton(ResumeReading.title(choice)) { act(id, choice) })
-            }
-        } else if !send.acts.isEmpty, let act = context.pendingAct {
-            let id = send.id
-            for choice in send.acts {
-                acts.addArrangedSubview(
-                    RowKit.linkButton(PendingSendReading.title(choice)) { act(id, choice) })
-            }
-        }
-        acts.isHidden = acts.arrangedSubviews.isEmpty
+        icon = line == nil ? nil : nextIcon
+        offer()
+        reveal(strip: line != nil, acts: !acts.arrangedSubviews.isEmpty, motion: motion)
+        breathe()
         setAccessibilityLabel(
             plan.map { ResumeReading.spoken($0, words: send.text, now: now) }
                 ?? PendingSendReading.spoken(send, now: now))
     }
+
+    /// The choices the row makes, rebuilt only when they change: a row restated on every state
+    /// keeps the buttons a pointer may be resting on.
+    private func offer() {
+        let choices: [(title: String, press: () -> Void)]
+        if let plan, let act = context.resumeAct {
+            let id = plan.id
+            choices = ResumeReading.acts.map { choice in
+                (ResumeReading.title(choice), { act(id, choice) })
+            }
+        } else if !send.acts.isEmpty, let act = context.pendingAct {
+            let id = send.id
+            let shown = send
+            choices = send.acts.map { choice in
+                (PendingSendReading.title(choice, for: shown), { act(id, choice) })
+            }
+        } else {
+            choices = []
+        }
+        let titles = choices.map(\.title) + [plan?.id.uuidString ?? send.id.uuidString]
+        guard titles != offered else { return }
+        offered = titles
+        for view in acts.arrangedSubviews { view.removeFromSuperview() }
+        for choice in choices {
+            acts.addArrangedSubview(RowKit.linkButton(choice.title, action: choice.press))
+        }
+    }
+
+    /// The line and the choices come in by fading after the row has made room for them, and go by
+    /// fading before the room closes, so the words above never move while something is half-drawn.
+    private func reveal(strip showStrip: Bool, acts showActs: Bool, motion: Bool) {
+        let appearing = (showStrip && !showsStrip ? [strip as NSView] : [])
+            + (showActs && !showsActs ? [acts as NSView] : [])
+        let leaving = (!showStrip && showsStrip ? [strip as NSView] : [])
+            + (!showActs && showsActs ? [acts as NSView] : [])
+        showsStrip = showStrip
+        showsActs = showActs
+        fadeToken += 1
+        let token = fadeToken
+        for view in appearing {
+            view.isHidden = false
+            view.alphaValue = motion ? 0 : 1
+        }
+        guard motion, !(appearing.isEmpty && leaving.isEmpty) else {
+            for view in leaving { view.isHidden = true }
+            for view in [strip, acts] as [NSView] { view.alphaValue = 1 }
+            return
+        }
+        NSAnimationContext.runAnimationGroup { animation in
+            animation.duration = SendMotion.ink
+            animation.timingFunction = SendMotion.curve
+            for view in appearing { view.animator().alphaValue = 1 }
+            for view in leaving { view.animator().alphaValue = 0 }
+        } completionHandler: { [weak self] in
+            MainThread.call {
+                guard let self, self.fadeToken == token else { return }
+                for view in leaving { view.isHidden = true }
+                for view in [self.strip, self.acts] as [NSView] { view.alphaValue = 1 }
+            }
+        }
+    }
+
+    /// What a harness reads to prove the row is drawn at full strength from the press.
+    var inkAlpha: CGFloat { min(words.alphaValue, rule.alphaValue, alphaValue) }
+
+    /// The choices the row offers, by title, for a harness.
+    var actTitles: [String] {
+        acts.isHidden ? [] : acts.arrangedSubviews.compactMap { ($0 as? NSButton)?.title }
+    }
+
+    /// The line under the words, for a harness; nil when the row has nothing to say.
+    var captionLine: String? { strip.isHidden ? nil : caption.stringValue }
+
+    /// The motion laid on the row's mark, for a harness that proves a held send breathes. Whether
+    /// the window then animates it is the motion budget's call, made the same way for every mark.
+    var markMotion: ActivityMotion { breathing?.motion ?? .still }
 }

@@ -42,10 +42,10 @@ extension TranscriptViewController {
             updateStatus()
         }
         onState?(state)
-        let turnOpen = state.status == .running
+        settlePending(with: state)
+        let turnOpen = pending.turnIsOpen(running: state.status == .running)
         let turnEnded = context.turnOpen && !turnOpen
         context.turnOpen = turnOpen
-        pending.reconcile(userMessages: state.messages.count { $0.role == .user })
         armResumeForWalledTurn(state)
         armRetryWake(state.retry, now: Date())
         if state.revert == nil, revertOperation != .restoring { revertComposerFill = nil }
@@ -61,6 +61,7 @@ extension TranscriptViewController {
         refreshWorkflowRuns()
         updateTicker(running: state.status == .running || state.compaction?.isRunning == true)
         handoff.observe(state, sendsInFlight: pending.hasInFlight)
+        sendWhatWaitedBehindTurn()
         handOverQueue()
         drainQueue()
         calls.conversationChanged()
@@ -95,7 +96,9 @@ extension TranscriptViewController {
                     ? ChatSuggestion.headline : Localized.text("Loading…"),
                 starting: state.hasLoadedTranscript)
         } else {
-            applyRows(pacedByCascade(windowed, running: state.status == .running))
+            applyRows(
+                pacedByCascade(
+                    windowed, running: pending.turnIsOpen(running: state.status == .running)))
             settleStreamedTail(in: windowed)
             paintCascade()
         }
@@ -119,19 +122,7 @@ extension TranscriptViewController {
             rows.append(TranscriptRow(key: "echo:break", kind: .turnBreak))
         }
         for send in pending.sends {
-            let plan = resume.plan(for: send.id)
-            var shown = send
-            if let carried = CarryMark.split(send.text) {
-                shown.text = carried.rest
-                rows.append(
-                    TranscriptRow(
-                        key: "echo:\(send.id.uuidString):carried", kind: .carried(carried.reading)))
-            }
-            shown.text = PasteFold.glance(shown.text)
-            rows.append(
-                TranscriptRow(
-                    key: "echo:\(send.id.uuidString)" + (plan.map { ":wait\($0.attempt)" } ?? ""),
-                    kind: .pendingSend(shown, plan, now: now)))
+            rows.append(contentsOf: echoRows(for: send, now: now))
         }
         armCaptionWake(now: now)
         return rows
@@ -159,13 +150,79 @@ extension TranscriptViewController {
         apply(state: state, rows: lastFullRows)
     }
 
+    /// A send's echo in the rows its server account will have, so the swap from one to the other
+    /// changes nothing a reader can see: the brief a carried chat leads with, the words behind the
+    /// rule folded exactly as a sent prompt folds, each long paste as its own folded card, and the
+    /// pictures — drawn from the bytes in hand — after the words, where the server puts them. The
+    /// row that carries the send's phase keeps one key for its whole life, so every change of phase
+    /// is a restate in place rather than a rebuild.
+    ///
+    /// A held send being tried again is still drawn as held: the attempt is a moment, and a row
+    /// that flicked to "sending" and back on every try would be a clock nobody asked for.
+    private func echoRows(for send: PendingSend, now: Date) -> [TranscriptRow] {
+        let key = Self.echoKey(send.id)
+        let plan = resume.plan(for: send.id)
+        var shown = send
+        if let hold = sendWaits[send.id], hold.attempting, send.phase == .sending {
+            shown.phase = .waiting(reason: hold.reason)
+        }
+        var rows: [TranscriptRow] = []
+        var words = send.text
+        if let carried = CarryMark.split(send.text) {
+            words = carried.rest
+            rows.append(TranscriptRow(key: "\(key):carried", kind: .carried(carried.reading)))
+        }
+        var phasePlaced = false
+        func place(_ text: String) {
+            if phasePlaced {
+                rows.append(
+                    TranscriptRow(
+                        key: "\(key):f\(rows.count)", kind: .userText(text, messageID: key)))
+                return
+            }
+            phasePlaced = true
+            shown.text = text
+            rows.append(TranscriptRow(key: key, kind: .pendingSend(shown, plan, now: now)))
+        }
+        let reading = PasteFold.mayHold(words) ? PasteFold.split(words, id: key) : nil
+        if let reading, reading.isFolded {
+            for (index, piece) in reading.pieces.enumerated() {
+                switch piece {
+                case .words(let text):
+                    place(text)
+                case .paste(let paste):
+                    rows.append(
+                        TranscriptRow(
+                            key: "\(key):f\(index)",
+                            kind: .pastedText(paste, messageID: key, under: index > 0)))
+                }
+            }
+        } else if !words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            place(words)
+        }
+        for (index, picture) in send.pictures.enumerated() {
+            rows.append(
+                TranscriptRow(
+                    key: Self.echoPictureKey(send.id, index),
+                    kind: .file(
+                        FileReference(mime: picture.mime, filename: picture.filename),
+                        mine: true, messageID: key)))
+        }
+        let saysSomething =
+            plan != nil || !shown.acts.isEmpty
+            || PendingSendReading.caption(shown, now: now) != nil
+        if !phasePlaced, saysSomething || rows.isEmpty {
+            shown.text = ""
+            rows.append(TranscriptRow(key: key, kind: .pendingSend(shown, plan, now: now)))
+        }
+        return rows
+    }
+
     func actOnPending(_ id: UUID, _ act: PendingSend.Act) {
-        guard let send = pending.send(id: id), send.isFailed else { return }
+        guard let send = pending.send(id: id), send.isUnsent else { return }
         switch act {
         case .retry:
-            sendPrompt(
-                send.text, model: send.model, effort: send.effort,
-                attachments: send.attachments, reusing: id)
+            retryUnsent(id)
         case .edit:
             let words = QueuedSend(
                 text: send.text, model: send.model, effort: send.effort,
@@ -174,10 +231,10 @@ extension TranscriptViewController {
                 onToast?(Localized.text("Send or clear what is in the composer first."))
                 return
             }
-            pending.remove(id: id)
+            retireRow(id)
             redrawPending()
         case .discard:
-            pending.remove(id: id)
+            retireRow(id)
             redrawPending()
         }
     }

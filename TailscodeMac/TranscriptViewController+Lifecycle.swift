@@ -15,6 +15,7 @@ extension TranscriptViewController {
         keepPage(of: self.entry)
         handToWatchIfInFlight()
         detachLive()
+        stashPending()
         self.entry = entry
         self.backend = backend
         calls.bind(entry)
@@ -33,7 +34,9 @@ extension TranscriptViewController {
         inFlightImages = []
         refusedImages = []
         inFlightSubagents = []
-        pending.removeAll()
+        restoreStash()
+        handoff = TurnHandoff()
+        handoffWakeGeneration += 1
         interruptionPress = nil
         revertOperation = nil
         revertComposerFill = nil
@@ -42,7 +45,7 @@ extension TranscriptViewController {
         resume.removeAll()
         resumeClock?.cancel()
         resumeClock = nil
-        restoreHeldMessages()
+        heldMessagesRestored = false
         ActivityInbox.clear(sessionID: entry.session.id)
         windowLimit = 400
         rowTailMessages = 300
@@ -354,6 +357,13 @@ extension TranscriptViewController {
         retryWake = nil
         captionWake?.cancel()
         captionWake = nil
+        for (id, hold) in sendWaits {
+            hold.timer?.cancel()
+            sendWaits[id]?.timer = nil
+            sendWaits[id]?.attempting = false
+        }
+        sendWitness?.cancel()
+        sendWitness = nil
         handoffWakeGeneration += 1
         stopObservingScrolling()
     }
@@ -376,6 +386,7 @@ extension TranscriptViewController {
         onStopWatch?(TileRuntime.key(entry))
         attachLive()
         startResumeClock()
+        rearmSendClocks()
         refreshTurnFacts()
         if !findBar.isHidden, !findIndexed { startFindIndex() }
     }
@@ -385,6 +396,7 @@ extension TranscriptViewController {
         lease != nil || drainToken != nil || tickerTask != nil || agentStreamTask != nil
             || resumeClock != nil || retryWake != nil || captionWake != nil || tailRepair != nil
             || holdMonitor != nil || cascade.isLinked || lifetime.count > 0 || scrollObserved
+            || sendWitness != nil || sendWaits.values.contains { $0.timer != nil }
     }
 
     /// Empties the pane deliberately — a deleted or unresolvable session leaves an explanation,
@@ -401,6 +413,10 @@ extension TranscriptViewController {
         stopTailRepair()
         abandoned = nil
         releaseFreshCanvas(animated: false)
+        for flight in sendFlights.values { flight.task.cancel() }
+        sendFlights = [:]
+        dropAllWaits()
+        heldForTranscript = []
         pending.removeAll()
         pendingSignature = "\u{0}"
         pendingStack.arrangedSubviews.forEach { $0.removeFromSuperview() }

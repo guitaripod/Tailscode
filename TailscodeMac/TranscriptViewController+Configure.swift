@@ -197,8 +197,9 @@ extension TranscriptViewController {
     func buildRows(_ messages: [ChatMessage], state: ConversationState) -> [TranscriptRow] {
         rowBuilder.catalog = composer.catalog
         rowBuilder.chapters = state.chapters
+        settlePending(with: state, acting: false)
         return rowBuilder.rows(
-            for: messages, turnOpen: state.status == .running,
+            for: messages, turnOpen: pending.turnIsOpen(running: state.status == .running),
             awaiting: brains.isActive ? BrainStore.awaiting(for: state) : .none)
     }
 

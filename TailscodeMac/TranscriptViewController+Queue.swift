@@ -27,8 +27,12 @@ extension TranscriptViewController {
     /// Hands the server every message this device holds for it. Asked on every state, so a
     /// message written offline goes the moment the server answers and one left in the store by a
     /// version that held everything locally goes on the first connection.
+    ///
+    /// Not while a row of this device's still holds words: a server queue starts what it is handed
+    /// the moment the conversation is idle, so a message handed over behind a send held for the
+    /// connection would reach the machine first and run before the words written ahead of it.
     func handOverQueue() {
-        guard let queue, let conversation else { return }
+        guard let queue, let conversation, !pending.hasUnsent else { return }
         let routing = queueRouting
         guard queue.holdsServerBound(routing: routing) else { return }
         Task { [weak self] in
@@ -63,6 +67,14 @@ extension TranscriptViewController {
         lastState?.status == .running || lastState?.compaction?.isRunning == true || handoff.isOpen
     }
 
+    /// Whether a row of this device's still holds words written before `reusing`'s — a failure, or
+    /// a send held for the connection or behind a turn. What is written after it waits behind it:
+    /// the words go in the order they were written, and a prompt posted past one that did not go
+    /// would overtake it.
+    private func unsentAhead(of reusing: UUID?) -> Bool {
+        pending.sends.contains { $0.isUnsent && $0.id != reusing }
+    }
+
     /// Whether something written earlier is still waiting, which a new prompt goes behind: after
     /// a turn that failed the waiting messages stay where they are, and a new one sent straight
     /// through would overtake them. The queue handing out its own head is not a new prompt.
@@ -93,16 +105,17 @@ extension TranscriptViewController {
             return
         }
         let send = QueuedSend(text: text, model: model, effort: effort, attachments: attachments)
-        if holdsWhatIsWritten || (reusing == nil && somethingWaitsAhead) {
+        if holdsWhatIsWritten || unsentAhead(of: reusing) || (reusing == nil && somethingWaitsAhead) {
+            if let reusing { retireRow(reusing) }
             hold(send)
             MacHaptics.shared.play(.send)
             if let state = lastState { apply(state: state, rows: lastFullRows) }
-            scrollToBottom()
             return
         }
         MacHaptics.shared.play(.send)
         openHandoff()
-        let userMessages = lastState?.messages.count { $0.role == .user } ?? 0
+        let loaded = lastState?.hasLoadedTranscript == true
+        let userMessages = loaded ? (lastState?.messages.count { $0.role == .user } ?? 0) : Int.max
         let row: UUID
         if let reusing, pending.restart(id: reusing, userMessages: userMessages) != nil {
             row = reusing
@@ -111,20 +124,11 @@ extension TranscriptViewController {
                 text: text, attachments: attachments, model: model, effort: effort,
                 userMessages: userMessages).id
         }
+        dropWait(row)
+        stageEchoPictures(of: row)
         apply(state: lastState ?? ConversationState(), rows: lastFullRows)
-        riseFreshCanvas(rowKey: "echo:\(row.uuidString)")
-        Task { [weak self] in
-            do {
-                try await conversation.send(
-                    text, model: model, reasoningEffort: effort, attachments: attachments)
-                guard let self, self.pending.mark(id: row, .accepted) else { return }
-                self.redrawPending()
-            } catch {
-                MacHaptics.shared.play(.error)
-                NSSound.beep()
-                self?.markSendFailed(row, error: error)
-            }
-        }
+        riseFreshCanvas(rowKey: Self.echoKey(row))
+        dispatchSend(row, checkFirst: false)
     }
 
     /// What a call's voice heard goes out exactly as typed words do — pending ink, queue, marks —
@@ -167,9 +171,14 @@ extension TranscriptViewController {
     /// The moment the turn yields, the next thing written goes. Never while one is running and
     /// never while the composer is holding one open for rewriting: sending it out from under the
     /// person editing it is the one thing the queue exists to prevent.
+    ///
+    /// Nor behind a row still holding words — a failure, or a send waiting for the connection: the
+    /// head goes once that row is sent, retired, edited or discarded, so a queue never overtakes
+    /// the message written before it.
     func drainQueue() {
         guard let state = lastState,
-            SendQueueDrain.mayDrain(state, editing: editingQueued != nil, handoff: handoff),
+            Self.mayHandOutHead(
+                state, pending: pending, editing: editingQueued != nil, handoff: handoff),
             let queue, queue.holdsDeviceHead(routing: queueRouting), !draining, ownsQueue
         else { return }
         draining = true
@@ -181,6 +190,15 @@ extension TranscriptViewController {
         }
         sendPrompt(
             next.text, model: next.model, effort: next.effort, attachments: next.attachments)
+    }
+
+    /// Whether the device's queue may hand out its head now: the turn has yielded, nothing is being
+    /// rewritten, the handoff after a send has closed, and no row is still holding words.
+    static func mayHandOutHead(
+        _ state: ConversationState, pending: PendingSendLedger, editing: Bool,
+        handoff: TurnHandoff
+    ) -> Bool {
+        !pending.hasUnsent && SendQueueDrain.mayDrain(state, editing: editing, handoff: handoff)
     }
 
     func openHandoff() {
@@ -222,12 +240,14 @@ extension TranscriptViewController {
     /// looks sent is the one outcome this path must not leave behind. The row stays exactly where
     /// the words were written, says it did not go, and offers to send them again — which is a
     /// better answer than pushing them back into a composer the reader has to notice.
-    private func markSendFailed(_ row: UUID, error: Error) {
+    func markSendFailed(_ row: UUID, reason: String) {
+        MacHaptics.shared.play(.error)
+        NSSound.beep()
         handoff.end()
-        let reason = AgentErrorText.readable(error)
         pending.mark(id: row, .failed(reason: reason))
+        HeldSendStore.release(row)
         armResume(row: row, reason: reason)
-        releaseFreshCanvas(animated: false)
+        letCanvasGoGently()
         redrawPending()
     }
 }

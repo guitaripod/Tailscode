@@ -40,6 +40,7 @@ final class ImageStore {
     private var order: [String] = []
     private var icons: [String: NSImage] = [:]
     private var iconOrder: [String] = []
+    private var shapes: [String: CGSize] = [:]
     /// The gallery's ear while it is open: a page whose bytes were still being fetched repaints
     /// the moment they land.
     var onStored: ((String) -> Void)?
@@ -48,6 +49,27 @@ final class ImageStore {
 
     func entry(forKey key: String) -> DecodedImage? {
         entries[key]
+    }
+
+    /// The pixel size of a picture whose bytes are in hand but not yet decoded — one just sent —
+    /// so its row is laid out at its own shape from the first frame instead of a placeholder's.
+    func shape(forKey key: String) -> CGSize? {
+        shapes[key]
+    }
+
+    func store(shape: CGSize, forKey key: String) {
+        shapes[key] = shape
+        while shapes.count > 64, let first = shapes.keys.first { shapes.removeValue(forKey: first) }
+    }
+
+    /// The pixel size written in a picture's header, read without decoding it.
+    nonisolated static func pixelSize(of data: Data) -> CGSize? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+            let width = properties[kCGImagePropertyPixelWidth] as? Int,
+            let height = properties[kCGImagePropertyPixelHeight] as? Int, width > 0, height > 0
+        else { return nil }
+        return CGSize(width: width, height: height)
     }
 
     /// Decoded pictures are kept across chat switches, bounded: past the cap the least recently
@@ -249,13 +271,17 @@ enum ImageRowView {
             imageView.flowWidth = size.width
             return imageView
         }
-        let size = PictureThumb.placeholder(maxHeight: maxHeight)
+        let shape = ImageStore.shared.shape(forKey: key)
+        let size =
+            shape.map {
+                PictureThumb.size(pixels: $0, maxHeight: maxHeight, maxWidth: PictureThumb.widest)
+            } ?? PictureThumb.placeholder(maxHeight: maxHeight)
         let frame = GroundView(cornerRadius: CGFloat(ChatChrome.Radius.control), fill: MacTheme.Color.canvasRaised)
         frame.translatesAutoresizingMaskIntoConstraints = false
         frame.setContentHuggingPriority(.required, for: .horizontal)
         let label = RowKit.label(
-            Localized.text("%@ — loading…", name), font: MacTheme.Ramp.font(.panelFootnote),
-            color: MacTheme.Color.tertiaryLabel)
+            shape == nil ? Localized.text("%@ — loading…", name) : "",
+            font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
         frame.addSubview(label)
         NSLayoutConstraint.activate([
             frame.widthAnchor.constraint(equalToConstant: size.width),

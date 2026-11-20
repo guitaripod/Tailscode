@@ -295,6 +295,7 @@ final class ComposerView: NSView {
             syncChips()
         }
         setEditorText("", caretAtEnd: true)
+        editor.settleAfterSend(duration: SendMotion.duration, curve: SendMotion.curve)
         if let draftScope { DraftStore.clear(draftScope) }
         vim.reset(to: "", cursor: 0, mode: .insert)
         updateVimUI()

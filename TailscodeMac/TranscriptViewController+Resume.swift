@@ -171,16 +171,24 @@ extension TranscriptViewController {
 
     /// Picks back up what this device was holding for this conversation when it was last running.
     /// A plan whose window opened while nothing was awake is reported rather than fired.
-    func restoreHeldMessages() {
+    ///
+    /// Asked once the transcript has loaded, with its count of the person's messages, so a held
+    /// message's baseline is the transcript's own rather than a zero the first state then
+    /// contradicts — which would read every earlier message as the held one arriving. A row the
+    /// pane already holds for the same send keeps its place and gets its plan back.
+    func restoreHeldMessages(userMessages: Int) {
         guard let entry else { return }
         let records = ResumeStore.records(
             profileID: entry.profileID, sessionID: entry.session.id)
         guard !records.isEmpty else { return }
-        let userMessages = lastState?.messages.count { $0.role == .user } ?? 0
         for record in records {
             if record.plan.isStale() {
                 ResumeStore.release(record.id)
                 onToast?(ResumeReading.missed(record.plan))
+                continue
+            }
+            if pending.send(id: record.id) != nil {
+                resume.hold(record.plan)
                 continue
             }
             let restored = pending.begin(
@@ -195,6 +203,5 @@ extension TranscriptViewController {
             resume.hold(record.plan)
         }
         startResumeClock()
-        redrawPending()
     }
 }

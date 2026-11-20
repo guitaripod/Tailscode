@@ -109,7 +109,7 @@ extension TranscriptViewController {
             let row = lastFullRows.last(where: { $0.key == key }),
             let source = row.streamedText
         else { return false }
-        let sealed = lastState?.status != .running
+        let sealed = !pending.turnIsOpen(running: lastState?.status == .running)
         let safe = cascade.renderable(
             row: key, source, sealed: sealed, markdown: row.streamsMarkdown)
         let held = safe == source ? row : row.held(to: safe)

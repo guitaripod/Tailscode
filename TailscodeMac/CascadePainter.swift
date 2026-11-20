@@ -497,11 +497,15 @@ extension TranscriptRow {
     /// Whether this row's first appearance is worth announcing. The words a person typed have been
     /// on screen since they pressed Enter — echoed optimistically under one key, then re-keyed when
     /// the server confirms the same sentence — so fading them in is not an arrival, it is the prompt
-    /// blinking out and coming back. The rule between turns goes with it: a hairline that fades in
-    /// under a prompt that did not is one seam moving in two halves.
+    /// blinking out and coming back. That holds for the echo itself, which is drawn in the pass the
+    /// key went down in, and for every row of it: its paste cards, its pictures, the brief a carried
+    /// chat leads with. The rule between turns goes with it: a hairline that fades in under a
+    /// prompt that did not is one seam moving in two halves.
     var announcesArrival: Bool {
         switch kind {
-        case .userText, .pastedText, .turnBreak: return false
+        case .userText, .pastedText, .pendingSend, .turnBreak: return false
+        case .file(_, let mine, _): return !mine
+        case .carried: return !key.hasPrefix("echo:")
         default: return true
         }
     }

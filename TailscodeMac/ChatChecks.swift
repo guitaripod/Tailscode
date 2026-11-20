@@ -29,6 +29,11 @@ enum ChatChecks {
                 failures.append("\(error)")
             }
             do {
+                notes.append("\(try await runSending()) send")
+            } catch {
+                failures.append("\(error)")
+            }
+            do {
                 notes.append("\(try BrainChecks.run()) neural trace")
             } catch {
                 failures.append("\(error)")
