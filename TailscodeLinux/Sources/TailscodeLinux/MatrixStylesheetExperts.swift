@@ -109,6 +109,11 @@ extension MatrixStylesheet {
             border-radius: 5px;
             padding: 0 5px;
         }
+        .expert-outline-value { color: \(text); }
+        .expert-name-entry { font-weight: 700; }
+        .expert-skill-detail { font-size: 0.86em; }
+        .expert-mark-button > button { padding: 3px; border-radius: 18px; }
+        .expert-draft-row .title { color: \(accent); }
         .expert-note-retired { opacity: 0.55; }
         .expert-note-retired .title { text-decoration: line-through; }
         """

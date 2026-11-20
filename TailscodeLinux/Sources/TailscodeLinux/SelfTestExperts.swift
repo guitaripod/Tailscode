@@ -47,7 +47,9 @@ extension SelfTest {
             try expect(false, "experts are answered for")
         }
 
-        let own = MockBackend(agentType: .claudeCode, experts: MockExperts(experts: demoExperts))
+        let own = MockBackend(agentType: .claudeCode, experts: MockExperts(
+                experts: demoExperts,
+                skills: [ExpertSkill(name: "app-store", description: "Releases and store copy.", path: "~/.claude/skills/app-store")]))
         let ownProfile = ConnectionProfile(
             id: "selftest-experts", name: "bench", backend: .claudeCode, baseURL: URL(string: "http://127.0.0.1:9")!)
         try expect(ExpertDesk.mayKeepExperts(own), "a claude-bridge machine keeps experts")
@@ -119,7 +121,47 @@ extension SelfTest {
         try expect(editor.name == "iPadOS", "filled from the expert")
         try expect(editor.skills != nil && editor.skillsFailure == nil, "and the machine's skills are read, not guessed empty")
         try expect(editor.bench.count == 4 && editor.guards.count == 4, "with its bench and guards")
+        try expect(editor.outline.map(\.part) == [.charter, .skills, .notebook, .bench, .guards, .model],
+                   "its front page is one line for each part, not \(editor.outline.map(\.part.rawValue))")
+        try expect(editor.outline.first { $0.part == .guards }?.value.hasPrefix("4 guards") == true,
+                   "and the guards' line says how many there are")
+        try expect(editor.groups.count == 3, "the front page is the expert, its parts and Delete, not \(editor.groups.count) groups")
+        try expect(!editor.offersSkillDraft, "an expert being changed is not offered a draft from a skill")
+        editor.open(.guards)
+        pump(0.5)
+        try expect(editor.part == .guards && editor.partGroups.count == 2, "a part opens as a page in the same window")
+        editor.guards.removeLast()
+        editor.render()
+        try expect(editor.partGroups.count == 2, "and is drawn again when it changes")
+        editor.closePart()
+        pump(0.8)
+        try expect(editor.part == nil, "going back closes it")
+        try expect(editor.outline.first { $0.part == .guards }?.value.hasPrefix("3 guards") == true,
+                   "and the front page says what the part holds now")
+        editor.open(.charter)
+        pump(0.4)
+        editor.render()
+        try expect(editor.part == .charter && editor.partGroups.count == 1, "the charter's page stays as it is while it is typed in")
         editor.close()
+        pump(0.2)
+
+        ExpertEditorWindow.presentNew(profileID: row.profileID, machine: row.machine, keeper: own, parent: nil)
+        pump(0.6)
+        let blank = try unwrap(
+            MachineWindowRegistry.existing(ExpertEditorWindow.key(row.profileID, .new)) as? ExpertEditorWindow,
+            "a new expert opens")
+        try expect(blank.groups.count == 2 && blank.outline.allSatisfy { !$0.isSet },
+                   "as one short page with every part still empty")
+        try expect(blank.offersSkillDraft, "and offers to draft it from a skill")
+        blank.name = "Store"
+        blank.directory = "~/store"
+        let skill = try unwrap(blank.skills?.first?.name, "the machine has a skill to draft from")
+        blank.draft(session: nil, skill: skill)
+        pump(0.8)
+        try expect(blank.name == "Store" && blank.directory == "~/store", "a draft from a skill keeps what was typed")
+        try expect(!blank.charter.isEmpty && !blank.offersSkillDraft, "writes the charter, and is not offered twice")
+        blank.close()
+        pump(0.2)
 
         ExpertEditorWindow.presentDraft(
             profileID: row.profileID, machine: row.machine, keeper: own, sessionID: started.session.id, parent: nil)
@@ -131,6 +173,7 @@ extension SelfTest {
         try expect(!draft.notes.isEmpty, "with the drafted notes")
         try expect(draft.notes.contains { $0.lasting == false } && draft.ticks.count == draft.notes.count - 1,
                    "a note true only that day starts unticked")
+        try expect(draft.outline.contains { $0.part == .notes }, "and the first notes have a line of their own")
         draft.close()
 
         let brief = ConversationBrief(source: "Bridge restart wording", body: "Person: hello", kept: 1, total: 1, pictures: 0)

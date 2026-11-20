@@ -8,6 +8,11 @@ import Foundation
 enum WindowShot {
     static func render(titled title: String, to path: String) -> Bool {
         guard let window = toplevel(titled: title) else { return false }
+        return render(window, to: path)
+    }
+
+    /// Any widget with a surface of its own, a popover as much as a window.
+    static func render(_ window: UnsafeMutablePointer<GtkWidget>, to path: String) -> Bool {
         let width = gtk_widget_get_width(window)
         let height = gtk_widget_get_height(window)
         guard width > 0, height > 0, let paintable = gtk_widget_paintable_new(window),

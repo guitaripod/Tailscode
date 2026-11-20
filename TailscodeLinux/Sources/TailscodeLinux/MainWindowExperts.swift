@@ -303,6 +303,26 @@ extension MainWindow {
             Gtk.after(600) { [weak self] in self?.presentNewExpert(profileID: argument.isEmpty ? nil : argument) }
         case "expertdraft":
             makeExpert(from: activePane)
+        case "expertmark":
+            let parts = argument.split(separator: "|", maxSplits: 1).map(String.init)
+            Gtk.after(300) {
+                let editors = MachineWindowRegistry.all(ExpertEditorWindow.self)
+                guard let editor = editors.first, let path = parts.last else { return say("EXPERTMARK no editor") }
+                if parts.count == 2, let hue = ExpertHue.allCases.first(where: { $0.rawValue == parts[0] }) { editor.pick(hue) }
+                editor.shootMarkPopover(to: path) { ok in say("EXPERTMARK \(ok ? "ok" : "missing")") }
+            }
+        case "expertpart":
+            Gtk.after(300) {
+                let editors = MachineWindowRegistry.all(ExpertEditorWindow.self)
+                let editor = editors.first { $0.isEdit } ?? editors.first
+                if argument == "back" {
+                    editor?.closePart()
+                } else if let part = ExpertOutline.Part(rawValue: argument) {
+                    editor?.closePart()
+                    Gtk.after(500) { editor?.open(part) }
+                }
+                say("EXPERTPART \(argument) editor=\(editor != nil)")
+            }
         case "handover":
             let pane = activePane
             Gtk.after(600) { [weak self] in
