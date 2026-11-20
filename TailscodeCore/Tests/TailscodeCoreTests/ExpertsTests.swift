@@ -251,6 +251,13 @@ struct ExpertDebriefTests {
 
 @Suite("Expert capability")
 struct ExpertCapabilityTests {
+    @Test("The demo machine keeps experts, so every client's demo offers them")
+    func demoKeepsExperts() async throws {
+        #expect(DemoWorld.claude.capabilities.supportsExperts)
+        let experts = try await DemoWorld.claude.machineExperts()
+        #expect(experts?.count == 3)
+    }
+
     @Test("Experts is a capability every client must answer")
     func registered() {
         #expect(AppCapability.allCases.contains(.experts))

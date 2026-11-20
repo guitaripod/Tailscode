@@ -77,7 +77,7 @@ extension DemoWorld {
             supportsQuestions: false,
             supportsRenaming: true, supportsSubagents: true, supportsCommands: true,
             supportsGoals: true, supportsCompaction: true, supportsSchedules: true,
-            supportsMachineAgents: true),
+            supportsMachineAgents: true, supportsExperts: true),
         quota: UsageQuota(
             providerName: "Claude", subtitle: "Ultra", source: "claude-bridge", live: true,
             gauges: [
