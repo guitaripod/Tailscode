@@ -3,10 +3,10 @@ import MidgarCore
 import TailscodeCore
 import UIKit
 
-/// Makes or changes an expert: who it is, where it works and with what model, its charter and
-/// skills, where its notebook lives, its bench, its guards and when they run. A draft from a chat
-/// or a skill opens here for review, with the notes it drafted ticked — a note that was only true
-/// that day starts unticked — and nothing is saved until Create.
+/// Makes or changes an expert on one short page: its mark, name and what it is for, where it
+/// works, and one line for each other part (`ExpertOutline`) that says what it holds and opens to
+/// be changed. A new expert can be drafted from a skill in place, a draft from a chat opens here
+/// for review with the notes it drafted ticked, and nothing is saved until Create.
 @MainActor
 final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
     enum Mode {
@@ -16,28 +16,36 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
 
     private let mode: Mode
     private var profileID: String
-    private var name: String
-    private var glyph: String
-    private var hue: ExpertHue
-    private var purpose: String
-    private var directory: String
+    private var name = ""
+    private var glyph = ""
+    private var hue = ExpertHue.blue
+    private var purpose = ""
+    private var directory = ""
     private var model: String?
     private var effort: String?
-    private var charter: String
-    private var skills: [String]
+    private var charter = ""
+    private var skills: [String] = []
     private var notebookPath: String?
-    private var bench: [ExpertBenchItem]
-    private var guards: [ExpertGuard]
+    private var bench: [ExpertBenchItem] = []
+    private var guards: [ExpertGuard] = []
     private var guardRule: ScheduleRule?
-    private var draftNotes: [ExpertDraftNote]
-    private var ticks: Set<String>
+    private var draftNotes: [ExpertDraftNote] = []
+    private var ticks: Set<String> = []
     private var availableSkills: [ExpertSkill] = []
+    private var draftingSkill: String?
     private var saving = false
+    private var askedForName = false
 
     private var scroll: UIScrollView!
     private var column: UIStackView!
+    private let upper = UIStackView()
+    private let lower = UIStackView()
     private let mark = ExpertMarkView(side: 58)
+    private let markButton = UIButton(type: .custom)
     private let charterView = UITextView()
+    private weak var nameField: UITextField?
+    private weak var charterCount: UILabel?
+    private weak var page: ExpertEditorPageViewController?
 
     static func presentNew(profileID: String, draft: ExpertDraft, from controller: UIViewController) {
         let editor = ExpertEditorViewController(mode: .create(profileID: profileID, draft: draft))
@@ -77,26 +85,15 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
     init(mode: Mode) {
         self.mode = mode
         switch mode {
-        case .create(let profileID, let draft):
-            self.profileID = profileID
-            name = draft.name
-            glyph = draft.glyph ?? ""
-            hue = ExpertHue(draft.hue ?? Self.hue(for: draft.name).rawValue)
-            purpose = draft.purpose ?? ""
-            directory = draft.directory ?? ""
-            model = draft.model
-            effort = draft.effort
-            charter = draft.charter ?? ""
-            skills = draft.skills ?? []
-            notebookPath = draft.notebookPath
-            bench = draft.bench ?? []
-            guards = draft.guards ?? []
-            guardRule = draft.guardRule
-            draftNotes = draft.notes ?? []
-            ticks = ExpertMaking.defaultTicks(draft)
+        case .create(let profileID, _): self.profileID = profileID
+        case .edit(let row): self.profileID = row.profileID
+        }
+        super.init(nibName: nil, bundle: nil)
+        switch mode {
+        case .create(_, let draft):
+            adopt(draft)
         case .edit(let row):
             let expert = row.expert
-            profileID = row.profileID
             name = expert.name
             glyph = expert.glyph
             hue = row.hue
@@ -110,13 +107,39 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
             bench = expert.bench.map(\.described)
             guards = expert.guards.map(\.described)
             guardRule = expert.guardRule
-            draftNotes = []
-            ticks = []
         }
-        super.init(nibName: nil, bundle: nil)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// Takes every field from a draft: the one the editor opened with, or one a skill drafted.
+    private func adopt(_ draft: ExpertDraft) {
+        name = draft.name
+        glyph = draft.glyph ?? ""
+        hue = ExpertHue(draft.hue ?? Self.hue(for: draft.name).rawValue)
+        purpose = draft.purpose ?? ""
+        directory = draft.directory ?? ""
+        model = draft.model
+        effort = draft.effort
+        charter = draft.charter ?? ""
+        skills = draft.skills ?? []
+        notebookPath = draft.notebookPath
+        bench = draft.bench ?? []
+        guards = draft.guards ?? []
+        guardRule = draft.guardRule
+        draftNotes = draft.notes ?? []
+        ticks = ExpertMaking.defaultTicks(draft)
+    }
+
+    /// The expert as the form holds it now.
+    private var draft: ExpertDraft {
+        ExpertDraft(
+            name: name, glyph: glyph.isEmpty ? nil : glyph, hue: hue.rawValue, purpose: purpose,
+            directory: directory.isEmpty ? nil : directory, model: model, effort: effort, charter: charter,
+            skills: skills, notebookPath: notebookPath?.isEmpty == false ? notebookPath : nil,
+            bench: bench.map(\.described), guards: guards.map(\.described), guardRule: guardRule,
+            timeZone: TimeZone.current.identifier, notes: draftNotes)
+    }
 
     /// A colour for a new expert the way the machine picks one: by its name, so the same name
     /// always starts in the same colour.
@@ -131,10 +154,17 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
         return false
     }
 
+    private var canSave: Bool { !saving && !name.trimmingCharacters(in: .whitespaces).isEmpty }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         title = isCreating ? ExpertWords.newExpert : ExpertWords.edit
         (scroll, column) = MachinePage.install(in: self)
+        for stack in [upper, lower] {
+            stack.axis = .vertical
+            stack.spacing = Theme.Spacing.m
+            column.addArrangedSubview(stack)
+        }
         if navigationController?.viewControllers.first === self {
             navigationItem.leftBarButtonItem = UIBarButtonItem(
                 systemItem: .cancel, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
@@ -143,39 +173,62 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
             title: isCreating ? ExpertWords.create : ExpertWords.save, image: nil,
             primaryAction: UIAction { [weak self] _ in self?.save() }, menu: nil)
         navigationItem.rightBarButtonItem?.style = .done
+        navigationItem.backButtonDisplayMode = .minimal
         isModalInPresentation = true
-        charterView.heightAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
-        render()
+        rebuild()
         loadSkills()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        #if DEBUG
+            if !askedForName, let part = ProcessInfo.processInfo.environment["TAILSCODE_EXPERT_PART"]
+                .flatMap(ExpertOutline.Part.init(rawValue:))
+            {
+                askedForName = true
+                open(part)
+                return
+            }
+        #endif
+        guard isCreating, !askedForName, name.isEmpty else { return }
+        askedForName = true
+        nameField?.becomeFirstResponder()
     }
 
     private func loadSkills() {
         guard let backend = ExpertDesk.shared.experts(forProfileID: profileID) else { return }
+        let asked = profileID
         Task { [weak self] in
             let skills = (try? await backend.expertSkills()) ?? []
-            guard let self else { return }
+            guard let self, self.profileID == asked else { return }
             self.availableSkills = skills
             self.render()
         }
     }
 
-    // MARK: Form
 
+    /// Lays the whole page out again, the typed fields with it: for a first showing, another
+    /// machine or a draft that replaced what was typed.
+    private func rebuild() {
+        MachinePage.clear(upper)
+        upper.addArrangedSubview(identityCard())
+        upper.addArrangedSubview(placeCard())
+        render()
+    }
+
+    /// Redraws what follows from the fields and leaves the fields alone, so a keyboard stays up.
     private func render() {
+        guard isViewLoaded else { return }
         let offset = scroll.contentOffset
-        MachinePage.clear(column)
-        navigationItem.rightBarButtonItem?.isEnabled = !saving && !name.trimmingCharacters(in: .whitespaces).isEmpty
-        identity()
-        place()
-        charterSection()
-        skillsSection()
-        notebookSection()
-        if !draftNotes.isEmpty { notesSection() }
-        benchSection()
-        guardsSection()
-        if case .edit = mode { deleteSection() }
+        MachinePage.clear(lower)
+        navigationItem.rightBarButtonItem?.isEnabled = canSave
+        syncMark()
+        if isCreating, ExpertOutline.canDraft(draft), !availableSkills.isEmpty { lower.addArrangedSubview(draftCard()) }
+        lower.addArrangedSubview(outlineCard())
+        if case .edit = mode { lower.addArrangedSubview(deleteCard()) }
         view.layoutIfNeeded()
         scroll.contentOffset = offset
+        page?.reload()
     }
 
     private func inset(_ content: UIView) -> UIView {
@@ -203,79 +256,194 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
         return field
     }
 
-    private func identity() {
-        mark.show(glyph: glyph.isEmpty ? ExpertMaking.glyph(for: name) : glyph, hue: hue)
-        let hues = UIStackView()
-        hues.spacing = Theme.Spacing.xs
-        hues.distribution = .fillEqually
-        for option in ExpertHue.allCases {
-            let dot = UIButton(type: .custom)
-            dot.backgroundColor = ExpertStyle.color(option)
-            dot.layer.cornerRadius = 13
-            dot.layer.borderWidth = option == hue ? 3 : 0
-            dot.layer.borderColor = Theme.Color.label.cgColor
-            dot.accessibilityLabel = option.rawValue
-            dot.accessibilityTraits = option == hue ? [.button, .selected] : .button
-            dot.heightAnchor.constraint(equalToConstant: 26).isActive = true
-            dot.addAction(UIAction { [weak self] _ in
-                Theme.Haptics.selection()
-                self?.hue = option
-                self?.render()
-            }, for: .touchUpInside)
-            hues.addArrangedSubview(dot)
-        }
-        let nameField = field(ExpertWords.name, name, placeholder: "iPadOS") { [weak self] text in
-            guard let self else { return }
-            self.name = text
-            self.mark.show(glyph: self.glyph.isEmpty ? ExpertMaking.glyph(for: text) : self.glyph, hue: self.hue)
-            self.navigationItem.rightBarButtonItem?.isEnabled = !text.trimmingCharacters(in: .whitespaces).isEmpty
-        }
-        let glyphField = field(Localized.text("Mark"), glyph, placeholder: ExpertMaking.glyph(for: name), capitalization: .none) {
-            [weak self] text in
-            guard let self else { return }
-            self.glyph = String(text.prefix(2))
-            self.mark.show(glyph: self.glyph.isEmpty ? ExpertMaking.glyph(for: self.name) : self.glyph, hue: self.hue)
-        }
-        glyphField.widthAnchor.constraint(equalToConstant: 84).isActive = true
-        let top = UIStackView(arrangedSubviews: [mark, nameField, glyphField])
-        top.alignment = .bottom
-        top.spacing = Theme.Spacing.m
-        let purposeField = field(ExpertWords.purpose, purpose, placeholder: Localized.text("Makes the apps excellent on iPad.")) {
-            [weak self] text in self?.purpose = text
-        }
-        let stack = UIStackView(arrangedSubviews: [top, hues, purposeField])
-        stack.axis = .vertical
-        stack.spacing = Theme.Spacing.m
-        let card = MachineCardView()
-        card.add(inset(stack))
-        column.addArrangedSubview(card)
+    /// A field with no box and no heading: its placeholder says what it is.
+    private func input(
+        _ text: String, placeholder: String, role: TypeRole, capitalization: UITextAutocapitalizationType,
+        onChange: @escaping (String) -> Void
+    ) -> UITextField {
+        let input = UITextField()
+        input.text = text
+        input.placeholder = placeholder
+        input.accessibilityLabel = placeholder
+        input.font = Theme.Ramp.font(role)
+        input.adjustsFontForContentSizeCategory = true
+        input.textColor = Theme.Color.label
+        input.autocapitalizationType = capitalization
+        input.autocorrectionType = .no
+        input.spellCheckingType = .no
+        input.returnKeyType = .done
+        input.clearButtonMode = .whileEditing
+        input.addAction(UIAction { action in
+            onChange((action.sender as? UITextField)?.text ?? "")
+        }, for: .editingChanged)
+        input.addAction(UIAction { action in
+            (action.sender as? UITextField)?.resignFirstResponder()
+        }, for: .primaryActionTriggered)
+        return input
     }
 
-    private func place() {
-        column.addArrangedSubview(MachinePage.header(Localized.text("Where it works")))
+    private var shownGlyph: String { glyph.isEmpty ? ExpertMaking.glyph(for: name) : glyph }
+
+    private func syncMark() {
+        mark.show(glyph: shownGlyph, hue: hue)
+        markButton.menu = markMenu()
+        markButton.accessibilityValue = "\(shownGlyph), \(hue.name)"
+    }
+
+    /// The mark is the press that changes it: its colour from a palette, its letters from a prompt.
+    private func markMenu() -> UIMenu {
+        let colours = UIMenu(
+            title: "", options: [.displayInline, .displayAsPalette],
+            children: ExpertHue.allCases.map { option in
+                UIAction(title: option.name, image: Self.dot(option), state: option == hue ? .on : .off) { [weak self] _ in
+                    Theme.Haptics.selection()
+                    self?.hue = option
+                    self?.syncMark()
+                }
+            })
+        let letters = UIAction(title: ExpertWords.letters, subtitle: shownGlyph, image: UIImage(systemName: "textformat")) {
+            [weak self] _ in self?.askLetters()
+        }
+        return UIMenu(children: [colours, letters])
+    }
+
+    private static func dot(_ hue: ExpertHue) -> UIImage {
+        let side: CGFloat = 26
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { context in
+            ExpertStyle.color(hue).setFill()
+            context.cgContext.fillEllipse(in: CGRect(x: 1, y: 1, width: side - 2, height: side - 2))
+        }.withRenderingMode(.alwaysOriginal)
+    }
+
+    private func askLetters() {
+        let alert = UIAlertController(title: ExpertWords.letters, message: nil, preferredStyle: .alert)
+        alert.addTextField { [glyph, name] field in
+            field.text = glyph
+            field.placeholder = ExpertMaking.glyph(for: name)
+            field.autocapitalizationType = .none
+            field.autocorrectionType = .no
+        }
+        alert.addAction(UIAlertAction(title: ExpertWords.cancel, style: .cancel))
+        alert.addAction(UIAlertAction(title: Localized.text("Done"), style: .default) { [weak self, weak alert] _ in
+            let typed = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespaces) ?? ""
+            self?.glyph = String(typed.prefix(2))
+            self?.syncMark()
+        })
+        present(alert, animated: true)
+    }
+
+    private func identityCard() -> UIView {
+        markButton.showsMenuAsPrimaryAction = true
+        markButton.accessibilityLabel = ExpertWords.markAndColour
+        markButton.translatesAutoresizingMaskIntoConstraints = false
+        let pencil = UIImageView(
+            image: UIImage(
+                systemName: "pencil.circle.fill",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
+            )?.applyingSymbolConfiguration(
+                UIImage.SymbolConfiguration(paletteColors: [Theme.Color.label, Theme.Color.groupedSurface])))
+        pencil.translatesAutoresizingMaskIntoConstraints = false
+        let holder = UIView()
+        holder.translatesAutoresizingMaskIntoConstraints = false
+        mark.removeFromSuperview()
+        markButton.removeFromSuperview()
+        holder.addSubview(mark)
+        holder.addSubview(pencil)
+        holder.addSubview(markButton)
+        NSLayoutConstraint.activate([
+            mark.topAnchor.constraint(equalTo: holder.topAnchor),
+            mark.bottomAnchor.constraint(equalTo: holder.bottomAnchor),
+            mark.leadingAnchor.constraint(equalTo: holder.leadingAnchor),
+            mark.trailingAnchor.constraint(equalTo: holder.trailingAnchor),
+            pencil.trailingAnchor.constraint(equalTo: holder.trailingAnchor, constant: 6),
+            pencil.bottomAnchor.constraint(equalTo: holder.bottomAnchor, constant: 6),
+            markButton.topAnchor.constraint(equalTo: holder.topAnchor, constant: -6),
+            markButton.bottomAnchor.constraint(equalTo: holder.bottomAnchor, constant: 6),
+            markButton.leadingAnchor.constraint(equalTo: holder.leadingAnchor, constant: -6),
+            markButton.trailingAnchor.constraint(equalTo: holder.trailingAnchor, constant: 6),
+        ])
+        let nameInput = input(name, placeholder: ExpertWords.name, role: .panelTitle, capitalization: .words) {
+            [weak self] text in
+            guard let self else { return }
+            self.name = text
+            self.syncMark()
+            self.navigationItem.rightBarButtonItem?.isEnabled = self.canSave
+        }
+        nameField = nameInput
+        let purposeInput = input(purpose, placeholder: ExpertWords.purpose, role: .rowTitle, capitalization: .sentences) {
+            [weak self] text in self?.purpose = text
+        }
+        let texts = UIStackView(arrangedSubviews: [nameInput, purposeInput])
+        texts.axis = .vertical
+        texts.spacing = Theme.Spacing.xs
+        let top = UIStackView(arrangedSubviews: [holder, texts])
+        top.alignment = .center
+        top.spacing = Theme.Spacing.m
+        let card = MachineCardView()
+        card.add(inset(top))
+        return card
+    }
+
+    private func placeCard() -> UIView {
         let card = MachineCardView()
         if isCreating, ExpertDesk.shared.board.machines.count > 1 {
             let machine = MachineRowView(
-                title: Localized.text("Machine"), detail: ExpertDesk.shared.profile(profileID)?.name)
-            let button = UIButton(configuration: .gray())
-            button.configuration?.title = Localized.text("Change")
-            button.configuration?.cornerStyle = .capsule
-            button.showsMenuAsPrimaryAction = true
-            button.menu = UIMenu(children: ExpertDesk.shared.board.machines.map { machine in
+                title: Localized.text("Machine"), detail: ExpertDesk.shared.profile(profileID)?.name,
+                image: Self.symbol("desktopcomputer"), tint: Theme.Color.secondaryLabel)
+            machine.leading.contentMode = .center
+            machine.trail(Self.updown())
+            cover(machine, menu: UIMenu(children: ExpertDesk.shared.board.machines.map { machine in
                 UIAction(title: machine.machine, state: machine.profileID == profileID ? .on : .off) { [weak self] _ in
                     self?.move(to: machine.profileID)
                 }
-            })
-            machine.trail(button)
+            }), label: Localized.text("Machine"), value: ExpertDesk.shared.profile(profileID)?.name)
             card.add(machine)
         }
-        let folder = field(ExpertWords.folder, directory, placeholder: "~/Dev", capitalization: .none) { [weak self] text in
-            self?.directory = text
+        let folder = input(directory, placeholder: ExpertWords.folderPlaceholder, role: .rowTitle, capitalization: .none) {
+            [weak self] text in self?.directory = text
         }
-        card.add(inset(folder))
-        card.add(modelRow())
-        card.add(effortRow())
-        column.addArrangedSubview(card)
+        folder.keyboardType = .URL
+        let icon = UIImageView(image: Self.symbol("folder"))
+        icon.tintColor = Theme.Color.secondaryLabel
+        icon.contentMode = .center
+        icon.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        let line = UIStackView(arrangedSubviews: [icon, folder])
+        line.alignment = .center
+        line.spacing = Theme.Spacing.m
+        line.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
+        card.add(inset(line))
+        return card
+    }
+
+    private static func symbol(_ name: String) -> UIImage? {
+        UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .medium))
+    }
+
+    private static func updown() -> UIImageView {
+        let image = UIImageView(
+            image: UIImage(
+                systemName: "chevron.up.chevron.down",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)))
+        image.tintColor = Theme.Color.tertiaryLabel
+        image.contentMode = .center
+        return image
+    }
+
+    /// Makes a whole row the press that opens a menu.
+    private func cover(_ rowView: UIView, menu: UIMenu, label: String, value: String?) {
+        let button = UIButton(type: .custom)
+        button.menu = menu
+        button.showsMenuAsPrimaryAction = true
+        button.accessibilityLabel = label
+        button.accessibilityValue = value
+        button.translatesAutoresizingMaskIntoConstraints = false
+        rowView.addSubview(button)
+        NSLayoutConstraint.activate([
+            button.topAnchor.constraint(equalTo: rowView.topAnchor),
+            button.bottomAnchor.constraint(equalTo: rowView.bottomAnchor),
+            button.leadingAnchor.constraint(equalTo: rowView.leadingAnchor),
+            button.trailingAnchor.constraint(equalTo: rowView.trailingAnchor),
+        ])
     }
 
     /// Another machine for a new expert: what was the old machine's — its folder, notebook, skills,
@@ -284,69 +452,164 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
     private func move(to profileID: String) {
         guard profileID != self.profileID else { return }
         Theme.Haptics.selection()
+        view.endEditing(true)
         self.profileID = profileID
         model = nil
         directory = ""
         notebookPath = nil
         skills = []
         availableSkills = []
+        draftingSkill = nil
         bench = []
         guards = []
         guardRule = nil
-        render()
+        rebuild()
         loadSkills()
     }
 
-    private func modelRow() -> UIView {
+    /// One press that has the machine write the expert from a skill it already keeps.
+    private func draftCard() -> UIView {
+        let card = MachineCardView()
+        let rowView = MachineRowView(
+            title: ExpertWords.draftFromSkill, detail: ExpertWords.draftFromSkillDetail, image: Self.symbol("sparkles"))
+        rowView.leading.contentMode = .center
+        if draftingSkill != nil {
+            let spinner = UIActivityIndicatorView(style: .medium)
+            spinner.startAnimating()
+            rowView.trail(spinner)
+            rowView.detailLabel.text = ExpertWords.drafting
+        } else {
+            rowView.trail(Self.updown())
+            cover(rowView, menu: UIMenu(children: availableSkills.map { skill in
+                UIAction(title: skill.name, subtitle: skill.description) { [weak self] _ in self?.draft(from: skill) }
+            }), label: ExpertWords.draftFromSkill, value: nil)
+        }
+        card.add(rowView)
+        return card
+    }
+
+    private func draft(from skill: ExpertSkill) {
+        guard draftingSkill == nil, let backend = ExpertDesk.shared.experts(forProfileID: profileID) else { return }
+        let asked = profileID
+        draftingSkill = skill.name
+        render()
+        Task { [weak self] in
+            do {
+                let drafted = try await backend.draftExpert(session: nil, skill: skill.name)
+                guard let self, self.profileID == asked, self.draftingSkill == skill.name else { return }
+                self.draftingSkill = nil
+                self.view.endEditing(true)
+                self.adopt(ExpertOutline.merged(drafted, over: self.draft))
+                Theme.Haptics.selection()
+                self.rebuild()
+            } catch {
+                guard let self, self.profileID == asked else { return }
+                self.draftingSkill = nil
+                self.render()
+                ExpertRouter.report(error, title: ExpertWords.draftFailed, from: self)
+            }
+        }
+    }
+
+    private static func symbol(for part: ExpertOutline.Part) -> String {
+        switch part {
+        case .charter: return "text.alignleft"
+        case .skills: return "wand.and.stars"
+        case .notebook: return "book.closed"
+        case .notes: return "checklist"
+        case .bench: return "ipad.and.iphone"
+        case .guards: return "checkmark.shield"
+        case .model: return "cpu"
+        }
+    }
+
+    private var keptNotes: Int { draftNotes.filter { ticks.contains($0.title) }.count }
+
+    private var modelName: String? {
+        model.flatMap { id in ModelCatalogStore.cached(profileID).first { $0.agentName == nil && $0.id == id }?.name ?? id }
+    }
+
+    private func outlineCard() -> UIView {
+        let card = MachineCardView()
+        for line in ExpertOutline.rows(draft, kept: keptNotes, modelName: modelName) {
+            let rowView = MachineRowView(
+                title: line.title, detail: line.value, image: Self.symbol(Self.symbol(for: line.part)),
+                tint: line.isSet ? Theme.Color.accent : Theme.Color.tertiaryLabel,
+                action: line.part == .model ? nil : { [weak self] in self?.open(line.part) })
+            rowView.leading.contentMode = .center
+            rowView.detailLabel.numberOfLines = 1
+            rowView.detailLabel.lineBreakMode = .byTruncatingMiddle
+            if line.part == .model {
+                rowView.trail(Self.updown())
+                cover(rowView, menu: modelMenu(), label: line.title, value: line.value)
+            } else {
+                rowView.chevron()
+                rowView.isAccessibilityElement = true
+                rowView.accessibilityLabel = line.title
+                rowView.accessibilityValue = line.value
+                rowView.accessibilityTraits = .button
+            }
+            card.add(rowView)
+        }
+        return card
+    }
+
+    private func modelMenu() -> UIMenu {
+        let standard = Localized.text("The machine’s default")
         let catalog = ModelCatalogStore.cached(profileID).filter { $0.agentName == nil }
-        let current = model.flatMap { id in catalog.first { $0.id == id }?.name ?? id }
-        let rowView = MachineRowView(title: ExpertWords.model, detail: current ?? Localized.text("The machine’s default"))
-        let button = UIButton(configuration: .gray())
-        button.configuration?.title = Localized.text("Choose")
-        button.configuration?.cornerStyle = .capsule
-        button.showsMenuAsPrimaryAction = true
-        var actions: [UIMenuElement] = [
-            UIAction(title: Localized.text("The machine’s default"), state: model == nil ? .on : .off) { [weak self] _ in
+        var models: [UIMenuElement] = [
+            UIAction(title: standard, state: model == nil ? .on : .off) { [weak self] _ in
                 self?.model = nil
                 self?.render()
             }
         ]
-        actions += catalog.prefix(40).map { info in
+        models += catalog.prefix(40).map { info in
             UIAction(title: info.name, subtitle: info.id, state: info.id == model ? .on : .off) { [weak self] _ in
                 self?.model = info.id
                 self?.render()
             }
         }
-        button.menu = UIMenu(children: actions)
-        rowView.trail(button)
-        return rowView
-    }
-
-    private func effortRow() -> UIView {
         let levels = ["low", "medium", "high", "xhigh", "max"]
-        let rowView = MachineRowView(
-            title: Localized.text("Effort"), detail: effort ?? Localized.text("The machine’s default"))
-        let button = UIButton(configuration: .gray())
-        button.configuration?.title = Localized.text("Choose")
-        button.configuration?.cornerStyle = .capsule
-        button.showsMenuAsPrimaryAction = true
-        button.menu = UIMenu(children: [
-            UIAction(title: Localized.text("The machine’s default"), state: effort == nil ? .on : .off) { [weak self] _ in
-                self?.effort = nil
-                self?.render()
-            }
-        ] + levels.map { level in
-            UIAction(title: level, state: level == effort ? .on : .off) { [weak self] _ in
-                self?.effort = level
-                self?.render()
-            }
-        })
-        rowView.trail(button)
-        return rowView
+        let efforts = UIMenu(
+            title: Localized.text("Effort"), subtitle: effort ?? standard, image: UIImage(systemName: "gauge.with.dots.needle.50percent"),
+            children: [
+                UIAction(title: standard, state: effort == nil ? .on : .off) { [weak self] _ in
+                    self?.effort = nil
+                    self?.render()
+                }
+            ] + levels.map { level in
+                UIAction(title: level, state: level == effort ? .on : .off) { [weak self] _ in
+                    self?.effort = level
+                    self?.render()
+                }
+            })
+        return UIMenu(children: [efforts, UIMenu(title: ExpertWords.model, options: .displayInline, children: models)])
     }
 
-    private func charterSection() {
-        column.addArrangedSubview(MachinePage.header(ExpertWords.charter))
+
+    private func open(_ part: ExpertOutline.Part) {
+        view.endEditing(true)
+        let opened = ExpertEditorPageViewController(
+            title: ExpertOutline.row(part, draft).title, rebuilds: part != .charter,
+            build: { [weak self] column in self?.fill(part, into: column) },
+            closed: { [weak self] in self?.render() })
+        page = opened
+        navigationController?.pushViewController(opened, animated: true)
+    }
+
+    private func fill(_ part: ExpertOutline.Part, into column: UIStackView) {
+        switch part {
+        case .charter: charterSection(into: column)
+        case .skills: skillsSection(into: column)
+        case .notebook: notebookSection(into: column)
+        case .notes: notesSection(into: column)
+        case .bench: benchSection(into: column)
+        case .guards: guardsSection(into: column)
+        case .model: break
+        }
+    }
+
+    private func charterSection(into column: UIStackView) {
         charterView.text = charter
         charterView.font = Theme.Ramp.font(.cardBody)
         charterView.adjustsFontForContentSizeCategory = true
@@ -355,45 +618,61 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
         charterView.isScrollEnabled = false
         charterView.delegate = self
         charterView.accessibilityLabel = ExpertWords.charter
+        if charterView.constraints.isEmpty {
+            charterView.heightAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
+        }
         let card = MachineCardView()
         card.add(inset(charterView))
         column.addArrangedSubview(card)
-        column.addArrangedSubview(
-            MachinePage.footnote(Localized.text("Standing instructions for this kind of work: a map, not a manual. %d words.", charterWords)))
+        let count = MachinePage.footnote(charterFootnote)
+        charterCount = count
+        column.addArrangedSubview(count)
+        if charter.isEmpty {
+            DispatchQueue.main.async { [weak self] in self?.charterView.becomeFirstResponder() }
+        }
     }
 
-    private var charterWords: Int {
-        charter.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
+    private var charterFootnote: String {
+        Localized.text("Standing instructions for this kind of work: a map, not a manual. %d words.", ExpertOutline.words(charter))
     }
 
     func textViewDidChange(_ textView: UITextView) {
         charter = textView.text
+        charterCount?.text = charterFootnote
     }
 
-    private func skillsSection() {
-        column.addArrangedSubview(MachinePage.header(ExpertWords.skills))
-        let names = Array(NSOrderedSet(array: skills + availableSkills.map(\.name))) as? [String] ?? skills
+    private func skillsSection(into column: UIStackView) {
+        var names = skills
+        for skill in availableSkills where !names.contains(skill.name) { names.append(skill.name) }
         guard !names.isEmpty else {
             column.addArrangedSubview(MachinePage.footnote(Localized.text("This machine has no skills.")))
             return
         }
-        let chips = ExpertChipsView()
-        chips.show(names.map { ExpertLine($0) }, selected: Set(skills)) { [weak self] tapped in
-            guard let self else { return }
-            Theme.Haptics.selection()
-            if let index = self.skills.firstIndex(of: tapped) {
-                self.skills.remove(at: index)
-            } else {
-                self.skills.append(tapped)
+        let card = MachineCardView()
+        for name in names {
+            let chosen = skills.contains(name)
+            let symbol = chosen ? "checkmark.circle.fill" : "circle"
+            let rowView = MachineRowView(
+                title: name, detail: availableSkills.first { $0.name == name }?.description,
+                image: UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .semibold)),
+                tint: chosen ? Theme.Color.accent : Theme.Color.tertiaryLabel
+            ) { [weak self] in
+                guard let self else { return }
+                Theme.Haptics.selection()
+                if let index = self.skills.firstIndex(of: name) { self.skills.remove(at: index) } else { self.skills.append(name) }
+                self.render()
             }
-            self.render()
+            rowView.detailLabel.numberOfLines = 2
+            rowView.isAccessibilityElement = true
+            rowView.accessibilityLabel = name
+            rowView.accessibilityTraits = chosen ? [.button, .selected] : .button
+            card.add(rowView)
         }
-        column.addArrangedSubview(chips)
+        column.addArrangedSubview(card)
         column.addArrangedSubview(MachinePage.footnote(Localized.text("Every task loads these first.")))
     }
 
-    private func notebookSection() {
-        column.addArrangedSubview(MachinePage.header(ExpertWords.notebook))
+    private func notebookSection(into column: UIStackView) {
         let card = MachineCardView()
         let choice = UISegmentedControl(items: [ExpertWords.notebookOwn, Localized.text("A folder on the machine")])
         choice.selectedSegmentIndex = notebookPath == nil ? 0 : 1
@@ -418,9 +697,7 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
             MachinePage.footnote(Localized.text("A folder you already keep is adopted as it is: one fact per file, indexed in MEMORY.md. Notes are only written when you accept them.")))
     }
 
-    private func notesSection() {
-        column.addArrangedSubview(
-            MachinePage.header(Localized.text("First notes · %d drafted", draftNotes.count)))
+    private func notesSection(into column: UIStackView) {
         let card = MachineCardView()
         for note in draftNotes {
             let ticked = ticks.contains(note.title)
@@ -455,8 +732,7 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
         column.addArrangedSubview(card)
     }
 
-    private func benchSection() {
-        column.addArrangedSubview(MachinePage.header(ExpertWords.bench))
+    private func benchSection(into column: UIStackView) {
         let card = MachineCardView()
         for (index, item) in bench.enumerated() {
             let rowView = MachineRowView(title: item.name, detail: Self.describe(item)) { [weak self] in
@@ -486,8 +762,7 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
         return parts.joined(separator: " · ")
     }
 
-    private func guardsSection() {
-        column.addArrangedSubview(MachinePage.header(ExpertWords.guards))
+    private func guardsSection(into column: UIStackView) {
         let card = MachineCardView()
         for (index, item) in guards.enumerated() {
             var detail = item.command
@@ -509,7 +784,7 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
         card.add(add)
         card.add(ruleRow())
         column.addArrangedSubview(card)
-        column.addArrangedSubview(MachinePage.footnote(ExpertWords.noGuards))
+        if guards.isEmpty { column.addArrangedSubview(MachinePage.footnote(ExpertWords.noGuards)) }
     }
 
     private func ruleRow() -> UIView {
@@ -544,17 +819,15 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
         return rowView
     }
 
-    private func deleteSection() {
+    private func deleteCard() -> UIView {
         let card = MachineCardView()
         let rowView = MachineRowView(title: ExpertWords.delete, detail: ExpertWords.deleteDetail) { [weak self] in
             self?.confirmDelete()
         }
         rowView.titleLabel.textColor = Theme.Color.danger
         card.add(rowView)
-        column.addArrangedSubview(card)
+        return card
     }
-
-    // MARK: Bench and guards
 
     private func editBench(at index: Int?) {
         let item = index.map { bench[$0] } ?? ExpertBenchItem(name: "", kind: .appleDevice)
@@ -586,7 +859,6 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
         navigationController?.pushViewController(editor, animated: true)
     }
 
-    // MARK: Saving
 
     private func save() {
         guard !saving, let backend = ExpertDesk.shared.experts(forProfileID: profileID) else { return }
@@ -670,6 +942,52 @@ final class ExpertEditorViewController: UIViewController, UITextViewDelegate {
             }
         })
         present(alert, animated: true)
+    }
+}
+
+/// One part of an expert opened from the editor's front page: the editor fills it, and fills it
+/// again whenever what it shows changes.
+@MainActor
+final class ExpertEditorPageViewController: UIViewController {
+    private let rebuilds: Bool
+    private let build: (UIStackView) -> Void
+    private let closed: () -> Void
+    private var scroll: UIScrollView!
+    private var column: UIStackView!
+    private var built = false
+
+    init(title: String, rebuilds: Bool, build: @escaping (UIStackView) -> Void, closed: @escaping () -> Void) {
+        self.rebuilds = rebuilds
+        self.build = build
+        self.closed = closed
+        super.init(nibName: nil, bundle: nil)
+        self.title = title
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        (scroll, column) = MachinePage.install(in: self)
+        reload()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        view.endEditing(true)
+        closed()
+    }
+
+    /// A page holding a text view being typed in is filled once, so the keyboard is never taken
+    /// from under the person.
+    func reload() {
+        guard isViewLoaded, rebuilds || !built else { return }
+        built = true
+        let offset = scroll.contentOffset
+        MachinePage.clear(column)
+        build(column)
+        view.layoutIfNeeded()
+        scroll.contentOffset = offset
     }
 }
 

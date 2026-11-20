@@ -121,8 +121,9 @@ extension HomeViewController {
 #if DEBUG
     extension HomeViewController {
         /// `TAILSCODE_OPEN_EXPERT=demo-x-ipad[:notebook|:guards|:journal|:task|:edit|:draft|:brief]`,
-        /// `TAILSCODE_OPEN_EXPERT=shelf` or `=chooser` puts a screen about an expert on screen at launch,
-        /// so each can be photographed without a hand.
+        /// `TAILSCODE_OPEN_EXPERT=shelf`, `=new` or `=chooser` puts a screen about an expert on screen at
+        /// launch, and `TAILSCODE_EXPERT_PART=charter|skills|notebook|notes|bench|guards` opens that part of
+        /// an editor, so each can be photographed without a hand.
         func openExpertScreensForVerification() {
             guard let wanted = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_EXPERT"] else { return }
             let parts = wanted.split(separator: ":").map(String.init)
@@ -136,6 +137,9 @@ extension HomeViewController {
                 switch parts.first {
                 case "shelf":
                     self.pushExperts()
+                    return
+                case "new":
+                    ExpertRouter.newExpert(from: self)
                     return
                 case "chooser":
                     if !ExpertDesk.shared.board.isEmpty {

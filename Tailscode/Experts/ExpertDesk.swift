@@ -410,7 +410,8 @@ enum ExpertRouter {
         controller.present(nav, animated: true)
     }
 
-    /// A new expert: from a skill on the machine, or blank, on the machine the person picks.
+    /// A new expert opens straight in its editor, on the first machine that keeps experts; the
+    /// editor is where another machine is picked and where a skill drafts it.
     static func newExpert(from controller: UIViewController, sourceView: UIView? = nil) {
         let machines = ExpertDesk.shared.board.machines
         guard !machines.isEmpty else {
@@ -420,24 +421,7 @@ enum ExpertRouter {
             controller.present(alert, animated: true)
             return
         }
-        let sheet = UIAlertController(title: ExpertWords.newExpert, message: nil, preferredStyle: .actionSheet)
-        for machine in machines {
-            let suffix = machines.count > 1 ? " · \(machine.machine)" : ""
-            sheet.addAction(
-                UIAlertAction(title: ExpertWords.makeFromSkill + suffix, style: .default) { _ in
-                    ExpertSkillPickerViewController.present(profileID: machine.profileID, from: controller)
-                })
-            sheet.addAction(
-                UIAlertAction(title: ExpertWords.makeBlank + suffix, style: .default) { _ in
-                    ExpertEditorViewController.presentNew(
-                        profileID: machine.profileID, draft: ExpertDraft(name: ""), from: controller)
-                })
-        }
-        sheet.addAction(UIAlertAction(title: ExpertWords.cancel, style: .cancel))
-        let anchor = sourceView ?? controller.view
-        sheet.popoverPresentationController?.sourceView = anchor
-        sheet.popoverPresentationController?.sourceRect = anchor?.bounds ?? .zero
-        controller.present(sheet, animated: true)
+        ExpertEditorViewController.presentNew(profileID: machines[0].profileID, draft: ExpertDraft(name: ""), from: controller)
     }
 
     /// Opens a conversation by its id from any screen about an expert.
