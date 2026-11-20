@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 #if canImport(FoundationModels)
 import FoundationModels
 import MidgarCore
@@ -10,15 +11,58 @@ import MidgarCore
 /// and runs unchanged on the iOS 18 baseline (the framework is weak-linked).
 @MainActor
 final class PromptEnhancer {
-    enum Availability: Equatable {
+    enum Availability: Equatable, Sendable {
         case available
         case unavailable(String)
     }
 
-    private var warmSession: AnyObject?
-    private var didPrewarm = false
+    /// The model's availability as last read, for the whole app. Reading it asks the system's
+    /// model service, and every composer asked on each focus and each keystroke, on the main
+    /// thread; the iPad logged 140–330 ms stalls right after a composer took focus. It is read once
+    /// when first needed and again off the main thread whenever the app comes forward, which is
+    /// when a person can have turned Apple Intelligence on or off.
+    private static var known: Availability?
+    private static var refreshing = false
+    private static var watchingForeground = false
+    /// Whether the model has been warmed since the app last came forward. Every conversation used
+    /// to build and warm a session of its own on the main thread the first time its composer took
+    /// focus; the model is one per device, so it is warmed once, off the main thread.
+    private static var warmed = false
 
     var availability: Availability {
+        if let known = Self.known { return known }
+        let read = Self.readAvailability()
+        Self.known = read
+        Self.watchForeground()
+        return read
+    }
+
+    private static func watchForeground() {
+        guard !watchingForeground else { return }
+        watchingForeground = true
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                PromptEnhancer.warmed = false
+                PromptEnhancer.refreshAvailability()
+            }
+        }
+    }
+
+    private static func refreshAvailability() {
+        guard !refreshing else { return }
+        refreshing = true
+        Task.detached(priority: .utility) {
+            let read = PromptEnhancer.readAvailability()
+            await MainActor.run {
+                PromptEnhancer.known = read
+                PromptEnhancer.refreshing = false
+            }
+        }
+    }
+
+    nonisolated private static func readAvailability() -> Availability {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
             switch SystemLanguageModel.default.availability {
@@ -50,23 +94,24 @@ final class PromptEnhancer {
             String(localized: "Prompt enhancement needs Apple Intelligence on iOS 26."))
     }
 
-    /// Loads the model into memory once, on first focus, so the first real
-    /// generation doesn't pay the cold-start cost.
+    /// Loads the model into memory once, on the first focus since the app came forward, so the
+    /// first real generation doesn't pay the cold-start cost.
     func prewarm() {
-        switch availability {
+        guard !Self.warmed else { return }
+        let state = availability
+        switch state {
         case .available: MidgarLog.info("enhance: prewarm — model available", category: .ui)
         case .unavailable(let reason): MidgarLog.info(
             "enhance: prewarm — unavailable: \(reason)",
             category: .ui
         )
         }
+        guard case .available = state else { return }
+        Self.warmed = true
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            guard !didPrewarm, case .available = availability else { return }
-            didPrewarm = true
-            let session = LanguageModelSession(instructions: Self.instructions)
-            session.prewarm()
-            warmSession = session
+            let instructions = Self.instructions
+            Task.detached(priority: .utility) { await ModelWarmth.shared.warm(instructions: instructions) }
         }
         #endif
     }
@@ -135,6 +180,20 @@ final class PromptEnhancer {
 }
 
 #if canImport(FoundationModels)
+/// Holds the one warmed session, so the model it loaded stays resident until the system lets it
+/// go, without the main thread building or warming it.
+@available(iOS 26.0, *)
+private actor ModelWarmth {
+    static let shared = ModelWarmth()
+    private var session: LanguageModelSession?
+
+    func warm(instructions: String) {
+        let session = LanguageModelSession(instructions: instructions)
+        session.prewarm()
+        self.session = session
+    }
+}
+
 @available(iOS 26.0, *)
 @Generable
 private struct EnhancementSet {
