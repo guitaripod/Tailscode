@@ -275,7 +275,7 @@ targets:
         Debug:
           CODE_SIGN_ENTITLEMENTS: Tailscode/Tailscode-Debug.entitlements
           CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
-          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Dev iPhone Air 2026
+          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Dev 2026-11
         Release:
           EXCLUDED_SOURCE_FILE_NAMES: NotificationViewController.swift
           CODE_SIGN_ENTITLEMENTS: Tailscode/Tailscode-Release.entitlements
@@ -362,7 +362,7 @@ targets:
       configs:
         Debug:
           CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
-          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Widget Dev iPhone Air 2026
+          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Widget Dev 2026-11
         Release:
           CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Distribution"
           PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Widget App Store 2026
@@ -419,7 +419,7 @@ targets:
       configs:
         Debug:
           CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
-          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode NSE Dev iPhone Air 2026
+          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode NSE Dev 2026-11
         Release:
           CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Distribution"
           PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode NSE App Store 2026
@@ -481,7 +481,7 @@ targets:
       configs:
         Debug:
           CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Development: Marcus Ziadé (AUJJ76QHS7)"
-          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Notification UI Dev iPhone Air 2026
+          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Notification UI Dev 2026-11
         Release:
           CODE_SIGN_IDENTITY[sdk=iphoneos*]: "Apple Distribution"
           PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: Tailscode Notification UI App Store 2026

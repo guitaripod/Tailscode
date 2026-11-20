@@ -127,6 +127,7 @@ extension ChatViewController {
     /// is drawn now, on a page that is holding still.
     func releaseRiseHold() {
         canvasGlide = nil
+        MotionQuiet.shared.release()
         if heldUnderRise {
             heldUnderRise = false
             pendingUnderRise = false

@@ -80,6 +80,8 @@ final class SessionListViewController: UIViewController {
     /// Spaces the renders that listings, activity and read marks ask for, so a burst of them
     /// draws the list once at its start and once at its end.
     var renderPacing = RenderCoalescer()
+    /// A draw put off until a motion the reader is watching beside this list has finished.
+    var waitsOutMotion = false
     /// What the chip bar and the bar buttons were last built from, so a listing that changed
     /// neither rebuilds neither.
     var drawnChips: [ChipSpec]?

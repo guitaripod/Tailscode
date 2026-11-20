@@ -158,6 +158,16 @@ extension SessionListViewController {
     /// asked for is always the one drawn.
     func requestRender() {
         guard mayRender() else { return }
+        if let quiet = MotionQuiet.shared.remaining() {
+            guard !waitsOutMotion else { return }
+            waitsOutMotion = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + quiet + 0.02) { [weak self] in
+                guard let self else { return }
+                self.waitsOutMotion = false
+                self.requestRender()
+            }
+            return
+        }
         let interval = SidebarCadence.interval(at: .calm, visible: true)
         switch renderPacing.request(at: CACurrentMediaTime(), interval: interval) {
         case .runNow:

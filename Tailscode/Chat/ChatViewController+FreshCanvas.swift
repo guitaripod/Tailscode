@@ -256,6 +256,7 @@ extension ChatViewController {
     /// page it ended on, and every row the reader passed on the way up was blank.
     private func glideFreshCanvas(from start: CGFloat, toward first: CGFloat) {
         canvasGlide?.stop()
+        MotionQuiet.shared.hold(for: FreshCanvas.riseDuration + 0.05)
         var glide = CanvasGlidePath(from: start, aim: first)
         canvasGlide = FrameStepper { [weak self] elapsed in
             guard let self else { return false }
