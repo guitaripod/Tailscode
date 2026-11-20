@@ -423,9 +423,13 @@ final class HomeViewController: UIViewController {
 
     /// Whole quota cards need a tall pane; a short one (the Duo's inner display flat, a page of
     /// the book) keeps the one-line glance, because the composer takes the room the cards would.
+    /// An iPad mini held sideways is 756 points tall, room enough for the status, a row of cards
+    /// and the composer, so the line sits below it.
     var showsQuotaCards: Bool {
-        showsToday && view.bounds.height >= 760 && view.bounds.width >= 460
+        showsToday && view.bounds.height >= Self.quotaCardsMinimumHeight && view.bounds.width >= 460
     }
+
+    static let quotaCardsMinimumHeight: CGFloat = 720
 
     private func refreshTodayLayout() {
         let state = "\(showsToday)|\(showsQuotaCards)"
