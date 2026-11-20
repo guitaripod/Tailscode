@@ -94,7 +94,7 @@ final class WorkspaceSplitViewController: UISplitViewController {
 
     override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
-        fitColumns(to: view.bounds.width)
+        fitColumns(to: view.bounds.size)
         fitFold()
     }
 
@@ -102,45 +102,47 @@ final class WorkspaceSplitViewController: UISplitViewController {
         to size: CGSize, with coordinator: any UIViewControllerTransitionCoordinator
     ) {
         super.viewWillTransition(to: size, with: coordinator)
-        fitColumns(to: size.width)
+        fitColumns(to: size)
     }
 
-    private enum WidthBand { case narrow, medium, wide }
-    private var widthBand: WidthBand?
+    private var widthBand: WorkspaceColumns?
 
-    /// How many columns a window's width can hold without starving the conversation. A wide window
-    /// tiles all three; a middling one keeps the list beside the conversation and slides the
-    /// sidebar in over them when asked; a narrow one gives the conversation the width and lays
-    /// the list over it on demand. Decided only when the width crosses a band, so a column a
-    /// person put away stays put until the window itself changes.
+    /// How many columns a window's size can hold without starving the conversation
+    /// (`WorkspaceColumns`): all three on a 13-inch held sideways, the list beside a whole
+    /// conversation on an 11-inch or a mini held sideways, and the conversation alone on an
+    /// upright 11-inch or two thirds of a split, with the columns that do not fit laid over it on
+    /// demand. Decided only when the size crosses a line, so a column a person put away stays put
+    /// until the window itself changes.
     ///
     /// Whether there are columns at all is the size class's to say, once: a large iPhone on its
-    /// side is regular wide, 900-odd points across, the width of a middling iPad window, and keeps
-    /// the list beside the conversation however short it is. A height rule applied on top of the
-    /// system's — the stack held whenever the window was short — reached the split one trait pass
-    /// after it had already spread into columns, so every turn of the phone drew the list and took
-    /// it away again.
-    private func fitColumns(to width: CGFloat) {
-        guard width > 0 else { return }
-        let band: WidthBand = width >= 1180 ? .wide : width >= 820 ? .medium : .narrow
+    /// side is regular wide, 900-odd points across, and keeps the list beside the conversation
+    /// however short it is. A height rule applied on top of the system's — the stack held whenever
+    /// the window was short — reached the split one trait pass after it had already spread into
+    /// columns, so every turn of the phone drew the list and took it away again.
+    private func fitColumns(to size: CGSize) {
+        guard size.width > 0 else { return }
+        let band = WorkspaceColumns.fit(
+            width: Double(size.width), height: Double(size.height), compact: false)
+        let list = CGFloat(WorkspaceColumns.listColumnWidth(band, width: Double(size.width)))
+        if bookPage == nil, abs(preferredSupplementaryColumnWidth - list) > 0.5 {
+            preferredSupplementaryColumnWidth = list
+        }
         guard band != widthBand else { return }
         widthBand = band
         switch band {
-        case .wide:
+        case .all:
             preferredSplitBehavior = .tile
-            preferredSupplementaryColumnWidth = 360
             preferredDisplayMode = .twoBesideSecondary
-        case .medium:
+        case .listBeside:
             preferredSplitBehavior = .displace
-            preferredSupplementaryColumnWidth = 320
             preferredDisplayMode = .oneBesideSecondary
-        case .narrow:
+        case .conversation, .stack:
             preferredSplitBehavior = .overlay
-            preferredSupplementaryColumnWidth = 320
             preferredDisplayMode = .secondaryOnly
         }
         MidgarLog.info(
-            "workspace width \(Int(width)) band=\(String(describing: band))", category: .ui)
+            "workspace size \(Int(size.width))x\(Int(size.height)) band=\(String(describing: band))",
+            category: .ui)
     }
 
     private var bookPage: CGFloat?
@@ -205,7 +207,8 @@ final class WorkspaceSplitViewController: UISplitViewController {
         bookPage = nil
         minimumSupplementaryColumnWidth = Self.listWidths.minimum
         maximumSupplementaryColumnWidth = Self.listWidths.maximum
-        preferredSupplementaryColumnWidth = widthBand == .wide ? 360 : 320
+        preferredSupplementaryColumnWidth = CGFloat(
+            WorkspaceColumns.listColumnWidth(widthBand ?? .listBeside, width: Double(view.bounds.width)))
         preferredDisplayMode = bandDisplayMode
         detailNav.additionalSafeAreaInsets.left = 0
         inspector.uninstall()
@@ -433,6 +436,16 @@ final class WorkspaceSplitViewController: UISplitViewController {
         show(.supplementary)
     }
 
+    /// A sidebar brought out over a window that has no room to keep it has done its job once a row
+    /// in it is chosen, and steps back so the choice gets the room; one that tiles beside the list
+    /// stays. Putting it away here also spares a thumb the reach to its button at the top.
+    func sidebarDidChoose() {
+        guard !isCollapsed, widthBand != .all else { return }
+        let out: [UISplitViewController.DisplayMode] = [.twoOverSecondary, .twoDisplaceSecondary, .twoBesideSecondary]
+        guard out.contains(displayMode) else { return }
+        hide(.primary)
+    }
+
     /// The chord that shows and hides the chat list on the desktops shows and hides the columns
     /// here, giving the conversation the whole window and handing it back.
     func toggleColumns() {
@@ -446,11 +459,11 @@ final class WorkspaceSplitViewController: UISplitViewController {
 
     private var bandDisplayMode: UISplitViewController.DisplayMode {
         switch widthBand {
-        case .wide: return .twoBesideSecondary
-        case .medium, nil:
+        case .all: return .twoBesideSecondary
+        case .listBeside, nil:
             return bookPage != nil && detailNav.topViewController is ChatViewController
                 ? .oneOverSecondary : .oneBesideSecondary
-        case .narrow: return .oneOverSecondary
+        case .conversation, .stack: return .oneOverSecondary
         }
     }
 
@@ -567,6 +580,7 @@ final class WorkspaceSplitViewController: UISplitViewController {
             case "home": showHome()
             case "search": beginSearch()
             case "hide", "show": toggleColumns()
+            case "sidebar": show(.primary)
             case "new": startNewChat()
             case "pin":
                 let key = argument.split(separator: "/", maxSplits: 1).map(String.init)
@@ -704,6 +718,12 @@ extension UIResponder {
 }
 
 extension WorkspaceSplitViewController: UISplitViewControllerDelegate {
+    func splitViewController(
+        _ svc: UISplitViewController, willChangeTo displayMode: UISplitViewController.DisplayMode
+    ) {
+        chatList.viewIfLoaded?.setNeedsLayout()
+    }
+
     func splitViewController(
         _ svc: UISplitViewController,
         topColumnForCollapsingToProposedTopColumn proposedTopColumn: UISplitViewController.Column

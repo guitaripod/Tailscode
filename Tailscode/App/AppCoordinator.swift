@@ -250,7 +250,8 @@ final class AppCoordinator: NSObject {
         /// `TAILSCODE_WINDOW=1376x1032` lays the window out at that size, turned a quarter when it
         /// is wider than the screen, because a simulator in windowed mode refuses a programmatic
         /// rotation and no simctl command resizes a window — this is how the wide arrangements are
-        /// photographed on a device that boots upright.
+        /// photographed on a device that boots upright. A window narrower than 680 points is given
+        /// the compact width an iPad gives a window that size, the halves and thirds of a split.
         private func sizeWindowForVerificationIfAsked() {
             guard let spec = ProcessInfo.processInfo.environment["TAILSCODE_WINDOW"] else { return }
             let sides = spec.split(separator: "x").compactMap { Double($0) }
@@ -259,6 +260,7 @@ final class AppCoordinator: NSObject {
             window.bounds = CGRect(x: 0, y: 0, width: sides[0], height: sides[1])
             window.center = CGPoint(x: screen.midX, y: screen.midY)
             if sides[0] > screen.width { window.transform = CGAffineTransform(rotationAngle: .pi / 2) }
+            if sides[0] < 680 { window.rootViewController?.traitOverrides.horizontalSizeClass = .compact }
             window.rootViewController?.setNeedsStatusBarAppearanceUpdate()
         }
 

@@ -473,8 +473,9 @@ final class SidebarViewController: UIViewController {
         case .schedules: workspace.show(place: SchedulesViewController())
         case .video: workspace.home.presentVideo()
         case .images: workspace.home.presentImage()
-        case .delegate: openDelegate(from: indexPath)
+        case .delegate: return openDelegate(from: indexPath)
         }
+        workspace.sidebarDidChoose()
     }
 
     /// One machine opens its board outright; several are asked about first, from the row that
@@ -537,6 +538,7 @@ extension SidebarViewController: UICollectionViewDelegate {
         case .pinned(let key):
             Theme.Haptics.selection()
             owner?.chatList.open(key: key)
+            owner?.sidebarDidChoose()
             return false
         }
     }
@@ -549,9 +551,13 @@ extension SidebarViewController: UICollectionViewDelegate {
             syncSelection()
             return
         }
-        guard scope != reading.scope else { return }
+        guard scope != reading.scope else {
+            owner?.sidebarDidChoose()
+            return
+        }
         Theme.Haptics.selection()
         choose(scope)
+        owner?.sidebarDidChoose()
     }
 
     func collectionView(
