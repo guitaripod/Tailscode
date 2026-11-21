@@ -19,6 +19,7 @@ final class MasterShelfCell: UICollectionViewCell {
     private let header = UIStackView()
     private let titleLabel = UILabel()
     private let allButton = UIButton(type: .system)
+    private let beta = BetaBadge(feature: .masters, reportLines: { MasterDesk.shared.betaReportLines })
     private var card = MachineCardView()
     private let column = UIStackView()
     private let silentLabel = MachinePage.footnote("")
@@ -41,9 +42,11 @@ final class MasterShelfCell: UICollectionViewCell {
         allButton.configuration = all
         allButton.addAction(UIAction { [weak self] _ in self?.onAll?() }, for: .touchUpInside)
         header.addArrangedSubview(titleLabel)
+        header.addArrangedSubview(beta)
         header.addArrangedSubview(UIView())
         header.addArrangedSubview(allButton)
-        header.alignment = .lastBaseline
+        header.alignment = .center
+        header.spacing = Theme.Spacing.s
         header.isLayoutMarginsRelativeArrangement = true
         header.directionalLayoutMargins = NSDirectionalEdgeInsets(
             top: 0, leading: Theme.Spacing.xs, bottom: 0, trailing: Theme.Spacing.xs)

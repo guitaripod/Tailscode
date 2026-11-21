@@ -64,7 +64,7 @@ extension MainWindow {
             let delegate = presentDelegate(host: demo)
             delegate.openBetaCard()
             line = delegate.betaReading
-        case .voiceCall:
+        case .voiceCall, .masters:
             let preview = BetaPreviewWindow.present(feature: feature, parent: parent)
             preview.badge.open()
             line = preview.badge.line

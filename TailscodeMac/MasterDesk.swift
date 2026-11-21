@@ -14,6 +14,7 @@ final class MasterDesk {
     static let didChange = Notification.Name("tailscode.mac.masterDesk.didChange")
 
     private(set) var board = MasterBoard.empty
+    var betaReportLines: [String] { board.betaReportLines }
     private(set) var loadedOnce = false
     private var beat: Timer?
     private var fastBeat: Timer?

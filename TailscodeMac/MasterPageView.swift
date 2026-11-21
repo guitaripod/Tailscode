@@ -537,6 +537,7 @@ final class MasterPageView: NSView, NSSearchFieldDelegate {
 final class MasterHeadView: NSView {
     private let mark = MasterMarkView(glyph: "", hue: .blue, side: 58)
     private let name = NSTextField(labelWithString: "")
+    private let beta = BetaBadge(feature: .masters, reportLines: { MasterDesk.shared.betaReportLines })
     private let purpose = NSTextField(wrappingLabelWithString: "")
     private let meta = ChipFlow()
     private let newTask = NSButton()
@@ -588,7 +589,24 @@ final class MasterHeadView: NSView {
         buttons.spacing = MacTheme.Spacing.s
         buttons.setHuggingPriority(.required, for: .horizontal)
         masterHug(buttons)
-        for view in [name, purpose, meta] { words.addArrangedSubview(view) }
+        let nameRow = NSView()
+        nameRow.translatesAutoresizingMaskIntoConstraints = false
+        for view in [name, beta] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            nameRow.addSubview(view)
+        }
+        name.setContentHuggingPriority(.required, for: .horizontal)
+        beta.setContentHuggingPriority(.required, for: .horizontal)
+        beta.setContentCompressionResistancePriority(.required, for: .horizontal)
+        NSLayoutConstraint.activate([
+            name.leadingAnchor.constraint(equalTo: nameRow.leadingAnchor),
+            name.topAnchor.constraint(equalTo: nameRow.topAnchor),
+            name.bottomAnchor.constraint(equalTo: nameRow.bottomAnchor),
+            beta.leadingAnchor.constraint(equalTo: name.trailingAnchor, constant: MacTheme.Spacing.s),
+            beta.centerYAnchor.constraint(equalTo: name.centerYAnchor),
+            beta.trailingAnchor.constraint(lessThanOrEqualTo: nameRow.trailingAnchor),
+        ])
+        for view in [nameRow, purpose, meta] as [NSView] { words.addArrangedSubview(view) }
         words.orientation = .vertical
         words.alignment = .leading
         words.spacing = 4

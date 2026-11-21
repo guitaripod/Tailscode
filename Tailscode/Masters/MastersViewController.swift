@@ -81,13 +81,15 @@ final class MastersViewController: UIViewController {
         (scroll, column) = MachinePage.install(in: self)
         refresher.addAction(UIAction { [weak self] _ in self?.pulled() }, for: .valueChanged)
         scroll.refreshControl = refresher
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
+        let plus = UIBarButtonItem(
             image: UIImage(systemName: "plus"),
             primaryAction: UIAction { [weak self] _ in
                 guard let self else { return }
                 MasterRouter.newMaster(from: self)
             })
-        navigationItem.rightBarButtonItem?.accessibilityLabel = MasterWords.newMaster
+        plus.accessibilityLabel = MasterWords.newMaster
+        let beta = BetaBadge(feature: .masters, reportLines: { MasterDesk.shared.betaReportLines })
+        navigationItem.rightBarButtonItems = [plus, UIBarButtonItem(customView: beta)]
         NotificationCenter.default.addObserver(
             self, selector: #selector(deskChanged), name: MasterDesk.didChange, object: nil)
         render()

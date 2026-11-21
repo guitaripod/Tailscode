@@ -39,9 +39,9 @@ struct BetaTests {
         }
     }
 
-    @Test("The catalog holds delegate and the call")
+    @Test("The catalog holds delegate, the call and masters")
     func catalogCases() {
-        #expect(BetaFeature.allCases == [.delegate, .voiceCall])
+        #expect(BetaFeature.allCases == [.delegate, .voiceCall, .masters])
         #expect(BetaFeature.voiceCall.card.title == "Calls are in beta")
         #expect(BetaFeature.voiceCall.card.paragraphs.count == 3)
         #expect(BetaFeature.voiceCall.card.rough.count == 5)

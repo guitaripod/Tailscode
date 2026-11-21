@@ -5,11 +5,13 @@ import Foundation
 public enum BetaFeature: String, Sendable, CaseIterable {
     case delegate
     case voiceCall
+    case masters
 
     public var card: BetaCard {
         switch self {
         case .delegate: return Self.delegateCard
         case .voiceCall: return Self.voiceCallCard
+        case .masters: return Self.mastersCard
         }
     }
 
@@ -37,6 +39,33 @@ public enum BetaFeature: String, Sendable, CaseIterable {
             ],
             changes: [],
             reportName: Localized.text("the dispatcher's own log on that machine"))
+    }
+
+    private static var mastersCard: BetaCard {
+        BetaCard(
+            name: MasterWords.title,
+            symbol: "person.crop.rectangle.stack",
+            glyph: "◈",
+            title: Localized.text("Masters are in beta"),
+            lead: Localized.text("Standing roles on your machine whose every task starts fresh with what they know."),
+            paragraphs: [
+                Localized.text(
+                    "A master keeps a charter, a notebook and a journal on your machine. Each task is a new conversation that begins with them, so nothing depends on one long chat surviving."),
+                Localized.text(
+                    "The notebook changes only by your hand: a finished task proposes notes, and you accept or skip each one."),
+            ],
+            works: [
+                Localized.text("Every task starts with the master’s brief"),
+                Localized.text("Nothing reaches the notebook until you accept it"),
+                Localized.text("Guards run on their own clock and say when one starts failing"),
+            ],
+            rough: [
+                Localized.text("Claude Code machines only, on claude-bridge 1.37 or newer"),
+                Localized.text("A debrief costs one extra turn"),
+                Localized.text("What a master is made of may still change between releases"),
+            ],
+            changes: [],
+            reportName: Localized.text("claude-bridge on that machine"))
     }
 
     private static var voiceCallCard: BetaCard {

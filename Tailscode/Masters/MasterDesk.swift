@@ -13,6 +13,7 @@ final class MasterDesk {
     static let didChange = Notification.Name("tailscode.masterDesk.didChange")
 
     private(set) var board = MasterBoard.empty
+    var betaReportLines: [String] { board.betaReportLines }
     private(set) var hasLoaded = false
     private var loadedAt: Date?
     private var loading: Task<Void, Never>?

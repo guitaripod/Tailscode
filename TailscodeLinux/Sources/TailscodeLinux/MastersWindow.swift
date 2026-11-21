@@ -11,6 +11,8 @@ import TailscodeCore
 final class MastersWindow: MachineWindow, @unchecked Sendable {
     static let windowKey = "masters·all"
     var watch: NSObjectProtocol?
+    private let beta = BetaBadge(feature: .masters) { MasterDesk.shared.board.betaReportLines }
+    private var lead: UnsafeMutablePointer<GtkWidget>?
     var servers: [(id: String, name: String)] = []
 
     /// The machines that answered without keeping masters: opencode, omp-bridge, a claude-bridge
@@ -54,9 +56,25 @@ final class MastersWindow: MachineWindow, @unchecked Sendable {
     }
 
     override func closed() {
+        beta.tearDown()
+        lead = nil
         MasterDesk.shared.unwatch(key)
         if let watch { NotificationCenter.default.removeObserver(watch) }
         watch = nil
+    }
+
+    /// The page's groups under its head: the feature's name with the mark it wears while in beta.
+    /// The head is put on the page once and never taken off it, because a group taken off a page
+    /// is let go, and the mark would go with it under a press.
+    private func showGroups(_ fresh: [UnsafeMutablePointer<GtkWidget>]) {
+        if lead == nil, let page {
+            let group = MachineRows.group(MasterWords.title, description: MasterWords.emptyDetail)
+            gtk_widget_set_valign(beta.widget, GTK_ALIGN_START)
+            adw_preferences_group_set_header_suffix(ptr(group), beta.widget)
+            adw_preferences_page_add(ptr(page), ptr(group))
+            lead = group
+        }
+        replaceGroups(fresh)
     }
 
     func render() {
@@ -65,7 +83,7 @@ final class MastersWindow: MachineWindow, @unchecked Sendable {
         if !MasterDesk.shared.loadedOnce {
             let group = MachineRows.group(nil)
             MachineRows.add(MachineRows.row(Localized.text("Asking every machine…")), to: group)
-            replaceGroups([group])
+            showGroups([group])
             return
         }
         if board.isEmpty, !board.machines.isEmpty || board.unanswered.isEmpty {
@@ -123,6 +141,6 @@ final class MastersWindow: MachineWindow, @unchecked Sendable {
             }
             groups.append(group)
         }
-        replaceGroups(groups)
+        showGroups(groups)
     }
 }

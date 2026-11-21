@@ -56,6 +56,20 @@ public struct MasterBoard: Sendable, Hashable {
 
     public static let empty = MasterBoard(rows: [])
 
+    /// What a beta report says about masters: how many there are and what state they are in, by
+    /// count, and never a name, a charter or a note the person wrote.
+    public var betaReportLines: [String] {
+        var lines = [
+            "Machines keeping masters: \(machines.count)",
+            "Masters: \(rows.count)",
+            "Tasks running: \(rows.filter { $0.master.task != nil }.count)",
+            "Notes waiting: \(rows.reduce(0) { $0 + $1.master.pending })",
+            "Guards failing: \(rows.reduce(0) { $0 + $1.master.failingGuards.count })",
+        ]
+        if !unanswered.isEmpty { lines.append("Machines not answering: \(unanswered.count)") }
+        return lines
+    }
+
     public var isEmpty: Bool { rows.isEmpty }
     /// Whether any machine keeps masters, answering now or not.
     public var keepsExperts: Bool { !machines.isEmpty || !unanswered.isEmpty }

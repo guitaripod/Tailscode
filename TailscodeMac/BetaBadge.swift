@@ -49,6 +49,7 @@ final class BetaBadge: NSControl, NSPopoverDelegate {
         stack.orientation = .horizontal
         stack.alignment = .centerY
         stack.spacing = 3
+        stack.setHuggingPriority(.required, for: .horizontal)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
