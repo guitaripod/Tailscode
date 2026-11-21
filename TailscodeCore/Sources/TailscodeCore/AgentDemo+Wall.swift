@@ -18,6 +18,7 @@ extension AgentDemo {
             ("finishing", finishingWall(now: now)),
             ("crowded", crowdedWall(now: now)),
             ("squad", squadWall(now: now)),
+            ("makers", makersWall(now: now)),
         ]
     }
 
@@ -54,15 +55,32 @@ extension AgentDemo {
             hasLoadedTranscript: true, retry: retry)
     }
 
+    /// Who drives each fictional session and how hard, so a scene shows the wall's figures for
+    /// several makers, weights and efforts at once.
+    private static let cast: [String: (model: String, effort: String?)] = [
+        "w": ("claude-fable-5", "max"), "a": ("claude-fable-5", "max"),
+        "l": ("gpt-5.1-codex", "high"), "b": ("gpt-5.1-codex", "high"),
+        "t": ("claude-haiku-5", "low"), "e": ("claude-haiku-5", "low"),
+        "r": ("claude-sonnet-5", "medium"), "rel": ("claude-sonnet-5", "medium"),
+        "ask": ("claude-opus-5", "xhigh"), "c": ("claude-opus-5", "xhigh"),
+        "doc": ("gemini-3-pro", "high"), "d": ("gemini-3-pro", "high"),
+        "idx": ("qwen3-coder:30b", "think"), "f": ("qwen3-coder:30b", "think"),
+        "bak": ("grok-4-fast", "low"),
+        "m1": ("mistral-large", "high"), "m2": ("deepseek-reasoner", "max"), "m3": ("llama-4-70b", "medium"),
+        "m4": ("kimi-k2", "low"), "m5": ("grok-4", "xhigh"), "m6": ("hunyuan-turbo", "none"),
+    ]
+
     private static func source(
         _ id: String, _ title: String, profile: String = studio, machine: String = "studio",
         state: ConversationState, agents: [SubagentSummary] = [], beating: Bool = true,
         seen: [String: Date] = [:], reachable: Bool = true, unread: Bool = false, idleFor: TimeInterval = 0,
         effort: String? = nil, now: Date, anchor: Date? = nil
     ) -> AgentSource {
+        let part = cast[id]
         let entry = entry(
             id, title, profile: profile, machine: machine, now: anchor ?? now,
-            active: state.status == .running, updated: idleFor, model: "claude-opus-5", effort: effort)
+            active: state.status == .running, updated: idleFor, model: part?.model ?? "claude-opus-5",
+            effort: effort ?? part?.effort)
         var facts = AgentFacts.read(
             state: state, agents: agents, seen: seen, stamps: beating ? pulse(now) : [], now: now)
         facts.plan = AgentLine.plan(in: state)
@@ -329,6 +347,25 @@ extension AgentDemo {
         let between = read(
             squadSources(at: second, now: now, lint: false), now: second, previous: before)
         return read(squadSources(at: now, now: now, lint: false), now: now, previous: between)
+    }
+
+    /// Six sessions on six makers' models at six efforts, for the figures the other scenes do not show.
+    private static func makersWall(now: Date) -> AgentWall {
+        read(
+            [
+                working("m1", "Auth flow", calls: [running("swift build", "m1a")], now: now, anchor: now),
+                working(
+                    "m2", "Schema diff", profile: homelab, machine: "homelab",
+                    calls: [reading("/db/schema.sql", "m2a")], now: now, anchor: now),
+                working("m3", "Icon export", calls: [running("make icons", "m3a")], now: now, anchor: now),
+                working(
+                    "m4", "Typo hunt", profile: homelab, machine: "homelab",
+                    calls: [reading("/docs/guide.md", "m4a")], now: now, anchor: now),
+                source("m5", "Cache warm", state: conversation("warm the cache", [], now: now), now: now),
+                working(
+                    "m6", "Lint sweep", calls: [editing("/repo/Sources/Lint/Rules.swift", "m6a")], now: now,
+                    anchor: now),
+            ], now: now)
     }
 
     private static func crowdedWall(now: Date) -> AgentWall {

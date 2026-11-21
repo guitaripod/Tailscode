@@ -206,6 +206,8 @@ extension SelfTest {
                 && gtk_widget_get_mapped(view.ribbon.canvas.widget) != 0,
             "all of it comes back")
 
+        try checkWatchEmblems(check, window: window, view: view)
+
         view.startScene("attention")
         check.pump(0.3)
         let asking = try view.wall.tiles.first { $0.ask?.isApproval == true }.unwrapEffect("an approval on the wall")
@@ -265,8 +267,8 @@ extension SelfTest {
         adw_switch_row_set_active(OpaquePointer(rows.eventRows[0]), 0)
         try check.expect(
             !view.context.style.moves.steps && view.context.style.moves.failures && rows.eventRows.count == 8
-                && rows.wallRows.count == 4,
-            "the eight events and the four wall switches each have a row")
+                && rows.wallRows.count == 5,
+            "the eight events and the five wall switches each have a row")
         adw_combo_row_set_selected(ptr(preset), 0)
         try check.expect(Preferences.agentsWatchStyle == .studio && view.context.style == .studio, "and Studio is back")
         g_object_unref(UnsafeMutableRawPointer(page))

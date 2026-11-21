@@ -368,6 +368,7 @@ extension AgentsWindow {
         case ("hour", let word): style.showsHour = on(word)
         case ("rails", let word): style.showsRails = on(word)
         case ("squads", let word): style.showsSquads = on(word)
+        case ("emblems", let word): style.showsEmblems = on(word)
         case ("approvals", let word): style.approvals = WallStyle.Approvals(rawValue: word) ?? style.approvals
         default: return
         }

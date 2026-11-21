@@ -125,6 +125,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case agentsLocalWords
     case agentsWatchEffects
     case agentsWatchStyle
+    case agentsWatchEmblems
     case modelSeam
     case carryChat
     case responseStats

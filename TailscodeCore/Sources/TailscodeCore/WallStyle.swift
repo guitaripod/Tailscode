@@ -80,6 +80,9 @@ public struct WallStyle: Codable, Sendable, Equatable {
     public var showsHour: Bool
     public var showsRails: Bool
     public var showsSquads: Bool
+    /// Whether each tile wears the figure of its model: the maker's shape, the model's weight and the
+    /// effort's heat.
+    public var showsEmblems: Bool
     public var approvals: Approvals
 
     public static let dimChoices: [TimeInterval?] = [300, 600, 1800, nil]
@@ -101,6 +104,7 @@ public struct WallStyle: Codable, Sendable, Equatable {
         style.night = .scheduled
         style.showsRails = false
         style.showsSquads = false
+        style.showsEmblems = false
         return style
     }()
 
@@ -124,7 +128,8 @@ public struct WallStyle: Codable, Sendable, Equatable {
     public init(
         preset: Preset, effects: Effects, field: Field, light: Bool, moves: Moves,
         dimAfter: TimeInterval?, night: Night, keepAwake: KeepAwake, still: Bool, showsClock: Bool,
-        showsHour: Bool, showsRails: Bool, showsSquads: Bool, approvals: Approvals
+        showsHour: Bool, showsRails: Bool, showsSquads: Bool, approvals: Approvals,
+        showsEmblems: Bool = true
     ) {
         self.preset = preset
         self.effects = effects
@@ -139,12 +144,13 @@ public struct WallStyle: Codable, Sendable, Equatable {
         self.showsHour = showsHour
         self.showsRails = showsRails
         self.showsSquads = showsSquads
+        self.showsEmblems = showsEmblems
         self.approvals = approvals
     }
 
     enum CodingKeys: String, CodingKey {
         case preset, effects, field, light, moves, dimAfter, night, keepAwake, still
-        case showsClock, showsHour, showsRails, showsSquads, approvals
+        case showsClock, showsHour, showsRails, showsSquads, showsEmblems, approvals
     }
 
     public init(from decoder: Decoder) throws {
@@ -167,6 +173,7 @@ public struct WallStyle: Codable, Sendable, Equatable {
         showsHour = Self.flag(values, .showsHour, base.showsHour)
         showsRails = Self.flag(values, .showsRails, base.showsRails)
         showsSquads = Self.flag(values, .showsSquads, base.showsSquads)
+        showsEmblems = Self.flag(values, .showsEmblems, base.showsEmblems)
         approvals = Self.word(values, .approvals, base.approvals)
     }
 
@@ -185,6 +192,7 @@ public struct WallStyle: Codable, Sendable, Equatable {
         try values.encode(showsHour, forKey: .showsHour)
         try values.encode(showsRails, forKey: .showsRails)
         try values.encode(showsSquads, forKey: .showsSquads)
+        try values.encode(showsEmblems, forKey: .showsEmblems)
         try values.encode(approvals, forKey: .approvals)
     }
 

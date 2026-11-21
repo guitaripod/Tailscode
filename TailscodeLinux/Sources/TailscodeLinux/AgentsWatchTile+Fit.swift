@@ -54,6 +54,7 @@ extension WatchTileView {
 
     func solve(width: Int32, height: Int32, sink: TileSink) {
         sink.place(card.widget, TileRect(x: 0, y: 0, width: width, height: height))
+        sink.place(emblemLayer.widget, TileRect(x: 0, y: 0, width: width, height: height))
         guard tile != nil, width > 8, height > 8 else { return }
         let last = Self.levels.count - 1
         for (index, level) in Self.levels.enumerated() where index >= (context.allowsBigType ? 0 : 2) {

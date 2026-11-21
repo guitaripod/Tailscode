@@ -96,6 +96,7 @@ extension WallScene {
                 let strength = face.light * (0.75 + 0.5 * swell) * opacity
                 scene.lights.append(WallLight(rect: main, ink: ink, strength: strength))
             }
+            addEmblem(of: tile, in: main, opacity: opacity)
             addGlyph(of: tile, face: face, at: metrics, ink: ink, opacity: opacity, pulse: pulse)
             addBeat(of: tile, in: metrics.beat, ink: ink, opacity: opacity)
             guard let squad else { return }
@@ -108,6 +109,39 @@ extension WallScene {
                     WallPlate(
                         rect: more, corner: smallCorner, ink: needsEyes ? palette.needs : palette.dim,
                         opacity: opacity, wash: 0.02, borderAlpha: needsEyes ? 0.5 : 0.25, sheen: 0.4))
+            }
+        }
+
+        /// The figure the tile wears for its model, drawn on the glass under the words.
+        mutating func addEmblem(of tile: WallTile, in rect: WallRect, opacity: Double) {
+            guard input.style.showsEmblems, let emblem = tile.emblem else { return }
+            let pieces = WallEmblemShapes.pieces(
+                for: emblem,
+                in: WallEmblemScene(
+                    tile: rect, unit: unit, state: tile.state, t: t, animated: animated, style: input.style,
+                    night: input.style.isNight(at: input.now), text: palette.text, dim: palette.dim,
+                    opacity: opacity))
+            for piece in pieces {
+                switch piece.shape {
+                case .dot(let x, let y, let size, let alpha):
+                    scene.dots.append(
+                        WallDot(
+                            x: x, y: y, size: size / WallEmblemShapes.dotCore, core: WallEmblemShapes.dotCore,
+                            ink: piece.ink, alpha: alpha))
+                case .ring(let x, let y, let radius, let width, let alpha):
+                    let size = max(1, radius)
+                    let p2 = max(0.005, width / size)
+                    scene.glows.append(
+                        WallGlyph(
+                            x: x, y: y, size: size, extent: 1 + 3.2 * p2 + 0.02, kind: .ring, ink: piece.ink,
+                            alpha: alpha, p1: 1, p2: p2))
+                case .bloom(let x, let y, let radius, let alpha):
+                    let size = max(1, radius)
+                    scene.glows.append(
+                        WallGlyph(x: x, y: y, size: size, extent: 2.4, kind: .bloom, ink: piece.ink, alpha: alpha, p1: 1))
+                case .ripple:
+                    break
+                }
             }
         }
 

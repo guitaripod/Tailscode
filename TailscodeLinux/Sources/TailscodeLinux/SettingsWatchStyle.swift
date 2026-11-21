@@ -49,6 +49,7 @@ final class WatchStyleRows: @unchecked Sendable {
             (Localized.text("Last hour"), { $0.showsHour = $1 }, { $0.showsHour }),
             (Localized.text("Recent and also running"), { $0.showsRails = $1 }, { $0.showsRails }),
             (Localized.text("Sub-agent tiles"), { $0.showsSquads = $1 }, { $0.showsSquads }),
+            (Localized.text("Model emblems"), { $0.showsEmblems = $1 }, { $0.showsEmblems }),
         ]
     }
 

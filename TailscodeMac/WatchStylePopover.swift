@@ -73,6 +73,7 @@ final class WatchStylePopover: NSViewController {
             Switch(title: Localized.text("Last hour"), path: \.showsHour),
             Switch(title: Localized.text("Recent and also running"), path: \.showsRails),
             Switch(title: Localized.text("Sub-agent tiles"), path: \.showsSquads),
+            Switch(title: Localized.text("Model emblems"), path: \.showsEmblems),
         ]
     }
 

@@ -13,6 +13,9 @@ final class WatchTileView: @unchecked Sendable {
     let card = WallLayer()
     let glyph = WallLayer()
     let beatCanvas = WallLayer()
+    /// The figure of the tile's model, drawn on the glass under the words.
+    let emblemLayer = WallLayer()
+    private var emblem: WallEmblem?
     private let cardFace = WallCard()
     private let glyphFace = WallGlyph()
     private let beatFace = WallBeat()
@@ -82,7 +85,7 @@ final class WatchTileView: @unchecked Sendable {
 
     private func build() {
         tailscode_set_accessible_hidden(card.widget, 1)
-        for layer in [card, glyph, beatCanvas] {
+        for layer in [card, emblemLayer, glyph, beatCanvas] {
             gtk_widget_set_can_target(layer.widget, layer === card ? 1 : 0)
             gtk_widget_set_can_focus(layer.widget, 0)
             tailscode_set_accessible_hidden(layer.widget, 1)
@@ -91,10 +94,12 @@ final class WatchTileView: @unchecked Sendable {
         gtk_widget_set_can_focus(ring.widget, 0)
         tailscode_set_accessible_hidden(ring.widget, 1)
         card.draw = { [weak self] snapshot, width, height in self?.drawCard(snapshot, width, height) }
+        emblemLayer.draw = { [weak self] snapshot, width, height in self?.drawEmblem(snapshot, width, height) }
         glyph.draw = { [weak self] snapshot, width, _ in self?.drawGlyph(snapshot, width) }
         beatCanvas.draw = { [weak self] snapshot, width, height in self?.drawBeat(snapshot, width, height) }
         ring.paint = { [weak self] cr, width, _ in self?.paintRing(cr, width) }
         container.add(card.widget, layer: .panes)
+        container.add(emblemLayer.widget, layer: .panes)
         for canvas in [glyph, beatCanvas] { container.add(canvas.widget, layer: .dividers) }
         for label in [title, status, meta, words, hint, facts, planList, files] {
             container.add(label.widget, layer: .dividers)
@@ -143,6 +148,7 @@ final class WatchTileView: @unchecked Sendable {
     func apply(_ next: WallTile, now: Date) {
         let previous = tile
         tile = next
+        if previous?.chip != next.chip || emblem == nil { emblem = next.emblem }
         let state = next.statusWord(at: now)
         status.set(text: state)
         title.set(text: next.title)
@@ -172,6 +178,7 @@ final class WatchTileView: @unchecked Sendable {
         gtk_widget_set_opacity(widget, Self.opacity(next) * arrival)
         tailscode_set_accessible_label(widget, spoken(now: now))
         if previous == nil || previous?.state != next.state { redrawAll() }
+        if previous?.chip != next.chip { emblemLayer.redraw() }
         refreshControls()
     }
 
@@ -238,7 +245,7 @@ final class WatchTileView: @unchecked Sendable {
     }
 
     func redrawAll() {
-        for layer in [card, glyph, beatCanvas] { layer.redraw() }
+        for layer in [card, emblemLayer, glyph, beatCanvas] { layer.redraw() }
     }
 
     /// What the effects playing on this tile ask of it now: the context ring's share while it drains,
@@ -289,6 +296,7 @@ final class WatchTileView: @unchecked Sendable {
     func frame() {
         if isAnimating { card.redraw() }
         if glyphAnimates { glyph.redraw() }
+        if emblemMoves { emblemLayer.redraw() }
         if slideStart != nil { beatCanvas.redraw() }
     }
 
@@ -302,6 +310,48 @@ final class WatchTileView: @unchecked Sendable {
         cardFace.draw(
             snapshot, width: width, height: height, unit: unit, face: face, palette: context.palette,
             paletteKey: context.paletteKey, t: context.seconds, animated: context.animated)
+    }
+
+    /// What Core needs to draw the model's figure on this tile; nil when the tile has no model or
+    /// the person switched the figures off. The tile's own opacity is the widget's, so the figure is
+    /// asked for at full strength.
+    private func emblemScene(width: Double, height: Double) -> (emblem: WallEmblem, scene: WallEmblemScene)? {
+        guard context.style.showsEmblems, let tile, let emblem else { return nil }
+        let palette = context.palette
+        return (
+            emblem,
+            WallEmblemScene(
+                tile: WallRect(x: 0, y: 0, width: width, height: height), unit: unit, state: tile.state,
+                t: context.seconds, animated: context.animated, style: context.style, night: context.isNight,
+                text: WallInk(red: palette.text.red, green: palette.text.green, blue: palette.text.blue),
+                dim: WallInk(red: palette.dim.red, green: palette.dim.green, blue: palette.dim.blue))
+        )
+    }
+
+    var emblemMoves: Bool {
+        emblemScene(width: 1, height: 1).map { WallEmblemShapes.isLive($0.scene) } ?? false
+    }
+
+    /// The figure's pieces at this moment, for a check.
+    func emblemPieces(width: Double, height: Double) -> [WallEmblemPiece] {
+        emblemScene(width: width, height: height).map { WallEmblemShapes.pieces(for: $0.emblem, in: $0.scene) } ?? []
+    }
+
+    func drawEmblem(_ snapshot: WallSnapshot, _ width: Double, _ height: Double) {
+        for piece in emblemPieces(width: width, height: height) {
+            let ink = PartyInk(red: piece.ink.red, green: piece.ink.green, blue: piece.ink.blue)
+            switch piece.shape {
+            case .dot(let x, let y, let size, let alpha):
+                if size >= 7 { snapshot.disc(x: x, y: y, radius: size * 1.05, ink: ink, alpha: alpha * 0.14) }
+                snapshot.disc(x: x, y: y, radius: size / 2, ink: ink, alpha: alpha)
+            case .ring(let x, let y, let radius, let ringWidth, let alpha):
+                WatchEffectsLayer.ring(snapshot, x: x, y: y, radius: radius, width: ringWidth, alpha: alpha, ink: ink)
+            case .bloom(let x, let y, let radius, let alpha):
+                WatchEffectsLayer.bloom(snapshot, x: x, y: y, radius: radius, alpha: alpha, ink: ink)
+            case .ripple:
+                break
+            }
+        }
     }
 
     func drawGlyph(_ snapshot: WallSnapshot, _ size: Double) {

@@ -675,7 +675,7 @@ private func tile(_ wall: AgentWall, _ id: String) -> WallTile? {
 
     @Test func everySceneBuildsAndIsNamedOnce() {
         let scenes = AgentDemo.wallScenes(now: now)
-        #expect(scenes.map(\.name) == ["calm", "busy", "attention", "alarm", "finishing", "crowded", "squad"])
+        #expect(scenes.map(\.name) == ["calm", "busy", "attention", "alarm", "finishing", "crowded", "squad", "makers"])
         for (_, wall) in scenes {
             #expect(wall.tiles.count <= 6)
             #expect(wall.tiles.reduce(0) { $0 + $1.span } == wall.columns * wall.rows)

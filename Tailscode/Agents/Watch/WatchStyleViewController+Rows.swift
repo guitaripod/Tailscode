@@ -24,7 +24,7 @@ enum WatchStyleSection: Int, Hashable, CaseIterable {
                 .steps, .agents, .endings, .asks, .failures, .retries, .compaction, .arrivals,
             ]
         case .screen: return [.dim, .night, .keepAwake]
-        case .wall: return [.clock, .hour, .rails, .squads]
+        case .wall: return [.clock, .hour, .rails, .squads, .emblems]
         case .approvals: return [.approvals]
         }
     }
@@ -41,7 +41,7 @@ enum WatchStyleRow: String, Hashable {
     case preset, effects, field, light, still
     case steps, agents, endings, asks, failures, retries, compaction, arrivals
     case dim, night, keepAwake
-    case clock, hour, rails, squads
+    case clock, hour, rails, squads, emblems
     case approvals
 
     enum Control {
@@ -72,6 +72,7 @@ enum WatchStyleRow: String, Hashable {
         case .hour: return String(localized: "Last hour")
         case .rails: return String(localized: "Recent and also running")
         case .squads: return String(localized: "Sub-agent tiles")
+        case .emblems: return String(localized: "Model emblems")
         case .approvals: return String(localized: "Approve from the wall")
         }
     }
@@ -83,7 +84,7 @@ enum WatchStyleRow: String, Hashable {
         case .field, .dim, .night, .keepAwake, .approvals:
             return .menu
         case .light, .still, .steps, .agents, .endings, .asks, .failures, .retries, .compaction,
-            .arrivals, .clock, .hour, .rails, .squads:
+            .arrivals, .clock, .hour, .rails, .squads, .emblems:
             return .toggle
         }
     }
@@ -105,6 +106,7 @@ enum WatchStyleRow: String, Hashable {
         case .hour: return \WallStyle.showsHour
         case .rails: return \WallStyle.showsRails
         case .squads: return \WallStyle.showsSquads
+        case .emblems: return \WallStyle.showsEmblems
         case .preset, .effects, .field, .dim, .night, .keepAwake, .approvals: return nil
         }
     }
@@ -186,7 +188,7 @@ enum WatchStyleRow: String, Hashable {
                     (.openChat, String(localized: "Open the chat")),
                 ])
         case .light, .still, .steps, .agents, .endings, .asks, .failures, .retries, .compaction,
-            .arrivals, .clock, .hour, .rails, .squads:
+            .arrivals, .clock, .hour, .rails, .squads, .emblems:
             return []
         }
     }

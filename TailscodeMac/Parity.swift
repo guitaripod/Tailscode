@@ -130,6 +130,7 @@ enum ParityManifest {
         case .agentsLocalWords: return .gap("The wall is Linux's first; Foundation Models is the on-device way for the Mac's")
         case .agentsWatchEffects: return .implemented("WatchEffectsDriver")
         case .agentsWatchStyle: return .implemented("WatchStylePopover")
+        case .agentsWatchEmblems: return .implemented("showsEmblems")
         case .agentsWatch: return .implemented("WatchWallViewController")
         case .modelSeam: return .implemented("FlatNoteLineView")
         case .chapters: return .implemented("ChaptersPanelViewController")

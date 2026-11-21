@@ -6,12 +6,20 @@ import Testing
 private let now = Date(timeIntervalSince1970: 1_800_000_000)
 private let rose = WallPalette.current(theme: .rosePine)
 
+/// Studio without the models' figures, which `WallEmblemTests` holds on their own: these tests count
+/// the motes of the field and of the effects.
+private let plainStudio: WallStyle = {
+    var style = WallStyle.studio
+    style.showsEmblems = false
+    return style
+}()
+
 private struct Setup {
     var width = 1920.0
     var height = 1080.0
     var safe = WallInsets.zero
     var fold: WallFold?
-    var style = WallStyle.studio
+    var style = plainStudio
     var t = 12.0
     var effects: [WallEffect] = []
     var ribbon: WallRibbon?
@@ -46,7 +54,7 @@ private func finite(_ value: Any) -> Bool {
     return Mirror(reflecting: value).children.allSatisfy { finite($0.value) }
 }
 
-private let names = ["calm", "busy", "attention", "alarm", "finishing", "crowded", "squad"]
+private let names = ["calm", "busy", "attention", "alarm", "finishing", "crowded", "squad", "makers"]
 
 private let screens: [(String, Setup)] = [
     ("display", Setup()),
