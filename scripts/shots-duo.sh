@@ -12,6 +12,7 @@
 #   scripts/shots-duo.sh de-DE ja              # these locales
 #   scripts/shots-duo.sh --all                 # every caption locale
 #   TAILSCODE_DUO_SLUGS="02-the-wall" scripts/shots-duo.sh --all   # retake only these slugs
+#   TAILSCODE_SHOT_NEWCOMER=1 scripts/shots-duo.sh   # the first-launch screens in what a newcomer wears
 #
 # The app must be linked against the iOS 27.1 SDK or the Duo never adapts (a black rail); the script
 # refuses a binary that vtool does not stamp 27.1. TAILSCODE_DUO_CAPTURE is the iphone-duo skill's
@@ -148,6 +149,8 @@ capture_cells() {
   local out=$1 locale=$2 cells=$3 first=$4
   local flags=() screens=() screen word
   for word in $(language_args "$locale"); do flags+=("--arg=$word"); done
+  [ "${TAILSCODE_SHOT_NEWCOMER:-}" = 1 ] || flags+=("--arg=-tailscode.theme.welcomed" "--arg=YES")
+  flags+=("--arg=-tailscode.agentNews.seen" '--arg=("demo-claude·goose")')
   for screen in $first $(echo "$cells" | tr ',' '\n' | cut -d: -f1 | sort -u); do
     case " ${screens[*]:-} " in *" $screen "*) continue ;; esac
     screens+=("$screen")

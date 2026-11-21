@@ -11,6 +11,8 @@
 #   TAILSCODE_SHOT_LOCALE=de-DE scripts/shots.sh   # the app in German, to marketing/appstore/l10n/de-DE/iphone
 #   TAILSCODE_SHOT_SKIP_BUILD=1 scripts/shots.sh …  # reuse the app the last run built (a per-locale pass)
 #   scripts/shots.sh lock            # the real Lock Screen with the app's Live Activities (drives Device Hub)
+#   TAILSCODE_SHOT_NEWCOMER=1 scripts/shots.sh welcome   # what a first launch wears; otherwise every shot keeps one look
+#   Every shot starts on a device already told the demo machine's agent news, so Home carries no card about it.
 #
 # The Studio shots (studio-paint, studio-done, video-run, video-done) need real pictures:
 #   TAILSCODE_STUDIO_ART=<folder with lighthouse.png, cat-roof.png, ... and manifest.json> scripts/shots.sh studio-paint
@@ -70,6 +72,9 @@ language_args() {
   esac
 }
 LANGUAGE_ARGS="$(language_args "$LOCALE")"
+LOOK_ARGS="-tailscode.theme.welcomed YES"
+[ "${TAILSCODE_SHOT_NEWCOMER:-}" = 1 ] && LOOK_ARGS=""
+NEWS_ARGS='-tailscode.agentNews.seen ("demo-claude·goose")'
 
 # The language and region the whole simulator speaks for a store locale. The launch arguments above
 # only reach the app; the status bar's clock, the Lock Screen's date and every system string follow
@@ -351,7 +356,7 @@ capture_lock() {
     hub_menu Controls Home
     sleep 2
   fi
-  env "${prefixed[@]}" xcrun simctl launch "$device" "$BUNDLE" $args $LANGUAGE_ARGS >/dev/null
+  env "${prefixed[@]}" xcrun simctl launch "$device" "$BUNDLE" $args $LANGUAGE_ARGS $LOOK_ARGS $NEWS_ARGS >/dev/null
   sleep 4
   override_status_bar "$device"
   sleep 2
@@ -392,7 +397,7 @@ capture() {
   esac
   [ -n "${IPAD:-}" ] && prefixed+=(SIMCTL_CHILD_TAILSCODE_WINDOW=1376x1032 SIMCTL_CHILD_TAILSCODE_HIDE_DEMO_BADGE=1)
   for pair in $envs $THEME_ENV; do prefixed+=("SIMCTL_CHILD_${pair//%20/ }"); done
-  env "${prefixed[@]}" xcrun simctl launch "$device" "$BUNDLE" $args $LANGUAGE_ARGS >/dev/null
+  env "${prefixed[@]}" xcrun simctl launch "$device" "$BUNDLE" $args $LANGUAGE_ARGS $LOOK_ARGS $NEWS_ARGS >/dev/null
   sleep "$delay"
   xcrun simctl io "$device" screenshot "$OUT/$name.png" >/dev/null 2>&1
   xcrun simctl ui "$device" content_size "${TAILSCODE_SHOT_CONTENT_SIZE:-large}" >/dev/null 2>&1 || true
