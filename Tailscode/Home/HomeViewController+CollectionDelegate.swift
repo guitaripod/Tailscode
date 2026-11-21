@@ -34,8 +34,12 @@ extension HomeViewController: UICollectionViewDelegate {
             pushSchedules()
         case .status, .demoNudge, .proInvitation, .placeholder, .agentNews, .masters:
             break
-        case .glance:
-            pushUsage()
+        case .glance(let card):
+            guard card.glance.lines.filter({ $0.kind != .notice }).count > 1 else {
+                return pushUsage()
+            }
+            HomeGlanceFold.isOpen.toggle()
+            applySnapshot()
         case .chat(let card):
             openChat(for: card.entry)
         case .ask(let card):

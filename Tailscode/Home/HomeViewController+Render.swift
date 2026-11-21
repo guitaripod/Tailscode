@@ -72,7 +72,7 @@ extension HomeViewController {
                 board: QuotaBoardStore.current, trail: RangeStore.trail)
             if !glance.isEmpty {
                 snapshot.appendSections([.glance])
-                snapshot.appendItems([.glance(QuotaGlanceCard(glance: glance))], toSection: .glance)
+                snapshot.appendItems([.glance(QuotaGlanceCard(glance: glance, isOpen: HomeGlanceFold.isOpen))], toSection: .glance)
             }
         }
         if !down.isEmpty {

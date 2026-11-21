@@ -5,6 +5,44 @@ import UIKit
 
 extension HomeViewController {
     #if DEBUG
+        /// The account `TAILSCODE_HOME_QUOTAS` names, for looking at the quota strip in a state the
+        /// demo's own account is never in: `wall` is one provider used up, one heading for its
+        /// wall, one quiet and a prepaid balance; `warm` is the same account with nothing used up.
+        /// Any other value reads the connected servers instead.
+        static var stagedQuotas: [UsageQuota] {
+            let name = ProcessInfo.processInfo.environment["TAILSCODE_HOME_QUOTAS"]
+            guard name == "wall" || name == "warm" else { return [] }
+            func window(_ key: String, _ label: String, _ fraction: Double, _ seconds: TimeInterval)
+                -> UsageQuota.Gauge
+            {
+                UsageQuota.Gauge(
+                    key: key, label: label, fraction: fraction,
+                    resetsAt: Date().addingTimeInterval(seconds), trustedReset: true)
+            }
+            func account(_ provider: String, _ gauges: [UsageQuota.Gauge]) -> UsageQuota {
+                UsageQuota(
+                    providerName: provider, subtitle: "", source: "staged", live: true,
+                    gauges: gauges, details: [])
+            }
+            return [
+                account(
+                    "Claude",
+                    [window("session", "Session", 0.62, 10_020), window("week", "Weekly", 0.34, 311_000)]),
+                account(
+                    "Grok", [window("credits", "Weekly credits", name == "wall" ? 1 : 0.71, 352_800)]),
+                account("opencode go", [window("week", "Weekly", 0.12, 400_000)]),
+                UsageQuota(
+                    providerName: DeepSeekBalance.providerName, subtitle: "", source: "staged",
+                    live: true,
+                    gauges: [
+                        UsageQuota.Gauge(
+                            key: "balance", label: "Balance", fraction: 0, resetsAt: nil,
+                            trustedReset: false, usedUSD: 4.2, limitUSD: nil, currency: "USD")
+                    ],
+                    details: []),
+            ]
+        }
+
         var tourScrollView: UIScrollView { collectionView }
 
         func tourFocusComposer() { composerBar.focus() }

@@ -70,6 +70,31 @@ struct QuotaGlanceTests {
         #expect(running.lines[0].tone == .warn)
     }
 
+    @Test("A line says where its window is heading only when that is news the line does not carry")
+    func paceNews() {
+        let running = glance([("arch", quota("Claude", [("Session", 0.62)], resetsIn: 10_020))])
+        let said = try! #require(running.lines[0].paceNews)
+        #expect(said.hasPrefix("Wall"))
+        #expect(said.contains("before it resets"))
+        let close = glance([("arch", quota("Claude", [("Weekly", 0.85)], resetsIn: 7_200))])
+        #expect(close.lines[0].paceNews?.hasPrefix("Lands about") == true)
+        let quiet = glance([("arch", quota("Claude", [("Weekly", 0.1)], resetsIn: 7_200))])
+        #expect(quiet.lines[0].paceNews == nil)
+        let wall = glance([("arch", quota("Grok", [("Weekly credits", 1.0)], resetsIn: 7_200))])
+        #expect(wall.lines[0].paceNews == nil)
+        #expect(glance([("arch", balance(4.2))]).lines.allSatisfy { $0.paceNews == nil })
+    }
+
+    @Test("A line that folds to a mark names its provider in one word, and a sentence has none")
+    func shortNames() {
+        let strip = glance([
+            ("arch", quota("opencode go", [("Weekly", 0.2)])), ("arch", balance(4.2)),
+        ])
+        #expect(strip.lines.map(\.short) == ["opencode", "DeepSeek"])
+        let waiting = QuotaGlance.make(from: [], answeredAt: nil, now: now)
+        #expect(waiting.lines.first?.short == nil)
+    }
+
     @Test("Every provider on the board has a line, warm ones in the attention tone")
     func warm() {
         let strip = glance([

@@ -326,7 +326,9 @@ extension HomeViewController {
             cell, _, card in cell.configure(card)
         }
         let glanceCell = UICollectionView.CellRegistration<HomeGlanceCell, QuotaGlanceCard> {
-            cell, _, card in cell.configure(card)
+            [weak self] cell, _, card in
+            cell.configure(card)
+            cell.onOpenUsage = { [weak self] in self?.pushUsage() }
         }
         let alertCell = UICollectionView.CellRegistration<ServerAlertCell, ServerAlertCard> {
             [weak self] cell, _, card in

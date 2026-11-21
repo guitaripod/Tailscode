@@ -47,10 +47,13 @@ public struct QuotaGlance: Sendable, Equatable {
         /// pace is news — for a window line; nil for a notice or a balance. A strip draws the tail
         /// only when `row.tailIsNews`: a glance is for what changed, not for what is fine.
         public let row: PaceRow?
+        /// The provider in one word, for a surface that folds a line down to its mark and a name;
+        /// nil for a sentence about the reading itself.
+        public let short: String?
 
         public init(
             kind: Kind, text: String, trailing: String = "", tone: Tone, fraction: Double? = nil,
-            slug: String? = nil, row: PaceRow? = nil
+            slug: String? = nil, row: PaceRow? = nil, short: String? = nil
         ) {
             self.kind = kind
             self.text = text
@@ -59,6 +62,19 @@ public struct QuotaGlance: Sendable, Equatable {
             self.fraction = fraction
             self.slug = slug
             self.row = row
+            self.short = short
+        }
+
+        /// The sentence a line owes under its words when where the window is heading is news and
+        /// the line does not already say it: that it will run out before it resets, and when, or
+        /// that it lands close to the limit. A window already used up says so on the line itself.
+        public var paceNews: String? {
+            guard let row, row.tailIsNews, let news = row.news else { return nil }
+            switch row.verdict {
+            case .willRunOut: return "\(news.lead) \(news.body)"
+            case .mindThePace: return news.body
+            case .usedUp, .onPace, nil: return nil
+            }
         }
     }
 
@@ -179,7 +195,7 @@ public struct QuotaGlance: Sendable, Equatable {
         return Line(
             kind: .window, text: text, trailing: percent(gauge), tone: tone,
             fraction: clamped(gauge.fraction), slug: holding.slug,
-            row: reading.row(holding, gauge))
+            row: reading.row(holding, gauge), short: ProviderBrand.short(holding.providerName))
     }
 
     /// The tone a window's dot wears: where its pace is known, by where the fill lands; where it
@@ -267,7 +283,8 @@ public struct QuotaGlance: Sendable, Equatable {
                 kind: .window,
                 text: Localized.text("%@ %@ still open", holding.providerName, gauge.label),
                 trailing: percent(gauge), tone: .ok, fraction: clamped(gauge.fraction),
-                slug: holding.slug, row: reading.row(holding, gauge))
+                slug: holding.slug, row: reading.row(holding, gauge),
+                short: ProviderBrand.short(holding.providerName))
         }
     }
 
@@ -311,12 +328,13 @@ public struct QuotaGlance: Sendable, Equatable {
             return Line(
                 kind: .balance,
                 text: Localized.text("%@ balance · top up", holding.providerName),
-                trailing: Localized.text("Empty"), tone: .danger)
+                trailing: Localized.text("Empty"), tone: .danger,
+                short: ProviderBrand.short(holding.providerName))
         }
         return Line(
             kind: .balance, text: Localized.text("%@ balance", holding.providerName),
             trailing: money(gauge.usedUSD ?? 0, gauge.currency), tone: .balance,
-            slug: holding.slug)
+            slug: holding.slug, short: ProviderBrand.short(holding.providerName))
     }
 
     /// What the strip says about its own numbers before it says anything about the account: a first

@@ -339,8 +339,8 @@ final class HomeViewController: UIViewController {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(6))
                     guard let self else { return }
-                    var found: [UsageQuota] = []
-                    for source in ConnectionController.shared.allBackends() {
+                    var found: [UsageQuota] = Self.stagedQuotas
+                    for source in ConnectionController.shared.allBackends() where found.isEmpty {
                         if let quota = try? await source.backend.usageQuota() { found.append(quota) }
                     }
                     self.quotas = found

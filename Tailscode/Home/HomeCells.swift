@@ -64,11 +64,14 @@ extension HomeItem {
             hasher.combine(String(describing: card.status.tone))
         case .glance(let card):
             hasher.combine(card.glance.lines.count)
+            hasher.combine(card.isOpen)
             for line in card.glance.lines {
                 hasher.combine(line.text)
                 hasher.combine(line.trailing)
                 hasher.combine(line.fraction)
                 hasher.combine(line.tone.rawValue)
+                hasher.combine(line.kind.rawValue)
+                hasher.combine(line.paceNews)
             }
         case .alert(let card):
             hasher.combine(card.names)
@@ -111,9 +114,11 @@ struct HomeStatusCard: Hashable {
     func hash(into hasher: inout Hasher) {}
 }
 
-/// The one line the quota strip would lead with, and how many lines it holds behind it.
+/// The quota strip as Home draws it: every line it holds, folded to a row of marks or open as a
+/// row a line.
 struct QuotaGlanceCard: Hashable {
     let glance: QuotaGlance
+    let isOpen: Bool
 
     static func == (lhs: QuotaGlanceCard, rhs: QuotaGlanceCard) -> Bool { true }
     func hash(into hasher: inout Hasher) {}
@@ -650,71 +655,93 @@ final class HomeStatusCell: UICollectionViewCell {
     }
 }
 
-/// The quota strip's first line as one capsule: the window that decides when the next send
-/// unlocks, how full it is, and how many other lines stand behind it. It is a button into Usage,
-/// not a piece of glass — it sits in the page, and the page is the content layer.
+/// Whether Home's quota strip is open, which is the person's and is remembered: folded it is one
+/// row of marks, open it is a row a line.
+enum HomeGlanceFold {
+    private static let key = "tailscode.home.glanceOpen"
+
+    static var isOpen: Bool {
+        get { UserDefaults.standard.bool(forKey: key) }
+        set { UserDefaults.standard.set(newValue, forKey: key) }
+    }
+}
+
+/// The quota strip as one surface with two sizes. Folded it is a capsule of marks, one for every
+/// line the strip holds: the ring its window fills, in the tone it wears, and the provider in one
+/// word, so which is used up and which has room is read without a count of what was left out.
+/// A press on it opens it in place to a row a line, with the countdowns and the numbers, and a
+/// press again folds it. The chevron is its own button and is the only road to Usage, so a press
+/// meant to look never leaves Home.
 final class HomeGlanceCell: UICollectionViewCell {
-    private let ring = MiniRingView()
-    private let textLabel = UILabel()
-    private let valueLabel = UILabel()
-    private let moreLabel = UILabel()
-    private let chevron = UIImageView()
-    private let capsule = CapsuleView()
+    private static let cornerRadius: CGFloat = 22
+    private static let loneRowHeight: CGFloat = 44
+    private static let stackedRowHeight: CGFloat = 30
+    private static let stackedInset: CGFloat = 6
+
+    var onOpenUsage: (() -> Void)?
+
+    private let card = GlanceCardView(cornerRadius: HomeGlanceCell.cornerRadius)
+    private let marks = UIStackView()
+    private let column = UIStackView()
+    private let chevron = UIButton(type: .system)
+    private let shell = UIStackView()
+    private var chips: [GlanceMarkChip] = []
+    private var rows: [GlanceLineRow] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        capsule.backgroundColor = Theme.Color.groupedSurface
-        capsule.layer.cornerCurve = .continuous
-        capsule.translatesAutoresizingMaskIntoConstraints = false
-        capsule.isUserInteractionEnabled = false
+        card.backgroundColor = Theme.Color.groupedSurface
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.isUserInteractionEnabled = false
 
-        textLabel.font = Theme.Ramp.font(.gauge)
-        textLabel.textColor = Theme.Color.label
-        textLabel.lineBreakMode = .byTruncatingTail
-        textLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        marks.axis = .horizontal
+        marks.alignment = .center
+        marks.distribution = .equalSpacing
+        marks.isUserInteractionEnabled = false
+        marks.heightAnchor.constraint(greaterThanOrEqualToConstant: Self.loneRowHeight).isActive = true
 
-        valueLabel.font = Theme.Ramp.font(.gauge)
-        valueLabel.textColor = Theme.Color.label
-        valueLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        column.axis = .vertical
+        column.alignment = .fill
+        column.isUserInteractionEnabled = false
 
-        moreLabel.font = Theme.Ramp.font(.gaugeCaption)
-        moreLabel.textColor = Theme.Color.tertiaryLabel
-        moreLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-
-        chevron.image = UIImage(
+        var look = UIButton.Configuration.plain()
+        look.image = UIImage(
             systemName: "chevron.right",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
-        chevron.tintColor = Theme.Color.tertiaryLabel
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+        look.baseForegroundColor = Theme.Color.secondaryLabel
+        look.contentInsets = NSDirectionalEdgeInsets(
+            top: 0, leading: Theme.Spacing.m, bottom: 0, trailing: Theme.Spacing.m)
+        chevron.configuration = look
+        chevron.addAction(UIAction { [weak self] _ in self?.onOpenUsage?() }, for: .primaryActionTriggered)
         chevron.setContentHuggingPriority(.required, for: .horizontal)
+        chevron.setContentCompressionResistancePriority(.required, for: .horizontal)
+        chevron.isAccessibilityElement = false
 
-        ring.translatesAutoresizingMaskIntoConstraints = false
-        ring.widthAnchor.constraint(equalToConstant: 20).isActive = true
-        ring.heightAnchor.constraint(equalToConstant: 20).isActive = true
+        let body = UIStackView(arrangedSubviews: [marks, column])
+        body.axis = .vertical
+        body.isUserInteractionEnabled = false
 
-        let row = UIStackView(arrangedSubviews: [ring, textLabel, valueLabel, moreLabel, chevron])
-        row.axis = .horizontal
-        row.alignment = .center
-        row.spacing = Theme.Spacing.s
-        row.isLayoutMarginsRelativeArrangement = true
-        row.directionalLayoutMargins = NSDirectionalEdgeInsets(
-            top: Theme.Spacing.s, leading: Theme.Spacing.m, bottom: Theme.Spacing.s,
-            trailing: Theme.Spacing.m)
-        row.translatesAutoresizingMaskIntoConstraints = false
+        shell.addArrangedSubview(body)
+        shell.addArrangedSubview(chevron)
+        shell.axis = .horizontal
+        shell.alignment = .fill
+        shell.isLayoutMarginsRelativeArrangement = true
+        shell.translatesAutoresizingMaskIntoConstraints = false
 
-        contentView.addSubview(capsule)
-        contentView.addSubview(row)
+        contentView.addSubview(card)
+        contentView.addSubview(shell)
         NSLayoutConstraint.activate([
-            capsule.topAnchor.constraint(equalTo: contentView.topAnchor),
-            capsule.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            capsule.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            capsule.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            row.topAnchor.constraint(equalTo: contentView.topAnchor),
-            row.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            row.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            row.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            card.topAnchor.constraint(equalTo: contentView.topAnchor),
+            card.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            card.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            card.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            shell.topAnchor.constraint(equalTo: contentView.topAnchor),
+            shell.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            shell.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            shell.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            chevron.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
         ])
-        answersPointer(cornerRadius: 22)
+        answersPointer(cornerRadius: Self.cornerRadius)
         isAccessibilityElement = true
         accessibilityTraits = .button
     }
@@ -728,29 +755,162 @@ final class HomeGlanceCell: UICollectionViewCell {
         }
     }
 
-    /// Hiding and showing the ring, the value and the "+N" inside the snapshot's animation made the
-    /// row animate its arranged views while the cell was reconfigured again, and the row stayed
-    /// where the half-finished animation left it: the ring outside the capsule and the value laid
-    /// over the chevron. Applying with animations off settles every frame before the cell is seen.
+    /// Adding, removing and refilling rows inside the snapshot's animation made the stack animate
+    /// its arranged views while the cell was reconfigured again, and a row stayed where the
+    /// half-finished animation left it: the ring outside the card and the value laid over the
+    /// chevron. Applying with animations off settles every frame before the cell is seen.
     private func apply(_ card: QuotaGlanceCard) {
         let lines = card.glance.lines
-        guard let lead = lines.first else { return }
-        textLabel.text = lead.text
-        valueLabel.text = lead.trailing
-        valueLabel.isHidden = lead.trailing.isEmpty
-        let others = lines.count - 1
-        moreLabel.text = others > 0 ? "+\(others)" : nil
-        moreLabel.isHidden = others <= 0
-        ring.fraction = lead.fraction
-        ring.tint = Self.color(for: lead.tone)
-        ring.isHidden = lead.fraction == nil
-        accessibilityLabel = card.glance.tooltip.isEmpty
-            ? lead.text : card.glance.tooltip.components(separatedBy: "\n").first ?? lead.text
-        accessibilityValue = lead.trailing
-        accessibilityHint = String(localized: "Opens usage")
+        guard !lines.isEmpty else { return }
+        let marked = lines.filter { $0.kind != .notice }
+        let folds = marked.count > 1
+        let open = card.isOpen || !folds
+        marks.isHidden = open
+        column.isHidden = !open
+        if open {
+            seat(chips: 0)
+            fill(rows: lines, marked: !marked.isEmpty)
+        } else {
+            seat(rows: 0)
+            seat(chips: marked.count)
+            for (chip, line) in zip(chips, marked) { chip.configure(line) }
+        }
+        let inset = open && lines.count > 1 ? Self.stackedInset : 0
+        shell.directionalLayoutMargins = NSDirectionalEdgeInsets(
+            top: inset, leading: Theme.Spacing.m, bottom: inset, trailing: 0)
+        accessibilityLabel = lines.map(Self.spoken).joined(separator: ", ")
+        accessibilityValue = nil
+        accessibilityHint =
+            folds
+            ? (open ? String(localized: "Folds the quotas") : String(localized: "Shows every quota"))
+            : nil
+        accessibilityCustomActions = [
+            UIAccessibilityCustomAction(name: String(localized: "Open usage and quota")) { [weak self] _ in
+                self?.onOpenUsage?()
+                return true
+            }
+        ]
     }
 
-    private static func color(for tone: QuotaGlance.Tone) -> UIColor {
+    private func fill(rows lines: [QuotaGlance.Line], marked: Bool) {
+        let stacked = lines.count > 1
+        seat(rows: lines.count)
+        for (row, line) in zip(rows, lines) {
+            row.configure(
+                line, minimumHeight: stacked ? Self.stackedRowHeight : Self.loneRowHeight,
+                keepsMarkColumn: stacked && marked)
+        }
+    }
+
+    /// As many rows as the strip has lines: a row is made once and kept, so a poll that changes a
+    /// number refills labels and builds nothing.
+    private func seat(rows count: Int) {
+        while rows.count < count {
+            let row = GlanceLineRow()
+            rows.append(row)
+            column.addArrangedSubview(row)
+        }
+        while rows.count > count {
+            rows.removeLast().removeFromSuperview()
+        }
+    }
+
+    private func seat(chips count: Int) {
+        while chips.count < count {
+            let chip = GlanceMarkChip()
+            chips.append(chip)
+            marks.addArrangedSubview(chip)
+        }
+        while chips.count > count {
+            chips.removeLast().removeFromSuperview()
+        }
+    }
+
+    private static func spoken(_ line: QuotaGlance.Line) -> String {
+        [line.text, line.trailing, line.paceNews ?? ""].filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+}
+
+/// One line of the folded strip: its mark and the provider in one word. The word wears the
+/// line's tone only when the line needs attention, so a wall is found by colour before it is read.
+final class GlanceMarkChip: UIView {
+    private let mark = GlanceMarkView(side: 16)
+    private let nameLabel = UILabel()
+
+    init() {
+        super.init(frame: .zero)
+        nameLabel.font = Theme.Ramp.font(.gaugeCaption)
+        nameLabel.lineBreakMode = .byTruncatingTail
+        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let row = UIStackView(arrangedSubviews: [mark, nameLabel])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = Theme.Spacing.xs
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.topAnchor.constraint(equalTo: topAnchor),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func configure(_ line: QuotaGlance.Line) {
+        mark.configure(line)
+        nameLabel.text = line.short ?? line.text
+        nameLabel.textColor = GlanceInk.words(line.tone)
+    }
+}
+
+/// The mark a line wears: a window is a ring that fills, a balance is a dot because money has no
+/// ceiling to fill.
+final class GlanceMarkView: UIView {
+    private let ring = MiniRingView()
+    private let dot = UIView()
+
+    init(side: CGFloat) {
+        super.init(frame: .zero)
+        let dotSide = (side * 0.4).rounded()
+        ring.translatesAutoresizingMaskIntoConstraints = false
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        dot.layer.cornerRadius = dotSide / 2
+        addSubview(ring)
+        addSubview(dot)
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: side),
+            heightAnchor.constraint(equalToConstant: side),
+            ring.topAnchor.constraint(equalTo: topAnchor),
+            ring.bottomAnchor.constraint(equalTo: bottomAnchor),
+            ring.leadingAnchor.constraint(equalTo: leadingAnchor),
+            ring.trailingAnchor.constraint(equalTo: trailingAnchor),
+            dot.centerXAnchor.constraint(equalTo: centerXAnchor),
+            dot.centerYAnchor.constraint(equalTo: centerYAnchor),
+            dot.widthAnchor.constraint(equalToConstant: dotSide),
+            dot.heightAnchor.constraint(equalToConstant: dotSide),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func configure(_ line: QuotaGlance.Line) {
+        let sentence = line.kind == .notice
+        let gauge = !sentence && line.fraction != nil
+        let tint = GlanceInk.mark(line.tone)
+        ring.isHidden = !gauge
+        ring.fraction = line.fraction
+        ring.tint = tint
+        dot.isHidden = sentence || gauge
+        dot.backgroundColor = tint
+    }
+}
+
+/// The colours the quota strip's tones are drawn in.
+enum GlanceInk {
+    static func mark(_ tone: QuotaGlance.Tone) -> UIColor {
         switch tone {
         case .ok: return Theme.Color.accent
         case .warn: return Theme.Color.warning
@@ -758,6 +918,116 @@ final class HomeGlanceCell: UICollectionViewCell {
         case .balance: return Theme.Color.info
         case .quiet: return Theme.Color.tertiaryLabel
         }
+    }
+
+    /// Only what needs attention leaves the page's own ink, so a card of quiet windows reads as
+    /// text and a wall is the one coloured thing on it.
+    static func words(_ tone: QuotaGlance.Tone) -> UIColor {
+        switch tone {
+        case .ok, .balance: return Theme.Color.label
+        case .warn: return Theme.Color.warning
+        case .danger: return Theme.Color.danger
+        case .quiet: return Theme.Color.secondaryLabel
+        }
+    }
+}
+
+/// One line of the quota strip: the mark its tone wears, its words, and the number the words are
+/// about in a column the rows share. A sentence about the reading itself wears no mark and starts
+/// where the words start. A window heading for its wall says so on a second line under its words.
+final class GlanceLineRow: UIView {
+    /// What a row keeps above and below its words, so one that says two things under its name
+    /// does not touch its neighbours; a row of one line is shorter than its minimum either way.
+    private static let breathing: CGFloat = 4
+
+    private let mark = GlanceMarkView(side: 20)
+    private let textLabel = UILabel()
+    private let newsLabel = UILabel()
+    private let valueLabel = UILabel()
+    private let minimum: NSLayoutConstraint
+
+    init() {
+        let row = UIStackView()
+        minimum = row.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
+        super.init(frame: .zero)
+
+        textLabel.font = Theme.Ramp.font(.gauge)
+        textLabel.lineBreakMode = .byTruncatingTail
+        textLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        newsLabel.font = Theme.Ramp.font(.gaugeCaption)
+        newsLabel.numberOfLines = 2
+        newsLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        valueLabel.font = Theme.Ramp.font(.gauge)
+        valueLabel.textAlignment = .right
+        valueLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        valueLabel.setContentHuggingPriority(.required, for: .horizontal)
+
+        let words = UIStackView(arrangedSubviews: [textLabel, newsLabel])
+        words.axis = .vertical
+        words.spacing = 1
+
+        row.addArrangedSubview(mark)
+        row.addArrangedSubview(words)
+        row.addArrangedSubview(valueLabel)
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = Theme.Spacing.s
+        row.isLayoutMarginsRelativeArrangement = true
+        row.directionalLayoutMargins = NSDirectionalEdgeInsets(
+            top: Self.breathing, leading: 0, bottom: Self.breathing, trailing: 0)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.topAnchor.constraint(equalTo: topAnchor),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor),
+            minimum,
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// `keepsMarkColumn` holds the mark's place on a line that wears none, so a sentence among
+    /// gauges starts where their words start; a sentence on its own starts at the card's edge.
+    func configure(_ line: QuotaGlance.Line, minimumHeight: CGFloat, keepsMarkColumn: Bool) {
+        minimum.constant = minimumHeight
+        let sentence = line.kind == .notice
+
+        textLabel.text = line.text
+        textLabel.textColor = sentence ? GlanceInk.words(line.tone) : Theme.Color.label
+
+        valueLabel.text = line.trailing
+        valueLabel.isHidden = line.trailing.isEmpty
+        valueLabel.textColor = GlanceInk.words(line.tone)
+
+        let news = line.paceNews
+        newsLabel.text = news
+        newsLabel.isHidden = news == nil
+        newsLabel.textColor = GlanceInk.mark(line.tone)
+
+        mark.configure(line)
+        mark.isHidden = sentence && !keepsMarkColumn
+    }
+}
+
+/// A surface that is a capsule while it is one row tall and a rounded card once it is taller.
+final class GlanceCardView: UIView {
+    private let cornerRadius: CGFloat
+
+    init(cornerRadius: CGFloat) {
+        self.cornerRadius = cornerRadius
+        super.init(frame: .zero)
+        layer.cornerCurve = .continuous
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerRadius = min(bounds.height / 2, cornerRadius)
     }
 }
 
