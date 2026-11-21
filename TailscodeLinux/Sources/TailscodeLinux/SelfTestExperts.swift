@@ -35,7 +35,7 @@ extension SelfTest {
         try expect(ExpertReading.badge(iPad.expert) == 3, "three of them")
         try expect(demoBoard.rows[1].state().tone == .active, "Server is at work")
         try expect(demoBoard.rows[2].state().tone == .failing, "Releases has a guard failing")
-        let debrief = try unwrap(try expertsWait { try await demo.expertDebrief(sessionID: "demo-c3") }, "demo-c3 has a debrief")
+        let debrief = try unwrap(try expertsWait { try await demo.expertDebrief(sessionID: DemoWorld.demoReviewedTaskID) }, "the demo's finished task has a debrief")
         try expect(debrief.state == .open && debrief.pending.count == 3, "its three proposals wait")
         try expect(ExpertReading.debriefHeadline(debrief, name: "iPadOS").text.hasPrefix("iPadOS learned 2"),
                    "and the headline says what was learned")

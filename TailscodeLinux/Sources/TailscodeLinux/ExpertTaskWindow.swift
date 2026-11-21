@@ -65,6 +65,9 @@ final class ExpertTaskWindow: @unchecked Sendable {
             gtk_box_append(ptr(content), note)
         }
 
+        let hint = Gtk.label(ExpertWords.newTaskFor(row.expert.name), css: "expert-tokens", selectable: false)
+        gtk_label_set_xalign(op(hint), 0)
+        gtk_box_append(ptr(content), hint)
         let frame = gtk_frame_new(nil)!
         let view = gtk_text_view_new()!
         gtk_text_view_set_wrap_mode(ptr(UnsafeMutableRawPointer(view)), GTK_WRAP_WORD_CHAR)
@@ -80,9 +83,6 @@ final class ExpertTaskWindow: @unchecked Sendable {
         gtk_frame_set_child(ptr(frame), view)
         gtk_box_append(ptr(content), frame)
         text = view
-        let hint = Gtk.label(ExpertWords.newTaskFor(row.expert.name), css: "expert-tokens", selectable: false)
-        gtk_label_set_xalign(op(hint), 0)
-        gtk_box_append(ptr(content), hint)
 
         error = Gtk.label("", css: "fact-bad", wrap: true, selectable: true)
         gtk_label_set_xalign(op(error), 0)

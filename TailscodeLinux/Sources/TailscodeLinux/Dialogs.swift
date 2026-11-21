@@ -232,6 +232,20 @@ enum Dialogs {
         gtk_window_set_child(ptr(window), column)
         gtk_window_present(ptr(window))
         gtk_widget_grab_focus(dismiss)
+        deselect(view)
+    }
+
+    /// Lets go of what a selectable label selected when the window first handed it the focus: a
+    /// reader that opens with every word highlighted looks like something went wrong.
+    private static func deselect(_ widget: UnsafeMutablePointer<GtkWidget>) {
+        if tailscode_is_label(widget) != 0 {
+            gtk_label_select_region(op(widget), 0, 0)
+        }
+        var child = gtk_widget_get_first_child(widget)
+        while let next = child {
+            deselect(next)
+            child = gtk_widget_get_next_sibling(next)
+        }
     }
 
     /// `/compact` never fires bare: it is irreversible, takes minutes, and accepts an instruction
