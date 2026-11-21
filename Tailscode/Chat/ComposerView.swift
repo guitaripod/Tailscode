@@ -50,8 +50,25 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     /// The cap the finger is holding the box at, while the handle is held.
     private var heldCap: CGFloat?
     private var heldFrom: CGFloat = 0
+    private var heldCeiling: CGFloat = 0
     /// What the words would take with nothing holding them, as last measured.
     private var naturalHeight: CGFloat = 22
+    /// Counts every change to the words or their faces, which is what a measured height is good for.
+    private var wordsMoved = 0
+    private var measured: (moved: Int, width: CGFloat, length: Int)?
+    /// Whether the words run past the box. The text view always scrolls, so a new line never makes
+    /// it a self-sizing view the page's layout has to solve again, and a box that grows never lays
+    /// its words out again for a taller page; the box only lets it move when there is more to see.
+    private var overflows = false
+    /// Units written by plain insertions since the words were last measured, or nil once anything
+    /// else changed them. Words only ever added to cannot have got shorter.
+    private var grownSinceMeasure: Int? = 0
+    private var keysSinceMeasure = 0
+    /// The length the edit the box was last asked about leaves. A change that does not come out
+    /// at it was not that edit, such as words set from outside, and is measured.
+    private var expectedLength: Int?
+    /// The room the page gave the box when last asked, kept until it says the room moved.
+    private var keptRoom: CGFloat?
     /// How far the box stands above its resting height. The transcript keeps the room it had at
     /// rest and the lifted box rises over it, so pulling the handle never moves the conversation.
     private(set) var liftExtra: CGFloat = 0
@@ -192,7 +209,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textView.autocorrectionType = .yes
         textView.spellCheckingType = .yes
         textView.inlinePredictionType = .yes
-        textView.isScrollEnabled = false
+        textView.isScrollEnabled = true
         textView.delegate = self
         textView.onPasteImage = { [weak self] data, mime in
             self?.delegate?.composerDidPasteImage(data, mime: mime)
@@ -340,6 +357,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
             (view: ComposerView, _) in
             view.stackedTextBottom.constant = -(view.accessoryRowHeight + 10)
+            view.keptRoom = nil
             view.paintInk(force: true)
             view.updateHeight()
         }
@@ -472,7 +490,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     /// it, or put back the rewrite of a message that was waiting.
     private var sendFace: SendFace {
         SendFace.read(
-            holdsWords: !trimmed.isEmpty || carriesAttachments, busy: isBusy,
+            holdsWords: holdsWords || carriesAttachments, busy: isBusy,
             editingQueued: isEditingQueued)
     }
 
@@ -521,12 +539,21 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         if textView.bounds.width != lastMeasuredWidth {
             updateHeight()
         }
+        if !overflows { textView.settleAtTop() }
         refreshFade()
     }
 
     private var trimmed: String {
         textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    /// Whether anything but spaces and new lines is in the box, read without copying the draft:
+    /// Send asks on every key.
+    private var holdsWords: Bool {
+        (textView.text ?? "").unicodeScalars.contains { !Self.blank.contains($0) }
+    }
+
+    private static let blank = CharacterSet.whitespacesAndNewlines
 
     func textViewDidBeginEditing(_ textView: UITextView) {
         refreshStrike(animated: true)
@@ -549,20 +576,41 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     func textView(
         _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String
     ) -> Bool {
+        #if DEBUG
+            stagedAsks += 1
+        #endif
         dictation.userWillEdit()
         ink.holdTypingInk()
         if PasteFold.folds(text) {
             delegate?.composerDidPasteLargeText(text)
             return false
         }
-        if text == "\n", AppPreferences.sendOnReturn, !trimmed.isEmpty {
+        if text == "\n", AppPreferences.sendOnReturn, holdsWords {
             sendTapped()
             return false
         }
+        ink.willEdit(range, with: text)
+        if range.length == 0, let grown = grownSinceMeasure {
+            grownSinceMeasure = grown + (text as NSString).length
+        } else {
+            grownSinceMeasure = nil
+        }
+        expectedLength = textView.textStorage.length - range.length + (text as NSString).length
         return true
     }
 
+    #if DEBUG
+        private(set) var stagedChanges = 0
+        private(set) var stagedAsks = 0
+    #endif
+
     func textViewDidChange(_ textView: UITextView) {
+        #if DEBUG
+            stagedChanges += 1
+        #endif
+        wordsMoved += 1
+        if expectedLength != textView.textStorage.length { grownSinceMeasure = nil }
+        expectedLength = nil
         placeholder.isHidden = !textView.text.isEmpty
         refreshDoors()
         paintInk()
@@ -575,6 +623,8 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     /// A take being heard owns the box's ink: the words still settling are lit by the dictation
     /// itself, and painting over them would put them out.
     private func paintInk(force: Bool = false) {
+        wordsMoved += 1
+        if force { measured = nil }
         guard !dictation.isOpen else { return }
         ink.paint(force: force)
     }
@@ -586,13 +636,15 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     /// The most the words may take once lifted: the room the screen allows, less everything in
     /// the box that is not words.
     private var pageCap: CGFloat {
-        guard let room = pageRoom?() else { return restingCap }
+        if keptRoom == nil { keptRoom = pageRoom?() }
+        guard let room = keptRoom else { return restingCap }
         return max(restingCap, room - (bounds.height - heightConstraint.constant))
     }
 
     /// The room above the box changed under a lifted box: the keyboard came or went, a chip
     /// landed, the list of files opened. The box takes its new height.
     func roomMoved(animated: Bool) {
+        keptRoom = nil
         guard lifted, heldCap == nil else { return }
         updateHeight(animated: animated)
     }
@@ -607,9 +659,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     /// up to the page once lifted, and wherever the finger holds the cap while the handle is held.
     private func updateHeight(animated: Bool = false) {
         lastMeasuredWidth = textView.bounds.width
-        naturalHeight = textView.sizeThatFits(
-            CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude)
-        ).height
+        measureWords()
         let resting = restingCap
         if lifted, heldCap == nil, naturalHeight <= resting + 0.5 { lifted = false }
         let height: CGFloat
@@ -621,7 +671,8 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
                     natural: Double(naturalHeight), cap: Double(lifted ? liftCeiling : resting),
                     floor: 22))
         }
-        textView.isScrollEnabled = naturalHeight > height + 0.5
+        overflows = naturalHeight > height + 0.5
+        if !overflows { textView.settleAtTop() }
         liftExtra = max(0, height - min(max(22, naturalHeight), resting))
         handle.show(
             ComposerLift.offersHandle(
@@ -649,17 +700,50 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             completion: { _ in self.keepCaretInView() })
     }
 
+    /// Lays the words out to learn their height only when they or the width they wrap in have
+    /// changed since the last time: measuring lays out the whole draft, and a box asked for its
+    /// height on every frame of a pull or every pass of the page's layout would do it each time.
+    private func measureWords() {
+        let width = textView.bounds.width
+        let length = textView.textStorage.length
+        if let measured, measured.width == width {
+            if measured.moved == wordsMoved, measured.length == length { return }
+            if keepsOverflowing(length: length, since: measured.length) {
+                keysSinceMeasure += 1
+                return
+            }
+        }
+        naturalHeight = textView.sizeThatFits(
+            CGSize(width: width, height: .greatestFiniteMagnitude)
+        ).height
+        measured = (wordsMoved, width, length)
+        grownSinceMeasure = 0
+        keysSinceMeasure = 0
+    }
+
+    /// Whether words that ran well past the box when last measured, and have only been added to
+    /// since, still run past it, which is all the box needs to know of them: laying out pages of
+    /// draft on every key to learn they are still pages is what made a long draft slow to type
+    /// into. A deletion, a replacement, words set from outside, a pull or a lift are measured, and
+    /// so is every sixteenth key.
+    private func keepsOverflowing(length: Int, since measuredLength: Int) -> Bool {
+        guard let grown = grownSinceMeasure, measuredLength + grown == length, keysSinceMeasure < 16,
+            heldCap == nil
+        else { return false }
+        return naturalHeight >= heightConstraint.constant + 2 * Theme.Ramp.font(.answer).lineHeight
+    }
+
     /// A box that changed height under a caret puts the caret back in sight: the text view placed
     /// its page for the height it had, and the line being written is the one that must not be
     /// left half under an edge.
     private func keepCaretInView() {
-        guard textView.isScrollEnabled, heldCap == nil else { return }
+        guard overflows, heldCap == nil else { return }
         textView.scrollRangeToVisible(textView.selectedRange)
         refreshFade()
     }
 
     private func refreshFade() {
-        fade.refresh(on: textView)
+        fade.refresh(on: textView, overflows: overflows)
     }
 
     /// Lets the pull on the handle be heard by the screen the box sits in, so one that starts a
@@ -680,25 +764,39 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     @objc private func liftPanned(_ pan: UIPanGestureRecognizer) {
         switch pan.state {
         case .began:
-            heldFrom = heightConstraint.constant
-            heldCap = heldFrom
+            beginHold()
             Theme.Haptics.selection()
         case .changed:
-            heldCap = CGFloat(
-                ComposerLift.dragged(
-                    from: Double(heldFrom), travel: Double(-pan.translation(in: self).y),
-                    resting: Double(restingCap), ceiling: Double(liftCeiling)))
-            updateHeight()
+            hold(travel: -pan.translation(in: self).y)
         case .ended, .cancelled, .failed:
             guard let cap = heldCap else { return }
             let up = ComposerLift.settlesLifted(
                 cap: Double(cap), velocity: Double(-pan.velocity(in: self).y),
-                resting: Double(restingCap), ceiling: Double(liftCeiling))
+                resting: Double(restingCap), ceiling: Double(heldCeiling))
             heldCap = nil
             setLifted(up && pan.state == .ended)
         default:
             break
         }
+    }
+
+    /// The handle is taken: the box holds the height it had, and the room it may grow into is
+    /// read now, once, rather than on every frame of the pull.
+    private func beginHold() {
+        measured = nil
+        keptRoom = nil
+        measureWords()
+        heldFrom = heightConstraint.constant
+        heldCap = heldFrom
+        heldCeiling = liftCeiling
+    }
+
+    private func hold(travel: CGFloat) {
+        heldCap = CGFloat(
+            ComposerLift.dragged(
+                from: Double(heldFrom), travel: Double(travel), resting: Double(restingCap),
+                ceiling: Double(heldCeiling)))
+        updateHeight()
     }
 
     @objc private func handleTapped() {
@@ -708,6 +806,9 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     /// Lifts the box to the page or lets it down to six lines. Lifting takes the keyboard too:
     /// room to write is for writing.
     func setLifted(_ up: Bool) {
+        measured = nil
+        keptRoom = nil
+        measureWords()
         let wanted = up && naturalHeight > restingCap + 0.5
         if wanted != lifted { Theme.Haptics.notch() }
         lifted = wanted
@@ -759,6 +860,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     /// correction. The delegate hears about the empty box after the send, as it always has.
     private func collapseForSend() {
         textView.text = ""
+        wordsMoved += 1
         placeholder.isHidden = false
         lifted = false
         heldCap = nil
@@ -997,6 +1099,30 @@ extension ComposerView {
         /// the menu.
         func stageVerb(_ name: String, over range: NSRange) {
             rewrite(range, by: name == "quote" ? DraftVerbs.quote : DraftVerbs.code)
+        }
+
+        /// One key the way the keyboard sends it, `<` deleting and `|` starting a line: the box is
+        /// asked first, as the keyboard asks it, and a key it refuses is not typed.
+        func stageKeystroke(_ key: Character) {
+            let caret = textView.selectedRange
+            let deleting = key == "<"
+            let range =
+                deleting && caret.length == 0
+                ? NSRange(location: max(0, caret.location - 1), length: caret.location > 0 ? 1 : 0) : caret
+            let written = deleting ? "" : (key == "|" ? "\n" : String(key))
+            guard textView(textView, shouldChangeTextIn: range, replacementText: written) else { return }
+            if deleting { textView.deleteBackward() } else { textView.insertText(written) }
+        }
+
+        /// One frame of a finger holding the handle this far above where it came down.
+        func stageDrag(travel: CGFloat) {
+            if heldCap == nil { beginHold() }
+            hold(travel: travel)
+        }
+
+        func stageDragEnd() {
+            heldCap = nil
+            setLifted(true)
         }
     #endif
 }

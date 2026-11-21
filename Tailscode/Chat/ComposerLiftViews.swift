@@ -128,33 +128,57 @@ final class ComposerDoors: UIStackView {
 @MainActor
 final class ComposerEdgeFade {
     private let mask = CAGradientLayer()
+    /// Which edges fade and over what height, as last drawn. Scrolling only moves the mask with
+    /// the page; the gradient is drawn again only when an edge starts or stops fading.
+    private var drawn: (above: Bool, below: Bool, height: CGFloat)?
 
     init() {
         mask.startPoint = CGPoint(x: 0.5, y: 0)
         mask.endPoint = CGPoint(x: 0.5, y: 1)
     }
 
-    func refresh(on textView: UITextView) {
+    /// - Parameter overflows: whether the words run past the box, as its owner measured them. A
+    ///   box whose words fit never asks the text view how tall they are.
+    func refresh(on textView: UITextView, overflows: Bool) {
         let bounds = textView.bounds
-        let hidden = textView.contentSize.height - bounds.height
-        let scrolls = textView.isScrollEnabled && hidden > 1 && bounds.height > 44
+        let hidden = overflows && bounds.height > 44 ? textView.contentSize.height - bounds.height : 0
+        let scrolls = hidden > 1
         let above = scrolls && textView.contentOffset.y > 1
         let below = scrolls && textView.contentOffset.y < hidden - 4
         guard above || below else {
             if textView.layer.mask != nil { textView.layer.mask = nil }
+            drawn = nil
             return
         }
-        let clear = UIColor.clear.cgColor
-        let solid = UIColor.black.cgColor
+        let redraw = drawn.map { $0.above != above || $0.below != below || $0.height != bounds.height } ?? true
+        guard redraw || mask.frame != bounds else {
+            if textView.layer.mask !== mask { textView.layer.mask = mask }
+            return
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         mask.frame = bounds
-        mask.colors = [above ? clear : solid, solid, solid, below ? clear : solid]
-        mask.locations = [
-            0, NSNumber(value: Double(20 / bounds.height)),
-            NSNumber(value: Double(1 - 14 / bounds.height)), 1,
-        ]
+        if redraw {
+            let clear = UIColor.clear.cgColor
+            let solid = UIColor.black.cgColor
+            mask.colors = [above ? clear : solid, solid, solid, below ? clear : solid]
+            mask.locations = [
+                0, NSNumber(value: Double(20 / bounds.height)),
+                NSNumber(value: Double(1 - 14 / bounds.height)), 1,
+            ]
+            drawn = (above, below, bounds.height)
+        }
         CATransaction.commit()
         if textView.layer.mask !== mask { textView.layer.mask = mask }
+    }
+}
+
+extension UITextView {
+    /// Puts words that fit back at the top. A text view that always scrolls can be left a line
+    /// down when the caret is followed a moment before the box grows to hold it.
+    func settleAtTop() {
+        let top = -adjustedContentInset.top
+        guard contentOffset.y != top else { return }
+        contentOffset = CGPoint(x: contentOffset.x, y: top)
     }
 }

@@ -13,6 +13,7 @@ final class MentionFinder {
     private var waiting: [String] = []
     private var flying = 0
     private var walkedAt: Date = .distantPast
+    private var announcing = false
     var onChange: (() -> Void)?
 
     /// How long a walk stands before the next look at the list reads the folders again: an agent
@@ -53,7 +54,19 @@ final class MentionFinder {
             .filter { !$0.isEmpty }
         guard changed != shelf.changed else { return }
         shelf.changed = changed
-        onChange?()
+        announce()
+    }
+
+    /// Tells the list once for everything that has landed by the time it is next free to look,
+    /// rather than once for each folder: a walk can bring several back together.
+    private func announce() {
+        guard !announcing else { return }
+        announcing = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            announcing = false
+            onChange?()
+        }
     }
 
     private func rewalk() {
@@ -75,6 +88,30 @@ final class MentionFinder {
         }
     }
 
+    #if DEBUG
+        /// Fills the shelf with a made-up project of about this many files, the size a real walk
+        /// stops at, so the list can be timed against the most it will ever hold.
+        func stageShelf(_ count: Int) {
+            let stems = [
+                "Bridge", "Stream", "Session", "Chat", "Composer", "Mention", "Theme", "Palette", "Store",
+                "Draft", "Kit", "Agent", "Model", "View", "Controller", "Reading", "Words", "Queue",
+            ]
+            let endings = ["swift", "md", "json", "yml", "png", "sh"]
+            let perFolder = 94
+            let folders = max(1, count / perFolder)
+            for folder in 0..<folders {
+                let path = folder == 0 ? "" : "Sources/\(stems[folder % stems.count])Module\(folder)"
+                let children = (0..<perFolder).map { index -> (name: String, isDirectory: Bool) in
+                    let first = stems[(index * 7 + folder) % stems.count]
+                    let second = stems[(index * 3 + folder * 5) % stems.count]
+                    return (name: "\(first)\(second)\(index).\(endings[index % endings.count])", isDirectory: false)
+                }
+                shelf.shelve(children, in: path)
+            }
+            announce()
+        }
+    #endif
+
     private func read(_ folder: String) {
         flying += 1
         let path = shelf.absolute(folder)
@@ -88,7 +125,7 @@ final class MentionFinder {
             } else {
                 self.shelf.fail(folder)
             }
-            self.onChange?()
+            self.announce()
             self.pump()
         }
     }

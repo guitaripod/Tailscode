@@ -60,6 +60,11 @@ final class SlashCommandPalette: UIView {
     private var heightCap: NSLayoutConstraint!
     private var rows: [SlashRowView] = []
     private var selection: Int?
+    /// Rows and headers kept for the next keystroke. A list rebuilt from new views on every key
+    /// made two dozen rows of stacks, labels and constraints each time a letter was typed.
+    private var rowPool: [SlashRowView] = []
+    private var headerPool: [SlashHeaderView] = []
+    private lazy var note = SlashNoteView()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -143,36 +148,74 @@ final class SlashCommandPalette: UIView {
 
     func update(with content: SlashPaletteContent) {
         let previous = selection.flatMap { rows.indices.contains($0) ? rows[$0].command.id : nil }
-        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        rows = []
+        var views: [UIView] = []
+        var used = 0
+        var headers = 0
+        var moved = false
+
+        func place(_ command: SlashCommand) {
+            if used == rowPool.count {
+                let row = SlashRowView(command: command)
+                row.onTap = { [weak row] in row?.command.run() }
+                rowPool.append(row)
+                moved = true
+            } else if rowPool[used].show(command) {
+                moved = true
+            }
+            views.append(rowPool[used])
+            used += 1
+        }
+
+        func head(_ title: String) {
+            if headers == headerPool.count { headerPool.append(SlashHeaderView()) }
+            let header = headerPool[headers]
+            if header.title != title {
+                header.title = title
+                moved = true
+            }
+            views.append(header)
+            headers += 1
+        }
 
         switch content {
         case .commands(let sections):
             let live = sections.filter { !$0.commands.isEmpty }
             let titled = live.count > 1
             for section in live {
-                if titled, !section.title.isEmpty {
-                    stack.addArrangedSubview(makeHeader(section.title))
-                }
-                for command in section.commands { stack.addArrangedSubview(makeRow(command)) }
+                if titled, !section.title.isEmpty { head(section.title) }
+                section.commands.forEach(place)
             }
         case .arguments(let command, let typed):
-            stack.addArrangedSubview(SlashArgumentView(command: command, typed: typed))
+            views.append(SlashArgumentView(command: command, typed: typed))
         case .noMatch(let wording, let browse):
-            stack.addArrangedSubview(makeNoMatch(wording))
-            if let browse { stack.addArrangedSubview(makeRow(browse)) }
-        case .files(let sections, let note):
+            views.append(makeNoMatch(wording))
+            if let browse { place(browse) }
+        case .files(let sections, let words):
             for section in sections where !section.commands.isEmpty {
-                if !section.title.isEmpty { stack.addArrangedSubview(makeHeader(section.title)) }
-                for command in section.commands { stack.addArrangedSubview(makeRow(command)) }
+                if !section.title.isEmpty { head(section.title) }
+                section.commands.forEach(place)
             }
-            if let note { stack.addArrangedSubview(makeNote(note)) }
+            if let words {
+                if note.words != words {
+                    note.words = words
+                    moved = true
+                }
+                views.append(note)
+            }
+        }
+        rows = Array(rowPool.prefix(used))
+        if !stack.arrangedSubviews.elementsEqual(views, by: ===) {
+            for view in stack.arrangedSubviews where !views.contains(where: { $0 === view }) {
+                view.removeFromSuperview()
+            }
+            for (index, view) in views.enumerated() { stack.insertArrangedSubview(view, at: index) }
+            moved = true
         }
 
         let first: Int? = if case .files = content { nil } else { rows.isEmpty ? nil : 0 }
         selection = previous.flatMap { id in rows.firstIndex { $0.command.id == id } } ?? first
         applySelection(scroll: false)
-        scroll.setContentOffset(.zero, animated: false)
+        if moved { scroll.setContentOffset(.zero, animated: false) }
     }
 
     var hasSelectableRows: Bool { !rows.isEmpty }
@@ -205,52 +248,6 @@ final class SlashCommandPalette: UIView {
         layoutIfNeeded()
         scroll.scrollRectToVisible(
             row.convert(row.bounds, to: scroll).insetBy(dx: 0, dy: -8), animated: true)
-    }
-
-    private func makeHeader(_ title: String) -> UIView {
-        let label = UILabel()
-        label.text = title.uppercased()
-        label.font = Theme.Ramp.font(.hint)
-        label.adjustsFontForContentSizeCategory = true
-        label.textColor = Theme.Color.onGlassSecondary
-        let container = UIView()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
-            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -2),
-            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
-            label.trailingAnchor.constraint(
-                lessThanOrEqualTo: container.trailingAnchor, constant: -14),
-        ])
-        return container
-    }
-
-    /// One quiet line under the rows: a folder is on its way, or nothing was found.
-    private func makeNote(_ words: String) -> UIView {
-        let label = UILabel()
-        label.text = words
-        label.font = Theme.Ramp.font(.rowDetail)
-        label.adjustsFontForContentSizeCategory = true
-        label.textColor = Theme.Color.onGlassSecondary
-        label.numberOfLines = 2
-        label.translatesAutoresizingMaskIntoConstraints = false
-        let container = UIView()
-        container.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
-            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -10),
-            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
-            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
-        ])
-        return container
-    }
-
-    private func makeRow(_ command: SlashCommand) -> SlashRowView {
-        let row = SlashRowView(command: command)
-        row.onTap = { command.run() }
-        rows.append(row)
-        return row
     }
 
     /// A word the catalog does not have keeps the palette on screen saying so. Letting the list
@@ -290,8 +287,11 @@ final class SlashCommandPalette: UIView {
 /// selection can wear a background — none of which `UIButton.Configuration` will carry together.
 @MainActor
 final class SlashRowView: UIControl {
-    let command: SlashCommand
+    private(set) var command: SlashCommand
     var onTap: (() -> Void)?
+    /// What the row was last drawn from: a key that leaves a row's command as it was leaves the
+    /// row alone.
+    private var look: Look?
 
     private let icon = UIImageView()
     private let titleLabel = UILabel()
@@ -302,6 +302,55 @@ final class SlashRowView: UIControl {
         self.command = command
         super.init(frame: .zero)
         build()
+        show(command)
+        registerForTraitChanges(
+            [UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self, UITraitPreferredContentSizeCategory.self]
+        ) { (row: SlashRowView, _) in
+            row.look = nil
+            row.show(row.command)
+        }
+    }
+
+    private struct Look: Equatable {
+        let title: String
+        let subtitle: String
+        let symbol: String
+        let highlight: [Int]
+        let argumentHint: String?
+        let badge: String?
+        let runsOnServer: Bool
+
+        init(_ command: SlashCommand) {
+            title = command.title
+            subtitle = command.subtitle
+            symbol = command.symbol
+            highlight = command.highlight
+            argumentHint = command.argumentHint
+            badge = command.badge
+            runsOnServer = command.runsOnServer
+        }
+    }
+
+    /// Puts another command in this row. Returns whether the row looks any different for it.
+    @discardableResult
+    func show(_ command: SlashCommand) -> Bool {
+        self.command = command
+        let wanted = Look(command)
+        guard wanted != look else { return false }
+        if look?.symbol != wanted.symbol {
+            icon.image = UIImage(
+                systemName: command.symbol,
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .medium))
+        }
+        icon.tintColor = command.runsOnServer ? Theme.Color.accent : Theme.Color.onGlassSecondary
+        titleLabel.attributedText = Self.attributedTitle(command)
+        let subtitle = Self.subtitleText(command)
+        subtitleLabel.text = subtitle
+        subtitleLabel.isHidden = subtitle.isEmpty
+        accessibilityLabel = command.title
+        accessibilityHint = subtitle.isEmpty ? nil : subtitle
+        look = wanted
+        return true
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -315,8 +364,6 @@ final class SlashRowView: UIControl {
     }
 
     private func build() {
-        let tint = command.runsOnServer ? Theme.Color.accent : Theme.Color.onGlassSecondary
-
         highlightLayer.backgroundColor = Theme.Color.accent.withAlphaComponent(0.16)
         highlightLayer.layer.cornerRadius = 10
         highlightLayer.layer.cornerCurve = .continuous
@@ -325,25 +372,18 @@ final class SlashRowView: UIControl {
         highlightLayer.translatesAutoresizingMaskIntoConstraints = false
         addSubview(highlightLayer)
 
-        icon.image = UIImage(
-            systemName: command.symbol,
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .medium))
-        icon.tintColor = tint
         icon.contentMode = .scaleAspectFit
         icon.setContentHuggingPriority(.required, for: .horizontal)
 
-        titleLabel.attributedText = Self.attributedTitle(command)
         titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.numberOfLines = 1
         titleLabel.lineBreakMode = .byTruncatingTail
 
-        subtitleLabel.text = subtitleText
         subtitleLabel.font = Theme.Ramp.font(.rowDetail)
         subtitleLabel.adjustsFontForContentSizeCategory = true
         subtitleLabel.textColor = Theme.Color.onGlassSecondary
         subtitleLabel.numberOfLines = 1
         subtitleLabel.lineBreakMode = .byTruncatingTail
-        subtitleLabel.isHidden = subtitleText.isEmpty
 
         let text = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel])
         text.axis = .vertical
@@ -373,11 +413,9 @@ final class SlashRowView: UIControl {
         addAction(UIAction { [weak self] _ in self?.onTap?() }, for: .touchUpInside)
         isAccessibilityElement = true
         accessibilityTraits = .button
-        accessibilityLabel = command.title
-        accessibilityHint = subtitleText.isEmpty ? nil : subtitleText
     }
 
-    private var subtitleText: String {
+    private static func subtitleText(_ command: SlashCommand) -> String {
         [command.badge, command.subtitle]
             .compactMap { $0?.isEmpty == false ? $0 : nil }
             .joined(separator: " · ")
@@ -392,10 +430,7 @@ final class SlashRowView: UIControl {
         let string = NSMutableAttributedString(
             string: command.title,
             attributes: [.font: base, .foregroundColor: Theme.Color.onGlass])
-        let bold =
-            UIFont(
-                descriptor: base.fontDescriptor.withSymbolicTraits(.traitBold) ?? base.fontDescriptor,
-                size: base.pointSize)
+        let bold = boldTitle(base)
         let count = command.title.count
         for offset in command.highlight where offset >= 0 && offset < count {
             string.addAttributes(
@@ -413,6 +448,75 @@ final class SlashRowView: UIControl {
         }
         return string
     }
+}
+
+extension SlashRowView {
+    private static var bold: (base: UIFont, bold: UIFont)?
+
+    /// The face the typed letters are lit in, made once for each type size.
+    fileprivate static func boldTitle(_ base: UIFont) -> UIFont {
+        if let bold, bold.base === base { return bold.bold }
+        let made = UIFont(
+            descriptor: base.fontDescriptor.withSymbolicTraits(.traitBold) ?? base.fontDescriptor,
+            size: base.pointSize)
+        bold = (base, made)
+        return made
+    }
+}
+
+/// A section's name over its rows.
+@MainActor
+final class SlashHeaderView: UIView {
+    private let label = UILabel()
+
+    var title = "" {
+        didSet { label.text = title.uppercased() }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        label.font = Theme.Ramp.font(.hint)
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = Theme.Color.onGlassSecondary
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -14),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+}
+
+/// One quiet line under the rows: a folder is on its way, or nothing was found.
+@MainActor
+final class SlashNoteView: UIView {
+    private let label = UILabel()
+
+    var words = "" {
+        didSet { label.text = words }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        label.font = Theme.Ramp.font(.rowDetail)
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = Theme.Color.onGlassSecondary
+        label.numberOfLines = 2
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 }
 
 /// The second half of a slash invocation: the command is settled and the person is writing its

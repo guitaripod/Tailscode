@@ -290,7 +290,9 @@ extension ChatViewController {
         /// `draft:<words>`, `long`, `lift`, `drop`, `at:<letters>`, `pick:<n>`, `code:<at>:<length>`,
         /// `quote:<at>:<length>`, `attach`, `last`, `send`, `focus`, `blur`, `clear`, `wait:<seconds>`,
         /// `type:<words>` (a letter at a time, `|` for a new line) and `rewrite` (opens the last
-        /// waiting message in the box).
+        /// waiting message in the box). For timing: `prose:<length>` and `inked:<length>` fill the
+        /// box, `shelf:<files>` gives the file list a project that size, and `bench:<name>:<keys>:
+        /// <pattern>` and `drag:<frames>` log a `COMPOSE_BENCH` line.
         func stageCompose(_ script: String) async {
             for step in script.split(separator: ";") {
                 let parts = step.split(separator: ":", maxSplits: 1).map(String.init)
@@ -319,10 +321,56 @@ extension ChatViewController {
                 case "blur": composer.unfocus()
                 case "clear": composer.clear()
                 case "wait": try? await Task.sleep(for: .seconds(Double(argument) ?? 1))
+                case "prose": composer.setDraft(Self.stagedDraft(Self.stagedProse, length: Int(argument) ?? 3000), cursorAtEnd: true)
+                case "inked": composer.setDraft(Self.stagedDraft(Self.stagedInk, length: Int(argument) ?? 3000), cursorAtEnd: true)
+                case "shelf": mentionFinder?.stageShelf(Int(argument) ?? 6000)
+                case "bench": await benchKeys(argument)
+                case "drag": await benchDrag(frames: Int(argument) ?? 90)
                 default: break
                 }
                 try? await Task.sleep(for: .milliseconds(350))
             }
+        }
+
+        private static let stagedProse =
+            "I want the stream to keep its place when the bridge restarts, and the queue to hold "
+            + "whatever was typed while it was gone. "
+        private static let stagedInk =
+            "Look at @Sources/Pulse/Socket/CloseCodes.swift and `ReconnectScheduler`, then go "
+            + "ultracode on the ```swift|let attempts = 3|``` part of @Tests/PulseTests/Jitter.swift. "
+
+        private static func stagedDraft(_ unit: String, length: Int) -> String {
+            let text = String(repeating: unit, count: length / unit.count + 1)
+            return String(text.prefix(length)).replacingOccurrences(of: "|", with: "\n")
+        }
+
+        /// `bench:<name>:<keys>:<pattern>` types the pattern over and over, a key every 50 ms,
+        /// `<` deleting and `|` starting a line, and logs what each key cost.
+        private func benchKeys(_ argument: String) async {
+            let parts = argument.split(separator: ":", maxSplits: 2).map(String.init)
+            guard parts.count == 3, let keys = Int(parts[1]), !parts[2].isEmpty else { return }
+            let pattern = Array(parts[2])
+            let bench = ComposerBench()
+            let changes = composer.stagedChanges
+            let asks = composer.stagedAsks
+            for index in 0..<keys {
+                bench.time({ composer.stageKeystroke(pattern[index % pattern.count]) }, in: view)
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            bench.finish(
+                parts[0],
+                extra: "changes=\(composer.stagedChanges - changes) asks=\(composer.stagedAsks - asks) chars=\(composer.rawText.utf16.count)")
+        }
+
+        /// `drag:<frames>` pulls the handle up a frame at a time and lets go.
+        private func benchDrag(frames: Int) async {
+            let bench = ComposerBench()
+            for frame in 0..<frames {
+                bench.time({ composer.stageDrag(travel: CGFloat(frame) * 6) }, in: view)
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+            composer.stageDragEnd()
+            bench.finish("drag", extra: "chars=\(composer.rawText.utf16.count)")
         }
 
         /// Clips a drawn picture to the message the way a pasted screenshot arrives.

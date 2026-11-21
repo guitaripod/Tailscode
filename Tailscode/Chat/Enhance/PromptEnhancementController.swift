@@ -216,9 +216,22 @@ final class PromptEnhancementController {
         generationTask?.cancel()
     }
 
+    /// Whether the draft holds enough to enhance: so many characters and so many words. Asked on
+    /// every key, so it stops reading the moment both are there.
     static func isEnhanceable(_ trimmed: String) -> Bool {
-        guard trimmed.count >= PromptEnhancement.minCharacters else { return false }
-        let words = trimmed.split(whereSeparator: \.isWhitespace)
-        return words.count >= PromptEnhancement.minWords
+        var characters = 0
+        var words = 0
+        var inWord = false
+        for character in trimmed {
+            characters += 1
+            if character.isWhitespace {
+                inWord = false
+            } else if !inWord {
+                inWord = true
+                words += 1
+            }
+            if characters >= PromptEnhancement.minCharacters, words >= PromptEnhancement.minWords { return true }
+        }
+        return false
     }
 }

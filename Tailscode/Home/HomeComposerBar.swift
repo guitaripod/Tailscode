@@ -219,7 +219,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         textView.autocorrectionType = .yes
         textView.spellCheckingType = .yes
         textView.inlinePredictionType = .yes
-        textView.isScrollEnabled = false
+        textView.isScrollEnabled = true
         textView.delegate = self
         textView.onPasteImage = { [weak self] data, mime in
             self?.delegate?.homeComposerDidPasteImage(data, mime: mime)
@@ -673,6 +673,14 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Whether anything but spaces and new lines is in the box, read without copying the draft:
+    /// Send asks on every key.
+    private var holdsWords: Bool {
+        (textView.text ?? "").unicodeScalars.contains { !Self.blank.contains($0) }
+    }
+
+    private static let blank = CharacterSet.whitespacesAndNewlines
+
     /// Programmatic `text` mutations while the keyboard is up leave its autocorrect context
     /// pointing at stale content, which shows up as auto-correction silently stopping.
     private func resyncKeyboard() {
@@ -684,7 +692,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     /// lane's own face and is named Render — a wrong-lane send has to be impossible to miss before
     /// the press, not after it.
     private func updateSendButton() {
-        let hasText = !trimmed.isEmpty || carriesAttachments
+        let hasText = holdsWords || carriesAttachments
         let live = hasText || isSending
         var config = Theme.Glass.buttonConfiguration(prominent: live)
         config.cornerStyle = .capsule
@@ -726,10 +734,11 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
             delegate?.homeComposerDidPasteLargeText(text)
             return false
         }
-        if text == "\n", AppPreferences.sendOnReturn, !trimmed.isEmpty {
+        if text == "\n", AppPreferences.sendOnReturn, holdsWords {
             sendTapped()
             return false
         }
+        ink.willEdit(range, with: text)
         return true
     }
 
@@ -750,7 +759,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        fade.refresh(on: textView)
+        fade.refresh(on: textView, overflows: overflows)
     }
 
     override func layoutSubviews() {
@@ -759,8 +768,13 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         if textView.bounds.width != lastMeasuredWidth {
             updateHeight()
         }
-        fade.refresh(on: textView)
+        if !overflows { textView.settleAtTop() }
+        fade.refresh(on: textView, overflows: overflows)
     }
+
+    /// Whether the words run past the box, which is when the always-scrolling text view is let
+    /// move.
+    private var overflows = false
 
     /// As tall as the words up to six lines, a line arriving on the spring every prompt box
     /// grows on; past six the words scroll and fade into the edge they run past.
@@ -771,7 +785,8 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         ).height
         let cap = CGFloat(ComposerLift.restingCap(lineHeight: Double(Theme.Ramp.font(.answer).lineHeight)))
         let height = CGFloat(ComposerLift.height(natural: Double(natural), cap: Double(cap), floor: 22))
-        textView.isScrollEnabled = natural > height + 0.5
+        overflows = natural > height + 0.5
+        if !overflows { textView.settleAtTop() }
         guard abs(heightConstraint.constant - height) > 0.5 else { return }
         guard animated, window != nil, !UIAccessibility.isReduceMotionEnabled else {
             heightConstraint.constant = height
@@ -786,7 +801,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
                 self.superview?.layoutIfNeeded()
             },
             completion: { _ in
-                guard self.textView.isScrollEnabled else { return }
+                guard self.overflows else { return }
                 self.textView.scrollRangeToVisible(self.textView.selectedRange)
             })
     }
