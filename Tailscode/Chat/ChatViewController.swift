@@ -17,6 +17,17 @@ final class ChatViewController: UIViewController {
         chatID: viewModel.session.id, profileID: viewModel.contextID, host: callHost)
     let dialPill = ModelDialPill()
     let commandPalette = SlashCommandPalette()
+    /// Whether the list over the box is meant to be up, whatever its fade is doing.
+    var paletteWanted = false
+    /// What the conversation recedes behind while the box is lifted over it. A press on it lets
+    /// the box down.
+    let liftScrim = UIView()
+    /// How tall the chips above the box stood the last time the box was at rest.
+    var restingAccessoryHeight: CGFloat = 0
+    /// The project's files as the `@` list has read them so far, once an `@` has been typed.
+    var mentions: MentionFinder?
+    /// The file name the caret is in, while the list is finding it.
+    var mentionToken: MentionToken?
     let banner = BannerView()
     let emptyState = ChatEmptyStateView()
     let loadingState = WorkingPlaceholderView()
@@ -56,6 +67,9 @@ final class ChatViewController: UIViewController {
     /// Names pasted pictures apart, so two screenshots in one prompt are two files rather than one
     /// overwriting the other on the machine that reads them.
     var pastedImageCount = 0
+    /// What sits in the strip beside the box, by identity, so a chip that has just arrived can
+    /// be told from one that was already there.
+    var stripKeys: [String] = []
     var pendingPermission: PermissionRequest?
     var pendingQuestion: QuestionRequest?
     /// A turn this session's server was stopped in the middle of, waiting to be picked back up or
@@ -296,6 +310,7 @@ final class ChatViewController: UIViewController {
         composer.dictation.vocabulary = { [weak self] in self?.dictationVocabulary() ?? .empty }
         callController.onLiveChanged = { [weak self] live in self?.composer.dictation.callLive = live }
         composer.showsAttach = canAttachAnything
+        teachComposer()
         enhancement.onStatusChange = { [weak self] status in
             self?.handleEnhancementStatus(status)
         }
@@ -423,6 +438,12 @@ final class ChatViewController: UIViewController {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
                     await self?.stagePasteForVerification(mode)
+                }
+            }
+            if let script = ProcessInfo.processInfo.environment["TAILSCODE_COMPOSE"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    await self?.stageCompose(script)
                 }
             }
             if let draft = ProcessInfo.processInfo.environment["TAILSCODE_DRAFT"] {
@@ -607,6 +628,7 @@ final class ChatViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         adaptToFold()
+        giveComposerRoom()
         updateTranscriptInsets()
         placeFABForHands()
     }

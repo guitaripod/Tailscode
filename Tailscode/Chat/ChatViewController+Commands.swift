@@ -46,18 +46,33 @@ extension ChatViewController {
         showCommandPalette()
     }
 
-    private func showCommandPalette() {
-        guard commandPalette.isHidden else { return }
-        commandPalette.alpha = 0
-        commandPalette.isHidden = false
-        UIView.animate(withDuration: 0.18) { self.commandPalette.alpha = 1 }
+    /// Whether the list is meant to be up is kept apart from whether it is drawn: rows that
+    /// arrive while the list is still fading out have to bring it back, and a fade that finishes
+    /// after they arrived must not take it away again.
+    func showCommandPalette() {
+        guard !paletteWanted || commandPalette.isHidden else { return }
+        paletteWanted = true
+        composer.roomMoved(animated: true)
+        if commandPalette.isHidden {
+            commandPalette.alpha = 0
+            commandPalette.isHidden = false
+        }
+        UIView.animate(withDuration: 0.18, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+            self.commandPalette.alpha = 1
+        }
     }
 
     func hideCommandPalette() {
-        guard !commandPalette.isHidden else { return }
+        guard paletteWanted || !commandPalette.isHidden else { return }
+        paletteWanted = false
+        composer.roomMoved(animated: true)
         UIView.animate(
-            withDuration: 0.15, animations: { self.commandPalette.alpha = 0 },
-            completion: { _ in self.commandPalette.isHidden = true })
+            withDuration: 0.15, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction],
+            animations: { self.commandPalette.alpha = 0 },
+            completion: { _ in
+                guard !self.paletteWanted else { return }
+                self.commandPalette.isHidden = true
+            })
     }
 
     private func makeCommand(

@@ -16,6 +16,12 @@ protocol ComposerViewDelegate: AnyObject {
     func composerAttachOptions() -> [UIMenuElement]
     func composerDidTapStop()
     func composerDidBeginEditing()
+    /// The caret moved without the words changing, which is enough to walk into or out of a
+    /// file's name.
+    func composerSelectionDidChange()
+    /// The last thing this person sent here, offered back from the empty box's own menu.
+    func composerLastPrompt() -> String?
+    func composerDidAskForLastPrompt()
 }
 
 @MainActor
@@ -25,11 +31,55 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     private let bar = Theme.Glass.view(interactive: false)
     private let textView = PastingTextView()
     private let placeholder = UILabel()
-    private let sendButton = SlopButton(type: .system)
+    private let sendButton = ComposerSendButton()
     private let attachButton = SlopButton(type: .system)
+    private lazy var ink = ComposerInk(textView: textView)
+    let handle = ComposerHandle()
+    private let doors = ComposerDoors()
+    private let fade = ComposerEdgeFade()
+    private lazy var liftPan = UIPanGestureRecognizer(target: self, action: #selector(liftPanned))
+    /// How far above the box's edge a pull may start and still be the handle's. A thumb aims at
+    /// the pill and lands around it, and what floats just above the box has touch room of its
+    /// own that reaches down to the edge.
+    private static let handleReach: CGFloat = 14
+    /// Where the finger came down, which is what decides whether a pull is the handle's: by the
+    /// time a pull is recognised as one, the finger has already left the place it started.
+    private var liftTouchDown: CGPoint?
+    /// Whether the box has been pulled up to the page.
+    private(set) var lifted = false
+    /// The cap the finger is holding the box at, while the handle is held.
+    private var heldCap: CGFloat?
+    private var heldFrom: CGFloat = 0
+    /// What the words would take with nothing holding them, as last measured.
+    private var naturalHeight: CGFloat = 22
+    /// How far the box stands above its resting height. The transcript keeps the room it had at
+    /// rest and the lifted box rises over it, so pulling the handle never moves the conversation.
+    private(set) var liftExtra: CGFloat = 0
+    /// The most the whole composer may stand, from its bottom edge to under the bar and whatever
+    /// floats above the box. Asked of the screen, which is the only thing that knows, and only
+    /// while the box is up or being pulled: at rest the answer is never needed.
+    var pageRoom: (() -> CGFloat)?
     private let enhanceBadge = UIImageView()
     private var heightConstraint: NSLayoutConstraint!
     private var isBusy = false
+
+    /// Whether the empty box offers the key that opens the commands, and the one that finds a
+    /// file: a chat with no project has no files to find.
+    var offersCommandDoor = true {
+        didSet { refreshDoors() }
+    }
+    var offersFileDoor = false {
+        didSet { refreshDoors() }
+    }
+
+    var knowsCommand: (String) -> Bool {
+        get { ink.knowsCommand }
+        set { ink.knowsCommand = newValue }
+    }
+    var knowsPath: (String) -> Bool {
+        get { ink.knowsPath }
+        set { ink.knowsPath = newValue }
+    }
 
     var showsAttach = true {
         didSet {
@@ -171,10 +221,6 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             ])
         attachButton.accessibilityLabel = String(localized: "Attach")
 
-        var send = UIButton.Configuration.filled()
-        send.cornerStyle = .capsule
-        send.baseBackgroundColor = Theme.Color.accent
-        sendButton.configuration = send
         sendButton.translatesAutoresizingMaskIntoConstraints = false
         sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
         let longPress = UILongPressGestureRecognizer(
@@ -194,7 +240,12 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         enhanceBadge.isUserInteractionEnabled = false
         enhanceBadge.translatesAutoresizingMaskIntoConstraints = false
 
-        [attachButton, textView, placeholder, sendButton, enhanceBadge].forEach(addSubview)
+        [attachButton, textView, placeholder, doors, sendButton, enhanceBadge, handle].forEach(addSubview)
+        handle.addTarget(self, action: #selector(handleTapped), for: .touchUpInside)
+        doors.onPress = { [weak self] letter in self?.openDoor(letter) }
+        liftPan.delegate = self
+        addGestureRecognizer(liftPan)
+
         let mic = dictation.button
         addSubview(mic)
         insertSubview(dictation.edge, aboveSubview: auraHost)
@@ -247,12 +298,20 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             dictation.edge.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
             sendButton.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -Theme.Spacing.xs),
             sendButton.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -5),
-            sendButton.widthAnchor.constraint(equalToConstant: 34),
-            sendButton.heightAnchor.constraint(equalToConstant: 34),
+            sendButton.widthAnchor.constraint(equalToConstant: ComposerSendButton.side),
+            sendButton.heightAnchor.constraint(equalToConstant: ComposerSendButton.side),
 
             placeholder.leadingAnchor.constraint(equalTo: textView.leadingAnchor, constant: 2),
             placeholder.trailingAnchor.constraint(lessThanOrEqualTo: textView.trailingAnchor),
+            placeholder.trailingAnchor.constraint(
+                lessThanOrEqualTo: doors.leadingAnchor, constant: -Theme.Spacing.s),
             placeholderCenter,
+
+            doors.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -Theme.Spacing.m),
+            doors.centerYAnchor.constraint(equalTo: placeholder.centerYAnchor),
+
+            handle.centerXAnchor.constraint(equalTo: bar.centerXAnchor),
+            handle.topAnchor.constraint(equalTo: topAnchor),
 
             enhanceBadge.widthAnchor.constraint(equalToConstant: 16),
             enhanceBadge.heightAnchor.constraint(equalToConstant: 16),
@@ -276,10 +335,13 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             view.enhanceBadge.layer.borderColor = Theme.Color.background.cgColor
             view.strike.wear(view.traitCollection)
             view.refreshStrike(animated: false)
+            view.paintInk(force: true)
         }
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
             (view: ComposerView, _) in
             view.stackedTextBottom.constant = -(view.accessoryRowHeight + 10)
+            view.paintInk(force: true)
+            view.updateHeight()
         }
 
         updateSendButton()
@@ -330,7 +392,22 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
                 lineConstraints + [showsAttach ? textViewLeadingToAttach : textViewLeadingToBar]
                     .compactMap { $0 })
         }
+        refreshDoors()
         setNeedsLayout()
+    }
+
+    /// The two keys show only in an empty box that has a line to itself: the words take the
+    /// whole width above the controls there, and its far end is free.
+    private func refreshDoors() {
+        let stacked = accessory != nil || statusShown
+        let open = stacked && (textView.text ?? "").isEmpty && !statusShown && !dictation.isOpen
+        doors.show(command: open && offersCommandDoor, file: open && offersFileDoor)
+    }
+
+    private func openDoor(_ letter: String) {
+        Theme.Haptics.selection()
+        textView.becomeFirstResponder()
+        insertText(letter)
     }
 
     private func refreshHeatLine() {
@@ -359,39 +436,65 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch
     ) -> Bool {
+        guard gestureRecognizer !== liftPan else {
+            liftTouchDown = touch.location(in: self)
+            return true
+        }
         guard let view = touch.view else { return true }
         return !(view is UIControl) && !(accessory.map(view.isDescendant(of:)) ?? false)
     }
 
-    /// While a turn runs the button is Stop, unless the user has typed —
-    /// then it becomes a queue-send (steering) button; Stop returns on clear.
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureRecognizer === liftPan else { return true }
+        return liftShouldBegin()
+    }
+
+    /// A finger that came down on the handle is asked about first: the row of chips above the box
+    /// and the words inside it scroll on a drag of their own, and either would take the pull
+    /// before the handle heard of it. A pull that is not the handle's fails at once and they go on.
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        guard gestureRecognizer === liftPan, otherGestureRecognizer is UIPanGestureRecognizer,
+            handle.isShown
+        else { return false }
+        return liftTouchDown.map(onHandle) ?? true
+    }
+
+    private func onHandle(_ point: CGPoint) -> Bool {
+        let edge = bar.frame.minY
+        return point.y >= edge - Self.handleReach && point.y <= edge + 30
+            && point.x >= bar.frame.minX && point.x <= bar.frame.maxX
+    }
+
+    /// The button wears the verb a press will perform: send, queue behind the running turn, stop
+    /// it, or put back the rewrite of a message that was waiting.
+    private var sendFace: SendFace {
+        SendFace.read(
+            holdsWords: !trimmed.isEmpty || carriesAttachments, busy: isBusy,
+            editingQueued: isEditingQueued)
+    }
+
     private func updateSendButton() {
-        let hasText = !trimmed.isEmpty || carriesAttachments
-        let showStop = isBusy && !hasText
-        let symbol = showStop ? "stop.fill" : "arrow.up"
-        var config = sendButton.configuration ?? .filled()
-        config.image = UIImage(
-            systemName: symbol,
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold))
-        config.baseBackgroundColor =
-            showStop ? Theme.Color.danger : (hasText ? Theme.Color.accent : Theme.Color.separator)
-        config.baseForegroundColor = Theme.Color.onAccent
-        sendButton.configuration = config
-        sendButton.isEnabled = isBusy || hasText
-        sendButton.accessibilityLabel =
-            showStop
-            ? String(localized: "Stop")
-            : (isBusy ? String(localized: "Queue message") : String(localized: "Send"))
+        sendButton.show(sendFace, animated: true)
     }
 
     func setBusy(_ busy: Bool) {
         guard isBusy != busy else { return }
         isBusy = busy
-        placeholderText =
+        let words =
             busy ? String(localized: "Queue a message…") : String(localized: "Message your agent…")
-        UIView.transition(with: sendButton, duration: 0.2, options: .transitionCrossDissolve) {
-            self.updateSendButton()
+        if window != nil, !UIAccessibility.isReduceMotionEnabled {
+            UIView.transition(
+                with: placeholder, duration: 0.2, options: [.transitionCrossDissolve, .allowUserInteraction]
+            ) {
+                self.placeholderText = words
+            }
+        } else {
+            placeholderText = words
         }
+        updateSendButton()
         UIAccessibility.post(notification: .layoutChanged, argument: nil)
     }
 
@@ -418,6 +521,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         if textView.bounds.width != lastMeasuredWidth {
             updateHeight()
         }
+        refreshFade()
     }
 
     private var trimmed: String {
@@ -431,12 +535,22 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     func textViewDidEndEditing(_ textView: UITextView) {
         refreshStrike(animated: true)
+        if lifted { setLifted(false) }
+    }
+
+    func textViewDidChangeSelection(_ textView: UITextView) {
+        delegate?.composerSelectionDidChange()
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        refreshFade()
     }
 
     func textView(
         _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String
     ) -> Bool {
         dictation.userWillEdit()
+        ink.holdTypingInk()
         if PasteFold.folds(text) {
             delegate?.composerDidPasteLargeText(text)
             return false
@@ -450,18 +564,156 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     func textViewDidChange(_ textView: UITextView) {
         placeholder.isHidden = !textView.text.isEmpty
-        updateHeight()
+        refreshDoors()
+        paintInk()
+        updateHeight(animated: true)
         updateSendButton()
         refreshAura()
         delegate?.composerTextDidChange(textView.text)
     }
 
-    private func updateHeight() {
+    /// A take being heard owns the box's ink: the words still settling are lit by the dictation
+    /// itself, and painting over them would put them out.
+    private func paintInk(force: Bool = false) {
+        guard !dictation.isOpen else { return }
+        ink.paint(force: force)
+    }
+
+    private var restingCap: CGFloat {
+        CGFloat(ComposerLift.restingCap(lineHeight: Double(Theme.Ramp.font(.answer).lineHeight)))
+    }
+
+    /// The most the words may take once lifted: the room the screen allows, less everything in
+    /// the box that is not words.
+    private var pageCap: CGFloat {
+        guard let room = pageRoom?() else { return restingCap }
+        return max(restingCap, room - (bounds.height - heightConstraint.constant))
+    }
+
+    /// The room above the box changed under a lifted box: the keyboard came or went, a chip
+    /// landed, the list of files opened. The box takes its new height.
+    func roomMoved(animated: Bool) {
+        guard lifted, heldCap == nil else { return }
+        updateHeight(animated: animated)
+    }
+
+    private var liftCeiling: CGFloat {
+        CGFloat(
+            ComposerLift.ceiling(
+                natural: Double(naturalHeight), resting: Double(restingCap), page: Double(pageCap)))
+    }
+
+    /// Measures the words and gives them their height: what they need up to six lines at rest,
+    /// up to the page once lifted, and wherever the finger holds the cap while the handle is held.
+    private func updateHeight(animated: Bool = false) {
         lastMeasuredWidth = textView.bounds.width
-        let size = textView.sizeThatFits(
-            CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude))
-        heightConstraint.constant = min(max(22, size.height), 132)
-        textView.isScrollEnabled = size.height > 132
+        naturalHeight = textView.sizeThatFits(
+            CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude)
+        ).height
+        let resting = restingCap
+        if lifted, heldCap == nil, naturalHeight <= resting + 0.5 { lifted = false }
+        let height: CGFloat
+        if let heldCap {
+            height = max(22, heldCap)
+        } else {
+            height = CGFloat(
+                ComposerLift.height(
+                    natural: Double(naturalHeight), cap: Double(lifted ? liftCeiling : resting),
+                    floor: 22))
+        }
+        textView.isScrollEnabled = naturalHeight > height + 0.5
+        liftExtra = max(0, height - min(max(22, naturalHeight), resting))
+        handle.show(
+            ComposerLift.offersHandle(
+                natural: Double(naturalHeight), resting: Double(resting),
+                lifted: lifted || heldCap != nil),
+            lifted: lifted)
+        guard abs(heightConstraint.constant - height) > 0.5 else {
+            refreshFade()
+            return
+        }
+        guard animated, heldCap == nil, window != nil, !UIAccessibility.isReduceMotionEnabled else {
+            heightConstraint.constant = height
+            refreshFade()
+            return
+        }
+        UIView.animate(
+            withDuration: ComposerLift.response, delay: 0,
+            usingSpringWithDamping: CGFloat(ComposerLift.damping), initialSpringVelocity: 0,
+            options: [.allowUserInteraction, .beginFromCurrentState],
+            animations: {
+                self.heightConstraint.constant = height
+                self.superview?.layoutIfNeeded()
+                self.refreshFade()
+            },
+            completion: { _ in self.keepCaretInView() })
+    }
+
+    /// A box that changed height under a caret puts the caret back in sight: the text view placed
+    /// its page for the height it had, and the line being written is the one that must not be
+    /// left half under an edge.
+    private func keepCaretInView() {
+        guard textView.isScrollEnabled, heldCap == nil else { return }
+        textView.scrollRangeToVisible(textView.selectedRange)
+        refreshFade()
+    }
+
+    private func refreshFade() {
+        fade.refresh(on: textView)
+    }
+
+    /// Lets the pull on the handle be heard by the screen the box sits in, so one that starts a
+    /// little above the box, on the touch room of a chip floating there, is still the handle's.
+    func hearHandle(in host: UIView) {
+        host.addGestureRecognizer(liftPan)
+    }
+
+    /// The handle takes a pull that starts on the box's top edge and goes the way the box can
+    /// still move: up from rest, down from the page. Anything else is the words being scrolled.
+    private func liftShouldBegin() -> Bool {
+        guard handle.isShown, let start = liftTouchDown else { return false }
+        let velocity = liftPan.velocity(in: self)
+        guard onHandle(start), abs(velocity.y) > abs(velocity.x) else { return false }
+        return lifted ? velocity.y > 0 : velocity.y < 0
+    }
+
+    @objc private func liftPanned(_ pan: UIPanGestureRecognizer) {
+        switch pan.state {
+        case .began:
+            heldFrom = heightConstraint.constant
+            heldCap = heldFrom
+            Theme.Haptics.selection()
+        case .changed:
+            heldCap = CGFloat(
+                ComposerLift.dragged(
+                    from: Double(heldFrom), travel: Double(-pan.translation(in: self).y),
+                    resting: Double(restingCap), ceiling: Double(liftCeiling)))
+            updateHeight()
+        case .ended, .cancelled, .failed:
+            guard let cap = heldCap else { return }
+            let up = ComposerLift.settlesLifted(
+                cap: Double(cap), velocity: Double(-pan.velocity(in: self).y),
+                resting: Double(restingCap), ceiling: Double(liftCeiling))
+            heldCap = nil
+            setLifted(up && pan.state == .ended)
+        default:
+            break
+        }
+    }
+
+    @objc private func handleTapped() {
+        setLifted(!lifted)
+    }
+
+    /// Lifts the box to the page or lets it down to six lines. Lifting takes the keyboard too:
+    /// room to write is for writing.
+    func setLifted(_ up: Bool) {
+        let wanted = up && naturalHeight > restingCap + 0.5
+        if wanted != lifted { Theme.Haptics.notch() }
+        lifted = wanted
+        if wanted, !textView.isFirstResponder { textView.becomeFirstResponder() }
+        updateHeight(animated: true)
+        UIAccessibility.post(notification: .layoutChanged, argument: handle)
     }
 
     var isEditing: Bool { textView.isFirstResponder }
@@ -473,7 +725,12 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     /// The hardware keyboard's send — the same path as the button, so busy-state and haptics
     /// behave identically.
     /// Whether the chat is holding a waiting message open in this box.
-    var isEditingQueued = false
+    var isEditingQueued = false {
+        didSet {
+            guard isEditingQueued != oldValue else { return }
+            updateSendButton()
+        }
+    }
 
     func triggerSend() { sendTapped() }
 
@@ -487,6 +744,9 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
             return
         }
         Theme.Haptics.send()
+        if sendButton.face.launches {
+            sendButton.launch { [weak self] in self?.sendFace ?? .idle }
+        }
         collapseForSend()
         delegate?.composerDidSend(text)
         textViewDidChange(textView)
@@ -500,6 +760,8 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     private func collapseForSend() {
         textView.text = ""
         placeholder.isHidden = false
+        lifted = false
+        heldCap = nil
         guard !UIAccessibility.isReduceMotionEnabled, window != nil else {
             updateHeight()
             return
@@ -563,13 +825,32 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     func clear() {
         textView.text = ""
-        UIView.animate(
-            withDuration: 0.25, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0.3
-        ) {
-            self.textViewDidChange(self.textView)
-            self.superview?.layoutIfNeeded()
-        }
+        textViewDidChange(textView)
         resyncKeyboard()
+    }
+
+    /// Where the caret stands, in UTF-16 offsets.
+    var caretOffset: Int { textView.selectedRange.location }
+
+    /// Rewrites one stretch of the draft and leaves the caret after it, through the text view's
+    /// own replace so the change can be undone like a typed one.
+    func replace(_ range: Range<Int>, with text: String) {
+        guard
+            let start = textView.position(from: textView.beginningOfDocument, offset: range.lowerBound),
+            let end = textView.position(from: start, offset: range.count),
+            let span = textView.textRange(from: start, to: end)
+        else { return }
+        textView.replace(span, withText: text)
+        textViewDidChange(textView)
+        resyncKeyboard()
+    }
+
+    /// The system's own Scan Text, aimed at this box, where the phone can read text through its
+    /// camera: an error on another screen is typed by pointing at it.
+    func scanTextAction() -> UIMenuElement? {
+        guard textView.canPerformAction(#selector(UIResponder.captureTextFromCamera(_:)), withSender: nil)
+        else { return nil }
+        return UIAction.captureTextFromCamera(responder: textView, identifier: nil)
     }
 
     func insertQuote(_ text: String) {
@@ -635,13 +916,18 @@ extension ComposerView: DictationComposerHost {
         return nil
     }
 
-    func dictationDidWrite() { textViewDidChange(textView) }
+    func dictationDidWrite() {
+        textViewDidChange(textView)
+        paintInk(force: true)
+    }
 
     func dictationSend() { sendTapped() }
 
     func dictationSetListening(_ listening: Bool) {
         placeholder.text = listening ? DictationReading.listeningPlaceholder : restingPlaceholder
         UIView.animate(withDuration: 0.2) { self.auraHost.alpha = listening ? 0 : 1 }
+        refreshDoors()
+        if !listening { paintInk(force: true) }
     }
 
     func dictationShowStatus(_ status: DictationHintView, shown: Bool) {
@@ -667,6 +953,52 @@ extension ComposerView: DictationComposerHost {
             self.superview?.layoutIfNeeded()
         }
     }
+}
+
+extension ComposerView {
+    /// A selection has verbs of its own beside the system's, and an empty box offers the last
+    /// thing that was sent from it.
+    func textView(
+        _ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]
+    ) -> UIMenu? {
+        var verbs: [UIMenuElement] = []
+        if range.length > 0 {
+            verbs = [
+                UIAction(title: DraftVerbs.codeTitle) { [weak self] _ in
+                    self?.rewrite(range, by: DraftVerbs.code)
+                },
+                UIAction(title: DraftVerbs.quoteTitle) { [weak self] _ in
+                    self?.rewrite(range, by: DraftVerbs.quote)
+                },
+            ]
+        } else if (textView.text ?? "").isEmpty, delegate?.composerLastPrompt()?.isEmpty == false {
+            verbs = [
+                UIAction(title: DraftVerbs.lastPromptTitle) { [weak self] _ in
+                    self?.delegate?.composerDidAskForLastPrompt()
+                }
+            ]
+        }
+        guard !verbs.isEmpty else { return nil }
+        return UIMenu(children: Array(suggestedActions.prefix(1)) + verbs + suggestedActions.dropFirst())
+    }
+
+    private func rewrite(_ range: NSRange, by verb: (String) -> DraftVerbs.Edit) {
+        let whole = (textView.text ?? "") as NSString
+        guard range.location + range.length <= whole.length else { return }
+        let edit = verb(whole.substring(with: range))
+        replace(range.location..<(range.location + range.length), with: edit.text)
+        textView.selectedRange = NSRange(
+            location: range.location + edit.selectedStart, length: edit.selectedLength)
+        Theme.Haptics.selection()
+    }
+
+    #if DEBUG
+        /// Runs a selection verb over a stretch of the draft, for a run with no finger to open
+        /// the menu.
+        func stageVerb(_ name: String, over range: NSRange) {
+            rewrite(range, by: name == "quote" ? DraftVerbs.quote : DraftVerbs.code)
+        }
+    #endif
 }
 
 /// A text view that is asked about a paste before UIKit takes it. Only a pasteboard holding a

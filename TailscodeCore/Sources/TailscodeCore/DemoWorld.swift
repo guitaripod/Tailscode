@@ -109,6 +109,36 @@ public enum DemoWorld {
         not yet been given when the context filled.
         """
 
+    /// The inside of the demo's server project, deep enough that finding a file by a few letters
+    /// and walking a folder both have something to find. The names are the ones the demo's
+    /// conversations and its working tree already talk about.
+    static let demoPulseServerTree: [String: [FileNode]] = {
+        let root = "/Users/demo/dev/pulse-server"
+        let layout: [(String, folders: [String], files: [String])] = [
+            ("Sources", ["Pulse"], []),
+            ("Sources/Pulse", ["Auth", "Routes", "Socket"], ["Config.swift", "Pulse.swift"]),
+            ("Sources/Pulse/Auth", [], ["DeviceIdentity.swift", "TokenStore.swift"]),
+            ("Sources/Pulse/Routes", [], ["Health.swift", "Sessions.swift"]),
+            (
+                "Sources/Pulse/Socket", [],
+                [
+                    "Backoff.swift", "BridgeStream.swift", "CloseCodes.swift", "Jitter.swift",
+                    "Reconnect.swift", "WebSocketClient.swift",
+                ]
+            ),
+            ("Tests", ["PulseTests"], []),
+            ("Tests/PulseTests", [], ["BackoffTests.swift", "BridgeStreamTests.swift", "ReconnectTests.swift"]),
+        ]
+        var tree: [String: [FileNode]] = [:]
+        for (folder, folders, files) in layout {
+            let path = "\(root)/\(folder)"
+            tree[path] =
+                folders.map { FileNode(path: "\(path)/\($0)", name: $0, isDirectory: true) }
+                + files.map { FileNode(path: "\(path)/\($0)", name: $0, isDirectory: false) }
+        }
+        return tree
+    }()
+
     /// A working tree a demo can show: enough shapes to prove the surface — something staged,
     /// something only edited, something git has never seen — without pretending to be a repository
     /// anybody could act on. Nothing here is reachable, which is the point of a demo.

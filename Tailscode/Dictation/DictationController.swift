@@ -460,7 +460,7 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
 
     private var baseAttributes: [NSAttributedString.Key: Any] {
         [
-            .font: host?.dictationTextView.font ?? Theme.Ramp.font(.answer),
+            .font: Theme.Ramp.font(.answer),
             .foregroundColor: Theme.Color.label,
         ]
     }

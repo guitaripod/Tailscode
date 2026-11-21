@@ -106,6 +106,13 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case commandCatalog
     case attachments
     case foldedPaste
+    case composerRoom
+    case draftInk
+    case fileMention
+    case sendFace
+    case draftVerbs
+    case promptRecall
+    case composerDoors
     case drafts
     case sendQueue
     case sharedQueue

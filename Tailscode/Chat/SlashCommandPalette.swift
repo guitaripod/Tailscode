@@ -43,6 +43,10 @@ enum SlashPaletteContent {
     /// surface with no project says so, because a command that exists in a repository could not
     /// have been resolved from here either.
     case noMatch(wording: String, browse: SlashCommand?)
+    /// The project's files, found from an `@`: every section says where its rows are from, and
+    /// a line underneath says when a folder is still being read. Nothing is picked until the
+    /// person picks, because Return on a word that merely began with `@` has to stay a send.
+    case files([SlashCommandSection], note: String?)
 }
 
 /// A floating command list shown above the composer when the draft begins with `/`.
@@ -157,9 +161,16 @@ final class SlashCommandPalette: UIView {
         case .noMatch(let wording, let browse):
             stack.addArrangedSubview(makeNoMatch(wording))
             if let browse { stack.addArrangedSubview(makeRow(browse)) }
+        case .files(let sections, let note):
+            for section in sections where !section.commands.isEmpty {
+                if !section.title.isEmpty { stack.addArrangedSubview(makeHeader(section.title)) }
+                for command in section.commands { stack.addArrangedSubview(makeRow(command)) }
+            }
+            if let note { stack.addArrangedSubview(makeNote(note)) }
         }
 
-        selection = previous.flatMap { id in rows.firstIndex { $0.command.id == id } } ?? (rows.isEmpty ? nil : 0)
+        let first: Int? = if case .files = content { nil } else { rows.isEmpty ? nil : 0 }
+        selection = previous.flatMap { id in rows.firstIndex { $0.command.id == id } } ?? first
         applySelection(scroll: false)
         scroll.setContentOffset(.zero, animated: false)
     }
@@ -168,9 +179,12 @@ final class SlashCommandPalette: UIView {
 
     func moveSelection(by delta: Int) {
         guard !rows.isEmpty else { return }
-        let current = selection ?? 0
         let count = rows.count
-        selection = ((current + delta) % count + count) % count
+        if let current = selection {
+            selection = ((current + delta) % count + count) % count
+        } else {
+            selection = delta > 0 ? 0 : count - 1
+        }
         applySelection(scroll: true)
         Theme.Haptics.selection()
     }
@@ -208,6 +222,26 @@ final class SlashCommandPalette: UIView {
             label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
             label.trailingAnchor.constraint(
                 lessThanOrEqualTo: container.trailingAnchor, constant: -14),
+        ])
+        return container
+    }
+
+    /// One quiet line under the rows: a folder is on its way, or nothing was found.
+    private func makeNote(_ words: String) -> UIView {
+        let label = UILabel()
+        label.text = words
+        label.font = Theme.Ramp.font(.rowDetail)
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = Theme.Color.onGlassSecondary
+        label.numberOfLines = 2
+        label.translatesAutoresizingMaskIntoConstraints = false
+        let container = UIView()
+        container.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -10),
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
+            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
         ])
         return container
     }

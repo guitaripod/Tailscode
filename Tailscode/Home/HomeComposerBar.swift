@@ -51,6 +51,8 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
     private let attachButton = UIButton(type: .system)
     private let enhanceBadge = UIImageView()
     private var heightConstraint: NSLayoutConstraint!
+    private lazy var ink = ComposerInk(textView: textView)
+    private let fade = ComposerEdgeFade()
     private var textViewLeadingToAttach: NSLayoutConstraint?
     private var textViewLeadingToBar: NSLayoutConstraint?
     private var lastMeasuredWidth: CGFloat = 0
@@ -359,6 +361,11 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
             (view: HomeComposerBar, _) in
             view.enhanceBadge.layer.borderColor = Theme.Color.background.cgColor
             view.paintLaneSwitch()
+        }
+        registerForTraitChanges(
+            [UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self, UITraitPreferredContentSizeCategory.self]
+        ) { (view: HomeComposerBar, _) in
+            view.paintInk(force: true)
         }
         registerForTraitChanges([UITraitVerticalSizeClass.self]) { (view: HomeComposerBar, _) in
             view.refreshDial()
@@ -714,6 +721,7 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String
     ) -> Bool {
         dictation.userWillEdit()
+        ink.holdTypingInk()
         if PasteFold.folds(text) {
             delegate?.homeComposerDidPasteLargeText(text)
             return false
@@ -727,10 +735,22 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
 
     func textViewDidChange(_ textView: UITextView) {
         placeholder.isHidden = !textView.text.isEmpty
-        updateHeight()
+        paintInk()
+        updateHeight(animated: true)
         updateSendButton()
         refreshAura()
         delegate?.homeComposerTextDidChange(textView.text)
+    }
+
+    /// The same ink a chat's box wears: code in the mono face, a path after an `@` in the accent,
+    /// the power word in the aura's rainbow. A take being heard lights its own words.
+    private func paintInk(force: Bool = false) {
+        guard !dictation.isOpen else { return }
+        ink.paint(force: force)
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        fade.refresh(on: textView)
     }
 
     override func layoutSubviews() {
@@ -739,14 +759,36 @@ final class HomeComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDele
         if textView.bounds.width != lastMeasuredWidth {
             updateHeight()
         }
+        fade.refresh(on: textView)
     }
 
-    private func updateHeight() {
+    /// As tall as the words up to six lines, a line arriving on the spring every prompt box
+    /// grows on; past six the words scroll and fade into the edge they run past.
+    private func updateHeight(animated: Bool = false) {
         lastMeasuredWidth = textView.bounds.width
-        let size = textView.sizeThatFits(
-            CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude))
-        heightConstraint.constant = min(max(22, size.height), 132)
-        textView.isScrollEnabled = size.height > 132
+        let natural = textView.sizeThatFits(
+            CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude)
+        ).height
+        let cap = CGFloat(ComposerLift.restingCap(lineHeight: Double(Theme.Ramp.font(.answer).lineHeight)))
+        let height = CGFloat(ComposerLift.height(natural: Double(natural), cap: Double(cap), floor: 22))
+        textView.isScrollEnabled = natural > height + 0.5
+        guard abs(heightConstraint.constant - height) > 0.5 else { return }
+        guard animated, window != nil, !UIAccessibility.isReduceMotionEnabled else {
+            heightConstraint.constant = height
+            return
+        }
+        UIView.animate(
+            withDuration: ComposerLift.response, delay: 0,
+            usingSpringWithDamping: CGFloat(ComposerLift.damping), initialSpringVelocity: 0,
+            options: [.allowUserInteraction, .beginFromCurrentState],
+            animations: {
+                self.heightConstraint.constant = height
+                self.superview?.layoutIfNeeded()
+            },
+            completion: { _ in
+                guard self.textView.isScrollEnabled else { return }
+                self.textView.scrollRangeToVisible(self.textView.selectedRange)
+            })
     }
 }
 
@@ -764,13 +806,17 @@ extension HomeComposerBar: DictationComposerHost {
         return nil
     }
 
-    func dictationDidWrite() { textViewDidChange(textView) }
+    func dictationDidWrite() {
+        textViewDidChange(textView)
+        paintInk(force: true)
+    }
 
     func dictationSend() { sendTapped() }
 
     func dictationSetListening(_ listening: Bool) {
         placeholder.text = listening ? DictationReading.listeningPlaceholder : lane.placeholder
         UIView.animate(withDuration: 0.2) { self.auraHost.alpha = listening ? 0 : 1 }
+        if !listening { paintInk(force: true) }
     }
 
     func dictationShowStatus(_ status: DictationHintView, shown: Bool) {

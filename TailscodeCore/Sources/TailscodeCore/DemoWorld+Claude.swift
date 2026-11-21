@@ -134,7 +134,7 @@ extension DemoWorld {
                 FileNode(path: "/Users/demo/dev/pulse-ios/Pulse", name: "Pulse", isDirectory: true),
                 FileNode(path: "/Users/demo/dev/pulse-ios/project.yml", name: "project.yml", isDirectory: false),
             ],
-        ],
+        ].merging(demoPulseServerTree) { listed, _ in listed },
         fileContents: demoDesignFiles,
         subagentsBySession: [
             "demo-c2": [

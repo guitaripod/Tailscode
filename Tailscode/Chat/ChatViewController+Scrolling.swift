@@ -7,10 +7,47 @@ extension ChatViewController {
     /// already accounts for the home indicator) and — because a `.plain` list is
     /// top-aligned — pads the top so a short transcript rests just above the
     /// composer instead of stranding it under the navigation bar.
+    /// How tall the composer may stand when its box is lifted to the page: from its own bottom
+    /// edge up to under the bar, less whatever floats above the box. The chips are counted at
+    /// the height they stood at before the box rose, or want now if a chip has landed since,
+    /// never the height they have: a box that has already taken too much has squeezed them and
+    /// would be told it had room to spare. A list that is up over the box keeps room of its own,
+    /// so `@` in a full page still finds a file.
+    func composerRoom() -> CGFloat {
+        let ceiling = view.safeAreaLayoutGuide.layoutFrame.minY + Self.barEdge
+            + (banner.isHidden ? 0 : banner.bounds.height)
+        let fitting = composerAccessories.systemLayoutSizeFitting(
+            CGSize(width: composerAccessories.bounds.width, height: 0),
+            withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel
+        ).height
+        let wanted = max(fitting, restingAccessoryHeight)
+        let floating = wanted > 0 ? wanted + Theme.Spacing.xs : 0
+        let list: CGFloat = paletteWanted ? Self.listRoom : 0
+        return max(0, composer.frame.maxY - ceiling - floating - list)
+    }
+
+    static let listRoom: CGFloat = 196
+    /// How far under the navigation bar its soft edge still dims what passes beneath it. A chip
+    /// that stops short of this is read whole; one pushed into it loses its top.
+    static let barEdge: CGFloat = 28
+
+    func giveComposerRoom() {
+        if composer.liftExtra < 0.5 { restingAccessoryHeight = composerAccessories.bounds.height }
+        composer.roomMoved(animated: false)
+        let veil = min(1, composer.liftExtra / 96)
+        if veil > 0, liftScrim.alpha == 0 { view.insertSubview(liftScrim, belowSubview: composer) }
+        if abs(liftScrim.alpha - veil) > 0.01 { liftScrim.alpha = veil }
+        liftScrim.isUserInteractionEnabled = composer.lifted
+    }
+
+    @objc func letComposerDown() {
+        composer.setLifted(false)
+    }
+
     func updateTranscriptInsets() {
-        let composerTop = composerAccessories.bounds.height > 0
+        let composerTop = (composerAccessories.bounds.height > 0
             ? min(composer.frame.minY, composerAccessories.frame.minY)
-            : composer.frame.minY
+            : composer.frame.minY) + composer.liftExtra
         let transcriptEnd = collectionView.frame.maxY
         let chromeGap = factsRow.isHidden ? 0 : CGFloat(ChatChrome.transcriptToChrome)
         let composerInset =

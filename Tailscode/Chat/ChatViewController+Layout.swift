@@ -141,6 +141,19 @@ extension ChatViewController {
         composerAccessories.addArrangedSubview(callController.dock)
         factsRow.widthAnchor.constraint(equalTo: composerAccessories.widthAnchor).isActive = true
         callController.dock.widthAnchor.constraint(equalTo: composerAccessories.widthAnchor).isActive = true
+        liftScrim.translatesAutoresizingMaskIntoConstraints = false
+        liftScrim.backgroundColor = Theme.Color.background.withAlphaComponent(0.8)
+        liftScrim.alpha = 0
+        liftScrim.isUserInteractionEnabled = false
+        liftScrim.addGestureRecognizer(
+            UITapGestureRecognizer(target: self, action: #selector(letComposerDown)))
+        view.addSubview(liftScrim)
+        NSLayoutConstraint.activate([
+            liftScrim.topAnchor.constraint(equalTo: view.topAnchor),
+            liftScrim.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            liftScrim.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            liftScrim.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
         view.addSubview(factsScrim)
         view.addSubview(composerAccessories)
         factsRow.bleed(to: view)
@@ -167,6 +180,8 @@ extension ChatViewController {
             composer.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
         ])
         rails.append(ReadableRail(composer, in: view))
+        composer.hearHandle(in: view)
+        composer.pageRoom = { [weak self] in self?.composerRoom() ?? 0 }
 
         commandPalette.isHidden = true
         view.addSubview(commandPalette)

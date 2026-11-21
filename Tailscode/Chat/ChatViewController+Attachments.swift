@@ -36,7 +36,8 @@ extension ChatViewController: UIDocumentPickerDelegate {
         guard !attached.isEmpty else { return }
         Theme.Haptics.success()
         updateAttachmentStrip()
-        presentToast(Self.attachedNote(names: attached.map(\.lastPathComponent)))
+        UIAccessibility.post(
+            notification: .announcement, argument: Self.attachedNote(names: attached.map(\.lastPathComponent)))
     }
 
     /// How many more this send can carry, said once rather than discovered one refusal at a time.
@@ -53,11 +54,8 @@ extension ChatViewController: UIDocumentPickerDelegate {
     }
 
     private static func attachedNote(names: [String]) -> String {
-        guard names.count > 1 else {
-            return String(localized: "\(names[0]) attached — it'll be sent with your next message.")
-        }
-        return String(
-            localized: "\(names.count) attached — they'll be sent with your next message.")
+        guard names.count > 1 else { return String(localized: "\(names[0]) attached.") }
+        return String(localized: "\(names.count) attached.")
     }
 
     /// The whole payload rides base64-encoded inside the send, whose timeout
@@ -93,7 +91,7 @@ extension ChatViewController: UIDocumentPickerDelegate {
         guard !quiet else { return true }
         Theme.Haptics.success()
         updateAttachmentStrip()
-        presentToast(String(localized: "\(name) attached — it'll be sent with your next message."))
+        UIAccessibility.post(notification: .announcement, argument: Self.attachedNote(names: [name]))
         return true
     }
 }
@@ -165,23 +163,35 @@ extension ChatViewController: PHPickerViewControllerDelegate {
         }
     }
 
+    /// A chip landing beside the box is the whole of the news: it says what was attached and,
+    /// by where it sits, that it waits for the next send. A screen reader is told in words.
     private func presentAttachmentToast(count: Int = 1) {
         Theme.Haptics.success()
         updateAttachmentStrip()
-        presentToast(
-            count > 1
-                ? String(localized: "\(count) images attached — they'll ride your next message.")
-                : String(localized: "Image attached — it'll be sent with your next message."))
+        UIAccessibility.post(
+            notification: .announcement,
+            argument: count > 1
+                ? String(localized: "\(count) pictures attached.")
+                : String(localized: "Picture attached."))
     }
 
     func updateAttachmentStrip() {
+        let before = Set(stripKeys)
         attachmentStrip.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        var keys: [String] = []
+        var arrived: [UIView] = []
+        func seat(_ chip: UIView, as key: String) {
+            attachmentStrip.addArrangedSubview(chip)
+            keys.append(key)
+            if !before.contains(key) { arrived.append(chip) }
+        }
         for paste in pendingPastes {
             let id = paste.id
-            attachmentStrip.addArrangedSubview(
+            seat(
                 PasteChip(
                     paste: paste, onOpen: { [weak self] in self?.readPaste(id) },
-                    onRemove: { [weak self] in self?.removePaste(id) }))
+                    onRemove: { [weak self] in self?.removePaste(id) }),
+                as: "paste:\(id)")
         }
         for (index, attachment) in pendingAttachments.enumerated() {
             let image = attachment.mime.hasPrefix("image/") && attachment.data != nil
@@ -196,10 +206,36 @@ extension ChatViewController: PHPickerViewControllerDelegate {
                     self.composer.showsAttach = self.canAttachAnything
                 }
             }
-            attachmentStrip.addArrangedSubview(chip)
+            seat(chip, as: "file:\(attachment.filename ?? attachment.mime):\(attachment.data?.count ?? 0)")
         }
+        stripKeys = keys
         attachmentStrip.isHidden = pendingAttachments.isEmpty && pendingPastes.isEmpty
         composer.carriesAttachments = !pendingAttachments.isEmpty || !pendingPastes.isEmpty
         view.setNeedsLayout()
+        land(arrived, moved: Set(keys) != before)
+    }
+
+    /// What was just clipped to the message arrives with weight: it grows into its place on a
+    /// spring, where it used to be there on the next frame as if it always had been. The strip
+    /// is laid out first and only the chip moves, because a chip that has never been laid out
+    /// has no place to grow from.
+    private func land(_ arrived: [UIView], moved: Bool) {
+        guard moved, !arrived.isEmpty, isViewLoaded, view.window != nil,
+            !UIAccessibility.isReduceMotionEnabled
+        else { return }
+        UIView.performWithoutAnimation { view.layoutIfNeeded() }
+        for chip in arrived {
+            chip.alpha = 0
+            chip.transform = CGAffineTransform(scaleX: 0.6, y: 0.6)
+        }
+        UIView.animate(
+            withDuration: 0.42, delay: 0, usingSpringWithDamping: 0.62, initialSpringVelocity: 0.4,
+            options: [.allowUserInteraction, .beginFromCurrentState]
+        ) {
+            for chip in arrived {
+                chip.alpha = 1
+                chip.transform = .identity
+            }
+        }
     }
 }

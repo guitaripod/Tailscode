@@ -73,6 +73,7 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
     /// the server has never heard of goes out as the words that were written: the server is the
     /// authority on its own grammar.
     func composerDidSend(_ typed: String) {
+        endMentions()
         hideCommandPalette()
         let text = PasteFold.wrap(typed, pastes: pendingPastes)
         let commandText = PasteFold.inline(typed, pastes: pendingPastes)
@@ -211,7 +212,7 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
 
     func composerTextDidChange(_ text: String) {
         DraftStore.record(PasteFold.draft(text, pastes: pendingPastes), for: draftScope)
-        updateCommandPalette(for: text)
+        updateComposerPalette(for: text)
         guard !isApplyingEnhancedPrompt else { return }
         enhancement.updateInput(text)
         enhanceOverlay?.requestDismiss()
@@ -251,7 +252,7 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
         composer.showsAttach = true
         updateAttachmentStrip()
         Theme.Haptics.success()
-        presentToast(String(localized: "Picture attached — it'll be sent with your next message."))
+        UIAccessibility.post(notification: .announcement, argument: String(localized: "Picture attached."))
     }
 
     /// A paste too long for the box is read by the same intake every client uses: past the file
@@ -338,6 +339,30 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
         viewModel.abort()
     }
 
+    func composerSelectionDidChange() {
+        caretMoved()
+    }
+
+    /// The newest prompt in the transcript, whoever's device sent it: the words a person most
+    /// often wants back are the ones they just wrote. Read from the message rather than from the
+    /// row that draws it, so a paste the prompt folded comes back with it, and never a line the
+    /// harness wrote in the person's place.
+    func composerLastPrompt() -> String? {
+        for message in viewModel.state.messages.reversed()
+        where message.role == .user && !message.reportsWorkBack {
+            let text = message.parts.compactMap(\.text).joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { return text }
+        }
+        return nil
+    }
+
+    func composerDidAskForLastPrompt() {
+        guard !composerHoldsWords, let last = composerLastPrompt() else { return }
+        fillComposer(last, cursorAtEnd: true)
+        Theme.Haptics.selection()
+    }
+
     func composerDidBeginEditing() {
         enhancement.prewarm()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
@@ -402,6 +427,15 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
                     self?.presentDocumentPicker()
                 })
         }
+        if viewModel.canAttachImages, UIImagePickerController.isSourceTypeAvailable(.camera) {
+            actions.insert(
+                UIAction(
+                    title: String(localized: "Take Photo"), image: UIImage(systemName: "camera")
+                ) { [weak self] _ in
+                    self?.presentCamera()
+                }, at: 0)
+        }
+        if let scan = composer.scanTextAction() { actions.append(scan) }
         actions.append(
             UIMenu(
                 options: .displayInline,
@@ -429,6 +463,18 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
         present(picker, animated: true)
     }
 
+    /// What is in front of the phone is the other thing it has in hand: a board, a second screen,
+    /// a page. One shot goes straight to the strip.
+    private func presentCamera() {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else { return }
+        guard room(for: 1) > 0 else { return }
+        Theme.Haptics.tap()
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+
     private func presentDocumentPicker() {
         Theme.Haptics.tap()
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
@@ -448,5 +494,32 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
         return DictationVocabulary.read(
             messages: viewModel.state.messages, project: project,
             commands: viewModel.composerCommands.map(\.name))
+    }
+}
+
+extension ChatViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    func imagePickerController(
+        _ picker: UIImagePickerController,
+        didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+    ) {
+        picker.dismiss(animated: true)
+        guard let image = info[.originalImage] as? UIImage,
+            let data = image.jpegData(compressionQuality: 0.9)
+        else { return }
+        guard data.count <= Self.attachmentSizeLimit else {
+            let size = ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
+            presentToast(String(localized: "That picture is \(size) — attachments are capped at 8 MB."))
+            return
+        }
+        pastedImageCount += 1
+        pendingAttachments.append(
+            PromptAttachment(mime: "image/jpeg", filename: "photo-\(pastedImageCount).jpg", data: data))
+        composer.showsAttach = true
+        updateAttachmentStrip()
+        Theme.Haptics.success()
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true)
     }
 }

@@ -136,6 +136,7 @@ extension ChatViewController {
                 directory: directory, sessionID: sessionID)
             guard self.viewModel.session.id == sessionID else { return }
             self.git = snapshot.map { GitState(snapshot: $0) }
+            self.mentions?.note(snapshot)
             self.updateGitChip()
             self.workspace?.inspectorMayShowRepository(of: self)
         }

@@ -274,3 +274,70 @@ extension ChatViewController {
         }
     }
 #endif
+
+#if DEBUG
+    extension ChatViewController {
+        static let stagedLongDraft =
+            "The reconnect test still fails one run in five on CI after the jitter pin. Look at "
+            + "`ReconnectScheduler` again: the backoff resets when the socket closes cleanly, but the "
+            + "test server closes with 1001 and I think we treat that as clean. Check the close-code "
+            + "table in @Sources/Pulse/Socket/CloseCodes.swift, add a test that closes with 1001 "
+            + "mid-handshake, and make the scheduler keep its attempt count across a going-away close. "
+            + "Keep the public API as it is. When it passes twenty runs in a row locally, commit it "
+            + "with a message that says what the race was."
+
+        /// A scripted walk through the composer for a run with no finger, steps split on `;`:
+        /// `draft:<words>`, `long`, `lift`, `drop`, `at:<letters>`, `pick:<n>`, `code:<at>:<length>`,
+        /// `quote:<at>:<length>`, `attach`, `last`, `send`, `focus`, `blur`, `clear`, `wait:<seconds>`,
+        /// `type:<words>` (a letter at a time, `|` for a new line) and `rewrite` (opens the last
+        /// waiting message in the box).
+        func stageCompose(_ script: String) async {
+            for step in script.split(separator: ";") {
+                let parts = step.split(separator: ":", maxSplits: 1).map(String.init)
+                let argument = parts.count > 1 ? parts[1] : ""
+                switch parts[0] {
+                case "draft": composer.setDraft(argument, cursorAtEnd: true)
+                case "long": composer.setDraft(Self.stagedLongDraft, cursorAtEnd: true)
+                case "lift": composer.setLifted(true)
+                case "drop": composer.setLifted(false)
+                case "at": composer.setDraft("Why does @\(argument)", cursorAtEnd: true)
+                case "pick": stageAcceptMention(Int(argument) ?? 0)
+                case "code", "quote":
+                    let span = argument.split(separator: ":").compactMap { Int($0) }
+                    guard span.count == 2 else { continue }
+                    composer.stageVerb(parts[0], over: NSRange(location: span[0], length: span[1]))
+                case "attach": stageAttachment()
+                case "type":
+                    for letter in argument {
+                        composer.insertText(letter == "|" ? "\n" : String(letter))
+                        try? await Task.sleep(for: .milliseconds(45))
+                    }
+                case "rewrite": takeBackLastQueued()
+                case "last": composerDidAskForLastPrompt()
+                case "send": composer.triggerSend()
+                case "focus": composer.focus()
+                case "blur": composer.unfocus()
+                case "clear": composer.clear()
+                case "wait": try? await Task.sleep(for: .seconds(Double(argument) ?? 1))
+                default: break
+                }
+                try? await Task.sleep(for: .milliseconds(350))
+            }
+        }
+
+        /// Clips a drawn picture to the message the way a pasted screenshot arrives.
+        private func stageAttachment() {
+            let size = CGSize(width: 240, height: 240)
+            let image = UIGraphicsImageRenderer(size: size).image { context in
+                let colors = [UIColor.systemIndigo.cgColor, UIColor.systemPink.cgColor] as CFArray
+                let gradient = CGGradient(colorsSpace: nil, colors: colors, locations: nil)
+                if let gradient {
+                    context.cgContext.drawLinearGradient(
+                        gradient, start: .zero, end: CGPoint(x: size.width, y: size.height), options: [])
+                }
+            }
+            guard let data = image.pngData() else { return }
+            composerDidPasteImage(data, mime: "image/png")
+        }
+    }
+#endif
