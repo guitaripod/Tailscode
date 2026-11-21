@@ -18,6 +18,13 @@ private func found(_ agent: AgentType = .claudeCode) -> FirstRunState.Found {
         label: "Studio")
 }
 
+private func ways(in row: FirstRunPlan.Row) -> [FirstRunPlan.Way] {
+    row.blocks.compactMap { block -> [FirstRunPlan.Way]? in
+        if case .ways(let ways) = block { return ways }
+        return nil
+    }.first ?? []
+}
+
 @Suite("First run plan")
 struct FirstRunPlanTests {
     @Test("the rows are Tailscale, the machine, then connected, in that order, on every client")
@@ -76,28 +83,55 @@ struct FirstRunPlanTests {
         #expect(TailscaleReading.sandboxed.blocksReaching == false)
     }
 
-    @Test("with nothing chosen the machine row offers the three ways in, in order, and says what a machine is")
-    func threeWays() throws {
+    @Test("a stranger is asked one question, which agent runs on their computer, before any way in")
+    func asksTheQuestionFirst() throws {
         let phone = try #require(FirstRunPlan.make(state(.iPhone)).row(.machine))
         #expect(phone.detail == "A machine is the computer that runs your coding agent, on your Tailscale network.")
-        guard case .ways(let ways) = phone.blocks.first else {
-            Issue.record("expected ways")
+        guard case .question(let question) = phone.blocks.first else {
+            Issue.record("expected the question")
             return
         }
-        #expect(ways.map(\.kind) == [.scan, .link, .install, .tailnet])
-        #expect(ways[0].title == "Scan the code your computer printed")
-        #expect(ways[2].title == "I don't have a machine set up yet")
+        #expect(question.title == "Which agent runs on your computer?")
+        #expect(question.choices.map(\.agent) == [.claudeCode, .openCode, .omp])
+        #expect(question.choices.map(\.title) == ["Claude Code", "opencode", "Oh My Pi"])
+        #expect(question.choices.allSatisfy { !$0.isSelected && !$0.detail.isEmpty })
+        #expect(question == FirstRunPlan.question)
     }
 
-    @Test("a desktop has no scanner, so it offers the link and the install and nothing it cannot do")
-    func desktopWays() throws {
+    @Test("under the question the ways in are the ones for a machine already set up, and the install is the question itself")
+    func waysUnderTheQuestion() throws {
+        let phone = try #require(FirstRunPlan.make(state(.iPhone)).row(.machine))
+        #expect(phone.blocks.count == 3)
+        #expect(phone.blocks[1] == .heading("Already set up?"))
+        #expect(ways(in: phone).map(\.kind) == [.scan, .link, .tailnet])
+        #expect(ways(in: phone).first?.title == "Scan the code your computer printed")
         for platform in [FirstRunPlatform.linux, .mac] {
             let row = try #require(FirstRunPlan.make(state(platform)).row(.machine))
-            guard case .ways(let ways) = row.blocks.first else {
-                Issue.record("expected ways")
-                return
-            }
-            #expect(ways.map(\.kind) == [.link, .install, .tailnet])
+            #expect(ways(in: row).map(\.kind) == [.link, .tailnet])
+        }
+    }
+
+    @Test("a person who said their machine is set up sees every way in, in order, and is not asked")
+    func alreadySetUp() throws {
+        var store = state(.iPhone)
+        store.alreadySetUp = true
+        let row = try #require(FirstRunPlan.make(store).row(.machine))
+        #expect(row.blocks.count == 1)
+        #expect(ways(in: row).map(\.kind) == [.scan, .link, .install, .tailnet])
+        #expect(ways(in: row)[2].title == "I don't have a machine set up yet")
+        var desktop = state(.linux)
+        desktop.alreadySetUp = true
+        let desktopRow = try #require(FirstRunPlan.make(desktop).row(.machine))
+        #expect(ways(in: desktopRow).map(\.kind) == [.link, .install, .tailnet])
+    }
+
+    @Test("adding another machine is not a stranger's first run, so it is not asked either")
+    func additionIsNotAsked() throws {
+        for platform in FirstRunPlatform.allCases {
+            let row = try #require(
+                FirstRunPlan.make(FirstRunState(platform: platform, mode: .addition)).row(.machine))
+            #expect(!row.blocks.contains { if case .question = $0 { true } else { false } })
+            #expect(ways(in: row).contains { $0.kind == .install })
         }
     }
 
@@ -106,8 +140,11 @@ struct FirstRunPlanTests {
         var store = state(.mac)
         store.offersTailnetScan = false
         let row = try #require(FirstRunPlan.make(store).row(.machine))
-        guard case .ways(let ways) = row.blocks.first else { return }
-        #expect(!ways.contains { $0.kind == .tailnet })
+        #expect(ways(in: row).map(\.kind) == [.link])
+        #expect(row.blocks.contains { if case .note = $0 { true } else { false } })
+        store.alreadySetUp = true
+        let known = try #require(FirstRunPlan.make(store).row(.machine))
+        #expect(ways(in: known).map(\.kind) == [.link, .install])
     }
 
     @Test("choosing to install shows one command, no password for claude-bridge, and waits")
@@ -166,21 +203,43 @@ struct FirstRunPlanTests {
             var store = state(platform)
             store.way = .install
             store.install = BridgeInstall.install(for: .claudeCode)
-            let row = try #require(FirstRunPlan.make(store).row(.machine))
-            let ways = row.blocks.compactMap { block -> [FirstRunPlan.Way]? in
-                if case .ways(let ways) = block { return ways }
-                return nil
-            }.first
-            #expect(ways?.map(\.kind) == [.link])
+            let plan = FirstRunPlan.make(store)
+            #expect(ways(in: try #require(plan.row(.machine))).map(\.kind) == [.link])
+            #expect(plan.primary == nil)
         }
-        var phone = state(.iPhone)
+    }
+
+    @Test("a phone waiting on an install holds the scan as its one press, and does not list it twice")
+    func phoneScansAsItsOnePress() throws {
+        for platform in [FirstRunPlatform.iPhone, .iPad] {
+            var phone = state(platform)
+            phone.way = .install
+            phone.install = BridgeInstall.install(for: .claudeCode)
+            let plan = FirstRunPlan.make(phone)
+            #expect(plan.primary?.intent == .scan)
+            #expect(plan.primary?.title == "Scan the code")
+            #expect(plan.primary?.isEnabled == true)
+            #expect(plan.primary?.isLoading == false)
+            #expect(ways(in: try #require(plan.row(.machine))).map(\.kind) == [.link, .tailnet])
+        }
+    }
+
+    @Test("with Tailscale down a phone's one press is still Tailscale, and the scan goes back in the list")
+    func phoneInstallWithTailscaleDown() throws {
+        var phone = state(.iPhone, tailscale: .daemonDown)
         phone.way = .install
         phone.install = BridgeInstall.install(for: .claudeCode)
-        let ways = FirstRunPlan.make(phone).row(.machine)?.blocks.compactMap { block -> [FirstRunPlan.Way]? in
-            if case .ways(let ways) = block { return ways }
-            return nil
-        }.first
-        #expect(ways?.map(\.kind) == [.scan, .link, .tailnet])
+        let plan = FirstRunPlan.make(phone)
+        #expect(plan.primary?.intent == .openTailscale)
+        #expect(ways(in: try #require(plan.row(.machine))).map(\.kind) == [.scan, .link, .tailnet])
+    }
+
+    @Test("a phone adding another machine scans as its one press too")
+    func phoneAdditionScans() {
+        var phone = FirstRunState(platform: .iPhone, mode: .addition)
+        phone.way = .install
+        phone.install = BridgeInstall.install(for: .claudeCode)
+        #expect(FirstRunPlan.make(phone).primary?.intent == .scan)
     }
 
     @Test("waiting words differ by what the client can watch")
@@ -276,6 +335,9 @@ struct FirstRunPlanTests {
     @Test("the demo is one tap away until a server is being saved")
     func demo() {
         #expect(FirstRunPlan.make(state()).demo?.title == "Try the demo")
+        var inDemo = state()
+        inDemo.offersDemo = false
+        #expect(FirstRunPlan.make(inDemo).demo == nil)
         var saving = state()
         saving.connection = .saving
         #expect(FirstRunPlan.make(saving).demo == nil)

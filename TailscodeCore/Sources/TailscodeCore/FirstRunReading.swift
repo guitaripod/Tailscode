@@ -72,12 +72,22 @@ enum FirstRunReading {
         }
     }
 
-    static func ways(_ state: FirstRunState, includingInstall: Bool) -> [FirstRunPlan.Way] {
+    /// Which ways in a list holds. Under the question the install is the question itself, so it
+    /// is left out; a person who knows their way sees every one; and while an install is awaited
+    /// the list is what its code and link are taken with, without the scan a phone already holds
+    /// as its one press and without the tailnet a desktop is already watching.
+    enum WayList: Equatable {
+        case underQuestion
+        case everyWay
+        case installing(scanIsPrimary: Bool)
+    }
+
+    static func ways(_ state: FirstRunState, for list: WayList) -> [FirstRunPlan.Way] {
         var ways: [FirstRunPlan.Way] = []
-        if state.platform.scansCodes {
+        if state.platform.scansCodes, list != .installing(scanIsPrimary: true) {
             ways.append(
                 FirstRunPlan.Way(
-                    kind: .scan, title: Localized.text("Scan the code your computer printed"),
+                    kind: .scan, title: scanPrompt,
                     detail: Localized.text("It prints a code and a link when the install finishes.")))
         }
         ways.append(
@@ -86,13 +96,13 @@ enum FirstRunReading {
                 detail: state.platform.isPhone
                     ? Localized.text("Open the link on this device, or paste it here.")
                     : Localized.text("Paste the link your machine printed.")))
-        if includingInstall {
+        if list == .everyWay {
             ways.append(
                 FirstRunPlan.Way(
                     kind: .install, title: Localized.text("I don't have a machine set up yet"),
                     detail: Localized.text("One command installs it. You run it on the computer.")))
         }
-        if state.offersTailnetScan, includingInstall || !state.platform.watchesTailnet {
+        if state.offersTailnetScan, offersTailnet(list, on: state.platform) {
             ways.append(
                 FirstRunPlan.Way(
                     kind: .tailnet, title: Localized.text("Find it on my tailnet"),
@@ -100,6 +110,29 @@ enum FirstRunReading {
         }
         return ways
     }
+
+    private static func offersTailnet(_ list: WayList, on platform: FirstRunPlatform) -> Bool {
+        switch list {
+        case .underQuestion, .everyWay: return true
+        case .installing: return !platform.watchesTailnet
+        }
+    }
+
+    static var scanPrompt: String { Localized.text("Scan the code your computer printed") }
+    static var scanTheCode: String { Localized.text("Scan the code") }
+    static var alreadySetUp: String { Localized.text("Already set up?") }
+
+    static var question: FirstRunPlan.Question {
+        FirstRunPlan.Question(
+            title: Localized.text("Which agent runs on your computer?"),
+            choices: agents.map { agent in
+                FirstRunPlan.AgentChoice(
+                    agent: agent, title: agentTitle(agent), detail: agentDetail(agent),
+                    isSelected: false)
+            })
+    }
+
+    private static let agents: [AgentType] = [.claudeCode, .openCode, .omp]
 
     static var tailnetScanUnavailable: String {
         Localized.text(
@@ -143,7 +176,7 @@ enum FirstRunReading {
     }
 
     static func agentChoices(_ state: FirstRunState) -> [FirstRunPlan.AgentChoice] {
-        [AgentType.claudeCode, .openCode, .omp].map { agent in
+        agents.map { agent in
             FirstRunPlan.AgentChoice(
                 agent: agent, title: agentTitle(agent), detail: agentDetail(agent),
                 isSelected: agent == state.agent)

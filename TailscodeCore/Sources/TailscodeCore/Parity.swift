@@ -146,6 +146,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case connectDiagnosis
     case serverAccess
     case firstRunPlan
+    case firstRunQuestion
     case pairingLink
     case pairingScan
     case serverSignIn

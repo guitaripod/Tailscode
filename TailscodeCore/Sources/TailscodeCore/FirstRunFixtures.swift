@@ -14,7 +14,8 @@ public enum FirstRunFixtures {
     ]
 
     public static let names = [
-        "checking", "tailscale-down", "machine-asking", "link-offered", "link-pasted", "probing",
+        "checking", "tailscale-down", "machine-asking", "machine-known", "installing",
+        "installing-opencode", "installing-omp", "link-offered", "link-pasted", "probing",
         "signed-out", "connected",
     ] + causes.map { "failed:\($0)" }
 
@@ -32,6 +33,14 @@ public enum FirstRunFixtures {
             state.tailscale = .daemonDown
         case "machine-asking":
             break
+        case "machine-known":
+            state.alreadySetUp = true
+        case "installing":
+            install(.claudeCode, &state)
+        case "installing-opencode":
+            install(.openCode, &state)
+        case "installing-omp":
+            install(.omp, &state)
         case "link-offered":
             state.clipboard = link()
         case "link-pasted":
@@ -59,6 +68,12 @@ public enum FirstRunFixtures {
             state.machine = .failed(diagnosis)
         }
         return state
+    }
+
+    private static func install(_ agent: AgentType, _ state: inout FirstRunState) {
+        state.agent = agent
+        state.way = .install
+        state.install = BridgeInstall.install(for: agent, password: "k7Qm2xVb9TnRw4Lp")
     }
 
     private static func link() -> PairingLink {

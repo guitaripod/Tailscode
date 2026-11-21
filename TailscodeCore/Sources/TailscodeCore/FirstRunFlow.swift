@@ -28,6 +28,7 @@ public enum FirstRunSave: Sendable, Equatable {
 /// everywhere, and a test replaces them to put a machine in any state.
 public struct FirstRunEnvironment: Sendable {
     public var offersTailnetScan: Bool
+    public var offersDemo: Bool
     public var profiles: @Sendable () async -> [ConnectionProfile]
     public var save: @Sendable (ConnectionProfile, String?) async -> FirstRunSave
     public var probe:
@@ -40,6 +41,7 @@ public struct FirstRunEnvironment: Sendable {
 
     public init(
         offersTailnetScan: Bool = true,
+        offersDemo: Bool = true,
         profiles: @escaping @Sendable () async -> [ConnectionProfile],
         save: @escaping @Sendable (ConnectionProfile, String?) async -> FirstRunSave,
         probe: @escaping @Sendable (HostAddress, String?, AgentType, Bool) async -> FirstRunProbe =
@@ -51,6 +53,7 @@ public struct FirstRunEnvironment: Sendable {
         typingDelay: Duration = .milliseconds(900)
     ) {
         self.offersTailnetScan = offersTailnetScan
+        self.offersDemo = offersDemo
         self.profiles = profiles
         self.save = save
         self.probe = probe
@@ -116,6 +119,7 @@ public actor FirstRunFlow {
     ) {
         var state = FirstRunState(platform: platform, mode: mode)
         state.offersTailnetScan = environment.offersTailnetScan
+        state.offersDemo = environment.offersDemo
         self.state = state
         self.environment = environment
     }
@@ -226,6 +230,29 @@ public actor FirstRunFlow {
         case .scan, .tailnet:
             return
         }
+        publish()
+    }
+
+    /// The answer to first run's one question. It decides the install command and nothing else,
+    /// so the checklist opens on that command with the agent already named.
+    public func answer(_ agent: AgentType) {
+        guard !state.hasLiveConnection else { return }
+        probeTask?.cancel()
+        state.agent = agent
+        state.way = .install
+        state.link = nil
+        state.typed = ""
+        state.notice = nil
+        state.machine = .idle
+        ensureInstall()
+        publish()
+    }
+
+    /// The person holds a code or a link, or knows their machine answers: the ways in lead from
+    /// here on and the question is not asked.
+    public func alreadySetUp() {
+        guard !state.alreadySetUp else { return }
+        state.alreadySetUp = true
         publish()
     }
 

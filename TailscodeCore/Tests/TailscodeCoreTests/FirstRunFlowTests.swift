@@ -379,6 +379,72 @@ struct FirstRunFlowTests {
         #expect(await flow.snapshot.install?.password == nil)
     }
 
+    @Test("answering the question opens the install on that agent's own command")
+    func answeringTheQuestion() async {
+        let recorder = FirstRunRecorder()
+        let flow = await flow(.iPhone, recorder: recorder)
+        await flow.answer(.openCode)
+        var state = await flow.snapshot
+        #expect(state.way == .install)
+        #expect(state.agent == .openCode)
+        #expect(state.install?.agent == .openCode)
+        #expect(state.install?.command.contains("OPENCODE_SERVER_PASSWORD=MINTED-PASSWORD") == true)
+        let plan = await flow.plan
+        #expect(plan.primary?.intent == .scan)
+        #expect(plan.back == "Back")
+        guard case .agents(let choices) = plan.row(.machine)?.blocks.first else {
+            Issue.record("expected the agent named above its command")
+            return
+        }
+        #expect(choices.filter(\.isSelected).map(\.agent) == [.openCode])
+        await flow.answer(.claudeCode)
+        state = await flow.snapshot
+        #expect(state.install?.agent == .claudeCode)
+        #expect(state.install?.password == nil)
+        #expect(await recorder.probes.isEmpty)
+    }
+
+    @Test("an answer changed after going back keeps the one password the command already carried")
+    func answerAgainKeepsThePassword() async {
+        let recorder = FirstRunRecorder()
+        let flow = await flow(.iPhone, recorder: recorder)
+        await flow.answer(.omp)
+        let first = await flow.snapshot.install?.password
+        await flow.back()
+        #expect(await flow.snapshot.way == .choosing)
+        guard case .question = await flow.plan.row(.machine)?.blocks.first else {
+            Issue.record("expected the question again")
+            return
+        }
+        await flow.answer(.openCode)
+        #expect(await flow.snapshot.install?.password == first)
+    }
+
+    @Test("saying the machine is set up leads with the ways in, and going back does not ask again")
+    func sayingItIsSetUp() async {
+        let recorder = FirstRunRecorder()
+        let flow = await flow(.iPhone, recorder: recorder)
+        await flow.alreadySetUp()
+        var blocks = await flow.plan.row(.machine)?.blocks ?? []
+        #expect(blocks.count == 1)
+        await flow.choose(.install)
+        await flow.back()
+        blocks = await flow.plan.row(.machine)?.blocks ?? []
+        guard case .ways(let ways) = blocks.first else {
+            Issue.record("expected the ways in")
+            return
+        }
+        #expect(ways.map(\.kind) == [.scan, .link, .install, .tailnet])
+    }
+
+    @Test("the demo is not offered by a flow whose app already holds the demo")
+    func demoAlreadyHeld() async {
+        var environment = FirstRunRecorder().environment()
+        environment.offersDemo = false
+        let flow = FirstRunFlow(platform: .iPhone, environment: environment)
+        #expect(await flow.plan.demo == nil)
+    }
+
     @Test("a link arriving while the install command is on screen takes over the checklist")
     func linkAfterInstall() async {
         let recorder = FirstRunRecorder()
@@ -459,7 +525,7 @@ struct FirstRunFlowTests {
         #expect(state.passwordShown)
     }
 
-    @Test("back returns to the three ways and forgets what was half done")
+    @Test("back returns to the question and forgets what was half done")
     func back() async {
         let recorder = FirstRunRecorder()
         let flow = await flow(recorder: recorder)

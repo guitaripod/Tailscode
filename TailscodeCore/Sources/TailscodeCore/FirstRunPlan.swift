@@ -26,6 +26,8 @@ public struct FirstRunPlan: Sendable, Equatable {
 
     public enum Block: Sendable, Equatable {
         case note(String)
+        case heading(String)
+        case question(Question)
         case ways([Way])
         case paste(Paste)
         case agents([AgentChoice])
@@ -47,6 +49,14 @@ public struct FirstRunPlan: Sendable, Equatable {
         public let title: String
         public let detail: String
         public var id: String { kind.rawValue }
+    }
+
+    /// The one question first run asks, because its answer is the only thing that changes what the
+    /// person does next: which install command they are handed. A client draws each choice as a
+    /// press that answers it (`FirstRunFlow.answer`), never as a selection waiting for a second one.
+    public struct Question: Sendable, Equatable {
+        public let title: String
+        public let choices: [AgentChoice]
     }
 
     public struct Paste: Sendable, Equatable {
@@ -94,7 +104,7 @@ public struct FirstRunPlan: Sendable, Equatable {
 
     public struct Primary: Sendable, Equatable {
         public enum Intent: Sendable, Equatable {
-            case connect, openTailscale, signIn
+            case connect, openTailscale, signIn, scan
         }
 
         public let title: String
@@ -128,6 +138,12 @@ public struct FirstRunPlan: Sendable, Equatable {
     public let outcome: FirstRunState.Outcome?
 
     public func row(_ id: Row.ID) -> Row? { rows.first { $0.id == id } }
+
+    /// The question as a welcome screen asks it before the checklist is open, in the same words.
+    public static var question: Question { FirstRunReading.question }
+
+    /// What a scanner says it is looking for.
+    public static var scanPrompt: String { FirstRunReading.scanPrompt }
 }
 
 extension FirstRunPlan {
@@ -144,7 +160,8 @@ extension FirstRunPlan {
             later: later(state),
             dismiss: later(state) ?? (state.mode == .addition ? ConnectLinkReading.notNow : FirstRunReading.later),
             back: state.way != .choosing && !state.hasLiveConnection ? FirstRunReading.back : nil,
-            demo: state.mode == .firstRun && !state.hasLiveConnection ? FirstRunReading.demo : nil,
+            demo: state.mode == .firstRun && state.offersDemo && !state.hasLiveConnection
+                ? FirstRunReading.demo : nil,
             offer: offer(state),
             isFinished: state.finished,
             outcome: state.outcome)
@@ -224,7 +241,13 @@ extension FirstRunPlan {
         var blocks: [Block] = []
         switch state.way {
         case .choosing:
-            blocks.append(.ways(FirstRunReading.ways(state, includingInstall: true)))
+            if asksQuestion(state) {
+                blocks.append(.question(FirstRunReading.question))
+                blocks.append(.heading(FirstRunReading.alreadySetUp))
+                blocks.append(.ways(FirstRunReading.ways(state, for: .underQuestion)))
+            } else {
+                blocks.append(.ways(FirstRunReading.ways(state, for: .everyWay)))
+            }
             if state.platform.watchesTailnet, !state.offersTailnetScan {
                 blocks.append(.note(FirstRunReading.tailnetScanUnavailable))
             }
@@ -236,7 +259,8 @@ extension FirstRunPlan {
                 blocks.append(.command(FirstRunReading.commandCard(install, state: state)))
             }
             blocks.append(.waiting(FirstRunReading.waitingForMachine(state.platform)))
-            blocks.append(.ways(FirstRunReading.ways(state, includingInstall: false)))
+            let scanIsPrimary = primary(state)?.intent == .scan
+            blocks.append(.ways(FirstRunReading.ways(state, for: .installing(scanIsPrimary: scanIsPrimary))))
         case .link:
             if let link = state.link {
                 blocks.append(.link(FirstRunReading.linkCard(link, confirmed: state.offTailnetConfirmed)))
@@ -247,6 +271,12 @@ extension FirstRunPlan {
             blocks.append(.password(FirstRunPlan.PasswordField(text: state.password, note: state.passwordNote)))
         }
         return blocks
+    }
+
+    /// Whether the machine row opens on the question. A stranger is asked; a person adding another
+    /// machine, or one who said theirs is set up, already knows the ways in and is shown those.
+    private static func asksQuestion(_ state: FirstRunState) -> Bool {
+        state.mode == .firstRun && !state.alreadySetUp
     }
 
     private static func statusBlocks(_ state: FirstRunState) -> [Block] {
@@ -360,6 +390,11 @@ extension FirstRunPlan {
             {
                 return Primary(
                     title: FirstRunReading.openTailscale, intent: .openTailscale, isEnabled: true,
+                    isLoading: false)
+            }
+            if state.platform.scansCodes, state.way == .install {
+                return Primary(
+                    title: FirstRunReading.scanTheCode, intent: .scan, isEnabled: true,
                     isLoading: false)
             }
             guard state.way == .link || state.way == .paste, hasSomethingToConnect(state) else {

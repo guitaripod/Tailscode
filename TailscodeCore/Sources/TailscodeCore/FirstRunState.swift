@@ -82,9 +82,15 @@ public struct FirstRunState: Sendable, Equatable {
     public var mode: Mode = .firstRun
     public var platform: FirstRunPlatform
     public var offersTailnetScan = true
+    /// False once the demo's servers are what the app already holds: offering it again would be a
+    /// press that does nothing.
+    public var offersDemo = true
     public var tailscale: TailscaleReading?
     public var agent: AgentType = .claudeCode
     public var way: Way = .choosing
+    /// The person said their machine is already set up, so the ways in lead and the question of
+    /// which agent to install is not put to them again.
+    public var alreadySetUp = false
     public var link: ConnectLinkPlan?
     public var typed = ""
     public var password = ""

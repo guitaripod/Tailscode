@@ -265,10 +265,11 @@ struct FirstRunFixtureTests {
         sandboxed.offersTailnetScan = false
         let plan = FirstRunPlan.make(sandboxed)
         let blocks = try #require(plan.row(.machine)?.blocks)
-        guard case .ways(let ways) = try #require(blocks.first) else {
-            Issue.record("the ways lead")
-            return
-        }
+        let ways = try #require(
+            blocks.compactMap { block -> [FirstRunPlan.Way]? in
+                if case .ways(let ways) = block { return ways }
+                return nil
+            }.first)
         #expect(ways.first?.kind == .link)
         #expect(!ways.contains { $0.kind == .tailnet })
         let notes = blocks.compactMap { block -> String? in
