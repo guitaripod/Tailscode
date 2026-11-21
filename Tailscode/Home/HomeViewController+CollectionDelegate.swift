@@ -18,7 +18,7 @@ extension HomeViewController: UICollectionViewDelegate {
         -> Bool
     {
         switch dataSource.itemIdentifier(for: indexPath) {
-        case .status, .masters: return false
+        case .status, .shelfBar, .masters: return false
         default: return true
         }
     }
@@ -32,14 +32,10 @@ extension HomeViewController: UICollectionViewDelegate {
             onOpenSettings?()
         case .schedule:
             pushSchedules()
-        case .status, .demoNudge, .proInvitation, .placeholder, .agentNews, .masters:
+        case .status, .demoNudge, .proInvitation, .placeholder, .agentNews, .shelfBar, .masters:
             break
-        case .glance(let card):
-            guard card.glance.lines.filter({ $0.kind != .notice }).count > 1 else {
-                return pushUsage()
-            }
-            HomeGlanceFold.isOpen.toggle()
-            applySnapshot()
+        case .glance:
+            pushUsage()
         case .chat(let card):
             openChat(for: card.entry)
         case .ask(let card):
@@ -67,7 +63,7 @@ extension HomeViewController: UICollectionViewDelegate {
             return sessionMenu(for: card.entry, allowDelete: !card.row.state.isInFlight)
         case .ask(let card):
             return sessionMenu(for: card.entry, allowDelete: false)
-        case .status, .schedule, .agentNews, .masters, .glance, .quota, .alert, .demoNudge, .proInvitation,
+        case .status, .schedule, .agentNews, .shelfBar, .masters, .glance, .quota, .alert, .demoNudge, .proInvitation,
             .more, .placeholder:
             return nil
         }

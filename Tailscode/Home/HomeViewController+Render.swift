@@ -61,20 +61,8 @@ extension HomeViewController {
                 snapshot.appendSections([.agentNews])
                 snapshot.appendItems([.agentNews(news)], toSection: .agentNews)
             }
-            if let shelf = masterShelf {
-                snapshot.appendSections([.masters])
-                snapshot.appendItems([.masters(shelf)], toSection: .masters)
-            }
         }
-        if !showsQuotaCards, !quotas.isEmpty {
-            let glance = QuotaGlance.make(
-                from: quotas.map { ("", $0) }, answeredAt: quotasAnsweredAt,
-                board: QuotaBoardStore.current, trail: RangeStore.trail)
-            if !glance.isEmpty {
-                snapshot.appendSections([.glance])
-                snapshot.appendItems([.glance(QuotaGlanceCard(glance: glance, isOpen: HomeGlanceFold.isOpen))], toSection: .glance)
-            }
-        }
+        appendShelf(to: &snapshot, masters: hasLoadedOnce && !servers.isEmpty ? masterShelf : nil)
         if !down.isEmpty {
             snapshot.appendSections([.alerts])
             snapshot.appendItems(
@@ -184,7 +172,7 @@ extension HomeViewController {
         let rowItems = snapshot.itemIdentifiers.filter {
             switch $0 {
             case .chat, .ask, .saved, .placeholder: return true
-            case .status, .schedule, .agentNews, .masters, .glance, .quota, .alert, .demoNudge, .proInvitation,
+            case .status, .schedule, .agentNews, .shelfBar, .masters, .glance, .quota, .alert, .demoNudge, .proInvitation,
                 .more:
                 return false
             }
@@ -319,6 +307,37 @@ extension HomeViewController {
             contentUnavailableConfiguration = config
         } else {
             contentUnavailableConfiguration = nil
+        }
+    }
+
+    /// The bar that stands for the masters and the quotas, and under it whichever of the two the
+    /// person has out. A card whose button is gone (no master yet, a pane tall enough to draw the
+    /// quota cards whole) is not out, whatever was remembered.
+    private func appendShelf(
+        to snapshot: inout NSDiffableDataSourceSnapshot<HomeSection, HomeItem>, masters: MasterShelfCard?
+    ) {
+        var glance: QuotaGlance?
+        if !showsQuotaCards, !quotas.isEmpty {
+            let made = QuotaGlance.make(
+                from: quotas.map { ("", $0) }, answeredAt: quotasAnsweredAt,
+                board: QuotaBoardStore.current, trail: RangeStore.trail)
+            if !made.isEmpty { glance = made }
+        }
+        guard masters != nil || glance != nil else { return }
+        var peek = HomeShelfPeek.current
+        if peek == .masters, masters == nil { peek = .none }
+        if peek == .quota, glance == nil { peek = .none }
+        snapshot.appendSections([.shelfBar])
+        snapshot.appendItems(
+            [.shelfBar(HomeShelfBarCard(masters: masters?.board, glance: glance, peek: peek))],
+            toSection: .shelfBar)
+        if peek == .masters, let masters {
+            snapshot.appendSections([.masters])
+            snapshot.appendItems([.masters(masters)], toSection: .masters)
+        }
+        if peek == .quota, let glance {
+            snapshot.appendSections([.glance])
+            snapshot.appendItems([.glance(QuotaGlanceCard(glance: glance))], toSection: .glance)
         }
     }
 }

@@ -3,7 +3,7 @@ import TailscodeCore
 import UIKit
 
 enum HomeSection: Hashable {
-    case status, schedule, agentNews, masters, glance, alerts, demoNudge, proInvitation, asks, usage
+    case status, schedule, agentNews, shelfBar, masters, glance, alerts, demoNudge, proInvitation, asks, usage
     case needsYou, working, pinned, saved, recent
 
     var band: SessionSection? {
@@ -13,7 +13,8 @@ enum HomeSection: Hashable {
         case .pinned: return .pinned
         case .saved: return .saved
         case .recent: return .recent
-        case .status, .schedule, .agentNews, .masters, .glance, .alerts, .demoNudge, .proInvitation, .asks, .usage:
+        case .status, .schedule, .agentNews, .shelfBar, .masters, .glance, .alerts, .demoNudge, .proInvitation,
+            .asks, .usage:
             return nil
         }
     }
@@ -33,6 +34,7 @@ enum HomeItem: Hashable {
     case status(HomeStatusCard)
     case schedule(ScheduleLineCard)
     case agentNews(AgentNewsCard)
+    case shelfBar(HomeShelfBarCard)
     case masters(MasterShelfCard)
     case glance(QuotaGlanceCard)
     case alert(ServerAlertCard)
@@ -64,7 +66,6 @@ extension HomeItem {
             hasher.combine(String(describing: card.status.tone))
         case .glance(let card):
             hasher.combine(card.glance.lines.count)
-            hasher.combine(card.isOpen)
             for line in card.glance.lines {
                 hasher.combine(line.text)
                 hasher.combine(line.trailing)
@@ -82,6 +83,15 @@ extension HomeItem {
         case .agentNews(let card):
             hasher.combine(card.title)
             hasher.combine(card.detail)
+        case .shelfBar(let card):
+            hasher.combine(card.peek)
+            hasher.combine(card.masters.map { MasterShelf.signature($0) })
+            for line in card.glance?.lines ?? [] {
+                hasher.combine(line.short ?? line.text)
+                hasher.combine(line.fraction)
+                hasher.combine(line.tone.rawValue)
+                hasher.combine(line.kind.rawValue)
+            }
         case .masters(let card):
             hasher.combine(MasterShelf.signature(card.board))
         case .proInvitation(let card):
@@ -114,11 +124,9 @@ struct HomeStatusCard: Hashable {
     func hash(into hasher: inout Hasher) {}
 }
 
-/// The quota strip as Home draws it: every line it holds, folded to a row of marks or open as a
-/// row a line.
+/// The quota strip as Home draws it once its button is pressed: every line it holds.
 struct QuotaGlanceCard: Hashable {
     let glance: QuotaGlance
-    let isOpen: Bool
 
     static func == (lhs: QuotaGlanceCard, rhs: QuotaGlanceCard) -> Bool { true }
     func hash(into hasher: inout Hasher) {}
@@ -655,37 +663,222 @@ final class HomeStatusCell: UICollectionViewCell {
     }
 }
 
-/// Whether Home's quota strip is open, which is the person's and is remembered: folded it is one
-/// row of marks, open it is a row a line.
-enum HomeGlanceFold {
-    private static let key = "tailscode.home.glanceOpen"
+/// What Home's shelf bar has open under it, which is the person's and is remembered.
+enum HomeShelfPeek: String {
+    case none, masters, quota
 
-    static var isOpen: Bool {
-        get { UserDefaults.standard.bool(forKey: key) }
-        set { UserDefaults.standard.set(newValue, forKey: key) }
+    private static let key = "tailscode.home.shelfPeek"
+
+    static var current: HomeShelfPeek {
+        get { UserDefaults.standard.string(forKey: key).flatMap(HomeShelfPeek.init) ?? .none }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: key) }
     }
 }
 
-/// The quota strip as one surface with two sizes. Folded it is a capsule of marks, one for every
-/// line the strip holds: the ring its window fills, in the tone it wears, and the provider in one
-/// word, so which is used up and which has room is read without a count of what was left out.
-/// A press on it opens it in place to a row a line, with the countdowns and the numbers, and a
-/// press again folds it. The chevron is its own button and is the only road to Usage, so a press
-/// meant to look never leaves Home.
+/// The two things Home keeps behind a button rather than on the page: the masters and the
+/// account's quotas. There is only ever one bar, so its identity is nothing at all.
+struct HomeShelfBarCard: Hashable {
+    let masters: MasterBoard?
+    let glance: QuotaGlance?
+    let peek: HomeShelfPeek
+
+    static func == (lhs: HomeShelfBarCard, rhs: HomeShelfBarCard) -> Bool { true }
+    func hash(into hasher: inout Hasher) {}
+}
+
+/// One row of buttons that stand for whole cards. Each says what its card would lead with — a
+/// dot per master in the tone its state wears and how many notes wait, a ring per quota line in
+/// its tone — so a wall or a failing guard is seen from the button, and a press opens the card
+/// under the bar as a preview; a press on the preview is the road to the page behind it, and a
+/// press on the button again puts it away.
+final class HomeShelfBarCell: UICollectionViewCell {
+    var onPick: ((HomeShelfPeek) -> Void)?
+
+    private let mastersButton = ShelfButton()
+    private let quotaButton = ShelfButton()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        let row = UIStackView(arrangedSubviews: [mastersButton, quotaButton])
+        row.axis = .horizontal
+        row.distribution = .fillEqually
+        row.spacing = Theme.Spacing.s
+        row.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(row)
+        NSLayoutConstraint.activate([
+            row.topAnchor.constraint(equalTo: contentView.topAnchor),
+            row.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            row.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+        ])
+        mastersButton.addAction(UIAction { [weak self] _ in self?.onPick?(.masters) }, for: .touchUpInside)
+        quotaButton.addAction(UIAction { [weak self] _ in self?.onPick?(.quota) }, for: .touchUpInside)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func configure(_ card: HomeShelfBarCard) {
+        UIView.performWithoutAnimation {
+            mastersButton.isHidden = card.masters == nil
+            quotaButton.isHidden = card.glance == nil
+            if let board = card.masters { fillMasters(board, open: card.peek == .masters) }
+            if let glance = card.glance {
+                fillQuota(glance, open: card.peek == .quota, alone: card.masters == nil)
+            }
+            contentView.layoutIfNeeded()
+        }
+    }
+
+    private func fillMasters(_ board: MasterBoard, open: Bool) {
+        let title = UILabel()
+        title.text = MasterWords.title
+        title.font = Theme.Ramp.font(.gauge)
+        title.textColor = Theme.Color.label
+        title.lineBreakMode = .byTruncatingTail
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        var parts: [UIView] = [title]
+        for row in board.rows.prefix(Self.dotLimit) {
+            parts.append(ShelfDot(color: MasterStyle.color(row.state().tone)))
+        }
+        let waiting = board.rows.compactMap { MasterReading.badge($0.master) }.reduce(0, +)
+        if waiting > 0 { parts.append(MasterShelf.badge(waiting)) }
+        mastersButton.fill(parts, open: open)
+        var spoken = [MasterWords.title]
+        spoken += board.rows.map { [$0.master.name, $0.state().text].joined(separator: ", ") }
+        mastersButton.accessibilityLabel = spoken.joined(separator: ". ")
+    }
+
+    private static let dotLimit = 5
+
+    /// With the bar to itself the quota button has room to name each provider; sharing the row
+    /// it is the rings alone, which is what a tone needs to be seen.
+    private func fillQuota(_ glance: QuotaGlance, open: Bool, alone: Bool) {
+        let marked = glance.lines.filter { $0.kind != .notice }
+        var parts: [UIView]
+        if marked.isEmpty {
+            let label = UILabel()
+            label.text = glance.lines.first?.text
+            label.font = Theme.Ramp.font(.gauge)
+            label.textColor = GlanceInk.words(glance.lines.first?.tone ?? .quiet)
+            label.lineBreakMode = .byTruncatingTail
+            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            parts = [label]
+        } else if alone {
+            parts = marked.map { line in
+                let chip = GlanceMarkChip()
+                chip.configure(line)
+                return chip
+            }
+        } else {
+            parts = marked.map { line in
+                let ring = GlanceMarkView(side: 20)
+                ring.configure(line)
+                return ring
+            }
+        }
+        quotaButton.fill(parts, open: open, spread: !marked.isEmpty)
+        quotaButton.accessibilityLabel = glance.lines.map(HomeGlanceCell.spoken).joined(separator: ", ")
+        quotaButton.accessibilityHint =
+            open ? String(localized: "Folds the quotas") : String(localized: "Shows every quota")
+    }
+}
+
+/// A capsule that stands for a card and says whether the card is out: the chevron points down
+/// while it is, and the surface wears the accent's wash.
+final class ShelfButton: UIControl {
+    private let content = UIStackView()
+    private let chevron = UIImageView()
+    private let surface = CapsuleView()
+
+    init() {
+        super.init(frame: .zero)
+        surface.isUserInteractionEnabled = false
+        surface.layer.cornerCurve = .continuous
+        surface.translatesAutoresizingMaskIntoConstraints = false
+        content.axis = .horizontal
+        content.alignment = .center
+        content.spacing = Theme.Spacing.s
+        content.isUserInteractionEnabled = false
+        chevron.tintColor = Theme.Color.tertiaryLabel
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+        chevron.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let row = UIStackView(arrangedSubviews: [content, chevron])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = Theme.Spacing.s
+        row.isUserInteractionEnabled = false
+        row.isLayoutMarginsRelativeArrangement = true
+        row.directionalLayoutMargins = NSDirectionalEdgeInsets(
+            top: 0, leading: Theme.Spacing.m, bottom: 0, trailing: Theme.Spacing.m)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(surface)
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            surface.topAnchor.constraint(equalTo: topAnchor),
+            surface.bottomAnchor.constraint(equalTo: bottomAnchor),
+            surface.leadingAnchor.constraint(equalTo: leadingAnchor),
+            surface.trailingAnchor.constraint(equalTo: trailingAnchor),
+            row.topAnchor.constraint(equalTo: topAnchor),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+        answersPointer(cornerRadius: 22)
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override var isHighlighted: Bool {
+        didSet { alpha = isHighlighted ? 0.6 : 1 }
+    }
+
+    /// `spread` lays the parts across the whole button rather than packing them at its leading
+    /// edge, which is how a row of rings reads as one gauge.
+    func fill(_ parts: [UIView], open: Bool, spread: Bool = false) {
+        content.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        content.distribution = spread ? .equalSpacing : .fill
+        parts.forEach(content.addArrangedSubview)
+        if !spread { content.addArrangedSubview(UIView()) }
+        chevron.image = UIImage(
+            systemName: open ? "chevron.up" : "chevron.down",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+        surface.backgroundColor =
+            open ? Theme.Color.accent.withAlphaComponent(0.16) : Theme.Color.groupedSurface
+        accessibilityTraits = open ? [.button, .selected] : .button
+    }
+}
+
+/// A master's state as one dot.
+final class ShelfDot: UIView {
+    init(color: UIColor) {
+        super.init(frame: .zero)
+        backgroundColor = color
+        layer.cornerRadius = 4
+        translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: 8), heightAnchor.constraint(equalToConstant: 8),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+}
+
+/// The quota strip as the card the shelf bar opens: a row a line, with the countdowns, the
+/// numbers and when a window heading for its wall will hit it. The whole card is the road to
+/// Usage — it is the preview, and a press on a preview goes to the page behind it.
 final class HomeGlanceCell: UICollectionViewCell {
     private static let cornerRadius: CGFloat = 22
     private static let loneRowHeight: CGFloat = 44
     private static let stackedRowHeight: CGFloat = 30
     private static let stackedInset: CGFloat = 6
 
-    var onOpenUsage: (() -> Void)?
-
     private let card = GlanceCardView(cornerRadius: HomeGlanceCell.cornerRadius)
-    private let marks = UIStackView()
     private let column = UIStackView()
-    private let chevron = UIButton(type: .system)
+    private let chevron = UIImageView()
     private let shell = UIStackView()
-    private var chips: [GlanceMarkChip] = []
     private var rows: [GlanceLineRow] = []
 
     override init(frame: CGRect) {
@@ -694,37 +887,21 @@ final class HomeGlanceCell: UICollectionViewCell {
         card.translatesAutoresizingMaskIntoConstraints = false
         card.isUserInteractionEnabled = false
 
-        marks.axis = .horizontal
-        marks.alignment = .center
-        marks.distribution = .equalSpacing
-        marks.isUserInteractionEnabled = false
-        marks.heightAnchor.constraint(greaterThanOrEqualToConstant: Self.loneRowHeight).isActive = true
-
         column.axis = .vertical
         column.alignment = .fill
-        column.isUserInteractionEnabled = false
 
-        var look = UIButton.Configuration.plain()
-        look.image = UIImage(
+        chevron.image = UIImage(
             systemName: "chevron.right",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
-        look.baseForegroundColor = Theme.Color.secondaryLabel
-        look.contentInsets = NSDirectionalEdgeInsets(
-            top: 0, leading: Theme.Spacing.m, bottom: 0, trailing: Theme.Spacing.m)
-        chevron.configuration = look
-        chevron.addAction(UIAction { [weak self] _ in self?.onOpenUsage?() }, for: .primaryActionTriggered)
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold))
+        chevron.tintColor = Theme.Color.tertiaryLabel
         chevron.setContentHuggingPriority(.required, for: .horizontal)
         chevron.setContentCompressionResistancePriority(.required, for: .horizontal)
-        chevron.isAccessibilityElement = false
 
-        let body = UIStackView(arrangedSubviews: [marks, column])
-        body.axis = .vertical
-        body.isUserInteractionEnabled = false
-
-        shell.addArrangedSubview(body)
+        shell.addArrangedSubview(column)
         shell.addArrangedSubview(chevron)
         shell.axis = .horizontal
-        shell.alignment = .fill
+        shell.alignment = .center
+        shell.spacing = Theme.Spacing.s
         shell.isLayoutMarginsRelativeArrangement = true
         shell.translatesAutoresizingMaskIntoConstraints = false
 
@@ -739,7 +916,8 @@ final class HomeGlanceCell: UICollectionViewCell {
             shell.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             shell.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             shell.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            chevron.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
+            column.topAnchor.constraint(equalTo: shell.layoutMarginsGuide.topAnchor),
+            column.bottomAnchor.constraint(equalTo: shell.layoutMarginsGuide.bottomAnchor),
         ])
         answersPointer(cornerRadius: Self.cornerRadius)
         isAccessibilityElement = true
@@ -762,49 +940,25 @@ final class HomeGlanceCell: UICollectionViewCell {
     private func apply(_ card: QuotaGlanceCard) {
         let lines = card.glance.lines
         guard !lines.isEmpty else { return }
-        let marked = lines.filter { $0.kind != .notice }
-        let folds = marked.count > 1
-        let open = card.isOpen || !folds
-        marks.isHidden = open
-        column.isHidden = !open
-        if open {
-            seat(chips: 0)
-            fill(rows: lines, marked: !marked.isEmpty)
-        } else {
-            seat(rows: 0)
-            seat(chips: marked.count)
-            for (chip, line) in zip(chips, marked) { chip.configure(line) }
-        }
-        let inset = open && lines.count > 1 ? Self.stackedInset : 0
-        shell.directionalLayoutMargins = NSDirectionalEdgeInsets(
-            top: inset, leading: Theme.Spacing.m, bottom: inset, trailing: 0)
-        accessibilityLabel = lines.map(Self.spoken).joined(separator: ", ")
-        accessibilityValue = nil
-        accessibilityHint =
-            folds
-            ? (open ? String(localized: "Folds the quotas") : String(localized: "Shows every quota"))
-            : nil
-        accessibilityCustomActions = [
-            UIAccessibilityCustomAction(name: String(localized: "Open usage and quota")) { [weak self] _ in
-                self?.onOpenUsage?()
-                return true
-            }
-        ]
-    }
-
-    private func fill(rows lines: [QuotaGlance.Line], marked: Bool) {
         let stacked = lines.count > 1
-        seat(rows: lines.count)
+        let inset = stacked ? Self.stackedInset : 0
+        shell.directionalLayoutMargins = NSDirectionalEdgeInsets(
+            top: inset, leading: Theme.Spacing.m, bottom: inset, trailing: Theme.Spacing.m)
+        seat(lines.count)
+        let marked = lines.contains { $0.kind != .notice }
         for (row, line) in zip(rows, lines) {
             row.configure(
                 line, minimumHeight: stacked ? Self.stackedRowHeight : Self.loneRowHeight,
                 keepsMarkColumn: stacked && marked)
         }
+        accessibilityLabel = lines.map(Self.spoken).joined(separator: ", ")
+        accessibilityValue = nil
+        accessibilityHint = String(localized: "Opens usage")
     }
 
     /// As many rows as the strip has lines: a row is made once and kept, so a poll that changes a
     /// number refills labels and builds nothing.
-    private func seat(rows count: Int) {
+    private func seat(_ count: Int) {
         while rows.count < count {
             let row = GlanceLineRow()
             rows.append(row)
@@ -815,18 +969,7 @@ final class HomeGlanceCell: UICollectionViewCell {
         }
     }
 
-    private func seat(chips count: Int) {
-        while chips.count < count {
-            let chip = GlanceMarkChip()
-            chips.append(chip)
-            marks.addArrangedSubview(chip)
-        }
-        while chips.count > count {
-            chips.removeLast().removeFromSuperview()
-        }
-    }
-
-    private static func spoken(_ line: QuotaGlance.Line) -> String {
+    static func spoken(_ line: QuotaGlance.Line) -> String {
         [line.text, line.trailing, line.paceNews ?? ""].filter { !$0.isEmpty }
             .joined(separator: " ")
     }

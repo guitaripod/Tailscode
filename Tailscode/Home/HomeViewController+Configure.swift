@@ -13,6 +13,8 @@ extension HomeViewController {
                     section = Self.plainSection(top: Theme.Spacing.s, bottom: Theme.Spacing.m)
                 case .alerts, .demoNudge, .proInvitation, .agentNews:
                     section = Self.plainSection(top: 0, bottom: Theme.Spacing.m)
+                case .shelfBar:
+                    section = Self.plainSection(top: Theme.Spacing.s, bottom: Theme.Spacing.s)
                 case .masters:
                     section = Self.plainSection(top: Theme.Spacing.s, bottom: Theme.Spacing.m)
                 case .schedule:
@@ -342,9 +344,15 @@ extension HomeViewController {
             cell, _, card in cell.configure(card)
         }
         let glanceCell = UICollectionView.CellRegistration<HomeGlanceCell, QuotaGlanceCard> {
+            cell, _, card in cell.configure(card)
+        }
+        let shelfBarCell = UICollectionView.CellRegistration<HomeShelfBarCell, HomeShelfBarCard> {
             [weak self] cell, _, card in
             cell.configure(card)
-            cell.onOpenUsage = { [weak self] in self?.pushUsage() }
+            cell.onPick = { [weak self] picked in
+                HomeShelfPeek.current = HomeShelfPeek.current == picked ? .none : picked
+                self?.applySnapshot()
+            }
         }
         let alertCell = UICollectionView.CellRegistration<ServerAlertCell, ServerAlertCard> {
             [weak self] cell, _, card in
@@ -447,6 +455,9 @@ extension HomeViewController {
             case .agentNews(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: newsCell, for: indexPath, item: card)
+            case .shelfBar(let card):
+                return collectionView.dequeueConfiguredReusableCell(
+                    using: shelfBarCell, for: indexPath, item: card)
             case .masters(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: mastersCell, for: indexPath, item: card)
@@ -533,7 +544,7 @@ extension HomeViewController {
             ) { [weak self] in
                 self?.pushUsage()
             }
-        case .status, .schedule, .agentNews, .masters, .glance, .alerts, .demoNudge, .proInvitation:
+        case .status, .schedule, .agentNews, .shelfBar, .masters, .glance, .alerts, .demoNudge, .proInvitation:
             break
         }
     }
