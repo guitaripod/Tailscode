@@ -25,19 +25,22 @@ public struct MentionToken: Sendable, Equatable {
     /// The token the caret is at the end of, or nil when the caret is in ordinary words. The `@`
     /// has to open a word: one in the middle of an address is part of the address.
     public static func at(caret: Int, in text: String) -> MentionToken? {
-        let units = Array(text.utf16)
-        guard caret > 0, caret <= units.count else { return nil }
-        var index = caret - 1
+        let view = text.utf16
+        guard caret > 0, caret <= view.count else { return nil }
         let floor = max(0, caret - reach)
-        while index >= floor {
+        let lead = max(0, floor - 1)
+        let units = Array(
+            view[view.index(view.startIndex, offsetBy: lead)..<view.index(view.startIndex, offsetBy: caret)])
+        var index = units.count - 1
+        while index >= floor - lead {
             let unit = units[index]
             if unit == newline { return nil }
             if unit == at, opens(units, at: index) {
-                let typed = units[(index + 1)..<caret]
+                let typed = units[(index + 1)...]
                 guard holdsOneName(typed) else { return nil }
                 let query = String(decoding: typed, as: UTF16.self)
                 return MentionToken(
-                    start: index, length: caret - index,
+                    start: lead + index, length: caret - lead - index,
                     query: query.hasPrefix("\"") ? String(query.dropFirst()) : query)
             }
             index -= 1
@@ -93,11 +96,26 @@ public struct MentionToken: Sendable, Equatable {
     /// A name reads as a path when it has a folder in it or ends in an extension. `@MainActor`
     /// and `@objc` have neither, and stay words.
     public static func looksLikePath(_ name: String) -> Bool {
+        if let verdict = name.utf8.withContiguousStorageIfAvailable(asciiLooksLikePath) ?? nil {
+            return verdict
+        }
         guard !name.contains("@"), name.contains(where: \.isLetter) else { return false }
         if name.contains("/") { return true }
         guard let dot = name.lastIndex(of: "."), dot != name.startIndex else { return false }
         let ending = name[name.index(after: dot)...]
         return (1...8).contains(ending.count) && ending.allSatisfy { $0.isLetter || $0.isNumber }
+    }
+
+    /// `looksLikePath` read straight off the bytes of an ASCII name, which every draft asks of
+    /// each `@` it holds on every key; nil for a name with anything else in it.
+    private static func asciiLooksLikePath(_ bytes: UnsafeBufferPointer<UInt8>) -> Bool? {
+        guard bytes.allSatisfy({ $0 < 0x80 }) else { return nil }
+        let letter = { (byte: UInt8) in (0x41...0x5A).contains(byte) || (0x61...0x7A).contains(byte) }
+        guard !bytes.contains(0x40), bytes.contains(where: letter) else { return false }
+        if bytes.contains(0x2F) { return true }
+        guard let dot = bytes.lastIndex(of: 0x2E), dot != 0 else { return false }
+        let ending = bytes[(dot + 1)...]
+        return (1...8).contains(ending.count) && ending.allSatisfy { letter($0) || (0x30...0x39).contains($0) }
     }
 
     /// The range a chosen file replaces: the whole name under the caret, including what the caret
@@ -190,12 +208,37 @@ public struct MentionAnswer: Sendable, Equatable {
 /// a file in it. Nothing here asks a server anything: a client lists folders with the route it
 /// already has, shelves the answers, and reads rows back.
 public struct MentionShelf: Sendable {
+    /// One entry made ready to be ranked: its name lowered once, and what the order reads off it
+    /// counted once, when the folder is shelved rather than on every key.
+    struct Indexed: Sendable {
+        let entry: MentionEntry
+        let key: FuzzyKey
+        let length: Int
+        let depth: Int
+        var changed: Bool
+
+        init(_ entry: MentionEntry, changed: Bool) {
+            self.entry = entry
+            let name = entry.name
+            key = FuzzyKey(name)
+            length = name.count
+            depth = entry.depth
+            self.changed = changed
+        }
+    }
+
     /// The project's folder on the machine, absolute.
     public let root: String
-    private var folders: [String: [MentionEntry]] = [:]
+    private var folders: [String: [Indexed]] = [:]
     private var dead: Set<String> = []
     /// Paths the working tree has changed, from the root, most telling first.
-    public var changed: [String] = []
+    public var changed: [String] = [] {
+        didSet { remark() }
+    }
+    private var changedSet: Set<String> = []
+    private var changedIndex: [Indexed] = []
+
+    static let separators = FuzzySeparators([".", "-", "_", " "])
 
     public init(root: String) {
         self.root = root.count > 1 && root.hasSuffix("/") ? String(root.dropLast()) : root
@@ -238,6 +281,24 @@ public struct MentionShelf: Sendable {
                     isDirectory: $0.isDirectory)
             }
             .sorted(by: MentionShelf.shelfOrder)
+            .map { Indexed($0, changed: changedSet.contains($0.path)) }
+    }
+
+    /// Marks what the working tree has changed across everything shelved, once per change of the
+    /// tree rather than once per key.
+    private mutating func remark() {
+        changedSet = Set(changed)
+        var seen = Set<String>()
+        changedIndex = changed.filter { seen.insert($0).inserted }.map {
+            Indexed(MentionEntry(path: $0, isDirectory: false), changed: true)
+        }
+        for (folder, children) in folders {
+            folders[folder] = children.map { child in
+                var marked = child
+                marked.changed = changedSet.contains(child.entry.path)
+                return marked
+            }
+        }
     }
 
     /// A folder the machine could not list is remembered, so it is not asked again every keystroke.
@@ -264,9 +325,9 @@ public struct MentionShelf: Sendable {
     public func holds(_ path: String) -> Bool {
         let trimmed = path.hasSuffix("/") ? String(path.dropLast()) : path
         guard !trimmed.isEmpty else { return false }
-        if changed.contains(trimmed) { return true }
-        let entry = MentionEntry(path: trimmed, isDirectory: false)
-        return folders[entry.folder]?.contains { $0.path == trimmed } ?? false
+        if changedSet.contains(trimmed) { return true }
+        let folder = MentionEntry(path: trimmed, isDirectory: false).folder
+        return folders[folder]?.contains { $0.entry.path == trimmed } ?? false
     }
 
     private static func shelfOrder(_ lhs: MentionEntry, _ rhs: MentionEntry) -> Bool {
@@ -283,10 +344,12 @@ public struct MentionShelf: Sendable {
         guard folders[""] != nil || dead.contains("") else { return asked.contains("") ? [] : [""] }
         let known = folders.values.joined()
             .filter {
-                $0.isDirectory && $0.depth < MentionCrawl.depthLimit
-                    && MentionCrawl.worthWalking($0.name)
-                    && folders[$0.path] == nil && !dead.contains($0.path) && !asked.contains($0.path)
+                $0.entry.isDirectory && $0.depth < MentionCrawl.depthLimit
+                    && MentionCrawl.worthWalking($0.entry.name)
+                    && folders[$0.entry.path] == nil && !dead.contains($0.entry.path)
+                    && !asked.contains($0.entry.path)
             }
+            .map(\.entry)
             .sorted { ($0.depth, $0.path) < ($1.depth, $1.path) }
         let room = min(limit, MentionCrawl.folderLimit - folders.count)
         return known.prefix(room).map(\.path)
@@ -310,15 +373,12 @@ public struct MentionShelf: Sendable {
             .filter { $0 != "." }.joined(separator: "/")
     }
 
-    private var changedSet: Set<String> { Set(changed) }
-
     private func opening(limit: Int) -> MentionAnswer {
-        let marks = changedSet
-        let touched = changed.prefix(MentionCrawl.changedShown).map {
-            MentionRow(entry: MentionEntry(path: $0, isDirectory: false), changed: true)
+        let touched = changedIndex.prefix(MentionCrawl.changedShown).map {
+            MentionRow(entry: $0.entry, changed: true)
         }
         let top = (folders[""] ?? []).prefix(max(0, limit - touched.count)).map {
-            MentionRow(entry: $0, changed: marks.contains($0.path))
+            MentionRow(entry: $0.entry, changed: $0.changed)
         }
         return MentionAnswer(
             sections: [
@@ -334,62 +394,90 @@ public struct MentionShelf: Sendable {
                 sections: [MentionSection(title: .folder(folder), rows: [])],
                 wanted: dead.contains(folder) ? nil : folder)
         }
-        let marks = changedSet
         let rows: [MentionRow]
         if component.isEmpty {
-            rows = children.map { MentionRow(entry: $0, changed: marks.contains($0.path)) }
+            rows = children.prefix(limit).map { MentionRow(entry: $0.entry, changed: $0.changed) }
         } else {
-            rows = ranked(children, by: component, marks: marks)
+            var ranking = MentionRanking(component, limit: limit)
+            for child in children { ranking.offer(child) }
+            rows = ranking.rows
         }
-        return MentionAnswer(
-            sections: [MentionSection(title: .folder(folder), rows: Array(rows.prefix(limit)))])
+        return MentionAnswer(sections: [MentionSection(title: .folder(folder), rows: rows)])
     }
 
     private func find(_ letters: String, limit: Int) -> MentionAnswer {
-        let marks = changedSet
-        var seen = Set<String>()
-        var pool: [MentionEntry] = []
-        for path in changed where seen.insert(path).inserted {
-            pool.append(MentionEntry(path: path, isDirectory: false))
+        var ranking = MentionRanking(letters, limit: limit)
+        for item in changedIndex { ranking.offer(item) }
+        for children in folders.values {
+            for item in children where !item.changed { ranking.offer(item) }
         }
-        for entry in folders.values.joined() where seen.insert(entry.path).inserted {
-            pool.append(entry)
-        }
-        let rows = ranked(pool, by: letters, marks: marks)
         return MentionAnswer(
-            sections: [MentionSection(title: .files, rows: Array(rows.prefix(limit)))],
+            sections: [MentionSection(title: .files, rows: ranking.rows)],
             wanted: isListed("") ? nil : "")
+    }
+}
+
+/// The best few rows for some letters, kept in order as each entry is offered. A list shows two
+/// dozen rows, and sorting every file with an `e` in its name to find them was most of a key's
+/// work.
+struct MentionRanking {
+    private let needle: FuzzyKey
+    private let limit: Int
+    private var best: [(item: MentionShelf.Indexed, tier: FuzzyTier)] = []
+
+    init(_ letters: String, limit: Int) {
+        needle = FuzzyKey(letters)
+        self.limit = max(0, limit)
+        best.reserveCapacity(min(self.limit, 64) + 1)
+    }
+
+    mutating func offer(_ item: MentionShelf.Indexed) {
+        guard limit > 0,
+            let tier = FuzzyRank.tier(needle, in: item.key, separators: MentionShelf.separators)
+        else { return }
+        if best.count == limit, let last = best.last,
+            !Self.precedes(item, tier, before: last.item, last.tier)
+        {
+            return
+        }
+        var low = 0
+        var high = best.count
+        while low < high {
+            let middle = (low + high) / 2
+            if Self.precedes(best[middle].item, best[middle].tier, before: item, tier) {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        best.insert((item, tier), at: low)
+        if best.count > limit { best.removeLast() }
+    }
+
+    /// The rows, with the letters lit on each: worked out only for what is shown.
+    var rows: [MentionRow] {
+        best.map { item, _ in
+            MentionRow(
+                entry: item.entry,
+                highlight: FuzzyRank.hit(needle, in: item.key, separators: MentionShelf.separators)?
+                    .highlight ?? [],
+                changed: item.changed)
+        }
     }
 
     /// Best match first: how the letters landed, then a changed file, then the shorter name and
     /// the shallower one, so `brst` finds `BridgeStream.swift` before its tests and `pack` finds
-    /// `Package.swift` at the root before one four folders down.
-    private func ranked(_ entries: [MentionEntry], by letters: String, marks: Set<String>)
-        -> [MentionRow]
-    {
-        struct Scored {
-            let row: MentionRow
-            let tier: FuzzyTier
-        }
-        let scored = entries.compactMap { entry -> Scored? in
-            let name = entry.name
-            guard let hit = FuzzyRank.hit(letters, in: name, separators: [".", "-", "_", " "]) else {
-                return nil
-            }
-            return Scored(
-                row: MentionRow(
-                    entry: entry, highlight: hit.highlight, changed: marks.contains(entry.path)),
-                tier: hit.tier)
-        }
-        return scored.sorted { lhs, rhs in
-            if lhs.tier != rhs.tier { return lhs.tier < rhs.tier }
-            if lhs.row.changed != rhs.row.changed { return lhs.row.changed }
-            let left = lhs.row.entry
-            let right = rhs.row.entry
-            if left.name.count != right.name.count { return left.name.count < right.name.count }
-            if left.depth != right.depth { return left.depth < right.depth }
-            return left.path < right.path
-        }.map(\.row)
+    /// `Package.swift` at the root before one four folders down. The path settles the rest, so
+    /// the order never hangs on which folder was read first.
+    private static func precedes(
+        _ lhs: MentionShelf.Indexed, _ lhsTier: FuzzyTier, before rhs: MentionShelf.Indexed,
+        _ rhsTier: FuzzyTier
+    ) -> Bool {
+        if lhsTier != rhsTier { return lhsTier < rhsTier }
+        if lhs.changed != rhs.changed { return lhs.changed }
+        if lhs.length != rhs.length { return lhs.length < rhs.length }
+        if lhs.depth != rhs.depth { return lhs.depth < rhs.depth }
+        return lhs.entry.path < rhs.entry.path
     }
 }
 

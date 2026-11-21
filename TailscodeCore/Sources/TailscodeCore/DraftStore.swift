@@ -141,7 +141,7 @@ public enum DraftStore {
     /// same breath, which is what a programmatic write looks like to a toolkit that reports the
     /// deletion and the insertion separately, therefore never reaches the disk halfway through.
     public static func record(_ text: String, for scope: DraftScope) {
-        let empty = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let empty = !text.unicodeScalars.contains { !blank.contains($0) }
         lock.lock()
         var map = mapLocked()
         let held = map[scope.key]
@@ -153,7 +153,7 @@ public enum DraftStore {
             }
             map[scope.key] = nil
         } else {
-            guard held?.text != text else {
+            guard !(held.map { same($0.text, text) } ?? false) else {
                 lock.unlock()
                 return
             }
@@ -164,6 +164,15 @@ public enum DraftStore {
         dirty = true
         lock.unlock()
         schedule()
+    }
+
+    private static let blank = CharacterSet.whitespacesAndNewlines
+
+    /// Whether two drafts are the same keystrokes. This is asked on every key of a draft that may
+    /// run to pages, so the lengths are compared first and the words only when they agree, unit
+    /// by unit: a draft written another way is written again, and that costs nothing.
+    private static func same(_ held: String, _ text: String) -> Bool {
+        held.utf16.count == text.utf16.count && held.utf16.elementsEqual(text.utf16)
     }
 
     /// Forgets a box's text, and writes that out at once rather than on the next quiet moment: a

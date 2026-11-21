@@ -14,7 +14,7 @@ public enum DraftInk {
     }
 
     /// One stretch of the draft, in UTF-16 offsets, which is what every text view counts in.
-    public struct Run: Sendable, Equatable {
+    public struct Run: Sendable, Hashable {
         public let start: Int
         public let length: Int
         public let kind: Kind
@@ -39,7 +39,7 @@ public enum DraftInk {
         knowsCommand: (String) -> Bool,
         knowsPath: (String) -> Bool = MentionToken.looksLikePath
     ) -> [Run] {
-        let units = Array(text.utf16)
+        let units = utf16(of: text)
         guard !units.isEmpty else { return [] }
         var runs = code(in: units)
         if let command = command(in: units, knows: knowsCommand), !overlaps(command, runs) {
@@ -49,6 +49,83 @@ public enum DraftInk {
             runs.append(run)
         }
         return runs.sorted { $0.start < $1.start }
+    }
+
+    /// One change to the words, in UTF-16 offsets: `removed` units at `location` gave way to
+    /// `written` new ones.
+    public struct Edit: Sendable, Equatable {
+        public let location: Int
+        public let removed: Int
+        public let written: Int
+
+        public init(location: Int, removed: Int, written: Int) {
+            self.location = location
+            self.removed = removed
+            self.written = written
+        }
+    }
+
+    /// What has to be put back to ordinary ink and what painted, after one edit, for a box to
+    /// look as though it had been painted whole. Ink set over a whole draft makes the text view
+    /// lay every line out again, which a long draft feels on every key, while an edit only ever
+    /// disturbs the ink it touched.
+    public struct Repaint: Sendable, Equatable {
+        public let clear: [Range<Int>]
+        public let paint: [Run]
+    }
+
+    /// Runs the edit left alone keep their ink and move with their words. A run the edit reached
+    /// into, the words the edit wrote, and a run that is no longer wanted go back to ordinary ink;
+    /// then every wanted run that was not already there, or that lies in what was cleared, is
+    /// painted.
+    ///
+    /// - Parameters:
+    ///   - old: the runs painted before the edit, in the old offsets.
+    ///   - new: the runs the draft reads as now.
+    ///   - length: the draft's length after the edit.
+    public static func repaint(from old: [Run], to new: [Run], after edit: Edit, length: Int) -> Repaint {
+        let delta = edit.written - edit.removed
+        let removedEnd = edit.location + edit.removed
+        let writtenEnd = edit.location + edit.written
+        var kept: [Run] = []
+        var clear: [Range<Int>] = edit.written > 0 ? [edit.location..<writtenEnd] : []
+        for run in old {
+            if run.end <= edit.location {
+                kept.append(run)
+            } else if run.start >= removedEnd {
+                kept.append(Run(start: run.start + delta, length: run.length, kind: run.kind))
+            } else {
+                clear.append(min(run.start, edit.location)..<max(run.end + delta, writtenEnd))
+            }
+        }
+        let wanted = Set(new)
+        for run in kept where !wanted.contains(run) {
+            clear.append(run.start..<run.end)
+        }
+        let whole = 0..<max(0, length)
+        clear = clear.map { $0.clamped(to: whole) }.filter { !$0.isEmpty }
+        let had = Set(kept)
+        let paint = new.filter { run in
+            !had.contains(run) || clear.contains { $0.overlaps(run.start..<run.end) }
+        }
+        return Repaint(clear: clear, paint: paint)
+    }
+
+    /// The text's UTF-16 units in one copy. A text view's words reach Swift as a bridged string,
+    /// and reading those a unit at a time was a third of what reading a long draft cost.
+    static func utf16(of text: String) -> [UInt16] {
+        let length = text.utf16.count
+        guard length > 0 else { return [] }
+        #if canImport(ObjectiveC)
+            let string = text as NSString
+        #else
+            let string = NSString(string: text)
+        #endif
+        return [UInt16](unsafeUninitializedCapacity: length) { buffer, count in
+            guard let base = buffer.baseAddress else { return }
+            string.getCharacters(base, range: NSRange(location: 0, length: length))
+            count = length
+        }
     }
 
     private static let slash: UInt16 = 0x2F
@@ -64,8 +141,14 @@ public enum DraftInk {
         unit == 0x20 || unit == 0x09 || unit == newline || unit == 0x0D || unit == 0xA0
     }
 
-    private static func string(_ units: ArraySlice<UInt16>) -> String {
-        String(decoding: units, as: UTF16.self)
+    /// A name read out of the draft. Nearly every one is ASCII, which is copied byte for byte
+    /// instead of being transcoded a unit at a time.
+    static func string(_ units: ArraySlice<UInt16>) -> String {
+        guard units.allSatisfy({ $0 < 0x80 }) else { return String(decoding: units, as: UTF16.self) }
+        return String(unsafeUninitializedCapacity: units.count) { buffer in
+            for (offset, unit) in units.enumerated() { buffer[offset] = UInt8(truncatingIfNeeded: unit) }
+            return units.count
+        }
     }
 
     private static func command(in units: [UInt16], knows: (String) -> Bool) -> Run? {

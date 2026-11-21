@@ -72,7 +72,115 @@ private func words(_ runs: [DraftInk.Run], in text: String) -> [String] {
     }
 }
 
+/// What one UTF-16 unit of a box is painted with: nothing, or a kind of ink and, for the
+/// rainbow, which letter of how many it is.
+private struct Cell: Equatable {
+    let kind: DraftInk.Kind
+    let letter: Int
+    let of: Int
+
+    static let leftover = Cell(kind: .code, letter: -1, of: -1)
+}
+
+private func paintedWhole(_ text: String) -> [Cell?] {
+    var cells = [Cell?](repeating: nil, count: text.utf16.count)
+    apply(ink(text), to: &cells)
+    return cells
+}
+
+private func apply(_ runs: [DraftInk.Run], to cells: inout [Cell?]) {
+    for run in runs where run.end <= cells.count {
+        for offset in 0..<run.length {
+            cells[run.start + offset] =
+                run.kind == .power
+                ? Cell(kind: .power, letter: offset, of: run.length) : Cell(kind: run.kind, letter: 0, of: 0)
+        }
+    }
+}
+
+@Suite struct DraftRepaintTests {
+    /// Replays edits the way a text view takes them, the written words arriving in whatever ink
+    /// the box had, and checks after each that painting only what `repaint` names looks exactly
+    /// like painting the whole draft again.
+    @Test func paintingOnlyWhatAnEditTouchedLooksLikePaintingItAll() {
+        let pieces = ["a", " ", "`", "```", "@", "Sources/x.swift", "/compact", "ultracode", "\n", "é", "👍", ".", "/"]
+        var seed: UInt64 = 0x9E37_79B9_7F4A_7C15
+        func next(_ bound: Int) -> Int {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return Int((seed >> 33) % UInt64(max(1, bound)))
+        }
+        for draft in ["", "/compact keep `Backoff` in @Sources/a.swift and ultracode", "plain words only"] {
+            var units = Array(draft.utf16)
+            var cells = paintedWhole(draft)
+            var painted = ink(draft)
+            for step in 0..<400 {
+                let location = next(units.count + 1)
+                let removed = next(4) == 0 ? next(min(6, units.count - location) + 1) : 0
+                let written = removed > 0 && next(2) == 0 ? [] : Array(pieces[next(pieces.count)].utf16)
+                units.replaceSubrange(location..<(location + removed), with: written)
+                cells.replaceSubrange(
+                    location..<(location + removed), with: [Cell?](repeating: .leftover, count: written.count))
+                let text = String(decoding: units, as: UTF16.self)
+                guard text.utf16.count == units.count else {
+                    units = Array(text.utf16)
+                    cells = paintedWhole(text)
+                    painted = ink(text)
+                    continue
+                }
+                let now = ink(text)
+                let plan = DraftInk.repaint(
+                    from: painted, to: now,
+                    after: DraftInk.Edit(location: location, removed: removed, written: written.count),
+                    length: units.count)
+                for range in plan.clear { cells.replaceSubrange(range, with: [Cell?](repeating: nil, count: range.count)) }
+                apply(plan.paint, to: &cells)
+                #expect(cells == paintedWhole(text), "step \(step) of \(draft): \(text)")
+                painted = now
+                if cells != paintedWhole(text) { return }
+            }
+        }
+    }
+
+    @Test func typingPastTheInkTouchesOnlyTheNewLetter() {
+        let before = "see `a` then "
+        let after = before + "x"
+        let plan = DraftInk.repaint(
+            from: ink(before), to: ink(after),
+            after: DraftInk.Edit(location: before.utf16.count, removed: 0, written: 1), length: after.utf16.count)
+        #expect(plan.clear == [before.utf16.count..<after.utf16.count])
+        #expect(plan.paint.isEmpty)
+    }
+}
+
 @Suite struct MentionTokenTests {
+    @Test func theTokenIsFoundAsFarBackAsItReachesAndNoFurther() {
+        let near = "x @" + String(repeating: "a", count: 398)
+        #expect(MentionToken.at(caret: near.utf16.count, in: near)?.start == 2)
+        let far = "@" + String(repeating: "a", count: 400)
+        #expect(MentionToken.at(caret: far.utf16.count, in: far) == nil)
+        let edge = " @" + String(repeating: "a", count: 399)
+        #expect(MentionToken.at(caret: edge.utf16.count, in: edge)?.start == 1)
+        let emoji = "👍 @Sources/a.swift"
+        #expect(MentionToken.at(caret: emoji.utf16.count, in: emoji)?.query == "Sources/a.swift")
+        #expect(DraftInk.utf16(of: emoji) == Array(emoji.utf16))
+        #expect(DraftInk.utf16(of: "").isEmpty)
+    }
+
+    @Test func aNameReadsTheSameWhicheverWayItIsRead() {
+        for name in ["Sources/a.swift", "README", "a.b", ".hidden", "x.", "v1.2", "objc", "dir/", "a.toolongext", "naïve.md", "日本/語", "A_b-c.TXT", "@x/y"] {
+            let units = Array(name.utf16)
+            #expect(DraftInk.string(units[...]) == name)
+            let general = !name.contains("@") && name.contains(where: \.isLetter)
+                && (name.contains("/") || {
+                    guard let dot = name.lastIndex(of: "."), dot != name.startIndex else { return false }
+                    let ending = name[name.index(after: dot)...]
+                    return (1...8).contains(ending.count) && ending.allSatisfy { $0.isLetter || $0.isNumber }
+                }())
+            #expect(MentionToken.looksLikePath(name) == general, "\(name)")
+        }
+    }
+
+
     @Test func theTokenEndsAtTheCaret() {
         let text = "why does @Sour"
         #expect(MentionToken.at(caret: 14, in: text) == MentionToken(start: 9, length: 5, query: "Sour"))
@@ -218,6 +326,74 @@ private func shelf() -> MentionShelf {
         #expect(shelf.holds("Sources/Transport/Backoff.swift"))
         #expect(shelf.holds("Tests/TransportTests/ReconnectTests.swift"))
         #expect(!shelf.holds("Sources/Nope.swift"))
+    }
+
+    @Test func aPreparedNameMatchesExactlyAsTheGeneralWayDoes() {
+        let names = [
+            "BridgeStream.swift", "bridge-stream_tests.md", "README", "readme.md", "a.b.c", "Package.swift",
+            "x", "Ünïcode.swift", "naïve-file.txt", "with space.txt", "ends-", ".hidden", "AAA_aaa.AAA",
+        ]
+        let needles = ["", "b", "br", "brst", "stream", "s", "md", "readme", "readme.md", "x", "ü", "ve", "a.", "-", "aaa", "zz"]
+        let separators = MentionShelf.separators
+        for name in names {
+            for needle in needles {
+                let general = FuzzyRank.hit(needle, in: name, separators: separators.characters)
+                let prepared = FuzzyRank.hit(FuzzyKey(needle), in: FuzzyKey(name), separators: separators)
+                #expect(prepared == general, "\(needle) in \(name)")
+                #expect(
+                    FuzzyRank.tier(FuzzyKey(needle), in: FuzzyKey(name), separators: separators) == general?.tier,
+                    "\(needle) in \(name)")
+            }
+        }
+    }
+
+    @Test func theBestRowsAreTheFirstRowsOfEverythingSorted() {
+        var shelf = MentionShelf(root: "/srv/pulse")
+        let stems = ["Bridge", "Stream", "Session", "Chat", "Composer", "Mention", "Theme", "Store"]
+        for folder in 0..<6 {
+            let path = folder == 0 ? "" : "Sources/Module\(folder)"
+            shelf.shelve(
+                (0..<40).map { index in
+                    (name: "\(stems[(index + folder) % stems.count])\(stems[(index * 3) % stems.count])\(index % 7).swift",
+                        isDirectory: index % 13 == 0)
+                }, in: path)
+        }
+        shelf.changed = ["Sources/Module2/ChatStore3.swift", "Notes/Bridge.md"]
+        for query in ["b", "st", "brst", "chat", "cs", "e", "store3", "mod", "zz"] {
+            #expect(shelf.answer(query, limit: 24).rows == everythingSorted(shelf, query).prefix(24).map { $0 }, "\(query)")
+        }
+    }
+
+    /// The list as it was before it was made fast: every entry matched the general way and the
+    /// whole lot sorted.
+    private func everythingSorted(_ shelf: MentionShelf, _ letters: String) -> [MentionRow] {
+        var seen = Set<String>()
+        var pool: [MentionEntry] = []
+        for path in shelf.changed where seen.insert(path).inserted {
+            pool.append(MentionEntry(path: path, isDirectory: false))
+        }
+        for folder in shelf.folderPaths {
+            for row in shelf.answer("\(folder.isEmpty ? "." : folder)/", limit: .max).rows
+            where seen.insert(row.entry.path).inserted {
+                pool.append(row.entry)
+            }
+        }
+        let marks = Set(shelf.changed)
+        let separators = MentionShelf.separators.characters
+        return pool.compactMap { entry -> (MentionRow, FuzzyTier)? in
+            guard let hit = FuzzyRank.hit(letters, in: entry.name, separators: separators) else { return nil }
+            return (MentionRow(entry: entry, highlight: hit.highlight, changed: marks.contains(entry.path)), hit.tier)
+        }
+        .sorted { lhs, rhs in
+            if lhs.1 != rhs.1 { return lhs.1 < rhs.1 }
+            if lhs.0.changed != rhs.0.changed { return lhs.0.changed }
+            let left = lhs.0.entry
+            let right = rhs.0.entry
+            if left.name.count != right.name.count { return left.name.count < right.name.count }
+            if left.depth != right.depth { return left.depth < right.depth }
+            return left.path < right.path
+        }
+        .map(\.0)
     }
 }
 
