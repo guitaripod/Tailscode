@@ -322,6 +322,29 @@ struct DictationSessionTests {
         #expect(result.text == "heard you")
     }
 
+    @Test("Send goes with the words shown and does not wait for a slow engine's last pass")
+    func sendsWithoutWaiting() async {
+        let engine = StallingRecognizer()
+        let take = session(engine)
+        await take.open(mode: .handsFree)
+        #expect(await eventually { await take.current().words == "almost there" })
+        let started = ContinuousClock.now
+        let result = await take.finish(sending: true)
+        let waited = ContinuousClock.now - started
+        #expect(result == DictationTake(text: "almost there", end: .sent(words: 2)))
+        #expect(waited < .seconds(1))
+        #expect(engine.wasAborted)
+    }
+
+    @Test("Keeping a take still waits for the engine's last words")
+    func keepsWaitForLastWords() async {
+        let take = session(StallingRecognizer(stall: 0.3))
+        await take.open(mode: .handsFree)
+        #expect(await eventually { await take.current().words == "almost there" })
+        let result = await take.finish()
+        #expect(result == DictationTake(text: "almost there now", end: .kept(words: 3)))
+    }
+
     @Test("A microphone that says no ends the take as can't hear you")
     func denied() async {
         let take = session(capture: RefusingCapture())
@@ -425,6 +448,58 @@ private final class SlowRecognizer: DictationRecognizer, @unchecked Sendable {
 
     func abort() async {
         lock.withLock { continuation?.finish() }
+    }
+}
+
+private final class StallingRecognizer: DictationRecognizer, @unchecked Sendable {
+    private let lock = NSLock()
+    private let stall: TimeInterval
+    private var heard = false
+    private var aborted = false
+    private var continuation: AsyncThrowingStream<DictationHeard, Error>.Continuation?
+
+    init(stall: TimeInterval = 5) {
+        self.stall = stall
+    }
+
+    var wasAborted: Bool { lock.withLock { aborted } }
+
+    func language(for choice: String?, hint: String?) async -> String? { "en-US" }
+    func readiness(language: String) async -> DictationReadiness { .ready }
+    func prepare(language: String) -> AsyncThrowingStream<Double?, Error> { AsyncThrowingStream { $0.finish() } }
+    func languages() async -> [String] { ["en-US"] }
+
+    func begin(language: String, vocabulary: [String]) async throws -> AsyncThrowingStream<DictationHeard, Error> {
+        let (stream, continuation) = AsyncThrowingStream<DictationHeard, Error>.makeStream()
+        lock.withLock { self.continuation = continuation }
+        return stream
+    }
+
+    func accept(_ pcm: Data) async {
+        lock.withLock {
+            guard !heard else { return }
+            heard = true
+            continuation?.yield(.volatile("almost there"))
+        }
+    }
+
+    func end() async {
+        let deadline = ContinuousClock.now + .seconds(stall)
+        while ContinuousClock.now < deadline, !wasAborted {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        lock.withLock {
+            guard !aborted else { return }
+            continuation?.yield(.final("almost there now"))
+            continuation?.finish()
+        }
+    }
+
+    func abort() async {
+        lock.withLock {
+            aborted = true
+            continuation?.finish()
+        }
     }
 }
 

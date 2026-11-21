@@ -22,6 +22,9 @@ public actor DictationSession {
     public static let limit: TimeInterval = 600
     public static let warning: TimeInterval = 570
     public static let settleTimeout: TimeInterval = 1.2
+    /// How long Send waits for the words still being heard, the engine's own last pass included: a
+    /// press on Send is answered by the message leaving, and the words on screen are what it carries.
+    public static let sendSettleTimeout: TimeInterval = 0.35
     public static let pendingLimit = VoicePCM.bytes(forMilliseconds: 15_000)
     public static let wakeTimeout: TimeInterval = 4
 
@@ -138,9 +141,11 @@ public actor DictationSession {
         await capture.stop()
         captureTask?.cancel()
         await waitForEngine()
-        if engineReady {
+        if engineReady, sending {
+            await settleForSend()
+        } else if engineReady {
             await recognizer.end()
-            await waitForSettle()
+            await waitForSettle(within: Self.settleTimeout)
         } else {
             engineTask?.cancel()
             await recognizer.abort()
@@ -237,7 +242,7 @@ public actor DictationSession {
             publish()
             limitTask?.cancel()
             await recognizer.end()
-            await waitForSettle()
+            await waitForSettle(within: Self.settleTimeout)
             _ = seal(text: words, end: .problem(.taken))
         } else {
             await close(as: .problem(.taken))
@@ -309,11 +314,21 @@ public actor DictationSession {
         }
     }
 
-    private func waitForSettle() async {
+    /// Asks the engine for its last words while the wait for them is already counting, and stops
+    /// an engine still busy when the wait ends, so a send never waits on the engine's own last pass.
+    private func settleForSend() async {
+        let recognizer = self.recognizer
+        let ending = Task { await recognizer.end() }
+        await waitForSettle(within: Self.sendSettleTimeout)
+        if !resultsDone { await recognizer.abort() }
+        await ending.value
+    }
+
+    private func waitForSettle(within limit: TimeInterval) async {
         guard !resultsDone else { return }
         let clock = self.clock
         let timeout = Task { [weak self] in
-            try? await clock.sleep(for: Self.settleTimeout)
+            try? await clock.sleep(for: limit)
             await self?.settleTimedOut()
         }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
@@ -351,7 +366,7 @@ public actor DictationSession {
         captureTask?.cancel()
         if engineReady {
             await recognizer.end()
-            await waitForSettle()
+            await waitForSettle(within: Self.settleTimeout)
         }
         _ = seal(text: words, end: .problem(.timeUp))
     }

@@ -38,7 +38,7 @@ One state machine in Core (`DictationPhase`), drawn by every client from one fac
 | **Listening, held** | Mic open while held | the capsule, lifted to 1.08 under the finger | same | *Release to keep · ‹ slide to cancel* (a chord hold: *Release to keep · esc cancels*); Send glows faintly as a drop target |
 | **Release to cancel** | Held and slid far enough left | the capsule in the danger tone | this take's words dimmed and struck | *Release to cancel* (danger) |
 | **Release to send** | Held and slid onto Send | the capsule shrinks toward Send | same | Send ringed and enlarged; *Release to send* |
-| **Settling** | Stopped; waiting for the last words to settle (≤ 1.2 s) | bars collapse into the mic | edge fades; the lit tail dries | — |
+| **Settling** | Stopped; waiting for the last words to settle (≤ 1.2 s, ≤ 0.35 s from Send, the engine's last pass included, then the words shown are the words sent) | bars collapse into the mic | edge fades; the lit tail dries | — |
 | **Discarded** | A take was cancelled | `mic` | the box as it was before the take | *Discarded · Undo* (5 s) |
 | **Nothing heard** | The take ended with no words | `mic` | as it was | *Didn't hear anything* (3 s) |
 | **Can't hear you** | Microphone access is off, or no microphone answers | `mic.slash` | as ever | Press: a sheet (phone) or popover (desktop) that says which and offers the fix |
