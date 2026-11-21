@@ -6,6 +6,7 @@ extension FirstRunEnvironment {
     @MainActor
     static func app() -> FirstRunEnvironment {
         FirstRunEnvironment(
+            offersDemo: !ConnectionController.shared.isDemoMode,
             profiles: {
                 await MainActor.run {
                     ConnectionController.shared.profiles.filter {

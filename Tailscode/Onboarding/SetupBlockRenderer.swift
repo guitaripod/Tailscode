@@ -12,6 +12,7 @@ final class SetupBlockRenderer {
         var paste: (String) -> Void
         var type: (String) -> Void
         var useClipboard: () -> Void
+        var answer: (AgentType) -> Void
         var selectAgent: (AgentType) -> Void
         var copied: () -> Void
         var share: (String, UIView) -> Void
@@ -32,6 +33,7 @@ final class SetupBlockRenderer {
 
     let pasteBlock = PasteBlockView()
     let passwordBlock = PasswordBlockView()
+    let remedyBlock = TailscaleRemedyView()
     private let actions: Actions
     private var cache: [String: [Entry]] = [:]
 
@@ -43,6 +45,8 @@ final class SetupBlockRenderer {
         pasteBlock.onSubmit = actions.submit
         passwordBlock.onChange = actions.password
         passwordBlock.onSubmit = actions.submit
+        remedyBlock.onOpen = actions.openTailscale
+        remedyBlock.onAbout = { [actions] in actions.openLink(SetupHandoff.tailscaleDownloadURL) }
     }
 
     func views(for blocks: [FirstRunPlan.Block], slot: String) -> [UIView] {
@@ -62,6 +66,9 @@ final class SetupBlockRenderer {
                 passwordBlock.apply(password)
                 previous.removeAll { $0.view === passwordBlock }
                 next.append(Entry(block: block, view: passwordBlock))
+            case .remedy:
+                previous.removeAll { $0.view === remedyBlock }
+                next.append(Entry(block: block, view: remedyBlock))
             default:
                 next.append(Entry(block: block, view: make(block)))
             }
@@ -73,8 +80,10 @@ final class SetupBlockRenderer {
     private func make(_ block: FirstRunPlan.Block) -> UIView {
         switch block {
         case .note(let text): return SetupLink.label(text)
+        case .heading(let text): return SetupLink.label(text, role: .panelLabel, color: Theme.Color.label)
+        case .question(let question): return questionView(question)
         case .ways(let ways): return waysView(ways)
-        case .paste, .password: return UIView()
+        case .paste, .password, .remedy: return UIView()
         case .agents(let choices): return agentsView(choices)
         case .command(let card): return commandView(card)
         case .waiting(let text): return WaitingLineView(text: text)
@@ -82,7 +91,6 @@ final class SetupBlockRenderer {
         case .link(let card):
             return LinkCardView(card: card, onConnectAnyway: actions.connectAnyway)
         case .signIn(let card): return signInView(card)
-        case .remedy: return remedyView()
         }
     }
 
@@ -102,22 +110,26 @@ final class SetupBlockRenderer {
         return stack
     }
 
-    private func agentsView(_ choices: [FirstRunPlan.AgentChoice]) -> UIView {
+    private func questionView(_ question: FirstRunPlan.Question) -> UIView {
         let stack = UIStackView()
         stack.axis = .vertical
         stack.spacing = Theme.Spacing.s
-        for choice in choices {
-            let card = AgentChoiceCard(
-                backend: choice.agent, title: choice.title, detail: choice.detail)
-            card.isSelected = choice.isSelected
-            card.addAction(
+        stack.addArrangedSubview(
+            SetupLink.label(question.title, role: .panelLabel, color: Theme.Color.label))
+        for choice in question.choices {
+            let row = SetupWayRow(choice: choice)
+            row.addAction(
                 UIAction { [actions] _ in
-                    Theme.Haptics.selection()
-                    actions.selectAgent(choice.agent)
+                    Theme.Haptics.tap()
+                    actions.answer(choice.agent)
                 }, for: .touchUpInside)
-            stack.addArrangedSubview(card)
+            stack.addArrangedSubview(row)
         }
         return stack
+    }
+
+    private func agentsView(_ choices: [FirstRunPlan.AgentChoice]) -> UIView {
+        AgentSwitchRow(choices: choices, onPick: actions.selectAgent)
     }
 
     private func commandView(_ card: FirstRunPlan.CommandCard) -> UIView {
@@ -132,7 +144,7 @@ final class SetupBlockRenderer {
         block.onCopy = actions.copied
         stack.addArrangedSubview(block)
         if let sendTitle = card.sendTitle {
-            let send = SetupLink.button(title: sendTitle, symbol: "square.and.arrow.up")
+            let send = Self.sendButton(title: sendTitle)
             send.addAction(
                 UIAction { [actions, weak send] _ in
                     guard let send else { return }
@@ -146,6 +158,26 @@ final class SetupBlockRenderer {
                 SetupLink.label(note, role: .panelFootnote, color: Theme.Color.secondaryLabel))
         }
         return stack
+    }
+
+    /// The command is run on another computer, so on a phone the press that matters is the one that
+    /// carries it there. It is a button the width of the card, not a line of blue text under it.
+    private static func sendButton(title: String) -> UIButton {
+        var config = Theme.Glass.buttonConfiguration()
+        config.title = title
+        config.image = UIImage(
+            systemName: "square.and.arrow.up",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold))
+        config.imagePadding = Theme.Spacing.s
+        config.baseForegroundColor = Theme.Color.label
+        config.cornerStyle = .large
+        config.contentInsets = NSDirectionalEdgeInsets(top: 13, leading: 14, bottom: 13, trailing: 14)
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+            var out = $0
+            out.font = Theme.Ramp.font(.panelLabel)
+            return out
+        }
+        return UIButton(configuration: config)
     }
 
     private func diagnosisView(_ diagnosis: ConnectDiagnosis) -> UIView {
@@ -168,28 +200,5 @@ final class SetupBlockRenderer {
             tint: Theme.Color.warning)
         actions.reveal(card)
         return card
-    }
-
-    private func remedyView() -> UIView {
-        var openConfig = Theme.Glass.buttonConfiguration()
-        openConfig.title = Localized.text("Open Tailscale")
-        openConfig.image = UIImage(
-            systemName: "arrow.up.forward.app",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
-        openConfig.imagePadding = Theme.Spacing.xs
-        openConfig.baseForegroundColor = Theme.Color.label
-        openConfig.contentInsets = NSDirectionalEdgeInsets(
-            top: 10, leading: 14, bottom: 10, trailing: 14)
-        let open = UIButton(configuration: openConfig)
-        open.addAction(
-            UIAction { [actions] _ in
-                Theme.Haptics.tap()
-                actions.openTailscale()
-            }, for: .touchUpInside)
-        let about = SetupLink.button(title: Localized.text("What is Tailscale?"))
-        about.addAction(
-            UIAction { [actions] _ in actions.openLink(SetupHandoff.tailscaleDownloadURL) },
-            for: .touchUpInside)
-        return AdaptiveRow([open, about])
     }
 }

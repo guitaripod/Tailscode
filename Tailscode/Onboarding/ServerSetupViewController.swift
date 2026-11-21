@@ -15,9 +15,18 @@ final class ServerSetupViewController: UIViewController {
         case addServer
     }
 
+    /// Where the checklist opens. The welcome screen has already asked which agent the person
+    /// runs, so an answer given there arrives here and the machine row opens on its command.
+    enum Entry: Equatable {
+        case question
+        case answered(AgentType)
+        case alreadySetUp
+        case link
+    }
+
     var onConnected: (() -> Void)?
     var onTryDemo: (() -> Void)?
-    var startsOnLink = false
+    var entry: Entry = .question
 
     let flow: FirstRunFlow
     private let mode: Mode
@@ -36,7 +45,6 @@ final class ServerSetupViewController: UIViewController {
     private var tailnetTicker: Task<Void, Never>?
     private var tailnetAddress: String?
     private var didReadTailnet = false
-    private var scanTitle: String?
     private var secondaryKey: String?
     private var lastMachineGlyph: FirstRunPlan.Row.Glyph?
     private var pendingReveal: UIView?
@@ -48,10 +56,12 @@ final class ServerSetupViewController: UIViewController {
     private var didAutoConnect = false
 
     init(mode: Mode) {
-        self.mode = mode
+        let isStranger =
+            mode == .firstRun
+            || EmptyWelcome.holdsNoRealServer(ConnectionController.shared.profiles)
+        self.mode = isStranger ? .firstRun : .addServer
         flow = FirstRunFlow(
-            platform: .current, mode: mode == .firstRun ? .firstRun : .addition,
-            environment: .app())
+            platform: .current, mode: isStranger ? .firstRun : .addition, environment: .app())
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -88,8 +98,8 @@ final class ServerSetupViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         startTailnetTicker()
-        if startsOnLink {
-            startsOnLink = false
+        if entry == .link {
+            entry = .question
             focusFieldWhenShown = true
             Task { await flow.choose(.link) }
         }
@@ -126,6 +136,10 @@ final class ServerSetupViewController: UIViewController {
                 useClipboard: { [weak self] in
                     guard let self else { return }
                     Task { await self.flow.useClipboardLink() }
+                },
+                answer: { [weak self] agent in
+                    guard let self else { return }
+                    Task { await self.flow.answer(agent) }
                 },
                 selectAgent: { [weak self] agent in
                     guard let self else { return }
@@ -241,7 +255,12 @@ final class ServerSetupViewController: UIViewController {
 
     private func startPlanTask() {
         planTask = Task { [weak self] in
-            guard let flow = self?.flow else { return }
+            guard let flow = self?.flow, let entry = self?.entry else { return }
+            switch entry {
+            case .answered(let agent): await flow.answer(agent)
+            case .alreadySetUp: await flow.alreadySetUp()
+            case .question, .link: break
+            }
             let plans = await flow.plans()
             for await plan in plans {
                 guard let self, !Task.isCancelled else { return }
@@ -254,12 +273,12 @@ final class ServerSetupViewController: UIViewController {
         self.plan = plan
         if cards.isEmpty { buildCards(plan) }
         introLabel.text = plan.intro
+        renderer.remedyBlock.showsOpenButton = plan.primary?.intent != .openTailscale
         backButton.configuration?.title = plan.back
         for row in plan.rows {
             guard let card = cards[row.id] else { continue }
             apply(row, of: plan, to: card)
         }
-        rememberScanTitle(plan)
         announceMachine(plan)
         applyFooter(plan)
         focusIfAsked()
@@ -297,17 +316,6 @@ final class ServerSetupViewController: UIViewController {
             stale.removeFromSuperview()
         }
         for view in views[index...] { stack.addArrangedSubview(view) }
-    }
-
-    private func rememberScanTitle(_ plan: FirstRunPlan) {
-        for row in plan.rows {
-            for block in row.blocks {
-                guard case .ways(let ways) = block,
-                    let scan = ways.first(where: { $0.kind == .scan })
-                else { continue }
-                scanTitle = scan.title
-            }
-        }
     }
 
     private func announceMachine(_ plan: FirstRunPlan) {
@@ -386,6 +394,7 @@ final class ServerSetupViewController: UIViewController {
         case .connect: Task { await flow.connect() }
         case .openTailscale: TailnetStatus.openTailscaleApp()
         case .signIn: presentSignIn()
+        case .scan: presentScanner()
         }
     }
 
@@ -433,7 +442,7 @@ final class ServerSetupViewController: UIViewController {
 
     private func presentScanner() {
         view.endEditing(true)
-        let scanner = QRScannerViewController(prompt: scanTitle ?? "")
+        let scanner = QRScannerViewController(prompt: FirstRunPlan.scanPrompt)
         scanner.onCode = { [weak self] text in
             guard let self else { return }
             self.dismiss(animated: true) {
@@ -566,7 +575,11 @@ final class ServerSetupViewController: UIViewController {
                 case "opencode": await flow.selectAgent(.openCode)
                 default: break
                 }
-                if environment["TAILSCODE_SETUP_WAY"] == "install" { await flow.choose(.install) }
+                switch environment["TAILSCODE_SETUP_WAY"] {
+                case "install": await flow.choose(.install)
+                case "known": await flow.alreadySetUp()
+                default: break
+                }
                 if let seeded = environment["TAILSCODE_SETUP_ADDRESS"] { await flow.paste(seeded) }
                 if let password = environment["TAILSCODE_SETUP_PASSWORD"] {
                     await flow.revealPassword()

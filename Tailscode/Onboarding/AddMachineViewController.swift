@@ -81,6 +81,7 @@ final class AddMachineViewController: UIViewController {
                 paste: { _ in },
                 type: { _ in },
                 useClipboard: {},
+                answer: { _ in },
                 selectAgent: { _ in },
                 copied: {},
                 share: { _, _ in },
@@ -199,7 +200,8 @@ final class AddMachineViewController: UIViewController {
     private func isShownHere(_ block: FirstRunPlan.Block) -> Bool {
         switch block {
         case .waiting, .diagnosis, .password, .signIn: return true
-        case .note, .ways, .paste, .agents, .command, .link, .remedy: return false
+        case .note, .heading, .question, .ways, .paste, .agents, .command, .link, .remedy:
+            return false
         }
     }
 
@@ -289,6 +291,7 @@ final class AddMachineViewController: UIViewController {
         case .connect: Task { await flow.connect() }
         case .openTailscale: TailnetStatus.openTailscaleApp()
         case .signIn: presentSignIn()
+        case .scan: break
         }
     }
 

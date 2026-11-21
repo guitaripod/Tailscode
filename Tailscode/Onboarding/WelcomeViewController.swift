@@ -1,11 +1,12 @@
 import CodingAgentKit
 import MidgarCore
+import TailscodeCore
 import UIKit
 
-/// The first screen of the app. It used to be a credentials form: four competing
-/// entry points, a password field, and no statement of what Tailscode is or what
-/// it needs. Now it makes the argument, states the requirement, and offers
-/// exactly two ways forward — with the demo as a peer, not a footnote.
+/// The first screen of the app. It makes the argument, then asks the one question whose answer
+/// changes what happens next: which agent runs on the person's computer. The question states the
+/// requirement by asking it, and each answer is already the way into that agent's setup, with the
+/// demo as a peer and a door for the person whose machine has printed its code.
 @MainActor
 final class WelcomeViewController: UIViewController {
     var onConnected: (() -> Void)?
@@ -39,8 +40,12 @@ final class WelcomeViewController: UIViewController {
         super.viewDidAppear(animated)
         #if DEBUG
             let environment = ProcessInfo.processInfo.environment
-            if environment["TAILSCODE_OPEN_GUIDE"] != nil {
-                pushSetup(focusingConnect: environment["TAILSCODE_OPEN_CONNECT"] != nil)
+            if let answer = Self.seededAnswer(environment["TAILSCODE_WELCOME_ANSWER"]) {
+                pushSetup(.answered(answer))
+            } else if environment["TAILSCODE_WELCOME_ANSWER"] == "known" {
+                pushSetup(.alreadySetUp)
+            } else if environment["TAILSCODE_OPEN_GUIDE"] != nil {
+                pushSetup(environment["TAILSCODE_OPEN_CONNECT"] != nil ? .link : .question)
             }
         #endif
     }
@@ -84,10 +89,6 @@ final class WelcomeViewController: UIViewController {
                 text: String(
                     localized: "Point to point over your own tailnet. No relay, no sign-in.")),
             Self.valueRow(
-                symbol: "desktopcomputer",
-                text: String(
-                    localized: "Needs a computer on that tailnet running opencode, Claude Code, or Oh My Pi.")),
-            Self.valueRow(
                 symbol: "bell.badge",
                 text: String(
                     localized: "Turns finish on your Lock Screen while the phone is in your pocket.")),
@@ -95,8 +96,16 @@ final class WelcomeViewController: UIViewController {
         values.axis = .vertical
         values.spacing = Theme.Spacing.m
 
-        let setUp = PrimaryButton(title: String(localized: "Set up my machine"))
-        setUp.addAction(UIAction { [weak self] _ in self?.setUpTapped() }, for: .touchUpInside)
+        let question = FirstRunPlan.question
+        let ask = UILabel()
+        ask.text = question.title
+        ask.font = Theme.Ramp.font(.cardTitle)
+        ask.adjustsFontForContentSizeCategory = true
+        ask.textColor = Theme.Color.label
+        ask.numberOfLines = 0
+        ask.accessibilityTraits = .header
+        Self.letWrap(ask)
+        let answers = AgentTileRow(choices: question.choices) { [weak self] in self?.answered($0) }
 
         var demoConfig = Theme.Glass.buttonConfiguration()
         demoConfig.title = String(localized: "Try the demo")
@@ -123,7 +132,7 @@ final class WelcomeViewController: UIViewController {
         demo.addAction(UIAction { [weak self] _ in self?.demoTapped() }, for: .touchUpInside)
 
         var existingConfig = UIButton.Configuration.plain()
-        existingConfig.title = String(localized: "I already have a server running")
+        existingConfig.title = String(localized: "I have a code or a link")
         existingConfig.baseForegroundColor = Theme.Color.accent
         existingConfig.contentInsets = NSDirectionalEdgeInsets(
             top: 12, leading: 12, bottom: 12, trailing: 12)
@@ -131,7 +140,7 @@ final class WelcomeViewController: UIViewController {
         existing.addAction(
             UIAction { [weak self] _ in
                 Theme.Haptics.tap()
-                self?.pushSetup(focusingConnect: true)
+                self?.pushSetup(.alreadySetUp)
             }, for: .touchUpInside)
 
         let footnote = UILabel()
@@ -161,13 +170,14 @@ final class WelcomeViewController: UIViewController {
 
         column.axis = .vertical
         column.spacing = Theme.Spacing.l
-        [heroBox, headline, subtitle, values, setUp, demo, existing, footnote].forEach(
+        [heroBox, headline, subtitle, values, ask, answers, demo, existing, footnote].forEach(
             column.addArrangedSubview)
         column.setCustomSpacing(Theme.Spacing.xxl, after: heroBox)
         column.setCustomSpacing(Theme.Spacing.s, after: headline)
         column.setCustomSpacing(Theme.Spacing.xl, after: subtitle)
         column.setCustomSpacing(Theme.Spacing.xxl, after: values)
-        column.setCustomSpacing(Theme.Spacing.m, after: setUp)
+        column.setCustomSpacing(Theme.Spacing.m, after: ask)
+        column.setCustomSpacing(Theme.Spacing.m, after: answers)
         column.setCustomSpacing(Theme.Spacing.s, after: demo)
         column.setCustomSpacing(Theme.Spacing.l, after: existing)
         column.translatesAutoresizingMaskIntoConstraints = false
@@ -242,17 +252,29 @@ final class WelcomeViewController: UIViewController {
         return row
     }
 
-    private func setUpTapped() {
+    private func answered(_ agent: AgentType) {
         Theme.Haptics.tap()
-        pushSetup(focusingConnect: false)
+        MidgarLog.info("welcome answered: \(agent.rawValue)", category: .lifecycle)
+        pushSetup(.answered(agent))
     }
 
-    private func pushSetup(focusingConnect: Bool) {
+    private func pushSetup(_ entry: ServerSetupViewController.Entry) {
         guard navigationController?.topViewController === self else { return }
         let setup = makeSetup()
-        setup.startsOnLink = focusingConnect
+        setup.entry = entry
         navigationController?.pushViewController(setup, animated: true)
     }
+
+    #if DEBUG
+        private static func seededAnswer(_ name: String?) -> AgentType? {
+            switch name {
+            case "claude": return .claudeCode
+            case "opencode": return .openCode
+            case "omp": return .omp
+            default: return nil
+            }
+        }
+    #endif
 
     /// `tailscode://connect?...`, a link the machine prints, texted or AirDropped to the phone, or
     /// scanned from its code. The setup screen reads it; nothing is saved until the person

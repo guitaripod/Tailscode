@@ -79,7 +79,21 @@ enum SetupLink {
 
 @MainActor
 final class SetupWayRow: UIControl {
-    init(way: FirstRunPlan.Way) {
+    convenience init(way: FirstRunPlan.Way) {
+        self.init(
+            symbol: way.kind.symbolName, tint: Theme.Color.accent, title: way.title,
+            detail: way.detail)
+    }
+
+    /// An answer to first run's question, drawn as the same row a way in is: its mark in the
+    /// agent's own colour, and a chevron, because the press goes somewhere.
+    convenience init(choice: FirstRunPlan.AgentChoice) {
+        self.init(
+            symbol: choice.agent.symbolName, tint: choice.agent.brandColor, title: choice.title,
+            detail: choice.detail)
+    }
+
+    init(symbol: String, tint: UIColor, title: String, detail: String) {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = Theme.Color.groupedBackground
@@ -89,9 +103,9 @@ final class SetupWayRow: UIControl {
 
         let glyph = UIImageView(
             image: UIImage(
-                systemName: way.kind.symbolName,
+                systemName: symbol,
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)))
-        glyph.tintColor = Theme.Color.accent
+        glyph.tintColor = tint
         glyph.contentMode = .center
         glyph.translatesAutoresizingMaskIntoConstraints = false
 
@@ -104,8 +118,8 @@ final class SetupWayRow: UIControl {
         chevron.translatesAutoresizingMaskIntoConstraints = false
 
         let text = UIStackView(arrangedSubviews: [
-            SetupLink.label(way.title, role: .panelLabel, color: Theme.Color.label),
-            SetupLink.label(way.detail, role: .panelFootnote),
+            SetupLink.label(title, role: .panelLabel, color: Theme.Color.label),
+            SetupLink.label(detail, role: .panelFootnote),
         ])
         text.axis = .vertical
         text.spacing = 2
@@ -129,7 +143,7 @@ final class SetupWayRow: UIControl {
         ])
         isAccessibilityElement = true
         accessibilityTraits = .button
-        accessibilityLabel = "\(way.title). \(way.detail)"
+        accessibilityLabel = "\(title). \(detail)"
         registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) {
             (view: SetupWayRow, _) in view.applyBorder()
         }
@@ -289,6 +303,49 @@ final class PasswordBlockView: UIStackView {
         note.text = password.note
         note.isHidden = password.note == nil
     }
+}
+
+/// What a person does about Tailscale not being up on this device: open it, or read what it is.
+/// The open press steps aside while the screen's one primary button is that same press, so the
+/// screen never offers it twice.
+@MainActor
+final class TailscaleRemedyView: UIStackView {
+    var onOpen: (() -> Void)?
+    var onAbout: (() -> Void)?
+
+    var showsOpenButton = true {
+        didSet { open.isHidden = !showsOpenButton }
+    }
+
+    private let open: UIButton
+
+    init() {
+        var config = Theme.Glass.buttonConfiguration()
+        config.title = Localized.text("Open Tailscale")
+        config.image = UIImage(
+            systemName: "arrow.up.forward.app",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
+        config.imagePadding = Theme.Spacing.xs
+        config.baseForegroundColor = Theme.Color.label
+        config.titleLineBreakMode = .byTruncatingTail
+        config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 14)
+        open = UIButton(configuration: config)
+        super.init(frame: .zero)
+        axis = .vertical
+        alignment = .leading
+        spacing = Theme.Spacing.xs
+        open.addAction(
+            UIAction { [weak self] _ in
+                Theme.Haptics.tap()
+                self?.onOpen?()
+            }, for: .touchUpInside)
+        let about = SetupLink.button(title: Localized.text("What is Tailscale?"))
+        about.addAction(UIAction { [weak self] _ in self?.onAbout?() }, for: .touchUpInside)
+        addArrangedSubview(open)
+        addArrangedSubview(about)
+    }
+
+    @available(*, unavailable) required init(coder: NSCoder) { fatalError() }
 }
 
 @MainActor

@@ -359,7 +359,9 @@ final class SetupStepCard: UIView {
         headerText.spacing = Theme.Spacing.s
         headerText.alignment = .firstBaseline
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        titleLabel.setContentHuggingPriority(UILayoutPriority(249), for: .horizontal)
         statusPill.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        statusPill.setContentHuggingPriority(.required, for: .horizontal)
 
         let column = UIStackView(arrangedSubviews: [headerText, detailLabel, content])
         column.axis = .vertical
@@ -666,101 +668,6 @@ final class CommandBlockView: UIView {
     }
 }
 
-/// A choice that changes the install path, the port, and the brand — too
-/// consequential for a segmented control whose only feedback is a tint change
-/// somewhere off screen.
-@MainActor
-final class AgentChoiceCard: UIControl {
-    private let glyph = UIImageView()
-    private let titleLabel = UILabel()
-    private let detailLabel = UILabel()
-    private let check = UIImageView()
-    private let tint: UIColor
-
-    init(backend: AgentType, title: String, detail: String) {
-        self.tint = backend.brandColor
-        super.init(frame: .zero)
-        translatesAutoresizingMaskIntoConstraints = false
-        backgroundColor = Theme.Color.groupedBackground
-        layer.cornerRadius = Theme.Radius.control
-        layer.cornerCurve = .continuous
-        layer.borderWidth = 1.5
-
-        glyph.image = UIImage(
-            systemName: backend.symbolName,
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold))
-        glyph.tintColor = tint
-        glyph.contentMode = .center
-        glyph.translatesAutoresizingMaskIntoConstraints = false
-
-        titleLabel.text = title
-        titleLabel.font = Theme.Ramp.font(.panelLabel)
-        titleLabel.adjustsFontForContentSizeCategory = true
-        titleLabel.textColor = Theme.Color.label
-        titleLabel.numberOfLines = 0
-
-        detailLabel.text = detail
-        detailLabel.font = Theme.Ramp.font(.panelFootnote)
-        detailLabel.adjustsFontForContentSizeCategory = true
-        detailLabel.textColor = Theme.Color.secondaryLabel
-        detailLabel.numberOfLines = 0
-
-        check.image = UIImage(
-            systemName: "checkmark.circle.fill",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold))
-        check.tintColor = tint
-        check.contentMode = .center
-        check.translatesAutoresizingMaskIntoConstraints = false
-
-        let text = UIStackView(arrangedSubviews: [titleLabel, detailLabel])
-        text.axis = .vertical
-        text.spacing = 2
-        text.translatesAutoresizingMaskIntoConstraints = false
-        text.isUserInteractionEnabled = false
-
-        addSubview(glyph)
-        addSubview(text)
-        addSubview(check)
-        NSLayoutConstraint.activate([
-            glyph.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Theme.Spacing.m),
-            glyph.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.m),
-            glyph.widthAnchor.constraint(equalToConstant: 22),
-            text.leadingAnchor.constraint(equalTo: glyph.trailingAnchor, constant: Theme.Spacing.s),
-            text.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.m),
-            text.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Theme.Spacing.m),
-            text.trailingAnchor.constraint(equalTo: check.leadingAnchor, constant: -Theme.Spacing.s),
-            check.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Theme.Spacing.m),
-            check.centerYAnchor.constraint(equalTo: centerYAnchor),
-            check.widthAnchor.constraint(equalToConstant: 22),
-            heightAnchor.constraint(greaterThanOrEqualTo: glyph.heightAnchor, constant: 2 * Theme.Spacing.m),
-        ])
-        accessibilityTraits = .button
-        accessibilityLabel = "\(title). \(detail)"
-        registerForTraitChanges([UITraitUserInterfaceStyle.self, ThemeIdentityTrait.self]) { (view: AgentChoiceCard, _) in
-            view.applySelection()
-        }
-        applySelection()
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    override var isSelected: Bool {
-        didSet { applySelection() }
-    }
-
-    private func applySelection() {
-        check.isHidden = !isSelected
-        layer.borderColor =
-            (isSelected ? tint.withAlphaComponent(0.9) : Theme.Color.separator)
-            .resolvedColor(with: traitCollection).cgColor
-        backgroundColor =
-            isSelected
-            ? tint.withAlphaComponent(0.10).blended(over: Theme.Color.groupedSurface, traits: traitCollection)
-            : Theme.Color.groupedBackground
-        accessibilityTraits = isSelected ? [.button, .selected] : .button
-    }
-}
-
 /// What is actually wrong, and the one tap that fixes it.
 @MainActor
 final class DiagnosisCardView: UIView {
@@ -895,8 +802,11 @@ final class OnboardingFooterBar: UIView {
             glass.trailingAnchor.constraint(equalTo: trailingAnchor),
             glass.bottomAnchor.constraint(equalTo: bottomAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.m),
-            stack.leadingAnchor.constraint(equalTo: layoutMarginsGuide.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: layoutMarginsGuide.trailingAnchor),
+            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            stack.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -2 * Theme.Spacing.l),
+            stack.widthAnchor.constraint(lessThanOrEqualToConstant: 560),
+            stack.widthAnchor.constraint(equalTo: widthAnchor, constant: -2 * Theme.Spacing.l)
+                .withPriority(UILayoutPriority(999)),
             stack.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -Theme.Spacing.s),
         ])
     }
