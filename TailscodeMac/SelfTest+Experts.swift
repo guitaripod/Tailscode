@@ -159,7 +159,7 @@ extension SelfTest {
         host.endSheet(carried.sheet)
 
         guard let keeping = desk.keeping(for: demo.id),
-            let debrief = try await keeping.expertDebrief(sessionID: "demo-c3")
+            let debrief = try await keeping.expertDebrief(sessionID: DemoWorld.demoReviewedTaskID)
         else { throw SelfTestFailure("the demo's open debrief") }
         let slot = ExpertDebriefSlot()
         slot.stage(debrief, row: ipad)
@@ -174,6 +174,10 @@ extension SelfTest {
         slotHost.orderFront(nil)
         defer { slotHost.close() }
         try dumpExperts(slotHost.contentView, "experts-debrief")
+        try expect(
+            slot.proposalTextWidths.allSatisfy { $0 > 380 },
+            "a proposal's words take the card's width up to its presses: \(slot.proposalTextWidths)")
+        try expect(slot.footerPressHeight > 16, "Later and Accept all stand inside the card: \(slot.footerPressHeight)")
         let slotAmbiguity = ambiguous(in: slotHost.contentView)
         try expect(slotAmbiguity.isEmpty, "the debrief card lays out with nothing ambiguous: \(slotAmbiguity)")
         try expect(
@@ -183,7 +187,7 @@ extension SelfTest {
             slot.actionTitles == [ExpertWords.accept(.add), ExpertWords.accept(.add), ExpertWords.accept(.retire)],
             "each proposal names its own action: \(slot.actionTitles)")
         let settled = try await keeping.decideExpertDebrief(
-            sessionID: "demo-c3", ExpertDebriefDecision(accepted: [debrief.proposals[0].id]))
+            sessionID: DemoWorld.demoReviewedTaskID, ExpertDebriefDecision(accepted: [debrief.proposals[0].id]))
         try expect(settled.state == .settled, "accepting one and skipping the rest settles the debrief")
         try expect(
             settled.proposals.map(\.state) == [.accepted, .skipped, .skipped],

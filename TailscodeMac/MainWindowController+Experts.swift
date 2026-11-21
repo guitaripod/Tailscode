@@ -272,7 +272,7 @@ extension MainWindowController {
         machineFixtureWindow = host
         guard let backend = ExpertDesk.shared.keeping(for: DemoWorld.claudeProfile.id) else { return }
         Task {
-            guard let debrief = try? await backend.expertDebrief(sessionID: "demo-c3"),
+            guard let debrief = try? await backend.expertDebrief(sessionID: DemoWorld.demoReviewedTaskID),
                 let row = ExpertDesk.shared.row(profileID: DemoWorld.claudeProfile.id, expertID: debrief.expertID)
             else { return }
             slot.stage(debrief, row: row)

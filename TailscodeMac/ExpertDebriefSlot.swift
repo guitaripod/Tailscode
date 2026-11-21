@@ -34,6 +34,12 @@ final class ExpertDebriefSlot: NSView {
     var actionTitles: [String] {
         column.arrangedSubviews.compactMap { $0 as? ExpertProposalRow }.map(\.acceptTitle)
     }
+    var proposalTextWidths: [CGFloat] {
+        column.arrangedSubviews.compactMap { $0 as? ExpertProposalRow }.map(\.textWidth)
+    }
+    var footerPressHeight: CGFloat {
+        column.arrangedSubviews.compactMap { $0 as? ExpertDebriefFooter }.first?.pressHeight ?? 0
+    }
     var offersFinish: Bool { column.arrangedSubviews.contains { $0 is ExpertFinishStrip } }
     var debriefSession: String? { debrief?.sessionID }
 
@@ -263,31 +269,58 @@ final class ExpertDebriefSlot: NSView {
             column.addArrangedSubview(view)
         }
         if debrief.state == .open, !debrief.pending.isEmpty {
-            let later = NSButton(title: ExpertWords.later, target: self, action: #selector(laterTapped))
-            later.bezelStyle = .push
-            later.toolTip = Localized.text("The notes wait on the expert's shelf")
-            let all = NSButton(title: ExpertWords.acceptAll, target: self, action: #selector(acceptAllTapped))
-            all.bezelStyle = .push
-            all.bezelColor = MacTheme.Color.accent
-            all.keyEquivalent = ""
-            let spacer = expertSpacer()
-            let footer = NSStackView(views: [spacer, later, all])
-            footer.orientation = .horizontal
-            footer.spacing = MacTheme.Spacing.s
-            expertHug(footer)
-            footer.edgeInsets = NSEdgeInsets(
-                top: MacTheme.Spacing.s, left: MacTheme.Spacing.m, bottom: MacTheme.Spacing.m, right: MacTheme.Spacing.m)
+            let footer = ExpertDebriefFooter()
+            footer.onLater = { [weak self] in self?.laterTapped() }
+            footer.onAcceptAll = { [weak self] in self?.acceptAll() }
             column.addArrangedSubview(ExpertHairline())
             column.addArrangedSubview(footer)
         }
     }
 
-    @objc private func acceptAllTapped() { acceptAll() }
-
     /// Later leaves every proposal waiting; the shelf says how many, and the card stays here.
-    @objc private func laterTapped() {
+    private func laterTapped() {
         onToast?(Localized.text("%@ keeps them for later", row?.expert.name ?? Localized.text("The expert")))
     }
+}
+
+/// The card's foot: Later, and the one filled press, Accept all, at the trailing edge. Placed by
+/// constraints of its own, because a stack told to hug its rows let both buttons go to no height
+/// and they hung over the card's edge.
+@MainActor
+final class ExpertDebriefFooter: NSView {
+    var onLater: (() -> Void)?
+    var onAcceptAll: (() -> Void)?
+    var pressHeight: CGFloat { subviews.map(\.frame.height).min() ?? 0 }
+
+    init() {
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        let later = NSButton(title: ExpertWords.later, target: self, action: #selector(laterTapped))
+        later.bezelStyle = .push
+        later.toolTip = Localized.text("The notes wait on the expert's shelf")
+        let all = NSButton(title: ExpertWords.acceptAll, target: self, action: #selector(acceptAllTapped))
+        all.bezelStyle = .push
+        all.bezelColor = MacTheme.Color.accent
+        all.keyEquivalent = ""
+        for button in [later, all] {
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.setContentCompressionResistancePriority(.required, for: .vertical)
+            addSubview(button)
+        }
+        NSLayoutConstraint.activate([
+            all.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MacTheme.Spacing.m),
+            all.topAnchor.constraint(equalTo: topAnchor, constant: MacTheme.Spacing.s),
+            bottomAnchor.constraint(equalTo: all.bottomAnchor, constant: MacTheme.Spacing.m),
+            later.trailingAnchor.constraint(equalTo: all.leadingAnchor, constant: -MacTheme.Spacing.s),
+            later.firstBaselineAnchor.constraint(equalTo: all.firstBaselineAnchor),
+            later.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: MacTheme.Spacing.m),
+        ])
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    @objc private func laterTapped() { onLater?() }
+    @objc private func acceptAllTapped() { onAcceptAll?() }
 }
 
 /// A task at rest that nobody has finished: the expert's mark and name, and Finish task.
@@ -473,6 +506,7 @@ final class ExpertProposalRow: NSView {
     var onSkip: (() -> Void)?
     var titleText: String { title.stringValue }
     var acceptTitle: String { accept.title }
+    var textWidth: CGFloat { title.frame.width }
 
     init(proposal: ExpertProposal, open: Bool) {
         super.init(frame: .zero)
@@ -488,6 +522,7 @@ final class ExpertProposalRow: NSView {
         title.font = MacTheme.Ramp.font(.rowTitleStrong)
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        title.setContentHuggingPriority(.init(1), for: .horizontal)
         summary.stringValue = proposal.summary
         summary.font = MacTheme.Ramp.font(.panelFootnote)
         summary.textColor = MacTheme.Color.secondaryLabel
@@ -506,9 +541,21 @@ final class ExpertProposalRow: NSView {
             let skip = NSButton(title: ExpertWords.skip, target: self, action: #selector(skipTapped))
             skip.bezelStyle = .push
             skip.controlSize = .small
-            let presses = NSStackView(views: [accept, skip])
-            presses.orientation = .horizontal
-            presses.spacing = 6
+            let presses = NSView()
+            for button in [accept, skip] {
+                button.translatesAutoresizingMaskIntoConstraints = false
+                button.setContentHuggingPriority(.required, for: .horizontal)
+                button.setContentCompressionResistancePriority(.required, for: .horizontal)
+                presses.addSubview(button)
+            }
+            NSLayoutConstraint.activate([
+                accept.leadingAnchor.constraint(equalTo: presses.leadingAnchor),
+                skip.leadingAnchor.constraint(equalTo: accept.trailingAnchor, constant: 6),
+                skip.trailingAnchor.constraint(equalTo: presses.trailingAnchor),
+                accept.topAnchor.constraint(equalTo: presses.topAnchor),
+                accept.bottomAnchor.constraint(equalTo: presses.bottomAnchor),
+                skip.firstBaselineAnchor.constraint(equalTo: accept.firstBaselineAnchor),
+            ])
             trailingView = presses
         } else if let said = ExpertWords.proposalState(proposal.state, op: proposal.op) {
             let state = NSTextField(labelWithString: said)
