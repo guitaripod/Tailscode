@@ -2,37 +2,14 @@ import TailscodeCore
 import UIKit
 
 @MainActor
-protocol ComposerViewDelegate: AnyObject {
-    func composerDidSend(_ text: String)
-    func composerTextDidChange(_ text: String)
-    func composerDidLongPressSend(from view: UIView)
-    func composerDidPasteLargeText(_ text: String)
-    /// A picture on the pasteboard, pasted into the box. A screenshot is the commonest thing a
-    /// phone has in hand, and making someone save it to Photos and pick it back up through the
-    /// attach menu is a detour the clipboard already answered.
-    func composerDidPasteImage(_ data: Data, mime: String)
-    /// Built when the attach menu opens, so it always reflects what the model
-    /// selected right now can actually accept.
-    func composerAttachOptions() -> [UIMenuElement]
-    func composerDidTapStop()
-    func composerDidBeginEditing()
-    /// The caret moved without the words changing, which is enough to walk into or out of a
-    /// file's name.
-    func composerSelectionDidChange()
-    /// The last thing this person sent here, offered back from the empty box's own menu.
-    func composerLastPrompt() -> String?
-    func composerDidAskForLastPrompt()
-}
-
-@MainActor
 final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     weak var delegate: ComposerViewDelegate?
 
-    private let bar = Theme.Glass.view(interactive: false)
-    private let textView = PastingTextView()
-    private let placeholder = UILabel()
-    private let sendButton = ComposerSendButton()
-    private let attachButton = SlopButton(type: .system)
+    let bar = Theme.Glass.view(interactive: false)
+    let textView = PastingTextView()
+    let placeholder = UILabel()
+    let sendButton = ComposerSendButton()
+    let attachButton = SlopButton(type: .system)
     private lazy var ink = ComposerInk(textView: textView)
     let handle = ComposerHandle()
     private let doors = ComposerDoors()
@@ -48,7 +25,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     /// Whether the box has been pulled up to the page.
     private(set) var lifted = false
     /// The cap the finger is holding the box at, while the handle is held.
-    private var heldCap: CGFloat?
+    var heldCap: CGFloat?
     private var heldFrom: CGFloat = 0
     private var heldCeiling: CGFloat = 0
     /// What the words would take with nothing holding them, as last measured.
@@ -150,7 +127,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     private var accessoryConstraints: [NSLayoutConstraint] = []
     /// Whether a take's status line holds the row under the words, which makes the box its stacked
     /// shape for as long as the line is there.
-    private var statusShown = false
+    var statusShown = false
     private lazy var stackedTextBottom = textView.bottomAnchor.constraint(
         equalTo: bar.bottomAnchor, constant: -(accessoryRowHeight + 10))
     private var accessoryToAttach: NSLayoutConstraint?
@@ -158,10 +135,10 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
     private let heatLine = CAGradientLayer()
     private let strike = StrikeLine()
     private var lastMeasuredWidth: CGFloat = 0
-    private let auraHost = UIView()
+    let auraHost = UIView()
     private lazy var aura = UltracodeAura(around: auraHost, cornerRadius: 23)
     private(set) lazy var dictation = DictationController(host: self, key: "chat-\(ObjectIdentifier(self).hashValue)")
-    private var restingPlaceholder = String(localized: "Message your agent…")
+    var restingPlaceholder = String(localized: "Message your agent…")
 
     var ultracodeEffort: String? {
         didSet { refreshAura() }
@@ -393,7 +370,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     /// One place decides which layout is live, so the box is never half of each: the single line
     /// it was, or the words over a row of controls.
-    private func applyLayout() {
+    func applyLayout() {
         let stacked = accessory != nil || statusShown
         stackedTextBottom.constant = -(accessoryRowHeight + 10)
         let off: [NSLayoutConstraint?] =
@@ -416,7 +393,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     /// The two keys show only in an empty box that has a line to itself: the words take the
     /// whole width above the controls there, and its far end is free.
-    private func refreshDoors() {
+    func refreshDoors() {
         let stacked = accessory != nil || statusShown
         let open = stacked && (textView.text ?? "").isEmpty && !statusShown && !dictation.isOpen
         doors.show(command: open && offersCommandDoor, file: open && offersFileDoor)
@@ -622,7 +599,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     /// A take being heard owns the box's ink: the words still settling are lit by the dictation
     /// itself, and painting over them would put them out.
-    private func paintInk(force: Bool = false) {
+    func paintInk(force: Bool = false) {
         wordsMoved += 1
         if force { measured = nil }
         guard !dictation.isOpen else { return }
@@ -782,7 +759,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     /// The handle is taken: the box holds the height it had, and the room it may grow into is
     /// read now, once, rather than on every frame of the pull.
-    private func beginHold() {
+    func beginHold() {
         measured = nil
         keptRoom = nil
         measureWords()
@@ -791,7 +768,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         heldCeiling = liftCeiling
     }
 
-    private func hold(travel: CGFloat) {
+    func hold(travel: CGFloat) {
         heldCap = CGFloat(
             ComposerLift.dragged(
                 from: Double(heldFrom), travel: Double(travel), resting: Double(restingCap),
@@ -835,7 +812,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     func triggerSend() { sendTapped() }
 
-    @objc private func sendTapped() {
+    @objc func sendTapped() {
         if dictation.stopAndSend() { return }
         let text = trimmed
         // Emptying the box is how a message being rewritten is taken back, so a send with nothing
@@ -1001,147 +978,5 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         textViewDidChange(textView)
         resyncKeyboard()
         textView.becomeFirstResponder()
-    }
-}
-
-extension ComposerView: DictationComposerHost {
-    var dictationTextView: UITextView { textView }
-    var dictationBox: UIView { bar }
-    var dictationSendControl: UIView { sendButton }
-
-    var dictationPresenter: UIViewController? {
-        var responder: UIResponder? = self
-        while let current = responder {
-            if let controller = current as? UIViewController { return controller }
-            responder = current.next
-        }
-        return nil
-    }
-
-    func dictationDidWrite() {
-        textViewDidChange(textView)
-        paintInk(force: true)
-    }
-
-    func dictationSend() { sendTapped() }
-
-    func dictationSetListening(_ listening: Bool) {
-        placeholder.text = listening ? DictationReading.listeningPlaceholder : restingPlaceholder
-        UIView.animate(withDuration: 0.2) { self.auraHost.alpha = listening ? 0 : 1 }
-        refreshDoors()
-        if !listening { paintInk(force: true) }
-    }
-
-    func dictationShowStatus(_ status: DictationHintView, shown: Bool) {
-        guard shown || status.superview === self else { return }
-        if status.superview !== self {
-            addSubview(status)
-            NSLayoutConstraint.activate([
-                status.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: Theme.Spacing.m),
-                status.centerYAnchor.constraint(equalTo: sendButton.centerYAnchor),
-                status.trailingAnchor.constraint(
-                    lessThanOrEqualTo: dictation.button.leadingAnchor, constant: -Theme.Spacing.s),
-            ])
-        }
-        guard shown != statusShown else { return }
-        statusShown = shown
-        accessory?.isUserInteractionEnabled = !shown
-        attachButton.isUserInteractionEnabled = !shown
-        DictationSeat.move {
-            self.applyLayout()
-            status.alpha = shown ? 1 : 0
-            self.accessory?.alpha = shown ? 0 : 1
-            self.attachButton.alpha = shown ? 0 : 1
-            self.superview?.layoutIfNeeded()
-        }
-    }
-}
-
-extension ComposerView {
-    /// A selection has verbs of its own beside the system's, and an empty box offers the last
-    /// thing that was sent from it.
-    func textView(
-        _ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]
-    ) -> UIMenu? {
-        var verbs: [UIMenuElement] = []
-        if range.length > 0 {
-            verbs = [
-                UIAction(title: DraftVerbs.codeTitle) { [weak self] _ in
-                    self?.rewrite(range, by: DraftVerbs.code)
-                },
-                UIAction(title: DraftVerbs.quoteTitle) { [weak self] _ in
-                    self?.rewrite(range, by: DraftVerbs.quote)
-                },
-            ]
-        } else if (textView.text ?? "").isEmpty, delegate?.composerLastPrompt()?.isEmpty == false {
-            verbs = [
-                UIAction(title: DraftVerbs.lastPromptTitle) { [weak self] _ in
-                    self?.delegate?.composerDidAskForLastPrompt()
-                }
-            ]
-        }
-        guard !verbs.isEmpty else { return nil }
-        return UIMenu(children: Array(suggestedActions.prefix(1)) + verbs + suggestedActions.dropFirst())
-    }
-
-    private func rewrite(_ range: NSRange, by verb: (String) -> DraftVerbs.Edit) {
-        let whole = (textView.text ?? "") as NSString
-        guard range.location + range.length <= whole.length else { return }
-        let edit = verb(whole.substring(with: range))
-        replace(range.location..<(range.location + range.length), with: edit.text)
-        textView.selectedRange = NSRange(
-            location: range.location + edit.selectedStart, length: edit.selectedLength)
-        Theme.Haptics.selection()
-    }
-
-    #if DEBUG
-        /// Runs a selection verb over a stretch of the draft, for a run with no finger to open
-        /// the menu.
-        func stageVerb(_ name: String, over range: NSRange) {
-            rewrite(range, by: name == "quote" ? DraftVerbs.quote : DraftVerbs.code)
-        }
-
-        /// One key the way the keyboard sends it, `<` deleting and `|` starting a line: the box is
-        /// asked first, as the keyboard asks it, and a key it refuses is not typed.
-        func stageKeystroke(_ key: Character) {
-            let caret = textView.selectedRange
-            let deleting = key == "<"
-            let range =
-                deleting && caret.length == 0
-                ? NSRange(location: max(0, caret.location - 1), length: caret.location > 0 ? 1 : 0) : caret
-            let written = deleting ? "" : (key == "|" ? "\n" : String(key))
-            guard textView(textView, shouldChangeTextIn: range, replacementText: written) else { return }
-            if deleting { textView.deleteBackward() } else { textView.insertText(written) }
-        }
-
-        /// One frame of a finger holding the handle this far above where it came down.
-        func stageDrag(travel: CGFloat) {
-            if heldCap == nil { beginHold() }
-            hold(travel: travel)
-        }
-
-        func stageDragEnd() {
-            heldCap = nil
-            setLifted(true)
-        }
-    #endif
-}
-
-/// A text view that is asked about a paste before UIKit takes it. Only a pasteboard holding a
-/// picture is intercepted — words, and the overlong paste the delegate turns into a file, stay on
-/// UIKit's own path so selection, undo and the system menu keep behaving exactly as they do
-/// everywhere else on the phone.
-final class PastingTextView: UITextView {
-    var onPasteImage: ((Data, String) -> Void)?
-
-    override func paste(_ sender: Any?) {
-        let pasteboard = UIPasteboard.general
-        if pasteboard.hasImages, !pasteboard.hasStrings {
-            if let png = pasteboard.image?.pngData() {
-                onPasteImage?(png, "image/png")
-                return
-            }
-        }
-        super.paste(sender)
     }
 }
