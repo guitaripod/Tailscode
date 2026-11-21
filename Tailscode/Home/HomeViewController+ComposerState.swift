@@ -69,6 +69,7 @@ extension HomeViewController {
     /// so skipping the rebuild can't serve a stale list.
     func updateComposer() {
         composerBar.isHidden = viewModel.servers.isEmpty && !askLane.needsRenderer
+        composerScrim.isHidden = composerBar.isHidden
         if askLane == .video {
             updateVideoComposer()
             return

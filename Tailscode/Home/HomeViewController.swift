@@ -18,6 +18,7 @@ final class HomeViewController: UIViewController {
     var dataSource: UICollectionViewDiffableDataSource<HomeSection, HomeItem>!
     let refreshControl = UIRefreshControl()
     let composerBar = HomeComposerBar()
+    let composerScrim = FadeScrimView(fade: Theme.Spacing.l, canvas: Theme.Color.groupedBackground)
     let commandPalette = SlashCommandPalette()
     let suggestions = HomeAskSuggestions()
     let videoChips = HomeVideoChips()

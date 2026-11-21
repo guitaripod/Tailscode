@@ -388,9 +388,11 @@ private final class FactsScrollView: UIScrollView {
 final class FadeScrimView: UIView {
     private let gradient = CAGradientLayer()
     private let fade: CGFloat
+    private let canvas: UIColor
 
-    init(fade: CGFloat) {
+    init(fade: CGFloat, canvas: UIColor = Theme.Color.background) {
         self.fade = fade
+        self.canvas = canvas
         super.init(frame: .zero)
         isUserInteractionEnabled = false
         isAccessibilityElement = false
@@ -416,7 +418,7 @@ final class FadeScrimView: UIView {
     }
 
     private func paint() {
-        let canvas = Theme.Color.background.resolvedColor(with: traitCollection)
+        let canvas = canvas.resolvedColor(with: traitCollection)
         gradient.colors = [
             canvas.withAlphaComponent(0).cgColor, canvas.cgColor, canvas.cgColor,
         ]

@@ -81,6 +81,8 @@ extension HomeViewController {
             edge.edge = .bottom
             composerBar.addInteraction(edge)
             collectionView.bottomEdgeEffect.style = .soft
+        } else {
+            configureComposerScrim()
         }
 
         configureAccessories()
@@ -111,6 +113,20 @@ extension HomeViewController {
                         equalTo: view.readableContentGuide.trailingAnchor, constant: -Theme.Spacing.l),
                 ]))
         configureOrb()
+    }
+
+    /// Before iOS 26 there is no scroll edge effect, so the board ran on, sharp, under the box and
+    /// the home indicator. Canvas fading in above the box and solid below it stands in for the soft
+    /// edge iOS 26 draws there.
+    private func configureComposerScrim() {
+        composerScrim.translatesAutoresizingMaskIntoConstraints = false
+        view.insertSubview(composerScrim, belowSubview: composerBar)
+        NSLayoutConstraint.activate([
+            composerScrim.topAnchor.constraint(equalTo: composerBar.topAnchor, constant: -Theme.Spacing.l),
+            composerScrim.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            composerScrim.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            composerScrim.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
     }
 
     /// The three things that float in the gap between the board and the box, in one stack so they
