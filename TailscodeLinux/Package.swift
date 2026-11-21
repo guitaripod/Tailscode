@@ -206,8 +206,9 @@ enum Kit {
     /// 0.63.0 edits and cancels a prompt waiting in opencode 2's inbox, in its own place in the
     /// queue and under its own id, so a queued message can be rewritten on opencode too.
     /// 0.64.0 speaks the masters a claude-bridge keeps (MachineExperts).
-    /// 0.65.0 speaks to a shell a server holds: the terminal's wire, link and mock.
-    static let version = Version(0, 65, 0)
+    /// 0.65.0 speaks to a shell a server holds: the terminal's wire, link and mock. 0.65.1 makes
+    /// the mock's shell bash.
+    static let version = Version(0, 65, 1)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

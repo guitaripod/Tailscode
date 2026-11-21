@@ -28,7 +28,7 @@ extension SelfTest {
             return (0..<frame.rows).contains { frame.text(row: $0) == "over the wire" }
         }
         guard drawn else { return "what was typed never came back onto the screen" }
-        guard session.reading.caption == "zsh · /srv/app on selftest" else {
+        guard session.reading.caption == "bash · /srv/app on selftest" else {
             return "the caption reads \(session.reading.caption)"
         }
         guard

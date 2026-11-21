@@ -52,9 +52,9 @@ import Testing
         type(session, "echo over the wire\r")
         #expect(await wait { self.screenText(session).contains("\nover the wire") })
         #expect(dirtied.value > 0)
-        #expect(session.reading.shell == "zsh")
+        #expect(session.reading.shell == "bash")
         #expect(session.reading.directory == "/srv/app")
-        #expect(session.reading.caption == "zsh · /srv/app on arch")
+        #expect(session.reading.caption == "bash · /srv/app on arch")
         session.end()
     }
 

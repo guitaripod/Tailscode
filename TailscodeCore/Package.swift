@@ -149,8 +149,9 @@ enum Kit {
     /// the way it already rewrites one a bridge holds.
     /// 0.64.0 speaks the masters a claude-bridge keeps (MachineExperts): standing roles whose tasks
     /// start fresh with a brief and end with a debrief, with their bench, guards, notebook and journal.
-    /// 0.65.0 speaks to a shell a server holds: the terminal's wire, link and mock.
-    static let version = Version(0, 65, 0)
+    /// 0.65.0 speaks to a shell a server holds: the terminal's wire, link and mock. 0.65.1 makes
+    /// the mock's shell bash.
+    static let version = Version(0, 65, 1)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
