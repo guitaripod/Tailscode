@@ -190,6 +190,9 @@ SHOTS=(
   "fl-carry|--demo|TAILSCODE_OPEN_SESSION=demo-o6 TAILSCODE_HIDE_DEMO_BADGE=1 TAILSCODE_NEURAL_OPEN=first TAILSCODE_NEURAL_WALK=9:hover=1|20"
   "fl-party|--demo|TAILSCODE_OPEN_SESSION=demo-c2 TAILSCODE_DIAL=fleetparty|14"
   "fl-wall|--demo|TAILSCODE_WATCH=attention TAILSCODE_WATCH_EVENTS=1 TAILSCODE_HIDE_DEMO_BADGE=1|9"
+  "fl-master|--demo|TAILSCODE_OPEN_MASTER=demo-x-ipad TAILSCODE_HIDE_DEMO_BADGE=1|10"
+  "fl-debrief|--demo|TAILSCODE_OPEN_MASTER=demo-x-ipad:debrief TAILSCODE_HIDE_DEMO_BADGE=1|11"
+  "fl-terminal|--demo|TAILSCODE_OPEN_SESSION=demo-c3 TAILSCODE_OPEN_TERMINAL=5 TAILSCODE_TERMINAL_TYPE=git%20status\nswift%20test\ngit%20log%20--oneline%20-3|22"
 )
 
 # The iPad is photographed as the workspace it is, in landscape: the device boots upright and
@@ -219,6 +222,9 @@ if [ -n "${IPAD:-}" ]; then
     "fl-later|--demo|TAILSCODE_OPEN_SESSION=demo-c4 TAILSCODE_OPEN_ASK_LATER=1 SHOT_CONTENT_SIZE=extra-extra-large|14"
     "fl-party|--demo|TAILSCODE_WORKSPACE_WALK=5:open=demo-claude/demo-c2 TAILSCODE_DIAL=fleetparty SHOT_CONTENT_SIZE=extra-extra-large|20"
     "fl-wall|--demo|TAILSCODE_WATCH=squad TAILSCODE_WATCH_EVENTS=1 TAILSCODE_HIDE_DEMO_BADGE=1|10"
+    "fl-master|--demo|TAILSCODE_OPEN_MASTER=demo-x-ipad SHOT_CONTENT_SIZE=extra-extra-large|13"
+    "fl-debrief|--demo|TAILSCODE_OPEN_MASTER=demo-x-ipad:debrief SHOT_CONTENT_SIZE=extra-extra-large|14"
+    "fl-terminal|--demo|TAILSCODE_OPEN_SESSION=demo-c3 TAILSCODE_OPEN_TERMINAL=6 TAILSCODE_TERMINAL_KEYS=0 TAILSCODE_TERMINAL_TYPE=git%20status\nswift%20test\ngit%20log%20--oneline%20-3|24"
   )
 fi
 
