@@ -18,7 +18,7 @@ extension HomeViewController: UICollectionViewDelegate {
         -> Bool
     {
         switch dataSource.itemIdentifier(for: indexPath) {
-        case .status, .experts: return false
+        case .status, .masters: return false
         default: return true
         }
     }
@@ -32,7 +32,7 @@ extension HomeViewController: UICollectionViewDelegate {
             onOpenSettings?()
         case .schedule:
             pushSchedules()
-        case .status, .demoNudge, .proInvitation, .placeholder, .agentNews, .experts:
+        case .status, .demoNudge, .proInvitation, .placeholder, .agentNews, .masters:
             break
         case .glance:
             pushUsage()
@@ -63,7 +63,7 @@ extension HomeViewController: UICollectionViewDelegate {
             return sessionMenu(for: card.entry, allowDelete: !card.row.state.isInFlight)
         case .ask(let card):
             return sessionMenu(for: card.entry, allowDelete: false)
-        case .status, .schedule, .agentNews, .experts, .glance, .quota, .alert, .demoNudge, .proInvitation,
+        case .status, .schedule, .agentNews, .masters, .glance, .quota, .alert, .demoNudge, .proInvitation,
             .more, .placeholder:
             return nil
         }

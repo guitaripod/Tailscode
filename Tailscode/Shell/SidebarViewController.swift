@@ -11,7 +11,7 @@ enum SidebarScope: Hashable {
 /// A place that fills the conversation column, or opens over the window, rather than choosing
 /// what the list shows.
 enum SidebarPlace: Hashable {
-    case home, agents, usage, schedules, delegate, video, images, experts
+    case home, agents, usage, schedules, delegate, video, images, masters
 }
 
 /// Everything the chat list knows that the side of the window shows beside it, taken from the one
@@ -45,8 +45,8 @@ struct SidebarReading: Equatable {
     var scope: SidebarScope?
     var place: SidebarPlace?
     var openChat: String?
-    /// The expert whose page is beside the list, by its row's id.
-    var openExpert: String?
+    /// The master whose page is beside the list, by its row's id.
+    var openMaster: String?
 }
 
 /// The side of the iPad's window. Two kinds of row live here and they are drawn differently on
@@ -59,7 +59,7 @@ final class SidebarViewController: UIViewController {
     weak var owner: WorkspaceSplitViewController?
 
     private enum Section: Hashable, CaseIterable {
-        case places, chats, servers, pinned, experts
+        case places, chats, servers, pinned, masters
     }
 
     private enum Item: Hashable {
@@ -67,8 +67,8 @@ final class SidebarViewController: UIViewController {
         case place(SidebarPlace)
         case scope(SidebarScope)
         case pinned(String)
-        case expert(String)
-        case newExpert
+        case master(String)
+        case newMaster
     }
 
     private var collectionView: UICollectionView!
@@ -125,7 +125,7 @@ final class SidebarViewController: UIViewController {
         center.addObserver(
             self, selector: #selector(updatesDidChange), name: UpdateMonitor.didChange, object: nil)
         center.addObserver(
-            self, selector: #selector(storesDidChange), name: ExpertDesk.didChange, object: nil)
+            self, selector: #selector(storesDidChange), name: MasterDesk.didChange, object: nil)
     }
 
     @objc private func storesDidChange() { apply(force: true) }
@@ -270,9 +270,9 @@ final class SidebarViewController: UIViewController {
         if !reading.digest.pinned.isEmpty {
             result.append((.pinned, reading.digest.pinned.map { .pinned($0.key) }))
         }
-        let experts = ExpertDesk.shared.board
-        if experts.keepsExperts || !experts.isEmpty {
-            result.append((.experts, experts.rows.map { .expert($0.id) } + (experts.machines.isEmpty ? [] : [.newExpert])))
+        let masters = MasterDesk.shared.board
+        if masters.keepsExperts || !masters.isEmpty {
+            result.append((.masters, masters.rows.map { .master($0.id) } + (masters.machines.isEmpty ? [] : [.newMaster])))
         }
         return result
     }
@@ -311,33 +311,33 @@ final class SidebarViewController: UIViewController {
             content.text = title(of: scope)
             content.image = image(of: scope)
             accessories += scopeAccessories(scope)
-        case .expert(let id):
-            guard let row = ExpertDesk.shared.board.rows.first(where: { $0.id == id }) else { break }
-            content.text = row.expert.name
-            content.image = ExpertStyle.mark(row, side: 22, traits: traitCollection)
-            if reading.openExpert == id {
+        case .master(let id):
+            guard let row = MasterDesk.shared.board.rows.first(where: { $0.id == id }) else { break }
+            content.text = row.master.name
+            content.image = MasterStyle.mark(row, side: 22, traits: traitCollection)
+            if reading.openMaster == id {
                 content.textProperties.font = Theme.Ramp.font(.rowTitleStrong)
                 content.textProperties.color = Theme.Color.accent
             }
-            if row.expert.task != nil {
-                accessories.append(.working(spoken: ExpertReading.state(row.expert).text))
-            } else if let count = ExpertReading.badge(row.expert) {
+            if row.master.task != nil {
+                accessories.append(.working(spoken: MasterReading.state(row.master).text))
+            } else if let count = MasterReading.badge(row.master) {
                 accessories.append(Self.count(count))
-            } else if !row.expert.failingGuards.isEmpty {
+            } else if !row.master.failingGuards.isEmpty {
                 let warning = UIImageView(
                     image: UIImage(
                         systemName: "exclamationmark.triangle.fill",
                         withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)))
                 warning.tintColor = Theme.Color.warning
-                warning.accessibilityLabel = ExpertReading.state(row.expert).text
+                warning.accessibilityLabel = MasterReading.state(row.master).text
                 accessories.append(
                     .customView(
                         configuration: .init(
                             customView: warning, placement: .trailing(displayed: .always), maintainsFixedSize: true)))
             }
-            cell.accessibilityLabel = "\(row.expert.name), \(ExpertReading.state(row.expert).text)"
-        case .newExpert:
-            content.text = ExpertWords.newExpert
+            cell.accessibilityLabel = "\(row.master.name), \(MasterReading.state(row.master).text)"
+        case .newMaster:
+            content.text = MasterWords.newMaster
             content.image = UIImage(systemName: "plus")
             content.textProperties.color = Theme.Color.accent
             content.imageProperties.tintColor = Theme.Color.accent
@@ -444,7 +444,7 @@ final class SidebarViewController: UIViewController {
     private static func title(of section: Section) -> String {
         switch section {
         case .places: return ""
-        case .experts: return ExpertWords.title
+        case .masters: return MasterWords.title
         case .chats: return String(localized: "Chats")
         case .servers: return String(localized: "Servers")
         case .pinned: return String(localized: "Pinned")
@@ -457,7 +457,7 @@ final class SidebarViewController: UIViewController {
         case .agents: return String(localized: "Agents")
         case .usage: return String(localized: "Usage")
         case .schedules: return ScheduleWords.title
-        case .experts: return ExpertWords.title
+        case .masters: return MasterWords.title
         case .delegate: return DelegateEntryPoint.title
         case .video: return String(localized: "Video")
         case .images: return String(localized: "Images")
@@ -470,7 +470,7 @@ final class SidebarViewController: UIViewController {
         case .agents: return AgentsPresenter.symbol
         case .usage: return "gauge.with.dots.needle.33percent"
         case .schedules: return "clock"
-        case .experts: return ExpertStyle.symbol
+        case .masters: return MasterStyle.symbol
         case .delegate: return DelegateEntryPoint.symbol
         case .video: return "film"
         case .images: return "photo.on.rectangle"
@@ -514,7 +514,7 @@ final class SidebarViewController: UIViewController {
         case .agents: AgentsPresenter.present(from: workspace)
         case .usage: workspace.show(place: UsageViewController())
         case .schedules: workspace.show(place: SchedulesViewController())
-        case .experts: workspace.show(place: ExpertsViewController())
+        case .masters: workspace.show(place: MastersViewController())
         case .video: workspace.home.presentVideo()
         case .images: workspace.home.presentImage()
         case .delegate: return openDelegate(from: indexPath)
@@ -586,16 +586,16 @@ extension SidebarViewController: UICollectionViewDelegate {
             owner?.chatList.open(key: key)
             owner?.sidebarDidChoose()
             return false
-        case .expert(let id):
-            guard let workspace = owner, let row = ExpertDesk.shared.board.rows.first(where: { $0.id == id })
+        case .master(let id):
+            guard let workspace = owner, let row = MasterDesk.shared.board.rows.first(where: { $0.id == id })
             else { return false }
             Theme.Haptics.selection()
-            workspace.show(place: ExpertViewController(row: row))
+            workspace.show(place: MasterViewController(row: row))
             workspace.sidebarDidChoose()
             return false
-        case .newExpert:
+        case .newMaster:
             guard let cell = collectionView.cellForItem(at: indexPath) else { return false }
-            ExpertRouter.newExpert(from: self, sourceView: cell)
+            MasterRouter.newMaster(from: self, sourceView: cell)
             return false
         }
     }

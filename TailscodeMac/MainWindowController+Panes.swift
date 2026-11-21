@@ -227,8 +227,8 @@ extension MainWindowController {
             entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
         let server = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
-        if let expert = ExpertDesk.shared.row(for: entry) {
-            window?.subtitle = Localized.text("%@ · a task of %@", server, expert.expert.name)
+        if let master = MasterDesk.shared.row(for: entry) {
+            window?.subtitle = Localized.text("%@ · a task of %@", server, master.master.name)
             return
         }
         window?.subtitle =

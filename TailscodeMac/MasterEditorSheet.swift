@@ -1,0 +1,982 @@
+import AppKit
+import CodingAgentKit
+import CodingAgentKitApple
+import TailscodeCore
+
+/// Making or changing a master on one short page: its mark, name and what it is for, the folder
+/// it works in, and under them every other part as one line that says what it holds. The part
+/// picked in that list is edited beside it: the charter, the skills, the notebook, a draft's first
+/// notes, the bench, the guards and when they run, the model. A new master that holds nothing yet
+/// can be drafted from one of the machine's skills, over whatever was already typed. Saved to the
+/// machine in one press; what the machine refuses is said under the form in the machine's own
+/// words, and nothing is lost by it.
+@MainActor
+final class MasterEditorSheet: NSObject, NSTextViewDelegate, NSTableViewDataSource, NSTableViewDelegate {
+    private static var active: [MasterEditorSheet] = []
+    private static let rowHeight: CGFloat = 40
+
+    let sheet: NSWindow
+    private var profile: ConnectionProfile
+    private let editing: MachineExpert?
+    private let name = NSTextField()
+    private let glyph = NSTextField()
+    private var hue: MasterHue
+    private var hueIsChosen: Bool
+    private let swatches = NSStackView()
+    private let markButton: MasterMarkButton
+    private let markPopover = NSPopover()
+    private let purpose = NSTextField()
+    private let folder = NSTextField()
+    private let machine = NSPopUpButton()
+    private let outline = NSTableView()
+    private var outlineHeight: NSLayoutConstraint!
+    private var rows: [MasterOutline.Row] = []
+    private var chosenPart = MasterOutline.Part.charter
+    private var pages: [MasterOutline.Part: NSView] = [:]
+    private let model = NSPopUpButton()
+    private let effort = NSPopUpButton()
+    private let notebookChoice = NSPopUpButton()
+    private let notebookPath = NSTextField()
+    private let charter = NSTextView()
+    private let charterCount = NSTextField(labelWithString: "")
+    private let skillsBox = NSStackView()
+    private var skillChecks: [NSButton] = []
+    private var foundSkills: [ExpertSkill]?
+    private let notesBox = NSStackView()
+    private var noteChecks: [(note: ExpertDraftNote, check: NSButton)] = []
+    private var notes: [ExpertDraftNote]
+    private let benchList = NSStackView()
+    private var benchRows: [MasterBenchEditorRow] = []
+    private let guardList = NSStackView()
+    private var guardRows: [MasterGuardEditorRow] = []
+    private let ruleKind = NSPopUpButton()
+    private let guardsNote = MacDialogs.detailLabel("", wraps: true)
+    private let ruleTime = NSDatePicker()
+    private let draftPull = NSPopUpButton(frame: .zero, pullsDown: true)
+    private let draftSpinner = NSProgressIndicator()
+    private let draftBlock = NSView()
+    private let leftColumn = FillingStack(topDown: false)
+    private var drafting = false
+    private var reloading = false
+    private let failure = NSTextField(wrappingLabelWithString: "")
+    private let saveButton = NSButton()
+    private let spinner = NSProgressIndicator()
+    private let onSaved: @MainActor (MachineExpert) -> Void
+    private var saving = false
+
+    /// What the form holds, for a harness.
+    var nameValue: String { name.stringValue }
+    var benchCount: Int { benchRows.count }
+    var guardCount: Int { guardRows.count }
+    var chosenHue: MasterHue { hue }
+    var swatchViews: [MasterSwatch] { swatches.arrangedSubviews.compactMap { $0 as? MasterSwatch } }
+    var outlineRows: [MasterOutline.Row] { rows }
+    var selectedPart: MasterOutline.Part { chosenPart }
+    var shownParts: [MasterOutline.Part] { pages.filter { !$0.value.isHidden }.map(\.key) }
+    var offersDraft: Bool { draftBlock.superview != nil }
+    var draftChoices: [String] { draftPull.itemTitles.dropFirst().map { $0 } }
+    var markView: MasterMarkButton { markButton }
+    var unnamedControls: [String] {
+        let fields: [NSView] = [
+            name, glyph, purpose, folder, machine, outline, model, effort, notebookChoice, notebookPath, charter, ruleKind,
+            ruleTime, draftPull, markButton,
+        ]
+        return fields.filter { ($0.accessibilityLabel() ?? "").isEmpty }.map { String(describing: type(of: $0)) }
+    }
+    /// Whether the list of parts is all in view, with nothing of it to scroll to.
+    var outlineFits: Bool {
+        sheet.contentView?.layoutSubtreeIfNeeded()
+        guard let scroll = outline.enclosingScrollView else { return false }
+        return outline.frame.height <= scroll.contentView.bounds.height + 0.5
+    }
+
+    @discardableResult
+    static func present(
+        on host: NSWindow, profile: ConnectionProfile, editing: MachineExpert?, seed: ExpertDraft? = nil,
+        onSaved: @escaping @MainActor (MachineExpert) -> Void
+    ) -> MasterEditorSheet {
+        let controller = MasterEditorSheet(profile: profile, editing: editing, seed: seed, onSaved: onSaved)
+        active.append(controller)
+        host.beginSheet(controller.sheet) { _ in active.removeAll { $0 === controller } }
+        controller.sheet.makeFirstResponder(controller.name)
+        return controller
+    }
+
+    private init(
+        profile: ConnectionProfile, editing: MachineExpert?, seed: ExpertDraft?,
+        onSaved: @escaping @MainActor (MachineExpert) -> Void
+    ) {
+        self.profile = profile
+        self.editing = editing
+        self.onSaved = onSaved
+        notes = editing == nil ? seed?.notes ?? [] : []
+        hue = MasterHue(editing?.hue ?? seed?.hue ?? "blue")
+        hueIsChosen = editing != nil
+        markButton = MasterMarkButton(glyph: editing?.glyph ?? seed?.glyph ?? "Ex", hue: hue, side: 52)
+        sheet = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 560), styleMask: [.titled, .resizable],
+            backing: .buffered, defer: false)
+        sheet.contentMinSize = NSSize(width: 900, height: 540)
+        super.init()
+        sheet.title = editing == nil ? MasterWords.newMaster : Localized.text("Edit %@", editing?.name ?? "")
+        build()
+        fill(editing.map(Self.draft(of:)) ?? seed ?? ExpertDraft(name: ""))
+        loadSkills()
+    }
+
+    /// A master as the form holds one, so a master being changed and a draft fill it the same way.
+    private static func draft(of master: MachineExpert) -> ExpertDraft {
+        ExpertDraft(
+            name: master.name, glyph: master.glyph, hue: master.hue, purpose: master.purpose, directory: master.directory,
+            model: master.model, effort: master.effort, charter: master.charter, skills: master.skills,
+            notebookPath: master.notebookPath, bench: master.bench, guards: master.guards, guardRule: master.guardRule)
+    }
+
+    private func build() {
+        buildIdentity()
+        buildParts()
+        let left = buildLeft()
+        let detail = NSView()
+        detail.translatesAutoresizingMaskIntoConstraints = false
+        for part in MasterOutline.Part.allCases {
+            guard let page = pages[part] else { continue }
+            page.translatesAutoresizingMaskIntoConstraints = false
+            page.isHidden = true
+            detail.addSubview(page)
+            NSLayoutConstraint.activate([
+                page.leadingAnchor.constraint(equalTo: detail.leadingAnchor),
+                page.trailingAnchor.constraint(equalTo: detail.trailingAnchor),
+                page.topAnchor.constraint(equalTo: detail.topAnchor),
+                page.bottomAnchor.constraint(equalTo: detail.bottomAnchor),
+            ])
+        }
+        let divider = NSBox()
+        divider.boxType = .separator
+        divider.translatesAutoresizingMaskIntoConstraints = false
+
+        failure.font = MacTheme.Ramp.font(.panelFootnote)
+        failure.textColor = MacTheme.Color.danger
+        failure.isHidden = true
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isDisplayedWhenStopped = false
+        saveButton.title = editing == nil ? MasterWords.create : MasterWords.save
+        saveButton.bezelStyle = .push
+        saveButton.keyEquivalent = "\r"
+        saveButton.keyEquivalentModifierMask = [.command]
+        saveButton.target = self
+        saveButton.action = #selector(save)
+        let cancel = NSButton(title: MasterWords.cancel, target: self, action: #selector(cancelTapped))
+        cancel.bezelStyle = .push
+        cancel.keyEquivalent = "\u{1B}"
+        var footerViews: [NSView] = []
+        if editing != nil {
+            let delete = NSButton(title: MasterWords.delete, target: self, action: #selector(deleteTapped))
+            delete.bezelStyle = .push
+            delete.hasDestructiveAction = true
+            footerViews.append(delete)
+        }
+        footerViews += [spinner, failure, masterSpacer(), cancel, saveButton]
+        let footer = NSStackView(views: footerViews)
+        footer.orientation = .horizontal
+        footer.spacing = MacTheme.Spacing.s
+        failure.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        masterHug(footer)
+        footer.translatesAutoresizingMaskIntoConstraints = false
+
+        let root = NSView()
+        for view in [left, divider, detail, footer] as [NSView] { root.addSubview(view) }
+        NSLayoutConstraint.activate([
+            left.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            left.topAnchor.constraint(equalTo: root.topAnchor),
+            left.widthAnchor.constraint(equalToConstant: 310),
+            left.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -10),
+            divider.leadingAnchor.constraint(equalTo: left.trailingAnchor),
+            divider.widthAnchor.constraint(equalToConstant: 1),
+            divider.topAnchor.constraint(equalTo: root.topAnchor, constant: 20),
+            divider.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -14),
+            detail.leadingAnchor.constraint(equalTo: divider.trailingAnchor),
+            detail.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            detail.topAnchor.constraint(equalTo: root.topAnchor),
+            detail.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -10),
+            footer.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 22),
+            footer.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -22),
+            footer.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -16),
+        ])
+        sheet.contentView = root
+    }
+
+    private func buildIdentity() {
+        name.placeholderString = MasterWords.name
+        name.font = MacTheme.Ramp.font(.panelTitle)
+        name.setAccessibilityLabel(MasterWords.name)
+        name.delegate = self
+        purpose.placeholderString = MasterWords.purpose
+        purpose.setAccessibilityLabel(MasterWords.purpose)
+        purpose.delegate = self
+        folder.placeholderString = MasterWords.folderPlaceholder
+        folder.setAccessibilityLabel(MasterWords.folder)
+        folder.font = MacTheme.Ramp.font(.code)
+        folder.delegate = self
+        machine.setAccessibilityLabel(Localized.text("Machine"))
+        machine.target = self
+        machine.action = #selector(machineChanged)
+        glyph.placeholderString = "Ex"
+        glyph.setAccessibilityLabel(MasterWords.letters)
+        glyph.widthAnchor.constraint(equalToConstant: 56).isActive = true
+        glyph.delegate = self
+        for option in MasterHue.allCases {
+            let swatch = MasterSwatch(hue: option)
+            swatch.target = self
+            swatch.action = #selector(hueChosen(_:))
+            swatches.addArrangedSubview(swatch)
+        }
+        swatches.orientation = .horizontal
+        swatches.spacing = 6
+        swatches.setAccessibilityElement(true)
+        swatches.setAccessibilityRole(.radioGroup)
+        swatches.setAccessibilityLabel(Localized.text("Colour"))
+        let lettersLabel = NSTextField(labelWithString: MasterWords.letters)
+        lettersLabel.font = MacTheme.Ramp.font(.panelLabel)
+        lettersLabel.textColor = MacTheme.Color.secondaryLabel
+        let lettersLine = NSStackView(views: [lettersLabel, glyph])
+        lettersLine.orientation = .horizontal
+        lettersLine.spacing = MacTheme.Spacing.s
+        let column = NSStackView(views: [swatches, lettersLine])
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = MacTheme.Spacing.m
+        column.edgeInsets = NSEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
+        let content = NSViewController()
+        content.view = column
+        markPopover.contentViewController = content
+        markPopover.behavior = .transient
+        markButton.setAccessibilityLabel(MasterWords.markAndColour)
+        markButton.toolTip = MasterWords.markAndColour
+        markButton.target = self
+        markButton.action = #selector(markPressed)
+    }
+
+    private func buildLeft() -> NSView {
+        let identity = NSView()
+        identity.translatesAutoresizingMaskIntoConstraints = false
+        for view in [markButton, name, purpose] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            identity.addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            markButton.leadingAnchor.constraint(equalTo: identity.leadingAnchor),
+            markButton.centerYAnchor.constraint(equalTo: identity.centerYAnchor),
+            name.leadingAnchor.constraint(equalTo: markButton.trailingAnchor, constant: MacTheme.Spacing.m),
+            name.trailingAnchor.constraint(equalTo: identity.trailingAnchor),
+            name.topAnchor.constraint(equalTo: identity.topAnchor),
+            purpose.leadingAnchor.constraint(equalTo: name.leadingAnchor),
+            purpose.trailingAnchor.constraint(equalTo: identity.trailingAnchor),
+            purpose.topAnchor.constraint(equalTo: name.bottomAnchor, constant: 6),
+            purpose.bottomAnchor.constraint(equalTo: identity.bottomAnchor),
+        ])
+
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("part"))
+        column.resizingMask = .autoresizingMask
+        outline.addTableColumn(column)
+        outline.headerView = nil
+        outline.style = .inset
+        outline.rowHeight = Self.rowHeight
+        outline.intercellSpacing = NSSize(width: 0, height: 2)
+        outline.backgroundColor = .clear
+        outline.allowsEmptySelection = false
+        outline.allowsMultipleSelection = false
+        outline.dataSource = self
+        outline.delegate = self
+        outline.setAccessibilityLabel(Localized.text("Details"))
+        let outlineScroll = NSScrollView()
+        outlineScroll.documentView = outline
+        outlineScroll.drawsBackground = false
+        outlineScroll.hasVerticalScroller = false
+        outlineScroll.verticalScrollElasticity = .none
+        outlineScroll.translatesAutoresizingMaskIntoConstraints = false
+        outlineHeight = outlineScroll.heightAnchor.constraint(equalToConstant: Self.rowHeight)
+        outlineHeight.isActive = true
+
+        draftPull.setAccessibilityLabel(MasterWords.draftFromSkill)
+        draftPull.bezelStyle = .push
+        draftPull.target = self
+        draftPull.action = #selector(draftChosen(_:))
+        draftSpinner.style = .spinning
+        draftSpinner.controlSize = .small
+        draftSpinner.isDisplayedWhenStopped = false
+        let draftWords = MacDialogs.detailLabel(MasterWords.draftFromSkillDetail, wraps: true)
+        draftWords.preferredMaxLayoutWidth = 266
+        draftBlock.translatesAutoresizingMaskIntoConstraints = false
+        for view in [draftPull, draftSpinner, draftWords] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            draftBlock.addSubview(view)
+        }
+        draftPull.setContentHuggingPriority(.required, for: .horizontal)
+        draftWords.setContentHuggingPriority(.required, for: .vertical)
+        draftWords.setContentCompressionResistancePriority(.required, for: .vertical)
+        NSLayoutConstraint.activate([
+            draftPull.leadingAnchor.constraint(equalTo: draftBlock.leadingAnchor),
+            draftPull.topAnchor.constraint(equalTo: draftBlock.topAnchor),
+            draftSpinner.leadingAnchor.constraint(equalTo: draftPull.trailingAnchor, constant: MacTheme.Spacing.s),
+            draftSpinner.centerYAnchor.constraint(equalTo: draftPull.centerYAnchor),
+            draftSpinner.trailingAnchor.constraint(lessThanOrEqualTo: draftBlock.trailingAnchor),
+            draftWords.leadingAnchor.constraint(equalTo: draftBlock.leadingAnchor),
+            draftWords.trailingAnchor.constraint(equalTo: draftBlock.trailingAnchor),
+            draftWords.topAnchor.constraint(equalTo: draftPull.bottomAnchor, constant: 6),
+            draftWords.bottomAnchor.constraint(equalTo: draftBlock.bottomAnchor),
+        ])
+
+        let gap = NSView()
+        gap.translatesAutoresizingMaskIntoConstraints = false
+        gap.setContentHuggingPriority(.init(1), for: .vertical)
+        gap.setContentCompressionResistancePriority(.init(1), for: .vertical)
+        let left = leftColumn
+        left.distribution = .fill
+        left.spacing = MacTheme.Spacing.m
+        left.edgeInsets = NSEdgeInsets(top: 20, left: 22, bottom: 4, right: 22)
+        for view in [identity, folder, machine, outlineScroll, gap] as [NSView] { left.addArrangedSubview(view) }
+        left.setCustomSpacing(MacTheme.Spacing.s, after: folder)
+        fillMachines()
+        return left
+    }
+
+    private func fillMachines() {
+        let makers = MasterDesk.shared.makers
+        machine.removeAllItems()
+        for maker in makers {
+            machine.addItem(withTitle: maker.name)
+            machine.lastItem?.representedObject = maker.id
+        }
+        if let index = makers.firstIndex(where: { $0.id == profile.id }) { machine.selectItem(at: index) }
+        machine.isHidden = editing != nil || makers.count < 2 || !makers.contains { $0.id == profile.id }
+    }
+
+    private func buildParts() {
+        charter.delegate = self
+        charter.setAccessibilityLabel(MasterWords.charter)
+        charter.font = MacTheme.Ramp.font(.cardBody)
+        charter.isRichText = false
+        charter.allowsUndo = true
+        charter.textContainerInset = NSSize(width: 6, height: 6)
+        charter.isVerticallyResizable = true
+        charter.autoresizingMask = [.width]
+        charter.textContainer?.widthTracksTextView = true
+        let charterScroll = NSScrollView()
+        charterScroll.documentView = charter
+        charterScroll.hasVerticalScroller = true
+        charterScroll.borderType = .bezelBorder
+        charterScroll.translatesAutoresizingMaskIntoConstraints = false
+        charterScroll.setContentHuggingPriority(.init(1), for: .vertical)
+        charterScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 160).isActive = true
+        charterCount.font = MacTheme.Ramp.font(.panelFootnote)
+        charterCount.textColor = MacTheme.Color.tertiaryLabel
+        let charterNote = MacDialogs.detailLabel(
+            Localized.text("Standing instructions for this kind of work: a map, not a manual."))
+        charterNote.lineBreakMode = .byTruncatingTail
+        charterNote.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        charterCount.setContentHuggingPriority(.required, for: .horizontal)
+        charterCount.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let charterFoot = line([charterNote], trailing: [charterCount])
+        pages[.charter] = page(MasterWords.charter, [charterScroll, charterFoot], note: nil)
+
+        for list in [skillsBox, notesBox] {
+            list.orientation = .vertical
+            list.alignment = list === notesBox ? .width : .leading
+            list.spacing = 6
+        }
+        pages[.skills] = page(
+            MasterWords.skills, [scrolled(skillsBox)], note: Localized.text("Every task loads these first."))
+        pages[.notes] = page(MasterWords.firstNotes, [scrolled(notesBox)], note: nil)
+
+        notebookPath.placeholderString = Localized.text("A memory folder on %@", profile.name)
+        notebookPath.setAccessibilityLabel(MasterWords.notebookFolder)
+        notebookPath.font = MacTheme.Ramp.font(.code)
+        notebookPath.delegate = self
+        notebookChoice.addItems(withTitles: [MasterWords.notebookOwn, Localized.text("Adopt a folder")])
+        notebookChoice.setAccessibilityLabel(MasterWords.notebook)
+        notebookChoice.target = self
+        notebookChoice.action = #selector(notebookChanged)
+        pages[.notebook] = page(
+            MasterWords.notebook, [leading(notebookChoice), notebookPath, filler()],
+            note: Localized.text(
+                "A folder you already keep is adopted as it is: one fact per file, indexed in MEMORY.md. Notes are only written when you accept them."))
+
+        for list in [benchList, guardList] {
+            list.orientation = .vertical
+            list.alignment = .width
+            list.spacing = MacTheme.Spacing.s
+        }
+        let addBench = NSButton(title: MasterWords.addBenchItem, target: self, action: #selector(addBenchRow))
+        let addGuard = NSButton(title: MasterWords.addGuard, target: self, action: #selector(addGuardRow))
+        for button in [addBench, addGuard] {
+            button.bezelStyle = .accessoryBarAction
+            button.image = NSImage(systemSymbolName: "plus", accessibilityDescription: nil)
+            button.imagePosition = .imageLeading
+        }
+        pages[.bench] = page(
+            MasterWords.bench, [scrolled(benchList), leading(addBench)],
+            note: Localized.text(
+                "The machine proves it whenever the master's page opens and when a task starts. A task holds the lock around anything it installs or runs there, so two tasks never share a device."))
+
+        ruleKind.addItems(withTitles: [MasterWords.guardsOnDemand, Localized.text("Every day at"), Localized.text("Weekdays at")])
+        ruleKind.target = self
+        ruleKind.action = #selector(ruleChanged)
+        ruleKind.setAccessibilityLabel(Localized.text("When"))
+        ruleTime.setAccessibilityLabel(Localized.text("Time"))
+        ruleTime.datePickerStyle = .textFieldAndStepper
+        ruleTime.datePickerElements = .hourMinute
+        ruleTime.target = self
+        ruleTime.action = #selector(ruleChanged)
+        ruleTime.dateValue = Calendar.current.date(bySettingHour: 3, minute: 0, second: 0, of: Date()) ?? Date()
+        ruleKind.setContentHuggingPriority(.required, for: .horizontal)
+        ruleTime.setContentHuggingPriority(.required, for: .horizontal)
+        let ruleLine = line([addGuard], trailing: [ruleKind, ruleTime])
+        guardsNote.stringValue = MasterWords.noGuards
+        guardsNote.preferredMaxLayoutWidth = 520
+        pages[.guards] = page(MasterWords.guards, [scrolled(guardList), ruleLine, guardsNote], note: nil)
+
+        model.setAccessibilityLabel(MasterWords.model)
+        model.target = self
+        model.action = #selector(partChanged)
+        effort.setAccessibilityLabel(Localized.text("Effort"))
+        effort.target = self
+        effort.action = #selector(partChanged)
+        effort.addItem(withTitle: Localized.text("Machine default"))
+        effort.lastItem?.representedObject = ""
+        for level in ["low", "medium", "high", "xhigh", "max"] {
+            effort.addItem(withTitle: level)
+            effort.lastItem?.representedObject = level
+        }
+        fillModels()
+        pages[.model] = page(MasterWords.model, [line([model, effort], trailing: []), filler()], note: nil)
+    }
+
+    private func fillModels() {
+        model.removeAllItems()
+        model.addItem(withTitle: Localized.text("Machine default"))
+        model.lastItem?.representedObject = ""
+        for info in ModelCatalogStore.cached(profile.id) where !info.id.contains("/") {
+            model.addItem(withTitle: info.name.isEmpty ? info.id : info.name)
+            model.lastItem?.representedObject = info.id
+        }
+    }
+
+    /// One part's editor: its name, what edits it, and a line on what it is for.
+    private func page(_ title: String, _ views: [NSView], note: String?) -> NSView {
+        let heading = NSTextField(labelWithString: title)
+        heading.font = MacTheme.Ramp.font(.cardTitle)
+        let column = FillingStack(topDown: false)
+        column.distribution = .fill
+        column.spacing = MacTheme.Spacing.m
+        column.edgeInsets = NSEdgeInsets(top: 20, left: 22, bottom: 10, right: 22)
+        column.addArrangedSubview(heading)
+        for view in views { column.addArrangedSubview(view) }
+        if let note {
+            let words = MacDialogs.detailLabel(note, wraps: true)
+            words.preferredMaxLayoutWidth = 520
+            column.addArrangedSubview(words)
+        }
+        return column
+    }
+
+    /// A list that scrolls inside its part once it is longer than the sheet, so the sheet itself
+    /// never has to.
+    private func scrolled(_ list: NSStackView) -> NSScrollView {
+        let scroll = NSScrollView()
+        let clip = MasterFlippedClip()
+        clip.drawsBackground = false
+        scroll.contentView = clip
+        scroll.documentView = list
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.setContentHuggingPriority(.init(1), for: .vertical)
+        list.translatesAutoresizingMaskIntoConstraints = false
+        masterHug(list)
+        NSLayoutConstraint.activate([
+            list.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            list.topAnchor.constraint(equalTo: clip.topAnchor),
+            list.widthAnchor.constraint(equalTo: clip.widthAnchor),
+            scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 120),
+        ])
+        return scroll
+    }
+
+    private func leading(_ view: NSView) -> NSView { line([view], trailing: []) }
+
+    /// One line of a part, as tall as the first thing on it: some of it from the leading edge,
+    /// the rest from the trailing one, and whatever room is left between the two.
+    private func line(_ leading: [NSView], trailing: [NSView]) -> NSView {
+        let line = NSView()
+        line.translatesAutoresizingMaskIntoConstraints = false
+        let gap = MacTheme.Spacing.s
+        var constraints: [NSLayoutConstraint] = []
+        for view in leading + trailing {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            line.addSubview(view)
+            constraints.append(view.centerYAnchor.constraint(equalTo: line.centerYAnchor))
+        }
+        if let first = (leading + trailing).first {
+            constraints.append(first.topAnchor.constraint(equalTo: line.topAnchor))
+            constraints.append(first.bottomAnchor.constraint(equalTo: line.bottomAnchor))
+        }
+        var edge = line.leadingAnchor
+        for (index, view) in leading.enumerated() {
+            constraints.append(view.leadingAnchor.constraint(equalTo: edge, constant: index == 0 ? 0 : gap))
+            edge = view.trailingAnchor
+        }
+        var far = line.trailingAnchor
+        for (index, view) in trailing.reversed().enumerated() {
+            constraints.append(view.trailingAnchor.constraint(equalTo: far, constant: index == 0 ? 0 : -gap))
+            far = view.leadingAnchor
+        }
+        constraints.append(edge.constraint(lessThanOrEqualTo: far, constant: leading.isEmpty || trailing.isEmpty ? 0 : -gap))
+        NSLayoutConstraint.activate(constraints)
+        return line
+    }
+
+    private func filler() -> NSView {
+        let gap = NSView()
+        gap.translatesAutoresizingMaskIntoConstraints = false
+        gap.setContentHuggingPriority(.init(1), for: .vertical)
+        gap.setContentCompressionResistancePriority(.init(1), for: .vertical)
+        return gap
+    }
+
+    private func fill(_ draft: ExpertDraft) {
+        name.stringValue = draft.name
+        glyph.stringValue = draft.glyph ?? ""
+        purpose.stringValue = draft.purpose ?? ""
+        folder.stringValue = draft.directory ?? ""
+        charter.string = draft.charter ?? ""
+        if let chosen = draft.hue { hue = MasterHue(chosen) }
+        let chosenModel = draft.model ?? ""
+        if let index = model.itemArray.firstIndex(where: { ($0.representedObject as? String) == chosenModel }) {
+            model.selectItem(at: index)
+        } else if !chosenModel.isEmpty {
+            model.addItem(withTitle: chosenModel)
+            model.lastItem?.representedObject = chosenModel
+            model.select(model.lastItem)
+        }
+        let chosenEffort = draft.effort ?? ""
+        effort.selectItem(at: effort.itemArray.firstIndex { ($0.representedObject as? String) == chosenEffort } ?? 0)
+        notebookChoice.selectItem(at: draft.notebookPath == nil ? 0 : 1)
+        notebookPath.stringValue = draft.notebookPath ?? ""
+        notebookPath.isEnabled = draft.notebookPath != nil
+        for row in benchRows { row.removeFromSuperview() }
+        benchRows = []
+        for item in draft.bench ?? [] { appendBench(item) }
+        for row in guardRows { row.removeFromSuperview() }
+        guardRows = []
+        for item in draft.guards ?? [] { appendGuard(item) }
+        switch draft.guardRule?.kind {
+        case .daily: ruleKind.selectItem(at: 1)
+        case .weekdays: ruleKind.selectItem(at: 2)
+        default: ruleKind.selectItem(at: 0)
+        }
+        if let rule = draft.guardRule, let hour = rule.hour {
+            ruleTime.dateValue =
+                Calendar.current.date(bySettingHour: hour, minute: rule.minute ?? 0, second: 0, of: Date()) ?? Date()
+        }
+        ruleTime.isEnabled = ruleKind.indexOfSelectedItem != 0
+        showNotes(ticked: MasterMaking.defaultTicks(draft))
+        showSkills(chosen: draft.skills ?? [])
+        refreshMark()
+        refreshCount()
+        for swatch in swatchViews { swatch.chosen = swatch.hue == hue }
+        refreshOutline()
+    }
+
+    private func showNotes(ticked: Set<String>) {
+        notesBox.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        noteChecks = []
+        for note in notes {
+            let check = NSButton(checkboxWithTitle: note.title, target: self, action: #selector(partChanged))
+            check.state = ticked.contains(note.title) ? .on : .off
+            check.toolTip = note.summary
+            let words = NSTextField(labelWithString: note.lasting == false ? MasterWords.lastingUnticked : note.summary)
+            words.font = MacTheme.Ramp.font(.panelFootnote)
+            words.textColor = note.lasting == false ? MacTheme.Color.warning : MacTheme.Color.secondaryLabel
+            words.lineBreakMode = .byTruncatingTail
+            words.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            let line = NSView()
+            for view in [check, words] as [NSView] {
+                view.translatesAutoresizingMaskIntoConstraints = false
+                line.addSubview(view)
+            }
+            check.setContentHuggingPriority(.required, for: .horizontal)
+            NSLayoutConstraint.activate([
+                check.leadingAnchor.constraint(equalTo: line.leadingAnchor),
+                check.topAnchor.constraint(equalTo: line.topAnchor),
+                check.bottomAnchor.constraint(equalTo: line.bottomAnchor),
+                words.leadingAnchor.constraint(equalTo: check.trailingAnchor, constant: MacTheme.Spacing.s),
+                words.firstBaselineAnchor.constraint(equalTo: check.firstBaselineAnchor),
+                words.trailingAnchor.constraint(lessThanOrEqualTo: line.trailingAnchor),
+            ])
+            noteChecks.append((note, check))
+            notesBox.addArrangedSubview(line)
+        }
+    }
+
+    private func loadSkills() {
+        foundSkills = nil
+        showSkills(chosen: chosenSkills)
+        guard let keeping = MasterDesk.shared.keeping(for: profile.id) else {
+            foundSkills = []
+            showSkills(chosen: chosenSkills)
+            return
+        }
+        let asked = profile.id
+        Task { [weak self] in
+            let found = (try? await keeping.expertSkills()) ?? []
+            guard let self, self.profile.id == asked else { return }
+            self.foundSkills = found
+            self.showSkills(chosen: self.chosenSkills)
+        }
+    }
+
+    private var chosenSkills: [String] { skillChecks.filter { $0.state == .on }.map(\.title) }
+
+    /// The machine's skills as ticks, with any the master already loads that the machine no longer
+    /// lists, and the same skills as what a new master can be drafted from.
+    private func showSkills(chosen: [String]) {
+        skillsBox.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        skillChecks = []
+        var names = foundSkills?.map(\.name) ?? []
+        for name in chosen where !names.contains(name) { names.append(name) }
+        for name in names {
+            let check = NSButton(checkboxWithTitle: name, target: self, action: #selector(partChanged))
+            check.state = chosen.contains(name) ? .on : .off
+            check.toolTip = foundSkills?.first { $0.name == name }?.description
+            skillChecks.append(check)
+            skillsBox.addArrangedSubview(check)
+        }
+        if foundSkills == nil || names.isEmpty {
+            let words = foundSkills == nil
+                ? Localized.text("Reading the machine's skills…") : Localized.text("No skills on %@", profile.name)
+            let line = NSTextField(labelWithString: words)
+            line.font = MacTheme.Ramp.font(.panelFootnote)
+            line.textColor = MacTheme.Color.tertiaryLabel
+            skillsBox.addArrangedSubview(line)
+        }
+        draftPull.removeAllItems()
+        draftPull.addItem(withTitle: MasterWords.draftFromSkill)
+        for skill in foundSkills ?? [] {
+            draftPull.addItem(withTitle: skill.name)
+            draftPull.lastItem?.toolTip = skill.description
+        }
+        refreshOutline()
+    }
+
+    /// What the form holds now, as the draft it would send.
+    private func current() -> ExpertDraft {
+        let typedGlyph = glyph.stringValue.trimmingCharacters(in: .whitespaces)
+        let modelID = (model.selectedItem?.representedObject as? String) ?? ""
+        let effortLevel = (effort.selectedItem?.representedObject as? String) ?? ""
+        let adopted = notebookChoice.indexOfSelectedItem == 1 ? notebookPath.stringValue.trimmingCharacters(in: .whitespaces) : ""
+        return ExpertDraft(
+            name: name.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
+            glyph: typedGlyph.isEmpty ? nil : String(typedGlyph.prefix(2)), hue: hue.rawValue, purpose: purpose.stringValue,
+            directory: folder.stringValue.isEmpty ? nil : folder.stringValue, model: modelID.isEmpty ? nil : modelID,
+            effort: effortLevel.isEmpty ? nil : effortLevel, charter: charter.string, skills: chosenSkills,
+            notebookPath: adopted.isEmpty ? nil : adopted, bench: benchRows.compactMap(\.item),
+            guards: guardRows.compactMap(\.item), guardRule: rule, timeZone: TimeZone.current.identifier, notes: notes)
+    }
+
+    private var tickedNotes: Set<String> { Set(noteChecks.filter { $0.check.state == .on }.map(\.note.title)) }
+
+    /// The list of parts said again from what the form holds, the part being edited kept chosen,
+    /// and the offer to draft withdrawn once there is something a draft would write over.
+    private func refreshOutline() {
+        guard outlineHeight != nil else { return }
+        let draft = current()
+        let modelID = (model.selectedItem?.representedObject as? String) ?? ""
+        rows = MasterOutline.rows(draft, kept: tickedNotes.count, modelName: modelID.isEmpty ? nil : model.titleOfSelectedItem)
+        if !rows.contains(where: { $0.part == chosenPart }) { chosenPart = .charter }
+        guardsNote.isHidden = !guardRows.isEmpty
+        reloading = true
+        defer { reloading = false }
+        outline.reloadData()
+        outlineHeight.constant = rows.isEmpty ? Self.rowHeight : outline.rect(ofRow: rows.count - 1).maxY + 10
+        if let index = rows.firstIndex(where: { $0.part == chosenPart }) {
+            outline.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+        }
+        for (part, page) in pages { page.isHidden = part != chosenPart }
+        let offers = editing == nil && (drafting || MasterOutline.canDraft(draft))
+        if offers, draftBlock.superview == nil {
+            leftColumn.addArrangedSubview(draftBlock)
+        } else if !offers, draftBlock.superview != nil {
+            leftColumn.removeArrangedSubview(draftBlock)
+            draftBlock.removeFromSuperview()
+        }
+        draftPull.isEnabled = !drafting && draftPull.numberOfItems > 1
+    }
+
+    /// Shows one part's editor, for a press in the list or a harness.
+    func select(_ part: MasterOutline.Part) {
+        guard rows.contains(where: { $0.part == part }) else { return }
+        chosenPart = part
+        refreshOutline()
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let id = NSUserInterfaceItemIdentifier("part")
+        let cell = tableView.makeView(withIdentifier: id, owner: nil) as? MasterOutlineCell ?? MasterOutlineCell()
+        cell.identifier = id
+        cell.show(rows[row])
+        return cell
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !reloading, rows.indices.contains(outline.selectedRow), rows[outline.selectedRow].part != chosenPart
+        else { return }
+        chosenPart = rows[outline.selectedRow].part
+        for (part, page) in pages { page.isHidden = part != chosenPart }
+    }
+
+    @objc private func partChanged() { refreshOutline() }
+
+    @objc private func markPressed() {
+        markPopover.show(relativeTo: markButton.bounds, of: markButton, preferredEdge: .maxY)
+        markPopover.contentViewController?.view.window?.makeFirstResponder(glyph)
+    }
+
+    @objc private func hueChosen(_ sender: MasterSwatch) {
+        hue = sender.hue
+        hueIsChosen = true
+        for swatch in swatchViews { swatch.chosen = swatch.hue == hue }
+        refreshMark()
+    }
+
+    private func refreshMark() {
+        let typed = glyph.stringValue.trimmingCharacters(in: .whitespaces)
+        markButton.mark.glyph = typed.isEmpty ? MasterMaking.glyph(for: name.stringValue) : String(typed.prefix(2))
+        markButton.mark.hue = hue
+    }
+
+    @objc private func notebookChanged() {
+        notebookPath.isEnabled = notebookChoice.indexOfSelectedItem == 1
+        if notebookPath.isEnabled { sheet.makeFirstResponder(notebookPath) }
+        refreshOutline()
+    }
+
+    @objc private func ruleChanged() {
+        ruleTime.isEnabled = ruleKind.indexOfSelectedItem != 0
+        refreshOutline()
+    }
+
+    /// Another machine for a new master: what was the old machine's (its folder, notebook, skills,
+    /// bench, guards and model) is let go, and what is the master's own stays.
+    @objc private func machineChanged() {
+        guard let id = machine.selectedItem?.representedObject as? String, id != profile.id,
+            let chosen = MasterDesk.shared.profile(id)
+        else { return }
+        profile = chosen
+        var kept = current()
+        kept.directory = nil
+        kept.notebookPath = nil
+        kept.skills = []
+        kept.bench = []
+        kept.guards = []
+        kept.guardRule = nil
+        kept.model = nil
+        notebookPath.placeholderString = Localized.text("A memory folder on %@", profile.name)
+        fillModels()
+        let ticked = tickedNotes
+        fill(kept)
+        showNotes(ticked: ticked)
+        loadSkills()
+    }
+
+    @objc private func draftChosen(_ sender: NSPopUpButton) {
+        guard !drafting, sender.indexOfSelectedItem > 0, let skill = sender.titleOfSelectedItem,
+            let keeping = MasterDesk.shared.keeping(for: profile.id)
+        else { return }
+        draft(from: skill, keeping: keeping)
+    }
+
+    /// Asks the machine to draft the master from one of its skills and lays the draft over what
+    /// was typed. A harness awaits the task it returns.
+    @discardableResult
+    func draft(from skill: String, keeping: any MachineExperts) -> Task<Void, Never> {
+        drafting = true
+        draftSpinner.startAnimation(nil)
+        failure.isHidden = true
+        refreshOutline()
+        let asked = profile.id
+        return Task { [weak self] in
+            let outcome: Result<ExpertDraft, Error>
+            do { outcome = .success(try await keeping.draftExpert(session: nil, skill: skill)) } catch { outcome = .failure(error) }
+            guard let self else { return }
+            self.drafting = false
+            self.draftSpinner.stopAnimation(nil)
+            switch outcome {
+            case .success(let drafted) where self.profile.id == asked:
+                var typed = self.current()
+                if !self.hueIsChosen { typed.hue = nil }
+                let merged = MasterOutline.merged(drafted, over: typed)
+                self.notes = merged.notes ?? []
+                self.fill(merged)
+            case .success:
+                self.refreshOutline()
+            case .failure(let error):
+                self.show(AgentErrorText.readable(error))
+                self.refreshOutline()
+            }
+        }
+    }
+
+    func textDidChange(_ notification: Notification) {
+        refreshCount()
+        refreshOutline()
+    }
+
+    private func refreshCount() {
+        let count = charter.string.count
+        charterCount.stringValue =
+            count > 6_000
+            ? Localized.text("%d of 6000 characters: a map, not a manual", count)
+            : MasterOutline.wordCount(MasterOutline.words(charter.string))
+        charterCount.textColor = count > 6_000 ? MacTheme.Color.danger : MacTheme.Color.tertiaryLabel
+    }
+
+    @objc private func addBenchRow() {
+        appendBench(ExpertBenchItem(name: "", kind: .appleDevice))
+        sheet.makeFirstResponder(benchRows.last?.nameField)
+    }
+
+    private func appendBench(_ item: ExpertBenchItem) {
+        let row = MasterBenchEditorRow(item: item, machine: profile.name)
+        row.onRemove = { [weak self, weak row] in
+            guard let self, let row else { return }
+            self.benchRows.removeAll { $0 === row }
+            row.removeFromSuperview()
+            self.refreshOutline()
+        }
+        row.onChange = { [weak self] in self?.refreshOutline() }
+        benchRows.append(row)
+        benchList.addArrangedSubview(row)
+    }
+
+    @objc private func addGuardRow() {
+        appendGuard(ExpertGuard(name: "", command: ""))
+        sheet.makeFirstResponder(guardRows.last?.nameField)
+    }
+
+    private func appendGuard(_ item: ExpertGuard) {
+        let row = MasterGuardEditorRow(item: item)
+        row.onRemove = { [weak self, weak row] in
+            guard let self, let row else { return }
+            self.guardRows.removeAll { $0 === row }
+            row.removeFromSuperview()
+            self.refreshOutline()
+        }
+        row.onChange = { [weak self] in self?.refreshOutline() }
+        guardRows.append(row)
+        guardList.addArrangedSubview(row)
+    }
+
+    @objc private func cancelTapped() {
+        guard !saving else { return }
+        sheet.sheetParent?.endSheet(sheet)
+    }
+
+    @objc private func deleteTapped() {
+        guard !saving, let editing, let keeping = MasterDesk.shared.keeping(for: profile.id) else { return }
+        let profileID = profile.id
+        MacDialogs.confirm(
+            on: sheet, title: Localized.text("Delete %@?", editing.name), body: MasterWords.deleteDetail,
+            confirmLabel: MasterWords.delete
+        ) { [weak self] in
+            Task { [weak self] in
+                do {
+                    try await keeping.deleteExpert(editing.id)
+                    MasterDesk.shared.forget(profileID: profileID, expertID: editing.id)
+                    guard let self else { return }
+                    self.sheet.sheetParent?.endSheet(self.sheet)
+                    await MasterDesk.shared.refresh()
+                } catch {
+                    self?.show(AgentErrorText.readable(error))
+                }
+            }
+        }
+    }
+
+    private var rule: ScheduleRule? {
+        guard ruleKind.indexOfSelectedItem != 0 else { return nil }
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: ruleTime.dateValue)
+        return ScheduleRule(
+            kind: ruleKind.indexOfSelectedItem == 1 ? .daily : .weekdays, hour: parts.hour ?? 3,
+            minute: parts.minute ?? 0)
+    }
+
+    /// Everything the form holds, sent to the machine in one press.
+    @objc func save() {
+        guard !saving, !drafting, let keeping = MasterDesk.shared.keeping(for: profile.id) else { return }
+        let held = current()
+        guard !held.name.isEmpty else {
+            show(Localized.text("A master needs a name."))
+            sheet.makeFirstResponder(name)
+            return
+        }
+        saving = true
+        spinner.startAnimation(nil)
+        saveButton.isEnabled = false
+        failure.isHidden = true
+        let profileID = profile.id
+        let editing = self.editing
+        let draft = MasterMaking.finalized(held, keeping: tickedNotes)
+        Task { [weak self] in
+            do {
+                let saved: MachineExpert
+                if let editing {
+                    saved = try await keeping.updateExpert(
+                        editing.id,
+                        ExpertChange(
+                            name: held.name, glyph: held.glyph ?? MasterMaking.glyph(for: held.name),
+                            hue: held.hue, purpose: held.purpose ?? "", directory: held.directory ?? "",
+                            model: held.model ?? "", effort: held.effort ?? "", charter: held.charter ?? "",
+                            skills: held.skills ?? [], notebookPath: held.notebookPath ?? "", bench: held.bench ?? [],
+                            guards: held.guards ?? [], guardRule: held.guardRule,
+                            guardsOnDemand: held.guardRule == nil ? true : nil, timeZone: TimeZone.current.identifier))
+                } else {
+                    saved = try await keeping.createExpert(draft)
+                }
+                MasterDesk.shared.adopt(saved, profileID: profileID)
+                guard let self else { return }
+                self.spinner.stopAnimation(nil)
+                self.sheet.sheetParent?.endSheet(self.sheet)
+                self.onSaved(saved)
+            } catch {
+                self?.saving = false
+                self?.spinner.stopAnimation(nil)
+                self?.saveButton.isEnabled = true
+                self?.show(AgentErrorText.readable(error))
+            }
+        }
+    }
+
+    private func show(_ text: String) {
+        failure.stringValue = text
+        failure.isHidden = false
+    }
+
+    /// Fills the form, for a harness.
+    func stage(name text: String, charter words: String) {
+        name.stringValue = text
+        charter.string = words
+        refreshMark()
+        refreshCount()
+        refreshOutline()
+    }
+}
+
+extension MasterEditorSheet: NSTextFieldDelegate {
+    func controlTextDidChange(_ obj: Notification) {
+        refreshMark()
+        refreshOutline()
+    }
+}

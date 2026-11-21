@@ -160,7 +160,7 @@ final class HomeViewController: UIViewController {
         Task { await load() }
         #if DEBUG
             openMachineScreensForVerification()
-            openExpertScreensForVerification()
+            openMasterScreensForVerification()
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_CHATS"] != nil {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))

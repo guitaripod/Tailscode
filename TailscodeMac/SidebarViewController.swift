@@ -87,9 +87,9 @@ final class SidebarViewController: NSViewController {
     var onOpenAgents: (() -> Void)?
     let scheduledEntry = ScheduledSidebarEntry()
     var onOpenScheduled: (() -> Void)?
-    let expertsEntry = ExpertsSidebarEntry()
-    var onOpenExperts: ((ExpertRow?) -> Void)?
-    var onNewExpertTask: ((ExpertRow) -> Void)?
+    let mastersEntry = MastersSidebarEntry()
+    var onOpenMasters: ((MasterRow?) -> Void)?
+    var onNewMasterTask: ((MasterRow) -> Void)?
     let agentNews = AgentNewsView()
     /// Whether any open pane's composer is burning the ultracode aura, answered by the hub — the
     /// orb wears the same rainbow the moment the word is typed anywhere.
@@ -228,18 +228,18 @@ final class SidebarViewController: NSViewController {
         footer.translatesAutoresizingMaskIntoConstraints = false
 
         scheduledEntry.onOpen = { [weak self] in self?.onOpenScheduled?() }
-        expertsEntry.onOpen = { [weak self] row in self?.onOpenExperts?(row) }
-        expertsEntry.onNewTask = { [weak self] row in self?.onNewExpertTask?(row) }
+        mastersEntry.onOpen = { [weak self] row in self?.onOpenMasters?(row) }
+        mastersEntry.onNewTask = { [weak self] row in self?.onNewMasterTask?(row) }
         agentNews.onAdded = { [weak self] _ in
             self?.announce?(Localized.text("Adding to the model pill…"))
         }
-        let places = NSStackView(views: [agentsEntry, scheduledEntry, expertsEntry, agentNews])
+        let places = NSStackView(views: [agentsEntry, scheduledEntry, mastersEntry, agentNews])
         places.orientation = .vertical
         places.alignment = .leading
         places.spacing = MacTheme.Spacing.xs
         places.detachesHiddenViews = true
         places.translatesAutoresizingMaskIntoConstraints = false
-        for place in [agentsEntry, scheduledEntry, expertsEntry, agentNews] {
+        for place in [agentsEntry, scheduledEntry, mastersEntry, agentNews] {
             place.widthAnchor.constraint(equalTo: places.widthAnchor).isActive = true
         }
 

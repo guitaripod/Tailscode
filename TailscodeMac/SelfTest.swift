@@ -169,11 +169,11 @@ enum SelfTest {
         }
 
         do {
-            let checks = try await checkExperts()
+            let checks = try await checkMasters()
             report(
-                "experts: \(checks) claims hold — the desk reads every expert, the sidebar and the window say the shelf's line, a page draws its bench, guards and notebook, a task says what it starts with and reaches the machine as the expert's, the debrief names each action and settles")
+                "masters: \(checks) claims hold — the desk reads every master, the sidebar and the window say the shelf's line, a page draws its bench, guards and notebook, a task says what it starts with and reaches the machine as the master's, the debrief names each action and settles")
         } catch {
-            report("experts: \(error)")
+            report("masters: \(error)")
             failures += 1
         }
 

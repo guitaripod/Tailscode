@@ -27,7 +27,7 @@ extension ModelPickerViewController {
     private func sectionTitle(at index: Int) -> String {
         guard sectionIDs.indices.contains(index) else { return "" }
         let id = sectionIDs[index]
-        if id == Self.expertsSectionID { return ExpertWords.expertsSection }
+        if id == Self.mastersSectionID { return MasterWords.mastersSection }
         return chooser.sections.first { $0.id == id }?.title ?? ""
     }
 
@@ -52,7 +52,7 @@ extension ModelPickerViewController {
         let cell = UICollectionView.CellRegistration<SurfaceListCell, String> {
             [weak self] cell, _, id in
             guard let self else { return }
-            if id == Self.expertNoteID {
+            if id == Self.masterNoteID {
                 var content = UIListContentConfiguration.cell()
                 content.text = self.expertNote
                 content.textProperties.font = Theme.Ramp.font(.panelFootnote)
@@ -65,18 +65,18 @@ extension ModelPickerViewController {
                 cell.indentationLevel = 0
                 return
             }
-            if let expert = self.expert(for: id) {
+            if let master = self.master(for: id) {
                 var content = cell.defaultContentConfiguration()
-                content.text = expert.expert.name
+                content.text = master.master.name
                 content.textProperties.font = Theme.Ramp.font(.rowTitle)
-                content.secondaryText = ExpertWords.chooserDetail(expert.machine)
+                content.secondaryText = MasterWords.chooserDetail(master.machine)
                 content.secondaryTextProperties.color = Theme.Color.secondaryLabel
-                content.image = ExpertStyle.mark(expert, side: 26, traits: cell.traitCollection)
+                content.image = MasterStyle.mark(master, side: 26, traits: cell.traitCollection)
                 content.imageToTextPadding = Theme.Spacing.m
                 cell.contentConfiguration = content
                 cell.indentationLevel = 0
                 cell.accessories = [.disclosureIndicator()]
-                cell.accessibilityLabel = "\(expert.expert.name), \(ExpertWords.chooserDetail(expert.machine))"
+                cell.accessibilityLabel = "\(master.master.name), \(MasterWords.chooserDetail(master.machine))"
                 return
             }
             guard let row = self.row(for: id) else { return }
@@ -104,9 +104,9 @@ extension ModelPickerViewController {
             elementKind: UICollectionView.elementKindSectionHeader
         ) { [weak self] view, _, indexPath in
             guard let self, let id = self.dataSource.sectionIdentifier(for: indexPath.section) else { return }
-            if id == Self.expertsSectionID {
+            if id == Self.mastersSectionID {
                 var content = UIListContentConfiguration.header()
-                content.text = ExpertWords.expertsSection.uppercased()
+                content.text = MasterWords.mastersSection.uppercased()
                 content.textProperties.font = Theme.Ramp.font(.sectionLabel)
                 view.contentConfiguration = content
                 view.gestureRecognizers?.forEach(view.removeGestureRecognizer)

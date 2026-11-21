@@ -117,9 +117,9 @@ extension TranscriptViewController {
             }
         }
         composer.onToast = { [weak self] text in self?.onToast?(text) }
-        composer.onHandToExpert = { [weak self] row in
+        composer.onHandToMaster = { [weak self] row in
             guard let self, let host = self.view.window?.windowController as? MainWindowController else { return }
-            host.chooseExpert(row, from: self)
+            host.chooseMaster(row, from: self)
         }
         composer.onReadPaste = { [weak self] paste in
             let id = paste.id

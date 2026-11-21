@@ -128,7 +128,7 @@ struct MatrixStylesheet {
             drawRules(),
             panelRules(),
             agentsRules(),
-            expertRules(),
+            masterRules(),
             settingsRules(),
             keycapRules(),
         ]

@@ -232,7 +232,7 @@ enum SidebarRow {
         gtk_box_append(ptr(titleRow), title)
         let marks = model.titleMarks(under: section)
         for mark in marks { gtk_box_append(ptr(titleRow), flag(mark)) }
-        if model.entry.session.expertID != nil { gtk_box_append(ptr(titleRow), expertFlag(model.entry)) }
+        if model.entry.session.expertID != nil { gtk_box_append(ptr(titleRow), masterFlag(model.entry)) }
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         gtk_box_append(ptr(column), titleRow)
@@ -264,12 +264,12 @@ enum SidebarRow {
         return holder
     }
 
-    /// The mark of the expert a conversation is a task of, small after its title; a plain one
-    /// until the shelf has read which expert it is.
-    static func expertFlag(_ entry: SessionEntry) -> UnsafeMutablePointer<GtkWidget> {
-        let row = ExpertDesk.shared.expert(for: entry)
-        let mark = row.map { ExpertMarks.mark($0.expert, size: .tiny) } ?? ExpertMarks.mark("✦", hue: .gray, size: .tiny)
-        gtk_widget_set_tooltip_text(mark, row.map { Localized.text("A task of %@", $0.expert.name) } ?? ExpertWords.title)
+    /// The mark of the master a conversation is a task of, small after its title; a plain one
+    /// until the shelf has read which master it is.
+    static func masterFlag(_ entry: SessionEntry) -> UnsafeMutablePointer<GtkWidget> {
+        let row = MasterDesk.shared.master(for: entry)
+        let mark = row.map { MasterMarks.mark($0.master, size: .tiny) } ?? MasterMarks.mark("✦", hue: .gray, size: .tiny)
+        gtk_widget_set_tooltip_text(mark, row.map { Localized.text("A task of %@", $0.master.name) } ?? MasterWords.title)
         return mark
     }
 

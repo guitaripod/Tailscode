@@ -101,7 +101,7 @@ extension ChatPane {
         inFlightSubagents = []
         attachments = []
         carry = carryStash.removeValue(forKey: Self.preferenceKey(entry))
-        refreshExpertSurface()
+        refreshMasterSurface()
         pastedImageCount = 0
         shelveSends(leaving: previousEntry.map(LiveKey.init), opening: LiveKey(entry))
         resume.removeAll()
@@ -428,7 +428,7 @@ extension ChatPane {
         resumeTask = nil
         conversation = nil
         backend = nil
-        dropExpertWatch()
+        dropMasterWatch()
         isShutDown = true
     }
 

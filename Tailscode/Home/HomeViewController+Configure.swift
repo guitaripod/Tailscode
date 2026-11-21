@@ -13,7 +13,7 @@ extension HomeViewController {
                     section = Self.plainSection(top: Theme.Spacing.s, bottom: Theme.Spacing.m)
                 case .alerts, .demoNudge, .proInvitation, .agentNews:
                     section = Self.plainSection(top: 0, bottom: Theme.Spacing.m)
-                case .experts:
+                case .masters:
                     section = Self.plainSection(top: Theme.Spacing.s, bottom: Theme.Spacing.m)
                 case .schedule:
                     section = Self.plainSection(top: Theme.Spacing.s, bottom: Theme.Spacing.xs)
@@ -344,14 +344,14 @@ extension HomeViewController {
             cell.onAdd = { MachineDesk.shared.addNews() }
             cell.onNotNow = { MachineDesk.shared.dismissNews() }
         }
-        let expertsCell = UICollectionView.CellRegistration<ExpertShelfCell, ExpertShelfCard> {
+        let mastersCell = UICollectionView.CellRegistration<MasterShelfCell, MasterShelfCard> {
             [weak self] cell, _, card in
             cell.configure(card)
-            cell.onOpen = { [weak self] row in self?.openExpert(row) }
-            cell.onAll = { [weak self] in self?.pushExperts() }
+            cell.onOpen = { [weak self] row in self?.openMaster(row) }
+            cell.onAll = { [weak self] in self?.pushMasters() }
             cell.onNew = { [weak self] source in
                 guard let self else { return }
-                ExpertRouter.newExpert(from: self, sourceView: source)
+                MasterRouter.newMaster(from: self, sourceView: source)
             }
         }
         let demoNudgeCell = UICollectionView.CellRegistration<DemoNudgeCell, DemoNudgeCard> {
@@ -429,9 +429,9 @@ extension HomeViewController {
             case .agentNews(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: newsCell, for: indexPath, item: card)
-            case .experts(let card):
+            case .masters(let card):
                 return collectionView.dequeueConfiguredReusableCell(
-                    using: expertsCell, for: indexPath, item: card)
+                    using: mastersCell, for: indexPath, item: card)
             case .proInvitation(let card):
                 return collectionView.dequeueConfiguredReusableCell(
                     using: proInvitationCell, for: indexPath, item: card)
@@ -515,7 +515,7 @@ extension HomeViewController {
             ) { [weak self] in
                 self?.pushUsage()
             }
-        case .status, .schedule, .agentNews, .experts, .glance, .alerts, .demoNudge, .proInvitation:
+        case .status, .schedule, .agentNews, .masters, .glance, .alerts, .demoNudge, .proInvitation:
             break
         }
     }

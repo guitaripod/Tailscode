@@ -3,7 +3,7 @@ import TailscodeCore
 import UIKit
 
 enum HomeSection: Hashable {
-    case status, schedule, agentNews, experts, glance, alerts, demoNudge, proInvitation, asks, usage
+    case status, schedule, agentNews, masters, glance, alerts, demoNudge, proInvitation, asks, usage
     case needsYou, working, pinned, saved, recent
 
     var band: SessionSection? {
@@ -13,7 +13,7 @@ enum HomeSection: Hashable {
         case .pinned: return .pinned
         case .saved: return .saved
         case .recent: return .recent
-        case .status, .schedule, .agentNews, .experts, .glance, .alerts, .demoNudge, .proInvitation, .asks, .usage:
+        case .status, .schedule, .agentNews, .masters, .glance, .alerts, .demoNudge, .proInvitation, .asks, .usage:
             return nil
         }
     }
@@ -33,7 +33,7 @@ enum HomeItem: Hashable {
     case status(HomeStatusCard)
     case schedule(ScheduleLineCard)
     case agentNews(AgentNewsCard)
-    case experts(ExpertShelfCard)
+    case masters(MasterShelfCard)
     case glance(QuotaGlanceCard)
     case alert(ServerAlertCard)
     case demoNudge(DemoNudgeCard)
@@ -79,8 +79,8 @@ extension HomeItem {
         case .agentNews(let card):
             hasher.combine(card.title)
             hasher.combine(card.detail)
-        case .experts(let card):
-            hasher.combine(ExpertShelf.signature(card.board))
+        case .masters(let card):
+            hasher.combine(MasterShelf.signature(card.board))
         case .proInvitation(let card):
             hasher.combine(card.price)
         case .chat(let card):

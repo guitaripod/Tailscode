@@ -37,11 +37,11 @@ final class ModelChooserSheet: NSObject {
     private var entries: [Entry] = []
     private var monitor: Any?
     private let onAddToParty: (@MainActor (ModelPick) -> String?)?
-    /// Experts offered above the models: a pick starts a task with the expert instead of choosing a
-    /// model, so the sheet closes first and hands the expert over once it has gone.
-    private let experts: [ExpertRow]
-    private let onExpert: (@MainActor (ExpertRow) -> Void)?
-    private var pickedExpert: ExpertRow?
+    /// Masters offered above the models: a pick starts a task with the master instead of choosing a
+    /// model, so the sheet closes first and hands the master over once it has gone.
+    private let masters: [MasterRow]
+    private let onMaster: (@MainActor (MasterRow) -> Void)?
+    private var pickedMaster: MasterRow?
     /// Told once the sheet has gone, however it went, for a caller that has something to open in
     /// the sheet's place and cannot while it is still sliding away.
     var onEnded: (@MainActor () -> Void)?
@@ -76,18 +76,18 @@ final class ModelChooserSheet: NSObject {
         on host: NSWindow, sources: [ModelSource], selected: ModelSelection?,
         quotas: [UsageQuota] = [], context: ChooserContext = .chat,
         onAddToParty: (@MainActor (ModelPick) -> String?)? = nil,
-        experts: [ExpertRow] = [], onExpert: (@MainActor (ExpertRow) -> Void)? = nil,
+        masters: [MasterRow] = [], onMaster: (@MainActor (MasterRow) -> Void)? = nil,
         onPick: @escaping @MainActor (ModelPick) -> Void
     ) -> ModelChooserSheet {
         let controller = ModelChooserSheet(
             sources: sources, selected: selected, quotas: quotas, context: context,
-            onAddToParty: onAddToParty, experts: experts, onExpert: onExpert, onPick: onPick)
+            onAddToParty: onAddToParty, masters: masters, onMaster: onMaster, onPick: onPick)
         active.append(controller)
         host.beginSheet(controller.sheet) { _ in
             controller.teardown()
             active.removeAll { $0 === controller }
             controller.onEnded?()
-            if let expert = controller.pickedExpert { controller.onExpert?(expert) }
+            if let master = controller.pickedMaster { controller.onMaster?(master) }
         }
         controller.sheet.makeFirstResponder(controller.field)
         controller.revealCursor()
@@ -97,14 +97,14 @@ final class ModelChooserSheet: NSObject {
     private init(
         sources: [ModelSource], selected: ModelSelection?, quotas: [UsageQuota],
         context: ChooserContext, onAddToParty: (@MainActor (ModelPick) -> String?)?,
-        experts: [ExpertRow], onExpert: (@MainActor (ExpertRow) -> Void)?,
+        masters: [MasterRow], onMaster: (@MainActor (MasterRow) -> Void)?,
         onPick: @escaping @MainActor (ModelPick) -> Void
     ) {
         self.quotas = quotas
         self.context = context
         self.onAddToParty = onAddToParty
-        self.experts = onExpert == nil ? [] : experts
-        self.onExpert = onExpert
+        self.masters = onMaster == nil ? [] : masters
+        self.onMaster = onMaster
         chooser = ModelChooser(sources: sources, selected: selected, quotas: quotas)
         self.onPick = onPick
         sheet = NSWindow(
@@ -144,9 +144,9 @@ final class ModelChooserSheet: NSObject {
         band.alignment = .firstBaseline
         band.spacing = MacTheme.Spacing.s
 
-        let expertStrip = ExpertChooserStrip(rows: self.experts) { [weak self] row in self?.chooseExpert(row) }
-        expertStrip.isHidden = self.experts.isEmpty
-        let top = NSStackView(views: [expertStrip, field, machineStrip, doorStrip, consequence, band])
+        let masterStrip = MasterChooserStrip(rows: self.masters) { [weak self] row in self?.chooseMaster(row) }
+        masterStrip.isHidden = self.masters.isEmpty
+        let top = NSStackView(views: [masterStrip, field, machineStrip, doorStrip, consequence, band])
         top.orientation = .vertical
         top.alignment = .leading
         top.spacing = MacTheme.Spacing.s
@@ -194,7 +194,7 @@ final class ModelChooserSheet: NSObject {
             top.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
             top.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
             field.widthAnchor.constraint(equalTo: top.widthAnchor),
-            expertStrip.widthAnchor.constraint(equalTo: top.widthAnchor),
+            masterStrip.widthAnchor.constraint(equalTo: top.widthAnchor),
             band.widthAnchor.constraint(equalTo: top.widthAnchor),
             consequence.widthAnchor.constraint(equalTo: top.widthAnchor),
             machineStrip.widthAnchor.constraint(equalTo: top.widthAnchor),
@@ -257,15 +257,15 @@ final class ModelChooserSheet: NSObject {
         sheet.sheetParent?.endSheet(sheet)
     }
 
-    /// An expert pressed above the models: the sheet goes, and the expert is handed over once it
+    /// A master pressed above the models: the sheet goes, and the master is handed over once it
     /// has, so the task sheet that follows has a window to stand on.
-    private func chooseExpert(_ row: ExpertRow) {
-        pickedExpert = row
+    private func chooseMaster(_ row: MasterRow) {
+        pickedMaster = row
         dismiss()
     }
 
-    /// The experts offered above the models, for a harness.
-    var offeredExperts: [String] { experts.map(\.expert.name) }
+    /// The masters offered above the models, for a harness.
+    var offeredMasters: [String] { masters.map(\.master.name) }
 
     /// A catalog that arrived while the sheet is open: the list, the summary and the machine strip
     /// are re-answered from it, and what the reader was doing — the query, the tab — survives the

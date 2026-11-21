@@ -32,8 +32,8 @@ extension MainWindowController {
         case "analytics": presentAnalytics()
         case "pro": presentPro(placement: .settings)
         case "agents", "agents-watch", "agents-hour", "agent-peek", "agents-long", "agents-away": openAgentsFixture(parts.first ?? name)
-        case "experts", "expert", "expert-task", "expert-debrief", "expert-editor", "expert-make":
-            openExpertFixture(parts.first ?? name, detail: parts.count > 1 ? parts[1] : nil)
+        case "masters", "master", "master-task", "master-debrief", "master-editor", "master-make":
+            openMasterFixture(parts.first ?? name, detail: parts.count > 1 ? parts[1] : nil)
         case "scheduled", "schedule", "ask-later", "machine-agents", "agent", "agent-registry":
             openMachineFixture(parts.first ?? name, detail: parts.count > 1 ? parts[1] : nil)
         case "usage", "quotas": presentUsageWindow()

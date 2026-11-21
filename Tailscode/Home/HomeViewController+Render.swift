@@ -61,9 +61,9 @@ extension HomeViewController {
                 snapshot.appendSections([.agentNews])
                 snapshot.appendItems([.agentNews(news)], toSection: .agentNews)
             }
-            if let shelf = expertShelf {
-                snapshot.appendSections([.experts])
-                snapshot.appendItems([.experts(shelf)], toSection: .experts)
+            if let shelf = masterShelf {
+                snapshot.appendSections([.masters])
+                snapshot.appendItems([.masters(shelf)], toSection: .masters)
             }
         }
         if !showsQuotaCards, !quotas.isEmpty {
@@ -184,7 +184,7 @@ extension HomeViewController {
         let rowItems = snapshot.itemIdentifiers.filter {
             switch $0 {
             case .chat, .ask, .saved, .placeholder: return true
-            case .status, .schedule, .agentNews, .experts, .glance, .quota, .alert, .demoNudge, .proInvitation,
+            case .status, .schedule, .agentNews, .masters, .glance, .quota, .alert, .demoNudge, .proInvitation,
                 .more:
                 return false
             }

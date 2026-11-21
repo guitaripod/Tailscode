@@ -84,7 +84,7 @@ final class MainWindowController: NSWindowController {
     var analyticsWindow: AnalyticsWindowController?
     var agentsWindow: AgentsWindowController?
     var scheduledWindow: ScheduledWindow?
-    var expertsWindow: ExpertsWindow?
+    var mastersWindow: MastersWindow?
     /// The window `--open machine-agents` draws the demo machine's section in.
     var machineFixtureWindow: NSWindow?
     var updateWindow: UpdateWindowController?

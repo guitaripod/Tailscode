@@ -304,11 +304,11 @@ final class SidebarSessionCell: NSView {
         title.textColor = Self.titleColor(model, chosen: isChosen)
 
         let titleMarks = model.titleMarks(under: dress.section)
-        let expert = model.entry.session.expertID == nil ? nil : ExpertDesk.shared.row(for: model.entry)
-        markCount = titleMarks.count + (expert == nil ? 0 : 1)
-        marks.attributedStringValue = Self.markText(titleMarks, expert: expert)
+        let master = model.entry.session.expertID == nil ? nil : MasterDesk.shared.row(for: model.entry)
+        markCount = titleMarks.count + (master == nil ? 0 : 1)
+        marks.attributedStringValue = Self.markText(titleMarks, master: master)
         marks.toolTip =
-            ([expert.map { Localized.text("A task of %@", $0.expert.name) }].compactMap { $0 }
+            ([master.map { Localized.text("A task of %@", $0.master.name) }].compactMap { $0 }
             + titleMarks.map(\.spoken)).joined(separator: ", ").nilIfBlank
         marks.setAccessibilityElement(false)
 
@@ -426,12 +426,12 @@ final class SidebarSessionCell: NSView {
 
     /// The marks after a title as one run of symbols. Glyphs rather than words: the heading says
     /// PINNED once, and a row that wears it elsewhere has only to be recognised, not read.
-    static func markText(_ marks: [ChatRowInk.TitleMark], expert: ExpertRow? = nil) -> NSAttributedString {
+    static func markText(_ marks: [ChatRowInk.TitleMark], master: MasterRow? = nil) -> NSAttributedString {
         let text = NSMutableAttributedString()
-        if let expert {
+        if let master {
             let side = (12 * MacTheme.UIScale.factor).rounded()
             let attachment = NSTextAttachment()
-            attachment.image = ExpertMarkView.image(expert, side: side)
+            attachment.image = MasterMarkView.image(master, side: side)
             attachment.bounds = NSRect(x: 0, y: -2, width: side, height: side)
             text.append(NSAttributedString(attachment: attachment))
         }

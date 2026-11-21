@@ -724,10 +724,10 @@ public enum SelfTest {
         }
 
         do {
-            let checks = try checkExperts()
-            report("experts: \(checks) claims hold — the shelf in every tone, the page, the notebook, the editor and a draft, a task that carries a chat, a debrief accepted")
+            let checks = try checkMasters()
+            report("masters: \(checks) claims hold — the shelf in every tone, the page, the notebook, the editor and a draft, a task that carries a chat, a debrief accepted")
         } catch {
-            report("experts: \(error)")
+            report("masters: \(error)")
             failures += 1
         }
 

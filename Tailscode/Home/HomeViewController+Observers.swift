@@ -31,7 +31,7 @@ extension HomeViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(machineDeskChanged), name: MachineDesk.didChange, object: nil)
         NotificationCenter.default.addObserver(
-            self, selector: #selector(expertDeskChanged), name: ExpertDesk.didChange, object: nil)
+            self, selector: #selector(masterDeskChanged), name: MasterDesk.didChange, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(savedDidChange),
             name: SavedChatStore.didChange, object: nil)

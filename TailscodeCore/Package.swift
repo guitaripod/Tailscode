@@ -105,7 +105,7 @@ enum Kit {
     /// 0.63.0 edits and cancels a prompt waiting in opencode 2's inbox, in its own place in the
     /// queue and under its own id, so the phone can rewrite a message queued behind a running turn
     /// the way it already rewrites one a bridge holds.
-    /// 0.64.0 speaks the experts a claude-bridge keeps (MachineExperts): standing roles whose tasks
+    /// 0.64.0 speaks the masters a claude-bridge keeps (MachineExperts): standing roles whose tasks
     /// start fresh with a brief and end with a debrief, with their bench, guards, notebook and journal.
     static let version = Version(0, 64, 0)
 

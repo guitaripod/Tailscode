@@ -119,7 +119,7 @@ extension HomeViewController {
         refreshControl.endRefreshing()
         hasLoadedOnce = true
         MachineDesk.shared.refresh(force: reason == .user)
-        ExpertDesk.shared.refresh(force: reason == .user)
+        MasterDesk.shared.refresh(force: reason == .user)
         HomeQuickActions.refresh(entries: viewModel.entries)
         updateComposer()
         applySnapshot()

@@ -71,8 +71,8 @@ extension MainWindow {
                 let scheduled: @Sendable () -> Void = { [weak self] in
                     Gtk.onMain { [weak self] in self?.presentScheduled() }
                 }
-                let experts: @Sendable () -> Void = { [weak self] in
-                    Gtk.onMain { [weak self] in self?.presentExperts() }
+                let masters: @Sendable () -> Void = { [weak self] in
+                    Gtk.onMain { [weak self] in self?.presentMasters() }
                 }
                 let archive: @Sendable () -> Void = { [weak self] in
                     Gtk.onMain { [weak self] in self?.setArchiveShown(true) }
@@ -88,8 +88,8 @@ extension MainWindow {
                     (DelegateEntryPoint.menuTitle, DelegateEntryPoint.subtitle, delegate),
                     (ScheduleWords.title + "…",
                      Localized.text("What your machines ask on their own, and when"), scheduled),
-                    (ExpertWords.title + "…",
-                     Localized.text("Standing roles whose every task starts fresh with what they know"), experts),
+                    (MasterWords.title + "…",
+                     Localized.text("Standing roles whose every task starts fresh with what they know"), masters),
                     (Localized.text("Settings…"),
                      Localized.text("Type sizes, the prompt box, vim mode, layout"), settings),
                     (Localized.text("Servers…"),
@@ -212,7 +212,7 @@ extension MainWindow {
         Gtk.onRightClick(orb.widget) { [weak self] _, _ in
             Gtk.onMain { [weak self] in self?.orbPressed(secondary: true) }
         }
-        gtk_box_append(ptr(column), makeExpertShelf())
+        gtk_box_append(ptr(column), makeMasterShelf())
         gtk_box_append(ptr(column), makeScheduleLine())
         gtk_box_append(ptr(column), usageBox)
         gtk_box_append(ptr(column), orb.widget)

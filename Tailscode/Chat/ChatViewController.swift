@@ -80,14 +80,14 @@ final class ChatViewController: UIViewController {
     /// and left exactly as it was.
     var lastInterrupted: InterruptedTurn?
     static let interruptedRowID = "interrupted"
-    /// The card at the end of an expert's task: Finish task, or its debrief.
-    var expertCard: ExpertCardFace?
-    var lastExpertCard: ExpertCardFace?
-    static let expertCardRowID = "expert-card"
+    /// The card at the end of a master's task: Finish task, or its debrief.
+    var masterCard: MasterCardFace?
+    var lastMasterCard: MasterCardFace?
+    static let masterCardRowID = "master-card"
     var expertDebrief: ExpertDebrief?
-    var expertPressing: Set<String> = []
-    var expertPoll: Task<Void, Never>?
-    var expertMarkView: ExpertMarkView?
+    var masterPressing: Set<String> = []
+    var masterPoll: Task<Void, Never>?
+    var masterMarkView: MasterMarkView?
     /// The turn waiting on its provider right now, read fresh from `state.retry` on every render:
     /// the card recomputes its own countdown on a clock of its own, so nothing here needs to track
     /// more than whether the wait itself is still standing.
@@ -302,7 +302,7 @@ final class ChatViewController: UIViewController {
         configureBackgroundChip()
         configureFindBar()
         configureNavTitleView()
-        bindExpert()
+        bindMaster()
         watchSideBar()
         configureDataSource()
         callController.attach()
@@ -541,7 +541,7 @@ final class ChatViewController: UIViewController {
         _ = sideBar.read(traitCollection)
         applyBarItems()
         syncSideBarToolbar(animated: animated)
-        expertAppeared()
+        masterAppeared()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -607,7 +607,7 @@ final class ChatViewController: UIViewController {
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         composer.dictation.stopKeepingShown()
-        expertGone()
+        masterGone()
         AppActivityController.shared.hidden(self)
         brainSearch.cancel()
         rangeClock?.cancel()

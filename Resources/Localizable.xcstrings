@@ -2324,103 +2324,103 @@
         }
       }
     },
-    "%@ cannot keep experts. Experts need a machine running claude-bridge 1.37 or newer.": {
+    "%@ cannot keep masters. Masters need a machine running claude-bridge 1.37 or newer.": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ kan ikke gemme eksperter. Eksperter kræver en maskine, der kører claude-bridge 1.37 eller nyere."
+            "value": "%@ kan ikke gemme mestre. Mestre kræver en maskine, der kører claude-bridge 1.37 eller nyere."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ kann keine Experten behalten. Experten brauchen einen Rechner mit claude-bridge 1.37 oder neuer."
+            "value": "%@ kann keine Meister behalten. Meister brauchen einen Rechner mit claude-bridge 1.37 oder neuer."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ cannot keep experts. Experts need a machine running claude-bridge 1.37 or newer."
+            "value": "%@ cannot keep masters. Masters need a machine running claude-bridge 1.37 or newer."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ no puede guardar expertos. Los expertos necesitan un equipo con claude-bridge 1.37 o posterior."
+            "value": "%@ no puede guardar maestros. Los maestros necesitan un equipo con claude-bridge 1.37 o posterior."
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ ei voi säilyttää asiantuntijoita. Asiantuntijat vaativat koneen, jolla on claude-bridge 1.37 tai uudempi."
+            "value": "%@ ei voi säilyttää mestareita. Mestarit vaativat koneen, jolla on claude-bridge 1.37 tai uudempi."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ ne peut pas conserver d'experts. Les experts nécessitent une machine qui exécute claude-bridge 1.37 ou une version plus récente."
+            "value": "%@ ne peut pas conserver de maîtres. Les maîtres nécessitent une machine qui exécute claude-bridge 1.37 ou une version plus récente."
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ getur ekki geymt sérfræðinga. Sérfræðingar þurfa vél sem keyrir claude-bridge 1.37 eða nýrri."
+            "value": "%@ getur ekki geymt meistara. Meistarar þurfa vél sem keyrir claude-bridge 1.37 eða nýrri."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ non può conservare esperti. Gli esperti richiedono un dispositivo con claude-bridge 1.37 o successivo."
+            "value": "%@ non può conservare maestri. I maestri richiedono un dispositivo con claude-bridge 1.37 o successivo."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ ではエキスパートを保存できません。エキスパートには claude-bridge 1.37 以降が動いているマシンが必要です。"
+            "value": "%@ ではマスターを保存できません。マスターには claude-bridge 1.37 以降が動いているマシンが必要です。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@에서는 전문가를 보관할 수 없습니다. 전문가는 claude-bridge 1.37 이상이 실행 중인 기기가 필요합니다."
+            "value": "%@에서는 마스터를 보관할 수 없습니다. 마스터는 claude-bridge 1.37 이상이 실행 중인 기기가 필요합니다."
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ kan ikke beholde eksperter. Eksperter krever en maskin som kjører claude-bridge 1.37 eller nyere."
+            "value": "%@ kan ikke beholde mestere. Mestere krever en maskin som kjører claude-bridge 1.37 eller nyere."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ nie może przechowywać ekspertów. Eksperci wymagają maszyny z claude-bridge 1.37 lub nowszym."
+            "value": "%@ nie może przechowywać mistrzów. Mistrzowie wymagają maszyny z claude-bridge 1.37 lub nowszym."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ não consegue manter especialistas. Especialistas precisam de uma máquina com claude-bridge 1.37 ou mais recente."
+            "value": "%@ não consegue manter mestres. Mestres precisam de uma máquina com claude-bridge 1.37 ou mais recente."
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ kan inte behålla experter. Experter kräver en dator som kör claude-bridge 1.37 eller senare."
+            "value": "%@ kan inte behålla mästare. Mästare kräver en dator som kör claude-bridge 1.37 eller senare."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 无法保存专家。专家需要运行 claude-bridge 1.37 或更新版本的机器。"
+            "value": "%@ 无法保存大师。大师需要运行 claude-bridge 1.37 或更新版本的机器。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 無法保存專家。專家需要執行 claude-bridge 1.37 或更新版本的機器。"
+            "value": "%@ 無法保存大師。大師需要執行 claude-bridge 1.37 或更新版本的機器。"
           }
         }
       }
@@ -11515,103 +11515,103 @@
         }
       }
     },
-    "%d more in Experts": {
+    "%d more in Masters": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d mere i Eksperter"
+            "value": "%d mere i Mestre"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d weitere in Experten"
+            "value": "%d weitere in Meister"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d more in Experts"
+            "value": "%d more in Masters"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d más en Expertos"
+            "value": "%d más en Maestros"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d lisää Asiantuntijoissa"
+            "value": "%d lisää Mestareissa"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d de plus dans Experts"
+            "value": "%d de plus dans Maîtres"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d til viðbótar í Sérfræðingum"
+            "value": "%d til viðbótar í Meisturum"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d in più in Esperti"
+            "value": "%d in più in Maestri"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパートにさらに %d 件"
+            "value": "マスターにさらに %d 件"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가에 %d개 더"
+            "value": "마스터에 %d개 더"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d til i Eksperter"
+            "value": "%d til i Mestere"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jeszcze %d w Ekspertach"
+            "value": "Jeszcze %d w Mistrzach"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mais %d em Especialistas"
+            "value": "Mais %d em Mestres"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d till i Experter"
+            "value": "%d till i Mästare"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "专家中另有 %d 个"
+            "value": "大师中另有 %d 个"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "專家中另有 %d 個"
+            "value": "大師中另有 %d 個"
           }
         }
       }
@@ -22096,103 +22096,103 @@
         }
       }
     },
-    "A guard that starts failing is the first thing the expert’s next task is told.": {
+    "A guard that starts failing is the first thing the master’s next task is told.": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "En vagt, der begynder at fejle, er det første, eksperten næste opgave får at vide."
+            "value": "En vagt, der begynder at fejle, er det første, mesterens næste opgave får at vide."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ein Wächter, der zu fehlschlagen beginnt, wird der nächsten Aufgabe des Experten als Erstes mitgeteilt."
+            "value": "Ein Wächter, der zu fehlschlagen beginnt, wird der nächsten Aufgabe des Meisters als Erstes mitgeteilt."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "A guard that starts failing is the first thing the expert’s next task is told."
+            "value": "A guard that starts failing is the first thing the master’s next task is told."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un control que empieza a fallar es lo primero que se le dice a la siguiente tarea del experto."
+            "value": "Un control que empieza a fallar es lo primero que se le dice a la siguiente tarea del maestro."
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vahti, joka alkaa epäonnistua, on ensimmäinen asia, josta asiantuntijan seuraavaa tehtävää kerrotaan."
+            "value": "Vahti, joka alkaa epäonnistua, on ensimmäinen asia, josta mestarin seuraavaa tehtävää kerrotaan."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un garde-fou qui commence à échouer est la première chose dont la prochaine tâche de l'expert est informée."
+            "value": "Un garde-fou qui commence à échouer est la première chose dont la prochaine tâche du maître est informée."
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vörður sem fer að falla er það fyrsta sem næsta verkefni sérfræðingsins er látið vita af."
+            "value": "Vörður sem fer að falla er það fyrsta sem næsta verkefni meistarans er látið vita af."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un controllo che inizia a fallire è la prima cosa che viene comunicata alla prossima attività dell'esperto."
+            "value": "Un controllo che inizia a fallire è la prima cosa che viene comunicata alla prossima attività del maestro."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "失敗し始めたガードは、エキスパートの次のタスクに最初に伝えられます。"
+            "value": "失敗し始めたガードは、マスターの次のタスクに最初に伝えられます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "실패하기 시작한 가드는 전문가의 다음 작업에 가장 먼저 전달됩니다."
+            "value": "실패하기 시작한 가드는 마스터의 다음 작업에 가장 먼저 전달됩니다."
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "En vakt som begynner å feile er det første den neste oppgaven til eksperten får vite."
+            "value": "En vakt som begynner å feile er det første den neste oppgaven til mesteren får vite."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Strażnik, który zaczyna nie przechodzić, to pierwsza rzecz, o której zostaje poinformowane następne zadanie eksperta."
+            "value": "Strażnik, który zaczyna nie przechodzić, to pierwsza rzecz, o której zostaje poinformowane następne zadanie mistrza."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Uma verificação que começa a falhar é a primeira coisa que a próxima tarefa do especialista recebe."
+            "value": "Uma verificação que começa a falhar é a primeira coisa que a próxima tarefa do mestre recebe."
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "En vakt som börjar misslyckas är det första expertens nästa uppgift får veta."
+            "value": "En vakt som börjar misslyckas är det första mästarens nästa uppgift får veta."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "开始失败的守卫，会是专家下一个任务最先被告知的事。"
+            "value": "开始失败的守卫，会是大师下一个任务最先被告知的事。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "開始失敗的守衛，會是專家下一個任務最先被告知的事。"
+            "value": "開始失敗的守衛，會是大師下一個任務最先被告知的事。"
           }
         }
       }
@@ -23409,204 +23409,204 @@
         }
       }
     },
-    "An expert is a standing role on a machine: each task starts fresh with its charter, notebook and devices, and ends with a journal entry and notes you accept or skip.": {
+    "A master is a standing role on a machine: each task starts fresh with its charter, notebook and devices, and ends with a journal entry and notes you accept or skip.": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "En ekspert er en fast rolle på en maskine: hver opgave starter forfra med sit mandat, sin notesbog og sin værkbænk og slutter med et logbogsindlæg og noter, som du accepterer eller springer over."
+            "value": "En mester er en fast rolle på en maskine: hver opgave starter forfra med sit mandat, sin notesbog og sin værkbænk og slutter med et logbogsindlæg og noter, som du accepterer eller springer over."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ein Experte ist eine dauerhafte Rolle auf einem Rechner: Jede Aufgabe beginnt neu mit seinem Auftrag, Notizbuch und seiner Werkbank und endet mit einem Journaleintrag und Notizen, die du übernimmst oder überspringst."
+            "value": "Ein Meister ist eine dauerhafte Rolle auf einem Rechner: Jede Aufgabe beginnt neu mit seinem Auftrag, Notizbuch und seiner Werkbank und endet mit einem Journaleintrag und Notizen, die du übernimmst oder überspringst."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "An expert is a standing role on a machine: each task starts fresh with its charter, notebook and devices, and ends with a journal entry and notes you accept or skip."
+            "value": "A master is a standing role on a machine: each task starts fresh with its charter, notebook and devices, and ends with a journal entry and notes you accept or skip."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un experto es un rol permanente en un equipo: cada tarea empieza desde cero con su mandato, su cuaderno y su banco de trabajo, y termina con una entrada del diario y las notas que aceptas u omites."
+            "value": "Un maestro es un rol permanente en un equipo: cada tarea empieza desde cero con su mandato, su cuaderno y su banco de trabajo, y termina con una entrada del diario y las notas que aceptas u omites."
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Asiantuntija on pysyvä rooli koneella: jokainen tehtävä alkaa alusta toimeksiannollaan, muistikirjallaan ja työpöydällään ja päättyy päiväkirjamerkintään sekä muistiinpanoihin, jotka hyväksyt tai ohitat."
+            "value": "Mestari on pysyvä rooli koneella: jokainen tehtävä alkaa alusta toimeksiannollaan, muistikirjallaan ja työpöydällään ja päättyy päiväkirjamerkintään sekä muistiinpanoihin, jotka hyväksyt tai ohitat."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un expert est un rôle permanent sur une machine : chaque tâche repart de zéro avec son mandat, son carnet et son établi, et se termine par une entrée de journal et des notes que vous acceptez ou ignorez."
+            "value": "Un maître est un rôle permanent sur une machine : chaque tâche repart de zéro avec son mandat, son carnet et son établi, et se termine par une entrée de journal et des notes que vous acceptez ou ignorez."
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sérfræðingur er varanlegt hlutverk á vél: hvert verkefni byrjar upp á nýtt með erindisbréfinu, minnisbókinni og vinnubekknum sínum og endar með dagbókarfærslu og athugasemdum sem þú samþykkir eða sleppir."
+            "value": "Meistari er varanlegt hlutverk á vél: hvert verkefni byrjar upp á nýtt með erindisbréfinu, minnisbókinni og vinnubekknum sínum og endar með dagbókarfærslu og athugasemdum sem þú samþykkir eða sleppir."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un esperto è un ruolo permanente su una macchina: ogni attività parte da zero con il suo mandato, il suo taccuino e il suo banco di lavoro, e termina con una voce del diario e le note che accetti o salti."
+            "value": "Un maestro è un ruolo permanente su una macchina: ogni attività parte da zero con il suo mandato, il suo taccuino e il suo banco di lavoro, e termina con una voce del diario e le note che accetti o salti."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパートは、マシンに常駐する役割です。各タスクは行動指針、ノート、作業台を持って毎回まっさらな状態から始まり、日誌の記入と、承認または見送りを選べるメモを残して終わります。"
+            "value": "マスターは、マシンに常駐する役割です。各タスクは行動指針、ノート、作業台を持って毎回まっさらな状態から始まり、日誌の記入と、承認または見送りを選べるメモを残して終わります。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가는 기기에 상주하는 역할입니다. 각 작업은 지침, 노트, 작업대를 가지고 새로 시작하며, 일지 항목과 수락하거나 건너뛸 노트로 끝납니다."
+            "value": "마스터는 기기에 상주하는 역할입니다. 각 작업은 지침, 노트, 작업대를 가지고 새로 시작하며, 일지 항목과 수락하거나 건너뛸 노트로 끝납니다."
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "En ekspert er en fast rolle på en maskin: hver oppgave starter på nytt med sitt mandat, sin notatbok og sin arbeidsbenk, og avsluttes med et logginnlegg og notater du godtar eller hopper over."
+            "value": "En mester er en fast rolle på en maskin: hver oppgave starter på nytt med sitt mandat, sin notatbok og sin arbeidsbenk, og avsluttes med et logginnlegg og notater du godtar eller hopper over."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ekspert to stała rola na maszynie: każde zadanie zaczyna się od nowa z jego mandatem, notatnikiem i stanowiskiem, a kończy wpisem do dziennika i notatkami, które możesz zaakceptować lub pominąć."
+            "value": "Mistrz to stała rola na maszynie: każde zadanie zaczyna się od nowa z jego mandatem, notatnikiem i stanowiskiem, a kończy wpisem do dziennika i notatkami, które możesz zaakceptować lub pominąć."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Um especialista é um papel permanente em uma máquina: cada tarefa começa do zero com seu mandato, seu caderno e sua bancada, e termina com uma entrada de diário e notas que você aceita ou pula."
+            "value": "Um mestre é um papel permanente em uma máquina: cada tarefa começa do zero com seu mandato, seu caderno e sua bancada, e termina com uma entrada de diário e notas que você aceita ou pula."
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "En expert är en stående roll på en dator: varje uppgift startar om med sitt uppdrag, sin anteckningsbok och sin arbetsbänk och avslutas med ett dagboksinlägg och noteringar som du godkänner eller hoppar över."
+            "value": "En mästare är en stående roll på en dator: varje uppgift startar om med sitt uppdrag, sin anteckningsbok och sin arbetsbänk och avslutas med ett dagboksinlägg och noteringar som du godkänner eller hoppar över."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "专家是设在一台机器上的常驻角色：每项任务都从头开始，带着它的章程、笔记本和工作台，结束时写下日志条目，并留下你可以接受或跳过的笔记。"
+            "value": "大师是设在一台机器上的常驻角色：每项任务都从头开始，带着它的章程、笔记本和工作台，结束时写下日志条目，并留下你可以接受或跳过的笔记。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "專家是設在一台機器上的常駐角色：每項任務都從頭開始，帶著它的章程、筆記本和工作台，結束時寫下日誌條目，並留下你可以接受或跳過的筆記。"
+            "value": "大師是設在一台機器上的常駐角色：每項任務都從頭開始，帶著它的章程、筆記本和工作台，結束時寫下日誌條目，並留下你可以接受或跳過的筆記。"
           }
         }
       }
     },
-    "An expert needs a name.": {
+    "A master needs a name.": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "En ekspert skal have et navn."
+            "value": "En mester skal have et navn."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ein Experte braucht einen Namen."
+            "value": "Ein Meister braucht einen Namen."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "An expert needs a name."
+            "value": "A master needs a name."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un experto necesita un nombre."
+            "value": "Un maestro necesita un nombre."
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Asiantuntijalla täytyy olla nimi."
+            "value": "Mestarilla täytyy olla nimi."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un expert a besoin d'un nom."
+            "value": "Un maître a besoin d'un nom."
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sérfræðingur þarf nafn."
+            "value": "Meistari þarf nafn."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un esperto ha bisogno di un nome."
+            "value": "Un maestro ha bisogno di un nome."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパートには名前が必要です。"
+            "value": "マスターには名前が必要です。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가에게는 이름이 필요합니다."
+            "value": "마스터에게는 이름이 필요합니다."
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "En ekspert trenger et navn."
+            "value": "En mester trenger et navn."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ekspert potrzebuje nazwy."
+            "value": "Mistrz potrzebuje nazwy."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Um especialista precisa de um nome."
+            "value": "Um mestre precisa de um nome."
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "En expert behöver ett namn."
+            "value": "En mästare behöver ett namn."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "专家需要一个名称。"
+            "value": "大师需要一个名称。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "專家需要一個名稱。"
+            "value": "大師需要一個名稱。"
           }
         }
       }
@@ -26338,103 +26338,103 @@
         }
       }
     },
-    "Delete expert": {
+    "Delete master": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Slet ekspert"
+            "value": "Slet mester"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Experten löschen"
+            "value": "Meister löschen"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Delete expert"
+            "value": "Delete master"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eliminar experto"
+            "value": "Eliminar maestro"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Poista asiantuntija"
+            "value": "Poista mestari"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Supprimer l'expert"
+            "value": "Supprimer le maître"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eyða sérfræðingi"
+            "value": "Eyða meistara"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Elimina esperto"
+            "value": "Elimina maestro"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパートを削除"
+            "value": "マスターを削除"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가 삭제"
+            "value": "마스터 삭제"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Slett ekspert"
+            "value": "Slett mester"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Usuń eksperta"
+            "value": "Usuń mistrza"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apagar especialista"
+            "value": "Apagar mestre"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Radera expert"
+            "value": "Radera mästare"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "删除专家"
+            "value": "删除大师"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "刪除專家"
+            "value": "刪除大師"
           }
         }
       }
@@ -26742,204 +26742,204 @@
         }
       }
     },
-    "Drafting an expert from the %@ skill": {
+    "Drafting a master from the %@ skill": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Udkaster en ekspert ud fra færdigheden %@"
+            "value": "Udkaster en mester ud fra færdigheden %@"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ein Experte aus der Fähigkeit %@ wird entworfen"
+            "value": "Ein Meister aus der Fähigkeit %@ wird entworfen"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Drafting an expert from the %@ skill"
+            "value": "Drafting a master from the %@ skill"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Redactando un experto a partir de la habilidad %@"
+            "value": "Redactando un maestro a partir de la habilidad %@"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Luonnostellaan asiantuntijaa taidosta %@"
+            "value": "Luonnostellaan mestaria taidosta %@"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Rédaction d'un expert à partir de la compétence %@"
+            "value": "Rédaction d'un maître à partir de la compétence %@"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dreg drög að sérfræðingi úr færninni %@"
+            "value": "Dreg drög að meistara úr færninni %@"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Stesura di un esperto dalla competenza %@"
+            "value": "Stesura di un maestro dalla competenza %@"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "スキル %@ からエキスパートを下書き中"
+            "value": "スキル %@ からマスターを下書き中"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 스킬에서 전문가 초안 작성 중"
+            "value": "%@ 스킬에서 마스터 초안 작성 중"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lager et utkast til ekspert fra ferdigheten %@"
+            "value": "Lager et utkast til mester fra ferdigheten %@"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Szkicowanie eksperta z umiejętności %@"
+            "value": "Szkicowanie mistrza z umiejętności %@"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Redigindo um especialista a partir da habilidade %@"
+            "value": "Redigindo um mestre a partir da habilidade %@"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Utformar en expert från färdigheten %@"
+            "value": "Utformar en mästare från färdigheten %@"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在从技能 %@ 起草专家"
+            "value": "正在从技能 %@ 起草大师"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在從技能 %@ 草擬專家"
+            "value": "正在從技能 %@ 草擬大師"
           }
         }
       }
     },
-    "Drafting an expert from “%@”": {
+    "Drafting a master from “%@”": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Udkaster en ekspert ud fra „%@“"
+            "value": "Udkaster en mester ud fra „%@“"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ein Experte aus „%@“ wird entworfen"
+            "value": "Ein Meister aus „%@“ wird entworfen"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Drafting an expert from “%@”"
+            "value": "Drafting a master from “%@”"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Redactando un experto a partir de “%@”"
+            "value": "Redactando un maestro a partir de “%@”"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Luonnostellaan asiantuntijaa lähteestä ”%@”"
+            "value": "Luonnostellaan mestaria lähteestä ”%@”"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Rédaction d'un expert à partir de « %@ »"
+            "value": "Rédaction d'un maître à partir de « %@ »"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dreg drög að sérfræðingi úr „%@“"
+            "value": "Dreg drög að meistara úr „%@“"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Stesura di un esperto da “%@”"
+            "value": "Stesura di un maestro da “%@”"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "「%@」からエキスパートを下書き中"
+            "value": "「%@」からマスターを下書き中"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "“%@”에서 전문가 초안 작성 중"
+            "value": "“%@”에서 마스터 초안 작성 중"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lager et utkast til ekspert fra «%@»"
+            "value": "Lager et utkast til mester fra «%@»"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Szkicowanie eksperta z „%@”"
+            "value": "Szkicowanie mistrza z „%@”"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Redigindo um especialista a partir de “%@”"
+            "value": "Redigindo um mestre a partir de “%@”"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Utformar en expert från ”%@”"
+            "value": "Utformar en mästare från ”%@”"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在从“%@”起草专家"
+            "value": "正在从“%@”起草大师"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在從「%@」草擬專家"
+            "value": "正在從「%@」草擬大師"
           }
         }
       }
@@ -27348,103 +27348,103 @@
         }
       }
     },
-    "Experts": {
+    "Masters": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eksperter"
+            "value": "Mestre"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Experten"
+            "value": "Meister"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Experts"
+            "value": "Masters"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Expertos"
+            "value": "Maestros"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Asiantuntijat"
+            "value": "Mestarit"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Experts"
+            "value": "Maîtres"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sérfræðingar"
+            "value": "Meistarar"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Esperti"
+            "value": "Maestri"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパート"
+            "value": "マスター"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가"
+            "value": "마스터"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eksperter"
+            "value": "Mestere"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eksperci"
+            "value": "Mistrzowie"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Especialistas"
+            "value": "Mestres"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Experter"
+            "value": "Mästare"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "专家"
+            "value": "大师"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "專家"
+            "value": "大師"
           }
         }
       }
@@ -29267,204 +29267,204 @@
         }
       }
     },
-    "Hand to an expert…": {
+    "Hand to a master…": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Giv til en ekspert…"
+            "value": "Giv til en mester…"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "An einen Experten übergeben…"
+            "value": "An einen Meister übergeben…"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hand to an expert…"
+            "value": "Hand to a master…"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pasar a un experto…"
+            "value": "Pasar a un maestro…"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Anna asiantuntijalle…"
+            "value": "Anna mestarille…"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Confier à un expert…"
+            "value": "Confier à un maître…"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fela sérfræðingi…"
+            "value": "Fela meistara…"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Passa a un esperto…"
+            "value": "Passa a un maestro…"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパートに渡す…"
+            "value": "マスターに渡す…"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가에게 넘기기…"
+            "value": "마스터에게 넘기기…"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gi til en ekspert…"
+            "value": "Gi til en mester…"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Przekaż ekspertowi…"
+            "value": "Przekaż mistrzowi…"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Passar para um especialista…"
+            "value": "Passar para um mestre…"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lämna till en expert…"
+            "value": "Lämna till en mästare…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "交给专家…"
+            "value": "交给大师…"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "交給專家…"
+            "value": "交給大師…"
           }
         }
       }
     },
-    "Hand to an Expert…": {
+    "Hand to a Master…": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Giv til en ekspert…"
+            "value": "Giv til en mester…"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "An einen Experten übergeben…"
+            "value": "An einen Meister übergeben…"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hand to an Expert…"
+            "value": "Hand to a Master…"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pasar a un experto…"
+            "value": "Pasar a un maestro…"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Anna asiantuntijalle…"
+            "value": "Anna mestarille…"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Confier à un expert…"
+            "value": "Confier à un maître…"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fela sérfræðingi…"
+            "value": "Fela meistara…"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Passa a un esperto…"
+            "value": "Passa a un maestro…"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパートに渡す…"
+            "value": "マスターに渡す…"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가에게 넘기기…"
+            "value": "마스터에게 넘기기…"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gi til en ekspert…"
+            "value": "Gi til en mester…"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Przekaż ekspertowi…"
+            "value": "Przekaż mistrzowi…"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Passar para um especialista…"
+            "value": "Passar para um mestre…"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lämna till en expert…"
+            "value": "Lämna till en mästare…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "交给专家…"
+            "value": "交给大师…"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "交給專家…"
+            "value": "交給大師…"
           }
         }
       }
@@ -30580,103 +30580,103 @@
         }
       }
     },
-    "Its own, beside the expert": {
+    "Its own, beside the master": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Egen, ved siden af eksperten"
+            "value": "Egen, ved siden af mesteren"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eigener, neben dem Experten"
+            "value": "Eigener, neben dem Meister"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Its own, beside the expert"
+            "value": "Its own, beside the master"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Propia, junto al experto"
+            "value": "Propia, junto al maestro"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oma, asiantuntijan vieressä"
+            "value": "Oma, mestarin vieressä"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Propre, à côté de l'expert"
+            "value": "Propre, à côté du maître"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sér, við hliðina á sérfræðingnum"
+            "value": "Sér, við hliðina á meistaranum"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Propria, accanto all'esperto"
+            "value": "Propria, accanto al maestro"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパートとは別の専用フォルダ"
+            "value": "マスターとは別の専用フォルダ"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가 옆에 별도로"
+            "value": "마스터 옆에 별도로"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Egen, ved siden av eksperten"
+            "value": "Egen, ved siden av mesteren"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Własny, obok eksperta"
+            "value": "Własny, obok mistrza"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Própria, ao lado do especialista"
+            "value": "Própria, ao lado do mestre"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Egen, bredvid experten"
+            "value": "Egen, bredvid mästaren"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "独立的，位于专家旁边"
+            "value": "独立的，位于大师旁边"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "獨立的，位於專家旁邊"
+            "value": "獨立的，位於大師旁邊"
           }
         }
       }
@@ -31691,204 +31691,204 @@
         }
       }
     },
-    "Make an expert from this chat…": {
+    "Make a master from this chat…": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lav en ekspert ud af denne chat…"
+            "value": "Lav en mester ud af denne chat…"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aus diesem Chat einen Experten machen…"
+            "value": "Aus diesem Chat einen Meister machen…"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Make an expert from this chat…"
+            "value": "Make a master from this chat…"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Crear un experto a partir de este chat…"
+            "value": "Crear un maestro a partir de este chat…"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tee tästä keskustelusta asiantuntija…"
+            "value": "Tee tästä keskustelusta mestari…"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Créer un expert à partir de ce chat…"
+            "value": "Créer un maître à partir de ce chat…"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Búa til sérfræðing úr þessu spjalli…"
+            "value": "Búa til meistara úr þessu spjalli…"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Crea un esperto da questa chat…"
+            "value": "Crea un maestro da questa chat…"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このチャットからエキスパートを作成…"
+            "value": "このチャットからマスターを作成…"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "이 채팅으로 전문가 만들기…"
+            "value": "이 채팅으로 마스터 만들기…"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lag en ekspert av denne chatten…"
+            "value": "Lag en mester av denne chatten…"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Utwórz eksperta z tego czatu…"
+            "value": "Utwórz mistrza z tego czatu…"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Criar um especialista a partir deste chat…"
+            "value": "Criar um mestre a partir deste chat…"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gör en expert av den här chatten…"
+            "value": "Gör en mästare av den här chatten…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "从此聊天创建专家…"
+            "value": "从此聊天创建大师…"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "從此聊天建立專家…"
+            "value": "從此聊天建立大師…"
           }
         }
       }
     },
-    "Make an Expert from This Chat…": {
+    "Make a Master from This Chat…": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lav en ekspert ud af denne chat…"
+            "value": "Lav en mester ud af denne chat…"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aus diesem Chat einen Experten machen…"
+            "value": "Aus diesem Chat einen Meister machen…"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Make an Expert from This Chat…"
+            "value": "Make a Master from This Chat…"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Crear un experto a partir de este chat…"
+            "value": "Crear un maestro a partir de este chat…"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tee tästä keskustelusta asiantuntija…"
+            "value": "Tee tästä keskustelusta mestari…"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Créer un expert à partir de ce chat…"
+            "value": "Créer un maître à partir de ce chat…"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Búa til sérfræðing úr þessu spjalli…"
+            "value": "Búa til meistara úr þessu spjalli…"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Crea un esperto da questa chat…"
+            "value": "Crea un maestro da questa chat…"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このチャットからエキスパートを作成…"
+            "value": "このチャットからマスターを作成…"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "이 채팅으로 전문가 만들기…"
+            "value": "이 채팅으로 마스터 만들기…"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lag en ekspert av denne chatten…"
+            "value": "Lag en mester av denne chatten…"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Utwórz eksperta z tego czatu…"
+            "value": "Utwórz mistrza z tego czatu…"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Criar um especialista a partir deste chat…"
+            "value": "Criar um mestre a partir deste chat…"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gör en expert av den här chatten…"
+            "value": "Gör en mästare av den här chatten…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "从此聊天创建专家…"
+            "value": "从此聊天创建大师…"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "從此聊天建立專家…"
+            "value": "從此聊天建立大師…"
           }
         }
       }
@@ -32297,103 +32297,103 @@
         }
       }
     },
-    "New expert": {
+    "New master": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ny ekspert"
+            "value": "Ny mester"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Neuer Experte"
+            "value": "Neuer Meister"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "New expert"
+            "value": "New master"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nuevo experto"
+            "value": "Nuevo maestro"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Uusi asiantuntija"
+            "value": "Uusi mestari"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nouvel expert"
+            "value": "Nouveau maître"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nýr sérfræðingur"
+            "value": "Nýr meistari"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nuovo esperto"
+            "value": "Nuovo maestro"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "新しいエキスパート"
+            "value": "新しいマスター"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "새 전문가"
+            "value": "새 마스터"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ny ekspert"
+            "value": "Ny mester"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nowy ekspert"
+            "value": "Nowy mistrz"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Novo especialista"
+            "value": "Novo mestre"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ny expert"
+            "value": "Ny mästare"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "新专家"
+            "value": "新大师"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "新專家"
+            "value": "新大師"
           }
         }
       }
@@ -32802,103 +32802,103 @@
         }
       }
     },
-    "No experts yet": {
+    "No masters yet": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ingen eksperter endnu"
+            "value": "Ingen mestre endnu"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Noch keine Experten"
+            "value": "Noch keine Meister"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No experts yet"
+            "value": "No masters yet"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Todavía no hay expertos"
+            "value": "Todavía no hay maestros"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ei asiantuntijoita vielä"
+            "value": "Ei mestareita vielä"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aucun expert pour l'instant"
+            "value": "Aucun maître pour l'instant"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Engir sérfræðingar enn"
+            "value": "Engir meistarar enn"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ancora nessun esperto"
+            "value": "Ancora nessun maestro"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "まだエキスパートはありません"
+            "value": "まだマスターはありません"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "아직 전문가가 없습니다"
+            "value": "아직 마스터가 없습니다"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ingen eksperter ennå"
+            "value": "Ingen mestere ennå"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nie ma jeszcze ekspertów"
+            "value": "Nie ma jeszcze mistrzów"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ainda não há especialistas"
+            "value": "Ainda não há mestres"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Inga experter än"
+            "value": "Inga mästare än"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "还没有专家"
+            "value": "还没有大师"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "還沒有專家"
+            "value": "還沒有大師"
           }
         }
       }
@@ -35327,103 +35327,103 @@
         }
       }
     },
-    "Opens the expert": {
+    "Opens the master": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Åbner eksperten"
+            "value": "Åbner mesteren"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Öffnet den Experten"
+            "value": "Öffnet den Meister"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Opens the expert"
+            "value": "Opens the master"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Abre al experto"
+            "value": "Abre al maestro"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Avaa asiantuntijan"
+            "value": "Avaa mestarin"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ouvre l'expert"
+            "value": "Ouvre le maître"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Opnar sérfræðinginn"
+            "value": "Opnar meistarann"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apre l'esperto"
+            "value": "Apre il maestro"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパートを開く"
+            "value": "マスターを開く"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가 열기"
+            "value": "마스터 열기"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Åpner eksperten"
+            "value": "Åpner mesteren"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Otwiera eksperta"
+            "value": "Otwiera mistrza"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Abre o especialista"
+            "value": "Abre o mestre"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Öppnar experten"
+            "value": "Öppnar mästaren"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "打开专家"
+            "value": "打开大师"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "打開專家"
+            "value": "打開大師"
           }
         }
       }
@@ -35933,103 +35933,103 @@
         }
       }
     },
-    "Picking an expert starts a new task with “%@” carried as a brief. This chat stays as it is.": {
+    "Picking a master starts a new task with “%@” carried as a brief. This chat stays as it is.": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Valg af en ekspert starter en ny opgave med »%@« som briefing. Denne chat forbliver, som den er."
+            "value": "Valg af en mester starter en ny opgave med »%@« som briefing. Denne chat forbliver, som den er."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wenn du einen Experten wählst, startet eine neue Aufgabe mit „%@“ als Briefing. Dieser Chat bleibt, wie er ist."
+            "value": "Wenn du einen Meister wählst, startet eine neue Aufgabe mit „%@“ als Briefing. Dieser Chat bleibt, wie er ist."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Picking an expert starts a new task with “%@” carried as a brief. This chat stays as it is."
+            "value": "Picking a master starts a new task with “%@” carried as a brief. This chat stays as it is."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Elegir un experto inicia una nueva tarea con “%@” como encargo. Este chat se mantiene igual."
+            "value": "Elegir un maestro inicia una nueva tarea con “%@” como encargo. Este chat se mantiene igual."
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Asiantuntijan valitseminen aloittaa uuden tehtävän, jonka ohjeistuksena on ”%@”. Tämä keskustelu pysyy ennallaan."
+            "value": "Mestarin valitseminen aloittaa uuden tehtävän, jonka ohjeistuksena on ”%@”. Tämä keskustelu pysyy ennallaan."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choisir un expert lance une nouvelle tâche avec « %@ » comme consigne. Ce chat reste tel quel."
+            "value": "Choisir un maître lance une nouvelle tâche avec « %@ » comme consigne. Ce chat reste tel quel."
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Þegar sérfræðingur er valinn hefst nýtt verkefni með „%@“ sem verklýsingu. Þetta spjall helst óbreytt."
+            "value": "Þegar meistari er valinn hefst nýtt verkefni með „%@“ sem verklýsingu. Þetta spjall helst óbreytt."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Scegliere un esperto avvia una nuova attività con “%@” come briefing. Questa chat resta com'è."
+            "value": "Scegliere un maestro avvia una nuova attività con “%@” come briefing. Questa chat resta com'è."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパートを選ぶと、「%@」を指示として新しいタスクが始まります。このチャットはそのままです。"
+            "value": "マスターを選ぶと、「%@」を指示として新しいタスクが始まります。このチャットはそのままです。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가를 고르면 “%@”을(를) 브리프로 담은 새 작업이 시작됩니다. 이 채팅은 그대로 유지됩니다."
+            "value": "마스터를 고르면 “%@”을(를) 브리프로 담은 새 작업이 시작됩니다. 이 채팅은 그대로 유지됩니다."
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Å velge en ekspert starter en ny oppgave med «%@» som brief. Denne chatten forblir som den er."
+            "value": "Å velge en mester starter en ny oppgave med «%@» som brief. Denne chatten forblir som den er."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wybór eksperta rozpoczyna nowe zadanie z „%@” jako zleceniem. Ten czat pozostaje bez zmian."
+            "value": "Wybór mistrza rozpoczyna nowe zadanie z „%@” jako zleceniem. Ten czat pozostaje bez zmian."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Escolher um especialista inicia uma nova tarefa com “%@” como briefing. Este chat continua como está."
+            "value": "Escolher um mestre inicia uma nova tarefa com “%@” como briefing. Este chat continua como está."
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Att välja en expert startar en ny uppgift med ”%@” som underlag. Den här chatten förblir som den är."
+            "value": "Att välja en mästare startar en ny uppgift med ”%@” som underlag. Den här chatten förblir som den är."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "选择专家会以「%@」作为简报开始一项新任务。此聊天保持不变。"
+            "value": "选择大师会以「%@」作为简报开始一项新任务。此聊天保持不变。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "選擇專家會以「%@」作為簡報開始一項新任務。此聊天保持不變。"
+            "value": "選擇大師會以「%@」作為簡報開始一項新任務。此聊天保持不變。"
           }
         }
       }
@@ -37246,103 +37246,103 @@
         }
       }
     },
-    "Show Experts": {
+    "Show Masters": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vis eksperter"
+            "value": "Vis mestre"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Experten anzeigen"
+            "value": "Meister anzeigen"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Show Experts"
+            "value": "Show Masters"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mostrar expertos"
+            "value": "Mostrar maestros"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Näytä asiantuntijat"
+            "value": "Näytä mestarit"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Afficher les experts"
+            "value": "Afficher les maîtres"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sýna sérfræðinga"
+            "value": "Sýna meistara"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mostra esperti"
+            "value": "Mostra maestri"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパートを表示"
+            "value": "マスターを表示"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가 보기"
+            "value": "마스터 보기"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vis eksperter"
+            "value": "Vis mestere"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pokaż ekspertów"
+            "value": "Pokaż mistrzów"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mostrar especialistas"
+            "value": "Mostrar mestres"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Visa experter"
+            "value": "Visa mästare"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "显示专家"
+            "value": "显示大师"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "顯示專家"
+            "value": "顯示大師"
           }
         }
       }
@@ -52598,103 +52598,103 @@
         }
       }
     },
-    "The command, run in the expert's folder": {
+    "The command, run in the master's folder": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kommandoen, kørt i ekspertens mappe"
+            "value": "Kommandoen, kørt i mesterens mappe"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Befehl, ausgeführt im Ordner des Experten"
+            "value": "Der Befehl, ausgeführt im Ordner des Meisters"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The command, run in the expert's folder"
+            "value": "The command, run in the master's folder"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "El comando, ejecutado en la carpeta del experto"
+            "value": "El comando, ejecutado en la carpeta del maestro"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Komento, joka suoritetaan asiantuntijan kansiossa"
+            "value": "Komento, joka suoritetaan mestarin kansiossa"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "La commande, exécutée dans le dossier de l'expert"
+            "value": "La commande, exécutée dans le dossier du maître"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Skipunin, keyrð í möppu sérfræðingsins"
+            "value": "Skipunin, keyrð í möppu meistarans"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Il comando, eseguito nella cartella dell'esperto"
+            "value": "Il comando, eseguito nella cartella del maestro"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパートのフォルダで実行されるコマンド"
+            "value": "マスターのフォルダで実行されるコマンド"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가의 폴더에서 실행되는 명령"
+            "value": "마스터의 폴더에서 실행되는 명령"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kommandoen, kjørt i ekspertens mappe"
+            "value": "Kommandoen, kjørt i mesterens mappe"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Polecenie uruchamiane w folderze eksperta"
+            "value": "Polecenie uruchamiane w folderze mistrza"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O comando, executado na pasta do especialista"
+            "value": "O comando, executado na pasta do mestre"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kommandot, körs i expertens mapp"
+            "value": "Kommandot, körs i mästarens mapp"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在专家的文件夹中运行的命令"
+            "value": "在大师的文件夹中运行的命令"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "在專家的資料夾中執行的指令"
+            "value": "在大師的資料夾中執行的指令"
           }
         }
       }
@@ -52901,305 +52901,305 @@
         }
       }
     },
-    "The expert": {
+    "The master": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eksperten"
+            "value": "Mesteren"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Experte"
+            "value": "Der Meister"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The expert"
+            "value": "The master"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "El experto"
+            "value": "El maestro"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Asiantuntija"
+            "value": "Mestari"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "L'expert"
+            "value": "Le maître"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sérfræðingurinn"
+            "value": "Meistarinn"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "L'esperto"
+            "value": "Il maestro"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパート"
+            "value": "マスター"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가"
+            "value": "마스터"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eksperten"
+            "value": "Mesteren"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ekspert"
+            "value": "Mistrz"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O especialista"
+            "value": "O mestre"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Experten"
+            "value": "Mästaren"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "专家"
+            "value": "大师"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "專家"
+            "value": "大師"
           }
         }
       }
     },
-    "The expert loads the skill first in every task, and its charter is drafted from it.": {
+    "The master loads the skill first in every task, and its charter is drafted from it.": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eksperten indlæser færdigheden først i hver opgave, og dens mandat udarbejdes ud fra den."
+            "value": "Mesteren indlæser færdigheden først i hver opgave, og dens mandat udarbejdes ud fra den."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Experte lädt die Fähigkeit in jeder Aufgabe zuerst, und sein Auftrag wird daraus entworfen."
+            "value": "Der Meister lädt die Fähigkeit in jeder Aufgabe zuerst, und sein Auftrag wird daraus entworfen."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The expert loads the skill first in every task, and its charter is drafted from it."
+            "value": "The master loads the skill first in every task, and its charter is drafted from it."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "El experto carga primero la habilidad en cada tarea, y su mandato se redacta a partir de ella."
+            "value": "El maestro carga primero la habilidad en cada tarea, y su mandato se redacta a partir de ella."
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Asiantuntija lataa taidon ensin jokaisessa tehtävässä, ja sen toimeksianto laaditaan siitä."
+            "value": "Mestari lataa taidon ensin jokaisessa tehtävässä, ja sen toimeksianto laaditaan siitä."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "L'expert charge d'abord la compétence dans chaque tâche, et son mandat en est rédigé."
+            "value": "Le maître charge d'abord la compétence dans chaque tâche, et son mandat en est rédigé."
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sérfræðingurinn hleður færninni fyrst í hverju verkefni og erindisbréfið er samið út frá henni."
+            "value": "Meistarinn hleður færninni fyrst í hverju verkefni og erindisbréfið er samið út frá henni."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "L'esperto carica prima la competenza in ogni attività, e il suo mandato ne viene redatto."
+            "value": "Il maestro carica prima la competenza in ogni attività, e il suo mandato ne viene redatto."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパートはすべてのタスクでまずそのスキルを読み込み、行動指針はそこから下書きされます。"
+            "value": "マスターはすべてのタスクでまずそのスキルを読み込み、行動指針はそこから下書きされます。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가는 모든 작업에서 스킬을 먼저 불러오며, 지침은 그 스킬에서 초안이 작성됩니다."
+            "value": "마스터는 모든 작업에서 스킬을 먼저 불러오며, 지침은 그 스킬에서 초안이 작성됩니다."
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eksperten laster ferdigheten først i hver oppgave, og mandatet utarbeides fra den."
+            "value": "Mesteren laster ferdigheten først i hver oppgave, og mandatet utarbeides fra den."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ekspert najpierw wczytuje umiejętność w każdym zadaniu, a jego mandat jest z niej przygotowywany."
+            "value": "Mistrz najpierw wczytuje umiejętność w każdym zadaniu, a jego mandat jest z niej przygotowywany."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O especialista carrega a habilidade primeiro em toda tarefa, e o mandato é rascunhado a partir dela."
+            "value": "O mestre carrega a habilidade primeiro em toda tarefa, e o mandato é rascunhado a partir dela."
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Experten laddar färdigheten först i varje uppgift, och dess uppdrag utformas utifrån den."
+            "value": "Mästaren laddar färdigheten först i varje uppgift, och dess uppdrag utformas utifrån den."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "专家在每个任务中都先加载该技能，其章程也据此起草。"
+            "value": "大师在每个任务中都先加载该技能，其章程也据此起草。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "專家在每個任務中都先載入該技能，其章程也據此草擬。"
+            "value": "大師在每個任務中都先載入該技能，其章程也據此草擬。"
           }
         }
       }
     },
-    "The expert's folder": {
+    "The master's folder": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ekspertens mappe"
+            "value": "Mesterens mappe"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Ordner des Experten"
+            "value": "Der Ordner des Meisters"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The expert's folder"
+            "value": "The master's folder"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "La carpeta del experto"
+            "value": "La carpeta del maestro"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Asiantuntijan kansio"
+            "value": "Mestarin kansio"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Le dossier de l'expert"
+            "value": "Le dossier du maître"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mappa sérfræðingsins"
+            "value": "Mappa meistarans"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "La cartella dell'esperto"
+            "value": "La cartella del maestro"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパートのフォルダ"
+            "value": "マスターのフォルダ"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가의 폴더"
+            "value": "마스터의 폴더"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ekspertens mappe"
+            "value": "Mesterens mappe"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Folder eksperta"
+            "value": "Folder mistrza"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "A pasta do especialista"
+            "value": "A pasta do mestre"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Expertens mapp"
+            "value": "Mästarens mapp"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "专家的文件夹"
+            "value": "大师的文件夹"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "專家的資料夾"
+            "value": "大師的資料夾"
           }
         }
       }
@@ -53810,103 +53810,103 @@
         }
       }
     },
-    "The machine proves it whenever the expert's page opens and when a task starts. A task holds the lock around anything it installs or runs there, so two tasks never share a device.": {
+    "The machine proves it whenever the master's page opens and when a task starts. A task holds the lock around anything it installs or runs there, so two tasks never share a device.": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Maskinen beviser det, hver gang ekspertens side åbnes, og når en opgave starter. En opgave holder låsen under alt, den installerer eller kører der, så to opgaver aldrig deler en enhed."
+            "value": "Maskinen beviser det, hver gang mesterens side åbnes, og når en opgave starter. En opgave holder låsen under alt, den installerer eller kører der, så to opgaver aldrig deler en enhed."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Der Rechner prüft das, sobald die Seite des Experten geöffnet wird und wenn eine Aufgabe startet. Eine Aufgabe hält die Sperre für alles, was sie dort installiert oder ausführt, sodass sich zwei Aufgaben nie ein Gerät teilen."
+            "value": "Der Rechner prüft das, sobald die Seite des Meisters geöffnet wird und wenn eine Aufgabe startet. Eine Aufgabe hält die Sperre für alles, was sie dort installiert oder ausführt, sodass sich zwei Aufgaben nie ein Gerät teilen."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The machine proves it whenever the expert's page opens and when a task starts. A task holds the lock around anything it installs or runs there, so two tasks never share a device."
+            "value": "The machine proves it whenever the master's page opens and when a task starts. A task holds the lock around anything it installs or runs there, so two tasks never share a device."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "El equipo lo comprueba cada vez que se abre la página del experto y cuando empieza una tarea. Una tarea mantiene el bloqueo mientras instala o ejecuta algo allí, así que dos tareas nunca comparten un dispositivo."
+            "value": "El equipo lo comprueba cada vez que se abre la página del maestro y cuando empieza una tarea. Una tarea mantiene el bloqueo mientras instala o ejecuta algo allí, así que dos tareas nunca comparten un dispositivo."
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kone todistaa tämän aina, kun asiantuntijan sivu avataan ja kun tehtävä alkaa. Tehtävä pitää lukitusta koko ajan, kun se asentaa tai suorittaa jotain siellä, joten kaksi tehtävää ei koskaan jaa samaa laitetta."
+            "value": "Kone todistaa tämän aina, kun mestarin sivu avataan ja kun tehtävä alkaa. Tehtävä pitää lukitusta koko ajan, kun se asentaa tai suorittaa jotain siellä, joten kaksi tehtävää ei koskaan jaa samaa laitetta."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "La machine le vérifie à chaque ouverture de la page de l'expert et au démarrage d'une tâche. Une tâche garde le verrou pendant tout ce qu'elle installe ou exécute là-bas, ainsi deux tâches ne partagent jamais un appareil."
+            "value": "La machine le vérifie à chaque ouverture de la page du maître et au démarrage d'une tâche. Une tâche garde le verrou pendant tout ce qu'elle installe ou exécute là-bas, ainsi deux tâches ne partagent jamais un appareil."
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vélin sannar þetta í hvert skipti sem síða sérfræðingsins opnast og þegar verkefni hefst. Verkefni heldur læsingunni meðan það setur upp eða keyrir eitthvað þar, þannig að tvö verkefni deila aldrei tæki."
+            "value": "Vélin sannar þetta í hvert skipti sem síða meistarans opnast og þegar verkefni hefst. Verkefni heldur læsingunni meðan það setur upp eða keyrir eitthvað þar, þannig að tvö verkefni deila aldrei tæki."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Il dispositivo lo verifica ogni volta che si apre la pagina dell'esperto e quando inizia un'attività. Un'attività mantiene il blocco per tutto ciò che vi installa o esegue, quindi due attività non condividono mai un dispositivo."
+            "value": "Il dispositivo lo verifica ogni volta che si apre la pagina del maestro e quando inizia un'attività. Un'attività mantiene il blocco per tutto ciò che vi installa o esegue, quindi due attività non condividono mai un dispositivo."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "エキスパートのページを開くときと、タスクが始まるときに、マシンがそれを確認します。タスクはそこでインストールや実行をする間ロックを保持するため、2つのタスクが同じデバイスを共有することはありません。"
+            "value": "マスターのページを開くときと、タスクが始まるときに、マシンがそれを確認します。タスクはそこでインストールや実行をする間ロックを保持するため、2つのタスクが同じデバイスを共有することはありません。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "전문가 페이지를 열 때와 작업이 시작될 때마다 기기가 이를 확인합니다. 작업은 거기서 설치하거나 실행하는 동안 잠금을 쥐고 있어, 두 작업이 같은 기기를 공유하는 일이 없습니다."
+            "value": "마스터 페이지를 열 때와 작업이 시작될 때마다 기기가 이를 확인합니다. 작업은 거기서 설치하거나 실행하는 동안 잠금을 쥐고 있어, 두 작업이 같은 기기를 공유하는 일이 없습니다."
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Maskinen beviser det hver gang ekspertens side åpnes og når en oppgave starter. En oppgave holder låsen rundt alt den installerer eller kjører der, så to oppgaver deler aldri en enhet."
+            "value": "Maskinen beviser det hver gang mesterens side åpnes og når en oppgave starter. En oppgave holder låsen rundt alt den installerer eller kjører der, så to oppgaver deler aldri en enhet."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Maszyna sprawdza to za każdym razem, gdy otwiera się strona eksperta i gdy zaczyna się zadanie. Zadanie trzyma blokadę podczas wszystkiego, co tam instaluje lub uruchamia, więc dwa zadania nigdy nie współdzielą urządzenia."
+            "value": "Maszyna sprawdza to za każdym razem, gdy otwiera się strona mistrza i gdy zaczyna się zadanie. Zadanie trzyma blokadę podczas wszystkiego, co tam instaluje lub uruchamia, więc dwa zadania nigdy nie współdzielą urządzenia."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "A máquina comprova isso sempre que a página do especialista abre e quando uma tarefa começa. Uma tarefa mantém o bloqueio em tudo o que instala ou executa ali, então duas tarefas nunca compartilham um dispositivo."
+            "value": "A máquina comprova isso sempre que a página do mestre abre e quando uma tarefa começa. Uma tarefa mantém o bloqueio em tudo o que instala ou executa ali, então duas tarefas nunca compartilham um dispositivo."
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Datorn bevisar det när expertens sida öppnas och när en uppgift startar. En uppgift håller låset kring allt den installerar eller kör där, så två uppgifter delar aldrig en enhet."
+            "value": "Datorn bevisar det när mästarens sida öppnas och när en uppgift startar. En uppgift håller låset kring allt den installerar eller kör där, så två uppgifter delar aldrig en enhet."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "机器会在打开专家页面和任务开始时进行验证。任务在其中安装或运行任何内容时会持有锁，因此两个任务绝不会共用同一台设备。"
+            "value": "机器会在打开大师页面和任务开始时进行验证。任务在其中安装或运行任何内容时会持有锁，因此两个任务绝不会共用同一台设备。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "機器會在開啟專家頁面和任務開始時進行驗證。任務在其中安裝或執行任何內容時會持有鎖，因此兩個任務絕不會共用同一台裝置。"
+            "value": "機器會在開啟大師頁面和任務開始時進行驗證。任務在其中安裝或執行任何內容時會持有鎖，因此兩個任務絕不會共用同一台裝置。"
           }
         }
       }
@@ -54214,103 +54214,103 @@
         }
       }
     },
-    "The notes wait on the expert's shelf": {
+    "The notes wait on the master's shelf": {
       "extractionState": "manual",
       "localizations": {
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Noterne venter på ekspertens hylde"
+            "value": "Noterne venter på mesterens hylde"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Die Notizen warten im Regal des Experten"
+            "value": "Die Notizen warten im Regal des Meisters"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The notes wait on the expert's shelf"
+            "value": "The notes wait on the master's shelf"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Las notas esperan en la estantería del experto"
+            "value": "Las notas esperan en la estantería del maestro"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Muistiinpanot odottavat asiantuntijan hyllyllä"
+            "value": "Muistiinpanot odottavat mestarin hyllyllä"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Les notes attendent sur l'étagère de l'expert"
+            "value": "Les notes attendent sur l'étagère du maître"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Athugasemdirnar bíða í hillu sérfræðingsins"
+            "value": "Athugasemdirnar bíða í hillu meistarans"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Le note attendono nello scaffale dell'esperto"
+            "value": "Le note attendono nello scaffale del maestro"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "メモはエキスパートの棚で待っています"
+            "value": "メモはマスターの棚で待っています"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "메모는 전문가의 선반에서 기다립니다"
+            "value": "메모는 마스터의 선반에서 기다립니다"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Notatene venter på ekspertens hylle"
+            "value": "Notatene venter på mesterens hylle"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Notatki czekają na półce eksperta"
+            "value": "Notatki czekają na półce mistrza"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "As notas esperam na prateleira do especialista"
+            "value": "As notas esperam na prateleira do mestre"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Noteringarna väntar i expertens hylla"
+            "value": "Noteringarna väntar i mästarens hylla"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "笔记在专家的书架上等待"
+            "value": "笔记在大师的书架上等待"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "筆記在專家的書架上等待"
+            "value": "筆記在大師的書架上等待"
           }
         }
       }

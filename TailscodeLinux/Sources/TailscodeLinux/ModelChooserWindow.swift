@@ -58,9 +58,9 @@ final class ModelChooserWindow: @unchecked Sendable {
         context: ChooserContext = .chat,
         onRefresh: (@Sendable () -> Void)? = nil,
         onAddToParty: (@Sendable (ModelPick, UnsafeMutablePointer<GtkWidget>) -> Void)? = nil,
-        experts: [ExpertRow] = [],
+        masters: [MasterRow] = [],
         expertNote: String? = nil,
-        onExpert: (@Sendable (ExpertRow) -> Void)? = nil,
+        onMaster: (@Sendable (MasterRow) -> Void)? = nil,
         onPick: @escaping @Sendable (ModelPick) -> Void
     ) {
         open?.close()
@@ -68,49 +68,49 @@ final class ModelChooserWindow: @unchecked Sendable {
             sources: sources, selected: selected, parent: parent, quotas: quotas,
             recents: recents, context: context, onRefresh: onRefresh,
             onAddToParty: onAddToParty, onPick: onPick)
-        if let onExpert, !experts.isEmpty { open?.addExperts(experts, note: expertNote, onExpert: onExpert) }
+        if let onMaster, !masters.isEmpty { open?.addMasters(masters, note: expertNote, onMaster: onMaster) }
     }
 
-    /// Experts above the models: picking one starts a new task with it rather than changing the
+    /// Masters above the models: picking one starts a new task with it rather than changing the
     /// model this chat answers with. From a chat with words in it, the note under the strip says
     /// that the conversation goes along as a brief and the chat stays as it is.
-    private func addExperts(_ experts: [ExpertRow], note: String?, onExpert: @escaping @Sendable (ExpertRow) -> Void) {
+    private func addMasters(_ masters: [MasterRow], note: String?, onMaster: @escaping @Sendable (MasterRow) -> Void) {
         guard let column = gtk_widget_get_parent(strip) else { return }
         let section = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
-        let heading = Gtk.label(ExpertWords.expertsSection, css: "menu-heading", selectable: false)
+        let heading = Gtk.label(MasterWords.mastersSection, css: "menu-heading", selectable: false)
         gtk_label_set_xalign(op(heading), 0)
         Gtk.margins(heading, leading: 4)
         gtk_box_append(ptr(section), heading)
         let flow = Self.chipStrip()
-        for row in experts {
+        for row in masters {
             let button = gtk_button_new()!
             Gtk.addClass(button, "flat")
             Gtk.addClass(button, "model-scope")
             let content = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-            gtk_box_append(ptr(content), ExpertMarks.mark(row.expert))
+            gtk_box_append(ptr(content), MasterMarks.mark(row.master))
             let words = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-            let name = Gtk.label(row.expert.name, css: "row-title", selectable: false)
+            let name = Gtk.label(row.master.name, css: "row-title", selectable: false)
             gtk_label_set_xalign(op(name), 0)
             gtk_box_append(ptr(words), name)
-            let detail = Gtk.label(ExpertWords.chooserDetail(row.machine), css: "row-detail", selectable: false)
+            let detail = Gtk.label(MasterWords.chooserDetail(row.machine), css: "row-detail", selectable: false)
             gtk_label_set_xalign(op(detail), 0)
             gtk_box_append(ptr(words), detail)
             gtk_box_append(ptr(content), words)
             gtk_button_set_child(ptr(button), content)
-            gtk_widget_set_tooltip_text(button, row.expert.purpose)
+            gtk_widget_set_tooltip_text(button, row.master.purpose)
             tailscode_set_accessible_label(
-                button, [row.expert.name, ExpertWords.chooserDetail(row.machine)].joined(separator: ", "))
+                button, [row.master.name, MasterWords.chooserDetail(row.machine)].joined(separator: ", "))
             Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
                 Gtk.onMain { [weak self] in
                     self?.close()
-                    onExpert(row)
+                    onMaster(row)
                 }
             }
             Self.appendChip(button, to: flow)
         }
         gtk_box_append(ptr(section), flow)
         if let note {
-            let line = Gtk.label(note, css: "expert-handover", wrap: true, selectable: false)
+            let line = Gtk.label(note, css: "master-handover", wrap: true, selectable: false)
             gtk_label_set_xalign(op(line), 0)
             gtk_box_append(ptr(section), line)
         }

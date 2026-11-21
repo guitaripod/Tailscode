@@ -151,10 +151,10 @@ final class MainWindow: @unchecked Sendable {
     let scheduleLabel = Gtk.label("", css: "row-detail", selectable: false)
     var scheduleBoard: ScheduleBoard?
     var scheduleGeneration = 0
-    /// The sidebar's shelf of experts, and the board it last drew, so an unchanged read draws nothing.
-    let expertShelf = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
-    var expertShelfDrawn: [ExpertShelfLine] = []
-    var expertWatch: NSObjectProtocol?
+    /// The sidebar's shelf of masters, and the board it last drew, so an unchanged read draws nothing.
+    let masterShelf = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
+    var masterShelfDrawn: [MasterShelfLine] = []
+    var masterWatch: NSObjectProtocol?
     /// Machines that said this run that they keep no schedules, so a question for later stays on
     /// this computer without the machine being asked again every beat.
     var laterStaysHere: Set<String> = []

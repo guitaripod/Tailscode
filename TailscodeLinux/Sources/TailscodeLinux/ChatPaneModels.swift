@@ -255,9 +255,9 @@ extension ChatPane {
                     self?.addToParty(pick, on: held)
                 }
             },
-            experts: chooserExperts(), expertNote: chooserExpertNote(),
-            onExpert: { [weak self] row in
-                Gtk.onMain { [weak self] in self?.pickedExpert(row) }
+            masters: chooserMasters(), expertNote: chooserMasterNote(),
+            onMaster: { [weak self] row in
+                Gtk.onMain { [weak self] in self?.pickedMaster(row) }
             }
         ) { [weak self] pick in
             Gtk.onMain { [weak self] in self?.apply(pick) }
