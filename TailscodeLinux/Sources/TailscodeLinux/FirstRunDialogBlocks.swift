@@ -24,6 +24,11 @@ extension FirstRunDialog {
 
     func append(_ block: FirstRunPlan.Block, to box: UnsafeMutablePointer<GtkWidget>) {
         switch block {
+        case .heading(let text):
+            gtk_box_append(ptr(box), groupHeading(text))
+        case .question(let question):
+            gtk_box_append(ptr(box), groupHeading(question.title))
+            for choice in question.choices { gtk_box_append(ptr(box), answerButton(choice)) }
         case .ways(let ways):
             for way in ways { gtk_box_append(ptr(box), wayButton(way)) }
         case .agents(let choices):
@@ -43,18 +48,38 @@ extension FirstRunDialog {
         }
     }
 
+    /// The line that names a group of presses, set off from the group above it.
+    func groupHeading(_ text: String) -> UnsafeMutablePointer<GtkWidget> {
+        let label = Gtk.label(text, css: "row-title", selectable: false)
+        Gtk.margins(label, top: 8)
+        return label
+    }
+
     func wayButton(_ way: FirstRunPlan.Way) -> UnsafeMutablePointer<GtkWidget> {
+        let kind = way.kind
+        return choiceButton(title: way.title, detail: way.detail) { [self] in chose(kind) }
+    }
+
+    /// An answer to first run's question: a press, in the agent's own name, that opens its install.
+    func answerButton(_ choice: FirstRunPlan.AgentChoice) -> UnsafeMutablePointer<GtkWidget> {
+        let agent = choice.agent
+        return choiceButton(title: choice.title, detail: choice.detail) { [self] in
+            send { await $0.answer(agent) }
+        }
+    }
+
+    func choiceButton(
+        title: String, detail: String, onPress: @escaping @Sendable () -> Void
+    ) -> UnsafeMutablePointer<GtkWidget> {
         let button = gtk_button_new()!
         Gtk.addClass(button, "flat")
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
-        gtk_box_append(ptr(column), Gtk.label(way.title, css: "row-title", selectable: false))
-        gtk_box_append(
-            ptr(column), FirstRunDialog.wrapped(way.detail, css: "row-detail"))
+        gtk_box_append(ptr(column), Gtk.label(title, css: "row-title", selectable: false))
+        gtk_box_append(ptr(column), FirstRunDialog.wrapped(detail, css: "row-detail"))
         gtk_button_set_child(ptr(button), column)
         gtk_widget_set_halign(button, GTK_ALIGN_FILL)
-        let kind = way.kind
-        Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [self] in
-            Gtk.onMain { [self] in chose(kind) }
+        Gtk.connect(UnsafeMutableRawPointer(button), "clicked") {
+            Gtk.onMain { onPress() }
         }
         return button
     }

@@ -214,6 +214,8 @@ extension FirstRunDialog {
         var sawInstallWays = false
         for block in blocks {
             switch block {
+            case .question, .heading:
+                ways.append(block)
             case .ways:
                 if installContext {
                     install.append(block)

@@ -73,7 +73,7 @@ extension MainWindow {
             }
         case "openlink":
             self.openConnectLink(argument)
-        case "frpaste", "frchoose", "frback", "frconfirm", "frconnect", "fragent", "frhanded",
+        case "frpaste", "frchoose", "frback", "frconfirm", "frconnect", "fragent", "franswer", "frhanded",
             "frpassword", "frretry", "frstate", "frlater":
             FirstRunDialog.drive(verb, argument)
         case "frwelcome":

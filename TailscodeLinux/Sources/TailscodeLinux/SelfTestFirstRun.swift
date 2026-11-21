@@ -8,7 +8,7 @@ extension SelfTest {
     /// What first run promises on this desk that Core cannot prove: that the desktop entry
     /// declares the `tailscode://` scheme and takes a URL, that the launch arguments a desktop
     /// hands over reach the link handler, and that the window draws each state of the plan —
-    /// the three ways, the install command without a password for claude-bridge, the machine
+    /// the question, the install command without a password for claude-bridge, the machine
     /// that was found, the signed-out Claude — with nothing in it the plan did not say.
     static func checkFirstRun() throws -> Int {
         var checks = 0
@@ -44,16 +44,35 @@ extension SelfTest {
 
         dialog.applyForTesting(FirstRunPlan.make(state))
         var texts = dialog.renderedTexts()
+        try expect(texts.contains("Which agent runs on your computer?"), "a stranger is asked the one question")
+        try expect(
+            ["Claude Code", "opencode", "Oh My Pi"].allSatisfy { texts.contains($0) },
+            "each agent is a press that answers it: \(texts)")
+        try expect(texts.contains("Already set up?"), "the ways in for a machine already set up sit under it")
         try expect(texts.contains("Open or paste a link"), "the way to paste a link is drawn")
-        try expect(texts.contains("I don't have a machine set up yet"), "the install way is drawn")
+        try expect(
+            !texts.contains("I don't have a machine set up yet"),
+            "the install is the question itself, not a way beside it")
         try expect(!texts.contains { $0.hasPrefix("Scan the code") }, "a desktop draws no scanner")
         try expect(texts.contains("100.101.102.103"), "Tailscale is proven by its address")
         try expect(!dialog.isShowingPassword(), "no password field before one is asked for")
+
+        state.alreadySetUp = true
+        dialog.applyForTesting(FirstRunPlan.make(state))
+        texts = dialog.renderedTexts()
+        try expect(
+            !texts.contains("Which agent runs on your computer?"),
+            "a person whose machine is set up is not asked")
+        try expect(texts.contains("I don't have a machine set up yet"), "and still has the install as a way")
+        state.alreadySetUp = false
 
         state.way = .install
         state.install = BridgeInstall.install(for: .claudeCode)
         dialog.applyForTesting(FirstRunPlan.make(state))
         texts = dialog.renderedTexts()
+        try expect(
+            !texts.contains("Which agent runs on your computer?"),
+            "an answered question is not asked again above its command")
         try expect(
             texts.contains { $0.hasPrefix("curl -fsSL") && !$0.contains("PASSWORD") },
             "the claude-bridge install command carries no password")

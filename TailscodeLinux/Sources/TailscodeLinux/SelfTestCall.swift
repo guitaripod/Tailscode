@@ -179,6 +179,7 @@ extension SelfTest {
             case "chatswitch": report("chat switch: \(try checkChatSwitch()) claims hold")
             case "readoutswap": report("readout swap: \(try checkBrainSwap()) claims hold")
             case "setup": report("setup: \(try checkSetup()) claims hold")
+            case "firstrun": report("first run: \(try checkFirstRun()) claims hold")
             case "diagnosis": report("self-diagnosis: \(try runBlocking { try await checkSelfDiagnosis() }) claims hold")
             case "guard": report("resource guard: \(try checkResourceGuard()) claims hold")
             case "restore": report("safe restore: \(try checkRestorePlan()) claims hold")

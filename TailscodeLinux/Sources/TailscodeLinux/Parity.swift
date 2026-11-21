@@ -126,6 +126,7 @@ enum ParityManifest {
         case .connectDiagnosis: return .implemented("ConnectDiagnosis")
         case .serverAccess: return .implemented("ServerAccessReading")
         case .firstRunPlan: return .implemented("FirstRunFlow")
+        case .firstRunQuestion: return .implemented("answerButton")
         case .pairingLink: return .implemented("LaunchLink")
         case .pairingScan: return .notApplicable("a desktop has no camera to point at a terminal, so the code the install prints is read where a desktop can read it: the link beside it is pasted into the setup window, offered from the clipboard when it is already there, or opened (tailscode:// is registered and tailscode --connect <link> reaches the running window)")
         case .serverSignIn: return .implemented("SignInDialog")

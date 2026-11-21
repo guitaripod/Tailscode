@@ -139,6 +139,15 @@ extension FirstRunDialog {
         }
     }
 
+    static func drivenAgent(_ name: String) -> AgentType? {
+        switch name {
+        case "claude": return .claudeCode
+        case "opencode": return .openCode
+        case "omp": return .omp
+        default: return nil
+        }
+    }
+
     func driven(_ verb: String, _ argument: String) {
         switch verb {
         case "frpaste": send { await $0.paste(argument) }
@@ -148,9 +157,9 @@ extension FirstRunDialog {
         case "frconfirm": send { await $0.confirmOffTailnet() }
         case "frconnect": send { await $0.connect() }
         case "fragent":
-            let agent: AgentType? =
-                argument == "opencode" ? .openCode : argument == "omp" ? .omp : argument == "claude" ? .claudeCode : nil
-            if let agent { send { await $0.selectAgent(agent) } }
+            if let agent = Self.drivenAgent(argument) { send { await $0.selectAgent(agent) } }
+        case "franswer":
+            if let agent = Self.drivenAgent(argument) { send { await $0.answer(agent) } }
         case "frhanded": send { await $0.handedOver() }
         case "frpassword": send { await $0.setPassword(argument) }
         case "frretry": send { await $0.retry() }

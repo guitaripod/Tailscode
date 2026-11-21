@@ -39,6 +39,7 @@ final class FirstRunDialog: @unchecked Sendable {
         Task {
             await ServerDirectory.shared.reload()
             let real = !EmptyWelcome.holdsNoRealServer(await ServerDirectory.shared.profiles())
+            let inDemo = await ServerDirectory.shared.isDemoMode()
             Gtk.onMain {
                 if let existing = current {
                     existing.raise()
@@ -47,7 +48,7 @@ final class FirstRunDialog: @unchecked Sendable {
                 }
                 begin(
                     mode: real ? .addition : .firstRun, parentHold: parentHold, link: nil,
-                    way: way, onSaved: onSaved)
+                    way: way, offersDemo: !inDemo, onSaved: onSaved)
             }
         }
     }
@@ -153,10 +154,11 @@ final class FirstRunDialog: @unchecked Sendable {
 
     static func begin(
         mode: FirstRunState.Mode, parentHold: Gtk.WeakWidget?, link: String?,
-        way: FirstRunPlan.Way.Kind?, onSaved: @escaping @Sendable () -> Void
+        way: FirstRunPlan.Way.Kind?, offersDemo: Bool = true,
+        onSaved: @escaping @Sendable () -> Void
     ) {
         let parent = parentHold?.widget
-        let dialog = FirstRunDialog(mode: mode, onSaved: onSaved)
+        let dialog = FirstRunDialog(mode: mode, offersDemo: offersDemo, onSaved: onSaved)
         current = dialog
         dialog.present(parent: parent, link: link, way: way)
     }
@@ -223,13 +225,17 @@ final class FirstRunDialog: @unchecked Sendable {
         let body: UnsafeMutablePointer<GtkWidget>
     }
 
-    init(mode: FirstRunState.Mode, onSaved: @escaping @Sendable () -> Void) {
+    init(
+        mode: FirstRunState.Mode, offersDemo: Bool = true,
+        onSaved: @escaping @Sendable () -> Void
+    ) {
         self.mode = mode
         self.onSaved = onSaved
         flow = FirstRunFlow(
             platform: .linux, mode: mode,
             environment: FirstRunEnvironment(
                 offersTailnetScan: true,
+                offersDemo: offersDemo,
                 profiles: { await ServerDirectory.shared.profiles() },
                 save: { profile, password in
                     do {
@@ -353,6 +359,7 @@ final class FirstRunDialog: @unchecked Sendable {
         case .connect: send { await $0.connect() }
         case .openTailscale: performRemedy()
         case .signIn: presentSignIn()
+        case .scan: break
         }
     }
 
