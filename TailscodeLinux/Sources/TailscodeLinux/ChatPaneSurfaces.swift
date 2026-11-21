@@ -160,6 +160,7 @@ extension ChatPane {
         gtk_box_append(ptr(column), welcomeText(welcome.detail, css: "dim"))
         gtk_box_append(ptr(column), welcomeStep(welcome.step, onAction: onAction))
         gtk_box_append(ptr(column), welcomeButtons(welcome, onAction: onAction))
+        gtk_box_append(ptr(column), WelcomeLookRow.welcomeLookRow())
         return column
     }
 

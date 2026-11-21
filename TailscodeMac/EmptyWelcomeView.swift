@@ -57,6 +57,7 @@ final class EmptyWelcomeView: NSView {
             centered(welcome.detail, role: .panelDetail, color: MacTheme.Color.secondaryLabel))
         column.addArrangedSubview(step(welcome.step))
         column.addArrangedSubview(buttons(welcome))
+        column.addArrangedSubview(WelcomeLookRow())
         column.setCustomSpacing(MacTheme.Spacing.l, after: column.arrangedSubviews[2])
         column.setCustomSpacing(MacTheme.Spacing.l, after: column.arrangedSubviews[3])
     }

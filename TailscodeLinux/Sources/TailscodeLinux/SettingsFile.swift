@@ -53,6 +53,10 @@ enum SettingsFile {
     nonisolated(unsafe) private static var captureWanted = false
     nonisolated(unsafe) private static var writeScheduled = false
     nonisolated(unsafe) private static var lastWritten: Data?
+    nonisolated(unsafe) private static var foundOnDisk = false
+
+    /// Whether this launch found no settings at all: nobody has used the app here before.
+    static var isFresh: Bool { lock.withLock { !foundOnDisk } }
 
     static var url: URL {
         let base = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"].map {
@@ -70,6 +74,7 @@ enum SettingsFile {
         guard let data = try? Data(contentsOf: url),
             let stored = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return }
+        lock.withLock { foundOnDisk = true }
         let defaults = UserDefaults.standard
         var restored: [String: Any] = [:]
         for (key, value) in stored {

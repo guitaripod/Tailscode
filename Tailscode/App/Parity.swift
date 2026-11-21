@@ -217,6 +217,7 @@ enum ParityManifest {
         case .typeRamp: return .implemented("Theme.Ramp")
         case .themePicker: return .implemented("ThemePickerViewController")
         case .themeScenery: return .implemented("SkyView")
+        case .welcomeLook: return .implemented("WelcomeLookRow")
         case .settingsSurface: return .implemented("SettingsViewController")
         case .goalControl: return .implemented("updateGoalChip")
         case .firstRunSetup: return .implemented("ServerSetupViewController")

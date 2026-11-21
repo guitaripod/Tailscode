@@ -199,6 +199,7 @@ enum ParityManifest {
         case .typeRamp: return .implemented("TypeCSS")
         case .themePicker: return .implemented("MatrixTheme")
         case .themeScenery: return .implemented("sceneryRules")
+        case .welcomeLook: return .implemented("welcomeLookRow")
         case .settingsSurface: return .implemented("Preferences")
         case .goalControl: return .implemented("goal-line")
         case .firstRunSetup: return .implemented("FirstRunDialog")

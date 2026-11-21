@@ -742,6 +742,7 @@ final class AppCoordinator: NSObject {
 
     private func route(animated: Bool) {
         showingMain = ConnectionController.shared.hasConnection
+        if ThemeSelection.welcome(newcomer: !showingMain) { Theme.Chrome.apply() }
         let root = showingMain ? makeMain() : makeOnboarding()
         if animated {
             UIView.transition(with: window, duration: 0.3, options: .transitionCrossDissolve) {

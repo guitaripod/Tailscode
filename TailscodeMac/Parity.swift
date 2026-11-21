@@ -276,6 +276,7 @@ enum ParityManifest {
         case .typeRamp: return .implemented("MacTheme.Ramp")
         case .themePicker: return .implemented("MacTheme.Chrome")
         case .themeScenery: return .implemented("SkyView")
+        case .welcomeLook: return .implemented("WelcomeLookRow")
         case .settingsSurface: return .implemented("PreferencesWindow")
         case .goalControl: return .implemented("setGoal")
         case .firstRunSetup:

@@ -38,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         DraftStore.warm()
         ThemeSelection.fallbackID = ThemeSelection.systemID
+        ThemeSelection.welcome(newcomer: ServerDirectory.shared.profiles.isEmpty)
         NSApp.appearance = MacTheme.Chrome.appearance
         Seatbelts.shared.start()
         let controller = MainWindowController()

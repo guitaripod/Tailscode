@@ -170,7 +170,7 @@ final class WelcomeViewController: UIViewController {
 
         column.axis = .vertical
         column.spacing = Theme.Spacing.l
-        [heroBox, headline, subtitle, values, ask, answers, demo, existing, footnote].forEach(
+        [heroBox, headline, subtitle, values, ask, answers, demo, existing, WelcomeLookRow(), footnote].forEach(
             column.addArrangedSubview)
         column.setCustomSpacing(Theme.Spacing.xxl, after: heroBox)
         column.setCustomSpacing(Theme.Spacing.s, after: headline)

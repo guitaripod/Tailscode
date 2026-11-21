@@ -155,6 +155,12 @@ extension MainWindow {
         FirstRunDialog.onLanded = { [weak self] landing in
             Gtk.onMain { [weak self] in self?.land(on: landing) }
         }
+        WelcomeLookRow.onChanged = { [weak self] in
+            Gtk.onMain { [weak self] in
+                self?.retheme()
+                self?.applyLayoutPreferences()
+            }
+        }
         if showing { presentFirstRun() }
         if let seed = ProcessInfo.processInfo.environment["TAILSCODE_COMPOSER"] {
             activePane.insertIntoComposer(seed.replacingOccurrences(of: "\\n", with: "\n"))

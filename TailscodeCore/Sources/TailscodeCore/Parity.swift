@@ -197,6 +197,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case typeRamp
     case themePicker
     case themeScenery
+    case welcomeLook
     case settingsSurface
     case goalControl
     case firstRunSetup

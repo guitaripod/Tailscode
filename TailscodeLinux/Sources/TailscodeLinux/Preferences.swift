@@ -314,6 +314,18 @@ enum Preferences {
         write(theme.id == AppTheme.fallback.id ? nil : theme.id, forKey: ThemeSelection.themeKey)
     }
 
+    /// Decides, once, whether this is somebody's first launch here, and dresses a newcomer in
+    /// the newcomer's look. A desk with a settings file is somebody who was here before and keeps
+    /// what it wears. Called before the first stylesheet is installed, so a first window is never
+    /// painted twice.
+    static func welcomeNewcomer() {
+        guard SettingsFile.stored(forKey: WelcomeLook.welcomedKey) == nil else { return }
+        let stored = SettingsFile.stored(forKey: ThemeSelection.themeKey) as? String
+        let dressed = WelcomeLook.themeForNewcomer(isNewcomer: SettingsFile.isFresh, stored: stored)
+        write(true, forKey: WelcomeLook.welcomedKey)
+        if let dressed { setTheme(AppTheme.named(dressed)) }
+    }
+
     typealias Appearance = ThemeAppearance
 
     static var appearance: Appearance { ThemeSelection.appearance }
