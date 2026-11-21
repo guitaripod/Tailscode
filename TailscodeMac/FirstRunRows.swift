@@ -9,6 +9,7 @@ struct FirstRunIntents {
     var choose: (FirstRunPlan.Way.Kind) -> Void
     var paste: (String) -> Void
     var useClipboard: () -> Void
+    var answer: (AgentType) -> Void
     var selectAgent: (AgentType) -> Void
     var copied: () -> Void
     var setPassword: (String) -> Void
@@ -203,6 +204,8 @@ enum FirstRunBlocks {
     static func kind(of block: FirstRunPlan.Block) -> String {
         switch block {
         case .note: return "note"
+        case .heading: return "heading"
+        case .question: return "question"
         case .ways: return "ways"
         case .paste: return "paste"
         case .agents: return "agents"
@@ -224,7 +227,7 @@ enum FirstRunBlocks {
         case .agents: return FirstRunAgentsPart(intents: intents)
         case .password: return FirstRunPasswordPart(intents: intents)
         case .remedy: return FirstRunRemedyPart(remedy: remedy)
-        case .note, .ways, .command, .waiting, .diagnosis, .link, .signIn:
+        case .note, .heading, .question, .ways, .command, .waiting, .diagnosis, .link, .signIn:
             return FirstRunRebuiltPart { drawn in views(for: drawn, intents: intents) }
         }
     }
@@ -233,6 +236,10 @@ enum FirstRunBlocks {
         switch block {
         case .note(let text):
             return [RowKit.wrapping(text, font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.secondaryLabel)]
+        case .heading(let text):
+            return [heading(text)]
+        case .question(let question):
+            return [heading(question.title)] + question.choices.map { answer($0, intents: intents) }
         case .ways(let ways):
             return ways.filter { $0.kind != .scan }.map { way($0, intents: intents) }
         case .command(let card):
@@ -262,16 +269,29 @@ enum FirstRunBlocks {
     private static let wayButtonWidth: CGFloat = 280
 
     private static func way(_ way: FirstRunPlan.Way, intents: FirstRunIntents) -> NSView {
+        choice(title: way.title, detail: way.detail) { intents.choose(way.kind) }
+    }
+
+    /// An answer to first run's question: a press, in the agent's own name, that opens its install.
+    private static func answer(_ choice: FirstRunPlan.AgentChoice, intents: FirstRunIntents) -> NSView {
+        self.choice(title: choice.title, detail: choice.detail) { intents.answer(choice.agent) }
+    }
+
+    private static func choice(title: String, detail: String, action: @escaping () -> Void) -> NSView {
         let column = FillingStack(topDown: true)
         column.spacing = 2
-        let button = RowKit.ActionButton(title: way.title) { intents.choose(way.kind) }
+        let button = RowKit.ActionButton(title: title, action: action)
         button.widthAnchor.constraint(greaterThanOrEqualToConstant: wayButtonWidth).isActive = true
         column.addArrangedSubview(buttonRow([button]))
         column.addArrangedSubview(
             RowKit.wrapping(
-                way.detail, font: MacTheme.Ramp.font(.panelFootnote),
+                detail, font: MacTheme.Ramp.font(.panelFootnote),
                 color: MacTheme.Color.secondaryLabel))
         return column
+    }
+
+    private static func heading(_ text: String) -> NSView {
+        RowKit.wrapping(text, font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.label)
     }
 
     private static func command(_ card: FirstRunPlan.CommandCard, intents: FirstRunIntents) -> [NSView] {

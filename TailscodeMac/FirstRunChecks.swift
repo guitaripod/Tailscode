@@ -56,12 +56,34 @@ enum FirstRunChecks {
         try show("machine-asking")
         var texts = window.drawnTexts
         try expect(texts.contains("Tailscale on this Mac"), "the Tailscale row is first run's")
-        try expect(texts.contains("Open or paste a link"), "the link way leads")
-        try expect(texts.contains("I don't have a machine set up yet"), "the install way is offered")
+        try expect(texts.contains("Which agent runs on your computer?"), "a stranger is asked the one question")
+        try expect(
+            ["Claude Code", "opencode", "Oh My Pi"].allSatisfy { texts.contains($0) },
+            "each agent is a press that answers it: \(texts)")
+        try expect(texts.contains("Already set up?"), "the ways in for a machine already set up sit under it")
+        try expect(texts.contains("Open or paste a link"), "the link way is offered")
+        try expect(
+            !texts.contains("I don't have a machine set up yet"),
+            "the install is the question itself, not a way beside it")
         try expect(texts.contains("Try the demo"), "first run keeps the demo one press away")
         try expect(window.returnButton == nil, "nothing is primary before there is something to connect")
         try expect(window.escapeButtons == ["Later"], "Escape is Later")
         try expect(window.windowTitle == "Welcome", "first run is a welcome")
+
+        try show("machine-known")
+        texts = window.drawnTexts
+        try expect(
+            !texts.contains("Which agent runs on your computer?"),
+            "a person whose machine is set up is not asked")
+        try expect(texts.contains("I don't have a machine set up yet"), "and still has the install as a way")
+
+        try show("installing-opencode")
+        texts = window.drawnTexts
+        try expect(texts.contains("Run this on your machine"), "an answer opens its install command")
+        try expect(
+            texts.contains { $0.contains("OPENCODE_SERVER_PASSWORD=") },
+            "the command is the answered agent's own: \(texts)")
+        try expect(window.returnButton == nil, "a Mac has no code to scan, so nothing is primary while it waits")
 
         try show("tailscale-down")
         texts = window.drawnTexts

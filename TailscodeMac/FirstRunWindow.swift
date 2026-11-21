@@ -140,6 +140,7 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
     private static func environment() -> FirstRunEnvironment {
         FirstRunEnvironment(
             offersTailnetScan: offersTailnetScan,
+            offersDemo: !ServerDirectory.shared.isDemoMode,
             profiles: { await MainActor.run { realProfiles } },
             save: { profile, password in await MainActor.run { save(profile, password: password) } },
             log: { MidgarLog.info($0, category: .connection) })
@@ -187,6 +188,10 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
         useClipboard: { [weak self] in
             guard let flow = self?.flow else { return }
             Task { await flow.useClipboardLink() }
+        },
+        answer: { [weak self] agent in
+            guard let flow = self?.flow else { return }
+            Task { await flow.answer(agent) }
         },
         selectAgent: { [weak self] agent in
             guard let flow = self?.flow else { return }
@@ -386,6 +391,8 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
             fix(.openTailscale)
         case .signIn:
             signIn()
+        case .scan:
+            return
         }
     }
 

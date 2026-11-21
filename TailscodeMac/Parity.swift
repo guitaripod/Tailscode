@@ -166,6 +166,7 @@ enum ParityManifest {
         case .connectDiagnosis: return .implemented("MacConnectFix")
         case .serverAccess: return .implemented("ServerAccessReading")
         case .firstRunPlan: return .implemented("FirstRunFlow")
+        case .firstRunQuestion: return .implemented("intents.answer")
         case .pairingLink: return .implemented("ConnectLink")
         case .pairingScan: return .notApplicable("a Mac has no camera to point at a terminal, so the code the install prints is read where a Mac can read it: the link beside it is pasted into the setup window, offered from the clipboard when it is already there, or opened (tailscode:// is registered for both builds)")
         case .serverSignIn: return .implemented("SignInSheet")

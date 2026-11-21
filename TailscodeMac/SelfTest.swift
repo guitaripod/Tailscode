@@ -22,6 +22,7 @@ enum SelfTest {
 
     static func run() async -> Never {
         startWatchdog()
+        if let only = ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_ONLY"] { runOnly(only) }
         var failures = 0
         let tileChild = TileChecks.Child()
         let chatChild = ChatChecks.Child()
@@ -753,6 +754,25 @@ enum SelfTest {
             if state.hasLoadedTranscript || Date() > deadline { break }
         }
         return latest
+    }
+
+    /// `TAILSCODE_SELFTEST_ONLY=<name>`: one stage on its own, as the Linux client offers it, for
+    /// a change that touches one surface and a Mac too busy to finish the whole pass in time.
+    private static func runOnly(_ name: String) -> Never {
+        do {
+            switch name {
+            case "firstrun": report("first run: \(try FirstRunChecks.run()) claims hold")
+            default:
+                report("no check named \(name)")
+                exit(2)
+            }
+            report("SELFTEST_OK")
+            exit(0)
+        } catch {
+            report("\(error)")
+            report("SELFTEST_FAILED")
+            exit(1)
+        }
     }
 
     /// A self-test that hangs is worse than one that fails: it stalls the build loop on a machine
