@@ -285,6 +285,9 @@ def seed_defaults(scale=1.0, reals=None, strings=None):
     path = os.path.join(folder, f"{BUNDLE}.plist")
     run(["plutil", "-create", "xml1", path])
     run(["/usr/libexec/PlistBuddy", "-c", "Add :tailscode.appearance string dark", path])
+    run(["/usr/libexec/PlistBuddy", "-c", "Add :tailscode.theme.welcomed bool true", path])
+    run(["/usr/libexec/PlistBuddy", "-c", "Add :tailscode.agentNews.seen array", path])
+    run(["/usr/libexec/PlistBuddy", "-c", "Add :tailscode.agentNews.seen:0 string demo-claude·goose", path])
     values = dict(reals or {})
     if scale != 1.0:
         values["tailscode.uiScale"] = scale
