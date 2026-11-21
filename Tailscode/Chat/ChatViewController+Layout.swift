@@ -102,6 +102,7 @@ extension ChatViewController {
             skyView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
         view.addSubview(collectionView)
+        nameTranscriptToTheBar()
         composerAccessories.onHeightChange = { [weak self] in self?.updateTranscriptInsets() }
         contentSizeWatch = collectionView.observe(\.contentSize, options: [.old, .new]) {
             [weak self] _, change in
@@ -253,6 +254,14 @@ extension ChatViewController {
             loadingState.bottomAnchor.constraint(lessThanOrEqualTo: collectionView.bottomAnchor),
             loadingState.bottomAnchor.constraint(equalTo: composer.topAnchor).withPriority(.defaultHigh),
         ])
+    }
+
+    /// Before iOS 26 a navigation bar decides whether anything is under it by watching the first
+    /// scroll view it finds, and it looks no further than the screen's first subview. The sky
+    /// sits there now, so the bar found nothing, believed the transcript was at its top for good,
+    /// and stayed clear while the conversation ran through its title. The transcript is named.
+    private func nameTranscriptToTheBar() {
+        if #unavailable(iOS 26.0) { setContentScrollView(collectionView) }
     }
 
     /// A chip above the composer while subagents are out — a session deep in fan-out work can
