@@ -7,9 +7,7 @@ extension MainWindowController {
     func applyUIScale() {
         splitPanes.eachPane { $0.applyUIScale() }
         sidebar.applyUIScale()
-        #if !TAILSCODE_MAS
-            terminalPane.applyTypeScale()
-        #endif
+        terminalPane.applyTypeScale()
         applyPaneThickness()
     }
 
@@ -54,15 +52,13 @@ extension MainWindowController {
         transcriptItem.minimumThickness = 240
         contentSplit.addSplitViewItem(transcriptItem)
         horizonSuns.install(over: splitPanes.view)
-        #if !TAILSCODE_MAS
-            let terminal = NSSplitViewItem(viewController: terminalPane)
-            terminal.minimumThickness = 120
-            terminal.canCollapse = true
-            terminal.holdingPriority = NSLayoutConstraint.Priority(261)
-            terminal.isCollapsed = !paneShown(.terminal)
-            contentSplit.addSplitViewItem(terminal)
-            terminalItem = terminal
-        #endif
+        let terminal = NSSplitViewItem(viewController: terminalPane)
+        terminal.minimumThickness = 120
+        terminal.canCollapse = true
+        terminal.holdingPriority = NSLayoutConstraint.Priority(261)
+        terminal.isCollapsed = !paneShown(.terminal)
+        contentSplit.addSplitViewItem(terminal)
+        terminalItem = terminal
         let content = NSSplitViewItem(viewController: contentSplit)
         content.minimumThickness = CGFloat(PaneDropTarget.minimumPaneExtent)
         split.addSplitViewItem(content)
@@ -103,13 +99,9 @@ extension MainWindowController {
             focused = .transcript
             window?.makeFirstResponder(nil)
         case .terminal:
-            #if TAILSCODE_MAS
-                return false
-            #else
-                guard terminalItem?.isCollapsed == false else { return false }
-                focused = .terminal
-                terminalPane.takeFocus()
-            #endif
+            guard terminalItem?.isCollapsed == false else { return false }
+            focused = .terminal
+            terminalPane.takeFocus()
         case .files:
             return false
         }

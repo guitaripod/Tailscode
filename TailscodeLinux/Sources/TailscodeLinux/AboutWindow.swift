@@ -56,9 +56,7 @@ enum AboutWindow {
 
     private static func panes() -> String {
         var present: [String] = []
-        #if HAS_VTE
-            present.append("terminal")
-        #endif
+        if TerminalScreen.isAvailable { present.append("terminal") }
         #if HAS_MPV
             present.append("video")
         #endif

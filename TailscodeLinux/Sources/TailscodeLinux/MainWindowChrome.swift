@@ -565,6 +565,8 @@ extension MainWindow {
     }
 
     func workspaceSync(_ pane: ChatPane) {
-        terminal.setDirectory(pane.entry?.session.directory)
+        terminal.show(
+            profileID: pane.entry?.profileID, server: pane.entry?.profileName, backend: pane.backend,
+            directory: pane.entry?.session.directory, sessionID: pane.entry?.session.id)
     }
 }

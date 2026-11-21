@@ -388,6 +388,7 @@ final class ChatViewController: UIViewController {
                     self.toggleRail(id)
                 }
             }
+            stageTerminalIfAsked()
             if ProcessInfo.processInfo.environment["TAILSCODE_OPEN_RANGE"] != nil {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))

@@ -337,12 +337,10 @@ final class MainMenu: NSObject {
         let menu = NSMenu(title: Localized.text("View"))
         menu.addItem(
             item(Localized.text("Toggle Sidebar"), #selector(toggleSidebar), "s", [.command, .control]))
-        #if !TAILSCODE_MAS
-            menu.addItem(
-                item(
-                    Localized.text("Terminal"), #selector(toggleTerminal), "t",
-                    [.command, .option]))
-        #endif
+        menu.addItem(
+            item(
+                Localized.text("Terminal"), #selector(toggleTerminal), "t",
+                [.command, .option]))
         menu.addItem(
             item(Localized.text("Archived Chats"), #selector(toggleArchiveView), "e", [.command, .shift]))
         let agents = bound(Localized.text("Show Agents"), #selector(toggleAgents), .toggleAgents)
@@ -629,9 +627,7 @@ final class MainMenu: NSObject {
     @objc private func toggleMarked() { run(.toggleMarked) }
     @objc private func markAll() { run(.toggleMarkAll) }
     @objc private func toggleSidebar() { run(.toggleSidebar) }
-    #if !TAILSCODE_MAS
-        @objc private func toggleTerminal() { run(.toggleTerminal) }
-    #endif
+    @objc private func toggleTerminal() { run(.toggleTerminal) }
     @objc private func toggleArchiveView() { run(.toggleArchiveView) }
     @objc private func toggleAgents() { hub.toggleAgents() }
     @objc private func showScheduled() { hub.presentScheduled() }
@@ -801,11 +797,9 @@ extension MainMenu: NSMenuItemValidation {
         if menuItem.action == #selector(toggleSidebar) {
             menuItem.state = hub.sidebarShown ? .on : .off
         }
-        #if !TAILSCODE_MAS
-            if menuItem.action == #selector(toggleTerminal) {
-                menuItem.state = hub.terminalShown ? .on : .off
-            }
-        #endif
+        if menuItem.action == #selector(toggleTerminal) {
+            menuItem.state = hub.terminalShown ? .on : .off
+        }
         if menuItem.action == #selector(toggleAgents) {
             menuItem.state = hub.agentsWindow?.window?.isVisible == true ? .on : .off
         }

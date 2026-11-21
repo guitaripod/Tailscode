@@ -10,15 +10,15 @@ struct PaneChooserFolderTests {
             profileID: id, name: id, backend: .claudeCode, address: "\(id):4098", isLocal: local)
     }
 
-    private func chooser(local: Bool, folder: String?) -> PaneChooser {
-        var chooser = PaneChooser(servers: [server("a", local: local)], entries: [])
-        chooser.setTerminalFolder(folder)
+    private func chooser(holdsShell: Bool, folder: String?) -> PaneChooser {
+        var chooser = PaneChooser(servers: [server("a", local: false)], entries: [])
+        chooser.setTerminalFolder(folder, on: holdsShell ? "a" : "elsewhere")
         return chooser
     }
 
-    @Test("The folder leads the rows of a server that runs here, and Enter takes it")
+    @Test("The folder leads the rows of the server that holds the shell, and Enter takes it")
     func folderLeads() {
-        var chooser = chooser(local: true, folder: "/home/m/Dev/Tailscode")
+        var chooser = chooser(holdsShell: true, folder: "/home/m/Dev/Tailscode")
         let rows = chooser.rows
         #expect(
             rows[0].action
@@ -32,36 +32,36 @@ struct PaneChooserFolderTests {
                 == .newChatInFolder(profileID: "a", directory: "/home/m/Dev/Tailscode"))
     }
 
-    @Test("A server on another machine, or a shell with no folder, offers nothing")
+    @Test("A server that does not hold the shell, or a shell with no folder, offers nothing")
     func absent() {
-        #expect(chooser(local: false, folder: "/home/m").rows.first?.action == .newChat(profileID: "a"))
-        #expect(chooser(local: true, folder: nil).rows.first?.action == .newChat(profileID: "a"))
+        #expect(chooser(holdsShell: false, folder: "/home/m").rows.first?.action == .newChat(profileID: "a"))
+        #expect(chooser(holdsShell: true, folder: nil).rows.first?.action == .newChat(profileID: "a"))
     }
 
     @Test("A cursor the person moved keeps its row when the folder row appears or goes; one at the top takes the folder")
     func cursorFollowsTheRow() {
-        var chooser = chooser(local: true, folder: nil)
-        chooser.setTerminalFolder("/home/m/Dev")
+        var chooser = chooser(holdsShell: true, folder: nil)
+        chooser.setTerminalFolder("/home/m/Dev", on: "a")
         #expect(chooser.cursor == 0)
         #expect(chooser.rows[0].action == .newChatInFolder(profileID: "a", directory: "/home/m/Dev"))
 
         var moved = PaneChooser(servers: [server("a", local: true)], entries: [])
         moved.focus(1)
         let row = moved.rows[1].action
-        moved.setTerminalFolder("/home/m/Dev")
+        moved.setTerminalFolder("/home/m/Dev", on: "a")
         #expect(moved.rows[moved.cursor].action == row)
-        moved.setTerminalFolder(nil)
+        moved.setTerminalFolder(nil, on: "a")
         #expect(moved.rows[moved.cursor].action == row)
 
-        chooser.setTerminalFolder(nil)
+        chooser.setTerminalFolder(nil, on: "a")
         #expect(chooser.cursor == 0)
         #expect(chooser.rows[0].action == .newChat(profileID: "a"))
     }
 
     @Test("A fresh listing carries the folder across")
     func restatedKeepsTheFolder() {
-        let first = chooser(local: true, folder: "/srv/app")
-        let next = first.restated(servers: [server("a", local: true)], entries: [])
+        let first = chooser(holdsShell: true, folder: "/srv/app")
+        let next = first.restated(servers: [server("a", local: false)], entries: [])
         #expect(next.terminalFolder == "/srv/app")
         #expect(next.rows[0].action == .newChatInFolder(profileID: "a", directory: "/srv/app"))
     }
@@ -70,9 +70,9 @@ struct PaneChooserFolderTests {
     func words() {
         #expect(TerminalSplit.name(of: "/home/m/Dev/Tailscode") == "Tailscode")
         #expect(TerminalSplit.name(of: "/") == "/")
-        #expect(TerminalSplit.shortened("/home/m", home: "/home/m") == "~")
-        #expect(TerminalSplit.shortened("/home/m/Dev", home: "/home/m") == "~/Dev")
-        #expect(TerminalSplit.shortened("/home/mx/Dev", home: "/home/m") == "/home/mx/Dev")
-        #expect(TerminalSplit.shortened("/srv", home: "/home/m") == "/srv")
+        #expect(TerminalSplit.shortened("/home/m") == "~")
+        #expect(TerminalSplit.shortened("/home/m/Dev") == "~/Dev")
+        #expect(TerminalSplit.shortened("/Users/m/Dev") == "~/Dev")
+        #expect(TerminalSplit.shortened("/srv") == "/srv")
     }
 }

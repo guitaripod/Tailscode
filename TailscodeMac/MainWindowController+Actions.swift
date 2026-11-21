@@ -167,9 +167,7 @@ extension MainWindowController {
         case .toggleSidebar:
             togglePane(.sidebar)
         case .toggleTerminal:
-            #if !TAILSCODE_MAS
-                togglePane(.terminal)
-            #endif
+            togglePane(.terminal)
         case .toggleHelp:
             toggleCheatsheet()
         case .newChat:
@@ -241,12 +239,8 @@ extension MainWindowController {
         case .splitPane(let axis):
             focused = .transcript
             splitPanes.splitActive(axis: axis)
-        case .splitAtTerminal:
-            #if TAILSCODE_MAS
-                return false
-            #else
-                toast(TerminalSplit.Refusal.oneCommandAtATime.words)
-            #endif
+        case .splitAtTerminal(let axis):
+            splitAtTerminal(axis: axis)
         case .closeSplit:
             splitPanes.closeActive()
         case .focusSplit(let direction):

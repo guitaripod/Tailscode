@@ -2,12 +2,6 @@
 import Foundation
 import PackageDescription
 
-/// The GTK4 build of VTE is what makes the terminal pane a real terminal rather than a
-/// one-command-at-a-time runner. It is an optional dependency on purpose: the app has to build and
-/// run on a machine that does not have it, and say so, rather than fail to compile.
-let hasVte = FileManager.default.fileExists(
-    atPath: "/usr/include/vte-2.91-gtk4/vte/vte.h")
-
 /// libmpv is what makes the video slot a pane rather than a window: mpv renders into the pane's
 /// own GL area instead of a toplevel Wayland surface. Optional on the same terms as VTE — a
 /// machine without it builds an app that says the slot is unavailable rather than failing to
@@ -51,7 +45,9 @@ var appDependencies: [Target.Dependency] = [
     .product(name: "TailscodeCore", package: "TailscodeCore"),
 ]
 var appSettings: [SwiftSetting] = [.swiftLanguageMode(.v6)]
-var shimDependencies: [Target.Dependency] = ["CAdw", "CGdkPixbuf"]
+var shimDependencies: [Target.Dependency] = [
+    "CAdw", "CGdkPixbuf", .product(name: "CTerminalEngine", package: "TailscodeCore"),
+]
 var shimSettings: [CSetting] = []
 var shimLinkerSettings: [LinkerSetting] = [.linkedLibrary("epoxy")]
 var targets: [Target] = []
@@ -72,15 +68,6 @@ if hasMpv {
         .systemLibrary(
             name: "CMpv", pkgConfig: "mpv",
             providers: [.apt(["libmpv-dev"]), .yum(["mpv-libs-devel"])]))
-}
-
-if hasVte {
-    appDependencies.append("CVte")
-    appSettings.append(.define("HAS_VTE"))
-    targets.append(
-        .systemLibrary(
-            name: "CVte", pkgConfig: "vte-2.91-gtk4",
-            providers: [.apt(["libvte-2.91-gtk4-dev"])]))
 }
 
 if hasPulse {
@@ -219,7 +206,8 @@ enum Kit {
     /// 0.63.0 edits and cancels a prompt waiting in opencode 2's inbox, in its own place in the
     /// queue and under its own id, so a queued message can be rewritten on opencode too.
     /// 0.64.0 speaks the masters a claude-bridge keeps (MachineExperts).
-    static let version = Version(0, 64, 0)
+    /// 0.65.0 speaks to a shell a server holds: the terminal's wire, link and mock.
+    static let version = Version(0, 65, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

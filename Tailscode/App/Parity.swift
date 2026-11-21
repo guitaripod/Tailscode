@@ -171,8 +171,8 @@ enum ParityManifest {
             return .gap("an iPad keyboard rebinds through keybindings.json in the Files app; a pressed-key editor is not built for iOS")
         case .fileBrowser: return .implemented("FileBrowserViewController")
         case .gitState: return .implemented("GitStatusViewController")
-        case .terminalPane: return .notApplicable("iOS has no shell; the pane presumes the app shares a filesystem with the agent")
-        case .splitFromTerminal: return .notApplicable("iOS has no shell to walk to a folder, and no tiling to split")
+        case .terminalPane: return .implemented("TerminalViewController")
+        case .splitFromTerminal: return .notApplicable("iOS has no tiling to split")
         case .browserSlot: return .notApplicable("no tiling on a phone; a page beside the work presumes panes that tile, and the system browser owns the page on iOS")
         case .livePreview:
             return .partial(

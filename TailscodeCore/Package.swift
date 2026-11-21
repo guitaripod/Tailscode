@@ -6,15 +6,17 @@ let package = Package(
     name: "TailscodeCore",
     platforms: [.iOS(.v18), .macOS(.v15)],
     products: [
-        .library(name: "TailscodeCore", targets: ["TailscodeCore"])
+        .library(name: "TailscodeCore", targets: ["TailscodeCore"]),
+        .library(name: "CTerminalEngine", targets: ["CTerminalEngine"]),
     ],
     dependencies: [
         Kit.dependency
     ],
-    targets: [
+    targets: TerminalEngine.targets + [
         .target(
             name: "TailscodeCore",
             dependencies: [
+                "CTerminalEngine",
                 .product(name: "CodingAgentKit", package: "CodingAgentKit"),
                 .product(name: "CodingAgentKitApple", package: "CodingAgentKit"),
                 .product(name: "AgentTestSupport", package: "CodingAgentKit"),
@@ -28,6 +30,46 @@ let package = Package(
         ),
     ]
 )
+
+/// The terminal emulator every client draws from: libghostty-vt (MIT), behind the small C door in
+/// `CTerminalEngine` so no client holds an engine type.
+///
+/// Apple platforms take the release's own XCFramework, pinned by checksum. Linux has no prebuilt
+/// library, so `scripts/ghostty-vt.sh` builds the same release from its signed source into
+/// `Vendor/ghostty-vt` and this manifest links it when it is there. A tree without it still
+/// builds: the door answers that there is no engine, and the terminal says so in words. The same
+/// is true of the one slice the XCFramework does not carry, a simulator on an Intel Mac.
+enum TerminalEngine {
+    static let version = "1.0.1"
+    static let checksum = "c0f9631277f726154c8f521954d17cdc41aac4626fc0df8cf925a19ee58e829b"
+
+    static var targets: [Target] {
+        #if os(Linux)
+            let vendor = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+                .appendingPathComponent("Vendor/ghostty-vt").path
+            let library = vendor + "/lib/libghostty-vt.a"
+            guard FileManager.default.fileExists(atPath: library) else {
+                return [.target(name: "CTerminalEngine")]
+            }
+            return [
+                .target(
+                    name: "CTerminalEngine",
+                    cSettings: [.define("TS_HAS_GHOSTTY"), .unsafeFlags(["-I", vendor + "/include"])],
+                    linkerSettings: [.unsafeFlags([library])])
+            ]
+        #else
+            return [
+                .binaryTarget(
+                    name: "GhosttyVt",
+                    url: "https://release.files.ghostty.org/libghostty-vt/\(version)/ghostty-vt-\(version).xcframework.zip",
+                    checksum: checksum),
+                .target(
+                    name: "CTerminalEngine", dependencies: ["GhosttyVt"],
+                    cSettings: [.define("TS_HAS_GHOSTTY")]),
+            ]
+        #endif
+    }
+}
 
 /// Where CodingAgentKit is read from, which is a different answer for the two kinds of tree this
 /// package lives in. The one on the author's machine has the Kit as a sibling working copy, so a
@@ -107,7 +149,8 @@ enum Kit {
     /// the way it already rewrites one a bridge holds.
     /// 0.64.0 speaks the masters a claude-bridge keeps (MachineExperts): standing roles whose tasks
     /// start fresh with a brief and end with a debrief, with their bench, guards, notebook and journal.
-    static let version = Version(0, 64, 0)
+    /// 0.65.0 speaks to a shell a server holds: the terminal's wire, link and mock.
+    static let version = Version(0, 65, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

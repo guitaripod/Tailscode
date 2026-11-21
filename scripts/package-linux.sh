@@ -49,6 +49,7 @@ STATIC_FOUNDATION=(
 )
 
 do_build() {
+    "$ROOT/scripts/ghostty-vt.sh"
     echo "== building tailscode $(version) (static stdlib)"
     ( cd "$ROOT/TailscodeLinux" && swift build -c release --static-swift-stdlib \
         "${STATIC_FOUNDATION[@]}" --scratch-path "$BUILD_DIR" )

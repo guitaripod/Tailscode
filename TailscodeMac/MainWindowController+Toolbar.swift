@@ -20,16 +20,8 @@ extension MainWindowController: NSToolbarDelegate {
         [
             ToolbarID.sidebar, ToolbarID.newChat, .sidebarTrackingSeparator, .flexibleSpace,
             ToolbarID.live, ToolbarID.actions,
-        ] + terminalToolbarItems
-            + [ToolbarID.video, ToolbarID.usage, ToolbarID.servers, ToolbarID.settings]
-    }
-
-    private var terminalToolbarItems: [NSToolbarItem.Identifier] {
-        #if TAILSCODE_MAS
-            return []
-        #else
-            return [ToolbarID.terminal]
-        #endif
+            ToolbarID.terminal, ToolbarID.video, ToolbarID.usage, ToolbarID.servers, ToolbarID.settings,
+        ]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -67,13 +59,11 @@ extension MainWindowController: NSToolbarDelegate {
             menu.delegate = self
             item.menu = menu
             return item
-        #if !TAILSCODE_MAS
-            case ToolbarID.terminal:
-                return makeToolbarItem(
-                    itemIdentifier, symbol: "terminal", label: Localized.text("Terminal"),
-                    tip: Localized.text("Show or hide the terminal pane"),
-                    action: #selector(toolbarToggleTerminal))
-        #endif
+        case ToolbarID.terminal:
+            return makeToolbarItem(
+                itemIdentifier, symbol: "terminal", label: Localized.text("Terminal"),
+                tip: Localized.text("Show or hide the terminal pane"),
+                action: #selector(toolbarToggleTerminal))
         case ToolbarID.usage:
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.label = Localized.text("Usage")
@@ -154,11 +144,9 @@ extension MainWindowController: NSToolbarDelegate {
     }
 
 
-    #if !TAILSCODE_MAS
-        @objc private func toolbarToggleTerminal() {
-            perform(.toggleTerminal)
-        }
-    #endif
+    @objc private func toolbarToggleTerminal() {
+        perform(.toggleTerminal)
+    }
 
     @objc private func toolbarUsage(_ sender: NSButton) {
         presentUsageWindow()

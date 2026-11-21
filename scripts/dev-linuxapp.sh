@@ -117,6 +117,7 @@ harness_env() {
         NO_AT_BRIDGE=1
     )
     HARNESS_ENV+=(TAILSCODE_DRIVE_FILE="$STATE/drive.txt")
+    [ -n "${GDK_SCALE:-}" ] && HARNESS_ENV+=(GDK_SCALE="$GDK_SCALE")
     [ -n "${TAILSCODE_ACTIVITY_STYLE:-}" ] && HARNESS_ENV+=(TAILSCODE_ACTIVITY_STYLE="$TAILSCODE_ACTIVITY_STYLE")
     if [ -n "${TAILSCODE_NEURAL_DIR:-}" ]; then
         HARNESS_ENV+=(TAILSCODE_NEURAL_DIR="$TAILSCODE_NEURAL_DIR")
@@ -139,6 +140,7 @@ binary() {
 
 build() {
     local flavour=${1:-debug}
+    "$REPO/scripts/ghostty-vt.sh" >/dev/null
     local args=(swift build --manifest-cache none)
     [ "$flavour" = release ] && args+=(-c release)
     [ -n "${TAILSCODE_BUILD_PATH:-}" ] && args+=(--scratch-path "$TAILSCODE_BUILD_PATH")

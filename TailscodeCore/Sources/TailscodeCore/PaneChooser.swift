@@ -136,10 +136,12 @@ public struct PaneChooser: Sendable, Equatable {
     /// The Macs this device knows run a preview host, one row each. Empty with the flag open
     /// offers the one row that adds a Mac.
     public var previewHosts: [PreviewAccess] = []
-    /// The folder the terminal is standing in, when this client has a shell that keeps one. Set
-    /// from outside because it changes under the person's hands and the chooser is a value type;
-    /// nil simply leaves the row out. It is offered only on a server that runs on this machine.
+    /// The folder the terminal is standing in, when this client has a shell open. Set from
+    /// outside because it changes under the person's hands and the chooser is a value type; nil
+    /// simply leaves the row out. It is offered only on the server that holds the shell, since
+    /// the folder is that machine's.
     public private(set) var terminalFolder: String?
+    public private(set) var terminalServer: String?
 
     /// - Parameter preferredServer: the server the pane was already looking at, if any; it is
     ///   pre-focused rather than pre-chosen, so the question is still asked and still answerable
@@ -228,7 +230,7 @@ public struct PaneChooser: Sendable, Equatable {
     /// split is `ctrl+w v` and Enter instead of a directory browser. Named by its last folder, with
     /// the whole path under it, because the pane is narrow and two projects share names.
     private func terminalFolderRow(on server: PaneChooserServer) -> PaneChooserRow? {
-        guard server.isLocal, let folder = terminalFolder else { return nil }
+        guard server.profileID == terminalServer, let folder = terminalFolder else { return nil }
         return PaneChooserRow(
             action: .newChatInFolder(profileID: server.profileID, directory: folder),
             title: Localized.text("New chat in %@", TerminalSplit.name(of: folder)),
@@ -238,10 +240,11 @@ public struct PaneChooser: Sendable, Equatable {
     /// Follows the shell to where it is now. A row that appears or goes shifts the ones under it,
     /// so a cursor the person has moved stays on the row it was on; one still at the top stays at
     /// the top, which is where the folder is when it is there — the answer Enter should take.
-    public mutating func setTerminalFolder(_ folder: String?) {
-        guard folder != terminalFolder else { return }
+    public mutating func setTerminalFolder(_ folder: String?, on server: String?) {
+        guard folder != terminalFolder || server != terminalServer else { return }
         let before = rows.count
         terminalFolder = folder
+        terminalServer = server
         let shift = cursor > 0 ? rows.count - before : 0
         cursor = max(0, min(rows.count - 1, cursor + shift))
     }
@@ -383,7 +386,7 @@ public struct PaneChooser: Sendable, Equatable {
         next.offersDrawing = offersDrawing
         next.offersPreview = offersPreview
         next.previewHosts = previewHosts
-        next.setTerminalFolder(terminalFolder)
+        next.setTerminalFolder(terminalFolder, on: terminalServer)
         if let serverID, servers.contains(where: { $0.profileID == serverID }) {
             _ = next.activate(.chooseServer(serverID))
             if showsEveryChat { _ = next.activate(.allChats(profileID: serverID)) }

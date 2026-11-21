@@ -17,9 +17,7 @@ final class MainWindowController: NSWindowController {
     /// The toolbar's `Live 2 of 5`.
     let liveChip = LiveChip()
     var liveChipItem: NSToolbarItem?
-    #if !TAILSCODE_MAS
-        let terminalPane = TerminalPane()
-    #endif
+    let terminalPane = TerminalPane()
 
     /// The focused pane's conversation — every single-chat verb in the app lands here, so the
     /// tiling tree changes what "the transcript" means without changing who asks for it.

@@ -78,7 +78,7 @@ extension DemoWorld {
             supportsQuestions: false,
             supportsRenaming: true, supportsSubagents: true, supportsCommands: true,
             supportsGoals: true, supportsCompaction: true, supportsSchedules: true,
-            supportsMachineAgents: true, supportsExperts: true),
+            supportsMachineAgents: true, supportsExperts: true, supportsTerminals: true),
         quota: UsageQuota(
             providerName: "Claude", subtitle: "Ultra", source: "claude-bridge", live: true,
             gauges: [
@@ -185,7 +185,21 @@ extension DemoWorld {
         machineAgents: demoAgents,
         agentRegistry: demoRegistry,
         chapters: chapterDemoEnabled ? [chapterSessionID: chapterDemo.chapters] : [:],
-        experts: demoMasters)
+        experts: demoMasters,
+        terminals: demoTerminal)
+
+    /// What the demo machine's shell knows: enough to type into on camera.
+    static let demoTerminal = MockTerminalWorld(
+        directory: "/Users/demo/dev/pulse-server",
+        files: ["Package.swift", "README.md", "Sources", "Tests", "scripts"],
+        answers: [
+            "git status":
+                "On branch \u{1b}[32mfix/reconnect-flake\u{1b}[0m\nChanges not staged for commit:\n\t\u{1b}[31mmodified:   Sources/Pulse/Socket/Reconnect.swift\u{1b}[0m\n\t\u{1b}[31mmodified:   Tests/PulseTests/ReconnectTests.swift\u{1b}[0m",
+            "swift test":
+                "\u{1b}[2mBuilding for debugging...\u{1b}[0m\n\u{1b}[32m✔\u{1b}[0m Suite ReconnectTests passed after 0.412 seconds.\n\u{1b}[32m✔\u{1b}[0m Test run with 148 tests passed after 2.031 seconds.",
+            "git log --oneline -3":
+                "\u{1b}[33m4c1d9aa\u{1b}[0m Wait for the server's close frame before reconnecting\n\u{1b}[33m9e02b7f\u{1b}[0m Add a jittered backoff to the socket\n\u{1b}[33m51aa3c0\u{1b}[0m Split the socket's states into their own type",
+        ])
 
     /// `TAILSCODE_DEMO_CHAPTERS=1` adds one chat that has been through three chapters, among the
     /// demo's older chats, so the headings, the facts row's count and the chapters panel have a

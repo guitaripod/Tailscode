@@ -143,6 +143,9 @@ extension SelfTest {
         do {
             switch name {
             case "party": report("party: \(try checkPartyCards()) claims hold")
+            case "terminal":
+                if let problem = try runBlocking({ await checkTerminal() }) { throw SelfTestFailure(problem) }
+                report("terminal: a shell held by a server draws what is typed and what it answers")
             case "compact": report("compact chat: \(try checkCompactChat()) claims hold")
             case "viewer": report("media viewer: \(try checkMediaViewer()) claims hold")
             case "plate": report("notification plate: \(try checkNotificationPlate()) claims hold")

@@ -195,7 +195,7 @@ extension MainWindowController {
     func handleOpen(_ entry: SessionEntry, backend: any CodingAgentBackend) {
         UserDefaults.standard.set(entry.session.id, forKey: "tailscode.lastSession")
         transcript.open(entry, backend: backend)
-        retargetTerminal(to: entry.session.directory)
+        retargetTerminal(to: entry, backend: backend)
         showTitle(of: entry)
         splitPanes.persist()
     }

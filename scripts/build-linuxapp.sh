@@ -9,6 +9,7 @@
 # Both delegate to scripts/dev-linuxapp.sh, which is the fuller loop: input, drive verbs, logs.
 set -euo pipefail
 
+"$(dirname "$0")/ghostty-vt.sh" >/dev/null
 cd "$(dirname "$0")/../TailscodeLinux"
 
 swift build --manifest-cache none 2>&1 | grep -E "error:|warning: .*never used|Build complete" || true

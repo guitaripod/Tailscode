@@ -851,17 +851,12 @@ public enum SelfTest {
         let (entries, unreachable) = await ServerDirectory.shared.entries()
         report("list: \(entries.count) entries, \(unreachable.count) unreachable")
 
-        #if !HAS_VTE
-            let shellOutput = TerminalPane.shell("echo tailscode-shell-ok", in: nil)
-            if shellOutput.contains("tailscode-shell-ok") {
-                report("shell: ok (one command at a time; install vte4 for a full terminal)")
-            } else {
-                report("shell: no output")
-                failures += 1
-            }
-        #else
-            report("shell: vte4 terminal")
-        #endif
+        if let problem = await checkTerminal() {
+            report("terminal: \(problem)")
+            failures += 1
+        } else {
+            report("terminal: a shell held by a server draws what is typed and what it answers")
+        }
 
         if let warmed {
             do {

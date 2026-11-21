@@ -76,45 +76,28 @@ extension MainWindowController {
         return NSMouseInRect(local, controller.view.bounds, controller.view.isFlipped)
     }
 
-    /// The shell pane is a subprocess this Mac's own directories are open to, which a sandboxed
-    /// copy has neither the right nor the reach to run — so the store build has no such pane, and
-    /// every question about one is answered rather than asked.
-    func retargetTerminal(to directory: String?) {
-        #if !TAILSCODE_MAS
-            terminalPane.setDirectory(directory)
-        #endif
+    /// The terminal follows the conversation in focus to its machine and its folder. The shell
+    /// is the server's, so this is the same in every copy of the app.
+    func retargetTerminal(to entry: SessionEntry, backend: (any CodingAgentBackend)?) {
+        terminalPane.show(
+            profileID: entry.profileID, server: entry.profileName, backend: backend,
+            directory: entry.session.directory, sessionID: entry.session.id)
     }
 
     private func terminalPressed(_ windowPoint: NSPoint) -> Bool {
-        #if TAILSCODE_MAS
-            return false
-        #else
-            return terminalItem?.isCollapsed == false && contains(terminalPane, windowPoint)
-        #endif
+        terminalItem?.isCollapsed == false && contains(terminalPane, windowPoint)
     }
 
     var terminalHasFocus: Bool {
-        #if TAILSCODE_MAS
-            return false
-        #else
-            return terminalPane.ownsFocus(in: window)
-        #endif
+        terminalPane.ownsFocus(in: window)
     }
 
-    private func interruptTerminal() {
-        #if !TAILSCODE_MAS
-            terminalPane.interrupt()
-        #endif
-    }
-
-    /// The last thing the app does before it goes: the shell pane's command is stopped rather than
-    /// left running with no window to stop it from, and the chat list's cache — written a few
-    /// seconds behind the listing so a busy turn does not write it on every status — is written
-    /// now, because the few seconds may never come.
+    /// The last thing the app does before it goes: the terminal lets go of its shells, which stay
+    /// running on their machines, and the chat list's cache — written a few seconds behind the
+    /// listing so a busy turn does not write it on every status — is written now, because the few
+    /// seconds may never come.
     func prepareToQuit() {
-        #if !TAILSCODE_MAS
-            terminalPane.stopRunning()
-        #endif
+        terminalPane.leaveAll()
         MacVoiceCallGate.shared.prepareToQuit()
         Task { await DictationDesk.shared.finishAny() }
         SessionListCache.flushPendingSave()
@@ -150,12 +133,6 @@ extension MainWindowController {
         }
         if let verdict = composerKey(event) { return verdict ? nil : event }
         guard let chord = MacKeys.chord(for: event) else { return event }
-        if terminalHasFocus, chord.control, !chord.shift, !chord.alt,
-            chord.keyval == UInt32(UInt8(ascii: "c"))
-        {
-            interruptTerminal()
-            return nil
-        }
         let context = keyContext()
         if context == .normal, focused == .transcript, pendingChords.isEmpty,
             transcript.handleChooserChord(chord)

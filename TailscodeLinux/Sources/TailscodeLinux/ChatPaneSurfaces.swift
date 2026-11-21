@@ -47,9 +47,10 @@ extension ChatPane {
     }
 
     /// The terminal moved: the row that offers its folder says the folder it is in now.
-    func followTerminal(_ folder: String?) {
-        guard var model = chooser, folder != model.terminalFolder else { return }
-        model.setTerminalFolder(folder)
+    func followTerminal(_ folder: String?, on server: String?) {
+        guard var model = chooser, folder != model.terminalFolder || server != model.terminalServer
+        else { return }
+        model.setTerminalFolder(folder, on: server)
         chooser = model
         renderChooser()
     }

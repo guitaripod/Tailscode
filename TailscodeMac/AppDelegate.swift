@@ -143,13 +143,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The keys for panes this client does not contain. The registry is Core's and a package never
     /// sees an app target's compilation conditions, so the sheet would otherwise document panes
     /// that cannot be opened — and bind chords to nothing at all. The file tree is gone from both
-    /// Mac builds; the terminal only from the sandboxed one.
+    /// Mac builds.
     private static func forgetTheKeysForPanesThisCopyLacks() {
-        var gone: Set<String> = ["focus.files", "pane.files"]
-        #if TAILSCODE_MAS
-            gone.formUnion(["focus.terminal", "pane.terminal"])
-        #endif
-        ShortcutSet.unavailable = gone
+        ShortcutSet.unavailable = ["focus.files", "pane.files"]
     }
 
     /// `TAILSCODE_OPEN_SESSION=<id>` — the same headless hook the iOS harness has: land the

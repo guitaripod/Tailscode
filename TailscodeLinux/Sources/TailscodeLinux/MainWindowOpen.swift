@@ -309,34 +309,13 @@ extension MainWindow {
     /// whichever pane the focus has wandered to — so a server slow to answer leaves the usual
     /// chooser in the split rather than nothing.
     func splitAtTerminal(axis: SplitAxis) {
-        guard TerminalPane.keepsAShell else {
-            toast(TerminalSplit.Refusal.oneCommandAtATime.words)
-            return
-        }
-        let directory = terminal.standingDirectory()
-        let source = activePane
-        let preferred = source.entry?.profileID
-        let unreachable = Set(self.unreachable)
-        Task { [weak self] in
-            let profiles = await ServerDirectory.shared.profiles()
-            let localAddresses = Self.localAddresses
-            let servers = profiles.map {
-                TerminalSplit.Server(
-                    profileID: $0.id, isLocal: Dialogs.isLocal($0, localAddresses: localAddresses),
-                    reachable: !unreachable.contains($0.id))
-            }
-            Gtk.onMain { [weak self] in
-                guard let self else { return }
-                switch TerminalSplit.plan(
-                    directory: directory, servers: servers, preferred: preferred)
-                {
-                case .refused(let refusal):
-                    self.toast(refusal.words)
-                case .open(let profileID, let folder):
-                    self.openSplit(
-                        source, axis: axis, onProfileID: profileID, directory: folder)
-                }
-            }
+        switch TerminalSplit.plan(
+            directory: terminal.standingDirectory(), server: terminal.standingServer)
+        {
+        case .refused(let refusal):
+            toast(refusal.words)
+        case .open(let profileID, let folder):
+            openSplit(activePane, axis: axis, onProfileID: profileID, directory: folder)
         }
     }
 
@@ -375,17 +354,17 @@ extension MainWindow {
         presentNewChat(on: profile, into: pane, carrying: carry)
     }
 
-    /// Where the terminal is standing, for the rows that offer it. Only a shell that stays alive
-    /// between commands has a folder to offer.
+    /// Where the terminal is standing, for the rows that offer it.
     var terminalFolder: String? {
-        TerminalPane.keepsAShell ? terminal.standingDirectory() : nil
+        terminal.standingDirectory()
     }
 
     /// Every open chooser says where the terminal is now, because the person walks there with the
     /// shell while the question is still open.
     func followTerminal() {
         let folder = terminalFolder
-        splitHost.eachPane { $0.followTerminal(folder) }
+        let server = terminal.standingServer
+        splitHost.eachPane { $0.followTerminal(folder, on: server) }
     }
 
     func chooserModel(
@@ -398,7 +377,7 @@ extension MainWindow {
         model.watchSummary = watchSummary
         model.offersPreview = true
         model.previewHosts = PreviewAccessStore.all()
-        model.setTerminalFolder(terminalFolder)
+        model.setTerminalFolder(terminalFolder, on: terminal.standingServer)
         checkWhatIsOn()
         return model
     }

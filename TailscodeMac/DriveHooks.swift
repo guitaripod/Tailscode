@@ -119,6 +119,8 @@
                 say(FlightFormatter.format(records))
             case "split":
                 main?.driveSplit(Int(argument) ?? 5)
+            case "term":
+                say(main?.driveTerminal(argument) ?? "TERM no window")
             case "chord":
                 say(main?.driveChord(argument) ?? "CHORD no window")
             case "order":

@@ -22,7 +22,7 @@ enum SelfTest {
 
     static func run() async -> Never {
         startWatchdog()
-        if let only = ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_ONLY"] { runOnly(only) }
+        if let only = ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_ONLY"] { await runOnly(only) }
         var failures = 0
         let tileChild = TileChecks.Child()
         let chatChild = ChatChecks.Child()
@@ -655,15 +655,12 @@ enum SelfTest {
             failures += 1
         }
 
-        #if !TAILSCODE_MAS
-            let shellOutput = TerminalPane.shell("echo tailscode-shell-ok", in: nil)
-            if shellOutput.contains("tailscode-shell-ok") {
-                report("shell: ok (one command at a time in a login shell)")
-            } else {
-                report("shell: no output")
-                failures += 1
-            }
-        #endif
+        if let problem = await checkTerminal() {
+            report("terminal: \(problem)")
+            failures += 1
+        } else {
+            report("terminal: a shell held by a server draws what is typed and what it answers")
+        }
 
         let profiles = ServerDirectory.shared.profiles
         guard !profiles.isEmpty else {
@@ -758,10 +755,13 @@ enum SelfTest {
 
     /// `TAILSCODE_SELFTEST_ONLY=<name>`: one stage on its own, as the Linux client offers it, for
     /// a change that touches one surface and a Mac too busy to finish the whole pass in time.
-    private static func runOnly(_ name: String) -> Never {
+    private static func runOnly(_ name: String) async -> Never {
         do {
             switch name {
             case "firstrun": report("first run: \(try FirstRunChecks.run()) claims hold")
+            case "terminal":
+                if let problem = await checkTerminal() { throw SelfTestFailure("terminal: \(problem)") }
+                report("terminal: a shell held by a server draws what is typed and what it answers")
             default:
                 report("no check named \(name)")
                 exit(2)

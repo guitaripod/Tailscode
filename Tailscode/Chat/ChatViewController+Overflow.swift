@@ -161,6 +161,12 @@ extension ChatViewController {
                     image: UIImage(systemName: "magnifyingglass")
                 ) { [weak self] _ in self?.openFind() })
         }
+        if offersTerminal {
+            children.append(
+                UIAction(
+                    title: String(localized: "Terminal"), image: UIImage(systemName: "terminal")
+                ) { [weak self] _ in self?.presentTerminal() })
+        }
         children += [commands, jumpMenuElement(), masterMenuElement(), subagents, regenerate, usage, save, marks]
         children.append(
             UIAction(

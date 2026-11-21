@@ -218,7 +218,7 @@ extension MainWindowController {
         }
         UserDefaults.standard.set(entry.session.id, forKey: "tailscode.lastSession")
         showTitle(of: entry)
-        retargetTerminal(to: entry.session.directory)
+        retargetTerminal(to: entry, backend: pane.currentBackend)
     }
 
     /// The window wears the focused chat's name and server.

@@ -1,346 +1,414 @@
 import AppKit
-import os
+import Carbon.HIToolbox
+import CodingAgentKit
 import TailscodeCore
+import TailscodeMetal
 
-#if !TAILSCODE_MAS
-    /// A shell in the project the conversation is working in.
-    ///
-    /// The Mac build has no embedded terminal, and the pane does not pretend to be one: a login shell
-    /// runs one command at a time (`$SHELL -lc`) in the conversation's directory, which sources the
-    /// same rc files and so resolves the same aliases and functions, and the output is shown as it
-    /// returns. The notice line says exactly that, because a half-terminal that pretends to be a
-    /// terminal is worse than one that admits it — the same honesty the Linux app applies when vte4
-    /// is absent.
-    @MainActor
-    final class TerminalPane: NSViewController {
-        private let notice = NSTextField(labelWithString: "")
-        private let scrollView = NSScrollView()
-        private let output = NSTextView()
-        private let field = NSTextField()
-        private var history: [String] = []
-        private var historyIndex = 0
-        private var directory: String?
-        private var runTask: Task<Void, Never>?
-        private var interrupted = false
-        private let runningProcess = OSAllocatedUnfairLock<Process?>(uncheckedState: nil)
+/// A shell on the machine the conversation in focus works on.
+///
+/// The shell is the server's: it runs where the agent runs, in the folder the agent works in, and
+/// it is still there after this window has been closed and opened. That is what lets every copy of
+/// the app have one, the copy the App Store installs included: this Mac starts no process and
+/// reads no folder of its own, it draws a screen and sends keys. Each server the window has looked
+/// at keeps its own shell and scrollback, and the pane shows the one that belongs to the
+/// conversation in focus, walking it to that conversation's folder when the shell is at its
+/// prompt to be walked.
+@MainActor
+final class TerminalPane: NSViewController {
+    private let caption = NSTextField(labelWithString: "")
+    private let terminal = MacTerminalView(frame: .zero)
+    private var sessions: [String: TerminalSession] = [:]
+    private var shownServer: String?
+    private let desk = TerminalDeskName.current(client: "mac")
 
-        init() {
-            super.init(nibName: nil, bundle: nil)
+    private var session: TerminalSession? { shownServer.flatMap { sessions[$0] } }
+
+    init() {
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func loadView() {
+        let container = AppearanceView()
+        container.wantsLayer = true
+        container.onAppearanceChange = { [weak self] in self?.applyColours() }
+        caption.lineBreakMode = .byTruncatingMiddle
+        caption.translatesAutoresizingMaskIntoConstraints = false
+        caption.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        terminal.translatesAutoresizingMaskIntoConstraints = false
+        terminal.inset = MacTheme.Spacing.m
+        container.addSubview(caption)
+        container.addSubview(terminal)
+        NSLayoutConstraint.activate([
+            caption.topAnchor.constraint(equalTo: container.topAnchor, constant: MacTheme.Spacing.s),
+            caption.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: MacTheme.Spacing.m),
+            caption.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -MacTheme.Spacing.m),
+            terminal.topAnchor.constraint(equalTo: caption.bottomAnchor, constant: MacTheme.Spacing.xs),
+            terminal.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            terminal.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            terminal.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+        view = container
+        applyTypeScale()
+        applyColours()
+        restate()
+    }
+
+    private var colours: TerminalColors {
+        TerminalColors(palette: MacBrainPalette.palette(for: isViewLoaded ? view.effectiveAppearance : NSApp.effectiveAppearance))
+    }
+
+    private func applyColours() {
+        let colours = colours
+        view.effectiveAppearance.performAsCurrentDrawingAppearance {
+            view.layer?.backgroundColor = NSColor(terminal: colours.background).cgColor
         }
+        caption.textColor = MacTheme.Color.tertiaryLabel
+        terminal.canvas = colours.background
+        for session in sessions.values { session.screen?.apply(colours) }
+        terminal.requestFrame()
+    }
 
-        @available(*, unavailable)
-        required init?(coder: NSCoder) { fatalError() }
+    func applyTypeScale() {
+        guard isViewLoaded else { return }
+        caption.font = MacTheme.Ramp.font(.panelFootnote)
+        terminal.setFontSize(MacTheme.Ramp.font(.code, in: .terminal).pointSize)
+    }
 
-        override func loadView() {
-            let container = AppearanceView()
-            container.wantsLayer = true
-            container.onAppearanceChange = { [weak self] in self?.applyPaneColours() }
+    func takeFocus() {
+        view.window?.makeFirstResponder(terminal)
+    }
 
-            notice.stringValue = Localized.text(
-                "Running one command at a time in a login shell on this Mac — not a full terminal")
-            notice.font = MacTheme.Ramp.font(.panelFootnote)
-            notice.lineBreakMode = .byTruncatingTail
-            notice.translatesAutoresizingMaskIntoConstraints = false
+    /// Whether a keystroke belongs to the shell rather than the app, which is what puts the
+    /// shortcut engine in the terminal context.
+    func ownsFocus(in window: NSWindow?) -> Bool {
+        window?.firstResponder === terminal
+    }
 
-            configureOutput()
-            configureField()
-            container.addSubview(notice)
-            container.addSubview(scrollView)
-            container.addSubview(field)
+    /// The folder the shell on screen stands in, as its server last read it.
+    func standingDirectory() -> String? {
+        session?.standingDirectory
+    }
 
-            NSLayoutConstraint.activate([
-                notice.topAnchor.constraint(
-                    equalTo: container.topAnchor, constant: MacTheme.Spacing.s),
-                notice.leadingAnchor.constraint(
-                    equalTo: container.leadingAnchor, constant: MacTheme.Spacing.m),
-                notice.trailingAnchor.constraint(
-                    equalTo: container.trailingAnchor, constant: -MacTheme.Spacing.m),
-                scrollView.topAnchor.constraint(
-                    equalTo: notice.bottomAnchor, constant: MacTheme.Spacing.xs),
-                scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-                scrollView.bottomAnchor.constraint(
-                    equalTo: field.topAnchor, constant: -MacTheme.Spacing.xs),
-                field.leadingAnchor.constraint(
-                    equalTo: container.leadingAnchor, constant: MacTheme.Spacing.s),
-                field.trailingAnchor.constraint(
-                    equalTo: container.trailingAnchor, constant: -MacTheme.Spacing.s),
-                field.bottomAnchor.constraint(
-                    equalTo: container.bottomAnchor, constant: -MacTheme.Spacing.s),
-            ])
-            view = container
-            applyPaneColours()
-        }
+    /// The server that holds the shell on screen.
+    var standingServer: String? {
+        session?.standingDirectory == nil ? nil : shownServer
+    }
 
-        override func viewDidLoad() {
-            super.viewDidLoad()
-            NotificationCenter.default.addObserver(
-                self, selector: #selector(themeChanged), name: MacTheme.Chrome.didRepaint, object: nil)
-        }
-
-        @objc private func themeChanged() {
-            applyPaneColours()
-        }
-
-        /// The shell's size is a setting of its own, and what it already printed is part of the
-        /// answer: every run of the log is re-set at the new size and keeps the weight it had, so
-        /// the echoed commands stay heavier than the output beneath them.
-        func applyTypeScale() {
-            let body = MacTheme.Ramp.font(.code, in: .terminal)
-            output.font = body
-            field.font = body
-            notice.font = MacTheme.Ramp.font(.panelFootnote)
-            guard let storage = output.textStorage else { return }
-            storage.beginEditing()
-            storage.enumerateAttribute(
-                .font, in: NSRange(location: 0, length: storage.length)
-            ) { value, range, _ in
-                guard let old = value as? NSFont else { return }
-                let traits = old.fontDescriptor.object(forKey: .traits) as? [NSFontDescriptor.TraitKey: Any]
-                let weight = (traits?[.weight] as? CGFloat) ?? NSFont.Weight.regular.rawValue
-                storage.addAttribute(
-                    .font,
-                    value: NSFont.monospacedSystemFont(
-                        ofSize: body.pointSize, weight: NSFont.Weight(rawValue: weight)),
-                    range: range)
+    /// Points the pane at the conversation in focus: its server's shell, walked to its folder.
+    func show(
+        profileID: String, server: String, backend: (any CodingAgentBackend)?, directory: String?,
+        sessionID: String?
+    ) {
+        guard let backend else { return }
+        _ = view
+        if let existing = sessions[profileID] {
+            let switched = shownServer != profileID
+            shownServer = profileID
+            existing.follow(directory: directory)
+            if switched {
+                terminal.session = existing
+                restate()
             }
-            storage.endEditing()
+            return
         }
-
-        /// The pane's ground is a `CGColor`, which is the light it was resolved under rather than a
-        /// colour that answers again — so a system that crossed into dark, or a palette that moved,
-        /// would otherwise leave a pale slab under a dark transcript until the app was relaunched.
-        private func applyPaneColours() {
-            view.effectiveAppearance.performAsCurrentDrawingAppearance {
-                view.layer?.backgroundColor = MacTheme.Color.canvas.cgColor
-            }
-            notice.textColor = MacTheme.Color.tertiaryLabel
+        let grid = terminal.grid
+        let session = TerminalSession(
+            backend: backend, target: .init(server: server, directory: directory, sessionID: sessionID),
+            desk: desk, colors: colours, cols: grid?.cols ?? 80, rows: grid?.rows ?? 24)
+        sessions[profileID] = session
+        shownServer = profileID
+        session.onChange { [weak self] in
+            DispatchQueue.main.async { self?.restate() }
         }
-
-        func takeFocus() {
-            view.window?.makeFirstResponder(field)
-        }
-
-        /// Whether a keystroke belongs to the shell rather than the app: true while the command field
-        /// or the output is first responder, which is what puts the shortcut engine in the terminal
-        /// context — only Ctrl+Shift moves and zoom, everything else stays with the shell.
-        func ownsFocus(in window: NSWindow?) -> Bool {
-            guard let responder = window?.firstResponder else { return false }
-            if responder === output { return true }
-            if let editor = field.currentEditor(), responder === editor { return true }
-            return responder === field
-        }
-
-        /// The runner cannot tell a shell to change directory — there is no shell alive between
-        /// commands — so the follow is a fact echoed dim into the log: the next command runs there.
-        ///
-        /// The path belongs to whichever machine runs the bridge, and this shell belongs to this Mac.
-        /// When the two are not the same box the directory does not exist here, and echoing `cd` for
-        /// it would promise a place every command then failed to start in — so the pane says whose
-        /// disk it is standing on instead.
-        func setDirectory(_ path: String?) {
-            guard directory != path else { return }
-            directory = path
-            guard let path, !FileManager.default.fileExists(atPath: path) else {
-                appendLine("cd \(path ?? "~")", color: MacTheme.Color.tertiaryLabel)
-                return
-            }
-            appendLine(
-                Localized.text(
-                    "%@ is the agent's folder, not one on this Mac — commands run from your home folder.",
-                    path),
-                color: MacTheme.Color.tertiaryLabel)
-        }
-
-        private func configureOutput() {
-            output.isEditable = false
-            output.isRichText = false
-            output.drawsBackground = false
-            output.font = MacTheme.Ramp.font(.code, in: .terminal)
-            output.textContainerInset = NSSize(width: MacTheme.Spacing.s, height: MacTheme.Spacing.xs)
-            output.autoresizingMask = [.width]
-            output.isVerticallyResizable = true
-            output.textContainer?.widthTracksTextView = true
-            scrollView.documentView = output
-            scrollView.hasVerticalScroller = true
-            scrollView.drawsBackground = false
-            scrollView.translatesAutoresizingMaskIntoConstraints = false
-        }
-
-        private func configureField() {
-            field.font = MacTheme.Ramp.font(.code, in: .terminal)
-            field.placeholderString = Localized.text("Run a command…")
-            field.target = self
-            field.action = #selector(runFromField)
-            field.cell?.sendsActionOnEndEditing = false
-            field.delegate = self
-            field.translatesAutoresizingMaskIntoConstraints = false
-        }
-
-        @objc private func runFromField() {
-            let command = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !command.isEmpty else { return }
-            field.stringValue = ""
-            history.append(command)
-            historyIndex = history.count
-            appendLine("$ \(command)", color: MacTheme.Color.label, emphasized: true)
-            run(command)
-        }
-
-        /// One command, one login shell, off the main actor. A new command cancels the previous run
-        /// outright — its process is terminated and whatever it would still have printed is dropped —
-        /// because two commands interleaving into one log reads as neither.
-        ///
-        /// A run that printed nothing still closes its own line, because a command that finished
-        /// silently and one that is still going are otherwise the same picture.
-        private func run(_ command: String) {
-            let cwd = Self.localDirectory(directory)
-            runTask?.cancel()
-            runningProcess.withLockUnchecked { process in
-                process?.terminate()
-                process = nil
-            }
-            interrupted = false
-            let holder = runningProcess
-            runTask = Task { [weak self] in
-                let result = await Task.detached { Self.shell(command, in: cwd, holding: holder) }
-                    .value
-                guard !Task.isCancelled else { return }
-                guard let self else { return }
-                if !result.isEmpty {
-                    self.appendLine(result, color: MacTheme.Color.label)
-                } else if !self.interrupted {
-                    self.appendLine(
-                        Localized.text("(no output)"), color: MacTheme.Color.tertiaryLabel)
-                }
-                if self.interrupted {
-                    self.interrupted = false
-                    self.appendLine("^C", color: MacTheme.Color.tertiaryLabel)
-                }
+        session.onDirty { [weak self] in
+            DispatchQueue.main.async {
+                guard let self, self.shownServer == profileID else { return }
+                self.terminal.requestFrame()
             }
         }
+        terminal.session = session
+        session.start()
+        restate()
+    }
 
-        /// ⌃C: the command running now is interrupted the way a terminal interrupts one, and what
-        /// it printed before it stopped is still shown. Before this a command that would not end —
-        /// a server, a watcher, a `sleep` — could only be stopped by typing another one.
-        func interrupt() {
-            let signalled = runningProcess.withLockUnchecked { process -> Bool in
-                guard let running = process, running.isRunning else { return false }
-                running.interrupt()
-                return true
+    /// Lets go of every shell as the app goes. They stay running for this desk to find.
+    func leaveAll() {
+        for session in sessions.values { session.leave() }
+    }
+
+    private func restate() {
+        caption.stringValue =
+            session?.reading.caption
+            ?? Localized.text("Open a chat and a shell opens here, on the machine that chat runs on")
+    }
+
+    /// What the screen says, for a check that has no eyes.
+    var screenText: String { session?.screen?.text ?? "" }
+
+    func driveType(_ text: String) {
+        session?.type(text)
+    }
+
+    var diagnostics: String { terminal.diagnostics + " frame=\(NSStringFromRect(terminal.frame))" }
+
+    var captionText: String { caption.stringValue }
+}
+
+private extension NSColor {
+    convenience init(terminal rgb: UInt32) {
+        self.init(
+            srgbRed: CGFloat((rgb >> 16) & 0xff) / 255, green: CGFloat((rgb >> 8) & 0xff) / 255,
+            blue: CGFloat(rgb & 0xff) / 255, alpha: 1)
+    }
+}
+
+/// The terminal's picture with a Mac's keyboard and pointer.
+///
+/// Text reaches the shell through the input system, so a dead key, a composed character and an
+/// input method all type what they type everywhere else; Option is left to the keyboard layout,
+/// which on most layouts outside the US is the only way to a bracket or a pipe. The keys that are
+/// named and not typed, and anything held with Control, go to the terminal as keys, which turns
+/// them into whatever the program on screen asked for.
+@MainActor
+final class MacTerminalView: TerminalMetalView, @preconcurrency NSTextInputClient {
+    private var marked = ""
+    private var programHasPointer = false
+    private var wheel = 0.0
+
+    private static let named: [Int: TerminalKey] = [
+        kVK_Return: .enter, kVK_ANSI_KeypadEnter: .numpadEnter, kVK_Tab: .tab, kVK_Delete: .backspace,
+        kVK_Escape: .escape, kVK_ForwardDelete: .delete, kVK_Home: .home, kVK_End: .end,
+        kVK_PageUp: .pageUp, kVK_PageDown: .pageDown, kVK_LeftArrow: .arrowLeft,
+        kVK_RightArrow: .arrowRight, kVK_DownArrow: .arrowDown, kVK_UpArrow: .arrowUp,
+        kVK_F1: .function(1), kVK_F2: .function(2), kVK_F3: .function(3), kVK_F4: .function(4),
+        kVK_F5: .function(5), kVK_F6: .function(6), kVK_F7: .function(7), kVK_F8: .function(8),
+        kVK_F9: .function(9), kVK_F10: .function(10), kVK_F11: .function(11), kVK_F12: .function(12),
+    ]
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func becomeFirstResponder() -> Bool {
+        showsFocus = true
+        session?.focus(true)
+        return true
+    }
+
+    override func resignFirstResponder() -> Bool {
+        showsFocus = false
+        session?.focus(false)
+        return true
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .iBeam)
+    }
+
+    private static func modifiers(_ flags: NSEvent.ModifierFlags) -> TerminalModifiers {
+        var modifiers: TerminalModifiers = []
+        if flags.contains(.shift) { modifiers.insert(.shift) }
+        if flags.contains(.control) { modifiers.insert(.control) }
+        if flags.contains(.option) { modifiers.insert(.alt) }
+        if flags.contains(.command) { modifiers.insert(.command) }
+        return modifiers
+    }
+
+    override func keyDown(with event: NSEvent) {
+        guard let session else { return }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if !marked.isEmpty {
+            inputContext?.handleEvent(event)
+            return
+        }
+        let held = Self.modifiers(flags)
+        if held == .shift, event.keyCode == UInt16(kVK_PageUp) || event.keyCode == UInt16(kVK_PageDown) {
+            session.screen?.scroll(pages: event.keyCode == UInt16(kVK_PageUp) ? -1 : 1)
+            requestFrame()
+            return
+        }
+        if let key = Self.named[Int(event.keyCode)] {
+            var keys = held
+            keys.remove(.command)
+            session.press(TerminalKeyPress(key: key, modifiers: keys, isRepeat: event.isARepeat))
+            return
+        }
+        if flags.contains(.control), let typed = event.charactersIgnoringModifiers?.lowercased().first {
+            var keys: TerminalModifiers = [.control]
+            if flags.contains(.shift) { keys.insert(.shift) }
+            session.press(
+                TerminalKeyPress(key: .typing(typed), modifiers: keys, unshifted: typed, isRepeat: event.isARepeat))
+            return
+        }
+        inputContext?.handleEvent(event)
+    }
+
+    func insertText(_ string: Any, replacementRange: NSRange) {
+        marked = ""
+        let text = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
+        session?.type(text)
+    }
+
+    override func doCommand(by selector: Selector) {}
+
+    func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        marked = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
+    }
+
+    func unmarkText() {
+        marked = ""
+    }
+
+    func selectedRange() -> NSRange { NSRange(location: NSNotFound, length: 0) }
+
+    func markedRange() -> NSRange {
+        marked.isEmpty ? NSRange(location: NSNotFound, length: 0) : NSRange(location: 0, length: marked.utf16.count)
+    }
+
+    func hasMarkedText() -> Bool { !marked.isEmpty }
+
+    func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? { nil }
+
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
+
+    /// Where an input method's candidate window goes: at the cursor's cell.
+    func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+        guard let window, let grid, let cursor = session?.frame()?.cursor else { return .zero }
+        let scale = window.backingScaleFactor
+        let cell = NSRect(
+            x: CGFloat(grid.padding + cursor.column * grid.cellWidth) / scale,
+            y: CGFloat(grid.padding + cursor.row * grid.cellHeight) / scale,
+            width: CGFloat(grid.cellWidth) / scale, height: CGFloat(grid.cellHeight) / scale)
+        return window.convertToScreen(convert(cell, to: nil))
+    }
+
+    func characterIndex(for point: NSPoint) -> Int { NSNotFound }
+
+    private func place(_ event: NSEvent) -> (x: Double, y: Double) {
+        pixel(convert(event.locationInWindow, from: nil))
+    }
+
+    /// The pointer belongs to the program on screen when it asked for the mouse and Shift is not
+    /// held; otherwise it is the person's, and the main button selects.
+    private func pointer(_ action: TerminalScreen.PointerAction, _ button: TerminalScreen.PointerButton, _ event: NSEvent) {
+        guard let session, let screen = session.screen else { return }
+        let at = place(event)
+        let modifiers = Self.modifiers(event.modifierFlags)
+        switch action {
+        case .press:
+            let bytes = screen.bytes(pointer: .press, button: button, modifiers: modifiers, x: at.x, y: at.y, anyPressed: true)
+            programHasPointer = !bytes.isEmpty
+            if programHasPointer {
+                session.send(bytes)
+            } else if button == .left {
+                screen.select(.press, x: at.x, y: at.y)
+                requestFrame()
             }
-            if signalled { interrupted = true }
-        }
-
-        /// Whatever is still running goes with the app. A process outlives the app that started
-        /// it, so a build or a server run from here would otherwise go on after the window closed,
-        /// with nothing left on screen that could stop it.
-        func stopRunning() {
-            runTask?.cancel()
-            runningProcess.withLockUnchecked { process in
-                process?.terminate()
-                process = nil
+        case .release:
+            if programHasPointer {
+                session.send(
+                    screen.bytes(pointer: .release, button: button, modifiers: modifiers, x: at.x, y: at.y, anyPressed: false))
+            } else if button == .left {
+                screen.select(.release, x: at.x, y: at.y)
+                requestFrame()
             }
-        }
-
-        /// The agent's directory when this Mac actually has it, and the home folder when it does not:
-        /// a shell told to start in a path that is not here fails before it has read the command, and
-        /// answers every one of them with the same four words.
-        private static func localDirectory(_ path: String?) -> String {
-            guard let path, FileManager.default.fileExists(atPath: path) else {
-                return NSHomeDirectory()
+            programHasPointer = false
+        case .motion:
+            let held = button != .none
+            let bytes = screen.bytes(pointer: .motion, button: button, modifiers: modifiers, x: at.x, y: at.y, anyPressed: held)
+            if !bytes.isEmpty {
+                session.send(bytes)
+            } else if button == .left, !programHasPointer {
+                screen.select(.drag, x: at.x, y: at.y)
+                requestFrame()
             }
-            return path
-        }
-
-        /// `-lc` rather than `-c`: a login shell reads the same rc files the user's own terminal
-        /// does, so an alias or function they rely on resolves here too. The started process is
-        /// parked in `holding` so the next command can terminate it.
-        nonisolated static func shell(
-            _ command: String, in directory: String?,
-            holding holder: OSAllocatedUnfairLock<Process?>? = nil
-        ) -> String {
-            let process = Process()
-            process.executableURL = URL(
-                fileURLWithPath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
-            process.arguments = ["-lc", command]
-            if let directory { process.currentDirectoryURL = URL(fileURLWithPath: directory) }
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
-            guard (try? process.run()) != nil else {
-                return Localized.text("could not start a shell")
-            }
-            holder?.withLockUnchecked { $0 = process }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            holder?.withLockUnchecked { if $0 === process { $0 = nil } }
-            return String(data: data, encoding: .utf8) ?? ""
-        }
-
-        /// The echoed command is the same size as the output under it and heavier, not a second size:
-        /// two mono sizes alternating down a log break the one column the eye is following.
-        private func appendLine(_ text: String, color: NSColor, emphasized: Bool = false) {
-            guard let storage = output.textStorage else { return }
-            let body = MacTheme.Ramp.font(.code, in: .terminal)
-            let font =
-                emphasized
-                ? NSFont.monospacedSystemFont(ofSize: body.pointSize, weight: .semibold)
-                : body
-            storage.append(
-                NSAttributedString(
-                    string: text.hasSuffix("\n") ? text : text + "\n",
-                    attributes: [.font: font, .foregroundColor: color]))
-            trimScrollback(storage)
-            output.scrollToEndOfDocument(nil)
-        }
-
-        /// How much of the log the pane keeps, like a terminal's scrollback. A log that only grew
-        /// laid out every line it had ever printed each time it scrolled, and one `cat` of a large
-        /// file was enough to make the pane itself slow.
-        private static let scrollback = 400_000
-
-        /// Drops the oldest whole lines once the log passes the scrollback, so what is left starts
-        /// at the beginning of a line rather than halfway through one.
-        private func trimScrollback(_ storage: NSTextStorage) {
-            let excess = storage.length - Self.scrollback
-            guard excess > 0 else { return }
-            let text = storage.string as NSString
-            let newline = text.range(
-                of: "\n", range: NSRange(location: excess, length: text.length - excess))
-            let cut = newline.location == NSNotFound ? excess : newline.location + 1
-            storage.deleteCharacters(in: NSRange(location: 0, length: cut))
-        }
-
-        private func stepHistory(_ delta: Int) {
-            guard !history.isEmpty else { return }
-            let next = historyIndex + delta
-            guard next >= 0 else { return }
-            if next >= history.count {
-                historyIndex = history.count
-                field.stringValue = ""
-                return
-            }
-            historyIndex = next
-            field.stringValue = history[next]
-            field.currentEditor()?.moveToEndOfDocument(nil)
         }
     }
 
-    extension TerminalPane: NSTextFieldDelegate {
-        func control(
-            _ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector
-        ) -> Bool {
-            switch commandSelector {
-            case #selector(NSResponder.moveUp(_:)):
-                stepHistory(-1)
-                return true
-            case #selector(NSResponder.moveDown(_:)):
-                stepHistory(1)
-                return true
-            default:
-                return false
-            }
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        pointer(.press, .left, event)
+    }
+
+    override func mouseDragged(with event: NSEvent) { pointer(.motion, .left, event) }
+    override func mouseUp(with event: NSEvent) { pointer(.release, .left, event) }
+    override func otherMouseDown(with event: NSEvent) { pointer(.press, .middle, event) }
+    override func otherMouseUp(with event: NSEvent) { pointer(.release, .middle, event) }
+
+    override func rightMouseDown(with event: NSEvent) {
+        guard let screen = session?.screen else { return }
+        let at = place(event)
+        let bytes = screen.bytes(
+            pointer: .press, button: .right, modifiers: Self.modifiers(event.modifierFlags), x: at.x, y: at.y,
+            anyPressed: true)
+        if bytes.isEmpty {
+            super.rightMouseDown(with: event)
+        } else {
+            programHasPointer = true
+            session?.send(bytes)
         }
     }
-#endif
+
+    override func rightMouseUp(with event: NSEvent) {
+        guard programHasPointer else { return }
+        pointer(.release, .right, event)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        menu.addItem(withTitle: Localized.text("Copy"), action: #selector(copy(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: Localized.text("Paste"), action: #selector(paste(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: Localized.text("Select All"), action: #selector(selectAll(_:)), keyEquivalent: "")
+        return menu
+    }
+
+    /// A wheel turn in rows. A trackpad reports points, spent as whole rows as they add up; a
+    /// wheel reports notches, three rows each.
+    override func scrollWheel(with event: NSEvent) {
+        guard let session, let screen = session.screen else { return }
+        wheel += event.hasPreciseScrollingDeltas ? -Double(event.scrollingDeltaY / rowHeight) : -Double(event.scrollingDeltaY) * 3
+        let whole = Int(wheel.rounded(.towardZero))
+        guard whole != 0 else { return }
+        wheel -= Double(whole)
+        let at = place(event)
+        let bytes = screen.wheel(rows: whole, modifiers: Self.modifiers(event.modifierFlags), x: at.x, y: at.y)
+        if bytes.isEmpty {
+            requestFrame()
+        } else {
+            session.send(bytes)
+        }
+    }
+
+    @objc func copy(_ sender: Any?) {
+        guard let text = session?.screen?.selectionText, !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    @objc func paste(_ sender: Any?) {
+        guard let text = NSPasteboard.general.string(forType: .string) else { return }
+        session?.paste(text)
+    }
+
+    override func selectAll(_ sender: Any?) {
+        session?.screen?.selectAll()
+        requestFrame()
+    }
+
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .textArea }
+    override func accessibilityLabel() -> String? { Localized.text("Terminal") }
+    override func accessibilityValue() -> Any? { session?.screen?.text }
+}
+
+extension MacTerminalView: NSMenuItemValidation {
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(copy(_:)): return session?.screen?.hasSelection == true
+        case #selector(paste(_:)): return NSPasteboard.general.string(forType: .string) != nil && session != nil
+        default: return true
+        }
+    }
+}

@@ -7,7 +7,7 @@ pkgdesc="Coding agents over Tailscale — a GTK4 client for Claude Code and open
 arch=('x86_64' 'aarch64')
 url="https://github.com/guitaripod/Tailscode"
 license=('GPL-3.0-or-later')
-depends=('gtk4' 'libadwaita' 'glib2' 'gdk-pixbuf2' 'libepoxy' 'vte4' 'mpv' 'webkitgtk-6.0' 'libpulse'
+depends=('gtk4' 'libadwaita' 'glib2' 'gdk-pixbuf2' 'libepoxy' 'mpv' 'webkitgtk-6.0' 'libpulse'
          'gtk4-layer-shell' 'curl')
 makedepends=('swift-bin' 'git')
 optdepends=('tailscale: reach the machine your agent runs on')
@@ -27,6 +27,7 @@ pkgver() {
 prepare() {
     cd "$srcdir/$_pkgname/TailscodeLinux"
     TAILSCODE_KIT_REMOTE=1 swift package resolve
+    "$srcdir/$_pkgname/scripts/ghostty-vt.sh"
 }
 
 build() {
