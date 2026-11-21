@@ -12,11 +12,11 @@ final class ChatViewController: UIViewController {
     let skyView = SkyView()
     var transcriptBottom: NSLayoutConstraint!
     var dataSource: UICollectionViewDiffableDataSource<Section, String>!
-    let composer = ComposerView()
+    let composer = ChatSpares.takeComposer()
     lazy var callController = ChatCallController(
         chatID: viewModel.session.id, profileID: viewModel.contextID, host: callHost)
-    let dialPill = ModelDialPill()
-    let commandPalette = SlashCommandPalette()
+    let dialPill = ChatSpares.takePill()
+    let commandPalette = ChatSpares.takePalette()
     /// Whether the list over the box is meant to be up, whatever its fade is doing.
     var paletteWanted = false
     /// What the conversation recedes behind while the box is lifted over it. A press on it lets
@@ -28,9 +28,12 @@ final class ChatViewController: UIViewController {
     var mentions: MentionFinder?
     /// The file name the caret is in, while the list is finding it.
     var mentionToken: MentionToken?
-    let banner = BannerView()
-    let emptyState = ChatEmptyStateView()
-    let loadingState = WorkingPlaceholderView()
+    let banner = ChatSpares.takeBanner()
+    /// The suggestions an empty conversation offers, made and laid in when a conversation first
+    /// turns out to be empty: one opened onto its words never builds them.
+    var builtEmptyState: ChatEmptyStateView?
+    var emptyStateClearance: CGFloat = 0
+    let loadingState = ChatSpares.takePlaceholder()
 
     var rowsByID: [String: ChatRow] = [:]
     var orderedIDs: [String] = []
@@ -159,28 +162,28 @@ final class ChatViewController: UIViewController {
     let fab = UIButton(type: .system)
     var fabSideConstraints: (leading: NSLayoutConstraint, trailing: NSLayoutConstraint)?
     var rowsAtDeparture: Int?
-    let agentsChip = ChatChip(kind: .live)
-    let backgroundChip = ChatChip(kind: .live)
-    let goalChip = ChatChip(kind: .live)
-    let contextChip = ChatChip(kind: .fact)
-    let wallChip = ChatChip(kind: .fact)
-    let cacheChip = ChatChip(kind: .fact)
+    let agentsChip = ChatSpares.takeChip(.live)
+    let backgroundChip = ChatSpares.takeChip(.live)
+    let goalChip = ChatSpares.takeChip(.live)
+    let contextChip = ChatSpares.takeChip(.fact)
+    let wallChip = ChatSpares.takeChip(.fact)
+    let cacheChip = ChatSpares.takeChip(.fact)
     var rangeQuotas: [UsageQuota] = []
     var rangeClock: Task<Void, Never>?
     weak var rangeSheet: RangeViewController?
     /// What the whole conversation has cost, beside its size — the two facts a long chat is
     /// judged by. Tapping opens the account behind the number.
-    let spendChip = ChatChip(kind: .fact)
+    let spendChip = ChatSpares.takeChip(.fact)
     /// The server's own account when it keeps one, else what the transcript says — kept apart so a
     /// poll that came back with nothing cannot erase a good reading, which is what left the chart
     /// on the one device the session was started from.
     var spendReading = SpendReading()
     /// The branch the work is landing on, and how far the tree has drifted from it. Tapping opens
     /// the repository — read-only, because this app never commits on anyone's behalf.
-    let gitChip = ChatChip(kind: .fact)
+    let gitChip = ChatSpares.takeChip(.fact)
     var git: GitState?
     /// How many chapters the conversation has been through, shown from two. Tapping opens them.
-    let chaptersChip = ChatChip(kind: .fact)
+    let chaptersChip = ChatSpares.takeChip(.fact)
     var chapterSource: [ConversationChapter] = []
     var chapterHeadings: [String: ChapterHeading] = [:]
     var chapterMessageCount = 0
@@ -188,15 +191,15 @@ final class ChatViewController: UIViewController {
     /// The way into the running app, offered only where this conversation's machine runs a preview
     /// host and the folder is known. It is a control, so it is outlined, and it leads the one
     /// chip row the chat has, so a row that scrolls sideways never hides it.
-    let previewChip = ChatChip(kind: .control)
+    let previewChip = ChatSpares.takeChip(.control)
     lazy var factsRow = ChatFactsRow(chips: [
         previewChip, agentsChip, backgroundChip, goalChip, contextChip, wallChip, cacheChip,
         spendChip, gitChip, chaptersChip,
     ])
     let factsScrim = FadeScrimView(fade: CGFloat(ChatChrome.transcriptToChrome))
     let findBar = UIView()
-    let findField = UISearchTextField()
-    let findCountLabel = UILabel()
+    lazy var findField = UISearchTextField()
+    lazy var findCountLabel = UILabel()
     var findMatches: [String] = []
     var findCursor = 0
     var findHighlightedID: String?
@@ -300,7 +303,6 @@ final class ChatViewController: UIViewController {
         configureGitChip()
         configurePreviewChip()
         configureBackgroundChip()
-        configureFindBar()
         configureNavTitleView()
         bindMaster()
         watchSideBar()
@@ -447,6 +449,21 @@ final class ChatViewController: UIViewController {
                     await self?.stageCompose(script)
                 }
             }
+            if let needle = ProcessInfo.processInfo.environment["TAILSCODE_OPEN_FIND"] {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    guard let self else { return }
+                    self.openFind()
+                    self.findField.text = needle
+                    self.runFind(retarget: true)
+                }
+            }
+            if ProcessInfo.processInfo.environment["TAILSCODE_CALL_NOTICE"] != nil {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(3))
+                    self?.callController.showNoticeForVerification()
+                }
+            }
             if let draft = ProcessInfo.processInfo.environment["TAILSCODE_DRAFT"] {
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(3))
@@ -531,10 +548,13 @@ final class ChatViewController: UIViewController {
             Task { await loadModels() }
         }
         viewModel.loadServerCommands()
+        timeline.mark("loaded")
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        timeline.mark("will")
+        pushBegan()
         viewModel.isBound = true
         viewModel.startSubagentTracking()
         callController.screenAppeared()
@@ -552,6 +572,9 @@ final class ChatViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        ChatSpares.prepare()
+        timeline.mark("appeared")
+        timeline.reportIfComplete(session: viewModel.session.id, rows: orderedIDs.count)
         MidgarLog.info(
             "chat appeared session=\(viewModel.session.id) title=\(viewModel.displayTitle)", category: .chat)
         AppActivityController.shared.shown(viewModel.session.id, in: self)
@@ -746,6 +769,9 @@ final class ChatViewController: UIViewController {
     var hasPainted = false
 
     var firstPaint: FirstPaint?
+    var pushFrame: NextFrame?
+    var awaitsPush = false
+    var afterPushFrame: [() -> Void] = []
 
     var lastReadMarkAt: CFTimeInterval = 0
     var wasRunningWhenMarked = false
@@ -753,6 +779,7 @@ final class ChatViewController: UIViewController {
     var lastReadStamp = 0
 
     let openedAt = ContinuousClock.now
+    let timeline = OpenTimeline()
     var openTimed = false
 
     let segmentMemo = SegmentRowMemo()
@@ -852,7 +879,8 @@ extension ChatViewController {
             stopTurn: { [weak self] in self?.viewModel.abort() },
             toast: { [weak self] message in self?.presentToast(message, duration: 5) },
             dismissKeyboard: { [weak self] in self?.view.endEditing(true) },
-            barItemsChanged: { [weak self] in self?.refreshCallBarItem() })
+            barItemsChanged: { [weak self] in self?.refreshCallBarItem() },
+            seatDock: { [weak self] dock in self?.seatCallDock(dock) })
     }
 
     /// What the voice heard goes out exactly as typed words do — pending ink, queue, marks — with
@@ -862,6 +890,11 @@ extension ChatViewController {
         animateNextRender = true
         viewModel.send(text)
         return true
+    }
+
+    fileprivate func seatCallDock(_ dock: CallDockView) {
+        composerAccessories.addArrangedSubview(dock)
+        dock.widthAnchor.constraint(equalTo: composerAccessories.widthAnchor).isActive = true
     }
 
     fileprivate func refreshCallBarItem() {

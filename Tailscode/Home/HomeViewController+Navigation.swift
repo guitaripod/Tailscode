@@ -144,7 +144,6 @@ extension HomeViewController {
             break
         }
         guard let backend = viewModel.backend(for: entry) else { return nil }
-        SessionSeenStore.markSeen(entry.session.id)
         let reused =
             SessionActivity.shared.retainedViewModel(
                 for: entry.session.id, contextID: entry.profileID)
@@ -161,6 +160,8 @@ extension HomeViewController {
         let previousTop = (nav.topViewController as? ChatViewController)?.sessionID ?? "-"
         let chat = ChatViewController(viewModel: chatViewModel)
         showConversation(chat, animated: presentedViewController == nil)
+        let opened = entry.session.id
+        chat.whenPushShows { SessionSeenStore.markSeen(opened) }
         MidgarLog.info(
             "openChat push session=\(entry.session.id) title=\(entry.session.title) top=\(previousTop) reused=\(reused != nil)", category: .session)
         if let question { chat.deliver(question.send, attachments: question.attachments) }

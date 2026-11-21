@@ -82,15 +82,32 @@ extension ChatViewController {
         scheduleOpeningStage()
     }
 
-    /// One more slice of rows above the ones already shown, sized by what the last slice cost.
+    /// How long the slices of an opening may run back to back while the page cannot be seen. A
+    /// slice is held to a frame's worth so a page being read stays under the finger, but until the
+    /// reveal there is nothing to read and the slide is drawn outside this process, so a turn of
+    /// the run loop between slices is only time before the words appear.
+    private static let unseenFill: CFTimeInterval = 0.03
+
+    /// More rows above the ones already shown: one slice once the page can be seen, as many as
+    /// fit in `unseenFill` while it cannot.
     private func advanceOpening() {
         openingScheduled = false
-        guard var current = opening, isViewLoaded else { return }
+        let began = CACurrentMediaTime()
+        repeat {
+            guard addOpeningSlice() else { return }
+        } while !hasRevealed && CACurrentMediaTime() - began < Self.unseenFill
+        scheduleOpeningStage()
+    }
+
+    /// One more slice of rows above the ones already shown, sized by what the last slice cost.
+    /// Says whether there is more of the transcript to add.
+    private func addOpeningSlice() -> Bool {
+        guard var current = opening, isViewLoaded else { return false }
         let started = CACurrentMediaTime()
         guard let rows = current.next(after: openingStage) else {
             opening = nil
             openingStage = nil
-            return
+            return false
         }
         opening = current
         let following = !hasRevealed || (!userScrolledUp && !isFingerDown && canvasPromptIDs.isEmpty)
@@ -111,12 +128,12 @@ extension ChatViewController {
         openingStage = TranscriptOpening.Stage(
             rows: rows, milliseconds: (CACurrentMediaTime() - started) * 1000, covered: covered)
         if !hasRevealed, covered || current.isDone { revealTranscript() }
-        if current.isDone {
+        guard !current.isDone else {
             opening = nil
             openingStage = nil
-        } else {
-            scheduleOpeningStage()
+            return false
         }
+        return true
     }
 
     /// Puts the window on its end, makes the cells it shows, and says whether they fill the page: a
@@ -173,9 +190,11 @@ extension ChatViewController {
         let hasRows =
             !orderedIDs.isEmpty || !viewModel.pendingSends.isEmpty || !viewModel.queued.isEmpty
         updatePlaceholders(hasRows: hasRows, for: viewModel.state)
-        UIView.animate(withDuration: 0.22, delay: 0, options: .curveEaseOut) {
+        UIView.animate(withDuration: 0.12, delay: 0, options: .curveEaseOut) {
             self.collectionView.alpha = 1
         }
+        timeline.mark("revealed")
+        timeline.reportIfComplete(session: viewModel.session.id, rows: orderedIDs.count)
     }
 
     func withdrawResolvedRequests(previousPermission: String?, previousQuestion: String?) {

@@ -87,7 +87,25 @@ import UIKit
             }
             let top = byName.sorted { $0.value > $1.value }.prefix(10)
                 .map { "\($0.key)=\($0.value)" }.joined(separator: ",")
-            return "views=\(views) constraints=\(constraints) \(top)"
+            return "views=\(views) constraints=\(constraints) \(top) parts[\(chromeParts(of: root, depth: 2))]"
+        }
+
+        /// What each part of the chat's chrome weighs, two levels down: its type, whether it can
+        /// be seen, and how many views and constraints it brings to every push.
+        private func chromeParts(of root: UIView, depth: Int) -> String {
+            root.subviews.filter { !($0 is UICollectionViewCell) }.map { part in
+                var views = 0
+                var constraints = 0
+                var pending = [part]
+                while let next = pending.popLast() {
+                    views += 1
+                    constraints += next.constraints.count
+                    pending.append(contentsOf: next.subviews.filter { !($0 is UICollectionViewCell) })
+                }
+                let seen = part.isHidden || part.alpha == 0 ? "hidden" : "shown"
+                let inner = depth > 1 && views > 12 ? "{\(chromeParts(of: part, depth: depth - 1))}" : ""
+                return "\(type(of: part)):\(seen):\(views)v/\(constraints)c\(inner)"
+            }.joined(separator: " ")
         }
 
         private func survivors(of census: [WeakView], chat: WeakChat) -> String {
@@ -379,10 +397,13 @@ import UIKit
         private func trip(
             cycle: Int, backend: MockBackend, session: AgentSession, in stack: UINavigationController
         ) async -> Trip {
+            let pressed = CACurrentMediaTime()
             let model = ChatViewModel(
                 backend: backend, session: session, contextID: DemoWorld.claudeProfile.id,
                 serverName: "bench")
             let chat = ChatViewController(viewModel: model)
+            chat.timeline.begin(at: pressed)
+            chat.timeline.mark("made")
             reset()
             ChatNavigator.shared.push(chat, on: stack, animated: true)
             await untilOpened(chat)

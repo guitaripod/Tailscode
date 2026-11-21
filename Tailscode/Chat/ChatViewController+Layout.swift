@@ -139,9 +139,7 @@ extension ChatViewController {
         composerAccessories.translatesAutoresizingMaskIntoConstraints = false
         composerAccessories.addArrangedSubview(attachmentStrip)
         composerAccessories.addArrangedSubview(factsRow)
-        composerAccessories.addArrangedSubview(callController.dock)
         factsRow.widthAnchor.constraint(equalTo: composerAccessories.widthAnchor).isActive = true
-        callController.dock.widthAnchor.constraint(equalTo: composerAccessories.widthAnchor).isActive = true
         liftScrim.translatesAutoresizingMaskIntoConstraints = false
         liftScrim.backgroundColor = Theme.Color.background.withAlphaComponent(0.8)
         liftScrim.alpha = 0
@@ -231,18 +229,6 @@ extension ChatViewController {
                         constant: -Theme.Spacing.l),
                 ]))
 
-        emptyState.translatesAutoresizingMaskIntoConstraints = false
-        emptyState.isHidden = true
-        emptyState.onSuggestion = { [weak self] prompt in self?.composer.setDraft(prompt) }
-        view.insertSubview(emptyState, belowSubview: composer)
-        NSLayoutConstraint.activate([
-            emptyState.topAnchor.constraint(equalTo: collectionView.topAnchor),
-            emptyState.leadingAnchor.constraint(equalTo: collectionView.leadingAnchor),
-            emptyState.trailingAnchor.constraint(equalTo: collectionView.trailingAnchor),
-            emptyState.bottomAnchor.constraint(lessThanOrEqualTo: collectionView.bottomAnchor),
-            emptyState.bottomAnchor.constraint(equalTo: composer.topAnchor).withPriority(.defaultHigh),
-        ])
-
         loadingState.translatesAutoresizingMaskIntoConstraints = false
         loadingState.isHidden = true
         loadingState.isUserInteractionEnabled = false
@@ -263,6 +249,28 @@ extension ChatViewController {
     private func nameTranscriptToTheBar() {
         if #unavailable(iOS 26.0) { setContentScrollView(collectionView) }
     }
+
+    var emptyState: ChatEmptyStateView {
+        if let builtEmptyState { return builtEmptyState }
+        let emptyState = ChatEmptyStateView()
+        builtEmptyState = emptyState
+        emptyState.translatesAutoresizingMaskIntoConstraints = false
+        emptyState.isHidden = true
+        emptyState.onSuggestion = { [weak self] prompt in self?.composer.setDraft(prompt) }
+        view.insertSubview(emptyState, belowSubview: loadingState)
+        NSLayoutConstraint.activate([
+            emptyState.topAnchor.constraint(equalTo: collectionView.topAnchor),
+            emptyState.leadingAnchor.constraint(equalTo: collectionView.leadingAnchor),
+            emptyState.trailingAnchor.constraint(equalTo: collectionView.trailingAnchor),
+            emptyState.bottomAnchor.constraint(lessThanOrEqualTo: collectionView.bottomAnchor),
+            emptyState.bottomAnchor.constraint(equalTo: composer.topAnchor).withPriority(.defaultHigh),
+        ])
+        emptyState.bottomClearance = emptyStateClearance
+        return emptyState
+    }
+
+    /// Whether the suggestions are up, asked without making them.
+    var isEmptyStateShown: Bool { builtEmptyState?.isHidden == false }
 
     /// A chip above the composer while subagents are out — a session deep in fan-out work can
     /// leave the main transcript still for minutes, which otherwise reads as "nothing is

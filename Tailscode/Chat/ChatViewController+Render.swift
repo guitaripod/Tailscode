@@ -194,7 +194,44 @@ extension ChatViewController {
     private func queueFirstPaint(_ state: ConversationState) {
         let idle = firstPaint == nil
         firstPaint = .waiting(state)
-        if idle { scheduleFirstPaint() }
+        if idle, !awaitsPush { scheduleFirstPaint() }
+    }
+
+    /// The push that shows this chat is about to begin, and nothing may stand between a press and
+    /// the first frame of it: the first account of the conversation, which is most of a frame to
+    /// build and several to draw, waits until that frame has been asked for. The slide itself is
+    /// drawn outside this process, so the words are built under it rather than before it.
+    func holdFirstPaintForPush() {
+        guard !hasPainted else { return }
+        awaitsPush = true
+    }
+
+    /// The stack has begun the push, which it does a turn after it is asked: the first frame the
+    /// display asks for after this turn lets the conversation be drawn.
+    func pushBegan() {
+        guard awaitsPush, pushFrame == nil else { return }
+        pushFrame = NextFrame { [weak self] in
+            self?.timeline.mark("frame")
+            self?.releaseFirstPaint()
+        }
+    }
+
+    /// Lets the conversation be drawn, now that the push has shown a frame or will never begin.
+    func releaseFirstPaint() {
+        guard awaitsPush else { return }
+        awaitsPush = false
+        pushFrame = nil
+        let waiting = afterPushFrame
+        afterPushFrame = []
+        waiting.forEach { $0() }
+        if firstPaint != nil { scheduleFirstPaint() }
+    }
+
+    /// Runs `work` once the push that shows this chat has shown a frame, or now when no push is
+    /// being held for: bookkeeping an open owes that the press should not wait on.
+    func whenPushShows(_ work: @escaping () -> Void) {
+        guard awaitsPush else { return work() }
+        afterPushFrame.append(work)
     }
 
     private func scheduleFirstPaint() {
@@ -202,13 +239,17 @@ extension ChatViewController {
     }
 
     private func advanceFirstPaint() {
+        guard !awaitsPush else { return }
         switch firstPaint {
         case .waiting(let state)?:
+            timeline.mark("state")
             firstPaint = .built(state, rebuildTranscript(state))
+            timeline.mark("built")
             scheduleFirstPaint()
         case .built(let state, let rebuilt)?:
             firstPaint = nil
             paint(state, rebuilt: rebuilt)
+            timeline.mark("painted")
         case nil:
             break
         }

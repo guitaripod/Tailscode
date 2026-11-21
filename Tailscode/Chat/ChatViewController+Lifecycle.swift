@@ -9,6 +9,7 @@ extension ChatViewController {
         loadViewIfNeeded()
         view.frame = bounds
         view.layoutIfNeeded()
+        timeline.mark("laid")
     }
 
     /// A chat says which conversation it is when it arrives, once, because the failure a wrong

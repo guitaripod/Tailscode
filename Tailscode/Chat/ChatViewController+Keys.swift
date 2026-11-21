@@ -51,7 +51,7 @@ extension ChatViewController {
 
 extension ChatViewController: KeyActionHost {
     var keyContext: KeyContext {
-        composer.isEditing || findField.isFirstResponder ? .insert : .normal
+        composer.isEditing || (findVisible && findField.isFirstResponder) ? .insert : .normal
     }
 
     var keyAwaitingApproval: Bool { pendingPermission != nil }

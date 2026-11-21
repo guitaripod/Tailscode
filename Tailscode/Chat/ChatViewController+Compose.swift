@@ -74,7 +74,7 @@ extension ChatViewController {
         lastRenderedIDs = idSet
 
         let handOffEmptyState =
-            isHandingOffEmptyState && !emptyState.isHidden && !entranceBubbles.isEmpty
+            isHandingOffEmptyState && isEmptyStateShown && !entranceBubbles.isEmpty
         isHandingOffEmptyState = false
         deferEmptyStateHide = handOffEmptyState
         updatePlaceholders(hasRows: !uniqueIDs.isEmpty, for: state)

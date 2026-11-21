@@ -93,6 +93,10 @@ final class HomeViewController: UIViewController {
     private var appliedTodayState: String?
     var scheduledSnapshot = false
     var deferredSnapshot = false
+    /// Whether another screen is sliding over Home right now. The board is a whole frame or three
+    /// to rebuild on an older phone, and one rebuilt under a chat on its way in is paid for out of
+    /// that chat's first words and never seen.
+    var isLeaving = false
     var isUnderSettings = false
     /// What each card was last drawn from. A diffable identity says which card a row *is*, never
     /// whether anything on it moved, so reconfiguring everything that survived a diff redrew the
@@ -379,6 +383,7 @@ final class HomeViewController: UIViewController {
             navigationController?.setToolbarHidden(true, animated: animated)
         }
         composerFollowsKeyboard(composerBar.isEditing)
+        isLeaving = false
         if deferredSnapshot { renderSnapshot() }
         if hasAppeared { Task { await load() } }
         hasAppeared = true
@@ -386,6 +391,7 @@ final class HomeViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        ChatSpares.prepare()
         startLiveRefresh()
         DelegateGate.watchNotices()
         presentProWeekEndIfDue()
@@ -419,6 +425,7 @@ final class HomeViewController: UIViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        isLeaving = true
         composerFollowsKeyboard(false)
         hideCommandPalette()
         stopLiveRefresh()

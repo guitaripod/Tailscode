@@ -43,12 +43,26 @@ final class ChatCallController {
         var toast: (String) -> Void
         var dismissKeyboard: () -> Void
         var barItemsChanged: () -> Void
+        var seatDock: (CallDockView) -> Void
     }
 
     static let noticeSeconds: Duration = .seconds(6)
     static let settingsNoticeSeconds: Duration = .seconds(12)
 
-    let dock = CallDockView()
+    /// The dock is made and handed to the screen when a call or a notice first needs it: a chat
+    /// that is never called carries none.
+    private var builtDock: CallDockView?
+    private var dock: CallDockView {
+        if let builtDock { return builtDock }
+        let dock = CallDockView()
+        dock.reportLines = { [weak self] in self?.reportLines ?? [] }
+        dock.onHangUp = { [weak self] in self?.hangUpPressed() }
+        dock.onToggleMute = { [weak self] in self?.mutePressed() }
+        dock.onOpenSettings = { [weak self] in self?.openSettings() }
+        builtDock = dock
+        host.seatDock(dock)
+        return dock
+    }
     let barItem: UIBarButtonItem
     /// Whether a call is live in this chat, for the composer's microphone, which a call replaces.
     var onLiveChanged: ((Bool) -> Void)?
@@ -84,10 +98,6 @@ final class ChatCallController {
         barItem.primaryAction = UIAction(
             image: UIImage(systemName: VoiceCallEntryPoint.symbol)
         ) { [weak self] _ in self?.entryPressed() }
-        dock.reportLines = { [weak self] in self?.reportLines ?? [] }
-        dock.onHangUp = { [weak self] in self?.hangUpPressed() }
-        dock.onToggleMute = { [weak self] in self?.mutePressed() }
-        dock.onOpenSettings = { [weak self] in self?.openSettings() }
         gateObserver = NotificationCenter.default.addObserver(
             forName: VoiceCallGate.didChange, object: nil, queue: .main
         ) { [weak self] _ in
@@ -140,7 +150,7 @@ final class ChatCallController {
         screenGone()
         gate.hangUp(chat: chatID, because: "the chat was left")
         noticeClock?.cancel()
-        if attached == nil { dock.hide() }
+        if attached == nil { builtDock?.hide() }
     }
 
     /// The face of the call standing now, for what draws it beside the conversation; nil when no
@@ -254,13 +264,25 @@ final class ChatCallController {
         refreshEntry()
     }
 
+    #if DEBUG
+        /// Puts a notice on the dock without a call, so the strip that is only made when a call
+        /// needs it can be looked at on a device with no voice gateway behind it.
+        func showNoticeForVerification() {
+            show(
+                CallNotice(
+                    face: .ended, title: "Call ended", line: "The dock, made when first needed.",
+                    offersSettings: false),
+                for: .seconds(60))
+        }
+    #endif
+
     private func show(_ notice: CallNotice, for duration: Duration) {
         dock.show(notice)
         noticeClock?.cancel()
         noticeClock = Task { [weak self] in
             try? await Task.sleep(for: duration)
             guard !Task.isCancelled, let self, self.attached == nil else { return }
-            self.dock.hide()
+            self.builtDock?.hide()
         }
     }
 

@@ -126,7 +126,16 @@ final class DictationEngines {
 final class DictationController: NSObject, UIGestureRecognizerDelegate {
     let button = DictationButton()
     let edge = DictationEdge()
-    let hint = DictationHintView()
+    /// The line over the box, made when dictation first has something to say: most composers
+    /// are never spoken into.
+    private var builtHint: DictationHintView?
+    private var hint: DictationHintView {
+        if let builtHint { return builtHint }
+        let hint = DictationHintView()
+        hint.onUndo = { [weak self] in self?.undoDiscard() }
+        builtHint = hint
+        return hint
+    }
     var vocabulary: () -> DictationVocabulary = { .empty }
     var callLive = false {
         didSet {
@@ -179,7 +188,6 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
         gesture.allowableMovement = .greatestFiniteMagnitude
         gesture.delegate = self
         button.addGestureRecognizer(gesture)
-        hint.onUndo = { [weak self] in self?.undoDiscard() }
         button.onActivate = { [weak self] in self?.toggleFromKeyboard() }
         let center = NotificationCenter.default
         observers = [
@@ -679,6 +687,7 @@ final class DictationController: NSObject, UIGestureRecognizerDelegate {
         let live = face.showsBars || face.isPreparing || ending != nil ? reading : nil
         let hint = live ?? notice
         lastTimer = hint?.timer
+        guard hint != nil || builtHint != nil else { return }
         self.hint.show(hint, undoAvailable: discarded != nil)
         host?.dictationShowStatus(self.hint, shown: hint != nil)
     }

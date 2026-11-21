@@ -51,7 +51,7 @@ extension ChatViewController {
             }
             UIView.animate(withDuration: 0.2) { self.emptyState.alpha = 1 }
         } else {
-            guard !emptyState.isHidden else { return }
+            guard isEmptyStateShown else { return }
             if deferEmptyStateHide { return }
             UIView.animate(
                 withDuration: 0.18,
@@ -64,7 +64,7 @@ extension ChatViewController {
     /// up from the composer, so the empty state yielding to the conversation
     /// reads as one motion instead of a fade racing the entrance and a scroll snap.
     func animateEmptyStateHandoff() {
-        guard !emptyState.isHidden else { return }
+        guard isEmptyStateShown else { return }
         guard !UIAccessibility.isReduceMotionEnabled else {
             emptyState.isHidden = true
             emptyState.alpha = 1

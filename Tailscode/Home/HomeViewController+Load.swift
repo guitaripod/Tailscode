@@ -225,12 +225,12 @@ extension HomeViewController {
     /// A finished turn alone runs this three or four times in a row — the listing upsert, the
     /// activity change, the load's own pass — and the live cadence asks again every couple of
     /// seconds, from a screen that is very often behind a chat nobody would see it redraw. So a
-    /// request is a request: it is dropped entirely while Home is off screen (`viewWillAppear`
-    /// takes the deferred one), and otherwise coalesced to one pass per runloop turn, so a burst
+    /// request is a request: it is dropped entirely while Home is off screen or on its way off
+    /// (`viewWillAppear` takes the deferred one), and otherwise coalesced to one pass per runloop turn, so a burst
     /// costs what one change costs. The deep link is the exception on the off-screen path — it is
     /// parked with a deadline and a notification tap must not wait behind a screen coming back.
     func applySnapshot() {
-        guard viewIfLoaded?.window != nil, !isUnderSettings else {
+        guard viewIfLoaded?.window != nil, !isUnderSettings, !isLeaving else {
             deferredSnapshot = true
             consumePendingDeepLink()
             return
@@ -245,6 +245,10 @@ extension HomeViewController {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.scheduledSnapshot else { return }
             self.scheduledSnapshot = false
+            guard !self.isLeaving else {
+                self.deferredSnapshot = true
+                return
+            }
             self.renderSnapshot()
         }
     }

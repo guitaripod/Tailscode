@@ -67,7 +67,36 @@ final class ChatChip: UIControl {
     }
 
     override var isHidden: Bool {
-        didSet { if oldValue, !isHidden { needsMeasure = true } }
+        didSet {
+            guard oldValue, !isHidden else { return }
+            needsMeasure = true
+            if let waiting = waitingSymbol {
+                waitingSymbol = nil
+                setSymbol(waiting.name, tone: waiting.tone)
+            }
+            onReveal?(self)
+        }
+    }
+
+    /// Told the moment the chip has something to show, which is when its row takes it in.
+    var onReveal: ((ChatChip) -> Void)?
+    private var ceiling: (reference: UIView, share: CGFloat)?
+    /// The glyph asked for while the chip had nothing to show yet: making a symbol's picture is a
+    /// cost every chip of every chat would pay at open, and most are never shown.
+    private var waitingSymbol: (name: String?, tone: ActivityTone)?
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        guard superview != nil, let ceiling, isDescendant(ofAncestorOf: ceiling.reference) else { return }
+        self.ceiling = nil
+        limitText(toShareOf: ceiling.reference, share: ceiling.share)
+    }
+
+    /// Whether this chip and `other` hang in one tree, which a constraint between them needs.
+    private func isDescendant(ofAncestorOf other: UIView) -> Bool {
+        var root: UIView = self
+        while let up = root.superview { root = up }
+        return other.isDescendant(of: root)
     }
 
     /// The width this chip's words ask for with no minimum on it, which is what the row's slots
@@ -107,6 +136,10 @@ final class ChatChip: UIControl {
     /// text is a sentence: a share of the room there is rather than a number of points, so a wide
     /// window gives it more and a narrow one less.
     func limitText(toShareOf reference: UIView, share: CGFloat) {
+        guard isDescendant(ofAncestorOf: reference) else {
+            ceiling = (reference, share)
+            return
+        }
         labelCeiling.isActive = false
         labelCeiling = label.widthAnchor.constraint(
             lessThanOrEqualTo: reference.widthAnchor, multiplier: share)
@@ -120,6 +153,10 @@ final class ChatChip: UIControl {
 
     /// An SF Symbol at the chip's icon size, its colour the tone's.
     func setSymbol(_ name: String?, tone: ActivityTone = .quiet) {
+        guard !isHidden || superview != nil else {
+            waitingSymbol = (name, tone)
+            return
+        }
         shownSymbol = name
         shownTone = tone
         shownImage = nil
@@ -138,6 +175,7 @@ final class ChatChip: UIControl {
 
     /// A drawn glyph that carries its own colour, such as the context ring.
     func setImage(_ image: UIImage?) {
+        waitingSymbol = nil
         shownImage = image
         shownSymbol = nil
         shownLive = nil
@@ -150,6 +188,7 @@ final class ChatChip: UIControl {
     /// The vocabulary's own mark for work in flight, which breathes unless the reader has asked
     /// for less movement.
     func setLive(_ icon: ActivityIcon?) {
+        waitingSymbol = nil
         guard icon != shownLive else { return }
         shownLive = icon
         shownSymbol = nil
@@ -278,7 +317,7 @@ final class ChatFactsRow: UIView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         chips.forEach {
             $0.isHidden = true
-            stack.addArrangedSubview($0)
+            $0.onReveal = { [weak self] chip in self?.seat(chip) }
         }
         scroll.addSubview(stack)
         addSubview(scroll)
@@ -352,6 +391,15 @@ final class ChatFactsRow: UIView {
         else { return nil }
         let inner = scroll.frame.contains(point) ? point : TouchSlop.clamped(point, in: scroll.frame)
         return scroll.hitTest(convert(inner, to: scroll), with: event)
+    }
+
+    /// Takes a chip into the row at its place among the ones already there. A chip joins when it
+    /// first has something to say and stays: most of them never do in a given conversation, and a
+    /// chip that hangs in the row hidden is still views and constraints carried through every push.
+    private func seat(_ chip: ChatChip) {
+        guard chip.superview == nil, let place = chips.firstIndex(where: { $0 === chip }) else { return }
+        let before = chips[..<place].filter { $0.superview != nil }.count
+        stack.insertArrangedSubview(chip, at: before)
     }
 
     /// Whether any chip has something to say, and so whether the row takes room at all.

@@ -52,9 +52,10 @@ extension ChatViewController {
         let chromeGap = factsRow.isHidden ? 0 : CGFloat(ChatChrome.transcriptToChrome)
         let composerInset =
             max(0, transcriptEnd - composerTop - collectionView.safeAreaInsets.bottom) + chromeGap
-        emptyState.bottomClearance =
+        emptyStateClearance =
             composerAccessories.bounds.height > 0
             ? max(0, composer.frame.minY - composerAccessories.frame.minY) + chromeGap : 0
+        builtEmptyState?.bottomClearance = emptyStateClearance
         let bannerInset: CGFloat = banner.isHidden ? 0 : banner.bounds.height
         let available =
             min(composerTop, transcriptEnd) - collectionView.safeAreaInsets.top - bannerInset

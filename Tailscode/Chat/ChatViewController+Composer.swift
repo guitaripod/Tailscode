@@ -124,7 +124,7 @@ extension ChatViewController: ComposerViewDelegate, PendingSendCellDelegate {
         }
         userScrolledUp = false
         animateNextRender = true
-        isHandingOffEmptyState = !emptyState.isHidden && emptyState.alpha > 0
+        isHandingOffEmptyState = isEmptyStateShown && emptyState.alpha > 0
         DraftStore.clear(draftScope)
         viewModel.send(text, model: model, effort: effort, attachments: attachments)
     }

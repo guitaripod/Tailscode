@@ -4,7 +4,8 @@ extension ChatViewController {
     /// Text search within the open conversation, with the desktop find bars' semantics: one
     /// match per row, case-insensitive, a live "n of m" count, next/previous that wrap, and the
     /// current hit ringed and scrolled into view.
-    func configureFindBar() {
+    private func buildFindBarIfNeeded() {
+        guard findBar.superview == nil else { return }
         findBar.backgroundColor = Theme.Color.secondaryBackground
         findBar.layer.cornerRadius = 12
         findBar.layer.cornerCurve = .continuous
@@ -70,6 +71,7 @@ extension ChatViewController {
     }
 
     func openFind() {
+        buildFindBarIfNeeded()
         findVisible = true
         findBar.isHidden = false
         view.bringSubviewToFront(findBar)
