@@ -353,7 +353,7 @@ final class ServerSetupViewController: UIViewController {
                 Theme.Haptics.tap()
                 Task { await self.flow.skipSignIn() }
             }
-        } else if let demo = plan.demo {
+        } else if let demo = plan.demo, onTryDemo != nil {
             let key = "demo:\(demo.title)"
             guard secondaryKey != key else { return }
             secondaryKey = key
