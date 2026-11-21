@@ -221,3 +221,54 @@ first, where a message queues forever). Stills are read from `xcrun simctl io sc
 from `recordVideo` cut to 30 fps frames. The handle, the keys, the rows of the file list and the
 selection menu are pressed with real touches (`axe tap`, `axe drag`): a pull has to start on the
 pill, which sits 7 pt under the box's top edge.
+
+## 9. What it costs
+
+Timed on the iPhone XS (A12, iOS 18.7), the slowest phone the app runs on, with an optimised
+build: a key every 50 ms, 120 keys, the keyboard up. Per key, the median and the frames the screen
+dropped while the keys landed.
+
+| Draft | Before | After |
+|---|---|---|
+| Short, growing to six lines | 14.1 ms, 22 dropped | 7.2 ms, 4 |
+| 3,000 characters of prose | 14.0 ms, 11 | 10.3 ms, 4 |
+| 3,000 characters, inked | 22.5 ms, 72 | 18.7 ms, 40 |
+| The same, lifted | 18.8 ms, 38 | 17.8 ms, 33 |
+| `@` letters against 6,000 files | 123 ms, 134 | 18.5 ms, 64 |
+| A frame of the handle's pull | 6.4 ms | 2.7 ms |
+
+What was slow, from Time Profiler traces on the phone:
+
+- **The file list ranked by sorting everything.** Every entry was lowered into characters and
+  matched with an array made per letter, and every match sorted, on every key: 25 ms on a desktop.
+  `MentionShelf` now lowers a name once, when its folder is shelved, matches bytes, and keeps the
+  best two dozen as they are offered (`MentionRanking`). Same rows in the same order, proved
+  against the old sort in `ComposerInputTests`.
+- **The list rebuilt its rows on every key.** Two dozen rows of stacks, labels and constraints were
+  made per letter. Rows and headers are kept and given new commands, and a row whose command looks
+  the same is left alone.
+- **The box was a self-sizing text view.** Without scrolling, every key re-solved the page's
+  constraints for its intrinsic size and baselines (3 ms), and a box growing a line laid all its
+  words out again for the taller page. The text view always scrolls now; the box only lets it move
+  when the words run past it, and puts words that fit back at the top.
+- **Ink was set across the whole draft.** That made the text view lay every line out again.
+  `DraftInk.repaint` names what one edit disturbed, and only that is repainted; a random walk of
+  edits checks that it always looks like painting the whole draft.
+- **The words were measured on every key, every frame of a pull and every layout pass.** A height
+  is now kept until the words or the width change, and a draft well past the box that has only
+  been added to is measured every sixteenth key.
+- **Smaller things a long draft paid on every key:** the draft store comparing the whole draft to
+  the saved one by canonical equivalence (1.4 ms), the enhancer splitting the draft into words, and
+  reading a bridged string a unit at a time.
+
+What is left is UIKit's own: caret and selection geometry, spell checking, and laying out the
+visible text after an edit, which an attributed draft pays more for. A new line still costs about a
+frame on the XS, nearly all of it Auto Layout applying the box's constraints.
+
+To time it again: `prose:<length>` and `inked:<length>` fill the box, `shelf:<files>` gives the
+file list a project that size, `bench:<name>:<keys>:<pattern>` types a pattern (`<` deletes, `|`
+starts a line) through the same delegate check the keyboard makes, and `drag:<frames>` pulls the
+handle. Each logs a `COMPOSE_BENCH` line (median, 95th percentile, worst, dropped frames, and
+`asks=`, which must equal the keys or the keys skipped the keyboard's path) to the app's log, read
+from the phone with `xcrun devicectl device copy from --domain-type appDataContainer`. The phone is
+shared with other sessions' UI tests: hold `/tmp/iphone-xs.lock` on the macbook while it runs.
