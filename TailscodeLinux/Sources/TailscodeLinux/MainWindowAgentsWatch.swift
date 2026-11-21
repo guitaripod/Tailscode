@@ -13,6 +13,7 @@ extension MainWindow {
     /// `nightdesk`, `studio`, `effects:off|subtle|lively`, `field:motes|currents|aurora|none`,
     /// `light:on|off`, `still:on|off`, `night:off|scheduled|always`, `dim:300|never`,
     /// `awake:whileCharging|always|never`, `clock|hour|rails|squads:on|off`, `approvals:hold|openChat`),
+    /// `agents-film=<seconds>:<out.mp4>` films the wall frame by frame (`AgentsFilm`).
     /// `agents-bench=<seconds>` measures how the window draws (`AgentsBench`), and `plainwords-find`
     /// runs the plain-words finder against this machine and prints what it chose.
     func driveAgentsWatch(_ verb: String, _ argument: String) {
@@ -46,6 +47,8 @@ extension MainWindow {
             tile.evaluateHold()
         case "agents-release":
             AgentsWindow.current?.watchView.tiles.values.forEach { $0.approveUp() }
+        case "agents-film":
+            AgentsFilm.run(argument)
         case "agents-bench":
             AgentsBench.run(seconds: Double(argument) ?? 10)
         case "plainwords-find":

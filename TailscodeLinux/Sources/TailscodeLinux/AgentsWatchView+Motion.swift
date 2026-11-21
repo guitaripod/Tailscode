@@ -107,12 +107,18 @@ extension AgentsWatchView {
     /// a display up to 100 Hz and every second one above, so each lasts the same number of refreshes.
     /// Everything that moves is asked to draw again, which builds nodes and rasterises nothing.
     func frame() {
+        guard context.clock.held == nil else { return }
         let t = frameTime
         let cap = cadenceCap()
         guard cap > 0 else { return }
         guard t - cadence.frame >= Self.due(after: 1.0 / Double(cap), refresh: refreshInterval) else { return }
         let dt = min(0.1, max(0, t - cadence.frame))
         cadence.frame = t
+        advance(to: t, by: dt)
+    }
+
+    /// Everything that moves, moved to `t`, `dt` seconds after the frame before it.
+    func advance(to t: Double, by dt: Double) {
         context.frameSeconds = t
         frames += 1
         guard isVisible, isLive else { return }

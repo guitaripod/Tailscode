@@ -7,10 +7,15 @@ import TailscodeCore
 /// dim, the hold) reads it, so a check moves it forward instead of sleeping.
 final class WatchClock: @unchecked Sendable {
     private(set) var skew: TimeInterval = 0
+    /// The moment a film holds the clock at, as seconds and as a date; nil while time runs.
+    private(set) var held: (seconds: Double, date: Date)?
 
-    var now: Date { Date().addingTimeInterval(skew) }
+    var now: Date { held?.date ?? Date().addingTimeInterval(skew) }
 
-    var seconds: Double { Double(g_get_monotonic_time()) / 1_000_000 + skew }
+    var seconds: Double { held?.seconds ?? Double(g_get_monotonic_time()) / 1_000_000 + skew }
+
+    /// Stops the clock at a moment, for a film that draws one frame per step; nil lets it run.
+    func hold(at moment: (seconds: Double, date: Date)?) { held = moment }
 
     func advance(by seconds: TimeInterval) { skew += seconds }
 }
