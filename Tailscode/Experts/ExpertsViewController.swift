@@ -12,11 +12,8 @@ enum ExpertShelf {
             title: showsMachine ? "\(row.expert.name) · \(row.machine)" : row.expert.name, detail: state.text,
             image: ExpertStyle.mark(row), detailColor: ExpertStyle.color(state.tone), action: action)
         view.detailLabel.numberOfLines = 2
-        if let count = ExpertReading.badge(row.expert) {
-            view.trail(badge(count))
-        } else {
-            view.chevron()
-        }
+        if let count = ExpertReading.badge(row.expert) { view.trail(badge(count)) }
+        view.chevron()
         view.isAccessibilityElement = true
         view.accessibilityLabel = [row.expert.name, state.text].joined(separator: ", ")
         view.accessibilityHint = Localized.text("Opens the expert")

@@ -127,6 +127,7 @@ final class MachineRowView: UIView {
     let detailLabel = UILabel()
     let trailing = UIStackView()
     private let below = UIStackView()
+    private let row = UIStackView()
     private var action: (() -> Void)?
 
     init(
@@ -168,7 +169,7 @@ final class MachineRowView: UIView {
         trailing.spacing = Theme.Spacing.s
         trailing.setContentHuggingPriority(.required, for: .horizontal)
 
-        let row = UIStackView(arrangedSubviews: [leading, texts, trailing])
+        [leading, texts, trailing].forEach(row.addArrangedSubview)
         row.axis = .horizontal
         row.alignment = .center
         row.spacing = Theme.Spacing.m
@@ -195,6 +196,12 @@ final class MachineRowView: UIView {
         view.setContentHuggingPriority(.required, for: .horizontal)
         view.setContentCompressionResistancePriority(.required, for: .horizontal)
         trailing.addArrangedSubview(view)
+    }
+
+    /// Sets what trails the row on the title's line instead of the row's middle: a date beside a
+    /// row several lines tall belongs to its title.
+    func trailBesideTitle() {
+        row.alignment = .firstBaseline
     }
 
     func chevron() {

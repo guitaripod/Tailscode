@@ -120,7 +120,7 @@ extension HomeViewController {
 
 #if DEBUG
     extension HomeViewController {
-        /// `TAILSCODE_OPEN_EXPERT=demo-x-ipad[:notebook|:guards|:journal|:task|:edit|:draft|:brief]`,
+        /// `TAILSCODE_OPEN_EXPERT=demo-x-ipad[:notebook|:guards|:journal|:task|:edit|:draft|:brief|:debrief|:note]`,
         /// `TAILSCODE_OPEN_EXPERT=shelf`, `=new` or `=chooser` puts a screen about an expert on screen at
         /// launch, and `TAILSCODE_EXPERT_PART=charter|skills|notebook|notes|bench|guards` opens that part of
         /// an editor, so each can be photographed without a hand.
@@ -171,6 +171,21 @@ extension HomeViewController {
                 case "journal": page.navigationController?.pushViewController(ExpertJournalViewController(row: row), animated: false)
                 case "task": ExpertRouter.newTask(row, from: page)
                 case "edit": ExpertEditorViewController.presentEdit(row: row, from: page)
+                case "debrief":
+                    self.openSession(withID: DemoWorld.demoReviewedTaskID)
+                    try? await Task.sleep(for: .seconds(3))
+                    let chat = self.navigationController?.topViewController as? ChatViewController
+                    for _ in 0..<120 where chat?.expertCard == nil {
+                        try? await Task.sleep(for: .seconds(0.5))
+                    }
+                    try? await Task.sleep(for: .seconds(1))
+                    chat?.tourScrollToBottom()
+                case "note":
+                    let backend = ExpertDesk.shared.experts(forProfileID: row.profileID)
+                    if let note = try? await backend?.expertNotes(row.expert.id, retired: false).first {
+                        page.navigationController?.pushViewController(
+                            ExpertNoteViewController(row: row, note: note), animated: false)
+                    }
                 case "draft":
                     ExpertEditorViewController.presentDraft(profileID: row.profileID, sessionID: "demo-c3", from: page)
                 default: break

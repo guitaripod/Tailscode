@@ -116,10 +116,12 @@ final class ExpertGuardsViewController: UIViewController {
     private func guardRow(_ item: ExpertGuard) -> UIView {
         let reading = ExpertReading.guardRow(item)
         let tone: ExpertTone = item.running == true ? .active : item.last.map { $0.passed ? .good : .failing } ?? .quiet
+        weak var pressed: MachineRowView?
         let rowView = MachineRowView(
             title: reading.title, detail: reading.detail.text, image: ExpertStyle.lamp(tone),
             detailColor: reading.detail.tone == .failing ? Theme.Color.danger : Theme.Color.secondaryLabel
-        ) { [weak self] in self?.guardMenu(item) }
+        ) { [weak self] in self?.guardMenu(item, from: pressed) }
+        pressed = rowView
         rowView.leading.contentMode = .center
         if let trailing = reading.trailing {
             let label = UILabel()
@@ -129,22 +131,39 @@ final class ExpertGuardsViewController: UIViewController {
             rowView.trail(label)
         }
         if item.isFailing, let output = item.last?.output, !output.isEmpty {
-            let console = UILabel()
-            console.text = CommandText.tail(output, lines: 8)
-            console.numberOfLines = 0
-            console.font = Theme.Ramp.font(.toolOutput)
-            console.textColor = Theme.Color.secondaryLabel
-            console.backgroundColor = Theme.Color.codeBackground
-            console.layer.cornerRadius = 6
-            console.layer.masksToBounds = true
-            rowView.attach(console)
+            rowView.attach(Self.console(CommandText.tail(output, lines: 8)))
         }
         rowView.isAccessibilityElement = true
         rowView.accessibilityLabel = reading.accessibilityLabel
         return rowView
     }
 
-    private func guardMenu(_ item: ExpertGuard) {
+    /// The end of a failing guard's output, on a plate of its own with room around the words.
+    private static func console(_ text: String) -> UIView {
+        let label = UILabel()
+        label.text = text
+        label.numberOfLines = 0
+        label.font = Theme.Ramp.font(.toolOutput)
+        label.textColor = Theme.Color.secondaryLabel
+        label.adjustsFontForContentSizeCategory = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        let plate = UIView()
+        plate.backgroundColor = Theme.Color.codeBackground
+        plate.layer.cornerRadius = 8
+        plate.layer.cornerCurve = .continuous
+        plate.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: plate.topAnchor, constant: 8),
+            label.bottomAnchor.constraint(equalTo: plate.bottomAnchor, constant: -8),
+            label.leadingAnchor.constraint(equalTo: plate.leadingAnchor, constant: 10),
+            label.trailingAnchor.constraint(equalTo: plate.trailingAnchor, constant: -10),
+        ])
+        plate.isAccessibilityElement = true
+        plate.accessibilityLabel = text
+        return plate
+    }
+
+    private func guardMenu(_ item: ExpertGuard, from source: UIView?) {
         let sheet = UIAlertController(title: item.name, message: item.command, preferredStyle: .actionSheet)
         sheet.addAction(UIAlertAction(title: ExpertWords.checkNow, style: .default) { [weak self] _ in
             self?.checkNow(only: item.id)
@@ -156,8 +175,9 @@ final class ExpertGuardsViewController: UIViewController {
                 })
         }
         sheet.addAction(UIAlertAction(title: ExpertWords.cancel, style: .cancel))
-        sheet.popoverPresentationController?.sourceView = view
-        sheet.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+        let anchor = source ?? view
+        sheet.popoverPresentationController?.sourceView = anchor
+        sheet.popoverPresentationController?.sourceRect = anchor?.bounds ?? .zero
         present(sheet, animated: true)
     }
 
@@ -203,10 +223,13 @@ final class ExpertNotebookViewController: UIViewController, UISearchResultsUpdat
     private var query = ""
     private var loaded = false
     private var failed = false
+    private var counted: ExpertNotebookFacts
+    private let refresher = UIRefreshControl()
     private let search = UISearchController(searchResultsController: nil)
 
     init(row: ExpertRow) {
         self.row = row
+        self.counted = row.expert.notebook
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -221,7 +244,21 @@ final class ExpertNotebookViewController: UIViewController, UISearchResultsUpdat
         search.searchBar.placeholder = Localized.text("Search %d notes", row.expert.notebook.notes)
         navigationItem.searchController = search
         navigationItem.hidesSearchBarWhenScrolling = false
+        refresher.addAction(UIAction { [weak self] _ in self?.load() }, for: .valueChanged)
+        scroll.refreshControl = refresher
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(deskChanged), name: ExpertDesk.didChange, object: nil)
         render()
+        load()
+    }
+
+    /// A note accepted in a debrief, or written in a terminal, changes what the machine counts:
+    /// the list is read again then, so it never shows a notebook older than the shelf's.
+    @objc private func deskChanged() {
+        guard let fresh = ExpertDesk.shared.row(profileID: row.profileID, expertID: row.expert.id)?.expert.notebook,
+            fresh != counted
+        else { return }
+        counted = fresh
         load()
     }
 
@@ -244,11 +281,13 @@ final class ExpertNotebookViewController: UIViewController, UISearchResultsUpdat
                 self.notes = notes
                 self.retired = retired
                 self.loaded = true
+                self.refresher.endRefreshing()
                 self.search.searchBar.placeholder = Localized.text("Search %d notes", notes.count)
                 self.render()
             } catch {
                 MidgarLog.info("expert notebook read failed expert=\(id): \(error)", category: .session)
                 guard let self else { return }
+                self.refresher.endRefreshing()
                 self.failed = true
                 self.render()
             }
@@ -340,7 +379,16 @@ final class ExpertNotebookViewController: UIViewController, UISearchResultsUpdat
     static func row(_ note: ExpertNote, taskTitles: [String: String], action: @escaping () -> Void) -> MachineRowView {
         let reading = ExpertReading.noteRow(note, taskTitles: taskTitles)
         let view = MachineRowView(title: reading.title, detail: reading.detail.text, action: action)
-        view.detailLabel.numberOfLines = 2
+        view.detailLabel.numberOfLines = 3
+        let trailing = (reading.trailing ?? "").split(separator: "\n").map(String.init)
+        if trailing.count > 1 {
+            let source = UILabel()
+            source.text = trailing.dropFirst().joined(separator: " · ")
+            source.font = Theme.Ramp.font(.rowStamp)
+            source.textColor = Theme.Color.tertiaryLabel
+            source.adjustsFontForContentSizeCategory = true
+            view.attach(source)
+        }
         if let tag = reading.tag {
             let label = UILabel()
             label.text = " \(tag.text) "
@@ -354,14 +402,14 @@ final class ExpertNotebookViewController: UIViewController, UISearchResultsUpdat
             line.axis = .horizontal
             view.attach(line)
         }
-        if let trailing = reading.trailing {
+        if let when = trailing.first {
             let label = UILabel()
-            label.text = trailing
-            label.numberOfLines = 2
-            label.textAlignment = .right
+            label.text = when
             label.font = Theme.Ramp.font(.rowStamp)
             label.textColor = Theme.Color.tertiaryLabel
+            label.adjustsFontForContentSizeCategory = true
             view.trail(label)
+            view.trailBesideTitle()
         }
         view.isAccessibilityElement = true
         view.accessibilityLabel = reading.accessibilityLabel
@@ -522,10 +570,13 @@ final class ExpertJournalViewController: UIViewController {
         column.addArrangedSubview(card)
     }
 
-    static func row(_ entry: ExpertJournalEntry, row: ExpertRow, action: @escaping () -> Void) -> MachineRowView {
+    /// One entry. The journal's own page says all of it; a preview elsewhere keeps to `lines`.
+    static func row(_ entry: ExpertJournalEntry, row: ExpertRow, lines: Int = 0, action: @escaping () -> Void)
+        -> MachineRowView
+    {
         let reading = ExpertReading.journalRow(entry)
         let view = MachineRowView(title: reading.title, detail: reading.detail.text, action: entry.sessionID == nil ? nil : action)
-        view.detailLabel.numberOfLines = 3
+        view.detailLabel.numberOfLines = lines
         if !entry.commits.isEmpty {
             let commits = UILabel()
             commits.text = entry.commits.prefix(3).joined(separator: "\n")
@@ -539,7 +590,9 @@ final class ExpertJournalViewController: UIViewController {
             label.text = trailing
             label.font = Theme.Ramp.font(.rowStamp)
             label.textColor = Theme.Color.tertiaryLabel
+            label.adjustsFontForContentSizeCategory = true
             view.trail(label)
+            view.trailBesideTitle()
         }
         view.isAccessibilityElement = true
         view.accessibilityLabel = reading.accessibilityLabel

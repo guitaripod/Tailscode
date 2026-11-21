@@ -204,12 +204,18 @@ final class ExpertViewController: UIViewController {
         return stack
     }
 
+    /// The bench, when the expert has one. While the machine proves it again the header carries a
+    /// spinner, so nothing under it moves when the proof lands.
     private func bench() -> [UIView] {
-        var views: [UIView] = [MachinePage.header(ExpertWords.bench)]
-        guard !expert.bench.isEmpty else {
-            views.append(MachinePage.footnote(ExpertWords.noBench))
-            return views
-        }
+        guard !expert.bench.isEmpty else { return [] }
+        let spinner = UIActivityIndicatorView(style: .medium)
+        spinner.transform = CGAffineTransform(scaleX: 0.7, y: 0.7)
+        spinner.accessibilityLabel = Localized.text("Checking the bench…")
+        if proving { spinner.startAnimating() }
+        let head = UIStackView(arrangedSubviews: [MachinePage.header(ExpertWords.bench), spinner, UIView()])
+        head.spacing = Theme.Spacing.s
+        head.alignment = .center
+        var views: [UIView] = [head]
         let card = MachineCardView()
         for item in expert.bench {
             let reading = ExpertReading.bench(item, machine: row.machine)
@@ -224,9 +230,6 @@ final class ExpertViewController: UIViewController {
             card.add(rowView)
         }
         views.append(card)
-        if proving {
-            views.append(MachinePage.footnote(Localized.text("Checking the bench…")))
-        }
         return views
     }
 
@@ -299,7 +302,7 @@ final class ExpertViewController: UIViewController {
         }
         let card = MachineCardView()
         for entry in expert.journal.prefix(3) {
-            card.add(ExpertJournalViewController.row(entry, row: row) { [weak self] in self?.openEntry(entry) })
+            card.add(ExpertJournalViewController.row(entry, row: row, lines: 3) { [weak self] in self?.openEntry(entry) })
         }
         card.add(link(Localized.text("The whole journal"), ExpertReading.journalLine(expert)) { [weak self] in
             self?.openJournal()
