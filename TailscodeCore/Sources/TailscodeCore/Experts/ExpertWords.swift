@@ -64,6 +64,7 @@ public enum ExpertWords {
         Localized.text("An expert is a standing role on a machine: each task starts fresh with its charter, notebook and devices, and ends with a journal entry and notes you accept or skip.")
     }
     public static var noNotes: String { Localized.text("No notes yet. A task's debrief proposes them.") }
+    public static var noNotesShort: String { Localized.text("None yet") }
     public static var noJournal: String { Localized.text("No tasks yet.") }
     public static var noGuards: String {
         Localized.text("No guards. A guard is a command that has to keep passing, like a test run or a measured number under a line.")

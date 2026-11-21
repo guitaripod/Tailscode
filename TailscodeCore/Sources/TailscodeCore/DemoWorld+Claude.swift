@@ -39,7 +39,8 @@ extension DemoWorld {
                 directory: "/Users/demo/dev/pulse-ios", createdAt: ago(2600), updatedAt: ago(2400),
                 model: "claude-opus-4-8", reasoningEffort: "high",
                 lastWords:
-                    "Three directions for the composer are on the board; the docked one keeps the send button under the thumb."),
+                    "Three directions for the composer are on the board; the docked one keeps the send button under the thumb.",
+                expertID: demoIPadExpertID),
             claudeNeuralSession(created: ago(5_000), updated: ago(3_900)),
 
             AgentSession(

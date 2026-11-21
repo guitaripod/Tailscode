@@ -6,6 +6,9 @@ extension DemoWorld {
     static let demoIPadExpertID = "demo-x-ipad"
     static let demoServerExpertID = "demo-x-server"
     static let demoReleasesExpertID = "demo-x-releases"
+    /// The finished task whose debrief waits for the person. It has to be a conversation at rest:
+    /// a debrief on one that still wants an approval is a card no client can show.
+    public static let demoReviewedTaskID = "demo-c5"
 
     /// The demo machine's experts: one with a finished task whose notes wait for review, one at
     /// work on the live chat, and one whose guard broke overnight — every state the shelf says.
@@ -103,41 +106,68 @@ extension DemoWorld {
             notebook: ExpertNotebookFacts(path: "~/.claude-bridge/experts/releases/notebook", adopted: false, notes: 7, stale: 0, retired: 0),
             briefTokens: 1_240)
 
+        func body(_ fact: String, why: String, how: String) -> String {
+            "\(fact)\n\n**Why:** \(why)\n**How to apply:** \(how)"
+        }
         let notes = [
             ExpertNote(
                 id: "settings-rows-read-the-palette.md", title: "Settings rows read the palette",
-                summary: "Every row's colour comes from Palette, never a literal", body: "…", written: ago(86_400)),
+                summary: "Every row's colour comes from Palette, never a literal", body: body(
+                    "Every Settings row takes its colours from Palette.",
+                    why: "literal greys drifted in dark mode.",
+                    how: "a new row reads Palette, never a hex."), written: ago(86_400)),
             ExpertNote(
                 id: "the-test-devices.md", title: "The test devices",
-                summary: "iPad Pro sideways, mini upright, XS on iOS 18.7, Air when unlocked", body: "…",
+                summary: "iPad Pro sideways, mini upright, XS on iOS 18.7, Air when unlocked", body: body(
+                    "The iPad Pro is tested held sideways and the mini upright; the iPhone XS is the oldest iOS, and the iPhone Air joins whenever it is unlocked.",
+                    why: "each device is tested the way it is held.",
+                    how: "take a device’s lock before installing on it, and say which devices a result was measured on."),
                 written: ago(2 * 86_400)),
             ExpertNote(
                 id: "two-thumbs-held-sideways.md", title: "Two thumbs, held sideways",
-                summary: "Navigation under the left thumb, the main action under the right", body: "…",
+                summary: "Navigation under the left thumb, the main action under the right", body: body(
+                    "Held sideways in both hands, navigation sits under the left thumb and the main action under the right.",
+                    why: "a control in the middle of the screen means letting go of the iPad.",
+                    how: "check a new screen against both thumbs’ reach before its centre."),
                 written: ago(4 * 86_400)),
             ExpertNote(
                 id: "a-resize-shows-the-old-frame.md", title: "A resize shows the old frame",
-                summary: "Until the app draws, iPadOS stretches its last picture", body: "…", written: ago(4 * 86_400)),
+                summary: "Until the app draws, iPadOS stretches its last picture", body: body(
+                    "While a window is resized, iPadOS stretches the app’s last picture until the app draws again.",
+                    why: "a slow first layout after a resize shows as a smeared frame.",
+                    how: "measure the first frame after a resize on the mini, and keep it under 100 ms."), written: ago(4 * 86_400)),
             ExpertNote(
                 id: "the-split-widths.md", title: "The split widths",
-                summary: "375, 592 and 834 points on an 11-inch held sideways", body: "…", written: ago(6 * 86_400)),
+                summary: "375, 592 and 834 points on an 11-inch held sideways", body: body(
+                    "An 11-inch iPad held sideways gives a split window 375, 592 or 834 points.",
+                    why: "a layout tested only full screen breaks at the narrow split.",
+                    how: "lay out from the window’s width, and check all three."), written: ago(6 * 86_400)),
             ExpertNote(
                 id: "builds-with-the-release-candidate.md", title: "Pulse builds with the release candidate",
-                summary: "The beta Xcode fails its asset catalog", body: "…", written: ago(69 * 86_400), stale: true),
+                summary: "The beta Xcode fails its asset catalog", body: body(
+                    "Pulse builds with the release candidate; the beta Xcode fails on its asset catalog.",
+                    why: "the beta’s catalog compiler rejected the app icon’s layers.",
+                    how: "build with the release candidate until a newer beta is tried."), written: ago(69 * 86_400), stale: true),
             ExpertNote(
                 id: "settings-hard-codes-two-greys.md", title: "Settings hard-codes two greys",
-                summary: "Rows 3 and 7 use literal colours", body: "…", written: ago(30 * 86_400),
+                summary: "Rows 3 and 7 use literal colours", body: body(
+                    "Rows 3 and 7 of Settings use literal greys.",
+                    why: "they were written before the palette.",
+                    how: "move them to the palette when Settings is next touched."), written: ago(30 * 86_400),
                 retired: ExpertNoteRetirement(at: ago(86_400), reason: "Every row reads the palette now")),
             ExpertNote(
                 id: "the-mini-is-on-wi-fi.md", title: "The mini is on the Mac’s Wi-Fi",
-                summary: "Install over the network", body: "…", written: ago(40 * 86_400),
+                summary: "Install over the network", body: body(
+                    "The iPad mini is reached over the Mac’s Wi-Fi.",
+                    why: "it has no cable to the Mac.",
+                    how: "install over the network, and expect it to be slower."), written: ago(40 * 86_400),
                 retired: ExpertNoteRetirement(at: ago(3 * 86_400), reason: "It moved to USB on the other machine")),
         ]
         let journal = [
             ExpertJournalEntry(
-                id: "j1", sessionID: "demo-c3", title: "Dark mode for Settings", at: ago(1_560),
-                outcome: "Every Settings row reads from the palette; the two hard-coded greys are gone.",
-                measured: ["0 contrast warnings in both appearances"], commits: ["4be21c0 Read Settings colours from the palette"]),
+                id: "j1", sessionID: demoReviewedTaskID, title: "Composer redesign", at: ago(2_400),
+                outcome: "Three directions for the composer are on the board; the docked one keeps Send under the right thumb.",
+                measured: ["reach checked on the iPad Pro and the mini"]),
             ExpertJournalEntry(
                 id: "j2", title: "Performance round", at: ago(2 * 86_400),
                 outcome: "The board scrolls without late frames and a resize redraws at once.",
@@ -146,29 +176,85 @@ extension DemoWorld {
                 id: "j3", title: "iPad mini layout", at: ago(4 * 86_400),
                 outcome: "The mini gets measurements of its own instead of a 13-inch's.", commits: ["9c0d1aa", "77e1f02"]),
         ]
+        let serverNotes = [
+            ExpertNote(
+                id: "jitter-is-injected.md", title: "Jitter is injected",
+                summary: "A scheduler takes its jitter source, so a test can pin it", body: body(
+                    "A scheduler takes its jitter source as a parameter.",
+                    why: "a test that cannot pin the jitter fails one run in five.",
+                    how: "new timing code takes its randomness from outside."), written: ago(3 * 86_400)),
+            ExpertNote(
+                id: "staging-drops-idle-sockets.md", title: "Staging drops idle sockets",
+                summary: "The load balancer closes a socket idle for 60 s", body: body(
+                    "Staging’s load balancer closes a socket that has been idle for 60 seconds.",
+                    why: "reconnects there are the balancer’s doing, not the server’s.",
+                    how: "send a ping every 30 seconds before reading a staging reconnect as a bug."), written: ago(8 * 86_400)),
+            ExpertNote(
+                id: "tests-run-serially.md", title: "The socket tests run one at a time",
+                summary: "They share a port, so a parallel run fails at random", body: body(
+                    "The socket tests share a port and run one at a time.",
+                    why: "a parallel run fails at random on the bind.",
+                    how: "keep them in the serial suite."), written: ago(12 * 86_400)),
+        ]
+        let serverJournal = [
+            ExpertJournalEntry(
+                id: "j4", title: "Reconnect backoff", at: ago(3 * 86_400),
+                outcome: "A dropped socket retries with capped, jittered delays.",
+                measured: ["p95 reconnect 1.9 s → 412 ms on staging"], commits: ["a41c7de Cap the reconnect backoff"]),
+        ]
+        let releaseNotes = [
+            ExpertNote(
+                id: "notes-lead-with-the-person.md", title: "Notes lead with what a person sees",
+                summary: "The first line of a release note is the change on screen, never the cause", body: body(
+                    "The first line of a release note is the change a person sees on screen.",
+                    why: "nobody reads past a line about internals.",
+                    how: "lead with the screen, and leave the cause for the changelog."),
+                written: ago(9 * 86_400)),
+            ExpertNote(
+                id: "store-copy-before-the-build.md", title: "Store copy before the build",
+                summary: "What’s New is written in every language before the build is uploaded",
+                body: body(
+                    "What’s New is written in every language before the build is uploaded.",
+                    why: "a build waiting for review with English-only notes shipped that way once.",
+                    how: "run the store copy guard before the upload, not after."),
+                written: ago(9 * 86_400)),
+        ]
+        let releaseJournal = [
+            ExpertJournalEntry(
+                id: "j5", title: "Pulse 2.3.0", at: ago(9 * 86_400),
+                outcome: "2.3.0 is on sale with notes in 11 languages.", commits: ["c07e3b1 Pulse 2.3.0"]),
+        ]
         let debrief = ExpertDebrief(
-            sessionID: "demo-c3", expertID: demoIPadExpertID, at: ago(1_500), coveredTurns: 3, state: .open,
+            sessionID: demoReviewedTaskID, expertID: demoIPadExpertID, at: ago(2_340), coveredTurns: 3, state: .open,
             journal: journal[0],
             proposals: [
                 ExpertProposal(
-                    id: "p1", op: .add, title: "Settings rows read the palette",
-                    summary: "Every row's colour comes from Palette, never a literal",
-                    body: "Every Settings row takes its colours from Palette.\n**Why:** literals drifted in dark mode.\n**How to apply:** a new row reads Palette, never a hex.",
-                    reason: "This task replaced the last two literal greys."),
+                    id: "p1", op: .add, title: "The composer docks at the foot",
+                    summary: "Docked, Send stays under the right thumb at every window width",
+                    body: body(
+                        "The composer docks at the foot of the window.",
+                        why: "floating, Send left the right thumb’s reach in the narrow split.",
+                        how: "a new control in the composer is placed from the trailing edge inward."),
+                    reason: "Two of the three directions put Send out of reach held sideways."),
                 ExpertProposal(
                     id: "p2", op: .add, title: "Check both appearances on the iPad Pro",
-                    summary: "Contrast is checked in light and dark before a colour change ships",
-                    body: "…", reason: "Dark mode looked right in the simulator and wrong on the device."),
+                    summary: "A mock is looked at in light and dark on the device before it is picked",
+                    body: body(
+                        "A mock is looked at in light and dark on the iPad Pro before it is picked.",
+                        why: "the floating direction looked right in the simulator and washed out on the device.",
+                        how: "photograph both appearances on the device and read the contrast warnings."),
+                    reason: "The floating direction washed out on the device in light mode."),
                 ExpertProposal(
-                    id: "p3", op: .retire, note: "settings-hard-codes-two-greys.md", title: "Settings hard-codes two greys",
-                    summary: "Rows 3 and 7 use literal colours", body: "",
-                    reason: "Not true any more: every row reads the palette."),
+                    id: "p3", op: .retire, note: "builds-with-the-release-candidate.md",
+                    title: "Pulse builds with the release candidate",
+                    summary: "The beta Xcode fails its asset catalog", body: "",
+                    reason: "Not true any more: this task built with the current beta."),
             ])
         return MockExperts(
             experts: [iPad, server, releases],
-            notes: [demoIPadExpertID: notes],
-            journals: [demoIPadExpertID: journal],
-            debriefs: ["demo-c3": debrief],
+            notes: [demoIPadExpertID: notes, demoServerExpertID: serverNotes, demoReleasesExpertID: releaseNotes],
+            journals: [demoIPadExpertID: journal, demoServerExpertID: serverJournal, demoReleasesExpertID: releaseJournal],
+            debriefs: [demoReviewedTaskID: debrief],
             skills: [
                 ExpertSkill(name: "ipados", description: "Make an iOS app excellent on iPad at every window size.", path: "~/.claude/skills/ipados/SKILL.md"),
                 ExpertSkill(name: "ios-dev", description: "Logging, signing and running on devices.", path: "~/.claude/skills/ios-dev/SKILL.md"),

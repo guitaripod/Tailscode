@@ -42,7 +42,7 @@ struct ExpertShelfTests {
         #expect(ExpertReading.state(expert(task: task, pending: 3, guards: [failing]), now: now)
             == ExpertLine("Working on “Unrager posts” · 14m", .active))
         #expect(ExpertReading.state(expert(pending: 3, guards: [failing]), now: now)
-            == ExpertLine("Idle · 3 notes to review", .attention))
+            == ExpertLine("3 notes to review", .attention))
         let failingLine = ExpertReading.state(expert(guards: [failing]), calendar: utc, now: now)
         #expect(failingLine.tone == .failing)
         #expect(failingLine.text.hasPrefix("Guard failing · AdaptiveLayoutTests · since today"))
@@ -307,5 +307,48 @@ struct ExpertCapabilityTests {
         #expect(merged.charter == "Ship it.")
         #expect(ExpertOutline.canDraft(typed))
         #expect(!ExpertOutline.canDraft(merged))
+    }
+}
+
+@Suite("Expert polish")
+struct ExpertPolishTests {
+    @Test("An expert with no notes says it is idle and nothing about a count of none")
+    func emptyNotebook() {
+        #expect(ExpertReading.state(expert(notes: 0), now: now).text == "Idle")
+        var fresh = expert(notes: 0)
+        fresh.notebook = ExpertNotebookFacts(path: "/n", adopted: false, notes: 0, stale: 0, retired: 0)
+        #expect(ExpertReading.notebookLine(fresh).text == "None yet")
+    }
+
+    @Test("What a task measured is a line of its own under what it did")
+    func measuredLine() {
+        let entry = ExpertJournalEntry(
+            id: "j", title: "Round", at: now, outcome: "Resizes redraw at once.", measured: ["450 → 83 ms", "280 tests"],
+            commits: ["abc"])
+        #expect(ExpertReading.journalRow(entry, calendar: utc, now: now).detail.text == "Resizes redraw at once.\n450 → 83 ms · 280 tests")
+        #expect(ExpertReading.journalPreview(entry) == "Resizes redraw at once.\n450 → 83 ms · 280 tests · 1 commit")
+    }
+
+    @Test("The editor says an adopted notebook's folder from the home folder")
+    func outlinePath() {
+        var draft = ExpertDraft(name: "iPadOS")
+        draft.notebookPath = "/Users/demo/notes/pulse"
+        #expect(ExpertOutline.row(.notebook, draft).value == "~/notes/pulse")
+    }
+
+    @Test("The demo's waiting debrief belongs to a conversation at rest, and every demo note has words")
+    func demoDebriefIsReachable() async throws {
+        let sessions = try await DemoWorld.claude.listSessions()
+        let task = try #require(sessions.first { $0.id == DemoWorld.demoReviewedTaskID })
+        #expect(task.expertID == DemoWorld.demoIPadExpertID && task.isActive != true)
+        let debrief = try #require(try await DemoWorld.claude.expertDebrief(sessionID: DemoWorld.demoReviewedTaskID))
+        #expect(debrief.state == .open && debrief.pending.count == 3)
+        let experts = try #require(try await DemoWorld.claude.machineExperts())
+        for expert in experts {
+            #expect(expert.notebook.notes > 0)
+            for note in try await DemoWorld.claude.expertNotes(expert.id, retired: false) {
+                #expect((note.body ?? "").count > 20)
+            }
+        }
     }
 }

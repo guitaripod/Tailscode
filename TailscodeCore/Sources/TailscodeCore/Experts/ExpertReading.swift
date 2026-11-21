@@ -51,7 +51,8 @@ public enum ExpertReading {
     // MARK: The shelf
 
     /// The one state line a shelf row says, in order of what matters most: a task running, notes
-    /// waiting, a guard failing, a debrief being written, guards checking, then at rest.
+    /// waiting, a guard failing, a debrief being written, guards checking, then at rest. Only the
+    /// last says it is idle: a row that wants the person leads with what it wants.
     public static func state(_ expert: MachineExpert, calendar: Calendar = .current, now: Date = Date()) -> ExpertLine {
         if let task = expert.task {
             return ExpertLine(
@@ -59,7 +60,7 @@ public enum ExpertReading {
                 .active)
         }
         if expert.pending > 0 {
-            return ExpertLine(Localized.text("Idle · %@", ExpertWords.toReview(expert.pending)), .attention)
+            return ExpertLine(ExpertWords.toReview(expert.pending), .attention)
         }
         if let failing = expert.failingGuards.first {
             var text = Localized.text("Guard failing · %@", failing.name)
@@ -73,7 +74,8 @@ public enum ExpertReading {
             return ExpertLine(ExpertWords.debriefDrafting, .active)
         }
         if expert.runningGuards { return ExpertLine(ExpertWords.checking, .active) }
-        var parts = [Localized.text("Idle"), ExpertWords.notes(expert.notebook.notes)]
+        var parts = [Localized.text("Idle")]
+        if expert.notebook.notes > 0 { parts.append(ExpertWords.notes(expert.notebook.notes)) }
         if !expert.guards.isEmpty, expert.guards.allSatisfy({ $0.last?.passed == true }) {
             parts.append(Localized.text("guards passing"))
         }
@@ -216,6 +218,7 @@ public enum ExpertReading {
     /// The notebook's one line: how many notes, and how many have not been confirmed for a while.
     public static func notebookLine(_ expert: MachineExpert) -> ExpertLine {
         let facts = expert.notebook
+        guard facts.notes > 0 || facts.adopted else { return ExpertLine(ExpertWords.noNotesShort) }
         var text = ExpertWords.notes(facts.notes)
         if facts.stale > 0 {
             text += " · " + (facts.stale == 1
@@ -253,7 +256,7 @@ public enum ExpertReading {
         -> ExpertRowReading
     {
         var detail = entry.outcome
-        if !entry.measured.isEmpty { detail += " " + entry.measured.joined(separator: " · ") }
+        if !entry.measured.isEmpty { detail += "\n" + entry.measured.joined(separator: " · ") }
         return ExpertRowReading(
             title: entry.title, detail: ExpertLine(detail), trailing: day(entry.at, calendar: calendar, now: now))
     }
@@ -363,7 +366,7 @@ public enum ExpertReading {
         if !entry.commits.isEmpty {
             extras.append(entry.commits.count == 1 ? Localized.text("1 commit") : Localized.text("%d commits", entry.commits.count))
         }
-        if !extras.isEmpty { text += " " + extras.joined(separator: " · ") }
+        if !extras.isEmpty { text += "\n" + extras.joined(separator: " · ") }
         return text
     }
 

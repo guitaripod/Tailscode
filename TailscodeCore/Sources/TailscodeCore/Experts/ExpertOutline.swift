@@ -43,7 +43,7 @@ public enum ExpertOutline {
         case .notebook:
             let path = draft.notebookPath?.trimmingCharacters(in: .whitespaces) ?? ""
             return Row(
-                part: part, title: ExpertWords.notebook, value: path.isEmpty ? ExpertWords.notebookOwnShort : path,
+                part: part, title: ExpertWords.notebook, value: path.isEmpty ? ExpertWords.notebookOwnShort : ExpertReading.shortPath(path),
                 isSet: !path.isEmpty)
         case .notes:
             let all = draft.notes?.count ?? 0
