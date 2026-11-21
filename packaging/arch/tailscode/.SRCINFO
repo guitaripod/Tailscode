@@ -13,7 +13,6 @@ pkgbase = tailscode
 	depends = glib2
 	depends = gdk-pixbuf2
 	depends = libepoxy
-	depends = vte4
 	depends = mpv
 	depends = webkitgtk-6.0
 	depends = libpulse
