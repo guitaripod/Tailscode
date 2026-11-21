@@ -248,6 +248,11 @@ extension SessionListViewController {
         unreachableLabel.numberOfLines = 1
         unreachableLabel.isHidden = true
         unreachableLabel.translatesAutoresizingMaskIntoConstraints = false
+        unreachableLabel.isUserInteractionEnabled = true
+        unreachableLabel.accessibilityTraits = .button
+        unreachableLabel.accessibilityHint = String(localized: "Shows every fix, in the order to try them.")
+        unreachableLabel.addGestureRecognizer(
+            UITapGestureRecognizer(target: self, action: #selector(unreachableTapped)))
         view.addSubview(unreachableLabel)
 
         chipBarTop = chipBar.topAnchor.constraint(

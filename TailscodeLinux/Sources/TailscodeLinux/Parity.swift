@@ -131,6 +131,7 @@ enum ParityManifest {
         case .openCodeTwoServer: return .implemented("ServerPasswordRule")
         case .tailnetDiscovery: return .implemented("DiscoveryPanel")
         case .connectDiagnosis: return .implemented("ConnectDiagnosis")
+        case .reachHelp: return .implemented("deskHint")
         case .serverAccess: return .implemented("ServerAccessReading")
         case .firstRunPlan: return .implemented("FirstRunFlow")
         case .firstRunQuestion: return .implemented("answerButton")

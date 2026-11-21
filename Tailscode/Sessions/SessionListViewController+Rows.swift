@@ -185,16 +185,28 @@ extension SessionListViewController {
     }
 
     private func updateUnreachableNotice() {
+        guard let reach = unreachableReach else {
+            unreachableLabel.isHidden = true
+            unreachableLabel.text = nil
+            return
+        }
+        unreachableLabel.text = reach.bannerLine
+        unreachableLabel.isHidden = false
+    }
+
+    /// The machines this list last found silent, read for which side is the likelier cause.
+    var unreachableReach: ReachReading? {
         let names = viewModel.unreachable.compactMap { id in
             viewModel.servers.first(where: { $0.id == id })?.name
         }
-        if names.isEmpty {
-            unreachableLabel.isHidden = true
-            unreachableLabel.text = nil
-        } else {
-            unreachableLabel.text = String(
-                localized: "\(names.joined(separator: ", ")) unreachable — pull to retry")
-            unreachableLabel.isHidden = false
+        return ReachReading.here(silent: names, answering: viewModel.servers.count - names.count)
+    }
+
+    @objc func unreachableTapped() {
+        guard let reach = unreachableReach else { return }
+        Theme.Haptics.tap()
+        ReachHelpViewController.present(from: self, reading: reach) { [weak self] in
+            self?.refresh()
         }
     }
 

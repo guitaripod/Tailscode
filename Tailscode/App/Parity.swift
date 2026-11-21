@@ -146,6 +146,7 @@ enum ParityManifest {
         case .openCodeTwoServer: return .implemented("PasswordField")
         case .tailnetDiscovery: return .implemented("DiscoveryViewController")
         case .connectDiagnosis: return .implemented("ConnectDiagnosis")
+        case .reachHelp: return .implemented("ReachHelpViewController")
         case .serverAccess: return .implemented("ServerAccessReading")
         case .firstRunPlan: return .implemented("FirstRunFlow")
         case .firstRunQuestion: return .implemented("AgentTileRow")

@@ -250,11 +250,11 @@ extension MainWindow {
             gtk_box_append(ptr(sidebarBanner), mint)
         }
         if !unreachable.isEmpty {
+            let line = Localized.text(
+                "%@ unreachable — showing what was last seen", unreachable.joined(separator: ", "))
             gtk_box_append(
                 ptr(sidebarBanner),
-                SidebarRow.banner(
-                    Localized.text("%@ unreachable — showing what was last seen",
-                        unreachable.joined(separator: ", "))))
+                SidebarRow.banner(reach.map { "\(line)\n\($0.deskHint)" } ?? line))
         }
         if !marks.isEmpty { gtk_box_append(ptr(sidebarBanner), makeSelectionBar()) }
 

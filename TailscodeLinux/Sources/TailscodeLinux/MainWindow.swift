@@ -137,6 +137,8 @@ final class MainWindow: @unchecked Sendable {
     var sidebarReveal: String?
     var visible: [ChatListItem] = []
     var unreachable: [String] = []
+    /// Which side the silent machines point at, read once per listing that finds any.
+    var reach: ReachReading?
     /// When each server was last heard from, keyed as `unreachable` is. A frozen row's age is read
     /// from here, so a machine that stopped answering stops its clocks instead of ageing a turn.
     var lastHeard: [String: Date] = [:]

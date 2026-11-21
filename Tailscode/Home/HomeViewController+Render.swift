@@ -63,10 +63,11 @@ extension HomeViewController {
             }
         }
         appendShelf(to: &snapshot, masters: hasLoadedOnce && !servers.isEmpty ? masterShelf : nil)
-        if !down.isEmpty {
+        if let reach = ReachReading.here(
+            silent: down.map(\.name), answering: servers.count - down.count)
+        {
             snapshot.appendSections([.alerts])
-            snapshot.appendItems(
-                [.alert(ServerAlertCard(names: down.map(\.name)))], toSection: .alerts)
+            snapshot.appendItems([.alert(ServerAlertCard(reading: reach))], toSection: .alerts)
         }
         if showsDemoNudge {
             snapshot.appendSections([.demoNudge])

@@ -661572,6 +661572,3743 @@
           }
         }
       }
+    },
+    "None of your machines answer, so the likeliest cause is Tailscale on this iPad. It can stall after the iPad sleeps or changes networks while still showing Connected.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "None of your machines answer, so the likeliest cause is Tailscale on this iPad. It can stall after the iPad sleeps or changes networks while still showing Connected."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keines deiner Geräte antwortet, am wahrscheinlichsten liegt es an Tailscale auf diesem iPad. Nach Ruhezustand oder Netzwechsel kann es hängen und trotzdem „Connected“ zeigen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguna de tus máquinas responde, así que lo más probable es Tailscale en este iPad. Puede bloquearse tras suspenderse o cambiar de red y seguir mostrando “Connected”."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucune de vos machines ne répond, la cause la plus probable est Tailscale sur cet iPad. Il peut se bloquer après une mise en veille ou un changement de réseau tout en affichant « Connected »."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessuna delle tue macchine risponde, quindi la causa più probabile è Tailscale su questo iPad. Può bloccarsi dopo la sospensione o un cambio di rete, mostrando comunque “Connected”."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "どの端末も応答しないため、原因はこの iPad の Tailscale の可能性が高いです。スリープやネットワーク切り替えの後に止まることがあり、その間も「Connected」と表示されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 기기 중 어느 것도 응답하지 않아서, 이 iPad의 Tailscale이 가장 유력한 원인입니다. 잠자기나 네트워크 변경 후 멈출 수 있는데, 그래도 “Connected”로 표시됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Żadne z twoich urządzeń nie odpowiada, więc najpewniej winny jest Tailscale na tym iPadzie. Może się zawiesić po uśpieniu lub zmianie sieci, nadal pokazując „Connected”."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma das suas máquinas responde, então a causa mais provável é o Tailscale neste iPad. Ele pode travar após o iPad dormir ou trocar de rede, mas continuar mostrando “Connected”."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的所有设备都没有响应，最可能的原因是这台 iPad 上的 Tailscale。它可能在睡眠或切换网络后卡住，但仍显示“Connected”。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的所有裝置都沒有回應，最可能的原因是這台 iPad 上的 Tailscale。它可能在睡眠或切換網路後卡住，但仍顯示「Connected」。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen av dina enheter svarar, så troligaste orsaken är Tailscale på den här iPaden. Det kan fastna efter att iPaden sovit eller bytt nätverk och ändå visa ”Connected”."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen af dine enheder svarer, så den mest sandsynlige årsag er Tailscale på denne iPad. Den kan gå i stå efter at iPad'en har sovet eller skiftet netværk, mens den stadig viser ”Connected”."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen av enhetene dine svarer, så den mest sannsynlige årsaken er Tailscale på denne iPaden. Den kan gå i stå etter at iPaden har sovet eller byttet nettverk, og fortsatt vise «Connected»."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mikään laitteistasi ei vastaa, joten todennäköisin syy on Tailscale tässä iPadissä. Se voi jumittua, kun iPad on nukkunut tai vaihtanut verkkoa, ja silti näyttää ”Connected”."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Engin tækjanna þinna svarar, svo líklegast er Tailscale á þessum iPad orsökin. Það getur stöðvast eftir svefn eða netskipti en sýnir samt „Connected“."
+          }
+        }
+      }
+    },
+    "None of your machines answer, so the likeliest cause is Tailscale on this iPhone. It can stall after the phone sleeps or changes networks while still showing Connected.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "None of your machines answer, so the likeliest cause is Tailscale on this iPhone. It can stall after the phone sleeps or changes networks while still showing Connected."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keines deiner Geräte antwortet, am wahrscheinlichsten liegt es an Tailscale auf diesem iPhone. Nach Ruhezustand oder Netzwechsel kann es hängen und trotzdem „Connected“ zeigen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguna de tus máquinas responde, así que lo más probable es Tailscale en este iPhone. Puede bloquearse tras suspenderse o cambiar de red y seguir mostrando “Connected”."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucune de vos machines ne répond, la cause la plus probable est Tailscale sur cet iPhone. Il peut se bloquer après une mise en veille ou un changement de réseau tout en affichant « Connected »."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessuna delle tue macchine risponde, quindi la causa più probabile è Tailscale su questo iPhone. Può bloccarsi dopo la sospensione o un cambio di rete, mostrando comunque “Connected”."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "どの端末も応答しないため、原因はこの iPhone の Tailscale の可能性が高いです。スリープやネットワーク切り替えの後に止まることがあり、その間も「Connected」と表示されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 기기 중 어느 것도 응답하지 않아서, 이 iPhone의 Tailscale이 가장 유력한 원인입니다. 잠자기나 네트워크 변경 후 멈출 수 있는데, 그래도 “Connected”로 표시됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Żadne z twoich urządzeń nie odpowiada, więc najpewniej winny jest Tailscale na tym iPhonie. Może się zawiesić po uśpieniu lub zmianie sieci, nadal pokazując „Connected”."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma das suas máquinas responde, então a causa mais provável é o Tailscale neste iPhone. Ele pode travar após o iPhone dormir ou trocar de rede, mas continuar mostrando “Connected”."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的所有设备都没有响应，最可能的原因是这台 iPhone 上的 Tailscale。它可能在睡眠或切换网络后卡住，但仍显示“Connected”。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的所有裝置都沒有回應，最可能的原因是這台 iPhone 上的 Tailscale。它可能在睡眠或切換網路後卡住，但仍顯示「Connected」。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen av dina enheter svarar, så troligaste orsaken är Tailscale på den här iPhonen. Det kan fastna efter att iPhonen sovit eller bytt nätverk och ändå visa ”Connected”."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen af dine enheder svarer, så den mest sandsynlige årsag er Tailscale på denne iPhone. Den kan gå i stå efter at iPhonen har sovet eller skiftet netværk, mens den stadig viser ”Connected”."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen av enhetene dine svarer, så den mest sannsynlige årsaken er Tailscale på denne iPhonen. Den kan gå i stå etter at iPhonen har sovet eller byttet nettverk, og fortsatt vise «Connected»."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mikään laitteistasi ei vastaa, joten todennäköisin syy on Tailscale tässä iPhonessa. Se voi jumittua, kun iPhone on nukkunut tai vaihtanut verkkoa, ja silti näyttää ”Connected”."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Engin tækjanna þinna svarar, svo líklegast er Tailscale á þessum iPhone orsökin. Það getur stöðvast eftir svefn eða netskipti en sýnir samt „Connected“."
+          }
+        }
+      }
+    },
+    "Tailscale on this iPad can stall after it sleeps or changes networks while still showing Connected. If it is not that, %@ is asleep or offline.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale on this iPad can stall after it sleeps or changes networks while still showing Connected. If it is not that, %@ is asleep or offline."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale auf diesem iPad kann nach dem Ruhezustand oder einem Netzwechsel hängen bleiben und trotzdem „Connected“ zeigen. Falls nicht, schläft %@ oder ist offline."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale en este iPad puede bloquearse tras suspenderse o cambiar de red y seguir mostrando “Connected”. Si no es eso, %@ está suspendido o sin conexión."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale sur cet iPad peut se bloquer après une mise en veille ou un changement de réseau tout en affichant « Connected ». Sinon, %@ est en veille ou hors ligne."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale su questo iPad può bloccarsi dopo la sospensione o un cambio di rete, mostrando comunque “Connected”. Se non è questo, %@ è in sospensione o offline."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPad の Tailscale は、スリープやネットワーク切り替えの後に「Connected」と表示したまま止まることがあります。違う場合は、%@ がスリープ中かオフラインです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPad의 Tailscale은 잠자기나 네트워크 변경 후 “Connected”로 표시된 채 멈출 수 있습니다. 그게 아니라면 %@ 기기는 잠자기 중이거나 오프라인입니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale na tym iPadzie może się zawiesić po uśpieniu lub zmianie sieci, nadal pokazując „Connected”. Jeśli to nie to, %@ śpi albo jest offline."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscale neste iPad pode travar depois de o iPad dormir ou trocar de rede, mas continuar mostrando “Connected”. Se não for isso, %@ está dormindo ou offline."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPad 上的 Tailscale 可能在睡眠或切换网络后卡住，但仍显示“Connected”。如果不是这个原因，那么 %@ 是在睡眠或离线。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台 iPad 上的 Tailscale 可能在睡眠或切換網路後卡住，但仍顯示「Connected」。如果不是這個原因，%@ 就是在睡眠或離線。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale på den här iPaden kan fastna efter att iPaden sovit eller bytt nätverk och ändå visa ”Connected”. Om inte det är orsaken sover %@ eller är offline."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale på denne iPad kan gå i stå, efter at iPad'en har sovet eller skiftet netværk, mens den stadig viser ”Connected”. Hvis ikke, sover %@ eller er offline."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale på denne iPaden kan gå i stå etter at iPaden har sovet eller byttet nettverk, og fortsatt vise «Connected». Hvis ikke, sover %@ eller er offline."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale tässä iPadissä voi jumittua, kun iPad on nukkunut tai vaihtanut verkkoa, ja silti näyttää ”Connected”. Jos ei, %@ on unessa tai offline-tilassa."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale á þessum iPad getur stöðvast eftir svefn eða netskipti en sýnt „Connected“ samt. Ef ekki er það, þá sefur %@ eða er án tengingar."
+          }
+        }
+      }
+    },
+    "Tailscale on this iPhone can stall after the phone sleeps or changes networks while still showing Connected. If it is not that, %@ is asleep or offline.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale on this iPhone can stall after the phone sleeps or changes networks while still showing Connected. If it is not that, %@ is asleep or offline."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale auf diesem iPhone kann nach dem Ruhezustand oder einem Netzwechsel hängen bleiben und trotzdem „Connected“ zeigen. Falls nicht, schläft %@ oder ist offline."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale en este iPhone puede bloquearse tras suspenderse o cambiar de red y seguir mostrando “Connected”. Si no es eso, %@ está suspendido o sin conexión."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale sur cet iPhone peut se bloquer après une mise en veille ou un changement de réseau tout en affichant « Connected ». Sinon, %@ est en veille ou hors ligne."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale su questo iPhone può bloccarsi dopo la sospensione o un cambio di rete, mostrando comunque “Connected”. Se non è questo, %@ è in sospensione o offline."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone の Tailscale は、スリープやネットワーク切り替えの後に「Connected」と表示したまま止まることがあります。違う場合は、%@ がスリープ中かオフラインです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone의 Tailscale은 잠자기나 네트워크 변경 후 “Connected”로 표시된 채 멈출 수 있습니다. 그게 아니라면 %@ 기기는 잠자기 중이거나 오프라인입니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale na tym iPhonie może się zawiesić po uśpieniu lub zmianie sieci, nadal pokazując „Connected”. Jeśli to nie to, %@ śpi albo jest offline."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscale neste iPhone pode travar depois de o iPhone dormir ou trocar de rede, mas continuar mostrando “Connected”. Se não for isso, %@ está dormindo ou offline."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 上的 Tailscale 可能在睡眠或切换网络后卡住，但仍显示“Connected”。如果不是这个原因，那么 %@ 是在睡眠或离线。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台 iPhone 上的 Tailscale 可能在睡眠或切換網路後卡住，但仍顯示「Connected」。如果不是這個原因，%@ 就是在睡眠或離線。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale på den här iPhonen kan fastna efter att iPhonen sovit eller bytt nätverk och ändå visa ”Connected”. Om inte det är orsaken sover %@ eller är offline."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale på denne iPhone kan gå i stå, efter at iPhonen har sovet eller skiftet netværk, mens den stadig viser ”Connected”. Hvis ikke, sover %@ eller er offline."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale på denne iPhonen kan gå i stå etter at iPhonen har sovet eller byttet nettverk, og fortsatt vise «Connected». Hvis ikke, sover %@ eller er offline."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale tässä iPhonessa voi jumittua, kun iPhone on nukkunut tai vaihtanut verkkoa, ja silti näyttää ”Connected”. Jos ei, %@ on unessa tai offline-tilassa."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale á þessum iPhone getur stöðvast eftir svefn eða netskipti en sýnt „Connected“ samt. Ef ekki er það, þá sefur %@ eða er án tengingar."
+          }
+        }
+      }
+    },
+    "Your other machines answer, so Tailscale here is working. %@ may be asleep, offline or restarting.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your other machines answer, so Tailscale here is working. %@ may be asleep, offline or restarting."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine anderen Geräte antworten, also funktioniert Tailscale hier. %@ kann schlafen, offline sein oder neu starten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus otras máquinas responden, así que Tailscale funciona aquí. %@ puede estar suspendido, sin conexión o reiniciándose."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vos autres machines répondent, donc Tailscale fonctionne ici. %@ est peut-être en veille, hors ligne ou en train de redémarrer."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le altre tue macchine rispondono, quindi Tailscale qui funziona. %@ potrebbe essere in sospensione, offline o in riavvio."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ほかの端末は応答するので、この端末の Tailscale は動いています。%@ はスリープ中、オフライン、または再起動中かもしれません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 기기들은 응답하므로 여기의 Tailscale은 작동하고 있습니다. %@ 기기는 잠자기 중이거나 오프라인이거나 재시작 중일 수 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inne twoje urządzenia odpowiadają, więc Tailscale tutaj działa. %@ może spać, być offline albo się restartować."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suas outras máquinas respondem, então o Tailscale daqui está funcionando. %@ pode estar dormindo, offline ou reiniciando."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的其他设备都能响应，所以这里的 Tailscale 工作正常。%@ 可能在睡眠、离线或正在重启。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的其他裝置都有回應，所以這裡的 Tailscale 運作正常。%@ 可能在睡眠、離線或正在重新啟動。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dina andra enheter svarar, så Tailscale fungerar här. %@ kan sova, vara offline eller starta om."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dine andre enheder svarer, så Tailscale virker her. %@ kan sove, være offline eller genstarte."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De andre enhetene dine svarer, så Tailscale fungerer her. %@ kan være i dvale, offline eller starte på nytt."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muut laitteesi vastaavat, joten Tailscale täällä toimii. %@ voi olla unessa, offline-tilassa tai käynnistymässä uudelleen."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hin tækin þín svara, svo Tailscale virkar hér. %@ gæti verið í svefni, án tengingar eða að endurræsa sig."
+          }
+        }
+      }
+    },
+    "%@ — tap for help": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — tap for help"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — tippen für Hilfe"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — toca para obtener ayuda"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — touchez pour obtenir de l’aide"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — tocca per ricevere aiuto"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — タップしてヘルプを表示"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — 탭하여 도움말 보기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — dotknij, aby uzyskać pomoc"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — toque para ajuda"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — 点按获取帮助"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — 輕點取得說明"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — tryck för hjälp"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — tryk for hjælp"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — trykk for hjelp"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — napauta saadaksesi ohjeita"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ — pikkaðu til að fá hjálp"
+          }
+        }
+      }
+    },
+    "Tailscale is off on this computer.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale is off on this computer."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale ist auf diesem Computer ausgeschaltet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale está desactivado en este ordenador."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale est désactivé sur cet ordinateur."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale è disattivato su questo computer."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このコンピュータの Tailscale はオフです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 컴퓨터에서 Tailscale이 꺼져 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale jest wyłączony na tym komputerze."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscale está desligado neste computador."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台电脑上的 Tailscale 已关闭。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台電腦上的 Tailscale 已關閉。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale är av på den här datorn."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale er slået fra på denne computer."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale er av på denne datamaskinen."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale on pois päältä tässä tietokoneessa."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale er slökkt á þessari tölvu."
+          }
+        }
+      }
+    },
+    "Tailscale is off on this Mac.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale is off on this Mac."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale ist auf diesem Mac ausgeschaltet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale está desactivado en este Mac."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale est désactivé sur ce Mac."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale è disattivato su questo Mac."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この Mac の Tailscale はオフです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 Mac에서 Tailscale이 꺼져 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale jest wyłączony na tym Macu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscale está desligado neste Mac."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 Mac 上的 Tailscale 已关闭。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台 Mac 上的 Tailscale 已關閉。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale är av på den här Mac:en."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale er slået fra på denne Mac."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale er av på denne Macen."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale on pois päältä tässä Macissa."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale er slökkt á þessum Mac."
+          }
+        }
+      }
+    },
+    "None of your machines answer, so the likelier cause is Tailscale on this computer: restart it, or restart the computer.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "None of your machines answer, so the likelier cause is Tailscale on this computer: restart it, or restart the computer."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keines deiner Geräte antwortet, am wahrscheinlichsten liegt es an Tailscale auf diesem Computer: Starte es neu oder starte den Computer neu."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguna de tus máquinas responde, así que lo más probable es Tailscale en este ordenador: reinícialo o reinicia el ordenador."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucune de vos machines ne répond, la cause la plus probable est Tailscale sur cet ordinateur : relancez-le, ou redémarrez l’ordinateur."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessuna delle tue macchine risponde, quindi la causa più probabile è Tailscale su questo computer: riavvialo, o riavvia il computer."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "どの端末も応答しないため、原因はこのコンピュータの Tailscale の可能性が高いです。Tailscale を再起動するか、コンピュータを再起動してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 기기 중 어느 것도 응답하지 않아서, 이 컴퓨터의 Tailscale이 가장 유력한 원인입니다. Tailscale을 다시 시작하거나 컴퓨터를 재시작하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Żadne z twoich urządzeń nie odpowiada, więc najpewniej winny jest Tailscale na tym komputerze: uruchom go ponownie albo zrestartuj komputer."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma das suas máquinas responde, então a causa mais provável é o Tailscale neste computador: reinicie-o ou reinicie o computador."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的所有设备都没有响应，最可能的原因是这台电脑上的 Tailscale：重新启动它，或重新启动电脑。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的所有裝置都沒有回應，最可能的原因是這台電腦上的 Tailscale：重新啟動它，或重新啟動電腦。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen av dina enheter svarar, så troligaste orsaken är Tailscale på den här datorn: starta om det, eller starta om datorn."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen af dine enheder svarer, så den mest sandsynlige årsag er Tailscale på denne computer: genstart det, eller genstart computeren."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen av enhetene dine svarer, så den mest sannsynlige årsaken er Tailscale på denne datamaskinen: start det på nytt, eller start datamaskinen på nytt."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mikään laitteistasi ei vastaa, joten todennäköisin syy on Tailscale tässä tietokoneessa: käynnistä se uudelleen tai käynnistä tietokone uudelleen."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Engin tækjanna þinna svarar, svo líklegast er Tailscale á þessari tölvu orsökin: endurræstu það eða endurræstu tölvuna."
+          }
+        }
+      }
+    },
+    "None of your machines answer, so the likelier cause is Tailscale on this Mac: turn it off and on from its menu bar icon.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "None of your machines answer, so the likelier cause is Tailscale on this Mac: turn it off and on from its menu bar icon."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keines deiner Geräte antwortet, am wahrscheinlichsten liegt es an Tailscale auf diesem Mac: Schalte es über das Symbol in der Menüleiste aus und wieder ein."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguna de tus máquinas responde, así que lo más probable es Tailscale en este Mac: apágalo y vuelve a encenderlo desde su icono de la barra de menús."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucune de vos machines ne répond, la cause la plus probable est Tailscale sur ce Mac : désactivez-le puis réactivez-le depuis son icône dans la barre des menus."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessuna delle tue macchine risponde, quindi la causa più probabile è Tailscale su questo Mac: spegnilo e riaccendilo dalla sua icona nella barra dei menu."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "どの端末も応答しないため、原因はこの Mac の Tailscale の可能性が高いです。メニューバーのアイコンからオフにしてから、もう一度オンにしてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 기기 중 어느 것도 응답하지 않아서, 이 Mac의 Tailscale이 가장 유력한 원인입니다. 메뉴 막대의 아이콘에서 끈 뒤 다시 켜세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Żadne z twoich urządzeń nie odpowiada, więc najpewniej winny jest Tailscale na tym Macu: wyłącz go i włącz z ikony na pasku menu."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma das suas máquinas responde, então a causa mais provável é o Tailscale neste Mac: desligue-o e ligue-o de novo pelo ícone na barra de menus."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的所有设备都没有响应，最可能的原因是这台 Mac 上的 Tailscale：请从菜单栏图标处将它关闭再打开。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的所有裝置都沒有回應，最可能的原因是這台 Mac 上的 Tailscale：請從選單列圖示關閉再開啟。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen av dina enheter svarar, så troligaste orsaken är Tailscale på den här Mac:en: stäng av det och slå på det igen från menyradsikonen."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen af dine enheder svarer, så den mest sandsynlige årsag er Tailscale på denne Mac: sluk det og tænd det igen fra menulinjeikonet."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen av enhetene dine svarer, så den mest sannsynlige årsaken er Tailscale på denne Macen: slå det av og på igjen fra menylinjeikonet."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mikään laitteistasi ei vastaa, joten todennäköisin syy on Tailscale tässä Macissa: sammuta se ja käynnistä uudelleen valikkopalkin kuvakkeesta."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Engin tækjanna þinna svarar, svo líklegast er Tailscale á þessum Mac orsökin: slökktu á því og kveiktu aftur úr valmyndastikutákninu."
+          }
+        }
+      }
+    },
+    "Either Tailscale on this computer has stalled, and restarting it brings it back, or the machine is asleep or offline.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Either Tailscale on this computer has stalled, and restarting it brings it back, or the machine is asleep or offline."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entweder hängt Tailscale auf diesem Computer und ein Neustart bringt es zurück, oder das Gerät schläft oder ist offline."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O bien Tailscale en este ordenador se ha bloqueado, y reiniciarlo lo devuelve, o el equipo está suspendido o sin conexión."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Soit Tailscale sur cet ordinateur est bloqué, et le relancer le rétablit, soit la machine est en veille ou hors ligne."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscale su questo computer si è bloccato, e riavviarlo lo ripristina, oppure il computer è in sospensione o offline."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このコンピュータの Tailscale が止まっていて、再起動すれば戻るか、コンピュータがスリープ中かオフラインです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 컴퓨터의 Tailscale이 멈췄다면 다시 시작하면 돌아오고, 그렇지 않으면 컴퓨터가 잠자기 중이거나 오프라인입니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale na tym komputerze się zawiesił i jego ponowne uruchomienie go przywróci, albo komputer śpi lub jest offline."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ou o Tailscale neste computador travou, e reiniciá-lo o traz de volta, ou a máquina está dormindo ou offline."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要么是这台电脑上的 Tailscale 卡住了，重新启动它即可恢复，要么是这台机器在睡眠或离线。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要嘛是這台電腦上的 Tailscale 卡住了，重新啟動即可恢復，要嘛是這台機器在睡眠或離線。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Antingen har Tailscale på den här datorn fastnat, och en omstart får igång det igen, eller så sover datorn eller är offline."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enten er Tailscale på denne computer gået i stå, og en genstart får den til at virke igen, eller også sover maskinen eller er offline."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enten har Tailscale på denne datamaskinen gått i stå, og en omstart får det til å virke igjen, eller så er maskinen i dvale eller offline."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Joko Tailscale tässä tietokoneessa on jumittunut, ja uudelleenkäynnistys palauttaa sen, tai kone on unessa tai offline-tilassa."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annaðhvort hefur Tailscale á þessari tölvu stöðvast og endurræsing kemur því aftur í gang, eða tölvan er í svefni eða án tengingar."
+          }
+        }
+      }
+    },
+    "Either Tailscale on this Mac has stalled, and turning it off and on from its menu bar icon brings it back, or the machine is asleep or offline.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Either Tailscale on this Mac has stalled, and turning it off and on from its menu bar icon brings it back, or the machine is asleep or offline."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entweder hängt Tailscale auf diesem Mac und Ausschalten und Einschalten über das Symbol in der Menüleiste bringt es zurück, oder das Gerät schläft oder ist offline."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O bien Tailscale en este Mac se ha bloqueado, y apagarlo y encenderlo desde su icono de la barra de menús lo devuelve, o el equipo está suspendido o sin conexión."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Soit Tailscale sur ce Mac est bloqué, et le désactiver puis le réactiver depuis son icône dans la barre des menus le rétablit, soit la machine est en veille ou hors ligne."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscale su questo Mac si è bloccato, e spegnerlo e riaccenderlo dalla sua icona nella barra dei menu lo ripristina, oppure il Mac è in sospensione o offline."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この Mac の Tailscale が止まっていて、メニューバーのアイコンからオフ・オンすれば戻るか、Mac がスリープ中かオフラインです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 Mac의 Tailscale이 멈췄다면 메뉴 막대 아이콘에서 끄고 다시 켜면 돌아오고, 그렇지 않으면 Mac이 잠자기 중이거나 오프라인입니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale na tym Macu się zawiesił i wyłączenie oraz ponowne włączenie z ikony na pasku menu go przywróci, albo Mac śpi lub jest offline."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ou o Tailscale neste Mac travou, e desligá-lo e ligá-lo de novo pelo ícone na barra de menus o traz de volta, ou a máquina está dormindo ou offline."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要么是这台 Mac 上的 Tailscale 卡住了，从菜单栏图标关闭再打开即可恢复，要么是这台机器在睡眠或离线。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要嘛是這台 Mac 上的 Tailscale 卡住了，從選單列圖示關閉再開啟即可恢復，要嘛是這台機器在睡眠或離線。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Antingen har Tailscale på den här Mac:en fastnat, och att stänga av och slå på det från menyradsikonen får igång det igen, eller så sover datorn eller är offline."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enten er Tailscale på denne Mac gået i stå, og at slukke og tænde det fra menulinjeikonet får det til at virke igen, eller også sover maskinen eller er offline."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enten har Tailscale på denne Macen gått i stå, og å slå det av og på igjen fra menylinjeikonet får det til å virke igjen, eller så er maskinen i dvale eller offline."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Joko Tailscale tässä Macissa on jumittunut, ja sen sammuttaminen ja käynnistäminen valikkopalkin kuvakkeesta palauttaa sen, tai kone on unessa tai offline-tilassa."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annaðhvort hefur Tailscale á þessum Mac stöðvast og slökkt og kveikt á því úr valmyndastikutákninu kemur því aftur í gang, eða tölvan er í svefni eða án tengingar."
+          }
+        }
+      }
+    },
+    "Your other machines answer, so these are likely asleep or offline.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your other machines answer, so these are likely asleep or offline."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine anderen Geräte antworten, also schlafen diese wahrscheinlich oder sind offline."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus otras máquinas responden, así que estas probablemente están suspendidas o sin conexión."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vos autres machines répondent, donc celles-ci sont probablement en veille ou hors ligne."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le altre tue macchine rispondono, quindi queste sono probabilmente in sospensione o offline."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ほかの端末は応答するので、これらはおそらくスリープ中かオフラインです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 기기들은 응답하므로, 이 기기들은 잠자기 중이거나 오프라인일 가능성이 큽니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inne twoje urządzenia odpowiadają, więc te prawdopodobnie śpią albo są offline."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suas outras máquinas respondem, então estas provavelmente estão dormindo ou offline."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的其他设备都能响应，所以这些设备很可能在睡眠或离线。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的其他裝置都有回應，所以這些裝置很可能在睡眠或離線。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dina andra enheter svarar, så de här är troligen i viloläge eller offline."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dine andre enheder svarer, så disse er sandsynligvis i dvale eller offline."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De andre enhetene dine svarer, så disse er sannsynligvis i dvale eller offline."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muut laitteesi vastaavat, joten nämä ovat todennäköisesti unessa tai offline-tilassa."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hin tækin þín svara, svo þessi eru líklega í svefni eða án tengingar."
+          }
+        }
+      }
+    },
+    "Turn Tailscale on": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn Tailscale on"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale einschalten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activar Tailscale"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Activer Tailscale"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attiva Tailscale"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale をオンにする"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 켜기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Włącz Tailscale"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ligar o Tailscale"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 Tailscale"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟 Tailscale"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slå på Tailscale"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slå Tailscale til"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slå på Tailscale"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Käynnistä Tailscale"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kveikja á Tailscale"
+          }
+        }
+      }
+    },
+    "Open Tailscale and switch it on, then come back.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Tailscale and switch it on, then come back."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öffne Tailscale und schalte es ein, dann komm zurück."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre Tailscale y actívalo, y luego vuelve."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrez Tailscale et activez-le, puis revenez ici."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri Tailscale e attivalo, poi torna qui."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale を開いてオンにしてから、戻ってください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale을 열어 켠 다음 돌아오세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otwórz Tailscale, włącz go i wróć."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abra o Tailscale e ligue-o, depois volte."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 Tailscale 并将其开启，然后返回。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打開 Tailscale 並將其開啟，然後回來。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öppna Tailscale och slå på det, kom sedan tillbaka."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åbn Tailscale og slå det til, og kom så tilbage."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne Tailscale og slå det på, og kom tilbake."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avaa Tailscale ja käynnistä se, ja palaa sitten takaisin."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opnaðu Tailscale og kveiktu á því, og komdu svo aftur."
+          }
+        }
+      }
+    },
+    "Turn Tailscale off and on": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn Tailscale off and on"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale aus- und wieder einschalten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apagar y volver a encender Tailscale"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Désactiver puis réactiver Tailscale"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spegni e riaccendi Tailscale"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale をオフにしてからオンにする"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 껐다 켜기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wyłącz i włącz Tailscale"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desligar e ligar o Tailscale"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭再打开 Tailscale"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "關閉再開啟 Tailscale"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stäng av och slå på Tailscale"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sluk og tænd for Tailscale"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slå av og på Tailscale"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sammuta ja käynnistä Tailscale"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slökkva og kveikja aftur á Tailscale"
+          }
+        }
+      }
+    },
+    "Open Tailscale and flip its switch off, then on. A warning there that MagicSock is not running means this is the fix.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Tailscale and flip its switch off, then on. A warning there that MagicSock is not running means this is the fix."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öffne Tailscale und schalte den Schalter aus, dann wieder ein. Zeigt es dort eine Warnung, dass MagicSock nicht läuft, ist das die Lösung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre Tailscale y apaga su interruptor y luego enciéndelo. Si allí aparece un aviso de que MagicSock no está en marcha, esta es la solución."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrez Tailscale, désactivez son interrupteur puis réactivez-le. Si une alerte indique que MagicSock ne fonctionne pas, c’est la solution."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri Tailscale, spegni l’interruttore e poi riaccendilo. Se lì compare un avviso che MagicSock non è in esecuzione, questa è la soluzione."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale を開いてスイッチをオフにしてからオンにします。そこに MagicSock が動いていないという警告が出ていれば、これで直ります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale을 열어 스위치를 끄고 다시 켜세요. 거기에 MagicSock이 실행 중이 아니라는 경고가 보이면 이 방법이 해결책입니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otwórz Tailscale, wyłącz przełącznik, a potem włącz go. Jeśli widzisz tam ostrzeżenie, że MagicSock nie działa, to jest rozwiązanie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abra o Tailscale, desligue a chave e depois ligue de novo. Se houver um aviso de que o MagicSock não está em execução, esta é a solução."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 Tailscale，先将开关关闭再打开。如果那里显示 MagicSock 未在运行的警告，那么这就是解决办法。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打開 Tailscale，先將開關關閉再開啟。如果那裡顯示 MagicSock 未在執行的警告，那麼這就是解決方法。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öppna Tailscale och stäng av reglaget, slå sedan på det igen. Om där står en varning om att MagicSock inte körs är det här lösningen."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åbn Tailscale, og sluk for kontakten og tænd den igen. Hvis der står en advarsel om, at MagicSock ikke kører, er det her løsningen."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne Tailscale og slå bryteren av, og så på igjen. Hvis det står en advarsel om at MagicSock ikke kjører, er dette løsningen."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avaa Tailscale ja käännä kytkin pois päältä ja takaisin päälle. Jos siellä näkyy varoitus, että MagicSock ei ole käynnissä, tämä on korjaus."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opnaðu Tailscale og slökktu á rofanum, og kveiktu svo aftur. Ef þar kemur viðvörun um að MagicSock sé ekki í gangi er þetta lausnin."
+          }
+        }
+      }
+    },
+    "Close Tailscale and switch the VPN": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close Tailscale and switch the VPN"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale schließen und das VPN umschalten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrar Tailscale y cambiar el VPN"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fermer Tailscale et basculer le VPN"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiudi Tailscale e cambia il VPN"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale を終了して VPN を切り替える"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale을 종료하고 VPN 전환하기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zamknij Tailscale i przełącz VPN"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fechar o Tailscale e alternar a VPN"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭 Tailscale 并切换 VPN"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "關閉 Tailscale 並切換 VPN"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stäng Tailscale och växla VPN"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Luk Tailscale og skift VPN"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lukk Tailscale og bytt VPN"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sulje Tailscale ja vaihda VPN"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loka Tailscale og skipta um VPN"
+          }
+        }
+      }
+    },
+    "If it is still stuck, swipe Tailscale away in the app switcher, then turn VPN off and on in Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "If it is still stuck, swipe Tailscale away in the app switcher, then turn VPN off and on in Settings."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hängt es noch, wische Tailscale im App-Umschalter weg und schalte dann das VPN in den Einstellungen aus und wieder ein."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si sigue bloqueado, desliza Tailscale hacia arriba en el selector de apps y luego apaga y vuelve a encender la VPN en Ajustes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "S’il est toujours bloqué, balayez Tailscale dans le sélecteur d’apps, puis désactivez et réactivez le VPN dans Réglages."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se è ancora bloccato, chiudi Tailscale dal selettore delle app, poi disattiva e riattiva la VPN in Impostazioni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まだ止まっている場合は、App スイッチャーで Tailscale を上にスワイプして閉じ、「設定」で VPN をオフにしてからオンにしてください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "그래도 멈춰 있으면 앱 전환기에서 Tailscale을 위로 밀어 닫고, 설정에서 VPN을 껐다 켜세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeśli nadal się zawiesza, przesuń Tailscale w górę w przełączniku aplikacji, a potem wyłącz i włącz VPN w Ustawieniach."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se continuar travado, arraste o Tailscale para cima no alternador de apps e depois desligue e ligue a VPN em Ajustes."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果仍然卡住，请在 App 切换器中向上滑走 Tailscale，然后在“设置”中关闭再打开 VPN。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果仍然卡住，請在 App 切換器中向上滑掉 Tailscale，然後在「設定」中關閉再開啟 VPN。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Om det fortfarande har fastnat, svep bort Tailscale i appväxlaren och stäng sedan av och slå på VPN i Inställningar."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvis det stadig hænger, så swipe Tailscale væk i app-skifteren, og sluk og tænd derefter VPN under Indstillinger."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvis det fortsatt henger seg, sveip Tailscale bort i appbryteren, og slå deretter VPN av og på under Innstillinger."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jos se on yhä jumissa, pyyhkäise Tailscale pois sovellusvaihtajasta ja sammuta ja käynnistä VPN Asetuksissa."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ef það er enn fast, strjúktu Tailscale burt í forritaskiptinum og slökktu síðan á VPN og kveiktu aftur í Stillingum."
+          }
+        }
+      }
+    },
+    "Restart this iPad": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restart this iPad"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPad neu starten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reiniciar este iPad"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redémarrer cet iPad"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riavvia questo iPad"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPad を再起動"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPad 재시동"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uruchom ponownie ten iPad"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reiniciar este iPad"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新启动这台 iPad"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新啟動這台 iPad"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starta om den här iPaden"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genstart denne iPad"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start denne iPaden på nytt"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Käynnistä tämä iPad uudelleen"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endurræsa þennan iPad"
+          }
+        }
+      }
+    },
+    "Restart this iPhone": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restart this iPhone"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses iPhone neu starten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reiniciar este iPhone"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redémarrer cet iPhone"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riavvia questo iPhone"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone を再起動"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone 재시동"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uruchom ponownie ten iPhone"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reiniciar este iPhone"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新启动这台 iPhone"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新啟動這台 iPhone"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starta om den här iPhonen"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genstart denne iPhone"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start denne iPhonen på nytt"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Käynnistä tämä iPhone uudelleen"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endurræsa þennan iPhone"
+          }
+        }
+      }
+    },
+    "When nothing else brings it back, a restart does.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When nothing else brings it back, a restart does."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn nichts anderes hilft, hilft ein Neustart."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuando nada más lo devuelve, un reinicio sí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quand rien d’autre ne marche, un redémarrage suffit."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando nient’altro lo ripristina, un riavvio sì."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ほかに方法がなければ、再起動で直ります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 방법으로 안 되면 재시동하면 됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gdy nic innego nie pomaga, pomaga restart."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando nada mais resolve, um reinício resolve."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果其他办法都不管用，重新启动就有效。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "如果其他方法都不管用，重新啟動就有效。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "När inget annat hjälper gör en omstart det."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Når intet andet hjælper, gør en genstart det."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Når ingenting annet hjelper, hjelper en omstart."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kun mikään muu ei auta, uudelleenkäynnistys auttaa."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Þegar ekkert annað dugar gerir endurræsing það."
+          }
+        }
+      }
+    },
+    "Update Tailscale": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update Tailscale"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale aktualisieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizar Tailscale"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mettre à jour Tailscale"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiorna Tailscale"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale をアップデート"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 업데이트"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zaktualizuj Tailscale"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atualizar o Tailscale"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新 Tailscale"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新 Tailscale"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uppdatera Tailscale"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opdater Tailscale"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppdater Tailscale"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Päivitä Tailscale"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uppfæra Tailscale"
+          }
+        }
+      }
+    },
+    "This stall is a Tailscale bug on iPhone and iPad, and its updates are where the fixes arrive.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This stall is a Tailscale bug on iPhone and iPad, and its updates are where the fixes arrive."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Hängenbleiben ist ein Fehler von Tailscale auf iPhone und iPad, und in seinen Updates kommen die Korrekturen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este bloqueo es un error de Tailscale en iPhone y iPad, y sus actualizaciones son las que lo corrigen."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce blocage est un bogue de Tailscale sur iPhone et iPad, et ses mises à jour apportent les corrections."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo blocco è un bug di Tailscale su iPhone e iPad, e le correzioni arrivano con gli aggiornamenti."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この停止は iPhone と iPad の Tailscale のバグで、修正はアップデートで届きます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 멈춤은 iPhone과 iPad의 Tailscale 버그이며, 수정 사항은 업데이트로 제공됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To zawieszanie się to błąd Tailscale na iPhonie i iPadzie, a poprawki pojawiają się w aktualizacjach."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esse travamento é um bug do Tailscale no iPhone e no iPad, e as correções chegam nas atualizações."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这种卡住是 iPhone 和 iPad 上 Tailscale 的一个漏洞，修复会随更新推送。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這種卡住是 iPhone 和 iPad 上 Tailscale 的一個漏洞，修正會隨更新推出。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det här hänget är en bugg i Tailscale på iPhone och iPad, och rättningarna kommer i uppdateringarna."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne hængen er en fejl i Tailscale på iPhone og iPad, og rettelserne kommer med opdateringerne."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne hengingen er en feil i Tailscale på iPhone og iPad, og rettelsene kommer med oppdateringene."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tämä jumittuminen on Tailscalen virhe iPhonessa ja iPadissa, ja korjaukset tulevat päivityksissä."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Þessi stöðvun er villa í Tailscale á iPhone og iPad og lagfæringarnar koma með uppfærslunum."
+          }
+        }
+      }
+    },
+    "Check %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ prüfen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revisar %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vérifier %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controlla %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ を確認"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 확인"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprawdź %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verificar %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查 %@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "檢查 %@"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontrollera %@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tjek %@"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sjekk %@"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tarkista %@"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Athuga %@"
+          }
+        }
+      }
+    },
+    "Make sure it is switched on, awake and signed into the same tailnet, then try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Make sure it is switched on, awake and signed into the same tailnet, then try again."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stell sicher, dass es eingeschaltet, wach und im selben Tailnet angemeldet ist, und versuch es dann erneut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Asegúrate de que esté encendido, despierto y con sesión iniciada en el mismo tailnet, y vuelve a intentarlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assurez-vous qu’il est allumé, réveillé et connecté au même tailnet, puis réessayez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assicurati che sia acceso, sveglio e connesso allo stesso tailnet, poi riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "電源が入っていて、起動中で、同じ tailnet にサインインしていることを確認してから、もう一度試してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "켜져 있고 깨어 있으며 같은 tailnet에 로그인되어 있는지 확인한 뒤 다시 시도하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upewnij się, że jest włączone, nie śpi i jest zalogowane do tego samego tailnetu, a potem spróbuj ponownie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirme que está ligado, acordado e conectado ao mesmo tailnet, depois tente de novo."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认它已开机、处于唤醒状态并登录到同一个 tailnet，然后再试一次。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "確認它已開機、處於喚醒狀態並登入同一個 tailnet，然後再試一次。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontrollera att den är på, vaken och inloggad på samma tailnet, och försök sedan igen."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sørg for, at den er tændt, vågen og logget ind på samme tailnet, og prøv så igen."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sjekk at den er på, våken og logget inn på samme tailnet, og prøv igjen."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varmista, että se on päällä, hereillä ja kirjautunut samaan tailnetiin, ja yritä sitten uudelleen."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gakktu úr skugga um að kveikt sé á því, það sé vakandi og skráð inn á sama tailnet, og reyndu svo aftur."
+          }
+        }
+      }
+    },
+    "Make sure they are switched on, awake and signed into the same tailnet, then try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Make sure they are switched on, awake and signed into the same tailnet, then try again."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stell sicher, dass sie eingeschaltet, wach und im selben Tailnet angemeldet sind, und versuch es dann erneut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Asegúrate de que estén encendidos, despiertos y con sesión iniciada en el mismo tailnet, y vuelve a intentarlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assurez-vous qu’elles sont allumées, réveillées et connectées au même tailnet, puis réessayez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assicurati che siano accesi, svegli e connessi allo stesso tailnet, poi riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "電源が入っていて、起動中で、同じ tailnet にサインインしていることを確認してから、もう一度試してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "켜져 있고 깨어 있으며 같은 tailnet에 로그인되어 있는지 확인한 뒤 다시 시도하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upewnij się, że są włączone, nie śpią i są zalogowane do tego samego tailnetu, a potem spróbuj ponownie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirme que estão ligados, acordados e conectados ao mesmo tailnet, depois tente de novo."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认它们已开机、处于唤醒状态并登录到同一个 tailnet，然后再试一次。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "確認它們已開機、處於喚醒狀態並登入同一個 tailnet，然後再試一次。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontrollera att de är på, vakna och inloggade på samma tailnet, och försök sedan igen."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sørg for, at de er tændt, vågne og logget ind på samme tailnet, og prøv så igen."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sjekk at de er på, våkne og logget inn på samme tailnet, og prøv igjen."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varmista, että ne ovat päällä, hereillä ja kirjautuneet samaan tailnetiin, ja yritä sitten uudelleen."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gakktu úr skugga um að kveikt sé á þeim, þau séu vakandi og skráð inn á sama tailnet, og reyndu svo aftur."
+          }
+        }
+      }
+    },
+    "See it in Tailscale": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "See it in Tailscale"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Tailscale ansehen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verlo en Tailscale"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voir dans Tailscale"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vedilo in Tailscale"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale で確認"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale에서 보기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zobacz w Tailscale"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver no Tailscale"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Tailscale 中查看"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Tailscale 中查看"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visa i Tailscale"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se i Tailscale"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se i Tailscale"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Katso Tailscalessa"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sjá í Tailscale"
+          }
+        }
+      }
+    },
+    "Tailscale lists your machines, and one it shows as offline is asleep or switched off.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale lists your machines, and one it shows as offline is asleep or switched off."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale listet deine Geräte auf, und eines, das dort als offline erscheint, schläft oder ist ausgeschaltet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale muestra tus máquinas, y la que aparece como sin conexión está suspendida o apagada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale affiche vos machines, et celle qu’il indique comme hors ligne est en veille ou éteinte."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale elenca le tue macchine, e quella che risulta offline è in sospensione o spenta."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale には端末の一覧が表示されます。オフラインと表示されている端末はスリープ中か電源オフです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale은 기기 목록을 보여주며, 오프라인으로 표시된 기기는 잠자기 중이거나 꺼져 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale wyświetla listę twoich urządzeń, a to, które pokazuje jako offline, śpi albo jest wyłączone."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscale lista as suas máquinas, e a que aparece como offline está dormindo ou desligada."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 会列出你的设备，显示为离线的那台设备处于睡眠或已关机。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 會列出你的裝置，顯示為離線的那台裝置處於睡眠或已關機。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale listar dina enheter, och den som visas som offline sover eller är avstängd."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale viser dine enheder, og den, der vises som offline, sover eller er slukket."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale viser enhetene dine, og den som vises som offline, er i dvale eller slått av."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale listaa laitteesi, ja se, joka näkyy offline-tilassa, on unessa tai sammutettu."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale sýnir tækin þín og það sem sýnt er án tengingar er í svefni eða slökkt á því."
+          }
+        }
+      }
+    },
+    "Tailscale is off on this iPhone": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale is off on this iPhone"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale ist auf diesem iPhone ausgeschaltet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale está desactivado en este iPhone"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale est désactivé sur cet iPhone"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale è disattivato su questo iPhone"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPhone の Tailscale はオフです"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPhone에서 Tailscale이 꺼져 있습니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale jest wyłączony na tym iPhonie"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscale está desligado neste iPhone"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPhone 上的 Tailscale 已关闭"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台 iPhone 上的 Tailscale 已關閉"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale är av på den här iPhonen"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale er slået fra på denne iPhone"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale er av på denne iPhonen"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale on pois päältä tässä iPhonessa"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale er slökkt á þessum iPhone"
+          }
+        }
+      }
+    },
+    "Tailscale is off on this iPad": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale is off on this iPad"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale ist auf diesem iPad ausgeschaltet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale está desactivado en este iPad"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale est désactivé sur cet iPad"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale è disattivato su questo iPad"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この iPad の Tailscale はオフです"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 iPad에서 Tailscale이 꺼져 있습니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale jest wyłączony na tym iPadzie"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Tailscale está desligado neste iPad"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台 iPad 上的 Tailscale 已关闭"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這台 iPad 上的 Tailscale 已關閉"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale är av på den här iPaden"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale er slået fra på denne iPad"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale er av på denne iPaden"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale on pois päältä tässä iPadissä"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale er slökkt á þessum iPad"
+          }
+        }
+      }
+    },
+    "What to try": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What to try"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Was du versuchen kannst"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qué probar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quoi essayer"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cosa provare"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "試すこと"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "시도할 방법"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Co spróbować"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O que tentar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可尝试的操作"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可以嘗試的操作"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vad du kan prova"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvad du kan prøve"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hva du kan prøve"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mitä kokeilla"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvað á að prófa"
+          }
+        }
+      }
+    },
+    "Shows every fix, in the order to try them.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shows every fix, in the order to try them."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zeigt jede Lösung in der Reihenfolge, in der du sie ausprobieren solltest."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muestra cada solución, en el orden en que conviene probarlas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affiche chaque solution, dans l’ordre où les essayer."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra ogni soluzione, nell’ordine in cui provarle."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべての対処法を、試す順番に表示します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모든 해결 방법을 시도할 순서대로 보여줍니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pokazuje wszystkie sposoby naprawy w kolejności, w jakiej warto je wypróbować."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra todas as correções, na ordem em que vale tentá-las."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按建议的尝试顺序显示所有修复方法。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "依建議的嘗試順序顯示所有修正方法。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visar alla lösningar, i den ordning du ska prova dem."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viser alle rettelser i den rækkefølge, du skal prøve dem."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viser alle løsningene, i den rekkefølgen du bør prøve dem."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Näyttää kaikki korjaukset siinä järjestyksessä, jossa kannattaa kokeilla niitä."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sýnir allar lausnir í þeirri röð sem best er að prófa þær."
+          }
+        }
+      }
+    },
+    "Tries again and shows what to try.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tries again and shows what to try."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versucht es erneut und zeigt, was du versuchen kannst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vuelve a intentarlo y muestra qué probar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réessaie et affiche quoi essayer."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riprova e mostra cosa provare."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "もう一度試し、試すことを表示します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다시 시도하고 해볼 방법을 보여줍니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Próbuje ponownie i pokazuje, co spróbować."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tenta de novo e mostra o que tentar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再次尝试，并显示可尝试的操作。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再次嘗試，並顯示可以嘗試的操作。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Försöker igen och visar vad du kan prova."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prøver igen og viser, hvad du kan prøve."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prøver igjen og viser hva du kan prøve."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yrittää uudelleen ja näyttää, mitä kokeilla."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reynir aftur og sýnir hvað á að prófa."
+          }
+        }
+      }
+    },
+    "Tailscode asks your machines again by itself when you come back.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode asks your machines again by itself when you come back."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode fragt deine Geräte von selbst erneut ab, wenn du zurückkommst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode vuelve a preguntar a tus máquinas por sí solo cuando vuelves."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode interroge de nouveau vos machines toute seule à votre retour."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode chiede di nuovo alle tue macchine da sola quando torni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "戻ってくると、Tailscode が自動で端末に再度問い合わせます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "돌아오면 Tailscode가 자동으로 기기에 다시 확인합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gdy wrócisz, Tailscode sam ponownie zapyta twoje urządzenia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando você voltar, o Tailscode pergunta de novo às suas máquinas por conta própria."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你回来时，Tailscode 会自动重新询问你的设备。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你回來時，Tailscode 會自動重新詢問你的裝置。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "När du kommer tillbaka frågar Tailscode dina enheter igen på egen hand."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Når du kommer tilbage, spørger Tailscode dine enheder igen af sig selv."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Når du kommer tilbake, spør Tailscode enhetene dine igjen av seg selv."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kun palaat, Tailscode kysyy laitteiltasi uudelleen itsestään."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscode spyr tækin þín aftur af sjálfu sér þegar þú kemur aftur."
+          }
+        }
+      }
+    },
+    "Still no answer at %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Still no answer at %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Immer noch keine Antwort von %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sigue sin respuesta de %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toujours aucune réponse de %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ancora nessuna risposta da %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ からまだ応答がありません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@에서 여전히 응답이 없습니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wciąż brak odpowiedzi z %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda sem resposta de %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 仍无响应"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 仍無回應"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortfarande inget svar från %@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stadig intet svar fra %@"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortsatt ingen respons fra %@"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ei vieläkään vastaa"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ennþá ekkert svar frá %@"
+          }
+        }
+      }
+    },
+    "Everything answers again": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything answers again"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alles antwortet wieder"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todo vuelve a responder"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tout répond à nouveau"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tutto risponde di nuovo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべて再び応答しています"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모든 기기가 다시 응답합니다"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wszystko znów odpowiada"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tudo voltou a responder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一切恢复响应"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一切恢復回應"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allt svarar igen"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alt svarer igen"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alt svarer igjen"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaikki vastaa taas"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allt svarar aftur"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

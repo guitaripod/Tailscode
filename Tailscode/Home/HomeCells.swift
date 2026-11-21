@@ -75,7 +75,7 @@ extension HomeItem {
                 hasher.combine(line.paceNews)
             }
         case .alert(let card):
-            hasher.combine(card.names)
+            hasher.combine(card.reading)
         case .demoNudge:
             break
         case .schedule(let card):
@@ -180,11 +180,11 @@ struct SavedCard: Hashable {
     func hash(into hasher: inout Hasher) { hasher.combine(chat) }
 }
 
-/// Every server that did not answer, as one line. A card per machine made a fleet's bad morning
-/// into a screenful of the same sentence; the machines are named once and the question — try
-/// again — is asked once.
+/// Every server that did not answer, as one card. A card per machine made a fleet's bad morning
+/// into a screenful of the same sentence; the machines are named once, with the side that is the
+/// likelier cause and the one fix to try first.
 struct ServerAlertCard: Hashable {
-    let names: [String]
+    let reading: ReachReading
 
     static func == (lhs: ServerAlertCard, rhs: ServerAlertCard) -> Bool { true }
     func hash(into hasher: inout Hasher) {}
@@ -227,11 +227,16 @@ class ContentCardCell: UICollectionViewCell {
 }
 
 final class ServerAlertCell: ContentCardCell {
-    var onRetry: (() -> Void)?
+    var onAction: ((ReachReading.Action) -> Void)?
+    var onHelp: (() -> Void)?
 
     private let iconView = UIImageView()
     private let titleLabel = UILabel()
-    private let retryButton = UIButton(type: .system)
+    private let leadLabel = UILabel()
+    private let primaryButton = UIButton(type: .system)
+    private let helpButton = UIButton(type: .system)
+    private let buttons = UIStackView()
+    private var primary: ReachReading.Action = .retry
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -241,23 +246,102 @@ final class ServerAlertCell: ContentCardCell {
         }
         surface.layer.borderWidth = 1
         surface.layer.borderColor = Theme.Color.danger.withAlphaComponent(0.4).cgColor
-        iconView.image = UIImage(
-            systemName: "wifi.slash",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold))
         iconView.tintColor = Theme.Color.danger
         iconView.contentMode = .scaleAspectFit
         iconView.setContentHuggingPriority(.required, for: .horizontal)
+        iconView.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         titleLabel.font = Theme.Ramp.font(.panelLabel)
+        titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.textColor = Theme.Color.label
         titleLabel.numberOfLines = 0
 
-        var config = UIButton.Configuration.plain()
-        config.title = String(localized: "Retry")
-        config.baseForegroundColor = Theme.Color.danger
+        leadLabel.font = Theme.Ramp.font(.panelFootnote)
+        leadLabel.adjustsFontForContentSizeCategory = true
+        leadLabel.textColor = Theme.Color.secondaryLabel
+        leadLabel.numberOfLines = 0
+
+        primaryButton.configuration = Self.capsule(prominent: true)
+        primaryButton.addAction(
+            UIAction { [weak self] _ in
+                guard let self else { return }
+                Theme.Haptics.tap()
+                self.onAction?(self.primary)
+            }, for: .touchUpInside)
+        var help = Self.capsule(prominent: false)
+        help.title = String(localized: "What to try")
+        helpButton.configuration = help
+        helpButton.addAction(
+            UIAction { [weak self] _ in
+                Theme.Haptics.tap()
+                self?.onHelp?()
+            }, for: .touchUpInside)
+
+        buttons.addArrangedSubview(primaryButton)
+        buttons.addArrangedSubview(helpButton)
+        buttons.spacing = Theme.Spacing.s
+        buttons.alignment = .leading
+        stackButtons()
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
+            (cell: ServerAlertCell, _) in cell.stackButtons()
+        }
+
+        let header = UIStackView(arrangedSubviews: [iconView, titleLabel])
+        header.axis = .horizontal
+        header.alignment = .center
+        header.spacing = Theme.Spacing.s
+
+        let column = UIStackView(arrangedSubviews: [header, leadLabel, buttons])
+        column.axis = .vertical
+        column.alignment = .fill
+        column.spacing = Theme.Spacing.s
+        column.setCustomSpacing(Theme.Spacing.m, after: leadLabel)
+        column.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(column)
+        NSLayoutConstraint.activate([
+            column.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Theme.Spacing.m),
+            column.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Theme.Spacing.m),
+            column.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Theme.Spacing.m),
+            column.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Theme.Spacing.m),
+        ])
+        isAccessibilityElement = false
+        accessibilityElements = [titleLabel, leadLabel, primaryButton, helpButton]
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func configure(_ card: ServerAlertCard) {
+        let reading = card.reading
+        primary = reading.primary
+        iconView.image = UIImage(
+            systemName: reading.symbol,
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold))
+        titleLabel.text = reading.title
+        leadLabel.text = reading.lead
+        primaryButton.configuration?.title = ReachDoors.title(for: reading.primary)
+        primaryButton.configuration?.image = UIImage(
+            systemName: ReachDoors.symbol(for: reading.primary),
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+        helpButton.accessibilityHint = String(localized: "Shows every fix, in the order to try them.")
+    }
+
+    /// Side by side the two buttons share a line; at accessibility sizes they take a line each,
+    /// because a label wrapped a letter at a time is no button at all.
+    private func stackButtons() {
+        let accessible = traitCollection.preferredContentSizeCategory.isAccessibilityCategory
+        buttons.axis = accessible ? .vertical : .horizontal
+    }
+
+    private static func capsule(prominent: Bool) -> UIButton.Configuration {
+        var config = prominent ? UIButton.Configuration.filled() : UIButton.Configuration.plain()
+        config.baseBackgroundColor = Theme.Color.danger
+        config.baseForegroundColor = prominent ? Theme.Color.onAccent : Theme.Color.danger
         config.cornerStyle = .capsule
-        config.background.strokeColor = Theme.Color.danger.withAlphaComponent(0.4)
-        config.background.strokeWidth = 1
+        config.imagePadding = Theme.Spacing.xs
+        if !prominent {
+            config.background.strokeColor = Theme.Color.danger.withAlphaComponent(0.4)
+            config.background.strokeWidth = 1
+        }
         config.contentInsets = NSDirectionalEdgeInsets(
             top: 6, leading: Theme.Spacing.m, bottom: 6, trailing: Theme.Spacing.m)
         config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
@@ -265,45 +349,12 @@ final class ServerAlertCell: ContentCardCell {
             out.font = Theme.Ramp.font(.chip)
             return out
         }
-        retryButton.configuration = config
-        retryButton.setContentHuggingPriority(.required, for: .horizontal)
-        retryButton.addAction(
-            UIAction { [weak self] _ in
-                Theme.Haptics.tap()
-                self?.onRetry?()
-            }, for: .touchUpInside)
-
-        let row = UIStackView(arrangedSubviews: [iconView, titleLabel, retryButton])
-        row.axis = .horizontal
-        row.alignment = .center
-        row.spacing = Theme.Spacing.m
-        row.isLayoutMarginsRelativeArrangement = true
-        row.directionalLayoutMargins = NSDirectionalEdgeInsets(
-            top: Theme.Spacing.s, leading: Theme.Spacing.m, bottom: Theme.Spacing.s,
-            trailing: Theme.Spacing.s)
-        row.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(row)
-        NSLayoutConstraint.activate([
-            row.topAnchor.constraint(equalTo: contentView.topAnchor),
-            row.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            row.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            row.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
-        ])
+        return config
     }
 
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    func configure(_ card: ServerAlertCard) {
-        let words =
-            card.names.count == 1
-            ? String(localized: "\(card.names[0]) is unreachable")
-            : String(localized: "\(card.names.count) servers are unreachable")
-        titleLabel.text = words
-        isAccessibilityElement = false
-        accessibilityElements = [titleLabel, retryButton]
-        retryButton.accessibilityHint = String(
-            localized: "Check the server or Tailscale, then try again.")
+    override var isHighlighted: Bool {
+        get { false }
+        set {}
     }
 }
 

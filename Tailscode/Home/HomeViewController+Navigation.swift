@@ -5,6 +5,14 @@ import CodingAgentKitApple
 import UIKit
 
 extension HomeViewController {
+    /// The ladder for the machines that stopped answering. Home lists again the moment they
+    /// answer, so the card leaves with the sheet rather than on the next pass.
+    func presentReachHelp(_ reading: ReachReading) {
+        ReachHelpViewController.present(from: self, reading: reading) { [weak self] in
+            Task { await self?.load(.user) }
+        }
+    }
+
     func openSession(withID id: String) {
         if let top = navigationController?.topViewController as? ChatViewController,
             top.sessionID == id

@@ -172,6 +172,7 @@ enum ParityManifest {
                 because:
                     "The scan is the tailnet asked for its own peers. The direct build runs the Tailscale command line. A container may neither spawn that binary nor reach the socket behind it, so the store copy asks Tailscale's API with a token — the phone's road — and keeps the machines last seen when the token is missing or refused.")
         case .connectDiagnosis: return .implemented("MacConnectFix")
+        case .reachHelp: return .implemented("deskHint")
         case .serverAccess: return .implemented("ServerAccessReading")
         case .firstRunPlan: return .implemented("FirstRunFlow")
         case .firstRunQuestion: return .implemented("intents.answer")

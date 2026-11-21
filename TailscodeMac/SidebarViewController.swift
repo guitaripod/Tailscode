@@ -97,6 +97,8 @@ final class SidebarViewController: NSViewController {
 
     var entries: [SessionEntry] = []
     var unreachable: [String] = []
+    /// Which side the silent machines point at, read once per listing that finds any.
+    var reach: ReachReading?
     /// Whether any listing on screen has come from a server rather than from the disk cache. The
     /// cache is what was last seen, which is no evidence that a chat missing from it was deleted.
     var listedFromNetwork = false
@@ -318,7 +320,17 @@ final class SidebarViewController: NSViewController {
         if !fresh.isEmpty { SessionListCache.scheduleSave(fresh) }
         await SessionMarkSync.drain { await ServerDirectory.shared.backend(forProfileID: $0) }
         SessionMarks.reconcile(with: fresh)
+        reach = await Self.reach(silent: down, of: ServerDirectory.shared.profiles.count)
         applyEntries(fresh, unreachable: down)
+    }
+
+    /// Asks Tailscale only when something is silent: the CLI is a process launch, and a listing
+    /// where everything answered has nothing for it to explain.
+    private static func reach(silent: [String], of total: Int) async -> ReachReading? {
+        guard !silent.isEmpty else { return nil }
+        let onTailnet = await Task.detached(priority: .utility) { TailnetStatusMac.read().reading.isUp }.value
+        return ReachReading.read(
+            silent: silent, answering: max(0, total - silent.count), onTailnet: onTailnet, device: .mac)
     }
 
     /// Every chat the list knows about, and the servers that stopped answering — read by the

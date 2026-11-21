@@ -357,9 +357,11 @@ extension HomeViewController {
         let alertCell = UICollectionView.CellRegistration<ServerAlertCell, ServerAlertCard> {
             [weak self] cell, _, card in
             cell.configure(card)
-            cell.onRetry = { [weak self] in
+            cell.onAction = { [weak self] action in
+                guard action == .retry else { return ReachDoors.open(action) }
                 Task { await self?.load(.user) }
             }
+            cell.onHelp = { [weak self] in self?.presentReachHelp(card.reading) }
         }
         let scheduleCell = UICollectionView.CellRegistration<ScheduleLineCell, ScheduleLineCard> {
             cell, _, card in cell.configure(card)

@@ -152,6 +152,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case ompServer
     case openCodeTwoServer
     case connectDiagnosis
+    case reachHelp
     case serverAccess
     case firstRunPlan
     case firstRunQuestion

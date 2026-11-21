@@ -9,9 +9,22 @@ extension ChatViewController {
             presentSignIn()
             return
         }
+        let offline = viewModel.state.connection == .offline
         viewModel.acknowledgeFailure()
         banner.hide()
         viewModel.refresh()
+        guard offline, let reach = offlineReach else { return }
+        ReachHelpViewController.present(from: self, reading: reach) { [weak self] in
+            self?.viewModel.refresh()
+        }
+    }
+
+    /// What the offline banner says before anything has been asked again: this chat's machine is
+    /// the one known to be silent. The ladder asks every machine when it opens and words itself
+    /// from their answers.
+    var offlineReach: ReachReading? {
+        guard !viewModel.serverName.isEmpty else { return nil }
+        return ReachReading.here(silent: [viewModel.serverName], answering: 0)
     }
 }
 
@@ -325,7 +338,12 @@ extension ChatViewController {
         case .reconnecting:
             banner.hide()
         case .offline:
-            if Date() > suppressBannerUntil {
+            guard Date() > suppressBannerUntil else { break }
+            if let reach = offlineReach {
+                banner.show(
+                    reach.bannerLine, color: Theme.Color.danger, symbol: reach.symbol,
+                    hint: String(localized: "Tries again and shows what to try."))
+            } else {
                 banner.show(
                     String(localized: "Offline — tap to retry"), color: Theme.Color.danger,
                     symbol: "wifi.slash", hint: String(localized: "Dismisses this and tries again."))

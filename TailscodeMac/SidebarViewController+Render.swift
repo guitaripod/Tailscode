@@ -209,11 +209,9 @@ extension SidebarViewController {
             }
         }
         if !unreachable.isEmpty {
-            next.append(
-                .banner(
-                    Localized.text(
-                        "%@ unreachable — showing what was last seen",
-                        unreachable.joined(separator: ", "))))
+            let line = Localized.text(
+                "%@ unreachable — showing what was last seen", unreachable.joined(separator: ", "))
+            next.append(.banner(reach.map { "\(line)\n\($0.deskHint)" } ?? line))
         }
         if showingArchive { next.append(.backLink) }
         if visible.isEmpty {

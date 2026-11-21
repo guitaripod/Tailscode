@@ -134,6 +134,7 @@ extension MainWindow {
         let (entries, unreachable) = await ServerDirectory.shared.entries(
             knownDirectories: Array(known), previous: self.entries)
         let heard = await ServerDirectory.shared.lastHeard
+        let reach = Self.reach(silent: unreachable, of: profiles.count)
         if !entries.isEmpty { SessionListCache.enqueueSave(entries) }
         await SessionMarkSync.drain { await ServerDirectory.shared.backend(forProfileID: $0) }
         Gtk.onMain { SessionMarks.reconcile(with: entries) }
@@ -145,9 +146,19 @@ extension MainWindow {
             self?.ensureListStreams(profiles)
             self?.warmCatalogs(profiles)
             self?.rememberDividers()
+            self?.reach = reach
             self?.applyEntries(entries, unreachable: unreachable, lastHeard: heard)
             SettingsFile.capture()
         }
+    }
+
+    /// Asks Tailscale only when something is silent: the CLI is a process launch, and a listing
+    /// where everything answered has nothing for it to explain.
+    static func reach(silent: [String], of total: Int) -> ReachReading? {
+        guard !silent.isEmpty else { return nil }
+        return ReachReading.read(
+            silent: silent, answering: max(0, total - silent.count),
+            onTailnet: TailnetStatusLinux.read().reading.isUp, device: .linux)
     }
 
     /// Opens the conversation that was open last, not merely the newest one — and resolves every
