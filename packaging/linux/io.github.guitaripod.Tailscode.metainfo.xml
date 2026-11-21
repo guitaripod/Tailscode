@@ -69,6 +69,31 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.84" date="2026-11-21">
+      <description>
+        <p>Masters, a terminal that outlives the app, and a Quick Ask that is always ready.</p>
+        <p>New:</p>
+        <ul>
+          <li>Masters (beta): give a Claude Code machine a standing role with a charter, skills, a notebook and checks the machine proves. Each task is a fresh chat briefed with all of it and ends in a debrief whose notebook changes you accept or skip. With claude-bridge 1.38.</li>
+          <li>The terminal pane now holds your shell on the machine the chat works on and draws it with libghostty. The shell outlasts the app, so it is waiting after you close it or move to another device. With claude-bridge 1.38 or omp-bridge 0.19.</li>
+          <li>Tailscode stays ready in the background: closing the window hides it, it starts hidden at login, and the Quick Ask shortcut works with no window open. Press the shortcut again to put Quick Ask away. Quit is in the app menu.</li>
+          <li>Outer Rim, a theme that is a place: a starfield behind the chat and every signal a coloured blade. New installs start in it.</li>
+          <li>Your phone stays quiet while you are at this computer: it holds its notices and Live Activities until you leave, and a notice goes away once its chat is read anywhere. With claude-bridge 1.34 or omp-bridge 0.18.</li>
+          <li>Plain words find a local model server on this machine by themselves (Ollama, llama-swap, LM Studio, llama.cpp, vLLM and more) and choose a model that is already running, so nothing has to load.</li>
+          <li>The Agents wall runs at your display&#x27;s pace without dropped frames, and each tile wears an emblem for its model.</li>
+          <li>Pictures open from where they sit, gather in one strip under their turn, and only the ones the agent names are shown. A long prompt folds.</li>
+          <li>A message written offline waits and goes on its own when the machine answers, even after a quit.</li>
+          <li>Unread chats are easy to spot and each row says what happened.</li>
+          <li>First run asks which agent runs on your computer and opens on its install command.</li>
+        </ul>
+        <p>Fixes:</p>
+        <ul>
+          <li>Closing a split down to one pane stays that way after a restart.</li>
+          <li>A usage window whose reset time has passed no longer reads as used up.</li>
+          <li>A background command finishing is a quiet note, not a message in your voice.</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.83" date="2026-11-14">
       <description>
         <p>Long chats have chapters, and a long paste folds into a chip.</p>
