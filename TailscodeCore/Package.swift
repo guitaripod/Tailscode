@@ -151,7 +151,8 @@ enum Kit {
     /// start fresh with a brief and end with a debrief, with their bench, guards, notebook and journal.
     /// 0.65.0 speaks to a shell a server holds: the terminal's wire, link and mock. 0.65.1 makes
     /// the mock's shell bash.
-    static let version = Version(0, 65, 1)
+    /// 0.66.0 holds a shell on opencode 2 too, in opencode's own pty.
+    static let version = Version(0, 66, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
