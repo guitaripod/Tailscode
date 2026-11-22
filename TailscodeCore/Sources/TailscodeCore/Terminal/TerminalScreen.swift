@@ -66,7 +66,7 @@ public final class TerminalScreen: @unchecked Sendable {
     public func frame(force: Bool = false) -> TerminalFrame {
         var raw = TSFrame()
         ts_terminal_frame(handle, &raw, force)
-        return TerminalFrame(raw: raw)
+        return TerminalFrame(raw: raw, held: nil)
     }
 
     private func string(_ read: (UnsafeMutablePointer<CChar>?, Int) -> Int) -> String? {
@@ -226,6 +226,51 @@ public final class TerminalScreen: @unchecked Sendable {
 /// where the scrollback stands. It borrows the screen's memory, so it is drawn and dropped.
 public struct TerminalFrame {
     public let raw: TSFrame
+    /// Memory a frame drawn over (``PredictiveEcho``) points into, kept for as long as the frame.
+    private let held: FrameCopy?
+
+    init(raw: TSFrame, held: FrameCopy? = nil) {
+        self.raw = raw
+        self.held = held
+    }
+
+    /// The frame with `bytes` drawn from the cursor on, the cursor after them, and `stale` rows
+    /// marked changed, for rows a drawing over left behind. Nil when there is nothing to change or
+    /// the screen is not one to draw over: a full-screen program, scrollback, a hidden cursor.
+    func drawn(over bytes: [UInt8], stale: Int?) -> (frame: TerminalFrame, row: Int?)? {
+        guard !isEmpty, let cells = raw.cells, let dirtyRows = raw.row_dirty else { return nil }
+        let row = Int(raw.cursor_y)
+        let column = Int(raw.cursor_x)
+        let fits = !raw.alternate_screen && raw.cursor_visible && rowsBelow == 0 && row < rows && column < cols
+        let count = fits ? min(bytes.count, cols - 1 - column) : 0
+        let staleRow = stale.flatMap { $0 < rows ? $0 : nil }
+        guard count > 0 || staleRow != nil else { return nil }
+        let copy = FrameCopy(cells: cells, count: rows * cols, dirty: dirtyRows, rows: rows)
+        var patched = raw
+        if let staleRow { copy.dirty[staleRow] = 1 }
+        if count > 0 {
+            let base = row * cols + column
+            let under = copy.cells[base]
+            for index in 0..<count {
+                var cell = copy.cells[base + index]
+                cell.codepoint = UInt32(bytes[index])
+                cell.fg = raw.foreground
+                cell.bg = index == 0 ? under.bg : cell.bg
+                cell.width = 1
+                cell.extra = 0
+                cell.extra_offset = 0
+                cell.flags = 0
+                cell.decoration = 0
+                copy.cells[base + index] = cell
+            }
+            copy.dirty[row] = 1
+            patched.cursor_x = UInt16(column + count)
+        }
+        patched.cells = UnsafePointer(copy.cells)
+        patched.row_dirty = UnsafePointer(copy.dirty)
+        if patched.dirty == UInt8(TS_DIRTY_NONE) { patched.dirty = UInt8(TS_DIRTY_ROWS) }
+        return (TerminalFrame(raw: patched, held: copy), count > 0 ? row : nil)
+    }
 
     public var cols: Int { Int(raw.cols) }
     public var rows: Int { Int(raw.rows) }
@@ -273,5 +318,27 @@ public struct TerminalFrame {
     /// How far back the screen is scrolled, in rows above the newest.
     public var rowsBelow: Int {
         Int(clamping: raw.scroll_total &- raw.scroll_offset &- raw.scroll_length)
+    }
+}
+
+/// A frame's cells and changed rows copied out of the screen, so they can be drawn over.
+final class FrameCopy: @unchecked Sendable {
+    let cells: UnsafeMutablePointer<TSCell>
+    let dirty: UnsafeMutablePointer<UInt8>
+    private let cellCount: Int
+    private let rowCount: Int
+
+    init(cells source: UnsafePointer<TSCell>, count: Int, dirty source2: UnsafePointer<UInt8>, rows: Int) {
+        cellCount = count
+        rowCount = rows
+        cells = .allocate(capacity: count)
+        cells.initialize(from: source, count: count)
+        dirty = .allocate(capacity: rows)
+        dirty.initialize(from: source2, count: rows)
+    }
+
+    deinit {
+        cells.deallocate()
+        dirty.deallocate()
     }
 }

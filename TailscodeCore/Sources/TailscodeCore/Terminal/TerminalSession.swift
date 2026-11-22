@@ -151,6 +151,8 @@ public final class TerminalSession: @unchecked Sendable {
     private var replaced = 0
     private var continuing: String?
     private var measured = TerminalTimings()
+    private var echo = PredictiveEcho()
+    private var drawnRow: Int?
     private var changeHandler: (@Sendable () -> Void)?
     private var dirtyHandler: (@Sendable () -> Void)?
     private let outbox: AsyncStream<Outgoing>.Continuation
@@ -266,8 +268,27 @@ public final class TerminalSession: @unchecked Sendable {
 
     /// The frame to draw now. Taking it is what lets the next change announce itself.
     public func frame(force: Bool = false) -> TerminalFrame? {
-        lock.withLock { dirtyPosted = false }
-        return screen?.frame(force: force)
+        let (guesses, stale): ([UInt8], Int?) = lock.withLock {
+            dirtyPosted = false
+            echo.expire(at: Date())
+            return (echo.shown, drawnRow)
+        }
+        guard let frame = screen?.frame(force: force) else { return nil }
+        guard let drawn = frame.drawn(over: guesses, stale: stale) else {
+            lock.withLock { drawnRow = nil }
+            return frame
+        }
+        lock.withLock { drawnRow = drawn.row }
+        if drawn.row != nil { markDirtyLater() }
+        return drawn.frame
+    }
+
+    /// A frame drawn over is asked for again once its guesses may have expired, so a guess the
+    /// shell never answered does not stay on screen.
+    private func markDirtyLater() {
+        DispatchQueue.global().asyncAfter(deadline: .now() + PredictiveEcho.patience + 0.1) { [weak self] in
+            self?.markDirty()
+        }
     }
 
     private func hosting() async -> (any TerminalHostingBackend)? {
@@ -335,11 +356,15 @@ public final class TerminalSession: @unchecked Sendable {
         for await event in link.events {
             switch event {
             case .output(let bytes):
-                lock.withLock { measured.bytesArrived(at: Date()) }
+                lock.withLock {
+                    measured.bytesArrived(at: Date())
+                    echo.heard(bytes)
+                }
                 guard let replies = screen?.feed(bytes) else { continue }
                 if !replies.isEmpty { await link.send(replies) }
                 markDirty()
             case .reset:
+                lock.withLock { echo.forget() }
                 if let note = lock.withLock({ () -> String? in defer { continuing = nil }; return continuing }) {
                     screen?.feed(Data(("\u{1b}[?1049l\u{1b}[!p\u{1b}[0m" + note).utf8))
                 } else {
@@ -429,6 +454,12 @@ public final class TerminalSession: @unchecked Sendable {
     /// Bytes for the shell, already in the form it reads.
     public func send(_ bytes: Data) {
         guard !bytes.isEmpty else { return }
+        lock.withLock { echo.forget() }
+        transmit(bytes)
+    }
+
+    private func transmit(_ bytes: Data) {
+        guard !bytes.isEmpty else { return }
         lock.withLock { measured.keyLeft(at: Date()) }
         outbox.yield(.bytes(bytes))
     }
@@ -464,7 +495,8 @@ public final class TerminalSession: @unchecked Sendable {
             break
         }
         screen.scrollToBottom()
-        send(Data(text.utf8))
+        lock.withLock { echo.typed(text, at: Date()) }
+        transmit(Data(text.utf8))
         markDirty()
     }
 
