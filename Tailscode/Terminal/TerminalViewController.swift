@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import TailscodeMetal
 import UIKit
@@ -72,6 +73,13 @@ final class TerminalViewController: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         terminal.resignFirstResponder()
+        logTimings()
+    }
+
+    /// What the shell kept this device waiting for, written each time the screen is left, so a
+    /// terminal that feels slow can be told apart as a slow network or a slow screen.
+    func logTimings() {
+        MidgarLog.info("terminal \(session.timings.line)", category: .performance)
     }
 
     @objc private func recolour() {

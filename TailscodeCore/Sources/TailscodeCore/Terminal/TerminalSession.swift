@@ -150,6 +150,7 @@ public final class TerminalSession: @unchecked Sendable {
     private var stopped = false
     private var replaced = 0
     private var continuing: String?
+    private var measured = TerminalTimings()
     private var changeHandler: (@Sendable () -> Void)?
     private var dirtyHandler: (@Sendable () -> Void)?
     private let outbox: AsyncStream<Outgoing>.Continuation
@@ -225,6 +226,9 @@ public final class TerminalSession: @unchecked Sendable {
         }
     }
 
+    /// How long the shell kept this device waiting, for the log.
+    public var timings: TerminalTimings { lock.withLock { measured } }
+
     /// The server's own name for this terminal, once there is one.
     public var terminalID: String? { lock.withLock { info?.id } }
 
@@ -283,6 +287,7 @@ public final class TerminalSession: @unchecked Sendable {
     /// Finds the shell this desk left on the server, or starts one, and reads it until it ends.
     private func open(adopting: Bool) async {
         guard let hosting = await hosting() else { return }
+        lock.withLock { measured.asked(at: Date()) }
         set(.opening)
         let (wanted, size) = lock.withLock { (target, (cols, rows)) }
         do {
@@ -330,6 +335,7 @@ public final class TerminalSession: @unchecked Sendable {
         for await event in link.events {
             switch event {
             case .output(let bytes):
+                lock.withLock { measured.bytesArrived(at: Date()) }
                 guard let replies = screen?.feed(bytes) else { continue }
                 if !replies.isEmpty { await link.send(replies) }
                 markDirty()
@@ -423,6 +429,7 @@ public final class TerminalSession: @unchecked Sendable {
     /// Bytes for the shell, already in the form it reads.
     public func send(_ bytes: Data) {
         guard !bytes.isEmpty else { return }
+        lock.withLock { measured.keyLeft(at: Date()) }
         outbox.yield(.bytes(bytes))
     }
 

@@ -39,6 +39,8 @@ extension ChatViewController {
                     try? await Task.sleep(for: .milliseconds(500))
                 }
                 if environment["TAILSCODE_TERMINAL_KEYS"] == "0" { screen.view.endEditing(true) }
+                try? await Task.sleep(for: .seconds(2))
+                screen.logTimings()
             }
         }
     #endif
