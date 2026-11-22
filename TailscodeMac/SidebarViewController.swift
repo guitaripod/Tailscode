@@ -235,13 +235,18 @@ final class SidebarViewController: NSViewController {
         agentNews.onAdded = { [weak self] _ in
             self?.announce?(Localized.text("Adding to the model pill…"))
         }
-        let places = NSStackView(views: [agentsEntry, scheduledEntry, mastersEntry, agentNews])
+        let tiles = NSStackView(views: [agentsEntry, scheduledEntry, mastersEntry])
+        tiles.orientation = .horizontal
+        tiles.distribution = .fillEqually
+        tiles.spacing = MacTheme.Spacing.xs
+        tiles.detachesHiddenViews = true
+        let places = NSStackView(views: [tiles, agentNews])
         places.orientation = .vertical
         places.alignment = .leading
         places.spacing = MacTheme.Spacing.xs
         places.detachesHiddenViews = true
         places.translatesAutoresizingMaskIntoConstraints = false
-        for place in [agentsEntry, scheduledEntry, mastersEntry, agentNews] {
+        for place in [tiles, agentNews] {
             place.widthAnchor.constraint(equalTo: places.widthAnchor).isActive = true
         }
 

@@ -2,54 +2,20 @@ import AppKit
 import CodingAgentKit
 import TailscodeCore
 
-/// The sidebar's way to the schedules every machine keeps: "Scheduled" under Agents, wearing the
-/// one line Home wears on the phone — what asks next, when and where — so a question left for the
-/// morning is in view without opening anything. It is there only while some machine keeps
-/// schedules, and a press opens the Scheduled window.
+/// The sidebar's way to the schedules every machine keeps: the Scheduled tile beside Agents, whose
+/// tooltip is the one line Home wears on the phone — what asks next, when and where. It is there
+/// only while some machine keeps schedules, and a press opens the Scheduled window.
 @MainActor
-final class ScheduledSidebarEntry: NSControl {
-    private let icon = NSImageView()
-    private let title = NSTextField(labelWithString: ScheduleWords.title)
-    private let line = NSTextField(labelWithString: "")
-    private var hovered = false {
-        didSet { if hovered != oldValue { needsDisplay = true } }
-    }
-    private var tracking: NSTrackingArea?
+final class ScheduledSidebarEntry: SidebarPlaceTile {
+    private var line = ""
     var onOpen: (() -> Void)?
 
-    /// What the entry says under its title, for a harness.
-    var lineText: String { line.isHidden ? "" : line.stringValue }
+    /// What the entry says about the next schedule, for a harness.
+    var lineText: String { line }
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        translatesAutoresizingMaskIntoConstraints = false
-        icon.image = NSImage(systemSymbolName: "clock", accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .medium))
-        icon.contentTintColor = MacTheme.Color.secondaryLabel
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        title.font = MacTheme.Ramp.font(.rowTitleStrong)
-        title.textColor = MacTheme.Color.label
-        title.translatesAutoresizingMaskIntoConstraints = false
-        line.font = MacTheme.Ramp.font(.panelFootnote)
-        line.textColor = MacTheme.Color.secondaryLabel
-        line.lineBreakMode = .byTruncatingTail
-        line.translatesAutoresizingMaskIntoConstraints = false
-        line.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        for view in [icon, title, line] { addSubview(view) }
-        NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: MacTheme.Spacing.m),
-            icon.centerYAnchor.constraint(equalTo: title.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 18),
-            title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: MacTheme.Spacing.s),
-            title.topAnchor.constraint(equalTo: topAnchor, constant: MacTheme.Spacing.xs + 2),
-            title.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -MacTheme.Spacing.m),
-            line.leadingAnchor.constraint(equalTo: title.leadingAnchor),
-            line.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -MacTheme.Spacing.m),
-            line.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 1),
-        ])
-        setContentHuggingPriority(.required, for: .vertical)
-        setAccessibilityElement(true)
-        setAccessibilityRole(.button)
+    init() {
+        super.init(symbol: "clock", caption: ScheduleWords.title)
+        onPress = { [weak self] in self?.onOpen?() }
         render()
         NotificationCenter.default.addObserver(
             forName: MachineDesk.didChange, object: nil, queue: .main
@@ -58,62 +24,13 @@ final class ScheduledSidebarEntry: NSControl {
         }
     }
 
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override var acceptsFirstResponder: Bool { true }
-
-    override var intrinsicContentSize: NSSize {
-        let lineHeight = line.isHidden ? 0 : line.intrinsicContentSize.height + 1
-        return NSSize(
-            width: NSView.noIntrinsicMetric,
-            height: max(32, title.intrinsicContentSize.height + lineHeight + 2 * (MacTheme.Spacing.xs + 2)))
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let tracking { removeTrackingArea(tracking) }
-        let area = NSTrackingArea(
-            rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
-            owner: self)
-        addTrackingArea(area)
-        tracking = area
-    }
-
-    override func mouseEntered(with event: NSEvent) { hovered = true }
-    override func mouseExited(with event: NSEvent) { hovered = false }
-    override func mouseDown(with event: NSEvent) { onOpen?() }
-
-    override func keyDown(with event: NSEvent) {
-        guard event.characters == " " || event.characters == "\r" else {
-            super.keyDown(with: event)
-            return
-        }
-        onOpen?()
-    }
-
-    override func accessibilityPerformPress() -> Bool {
-        onOpen?()
-        return true
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard hovered else { return }
-        MacTheme.Color.label.withAlphaComponent(0.06).setFill()
-        NSBezierPath(
-            roundedRect: bounds, xRadius: MacTheme.Radius.control, yRadius: MacTheme.Radius.control
-        ).fill()
-    }
-
     /// Shown while any machine keeps schedules; the line is Home's, or nothing to say yet.
     func render() {
         let desk = MachineDesk.shared
         isHidden = !desk.anyKeepsSchedules && desk.board.isEmpty
-        let home = desk.board.homeLine()
-        line.stringValue = home ?? ScheduleWords.empty
-        line.isHidden = false
-        setAccessibilityLabel(ScheduleWords.title + ", " + (home ?? ScheduleWords.empty))
-        invalidateIntrinsicContentSize()
+        line = desk.board.homeLine() ?? ScheduleWords.empty
+        toolTip = line
+        setAccessibilityLabel(ScheduleWords.title + ", " + line)
     }
 }
 
