@@ -22,6 +22,7 @@ extension ChatViewController {
     #if DEBUG
         /// `TAILSCODE_OPEN_TERMINAL=<seconds>` opens the terminal once the chat stands,
         /// `TAILSCODE_TERMINAL_TYPE` types into it a line at a time (`\n` between lines), and
+        /// `TAILSCODE_TERMINAL_KEY_GAP=<ms>` types those lines a letter at a time, and
         /// `TAILSCODE_TERMINAL_KEYS=0` puts the keyboard away afterwards, so a picture can be
         /// taken of a shell that has been used.
         func stageTerminalIfAsked() {
@@ -34,8 +35,17 @@ extension ChatViewController {
                 self.presentTerminal()
                 try? await Task.sleep(for: .seconds(2))
                 guard let screen = self.navigationController?.topViewController as? TerminalViewController else { return }
+                let gap = Int(environment["TAILSCODE_TERMINAL_KEY_GAP"] ?? "") ?? 0
                 for line in lines where !line.isEmpty {
-                    screen.stage(line + "\r")
+                    if gap > 0 {
+                        for letter in line {
+                            screen.stage(String(letter))
+                            try? await Task.sleep(for: .milliseconds(gap))
+                        }
+                        screen.stage("\r")
+                    } else {
+                        screen.stage(line + "\r")
+                    }
                     try? await Task.sleep(for: .milliseconds(500))
                 }
                 if environment["TAILSCODE_TERMINAL_KEYS"] == "0" { screen.view.endEditing(true) }
