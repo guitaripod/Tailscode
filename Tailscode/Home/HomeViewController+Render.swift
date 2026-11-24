@@ -5,6 +5,7 @@ import UIKit
 extension HomeViewController {
     func renderSnapshot() {
         deferredSnapshot = false
+        lastRenderAt = Date()
         savedChats = SavedChatStore.all()
         let today = showsToday
         let limits = (today ? HomeBandLimits.column : .phone).reaching(recentReach)

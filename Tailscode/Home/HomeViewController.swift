@@ -102,6 +102,9 @@ final class HomeViewController: UIViewController {
     /// whether anything on it moved, so reconfiguring everything that survived a diff redrew the
     /// whole board on a tick that changed one word.
     var appliedContent: [HomeItem: Int] = [:]
+    /// When the board was last built, which is the reference its drawn ages and durations were
+    /// measured against.
+    var lastRenderAt = Date()
     /// How far RECENT has been opened past its limit on this screen.
     var recentReach = HomeReach()
     /// What each band holds and how much of it is news, read by the headings: a shut band draws no

@@ -35,7 +35,7 @@ extension HomeViewController {
                 try? await Task.sleep(for: .seconds(1))
                 guard !Task.isCancelled, let self, self.viewIfLoaded?.window != nil else { return }
                 guard self.hasTickingCard else { continue }
-                self.applySnapshot()
+                self.redrawTickedBoardIfNeeded()
             }
         }
     }
@@ -43,6 +43,48 @@ extension HomeViewController {
     private func stopClockTick() {
         clockTickTask?.cancel()
         clockTickTask = nil
+    }
+
+    /// Rebuilds the board when the clock has changed something on it, and does nothing otherwise.
+    ///
+    /// A tick only moves text that counts itself: an age or a background task's duration, which
+    /// reads in seconds under a minute and in whole minutes above it. Building the board to find
+    /// out whether that happened cost the phone most of a frame every second — every row on every
+    /// server measured and worded again — for a screen whose cards read the same. So the reading a
+    /// second ago is compared with the reading now, on the cards that are actually drawn, and a
+    /// full pass runs only when one of them would say something new, or when the minute turned and
+    /// the minute-granular text (a quota countdown, the status line) can have.
+    private func redrawTickedBoardIfNeeded() {
+        let now = Date()
+        let minute = Int(now.timeIntervalSince1970 / 60)
+        let crossedMinute = minute != Int(lastRenderAt.timeIntervalSince1970 / 60)
+        guard crossedMinute || tickedReadings(asOf: now) != tickedReadings(asOf: lastRenderAt)
+        else { return }
+        applySnapshot()
+    }
+
+    /// Every reading on a drawn card that counts itself, in the words that card shows at `now`.
+    private func tickedReadings(asOf now: Date) -> [String] {
+        dataSource.snapshot().itemIdentifiers.flatMap { item -> [String] in
+            switch item {
+            case .chat(let card):
+                return Self.tickedReadings(of: card.row, asOf: now)
+            case .ask(let card):
+                return Self.tickedReadings(of: card.row, asOf: now)
+            case .saved(let card):
+                return [SessionRowModel.age(of: card.chat.updatedAt, asOf: now)]
+            default:
+                return []
+            }
+        }
+    }
+
+    private static func tickedReadings(of row: SessionRowModel, asOf now: Date) -> [String] {
+        var readings = [SessionRowModel.age(of: row.entry.session.updatedAt, asOf: now)]
+        if let since = row.entry.session.backgroundWork?.since {
+            readings.append(SessionRowModel.age(of: since, asOf: now))
+        }
+        return readings
     }
 
     /// Whether any card on the board is measuring against `now` rather than against a host that
