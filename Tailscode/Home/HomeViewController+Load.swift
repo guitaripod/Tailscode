@@ -64,19 +64,30 @@ extension HomeViewController {
     }
 
     /// Every reading on a drawn card that counts itself, in the words that card shows at `now`.
+    /// A row whose server stopped answering draws an age frozen at the last reading, so it is left
+    /// out of the comparison; including it would make every tick look like a change.
     private func tickedReadings(asOf now: Date) -> [String] {
         dataSource.snapshot().itemIdentifiers.flatMap { item -> [String] in
             switch item {
             case .chat(let card):
+                guard isCounting(card.row) else { return [] }
                 return Self.tickedReadings(of: card.row, asOf: now)
             case .ask(let card):
+                guard isCounting(card.row) else { return [] }
                 return Self.tickedReadings(of: card.row, asOf: now)
             case .saved(let card):
-                return [SessionRowModel.age(of: card.chat.updatedAt, asOf: now)]
+                return viewModel.unreachable.contains(card.chat.profileID)
+                    ? [] : [SessionRowModel.age(of: card.chat.updatedAt, asOf: now)]
+            case .masters(let card):
+                return [String(MasterShelf.signature(card.board, now: now))]
             default:
                 return []
             }
         }
+    }
+
+    private func isCounting(_ row: SessionRowModel) -> Bool {
+        !viewModel.unreachable.contains(row.entry.profileID)
     }
 
     private static func tickedReadings(of row: SessionRowModel, asOf now: Date) -> [String] {
