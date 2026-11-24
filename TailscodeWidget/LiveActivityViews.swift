@@ -316,6 +316,12 @@ struct CardHeader: View {
 struct CardWord: View {
     let model: CardModel
 
+    /// The widest the count beside the word may grow. A timer counting towards the distant future
+    /// asks for the width of its last value, and a fixed size granted that sank the whole card:
+    /// the renderer dropped every frame of a waiting or quiet card and the Lock Screen showed it
+    /// black.
+    static let timerWidth: CGFloat = 44
+
     var body: some View {
         Group {
             if model.unheard {
@@ -324,7 +330,8 @@ struct CardWord: View {
                 HStack(spacing: 4) {
                     Text(model.look.word)
                     Text(timerInterval: since...Date.distantFuture, countsDown: false)
-                        .fixedSize()
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: Self.timerWidth, alignment: .leading)
                 }
             } else {
                 Text(model.look.word)
