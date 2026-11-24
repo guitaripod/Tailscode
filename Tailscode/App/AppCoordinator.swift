@@ -3,6 +3,9 @@ import TailscodeCore
 import CodingAgentKit
 import CodingAgentKitApple
 import UIKit
+#if DEBUG
+    import MidgarUI
+#endif
 
 @MainActor
 final class AppCoordinator: NSObject {
@@ -20,6 +23,10 @@ final class AppCoordinator: NSObject {
     }
 
     func start() {
+        #if DEBUG
+            MidgarFrameWatch.shared.startIfRequested()
+            FrameWalk.startIfRequested(in: window)
+        #endif
         SessionSeenStore.bootstrapIfNeeded()
         NeuralMetalContext.warm()
         DraftStore.warm()
