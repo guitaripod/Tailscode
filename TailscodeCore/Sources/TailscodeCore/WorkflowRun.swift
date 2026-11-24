@@ -32,6 +32,18 @@ public struct WorkflowMeta: Sendable, Hashable {
         self.phases = phases
     }
 
+    /// The name a script gives itself in its `meta`, read from the head of the script only: a
+    /// step's line asks this of every workflow call while a turn streams, and the script below the
+    /// header can run to thousands of lines. A script that names nothing is a workflow without a
+    /// name, never its own source text.
+    public static func scriptName(_ script: String) -> String? {
+        guard let name = parse(script: String(script.prefix(scriptHead)))?.name else { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static let scriptHead = 4_000
+
     public static func parse(script: String) -> WorkflowMeta? {
         guard let body = metaBody(in: script) else { return nil }
         return WorkflowMeta(
@@ -565,8 +577,10 @@ public enum WorkflowRunAssembly {
         return byRun
     }
 
-    /// The run an agent belongs to: the one it names, when the backend says, and otherwise the
-    /// last one launched before the agent appeared.
+    /// The run an agent belongs to: the one it names, when the backend says — by the run's id, or
+    /// by the call that started it where the harness's workflow tool holds the turn and answers
+    /// with no id until the run is over — and otherwise the last one launched before the agent
+    /// appeared.
     ///
     /// The clock is a guess, and on a long chat a bad one. A launch is timed by the message that
     /// holds it, every launch in one message shares that time, and a message can be stamped later
@@ -577,6 +591,7 @@ public enum WorkflowRunAssembly {
         of agent: SubagentSummary, among launches: [Launch], byRun: [String: String]
     ) -> String? {
         if let runID = agent.workflowRunID, let call = byRun[runID] { return call }
+        if let call = agent.toolUseID, launches.contains(where: { $0.call.id == call }) { return call }
         let started = agent.startedAt ?? agent.updatedAt
         let candidate = launches.last { ($0.at ?? .distantPast) <= started } ?? launches.last
         return candidate?.call.id
@@ -625,7 +640,7 @@ public enum WorkflowRunAssembly {
         if let answer = launchIDs.taskID.flatMap({ completions[$0] }) {
             return (.finished, lastMovement(of: agents), answer)
         }
-        if launchIDs.isEmpty, call.status == .running { return (.launching, nil, nil) }
+        if launchIDs.isEmpty { return heldEnding(of: call, output: output, agents: agents) }
         if !agents.isEmpty, agents.allSatisfy(\.isCompleted) {
             return (.finished, lastMovement(of: agents), nil)
         }
@@ -636,6 +651,37 @@ public enum WorkflowRunAssembly {
             )
         }
         return (.running, nil, nil)
+    }
+
+    /// The ending of a run whose workflow tool holds the turn until the run is over (opencode and
+    /// Oh My Pi), which answers with the run's own result rather than a background launch's ids.
+    /// The call's status is then the run's: running while it runs, and its answer the moment it
+    /// stops. Read as a launch, such a run never left "Starting…" while its agents worked, and
+    /// read "Working…" for ever once it had finished.
+    private static func heldEnding(
+        of call: ToolCall, output: String, agents: [WorkflowAgent]
+    ) -> (state: WorkflowRun.State, finishedAt: Date?, result: String?) {
+        switch call.status {
+        case .pending:
+            return (.launching, nil, nil)
+        case .running:
+            return (agents.isEmpty ? .launching : .running, nil, nil)
+        case .stopped:
+            return (.stopped(Localized.text("Workflow stopped")), lastMovement(of: agents), nil)
+        case .error:
+            return (.failed(firstLine(output) ?? Localized.text("Workflow failed")), nil, nil)
+        case .completed:
+            if let fault = firstLine(output), isRunFailure(fault) {
+                return (.failed(fault), lastMovement(of: agents), nil)
+            }
+            return (.finished, lastMovement(of: agents), output.isEmpty ? nil : output)
+        }
+    }
+
+    /// The workflow runtime answers a run that broke with `workflow <name> failed: <why>` as an
+    /// ordinary result, because a tool error would hide the reason from the model.
+    private static func isRunFailure(_ line: String) -> Bool {
+        line.hasPrefix("workflow ") && line.contains(" failed: ")
     }
 
     /// The last moment anything inside the run was seen to move — the closest thing to an ending a

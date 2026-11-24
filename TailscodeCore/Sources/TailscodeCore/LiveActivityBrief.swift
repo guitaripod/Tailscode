@@ -194,7 +194,13 @@ public struct LiveActivityStep: Codable, Sendable, Hashable, Identifiable {
     public init(_ call: ToolCall) {
         id = String(call.id.suffix(Self.idLimit))
         tool = call.name
-        let fields = Self.fields(of: call.input)
+        var fields = Self.fields(of: call.input)
+        if fields["name"] == nil, call.cachedKind == .workflow,
+            let script = call.input?["script"]?.stringValue,
+            let name = WorkflowMeta.scriptName(script)
+        {
+            fields["name"] = String(name.prefix(Self.inputLimit))
+        }
         input = fields.isEmpty ? nil : fields
         switch call.status {
         case .pending, .running: state = .running

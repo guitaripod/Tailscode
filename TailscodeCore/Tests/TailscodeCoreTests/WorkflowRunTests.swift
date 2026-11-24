@@ -594,6 +594,70 @@ struct WorkflowRunTests {
         #expect(fold.runs(messages: [prompt], agents: agents) == [])
     }
 
+    @Test("A run whose tool holds the turn is seated by its call and settled by the call's own status")
+    func heldRunFollowsItsCall() {
+        let at = Date(timeIntervalSince1970: 1_000)
+        func held(_ id: String, _ status: ToolStatus, output: String? = nil) -> WorkflowRunAssembly.Launch {
+            WorkflowRunAssembly.Launch(
+                call: ToolCall(
+                    id: id, name: "workflow", status: status,
+                    input: .object(["script": .string(Self.script)]), output: output),
+                at: at)
+        }
+        func child(_ id: String, call: String, completed: Bool, seen: TimeInterval) -> SubagentSummary {
+            SubagentSummary(
+                id: id, title: id, agentType: SubagentSummary.workflowAgentType, toolUseID: call,
+                updatedAt: at.addingTimeInterval(seen), isActive: !completed,
+                isCompleted: completed, startedAt: at, workflowRunID: "wf_\(call)")
+        }
+
+        let starting = WorkflowRunAssembly.runs(launches: [held("a", .running)], agents: [])
+        #expect(starting[0].state == .launching)
+
+        let both = WorkflowRunAssembly.runs(
+            launches: [held("a", .running), held("b", .running)],
+            agents: [
+                child("a1", call: "a", completed: false, seen: 3),
+                child("b1", call: "b", completed: true, seen: 4),
+                child("a2", call: "a", completed: true, seen: 5),
+            ])
+        #expect(both[0].agents.map(\.id) == ["a1", "a2"])
+        #expect(both[1].agents.map(\.id) == ["b1"])
+        #expect(both[0].state == .running)
+        #expect(both[1].state == .running, "a held run is not over because its agents are, only when its call is")
+
+        let done = WorkflowRunAssembly.runs(
+            launches: [held("a", .completed, output: "the answer\n\nworkflow kaytetty-best: 1 agents, 0 failed, 3.0s")],
+            agents: [child("a1", call: "a", completed: true, seen: 9)])
+        #expect(done[0].state == .finished)
+        #expect(done[0].finishedAt == at.addingTimeInterval(9))
+        #expect(done[0].result?.hasPrefix("the answer") == true)
+
+        let empty = WorkflowRunAssembly.runs(launches: [held("a", .completed, output: "")], agents: [])
+        #expect(empty[0].state == .finished, "a finished run that fanned out nothing never reads Working… again")
+
+        let broke = WorkflowRunAssembly.runs(
+            launches: [held("a", .completed, output: "workflow kaytetty-best failed: agent() threw\n\nworkflow kaytetty-best: 0 agents")],
+            agents: [])
+        #expect(broke[0].state == .failed("workflow kaytetty-best failed: agent() threw"))
+
+        let stopped = WorkflowRunAssembly.runs(launches: [held("a", .stopped)], agents: [])
+        #expect(!stopped[0].isLive)
+        #expect(stopped[0].activityIcon.motion == .still)
+    }
+
+    @Test("A script's step names the workflow, never its source")
+    func scriptNameIsTheMetaName() {
+        #expect(WorkflowMeta.scriptName(Self.script) == "kaytetty-best")
+        #expect(WorkflowMeta.scriptName("const x = 1\nawait agent('hi')") == nil)
+        let long = "export const meta = { name: 'big' }\n" + String(repeating: "await agent('x')\n", count: 5_000)
+        #expect(WorkflowMeta.scriptName(long) == "big")
+        let call = ToolCall(
+            id: "c", name: "workflow", status: .running, input: .object(["script": .string(Self.script)]))
+        #expect(LiveActivityStep(call).input?["name"] == "kaytetty-best")
+        #expect(LiveActivityStep(call).words.contains("kaytetty-best"))
+    }
+
     @Test("Durations read as a person would say them")
     func durationFormatting() {
         #expect(WorkflowRun.duration(9) == "9s")

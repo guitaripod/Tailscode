@@ -401,7 +401,7 @@ public enum NeuralTurns {
         case .subagent:
             raw = field("description") ?? field("prompt")
         case .workflow:
-            raw = field("name") ?? field("script")
+            raw = field("name") ?? field("script").flatMap(WorkflowMeta.scriptName)
         case .skill:
             raw = [field("skill"), field("args")].compactMap { $0 }.joined(separator: " ")
         case .taskTracking:

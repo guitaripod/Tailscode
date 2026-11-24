@@ -132,7 +132,11 @@ public enum AgentPlain {
         case .subagent:
             return PlainLine(running ? Localized.text("Handing work to a helper") : Localized.text("Handed work to a helper"))
         case .workflow:
-            return PlainLine(running ? Localized.text("Running a multi-step workflow") : Localized.text("Ran a multi-step workflow"))
+            guard let title = summary.title, !title.isEmpty else {
+                return PlainLine(running ? Localized.text("Running a multi-step workflow") : Localized.text("Ran a multi-step workflow"))
+            }
+            return PlainLine(
+                String(format: running ? Localized.text("Running the %@ workflow") : Localized.text("Ran the %@ workflow"), AgentLine.bounded(title)))
         case .skill:
             guard let title = summary.title, !title.isEmpty else {
                 return PlainLine(running ? Localized.text("Using a skill") : Localized.text("Used a skill"))
