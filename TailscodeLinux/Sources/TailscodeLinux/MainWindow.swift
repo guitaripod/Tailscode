@@ -70,7 +70,27 @@ final class MainWindow: @unchecked Sendable {
     /// nothing, so a title taken off for being too wide would measure zero, look like it fits, and
     /// come straight back — the flicker of a header arguing with itself once per frame.
     var sidebarTitleWidth: Int32 = 0
-    var lastSidebar: ([String], [String], String, String)?
+    var lastSidebar: (Int, [String], String, String)?
+    /// What the stores that decide a row said the last time the list read them: decoded once and
+    /// dropped by each store's own notification, because a list redrawn by a push, a presence
+    /// change and a filter keystroke was copying a thousand read marks out of the defaults on
+    /// every draw. The archive is held as identities, so asking whether a row is filed away does
+    /// not build a "profile/session" line for each of two thousand rows first.
+    struct SidebarReadings {
+        let savedChats: [SavedChat]
+        let saved: Set<String>
+        let pins: Set<String>
+        let archived: Set<ArchivedChatStore.ChatKey>
+        let unread: (String, Date) -> Bool
+    }
+    var sidebarReadings: SidebarReadings?
+    /// A listing change arrived: what speaks for the whole fleet — observations, the inbox, a
+    /// banner for a chat read elsewhere — is due once, not on every draw in between.
+    var sidebarListingVersion = 0
+    var sidebarObservedListing = -1
+    var sidebarObservationDirty = true
+    var sidebarReadMarksMoved = true
+    var sidebarStoreWatches: [NSObjectProtocol] = []
     /// The rows as last drawn, so a change to one of them redraws that row alone. The sidebar used
     /// to be torn down and rebuilt whenever any row's text moved — an age crossing a minute, a
     /// tool step changing, the row just clicked losing its unread mark — and a click landing on a

@@ -245,6 +245,7 @@ extension MainWindow {
             backendType: profile.backend, session: session)
         if !entries.contains(where: { $0.session.id == entry.session.id }) { entries.insert(entry, at: 0) }
         lastSidebar = nil
+        noteListingMoved()
         renderSidebar()
         open(entry)
         MasterDesk.shared.refresh()

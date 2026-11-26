@@ -107,6 +107,7 @@ extension MainWindow {
                 self.entries.removeAll {
                     $0.profileID == entry.profileID && $0.session.id == sessionID
                 }
+                self.noteListingMoved()
                 if self.freshlyCreated?.session.id == sessionID { self.freshlyCreated = nil }
                 let active = self.activePane
                 self.splitHost.eachPane { pane in

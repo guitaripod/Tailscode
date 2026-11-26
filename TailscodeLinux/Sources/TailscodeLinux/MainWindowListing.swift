@@ -97,7 +97,7 @@ extension MainWindow {
             SessionMarks.reconcile(with: touched)
         }
         feedAgents()
-        scheduleSidebarRender()
+        noteListingMoved()
         guard !touched.isEmpty else { return }
         let touchedIDs = Set(touched.map(\.session.id))
         splitHost.eachPane { pane in
@@ -182,7 +182,7 @@ extension MainWindow {
         }
         resolvePendingBindings()
         refreshTitleFromListing(self.entries)
-        scheduleSidebarRender()
+        noteListingMoved()
         restateChoosers()
         let active = activePane
         guard active.sessionID == nil, pendingBindings[active.id] == nil,

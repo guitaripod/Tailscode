@@ -266,6 +266,7 @@ extension MainWindow {
                 }
                 self.freshlyCreated = entry
                 self.lastSidebar = nil
+                self.noteListingMoved()
                 self.renderSidebar()
                 guard let target = pane ?? (askedForPane ? nil : self.activePane) else {
                     done(nil)

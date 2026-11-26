@@ -73,6 +73,56 @@ extension MainWindow {
         Gtk.observe(root, "destroy") { [weak self] in
             self?.sidebarTeardown()
         }
+        watchSidebarStores()
+    }
+
+    /// The four stores a row is decided from, kept between draws and dropped by their own
+    /// notifications. Reading them per draw was copying the seen map, the pin list, the saved set
+    /// and the archive out of the defaults several times a second.
+    func sidebarStoreReadings() -> SidebarReadings {
+        if let sidebarReadings { return sidebarReadings }
+        let savedChats = SavedChatStore.all()
+        let readings = SidebarReadings(
+            savedChats: savedChats,
+            saved: Set(savedChats.map(\.sessionID)),
+            pins: SessionPinStore.snapshot(),
+            archived: ArchivedChatStore.keys(),
+            unread: SessionSeenStore.unreadEvaluator())
+        sidebarReadings = readings
+        return readings
+    }
+
+    private func watchSidebarStores() {
+        guard sidebarStoreWatches.isEmpty else { return }
+        let names = [
+            SessionPinStore.didChange, SessionSeenStore.didSync, SavedChatStore.didChange,
+            ArchivedChatStore.didChange,
+        ]
+        for name in names {
+            sidebarStoreWatches.append(
+                NotificationCenter.default.addObserver(
+                    forName: name, object: nil, queue: nil
+                ) { [weak self] _ in
+                    Gtk.onMain { [weak self] in
+                        guard let self else { return }
+                        self.sidebarReadings = nil
+                        if name == SessionSeenStore.didSync {
+                            self.sidebarReadMarksMoved = true
+                            self.sidebarObservationDirty = true
+                        }
+                        if name == SavedChatStore.didChange { self.sidebarObservationDirty = true }
+                        self.scheduleSidebarRender()
+                    }
+                })
+        }
+    }
+
+    /// A change landed in `entries` rather than in a store: the fleet-wide work the list speaks
+    /// for is due, and the draw that follows is coalesced with every other request.
+    func noteListingMoved() {
+        sidebarListingVersion += 1
+        sidebarObservationDirty = true
+        scheduleSidebarRender()
     }
 
     /// Rebuilding two hundred rows of widgets is a visible stutter — nothing is touched unless
@@ -94,11 +144,7 @@ extension MainWindow {
         Trace.mark("renderSidebar begin \(entries.count) entries")
         defer { Trace.mark("renderSidebar end") }
         let selectedID = activePane.sessionID
-        let savedChats = SavedChatStore.all()
-        let saved = Set(savedChats.map(\.sessionID))
-        let unread = SessionSeenStore.unreadEvaluator()
-        let pinned = SessionPinStore.snapshot()
-        let archivedKeys = ArchivedChatStore.all()
+        let readings = sidebarStoreReadings()
         let needle = filter.lowercased()
         let presence = observedPresence()
         let now = Date()
@@ -122,15 +168,16 @@ extension MainWindow {
             rows.append(
                 sidebarRowCache.model(
                     for: entry, key: key, unreachable: server.unreachable,
-                    unread: unread(entry.session.id, entry.session.updatedAt),
-                    saved: saved.contains(entry.session.id), pinned: pinned.contains(key),
+                    unread: readings.unread(entry.session.id, entry.session.updatedAt),
+                    saved: readings.saved.contains(entry.session.id),
+                    pinned: readings.pins.contains(key),
                     presence: presence[key] ?? .unobserved, observedAt: server.observedAt,
                     now: now))
         }
         sidebarRowCache.sweep()
         sidebarDirtyKeys.formUnion(sidebarRowCache.takeRebuilt())
         let listedCount = rows.count
-        rows += Self.orphanedSavedRows(savedChats, listed: entries)
+        rows += Self.orphanedSavedRows(readings.savedChats, listed: entries)
         for orphan in rows[listedCount...] {
             Notifier.shared.noteServer(
                 profileID: orphan.entry.profileID, name: orphan.entry.profileName)
@@ -143,20 +190,30 @@ extension MainWindow {
         orbKinds = rows.map { $0.state.activity }
         refreshOrb()
         refreshAgentsEntry(rows: rows)
-        let observations = rows.map {
-            ActivityObservation(profileID: $0.entry.profileID, session: $0.entry.session, title: $0.title)
+        if sidebarListingVersion != sidebarObservedListing || sidebarObservationDirty {
+            sidebarObservedListing = sidebarListingVersion
+            sidebarObservationDirty = false
+            let observations = rows.map {
+                ActivityObservation(
+                    profileID: $0.entry.profileID, session: $0.entry.session, title: $0.title)
+            }
+            Notifier.shared.observeListing(observations, windowActive: windowIsActive)
+            ActivityInbox.reconcile(
+                observations,
+                authoritativeProfileIDs: listedFromNetwork
+                    ? Set(observations.map(\.profileID)) : [])
         }
-        Notifier.shared.observeListing(observations, windowActive: windowIsActive)
-        ActivityInbox.reconcile(
-            observations,
-            authoritativeProfileIDs: listedFromNetwork
-                ? Set(observations.map(\.profileID)) : [])
-        Notifier.shared.withdrawRead()
+        if sidebarReadMarksMoved {
+            sidebarReadMarksMoved = false
+            Notifier.shared.withdrawRead()
+        }
+        let archived = readings.archived
         let candidates: [(row: SessionRowModel, archived: Bool)] = rows.map {
             (
                 $0,
-                archivedKeys.contains(
-                    ArchivedChatStore.key($0.entry.profileID, $0.entry.session.id))
+                archived.contains(
+                    ArchivedChatStore.ChatKey(
+                        profileID: $0.entry.profileID, sessionID: $0.entry.session.id))
             )
         }
         let scoped =
@@ -204,8 +261,23 @@ extension MainWindow {
         let missed = ActivityInbox.unsaid(by: drawn, limit: 5)
         let listed = missed.all
         let vocabulary = ChatListVocabulary(rows: rows)
+        var order = Hasher()
+        order.combine(visible.count)
+        for item in visible {
+            switch item {
+            case .chat(let row):
+                order.combine(row.entry.profileID)
+                order.combine(row.entry.session.id)
+            case .tab(let row):
+                order.combine(row.members.count)
+                for member in row.members {
+                    order.combine(member.entry.profileID)
+                    order.combine(member.entry.session.id)
+                }
+            }
+        }
         let snapshot = (
-            visible.map(\.key), unreachable, filter,
+            order.finalize(), unreachable, filter,
             "\(sidebarLimit)|\(showingArchive)|\(archivedTotal)|\(splitHost.paneCount)|\(marks.keys.sorted().joined(separator: ","))|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))|\(projectScope.map { "\($0.profileID):\($0.directory ?? "")" } ?? "")|\(sections.map { "\($0.0.key):\($0.1.count)" }.joined(separator: ","))|\(vocabulary.namesServer)\(vocabulary.namesBackend)|\(knownProfiles.isEmpty)"
         )
         let previous = lastVisible
@@ -359,8 +431,11 @@ extension MainWindow {
     /// allowed to claim: the store outlives the sessions in it, so a key left behind by a chat no
     /// server has any more must not be counted as something there is to go and look at.
     func archivedCount() -> Int {
-        let filed = ArchivedChatStore.all()
-        return entries.count { filed.contains(ArchivedChatStore.key($0.profileID, $0.session.id)) }
+        let filed = ArchivedChatStore.keys()
+        return entries.count {
+            filed.contains(
+                ArchivedChatStore.ChatKey(profileID: $0.profileID, sessionID: $0.session.id))
+        }
     }
 
     /// A door at the foot of the list, and another in the menu, because the foot of a list three

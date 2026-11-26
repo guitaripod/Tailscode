@@ -289,6 +289,7 @@ extension MainWindow {
         let doomed = Set(chosen.map { SessionPinStore.key($0.profileID, $0.session.id) })
         pendingDeletes.formUnion(doomed)
         entries.removeAll { doomed.contains(SessionPinStore.key($0.profileID, $0.session.id)) }
+        noteListingMoved()
         if let fresh = freshlyCreated,
             doomed.contains(SessionPinStore.key(fresh.profileID, fresh.session.id))
         {

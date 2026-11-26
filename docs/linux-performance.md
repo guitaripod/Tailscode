@@ -144,3 +144,61 @@ Under the software renderer (`GSK_RENDERER=cairo`) the busy scene drew about 48 
 ### Measuring it again
 
 `agents-bench=<seconds>` (`AgentsBench.swift`, `CGtkShim/frames.c`) stamps every frame the Agents window's surface actually renders (an emission hook on `GdkSurface::render`, whose own handler stops the signal; a frame-clock cycle that drew nothing is not counted) and prints `AGENTS bench`: frames and fps, the gaps against the wall's own target (`late` is a gap over 1.5 targets), the paint cycle and the layout share of it, main-thread CPU, cairo draws and megapixels, snapshots, pictures painted, stage layouts, the worst canvas allocation and the once-a-second tick. Run it in the gamescope above, not the Xvfb harness: under the cairo renderer the numbers are the software renderer's.
+
+## The chat list's draw
+
+The list is drawn on a cadence (`SidebarCadence`, 0.1 s when calm and visible) and again whenever a
+list push, a presence change or a store notification asks for one. Every draw used to read the four
+stores a row is decided from — the seen map, the pins, the saved set and the archive — and then
+rebuild two thousand `profile/session` key strings for the shape it compares against the last draw.
+The work that speaks for the whole fleet (activity observations, the inbox reconcile, a notice
+withdrawal for a chat read elsewhere) ran on every draw too, including the nine in ten that changed
+nothing but a turn's step.
+
+A draw now reads each store once and keeps the answer until its own notification
+(`SidebarReadings`), compares a 64-bit digest of the drawn order — hashed from the profile and
+session ids, with no strings built — and speaks for the fleet only when the listing moved
+(`sidebarListingVersion`); a read-mark sync withdraws its notices once. The archive is held as
+`ArchivedChatStore.ChatKey` identities, so asking whether a row is filed away no longer builds a
+line to ask a set about.
+
+### What was measured
+
+`sidebarbench=<rounds>` draws the list that many times in place and prints the median and p90 of
+the common path (model pass, digest, row patches) and of a forced full rebuild, with the listing
+in the window. Release build, the Xvfb harness, 2,093 sessions across five servers:
+
+| | before | after |
+|---|---|---|
+| a draw (the path a push takes) | 13.6 ms median, 14.4 p90, 16.8 max | 9.0 ms median, 9.7 p90, 10.9 max |
+| a forced rebuild of every widget | 39.0 ms median, 41.4 p90 | 34.3 ms median, 38.8 p90 |
+
+A draw now fits a 120 Hz frame where it did not. The rebuild is the same work it was — it is
+bounded by the 60 rows drawn, not by the fleet — and is paid only when the shape changed.
+
+### Measuring it again
+
+`scripts/bench-linuxapp.py` walks launch, the list scrolled, seven chats, the transcript scrolled,
+typing, a table stream, a four-pane split, the Agents window, a brain, the panels and a theme in
+one run, and prints each stage's CPU, RSS and worst busy/stall from the flight ring, plus the
+`open+Nms` marks. Run it inside the harness as the app's ancestor:
+
+```
+TAILSCODE_DEV_GEOM=1920x2160x24 TAILSCODE_DEV_STATE=… TAILSCODE_DEV_DISPLAY_NUM=78 \
+TAILSCODE_BENCH_RENDERER=vulkan TAILSCODE_BENCH_SHED=0 \
+scripts/dev-linuxapp.sh run gamescope --backend headless -W 1920 -H 2160 -r 120 -- \
+  ~/.cache/tailscode-dev/xvenv/bin/python scripts/bench-linuxapp.py
+```
+
+`TAILSCODE_BENCH_SAMPLE_STAGES=sidebar-scroll,chat-open` also samples with `eu-stack` (inside a
+user namespace that keeps `CAP_SYS_PTRACE`); `scripts/prof-linuxapp.sh` takes one ad-hoc sample of
+every thread.
+
+### What is left
+
+With five servers configured the app holds about one core of background work that disappears with
+one server (1-5 % with any single profile). It is not the list: `applyListChange` and `refresh` are
+called about once in four seconds at rest, the work is on libdispatch workers, and Swift task
+enqueues are zero — what the workers are doing between waits has not been pinned down yet. The
+next step is to profile the Kit's per-server session-list stream and keep-alive work rather than
+the window.
