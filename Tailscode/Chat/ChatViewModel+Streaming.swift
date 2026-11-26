@@ -94,29 +94,26 @@ extension ChatViewModel {
         Task { await loadDefaultModelIfNeeded() }
     }
 
-    /// How old what this view model holds may be before opening the chat asks the server again.
-    /// Long enough that the conversation a press starts for the push is already current, short
-    /// enough that a chat left open while another machine spoke is not.
-    private static let openReadFreshness: TimeInterval = 3
-
     /// A chat opened onto a conversation this process is already streaming is shown what the
     /// stream last said and nothing else. A message written while that stream was quiet lives in
     /// the server's transcript and nowhere this device holds — opencode's event bus belongs to one
     /// process, so a prompt sent from another process on that machine never reaches a socket here —
     /// and the one road that finds it is a refetch. Leaving the chat and coming back takes that
     /// road; opening it has to take it too, or the message is missing until the record follower's
-    /// next tick. What moved a moment ago — the warm conversation a press starts, a turn already
+    /// next tick. `ChatOpenRead` decides whether the held transcript is old enough to be worth
+    /// asking about; what moved a moment ago — the warm conversation a press starts, a turn already
     /// streaming onto the page — is current and is not asked for twice.
     private func readAgainIfTheHeldTranscriptIsOld() {
-        guard state.hasLoadedTranscript else { return }
-        if let asked = lastOpenReadAt, Date().timeIntervalSince(asked) < Self.openReadFreshness {
-            return
-        }
-        let age = transcriptChangedAt.map { Date().timeIntervalSince($0) } ?? .greatestFiniteMagnitude
-        guard age >= Self.openReadFreshness else { return }
-        lastOpenReadAt = Date()
+        let now = Date()
+        guard
+            ChatOpenRead.needed(
+                hasTranscript: state.hasLoadedTranscript, changedAt: transcriptChangedAt,
+                lastAsked: lastOpenReadAt, now: now)
+        else { return }
+        lastOpenReadAt = now
+        let age = transcriptChangedAt.map { now.timeIntervalSince($0) } ?? -1
         MidgarLog.info(
-            "open read session=\(session.id) age=\(age.isFinite ? Int(age) : -1)s", category: .chat)
+            "open read session=\(session.id) age=\(age >= 0 ? Int(age) : -1)s", category: .chat)
         refresh()
     }
 
