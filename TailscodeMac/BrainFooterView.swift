@@ -92,13 +92,7 @@ class BrainPillButton: NSView {
     }
 
     static func cut(_ text: String, attributes: [NSAttributedString.Key: Any], width: CGFloat) -> String {
-        var characters = Array(text)
-        while !characters.isEmpty {
-            let candidate = String(characters) + "…"
-            if (candidate as NSString).size(withAttributes: attributes).width <= width { return candidate }
-            characters.removeLast()
-        }
-        return "…"
+        BrainLineCut.cut(text, width: width) { ($0 as NSString).size(withAttributes: attributes).width }
     }
 
     override func updateTrackingAreas() {

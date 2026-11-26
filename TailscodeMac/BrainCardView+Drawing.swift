@@ -236,13 +236,7 @@ extension BrainCardView {
     }
 
     private func truncated(_ text: String, attributes: [NSAttributedString.Key: Any], width: CGFloat) -> String {
-        var characters = Array(text)
-        while !characters.isEmpty {
-            let candidate = String(characters) + "…"
-            if (candidate as NSString).size(withAttributes: attributes).width <= width { return candidate }
-            characters.removeLast()
-        }
-        return "…"
+        BrainLineCut.cut(text, width: width) { ($0 as NSString).size(withAttributes: attributes).width }
     }
 
     private func drawLiveHeadline(_ live: NeuralLiveCard, content: Content, lift: CGFloat, now: Date) {
@@ -279,9 +273,11 @@ extension BrainCardView {
         }
         let room = layout.headlineRight - countsX
         if room > 60 {
-            let drawn = (counts as NSString).size(withAttributes: countAttributes).width > room
+            let whole = (counts as NSString).size(withAttributes: countAttributes)
+            let drawn = whole.width > room
                 ? truncated(counts, attributes: countAttributes, width: room) : counts
-            let size = (drawn as NSString).size(withAttributes: countAttributes)
+            let size = whole.width > room
+                ? (drawn as NSString).size(withAttributes: countAttributes) : whole
             (drawn as NSString).draw(
                 at: CGPoint(x: countsX, y: countsY - size.height / 2), withAttributes: countAttributes)
             if !narrow { lineEnd = countsX + ceil(size.width) + 8 }
@@ -383,8 +379,7 @@ extension BrainCardView {
             let drawn = truncated(trailingText, attributes: trailingAttributes, width: maxTrailing)
             let size = (drawn as NSString).size(withAttributes: trailingAttributes)
             trailingWidth = size.width
-            let fitted = size.width > maxTrailing ? truncated(drawn, attributes: trailingAttributes, width: maxTrailing) : drawn
-            (fitted as NSString).draw(
+            (drawn as NSString).draw(
                 at: CGPoint(x: rect.maxX - size.width, y: centerY - size.height / 2 + slide),
                 withAttributes: trailingAttributes)
         }
@@ -395,9 +390,11 @@ extension BrainCardView {
             let attributes: [NSAttributedString.Key: Any] = [.font: argFont, .foregroundColor: inks.textDim]
             let room = rect.maxX - trailingWidth - 12 - x
             if room > 30 {
-                let drawn = truncated(argument, attributes: attributes, width: room)
-                let shown = (argument as NSString).size(withAttributes: attributes).width <= room ? argument : drawn
-                let size = (shown as NSString).size(withAttributes: attributes)
+                let whole = (argument as NSString).size(withAttributes: attributes)
+                let shown = whole.width <= room
+                    ? argument : truncated(argument, attributes: attributes, width: room)
+                let size = whole.width <= room
+                    ? whole : (shown as NSString).size(withAttributes: attributes)
                 (shown as NSString).draw(
                     at: CGPoint(x: x, y: centerY - size.height / 2), withAttributes: attributes)
             }
@@ -424,19 +421,29 @@ extension BrainCardView {
             at: CGPoint(x: rect.minX, y: rect.midY - size.height / 2), withAttributes: attributes)
     }
 
+    /// The longest of the lines `make` builds that fits `width`. The widest budget is tried first,
+    /// so a line that fits whole costs one measurement, and a line that has to be cut is narrowed
+    /// by halving rather than by asking for one character less at a time: a live card draws its
+    /// tool's output on every frame the output streams.
     private func fitted(_ width: CGFloat, make: (Int) -> String, measure: (String) -> CGFloat) -> String {
-        var best = make(0)
-        var characters = 24
-        var last = ""
-        while characters < 400 {
-            let candidate = make(characters)
-            if candidate == last { break }
-            guard measure(candidate) <= width else { break }
-            best = candidate
-            last = candidate
-            characters += 6
+        let budgets = 63
+        func candidate(_ index: Int) -> String { make(24 + index * 6) }
+        let whole = candidate(budgets - 1)
+        if measure(whole) <= width { return whole }
+        var low = 0
+        var high = budgets - 2
+        var best: String?
+        while low <= high {
+            let mid = (low + high) / 2
+            let text = candidate(mid)
+            if measure(text) <= width {
+                best = text
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
         }
-        return best
+        return best ?? make(0)
     }
 
     private func drawQuote(
@@ -572,5 +579,34 @@ extension NSImage {
         copy.unlockFocus()
         copy.isTemplate = false
         return copy
+    }
+}
+
+/// A line cut to the width it has to fit, wearing the ellipsis this client puts in place of the
+/// rest of it.
+///
+/// A live card draws its tool's output again on every frame the output streams, and finding the
+/// cut by laying out one character less on every try cost a layout per character on each of those
+/// frames — a long shell line was most of the frame. The whole line is measured once; a line that
+/// overflows is narrowed by halving, so the cut costs a handful of layouts however long the text is.
+enum BrainLineCut {
+    static func cut(_ text: String, width: CGFloat, measure: (String) -> CGFloat) -> String {
+        let whole = text + "…"
+        if measure(whole) <= width { return whole }
+        let characters = Array(text)
+        var low = 0
+        var high = characters.count - 1
+        var best = "…"
+        while low <= high {
+            let mid = (low + high) / 2
+            let candidate = String(characters[0..<mid]) + "…"
+            if measure(candidate) <= width {
+                best = candidate
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+        return best
     }
 }

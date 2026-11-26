@@ -8,6 +8,7 @@ import TailscodeCore
 final class BrainListRowsView: NSView {
     private unowned let owner: BrainListView
     private var pulses: [String: CAShapeLayer] = [:]
+    private var pulseMotions: [String: ActivityMotion] = [:]
     private var tracking: NSTrackingArea?
     private(set) var rowsDrawn = 0
     private(set) var paints = 0
@@ -113,6 +114,12 @@ final class BrainListRowsView: NSView {
     /// The marks of the steps still out on the machine, each one a layer that breathes by itself so
     /// the list owns no clock while a turn runs: a dot for a running step and the pause bars of one
     /// that waits on the person.
+    ///
+    /// A lap is anchored to absolute time, so a mark already wearing the right one looks as it
+    /// should however often this is asked — the list syncs on every model change and on every
+    /// scroll that crosses a row, and laying a fresh sixty-five-sample lap on each of those was a
+    /// rebuild nobody could see. Only a mark that is new, has stopped breathing, or has changed
+    /// what it stands for is given the animation again.
     func syncPulses() {
         let list = owner.snapshot.list
         var wanted: [String: (CGPoint, NeuralVerdict.Step)] = [:]
@@ -133,29 +140,46 @@ final class BrainListRowsView: NSView {
                 if wanted.count >= 16 { break }
             }
         }
+        var marksChanged = false
         for (id, layer) in pulses where wanted[id] == nil {
             layer.removeFromSuperlayer()
             pulses[id] = nil
+            pulseMotions[id] = nil
+            marksChanged = true
         }
         guard let host = layer else { return }
         for (id, entry) in wanted {
             let made: CAShapeLayer
+            let wasMade: Bool
             if let held = pulses[id] {
                 made = held
+                wasMade = false
             } else {
                 made = CAShapeLayer()
                 made.bounds = CGRect(x: 0, y: 0, width: 13, height: 13)
                 host.addSublayer(made)
                 pulses[id] = made
+                wasMade = true
+                marksChanged = true
             }
             made.position = entry.0
             let color = owner.painter.colors.verdict(entry.1).cgColor
             made.fillColor = color
             made.path = entry.1 == .running ? Self.dotPath : Self.barsPath
             made.isHidden = owner.pointerRowID == id
-            BrainMotion.breathe(made, entry.1 == .running ? .breath : .heartbeat)
+            let meaning: ActivityMotion = entry.1 == .running ? .working : .attention
+            let motion: NeuralMotion = entry.1 == .running ? .breath : .heartbeat
+            let breathing = BrainMotion.isBreathing(made)
+            if !ActivityPulse.motionAllowed {
+                if breathing { BrainMotion.breathe(made, .still) }
+                if pulseMotions[id] != meaning { pulseMotions[id] = meaning }
+                continue
+            }
+            guard wasMade || pulseMotions[id] != meaning || !breathing else { continue }
+            BrainMotion.breathe(made, motion)
+            pulseMotions[id] = meaning
         }
-        needsDisplay = true
+        if marksChanged { needsDisplay = true }
     }
 
     var pulseCount: Int { pulses.count }

@@ -54,6 +54,17 @@ final class BrainListView: NSView, BrainKeyTaker {
     private let edgeFade = CAGradientLayer()
     private(set) var fadedEdges: (above: Bool, below: Bool) = (false, false)
 
+    /// What the scroller's mask was built for: the fade is read from the offset and the viewport,
+    /// and while a tool streams both are asked for several times a second, so the gradient is only
+    /// rebuilt when an edge has come or gone or the viewport has changed size under it.
+    private struct EdgeMask: Equatable {
+        var above: Bool
+        var below: Bool
+        var size: CGSize
+    }
+
+    private var fadedMask: EdgeMask?
+
     init(host: BrainSurfaceHost) {
         self.host = host
         metrics = host.currentMetrics
@@ -159,9 +170,13 @@ final class BrainListView: NSView, BrainKeyTaker {
         let below = overflows && offset < maxOffset - 0.5
         fadedEdges = (above, below)
         guard above || below else {
+            fadedMask = nil
             if scroll.layer?.mask != nil { scroll.layer?.mask = nil }
             return
         }
+        let mask = EdgeMask(above: above, below: below, size: scroll.bounds.size)
+        guard mask != fadedMask || scroll.layer?.mask !== edgeFade else { return }
+        fadedMask = mask
         scroll.wantsLayer = true
         let topFirst = scroll.layer?.contentsAreFlipped() ?? true
         let upper = above ? Self.edgeFadeAbove / height : 0

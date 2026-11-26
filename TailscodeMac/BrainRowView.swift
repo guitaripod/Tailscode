@@ -53,6 +53,7 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
     var metricsMemo: (key: MetricsKey, value: NeuralStageMetrics)?
     var lastWidth: CGFloat = 0
     private var pictureRequested = ""
+    private var cardIsStale = false
     var hoverApplied: String??
     var pendingHover: (id: String?, delay: Double)?
     var lastHoverApplyTime = 0.0
@@ -340,16 +341,39 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
     }
 
     private func rethemed() {
+        Self.forgetPictures(of: inks.palette)
         wordmarkKey = 0
-        BrainPictures.forgetAll()
         pictureRequested = ""
-        syncCard()
-        requestPicture()
+        syncCardIfSeen()
         chips?.retheme()
         list?.retheme()
         account?.retheme()
         stage?.refresh(force: true)
         footer?.sync(now: BrainClock.now)
+    }
+
+    /// The pictures of a look are dropped once per theme change, not once per row that hears it:
+    /// the transcript keeps hundreds of rows, and every one of them clearing the same cache left
+    /// the head rendered again for each row that asked after the last clear.
+    private static var forgottenLook: Palette?
+
+    private static func forgetPictures(of palette: Palette) {
+        guard forgottenLook != palette else { return }
+        forgottenLook = palette
+        BrainPictures.forgetAll()
+    }
+
+    /// The card, its layout and its picture are what a change of theme costs a row, and only a row
+    /// somebody can see pays it. A row hundreds of points off screen in the transcript's window is
+    /// marked instead, and brought up when it scrolls in, is restated, or meets the window.
+    private func syncCardIfSeen() {
+        guard isVisible else {
+            cardIsStale = true
+            return
+        }
+        cardIsStale = false
+        syncCard()
+        requestPicture()
     }
 
     private func densityChanged() {
@@ -361,8 +385,8 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        syncCard()
-        requestPicture()
+        cardIsStale = true
+        syncCardIfSeen()
     }
 
     var liveZone: NeuralZone? { cardInput?.card.live?.activeZone }
@@ -620,8 +644,8 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil else { return }
-        syncCard()
-        requestPicture()
+        cardIsStale = true
+        syncCardIfSeen()
     }
 
 
@@ -638,5 +662,6 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
     func viewportMoved() {
         stage?.visibilityChanged()
         list?.viewportMoved()
+        if cardIsStale { syncCardIfSeen() }
     }
 }
