@@ -759,6 +759,10 @@ enum SelfTest {
         do {
             switch name {
             case "firstrun": report("first run: \(try FirstRunChecks.run()) claims hold")
+            case "studio":
+                let failures = StudioCheck.run()
+                guard failures.isEmpty else { throw SelfTestFailure("studio: " + failures.joined(separator: " · ")) }
+                report("studio: the shelf, the stage, the chips, the folds, the keys, the sheet and the dock's presses hold")
             case "terminal":
                 if let problem = await checkTerminal() { throw SelfTestFailure("terminal: \(problem)") }
                 report("terminal: a shell held by a server draws what is typed and what it answers")
@@ -778,8 +782,9 @@ enum SelfTest {
     /// A self-test that hangs is worse than one that fails: it stalls the build loop on a machine
     /// nobody is looking at.
     private static func startWatchdog() {
+        let seconds = Double(ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_WATCHDOG"] ?? "") ?? 90
         Task.detached {
-            try? await Task.sleep(for: .seconds(90))
+            try? await Task.sleep(for: .seconds(seconds))
             FileHandle.standardOutput.write(Data("SELFTEST_TIMEOUT\n".utf8))
             exit(2)
         }

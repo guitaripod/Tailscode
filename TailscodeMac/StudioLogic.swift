@@ -263,10 +263,13 @@ struct StudioChip: Equatable, Sendable {
     let isOn: Bool
     let isWarning: Bool
     let isLabelled: Bool
+    /// Whether the next render would read this decision. A video's recipe is locked while its
+    /// graph runs; a picture's is not, because the machine already holds a copy of it.
+    let isEnabled: Bool
 
     init(
         kind: Kind, label: String, value: String, symbol: String, isOn: Bool, isWarning: Bool,
-        isLabelled: Bool = false
+        isLabelled: Bool = false, isEnabled: Bool = true
     ) {
         self.kind = kind
         self.label = label
@@ -275,6 +278,7 @@ struct StudioChip: Equatable, Sendable {
         self.isOn = isOn
         self.isWarning = isWarning
         self.isLabelled = isLabelled
+        self.isEnabled = isEnabled
     }
 
     var spoken: String { value.isEmpty ? label : "\(label), \(value)" }

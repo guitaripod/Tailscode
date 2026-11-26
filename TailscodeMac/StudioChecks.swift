@@ -36,6 +36,7 @@ enum StudioCheck {
         sheetMenu(expect)
         sheet(expect)
         capsulePresses(expect)
+        dockPresses(expect)
         return failures
     }
 }

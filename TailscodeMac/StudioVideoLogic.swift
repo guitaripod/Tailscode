@@ -217,12 +217,14 @@ enum StudioVideoVerbs {
 /// differently from a phone.
 enum StudioVideoChips {
     static func read(board: ForgeBoard) -> [StudioChip] {
+        let locked = board.isBusy
         var chips: [StudioChip] = []
         for field in [ForgeField.size, .seconds, .fps] {
             chips.append(
                 StudioChip(
                     kind: .forge(field), label: field.label, value: board.value(of: field),
-                    symbol: field.symbol, isOn: false, isWarning: false, isLabelled: true))
+                    symbol: field.symbol, isOn: false, isWarning: false, isLabelled: true,
+                    isEnabled: !locked))
         }
         let heard = board.recipe.sound.trimmingCharacters(in: .whitespacesAndNewlines)
         chips.append(
@@ -230,18 +232,19 @@ enum StudioVideoChips {
                 kind: .sound, label: ForgeField.sound.label,
                 value: heard.isEmpty ? Localized.text("Auto") : heard.ellipsized(to: 18),
                 symbol: ForgeField.sound.symbol, isOn: !heard.isEmpty, isWarning: false,
-                isLabelled: true))
+                isLabelled: true, isEnabled: !locked))
         let avoided = board.recipe.negative.trimmingCharacters(in: .whitespacesAndNewlines)
         chips.append(
             StudioChip(
                 kind: .avoid, label: ForgeField.negative.label,
                 value: avoided.isEmpty ? "" : avoided.ellipsized(to: 18),
                 symbol: ForgeField.negative.symbol, isOn: !avoided.isEmpty, isWarning: false,
-                isLabelled: true))
+                isLabelled: true, isEnabled: !locked))
         chips.append(
             StudioChip(
                 kind: .forge(.seed), label: ForgeField.seed.label, value: board.value(of: .seed),
-                symbol: ForgeField.seed.symbol, isOn: false, isWarning: false, isLabelled: true))
+                symbol: ForgeField.seed.symbol, isOn: false, isWarning: false, isLabelled: true,
+                isEnabled: !locked))
         return chips
     }
 

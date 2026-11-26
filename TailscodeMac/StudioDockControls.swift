@@ -147,6 +147,16 @@ final class StudioEnhanceControl: NSView {
         }
     }
 
+    /// The control sits on the words box, and an NSView that does not take the press forwards it
+    /// down the responder chain to the text view behind — which starts a selection and keeps the
+    /// mouse until it is released, so the mouse-up this control answers never arrives. Taking the
+    /// press here is what makes the button a button rather than a picture of one.
+    override func mouseDown(with event: NSEvent) {
+        guard state != .disabled else { return }
+        hovering = region(at: convert(event.locationInWindow, from: nil))
+        needsDisplay = true
+    }
+
     override func accessibilityPerformPress() -> Bool {
         guard state != .disabled, state != .writing, state != .looking else { return false }
         onEnhance?()

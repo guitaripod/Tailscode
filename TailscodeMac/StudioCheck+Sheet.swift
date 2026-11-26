@@ -275,7 +275,8 @@ extension StudioCheck {
         return nil
     }
 
-    private static func all<T: NSView>(_ type: T.Type, in root: NSView) -> [T] {
+    private static func all<T: NSView>(_ type: T.Type, in root: NSView?) -> [T] {
+        guard let root else { return [] }
         var found: [T] = []
         if let match = root as? T { found.append(match) }
         for child in root.subviews { found += all(type, in: child) }
@@ -318,5 +319,81 @@ extension StudioCheck {
         expect(
             !video.offers(.imageLane) && !video.offers(.videoLane),
             "the lane switch is the shell's, never a lane's")
+    }
+
+    /// A render being out is not a reason for the next one's decisions to be dead: the picture's
+    /// recipe is already on the machine, so the words, Enhance and the Settings list keep working
+    /// while the stage says Stop. Checked by pressing what a hand would, through the window's own
+    /// hit test, rather than by reading the view's mind.
+    static func dockPresses(_ expect: (Bool, String) -> Void) {
+        let studio = MacImageStudio(endpoint: ImageGenEndpoint(host: "127.0.0.1"))
+        StudioDemo.apply("painting", to: studio)
+        let controller = StudioWindowController(studio: studio)
+        controller.reducedMotionOverride = true
+        let (window, _) = offscreen(1000, 620)
+        controller.show(lane: .image, in: window)
+        controller.motionFinished()
+        window.contentView?.layoutSubtreeIfNeeded()
+        defer {
+            controller.dismiss()
+            controller.motionFinished()
+            window.close()
+        }
+        guard studio.isPainting,
+            let row = first(StudioChipRow.self, in: window.contentView),
+            let enhance = first(StudioEnhanceControl.self, in: window.contentView),
+            let settings = all(StudioChipButton.self, in: window.contentView).first(where: {
+                !$0.isHidden && $0.chip.label == Localized.text("Settings")
+            })
+        else {
+            expect(false, "a render that is out still draws the dock's Enhance and folded Settings")
+            return
+        }
+        expect(row.folded, "the short sheet folds the chips into the one Settings control")
+        expect(settings.isEnabled && enhance.alphaValue == 1, "both answer while a picture is being painted")
+        var enhanced = 0
+        var opened = 0
+        let keepEnhance = enhance.onEnhance
+        let keepSettings = settings.onPress
+        enhance.onEnhance = { enhanced += 1 }
+        settings.onPress = { _ in opened += 1 }
+        defer {
+            enhance.onEnhance = keepEnhance
+            settings.onPress = keepSettings
+        }
+        expect(
+            clicks(enhance, in: window),
+            "a press at Enhance's centre reaches it while the machine paints")
+        expect(
+            clicks(settings, in: window),
+            "a press at Settings' centre reaches the folded control while the machine paints")
+        expect(enhanced == 1 && opened == 1, "and each press runs what the dock was given")
+        let paste = NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        let field = PastingTextView(frame: NSRect(x: 0, y: 0, width: 100, height: 20))
+        field.onCanPaste = { true }
+        expect(
+            field.validateUserInterfaceItem(paste),
+            "Paste stays available when the clipboard holds a picture the words box can take")
+    }
+
+    /// A real left-button press handed to whatever the window hit-tests at the view's centre, so a
+    /// control that draws where it belongs but never descends to is caught.
+    private static func clicks(_ view: NSView, in window: NSWindow) -> Bool {
+        guard let root = window.contentView else { return false }
+        let centre = view.convert(NSPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil)
+        guard let target = root.hitTest(root.convert(centre, from: nil)), target === view else {
+            return false
+        }
+        func event(_ type: NSEvent.EventType) -> NSEvent? {
+            NSEvent.mouseEvent(
+                with: type, location: centre, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+                pressure: 1)
+        }
+        guard let down = event(.leftMouseDown), let up = event(.leftMouseUp) else { return false }
+        target.mouseDown(with: down)
+        target.mouseUp(with: up)
+        return true
     }
 }

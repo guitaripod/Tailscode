@@ -192,7 +192,7 @@ final class StudioChipRow: NSView {
     var onPickLibrary: ((NSView) -> Void)?
     var isEnabled = true {
         didSet {
-            for button in buttons { button.isEnabled = isEnabled }
+            for button in buttons { button.isEnabled = isEnabled && button.chip.isEnabled }
             more.isEnabled = isEnabled
             settings.isEnabled = isEnabled
         }
@@ -246,12 +246,15 @@ final class StudioChipRow: NSView {
             buttons = next.map { chip in
                 let button = StudioChipButton(chip: chip, opens: Self.opens(chip.kind))
                 button.onPress = { [weak self] pressed in self?.press(pressed.chip, from: pressed) }
-                button.isEnabled = isEnabled
+                button.isEnabled = isEnabled && chip.isEnabled
                 addSubview(button)
                 return button
             }
         } else {
-            for (button, chip) in zip(buttons, next) { button.update(chip) }
+            for (button, chip) in zip(buttons, next) {
+                button.update(chip)
+                button.isEnabled = isEnabled && chip.isEnabled
+            }
         }
         estimate.stringValue = brief.estimateLine
         estimate.setAccessibilityLabel(brief.estimateLine)
@@ -361,13 +364,17 @@ final class StudioChipRow: NSView {
             let toggle = ClosureMenuItem(title: chip.label) { [weak self] in self?.brief.toggle(chip) }
             toggle.state = chip.isOn ? .on : .off
             toggle.subtitle = ImageGenStudioWords.cutoutDetail
+            toggle.isEnabled = chip.isEnabled
             return toggle
         }
         if let field = brief.wordsField(for: chip) {
-            return ClosureMenuItem(title: title) { [weak self] in self?.onWords?(anchor, field) }
+            let entry = ClosureMenuItem(title: title) { [weak self] in self?.onWords?(anchor, field) }
+            entry.isEnabled = chip.isEnabled
+            return entry
         }
         let holder = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         holder.submenu = brief.menu(for: chip, gallery: { [weak self] in self?.onPickLibrary?(anchor) })
+        holder.isEnabled = chip.isEnabled
         return holder
     }
 }

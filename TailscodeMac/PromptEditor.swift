@@ -20,6 +20,9 @@ final class PromptEditor: NSView {
     /// Whether the box took the pasteboard for itself. Words are handed back to AppKit rather
     /// than re-implemented, which is what keeps undo, selection and the system's own behaviour.
     var onPaste: (() -> Bool)?
+    /// Whether the clipboard holds something the box itself cannot read but the surface can —
+    /// the Studio's words take a picture as the start of the next render.
+    var onCanPaste: (() -> Bool)?
     /// The mode the engine is in changed without a key: a press in the box meant typing.
     var onModeChanged: (() -> Void)?
     /// The person changed the box with their own hands while a take was writing into it.
@@ -121,6 +124,7 @@ final class PromptEditor: NSView {
         textView.allowsUndo = true
         textView.delegate = self
         textView.onPaste = { [weak self] in self?.onPaste?() ?? false }
+        textView.onCanPaste = { [weak self] in self?.onCanPaste?() ?? false }
         textView.onPointerFocus = { [weak self] in self?.pointerFocused() }
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
@@ -671,6 +675,7 @@ final class FocusingField: NSView {
 /// re-implemented, which is what keeps undo, selection and the system's own behaviour intact.
 final class PastingTextView: NSTextView {
     var onPaste: (() -> Bool)?
+    var onCanPaste: (() -> Bool)?
     var onPointerFocus: (() -> Void)?
     /// Told when the box takes the keyboard and when it gives it up.
     var onFocusChanged: ((Bool) -> Void)?
@@ -691,6 +696,17 @@ final class PastingTextView: NSTextView {
     override func paste(_ sender: Any?) {
         guard onPaste?() != true else { return }
         super.paste(sender)
+    }
+
+    /// AppKit decides whether Paste is available before it ever sends `paste:`, and a plain text
+    /// view refuses a pasteboard that holds only a picture. A surface that can take one — the
+    /// Studio holds it as the start of the next render — answers yes here, so ⌘V reaches `paste`.
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        let pastes =
+            item.action == #selector(NSText.paste(_:))
+            || item.action == #selector(NSTextView.pasteAsPlainText(_:))
+        if pastes, onCanPaste?() == true { return true }
+        return super.validateUserInterfaceItem(item)
     }
 
     /// A file dragged onto the prompt box is an attachment, not a path pasted into the draft, so

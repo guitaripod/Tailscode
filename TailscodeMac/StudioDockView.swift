@@ -59,6 +59,7 @@ final class StudioDockView: NSView, StudioDocking {
         words.setAccessibilityLabel(ImageGenStudioWords.wordsTitle)
         words.onChanged = { [weak self] in self?.wordsChanged() }
         words.onPaste = { [weak self] in self?.takePastedPicture() ?? false }
+        words.onCanPaste = { StudioDrop.read(.general) != nil }
         slotView.translatesAutoresizingMaskIntoConstraints = false
         enhance.translatesAutoresizingMaskIntoConstraints = false
         go.translatesAutoresizingMaskIntoConstraints = false
@@ -219,12 +220,9 @@ final class StudioDockView: NSView, StudioDocking {
 
     private func syncControls() {
         let busy = brief.isBusy
-        words.isEditable = !busy
-        words.alphaValue = busy ? 0.55 : 1
         go.mode = busy ? .stop : .generate
         go.isEnabled = busy || canGenerate
         enhance.state = enhanceState
-        chipRow.isEnabled = !busy
         slotView.isEnabled = !busy
     }
 
@@ -234,7 +232,6 @@ final class StudioDockView: NSView, StudioDocking {
 
     private var enhanceState: StudioEnhanceControl.Mode {
         if brief.enhancing { return .writing }
-        if brief.isBusy { return .disabled }
         guard let helper = brief.helper else {
             return brief.surveying ? .looking : .find
         }
@@ -254,10 +251,7 @@ final class StudioDockView: NSView, StudioDocking {
     }
 
     private func takePastedPicture() -> Bool {
-        let pasteboard = NSPasteboard.general
-        guard pasteboard.string(forType: .string) == nil,
-            let drop = StudioDrop.read(pasteboard)
-        else { return false }
+        guard let drop = StudioDrop.read(.general) else { return false }
         brief.hold(drop: drop) { _ in }
         return true
     }
