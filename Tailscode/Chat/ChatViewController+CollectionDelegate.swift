@@ -186,6 +186,7 @@ extension ChatViewController: UICollectionViewDelegate {
 
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
         keepEndClear()
+        releaseScrollHold()
     }
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
@@ -200,10 +201,12 @@ extension ChatViewController: UICollectionViewDelegate {
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
         if isAtBottom() { userScrolledUp = false }
+        releaseScrollHold()
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
         if !decelerate && isAtBottom() { userScrolledUp = false }
+        if !decelerate { releaseScrollHold() }
     }
 
     private func messageText(for id: String) -> String? {

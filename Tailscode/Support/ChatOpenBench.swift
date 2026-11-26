@@ -18,7 +18,10 @@ import UIKit
     /// `TAILSCODE_BENCH_SCENARIO` stages a state before the pop (`keyboard` focuses the composer,
     /// `stream` leaves a turn running, `send` sends a message at the end of the conversation and
     /// writes what the rise and the answer after it cost the main thread) and `TAILSCODE_BENCH_SWIPE=1` waits for a real edge swipe
-    /// sent from outside instead of popping by call.
+    /// sent from outside instead of popping by call. `TAILSCODE_BENCH_LIVE=<sessionID>` opens a real
+    /// conversation and watches it; with `TAILSCODE_BENCH_SCROLL=1` the probe scrolls its transcript
+    /// up and down a screen at a time while the turn streams, so a live brain's steps and a moving
+    /// page are measured together.
     @MainActor
     final class ChatOpenBench {
         private static var running: ChatOpenBench?
@@ -570,6 +573,13 @@ import UIKit
             guard let collection else { return }
             let seconds = ProcessInfo.processInfo.environment["TAILSCODE_BENCH_PROBE"].flatMap(Double.init) ?? 60
             var last = ""
+            var scrollingDown = true
+            var nextScroll = CFAbsoluteTimeGetCurrent()
+            ScrollDrive.isDriving = ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCROLL"] != nil
+            defer {
+                ScrollDrive.isDriving = false
+                (collection.delegate as? ChatViewController)?.releaseScrollHold()
+            }
             let deadline = CFAbsoluteTimeGetCurrent() + seconds
             MidgarLog.info(
                 "bench resume probe start footprintMB=\(footprintMegabytes()) rows=\(Int(collection.contentSize.height))pt", category: .performance)
@@ -609,6 +619,27 @@ import UIKit
                         "bench resume cpu=\(Int((now - lastCPU) / wall * 100))% app=\(UIApplication.shared.applicationState.rawValue) footprintMB=\(footprintMegabytes())", category: .performance)
                     lastCPU = now
                     lastCPUAt = CFAbsoluteTimeGetCurrent()
+                }
+                if ProcessInfo.processInfo.environment["TAILSCODE_BENCH_SCROLL"] != nil,
+                    CFAbsoluteTimeGetCurrent() >= nextScroll
+                {
+                    nextScroll = CFAbsoluteTimeGetCurrent() + 0.7
+                    let page = collection.bounds.height
+                    let limit = max(0, collection.contentSize.height - page)
+                    var target =
+                        collection.contentOffset.y + (scrollingDown ? page * 0.55 : -page * 0.55)
+                    if target >= limit {
+                        target = limit
+                        scrollingDown = false
+                    }
+                    if target <= 0 {
+                        target = 0
+                        scrollingDown = true
+                    }
+                    collection.setContentOffset(
+                        CGPoint(x: collection.contentOffset.x, y: target), animated: true)
+                    MidgarLog.info(
+                        "bench scroll to=\(Int(target)) limit=\(Int(limit))", category: .performance)
                 }
                 let reading = resumeReading(of: collection, in: window)
                 if reading != last || !reading.contains("tracking=false dragging=false decelerating=false") {

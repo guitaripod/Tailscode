@@ -96,6 +96,11 @@ extension ChatViewController {
     /// the thread, and the newest state is drawn when the wait is over; everything else is drawn
     /// at once.
     func offer(_ state: ConversationState) {
+        if isScrollHeld {
+            heldForScroll = state
+            return
+        }
+        heldForScroll = nil
         if canvasGlide != nil {
             heldUnderRise = true
             heldRender?.cancel()
@@ -103,6 +108,7 @@ extension ChatViewController {
             return
         }
         var growth = lastRenderedState.map { RenderPacer.isGrowth(from: $0, to: state) } ?? false
+        if state.status == .running { growth = true }
         #if DEBUG
             if ProcessInfo.processInfo.environment["TAILSCODE_NO_PACER"] != nil { growth = false }
         #endif
@@ -121,6 +127,14 @@ extension ChatViewController {
             heldRender = item
             DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: item)
         }
+    }
+
+    /// The page has come to rest: the newest state is drawn now, one draw for everything the drag
+    /// held back.
+    func releaseScrollHold() {
+        guard heldForScroll != nil, !isScrollHeld else { return }
+        heldForScroll = nil
+        offer(viewModel.state)
     }
 
     /// The prompt has landed, or stopped where a finger caught it: whatever was held while it rose
@@ -383,12 +397,32 @@ extension ChatViewController {
 
     private func rebuildTranscript(_ incoming: ConversationState) -> TranscriptRebuild {
         let state = Self.stagedState(incoming)
+        #if DEBUG
+            let tracePhases = ProcessInfo.processInfo.environment["TAILSCODE_TRACE_RISE"] == "1"
+            var lap = CACurrentMediaTime()
+            var phases: [(String, Double)] = []
+            func phase(_ name: String) {
+                guard tracePhases else { return }
+                let now = CACurrentMediaTime()
+                phases.append((name, (now - lap) * 1000))
+                lap = now
+            }
+        #endif
         let runs = workflowFold.runs(
             messages: state.messages, agents: viewModel.trackedSubagents)
+        #if DEBUG
+            phase("workflow")
+        #endif
         workflowRuns = runs
         updateWorkflowTicker()
         refreshTranscriptFill(state)
+        #if DEBUG
+            phase("fill")
+        #endif
         let facts = makeFacts(state)
+        #if DEBUG
+            phase("facts")
+        #endif
         let stalled: Bool
         if case .stalled = facts.phase { stalled = true } else { stalled = false }
         let reading = brain.reading(
@@ -400,7 +434,13 @@ extension ChatViewController {
             reading: reading, facts: facts, call: callController.currentFace,
             providerID: viewModel.displayedModel?.providerID,
             effortOptions: effortOptions, effort: effort)
+        #if DEBUG
+            phase("brain")
+        #endif
         let seams = seamTracker.update(reading.messages, catalog: availableModels)
+        #if DEBUG
+            phase("seams")
+        #endif
         if state.chapters != chapterSource {
             chapterSource = state.chapters
             chapterHeadings = ChapterReading.headings(state.chapters)
@@ -411,6 +451,9 @@ extension ChatViewController {
             chapterMessageCount = state.messages.count
             chaptersSheet?.chaptersChanged()
         }
+        #if DEBUG
+            phase("chapters")
+        #endif
         var rows = ChatRowBuilder.makeRows(
             from: reading.messages, agents: subagentPlacement(for: reading.messages),
             runs: Dictionary(runs.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest }),
@@ -419,6 +462,9 @@ extension ChatViewController {
             modelName: { [contextID = viewModel.contextID] selection in
                 ModelCatalog.cached(for: contextID).first { $0.selection == selection }?.name
             })
+        #if DEBUG
+            phase("rows")
+        #endif
         #if DEBUG
             if let staged = ChatPictureStaging.linkRail() { rows.append(staged) }
             if let staged = ChatPictureStaging.row() { rows.append(staged) }
@@ -434,6 +480,17 @@ extension ChatViewController {
             if case .activity = content { return true }
             return false
         })
+        #if DEBUG
+            phase("index")
+            if tracePhases {
+                let described = phases.map {
+                    "\($0.0)=\(String(format: "%.1f", $0.1))"
+                }.joined(separator: " ")
+                MidgarLog.info(
+                    "rebuild phases messages=\(reading.messages.count) rows=\(uniqueRows.count) \(described)",
+                    category: .chat)
+            }
+        #endif
 
         if AppPreferences.autoExpandThinking {
             for row in uniqueRows where isActivity(row) && !seenReasoning.contains(row.id) {

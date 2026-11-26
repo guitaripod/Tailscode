@@ -33,8 +33,8 @@ public enum MessageSegment: Hashable, Sendable {
 
     public static func split(_ text: String, sealed: Bool = true) -> [MessageSegment] {
         var segments: [MessageSegment] = []
-        var prose: [String] = []
-        var code: [String] = []
+        var prose: [Substring] = []
+        var code: [Substring] = []
         var language: String?
         var inFence = false
 
@@ -45,18 +45,17 @@ public enum MessageSegment: Hashable, Sendable {
             prose = []
         }
 
-        func appendProse(_ line: String) {
-            let blank = line.trimmingCharacters(in: .whitespaces).isEmpty
-            if blank, prose.last?.trimmingCharacters(in: .whitespaces).isEmpty != false {
+        func appendProse(_ line: Substring) {
+            if isBlank(line), prose.last.map(isBlank) != false {
                 return
             }
             prose.append(line)
         }
 
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         // The last line with anything on it: a text that ends in a newline has an empty line after
         // its final row, and the row is still the last thing the model has written.
-        let lastWritten = lines.lastIndex { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? -1
+        let lastWritten = lines.lastIndex { !isBlank($0) } ?? -1
         // Where a table may read to. A line the model is still typing is not a row: drawn, it puts
         // a cell cut in half on the page and rewrites it a moment later. This is only ever about
         // tables — a fence carries its own lines through untouched, because a shell pipeline is
@@ -66,7 +65,7 @@ public enum MessageSegment: Hashable, Sendable {
         var index = 0
         while index < lines.count {
             let line = lines[index]
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let trimmed = MarkdownTable.trimmed(line)
             if trimmed.hasPrefix("```") {
                 if inFence {
                     segments.append(.code(language: language, body: code.joined(separator: "\n")))
@@ -74,7 +73,7 @@ public enum MessageSegment: Hashable, Sendable {
                     inFence = false
                 } else {
                     flushProse()
-                    let tag = trimmed.dropFirst(3).trimmingCharacters(in: .whitespaces)
+                    let tag = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
                     language = tag.isEmpty ? nil : tag
                     inFence = true
                 }
@@ -110,6 +109,13 @@ public enum MessageSegment: Hashable, Sendable {
         return segments
     }
 
+    /// Whether a line holds nothing but whitespace, asked of the view itself: an answer arriving a
+    /// token at a time is split on every arrival, and trimming a thousand lines into a thousand
+    /// strings to learn they were blank was most of what that split cost.
+    private static func isBlank(_ line: Substring) -> Bool {
+        line.allSatisfy(\.isWhitespace)
+    }
+
     /// The block a fence has opened but not yet filled is not a segment.
     ///
     /// A fence line arrives before the code it announces does, so for the arrival where the model
@@ -119,7 +125,7 @@ public enum MessageSegment: Hashable, Sendable {
     /// same row has to be measured again. Nothing is lost by waiting: the block appears with its
     /// first characters, at the index it will keep for the rest of the answer.
     private static func flushOpenFence(
-        _ segments: inout [MessageSegment], language: String?, code: [String]
+        _ segments: inout [MessageSegment], language: String?, code: [Substring]
     ) {
         let body = code.joined(separator: "\n")
         guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }

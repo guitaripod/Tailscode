@@ -39,17 +39,17 @@ final class SegmentRowMemo {
     }
 
     private final class MessageEntry {
-        let message: ChatMessage
+        let fingerprint: Int
         let context: MessageContext
         let toolIDs: [String]
         let rows: [ChatRow]
         var lastUsed: Int
 
         init(
-            message: ChatMessage, context: MessageContext, toolIDs: [String], rows: [ChatRow],
+            fingerprint: Int, context: MessageContext, toolIDs: [String], rows: [ChatRow],
             lastUsed: Int
         ) {
-            self.message = message
+            self.fingerprint = fingerprint
             self.context = context
             self.toolIDs = toolIDs
             self.rows = rows
@@ -68,15 +68,20 @@ final class SegmentRowMemo {
     private var keptLinks: [String: Links] = [:]
 
     /// The rows a message made last time, when nothing it depends on has moved: the message is
-    /// equal to the one the rows were made from (a comparison that is a pointer check for text that
-    /// was never touched), its context is the same, and no call in it has since been claimed by a
-    /// card of its own. A transcript is built again for every token, and a settled message is the
-    /// same rows every time.
+    /// the one the rows were made from, its context is the same, and no call in it has since been
+    /// claimed by a card of its own. A transcript is built again for every token, and a settled
+    /// message is the same rows every time.
+    ///
+    /// What it is asked is a fingerprint rather than the message: the server sends the whole
+    /// conversation again for every token, with every settled message decoded into fresh strings,
+    /// so comparing a long transcript by value re-read megabytes on each token to learn that only
+    /// the last message had grown. The fingerprint hashes identity plus each part's length and
+    /// ends, which moves whenever the words do and costs nothing to read.
     func rows(
         forMessage message: ChatMessage, context: MessageContext, isClaimed: (String) -> Bool
     ) -> [ChatRow]? {
         guard let hit = messageEntries[message.id],
-            hit.context == context, hit.message == message,
+            hit.context == context, hit.fingerprint == Self.fingerprint(of: message),
             !hit.toolIDs.contains(where: isClaimed)
         else { return nil }
         if hit.lastUsed != build {
@@ -94,7 +99,53 @@ final class SegmentRowMemo {
         messageBuilds += 1
         if messageEntries[message.id]?.lastUsed != build { touched += 1 }
         messageEntries[message.id] = MessageEntry(
-            message: message, context: context, toolIDs: toolIDs, rows: rows, lastUsed: build)
+            fingerprint: Self.fingerprint(of: message), context: context, toolIDs: toolIDs,
+            rows: rows, lastUsed: build)
+    }
+
+    /// What a message looks like to the memo without reading it: the fields that move when its
+    /// words do, with lengths and ends rather than the bytes.
+    static func fingerprint(of message: ChatMessage) -> Int {
+        var hasher = Hasher()
+        hasher.combine(message.id)
+        hasher.combine(message.role)
+        hasher.combine(message.isStreaming)
+        hasher.combine(message.completedAt)
+        hasher.combine(message.parts.count)
+        for part in message.parts {
+            hasher.combine(part.id)
+            switch part.kind {
+            case .text(let value), .reasoning(let value):
+                hasher.combine(0)
+                hasher.combine(value.utf8.count)
+                hasher.combine(Int(value.utf8.first ?? 0))
+                hasher.combine(Int(value.utf8.last ?? 0))
+            case .tool(let call):
+                hasher.combine(1)
+                hasher.combine(call.status)
+                hasher.combine(call.name)
+                if let output = call.output {
+                    hasher.combine(output.utf8.count)
+                    hasher.combine(Int(output.utf8.last ?? 0))
+                } else {
+                    hasher.combine(-1)
+                }
+                hasher.combine(call.background)
+            case .file(let file):
+                hasher.combine(2)
+                hasher.combine(file)
+            case .compaction(let compaction):
+                hasher.combine(3)
+                hasher.combine(compaction)
+            case .note(let note):
+                hasher.combine(4)
+                hasher.combine(note.subject)
+            case .unknown(let type):
+                hasher.combine(5)
+                hasher.combine(type)
+            }
+        }
+        return hasher.finalize()
     }
 
     func rows(

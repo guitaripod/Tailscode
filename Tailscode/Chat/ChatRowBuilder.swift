@@ -58,12 +58,16 @@ enum ChatRowBuilder {
                     content: .chapterHeading(heading)))
             }
             let leading = rows.count
-            let stamp = lastDate.flatMap { previous in
-                message.createdAt.timeIntervalSince(previous) > Self.stampGap
-                    ? ChatRow(
-                        id: "ts:\(message.id)", messageID: message.id, role: .system,
-                        content: .timestamp(Self.relativeTimestamp(message.createdAt)))
-                    : nil
+            /// The time this message wears if it is the one that opens a gap, made when it turns
+            /// out to be: formatting a date for every message on every arrival, to throw almost
+            /// all of them away, was most of what composing a long transcript cost a token.
+            let stamp: () -> ChatRow? = {
+                guard let previous = lastDate,
+                    message.createdAt.timeIntervalSince(previous) > Self.stampGap
+                else { return nil }
+                return ChatRow(
+                    id: "ts:\(message.id)", messageID: message.id, role: .system,
+                    content: .timestamp(Self.relativeTimestamp(message.createdAt)))
             }
             if let seam = seams[message.id] {
                 rows.append(ChatRow(
@@ -79,7 +83,7 @@ enum ChatRowBuilder {
                 let marks = rows[contentStart...].lazy
                     .filter { !Self.isUnshown($0, among: unshown) }.map(Self.pictureMark)
                 guard sighting.stays(marks) else { return }
-                if let stamp { rows.insert(stamp, at: leading) }
+                if let made = stamp() { rows.insert(made, at: leading) }
                 lastDate = max(message.createdAt, lastDate ?? .distantPast)
             }
             let context = SegmentRowMemo.MessageContext(

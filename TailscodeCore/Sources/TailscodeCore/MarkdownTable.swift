@@ -217,9 +217,9 @@ public struct MarkdownTable: Hashable, Sendable {
     /// carries no pipe.
     /// - Parameter limit: how many lines may be read. A line still being typed is not a row, so a
     ///   caller reading an answer as it arrives stops the scan short of it.
-    public static func scan(
-        _ lines: [String], from start: Int, limit: Int? = nil
-    ) -> (table: MarkdownTable, end: Int)? {
+    public static func scan<Lines: RandomAccessCollection>(
+        _ lines: Lines, from start: Int, limit: Int? = nil
+    ) -> (table: MarkdownTable, end: Int)? where Lines.Element: StringProtocol, Lines.Index == Int {
         let end = min(limit ?? lines.count, lines.count)
         guard start + 1 < end,
             let header = columns(lines[start]),
@@ -244,8 +244,8 @@ public struct MarkdownTable: Hashable, Sendable {
     /// One row's cells, or nil when the line is not a row at all. A row must carry a pipe that
     /// separates — a pipe inside backticks is code and `\|` is a literal — and edge pipes frame
     /// the row without contributing empty cells.
-    public static func columns(_ line: String) -> [String]? {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
+    public static func columns<Line: StringProtocol>(_ line: Line) -> [String]? {
+        let trimmed = trimmed(line)
         guard trimmed.contains("|"), !trimmed.hasPrefix(">") else { return nil }
         var cells: [String] = []
         var current = ""
@@ -282,14 +282,25 @@ public struct MarkdownTable: Hashable, Sendable {
         return cells
     }
 
+    /// The line with nothing blank at either end, as a view rather than a copy: a table scan reads
+    /// every line of an answer on every arrival, and trimming each one into a fresh string was most
+    /// of what a growing answer cost to split.
+    static func trimmed<Line: StringProtocol>(_ line: Line) -> Line.SubSequence {
+        guard let first = line.firstIndex(where: { !$0.isWhitespace }) else {
+            return line[line.startIndex..<line.startIndex]
+        }
+        let last = line.lastIndex(where: { !$0.isWhitespace }) ?? first
+        return line[first...last]
+    }
+
     /// The delimiter row that turns the line above it into a header: every cell dashes, with a
     /// colon on the side the column keeps.
-    public static func delimiterRow(_ line: String) -> [Alignment]? {
+    public static func delimiterRow<Line: StringProtocol>(_ line: Line) -> [Alignment]? {
         delimiter(line)?.map(\.alignment)
     }
 
     /// The delimiter row read whole: where each column sits, and whether the author said so.
-    static func delimiter(_ line: String) -> [(alignment: Alignment, declared: Bool)]? {
+    static func delimiter<Line: StringProtocol>(_ line: Line) -> [(alignment: Alignment, declared: Bool)]? {
         guard let cells = columns(line) else { return nil }
         var alignments: [(alignment: Alignment, declared: Bool)] = []
         for cell in cells {

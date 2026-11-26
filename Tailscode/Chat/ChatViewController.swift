@@ -758,6 +758,22 @@ final class ChatViewController: UIViewController {
 
     var pacer = RenderPacer()
     var heldRender: DispatchWorkItem?
+    /// The state that arrived while a finger was moving the page. Drawing it there puts a rebuild
+    /// of the whole conversation under the drag, and the page a person is reading must move with
+    /// the finger alone; the newest state is drawn the moment the page comes to rest.
+    var heldForScroll: ConversationState?
+    /// Whether the page is moving under a finger (or a harness's own scroll, for the same reason).
+    var isScrollHeld: Bool {
+        if collectionView.isTracking || collectionView.isDragging || collectionView.isDecelerating {
+            return true
+        }
+        #if DEBUG
+            if ProcessInfo.processInfo.environment["TAILSCODE_NO_SCROLL_HOLD"] != nil { return false }
+            return ScrollDrive.isDriving
+        #else
+            return false
+        #endif
+    }
     /// A state that arrived while a prompt was rising, drawn when it lands: what changes under a
     /// rising prompt — the server's echo of the same words, the turn starting, its first words —
     /// costs the whole conversation to draw, and in a long one that stuttered the motion.
