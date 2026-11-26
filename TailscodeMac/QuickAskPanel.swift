@@ -111,6 +111,10 @@ final class QuickAskPanel: NSPanel {
     var isPlaced = false
     var chosenSize: NSSize?
     var roomScheduled = false
+    /// The card's room as the panel last measured it — the width it was solved at, the status
+    /// line and the chips it held — with the height the card needed. A keystroke that asks for
+    /// room the panel already has costs a comparison rather than four layout passes.
+    var roomAsked: (room: QuickAskRoom, needed: CGFloat)?
     var liveResizeObserver: NSObjectProtocol?
     var modelSheet: ModelChooserSheet?
     var dialPopover: ModelDialPopover?
@@ -277,10 +281,9 @@ final class QuickAskPanel: NSPanel {
             self?.refreshAura()
             self?.renderTyping()
             self?.refreshSend()
-            self?.makeRoom()
         }
         editor.onPaste = { [weak self] in self?.takeClipboard() ?? false }
-        editor.onFieldHeightChanged = { [weak self] in self?.makeRoom() }
+        editor.onFieldHeightChanged = { [weak self] in self?.boxGrew() }
 
         aimedServerID = QuickAskDefaults.target(
             among: servers.map(\.id), fallback: preferredServer)
@@ -759,6 +762,20 @@ final class QuickAskPanel: NSPanel {
     }
 }
 
+
+/// What the quick ask's card is measured against: the width the card is solved at, the status
+/// line it carries, the chips that ride under it and how tall the command list is that opens over
+/// the words. The box's own height is not part of it — the editor reports that growth itself, and
+/// drops the measure rather than describing it.
+struct QuickAskRoom: Equatable, Sendable {
+    var width: CGFloat
+    var status: String
+    var chips: String
+    var completion: CGFloat
+
+    /// What the head's own insets take from the card's width before the status line wraps.
+    static let headMargin: CGFloat = 36
+}
 
 /// The list's clip, flipped so the list reads from its top: an unflipped clip shows the bottom of a
 /// list taller than the panel lets it be.

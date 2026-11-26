@@ -4,30 +4,60 @@ import MidgarCore
 import TailscodeCore
 
 extension ComposerView {
+    /// Everything the pill row is told at once — the destination, the dial's face, the level, the
+    /// dot's hue and the vim badge — kept as it was last handed over. A turn streams a state per
+    /// token and each of these redraws and re-measures the row on the way in, so a reading that
+    /// repeats the one on screen is dropped rather than drawn again.
+    struct PillReading: Equatable {
+        var face: DialFace
+        var effort: String?
+        var destinations: [String]
+        var modelTint: NSColor?
+        var vim: VimMode?
+    }
+
     func refreshPills() {
+        let observedModel = observedModelID()
+        let activeModel = chosenModel?.modelID ?? observedModel ?? entry?.session.model
+        let options = effortOptions(activeModel: activeModel)
+        let effort = displayedEffort(options: options, observed: observedEffort())
+        let face = ModelDial.face(
+            modelWord: modelPillText(observed: observedModel), effort: effort, options: options)
+        let tint = activeModel
+            .flatMap {
+                ModelBadge.chip(model: $0, effort: nil, providerID: nil, catalog: models)
+            }
+            .map(MacTheme.Color.modelIdentity)
+        let reading = PillReading(
+            face: face, effort: effort, destinations: destinationVariants(), modelTint: tint,
+            vim: vimEnabled ? vim.mode : nil)
+        if reading != pillReading {
+            pillReading = reading
+            pills.setDestination(reading.destinations)
+            pills.setFace(reading.face, modelTint: reading.modelTint)
+            editor.refreshMode()
+            pills.setVim(reading.vim)
+        }
+        if let dialPopover, dialPopover.isShown { dialPopover.update(state: dialState()) }
+        if let partyPopover, partyPopover.isShown { partyPopover.panel.reload() }
+        let able = ModelAbilities.resolve(
+            supportsAttachments: attachmentsSupported, models: models,
+            selection: chosenModel
+                ?? activeModel.map { ModelSelection(providerID: "server", modelID: $0) })
+        pills.setAttachShown(able.attachments)
+        dropUnsendableAttachments(able)
+    }
+
+    /// The destination's readings from fullest to barest, as the pill row wears them.
+    private func destinationVariants() -> [String] {
         let folder = entry?.session.directory.map {
             URL(fileURLWithPath: $0, isDirectory: true).lastPathComponent
         }
-        let variants = [
+        return [
             [entry.map { ServerLabel.display(name: $0.profileName, backend: $0.backendType) }, folder],
             [entry?.profileName, folder],
             [entry?.profileName],
         ].map { $0.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ") }
-        pills.setDestination(variants)
-        let face = ModelDial.face(
-            modelWord: modelPillText(), effort: displayedEffort(), options: effortOptions())
-        let activeModel = activeModelID
-        pills.setFace(
-            face,
-            modelTint: activeModel.flatMap {
-                ModelBadge.chip(model: $0, effort: nil, providerID: nil, catalog: models)
-            }
-                .map(MacTheme.Color.modelIdentity))
-        if let dialPopover, dialPopover.isShown { dialPopover.update(state: dialState()) }
-        if let partyPopover, partyPopover.isShown { partyPopover.panel.reload() }
-        pills.setAttachShown(abilities.attachments)
-        dropUnsendableAttachments()
-        updateVimUI()
     }
 
     /// What the chat is actually being answered by, which is not always what the session record
@@ -39,9 +69,9 @@ extension ComposerView {
         chosenModel?.modelID ?? observedModelID() ?? entry?.session.model
     }
 
-    private func modelPillText() -> String {
+    private func modelPillText(observed: String?) -> String {
         if let chosenModel { return ModelBadge.word(for: chosenModel, in: models) }
-        if let observed = observedModelID() {
+        if let observed {
             return ModelBadge.label(
                 model: ModelSelection(providerID: "server", modelID: observed), effort: nil,
                 catalog: models)
@@ -54,7 +84,7 @@ extension ComposerView {
         return Localized.text("model")
     }
 
-    private func observedModelID() -> String? {
+    func observedModelID() -> String? {
         guard let messages = lastState?.messages else { return nil }
         for message in messages.reversed() where message.role == .assistant {
             if let id = message.modelID, !id.isEmpty { return id }
@@ -66,16 +96,21 @@ extension ComposerView {
     /// record, else what the last answer ran at — each surviving what the model takes — or nil,
     /// which the dial draws as the server deciding.
     func displayedEffort() -> String? {
-        let options = effortOptions()
+        displayedEffort(options: effortOptions(), observed: observedEffort())
+    }
+
+    /// The same reading over options and an answer already in hand, so one refresh asks the
+    /// catalog once and scans the messages once.
+    func displayedEffort(options: [String], observed: String?) -> String? {
         guard !options.isEmpty else { return nil }
         if let kept = ModelEffort.surviving(chosenEffort, options: options) { return kept }
         if let stored = ModelEffort.surviving(entry?.session.reasoningEffort, options: options) {
             return stored
         }
-        return ModelEffort.surviving(observedEffort(), options: options)
+        return ModelEffort.surviving(observed, options: options)
     }
 
-    private func observedEffort() -> String? {
+    func observedEffort() -> String? {
         guard let messages = lastState?.messages else { return nil }
         for message in messages.reversed() where message.role == .assistant {
             if let effort = message.reasoningEffort, !effort.isEmpty { return effort }
@@ -88,10 +123,16 @@ extension ComposerView {
     /// where every model takes the same levels. The rule is Core's, so what this offers and what
     /// the phone offers for the same model can never differ.
     func effortOptions() -> [String] {
+        effortOptions(activeModel: activeModelID)
+    }
+
+    /// The same levels for a model the caller has already read, so one refresh walks the
+    /// transcript once rather than once per question it asks the catalog.
+    func effortOptions(activeModel: String?) -> [String] {
         ModelEffort.options(
             models: models,
             selection: chosenModel
-                ?? activeModelID.map { ModelSelection(providerID: "server", modelID: $0) },
+                ?? activeModel.map { ModelSelection(providerID: "server", modelID: $0) },
             agentOptions: backend?.reasoningEffortOptions ?? [])
     }
 
@@ -106,8 +147,7 @@ extension ComposerView {
 
     /// A model switch is the one way something already picked becomes unsendable. It is dropped
     /// out loud rather than left to fail on the other machine.
-    private func dropUnsendableAttachments() {
-        let able = abilities
+    private func dropUnsendableAttachments(_ able: ModelAbilities) {
         let kept = attachments.filter { able.accepts(mime: $0.mime) }
         guard kept.count != attachments.count else { return }
         let dropped = attachments.count - kept.count
@@ -275,7 +315,9 @@ extension ComposerView {
     func stepEffort(by delta: Int) {
         let options = effortOptions()
         guard ModelEffort.isOffered(options: options) else {
-            onDialToast?(ModelDial.headline(modelName: modelPillText(), options: []))
+            onDialToast?(
+                ModelDial.headline(
+                    modelName: modelPillText(observed: observedModelID()), options: []))
             return
         }
         let notch = ModelDial.notch(from: displayedEffort(), by: delta, options: options)
@@ -288,7 +330,9 @@ extension ComposerView {
     func setServerDecidesEffort() {
         let options = effortOptions()
         guard ModelEffort.isOffered(options: options) else {
-            onDialToast?(ModelDial.headline(modelName: modelPillText(), options: []))
+            onDialToast?(
+                ModelDial.headline(
+                    modelName: modelPillText(observed: observedModelID()), options: []))
             return
         }
         if displayedEffort() != nil { setEffort(nil) }
@@ -427,6 +471,7 @@ extension ComposerView {
                 model: tinted, effort: nil, providerID: nil,
                 catalog: ModelChooserDemo.sources().flatMap(\.models)
             ).map(MacTheme.Color.modelIdentity))
+        pillReading = nil
         guard popover else { return }
         var state = ModelDialState(
             sources: ModelChooserDemo.sources(), selected: ModelChooserDemo.selected,
@@ -444,7 +489,7 @@ extension ComposerView {
     private func dialState() -> ModelDialState {
         ModelDialState(
             sources: modelSources(), selected: chosenModel, effort: displayedEffort(),
-            options: effortOptions(), modelWord: modelPillText(),
+            options: effortOptions(), modelWord: modelPillText(observed: observedModelID()),
             quotas: quotasForModels?() ?? [],
             agentOptions: backend?.reasoningEffortOptions ?? [])
     }

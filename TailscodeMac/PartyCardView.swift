@@ -207,6 +207,12 @@ final class PartyCardView: NSView {
     private var hovered = false
     private var pressed = false
     private var breathing = false
+    /// Whether the in-use halo's animation is on the card now, so a redraw that asks for the same
+    /// breath leaves the one already running instead of restarting it from the top.
+    private var breathDrawn: Bool?
+    /// Whether the card has been drawn at all, so the first reading is applied even when it is
+    /// the hollow slot the view was built as.
+    private var painted = false
     private var measured: PartyMetrics.Measure
     private var renameCancelled = false
     var isDropTarget = false {
@@ -297,8 +303,12 @@ final class PartyCardView: NSView {
     var isRenaming: Bool { titleField.currentEditor() != nil }
 
     /// What the card shows is always the reading's: a rename in flight is put back to the kept
-    /// name the moment the party changes, so what is on screen is what was saved.
+    /// name the moment the party changes, so what is on screen is what was saved. A reading the
+    /// card already wears is dropped here, because a streaming turn used to hand every card the
+    /// same fifteen writes per frame.
     func apply(_ fresh: PartyCard, editing: Bool) {
+        guard !painted || fresh != card || editing != isEditing else { return }
+        painted = true
         card = fresh
         isEditing = editing
         measured = PartyMetrics.measure(fresh)
@@ -433,8 +443,11 @@ final class PartyCardView: NSView {
 
     private func applyBreathing() {
         guard let layer = face.layer else { return }
+        let wanted = breathing && card.isInUse && EffortHeat.motionAllowed
+        guard wanted != breathDrawn else { return }
+        breathDrawn = wanted
         layer.removeAnimation(forKey: "breath")
-        guard breathing, card.isInUse, EffortHeat.motionAllowed else { return }
+        guard wanted else { return }
         let pulse = TailscodeCore.ActivityPulse(period: 2.6, floor: 0.35)
         let steps = 32
         let animation = CAKeyframeAnimation(keyPath: "shadowOpacity")

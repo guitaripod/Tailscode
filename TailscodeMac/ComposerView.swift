@@ -61,6 +61,13 @@ final class ComposerView: NSView {
     var backend: (any CodingAgentBackend)?
     var lastState: ConversationState?
     private var running = false
+    /// The pill row as it was last handed over, so a streamed state that repeats it is dropped
+    /// before it reaches the views.
+    var pillReading: PillReading?
+    /// The answer's model and level as the composer last read them: the two readings of the state
+    /// that move the pill, kept so the rest of a turn's frames cost a comparison.
+    var pillObservedModel: String?
+    var pillObservedEffort: String?
     /// The text this composer last handed the draft store. Two panes can hold the same chat, and
     /// so the same scope, over two independent text views — only the one whose box has moved since
     /// it last recorded has anything left to say about that draft.
@@ -219,6 +226,8 @@ final class ComposerView: NSView {
         self.backend = backend
         lastState = nil
         running = false
+        pillObservedModel = nil
+        pillObservedEffort = nil
         attachments = []
         pastes = []
         pastedImageCount = 0
@@ -261,13 +270,24 @@ final class ComposerView: NSView {
 
     /// Every state the stream delivers, echoed here so the pills can tell the truth the
     /// transcript already knows: which model actually answered last, and whether a turn is
-    /// running — which is when Send means Queue and Stop appears at all.
+    /// running — which is when Send means Queue and Stop appears at all. A state is delivered per
+    /// token, and only the running flag, the answer's model and its level can move anything the
+    /// row draws, so anything else is a comparison and no refresh.
     func noteState(_ state: ConversationState) {
         lastState = state
+        let wasRunning = running
         running = state.status == .running || state.compaction?.isRunning == true
-        sendButton.title = running ? Localized.text("Queue") : Localized.text("Send")
-        pills.setStopShown(running)
-        refreshPills()
+        if running != wasRunning {
+            sendButton.title = running ? Localized.text("Queue") : Localized.text("Send")
+            pills.setStopShown(running)
+        }
+        let model = observedModelID()
+        let effort = observedEffort()
+        if running != wasRunning || model != pillObservedModel || effort != pillObservedEffort {
+            pillObservedModel = model
+            pillObservedEffort = effort
+            refreshPills()
+        }
         if ultracodeInFlight, !running, state.hasLoadedTranscript {
             ultracodeInFlight = false
             refreshAura()

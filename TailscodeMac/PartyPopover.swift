@@ -243,6 +243,11 @@ final class PartyPanelView: NSView {
     private(set) var isEditing = false
     var onResize: ((NSSize) -> Void)?
     private var observer: NSObjectProtocol?
+    /// What the cards and badges were last drawn from, and the size the panel last reported: a
+    /// reload that would draw the same party is dropped before any word is measured.
+    private var drawnEditing = false
+    private var drawnRunning = false
+    private var reportedSize = NSSize.zero
 
     init(mode: Mode, model: PartyPanelModel, actions: PartyPanelActions) {
         self.mode = mode
@@ -358,14 +363,25 @@ final class PartyPanelView: NSView {
     }
 
     /// Redraws from the party: the cards, the count, the edit state and the recents. A rename in
-    /// flight is dropped, because what is kept is what the cards say.
+    /// flight is dropped, because what is kept is what the cards say. The party is asked for its
+    /// cards on every refresh — a turn's frames used to arrive here one per token — and answered
+    /// by comparing them with what is drawn: six cards' worth of words are measured, six halo
+    /// animations restarted and the popover resized only when the party itself moved.
     func reload() {
-        cards = model.cards()
-        let needed = cards.map { PartyMetrics.measure($0).height }.max() ?? PartyMetrics.baseHeight
-        rowHeight = max(PartyMetrics.baseHeight, needed)
+        let fresh = model.cards()
+        let editing = isEditing && mode == .party
         let running = model.isRunning()
+        let cardsChanged = fresh != cards
+        guard cardsChanged || editing != drawnEditing || running != drawnRunning else { return }
+        cards = fresh
+        drawnEditing = editing
+        drawnRunning = running
+        if cardsChanged {
+            rowHeight = max(
+                PartyMetrics.baseHeight, cards.map { PartyMetrics.measure($0).height }.max() ?? 0)
+        }
         for (view, card) in zip(cardViews, cards) {
-            view.apply(card, editing: isEditing && mode == .party)
+            view.apply(card, editing: editing)
             view.setBreathing(running)
         }
         let filled = cards.filter { !$0.isHollow }.count
@@ -382,7 +398,9 @@ final class PartyPanelView: NSView {
         }
         needsLayout = true
         let size = preferredSize
-        if frame.size != size { onResize?(size) }
+        guard size != reportedSize else { return }
+        reportedSize = size
+        onResize?(size)
     }
 
     private func reloadRecents() {

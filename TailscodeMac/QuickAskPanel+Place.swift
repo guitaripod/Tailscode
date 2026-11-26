@@ -56,9 +56,9 @@ extension QuickAskPanel {
     /// failure, the attachments or the command list need more height than the list can give up,
     /// the panel grows down to hold them, and it goes back to the chosen size once they no longer
     /// do. A panel that would grow past the foot of the screen rises by only what it overflows, so
-    /// the question box stays as near the pointer as the screen allows. The box measures itself a
-    /// runloop pass after the keystroke that changed it, so the room is made now and once more after
-    /// that pass.
+    /// the question box stays as near the pointer as the screen allows. The box's own growth is
+    /// the editor's news (`boxGrew`); a status line or a chip asks again from where it is set.
+    /// The same request is measured once, and the window moves only when its height moves.
     func makeRoom() {
         fitHeight()
         guard !roomScheduled else { return }
@@ -70,16 +70,35 @@ extension QuickAskPanel {
         }
     }
 
+    /// The box took a new height: the card is taller or shorter whatever its status line and its
+    /// chips say, so the measure in hand is dropped before the room is asked for again.
+    func boxGrew() {
+        roomAsked = nil
+        makeRoom()
+    }
+
     /// A wrapping label is measured one line tall until it is told the width it wraps at, so the
-    /// failure line is given its laid-out width before the card is asked what it needs.
+    /// failure line is given the width it will be laid out at before the card is asked what it
+    /// needs: the card is as wide as the panel less the head's own margins. The pin and the
+    /// fitting size solve the layout once, and the panel is only resized when that height moves.
     private func fitHeight() {
         guard let card, let chosen = chosenSize, card.frame.width > 0 else { return }
-        card.layoutSubtreeIfNeeded()
-        status.preferredMaxLayoutWidth = status.frame.width
-        let pin = card.widthAnchor.constraint(equalToConstant: card.frame.width)
-        pin.isActive = true
-        let needed = card.fittingSize.height
-        pin.isActive = false
+        let room = QuickAskRoom(
+            width: card.frame.width,
+            status: status.isHidden ? "" : status.stringValue,
+            chips: attachments.map(\.name).joined(separator: "\u{1}"),
+            completion: completion.isShowing ? completion.fittingSize.height : 0)
+        let needed: CGFloat
+        if let asked = roomAsked, asked.room == room {
+            needed = asked.needed
+        } else {
+            status.preferredMaxLayoutWidth = room.width - QuickAskRoom.headMargin
+            let pin = card.widthAnchor.constraint(equalToConstant: room.width)
+            pin.isActive = true
+            needed = card.fittingSize.height
+            pin.isActive = false
+            roomAsked = (room, needed)
+        }
         let height = max(chosen.height, needed)
         guard abs(height - frame.height) > 0.5 else { return }
         var grown = frame
