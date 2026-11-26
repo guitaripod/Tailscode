@@ -143,31 +143,38 @@ extension SplitPaneHost {
     /// written once can be undone by the layout it causes. Writing the tree's positions again
     /// until a pass finds every divider already there is what leaves it there; the passes are a
     /// few frames apart and give up after a handful, because a floor that cannot be honoured is
-    /// a clamp, not a race.
+    /// a clamp, not a race. A clamp landing on a chain that is still running stops it here rather
+    /// than stacking a second one on top of it.
     func settleRatios() {
         suppressCapture = true
+        settleWork?.cancel()
+        settleWork = nil
+        settleRun &+= 1
         if applyRatios() {
             suppressCapture = false
             return
         }
-        settle(attempt: 1)
+        settle(attempt: 1, run: settleRun)
     }
 
-    private func settle(attempt: Int) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(30)) { [weak self] in
-            guard let self else { return }
+    private func settle(attempt: Int, run: Int) {
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.settleRun == run else { return }
             if self.applyRatios() || attempt >= 8 {
+                self.settleWork = nil
                 self.suppressCapture = false
             } else {
-                self.settle(attempt: attempt + 1)
+                self.settle(attempt: attempt + 1, run: run)
             }
         }
+        settleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(30), execute: work)
     }
 
     /// A divider drag settles into the model as a ratio, exactly the way the window's own
     /// dividers persist — mid-collapse widths that are nobody's intent are ignored, and so is every
-    /// resize the person did not make with a divider: a window resize, a zoom, a rebuild. Only a
-    /// ratio that actually moved is written, and the write trails the drag.
+    /// resize the person did not make with a divider: a window resize, a zoom, a rebuild. The ratio
+    /// is written once, when the hand lets go, not on every tick of the drag.
     @objc private func splitResized(_ notification: Notification) {
         guard !suppressCapture, Self.isDividerDrag(notification),
             let splitView = notification.object as? NSSplitView,
@@ -191,6 +198,29 @@ extension SplitPaneHost {
             layout.setRatio(Double(share), of: id)
         }
         ratioCaptures += 1
+        if NSApp?.currentEvent?.type == .leftMouseUp {
+            endDividerDrag()
+        } else {
+            trailDividerDrag()
+        }
+    }
+
+    /// The drag is still moving: the write waits for it to stop, cancelled and replaced by every
+    /// tick, so a drag of a hundred notifications is one write at the place the hand left the seam.
+    private func trailDividerDrag() {
+        dividerDragWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.dividerDragWork = nil
+            self.schedulePersist()
+        }
+        dividerDragWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    private func endDividerDrag() {
+        dividerDragWork?.cancel()
+        dividerDragWork = nil
         schedulePersist()
     }
 

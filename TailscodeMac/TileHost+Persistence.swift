@@ -92,8 +92,8 @@ extension TileHost {
         persistRequests += 1
         let current = snapshot()
         let slots = current.contents.values.contains { $0.kind != .chat }
-        if paneCount > 1 || slots, let encoded = current.encoded {
-            writer.schedule(encoded)
+        if paneCount > 1 || slots {
+            writer.schedule(current)
         } else {
             writer.schedule(nil)
         }

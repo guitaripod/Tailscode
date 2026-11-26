@@ -24,6 +24,13 @@ final class OverflowStripView: NSView {
     private let more = NSTextField(labelWithString: "")
     private(set) var chips: [Chip] = []
     private var built: [PaneID: NSView] = [:]
+    /// The chips in the order they were built, what each measured, and the "%@ more" line for the
+    /// count it says: laying the strip out again sizes nothing it has already sized and builds no
+    /// string it has already built.
+    private var builtOrder: [PaneID] = []
+    private var measuredWidths: [PaneID: CGFloat] = [:]
+    private var moreLine: (count: Int, text: String)?
+    private var spokenCount: Int?
 
     static let titleLimit = 18
 
@@ -84,13 +91,18 @@ final class OverflowStripView: NSView {
         chips = next
         row.arrangedSubviews.forEach { $0.removeFromSuperview() }
         built = [:]
+        builtOrder = []
+        measuredWidths = [:]
         for chip in next {
             let view = makeChip(chip)
             built[chip.id] = view
+            builtOrder.append(chip.id)
             row.addArrangedSubview(view)
         }
-        setAccessibilityLabel(
-            Localized.text("%@ more", "\(next.count)"))
+        if spokenCount != next.count {
+            spokenCount = next.count
+            setAccessibilityLabel(Localized.text("%@ more", "\(next.count)"))
+        }
         fit()
     }
 
@@ -104,8 +116,8 @@ final class OverflowStripView: NSView {
         let room = bounds.width - MacTheme.Spacing.s - MacTheme.Spacing.m - 60
         var used: CGFloat = 0
         var hidden = 0
-        for view in row.arrangedSubviews {
-            let width = view.fittingSize.width + row.spacing
+        for (index, view) in row.arrangedSubviews.enumerated() {
+            let width = measuredWidth(view, at: index) + row.spacing
             if used + width > room {
                 if !view.isHidden { view.isHidden = true }
                 hidden += 1
@@ -115,7 +127,21 @@ final class OverflowStripView: NSView {
             }
         }
         more.isHidden = hidden == 0
-        more.stringValue = Localized.text("%@ more", "\(hidden)")
+        if moreLine?.count != hidden {
+            moreLine = (hidden, Localized.text("%@ more", "\(hidden)"))
+            more.stringValue = moreLine?.text ?? ""
+        }
+    }
+
+    /// One chip's width, measured for the chip it was built for and kept until the chips are
+    /// rebuilt: a stack of glass capsules sizes itself the same way however often it is laid out.
+    private func measuredWidth(_ view: NSView, at index: Int) -> CGFloat {
+        guard builtOrder.indices.contains(index) else { return view.fittingSize.width }
+        let id = builtOrder[index]
+        if let width = measuredWidths[id] { return width }
+        let width = view.fittingSize.width
+        measuredWidths[id] = width
+        return width
     }
 
     private func makeChip(_ chip: Chip) -> NSView {

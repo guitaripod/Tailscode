@@ -241,7 +241,6 @@ extension MainWindowController {
     /// model and level it runs on, whoever drove the turn — and what else reads a chat's title
     /// (the window, the overflow strip, the notice raised for it) follows the pane's.
     func refreshTitleFromListing() {
-        var renamed = false
         splitPanes.eachPane { pane in
             guard let current = pane.currentEntry,
                 let fresh = sidebar.allEntries.first(where: {
@@ -249,12 +248,11 @@ extension MainWindowController {
                 }),
                 pane.adopt(fresh)
             else { return }
-            renamed = true
             guard pane === transcript, let adopted = pane.currentEntry else { return }
             showTitle(of: adopted)
         }
-        let noticed = TileRuntime.shared.adoptTitles(from: sidebar.allEntries)
-        if renamed || noticed { (splitPanes as? TileHost)?.refreshStrip() }
+        _ = TileRuntime.shared.adoptTitles(from: sidebar.allEntries)
+        (splitPanes as? TileHost)?.noteListingChanged()
     }
 
     /// The marked chats opened all at once as one even tiling: the tree replaces what the window

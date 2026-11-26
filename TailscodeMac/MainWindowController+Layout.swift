@@ -187,6 +187,7 @@ extension MainWindowController {
         }
         let shown = item?.isCollapsed ?? !paneShown(pane)
         UserDefaults.standard.set(shown, forKey: pane.key)
+        lastPaneShownWrite[pane.key] = shown
         guard let item else { return }
         if !shown {
             let holdsKeyboard: Bool
@@ -245,16 +246,25 @@ extension MainWindowController {
 
     /// Positions are read back whenever the split settles rather than watched per-drag, and only
     /// sane ones are kept: a pane mid-collapse or mid-reveal passes through widths that are
-    /// nobody's intent, so anything under the pane's own minimum is ignored.
+    /// nobody's intent, so anything under the pane's own minimum is ignored. A drag notifies on
+    /// every tick, so the read waits for the hand to stop and writes only what moved.
     @objc private func dividersMoved() {
         guard dividerSavingEnabled else { return }
+        dividerWriteWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.writeDividerPositions() }
+        dividerWriteWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    private func writeDividerPositions() {
+        dividerWriteWork = nil
         let defaults = UserDefaults.standard
-        if let sidebarItem { defaults.set(!sidebarItem.isCollapsed, forKey: ClosablePane.sidebar.key) }
-        if let terminalItem { defaults.set(!terminalItem.isCollapsed, forKey: ClosablePane.terminal.key) }
+        storePaneShown(.sidebar, item: sidebarItem, in: defaults)
+        storePaneShown(.terminal, item: terminalItem, in: defaults)
         if let sidebarItem, !sidebarItem.isCollapsed {
             let width = sidebarItem.viewController.view.frame.width
             if width >= sidebarItem.minimumThickness {
-                defaults.set(Double(width), forKey: DividerKey.sidebar.key)
+                storeDivider(.sidebar, Double(width), in: defaults)
             }
         }
         if let terminalItem, !terminalItem.isCollapsed {
@@ -262,8 +272,24 @@ extension MainWindowController {
             if height >= terminalItem.minimumThickness {
                 let position = contentSplit.splitView.bounds.height - height
                     - contentSplit.splitView.dividerThickness
-                defaults.set(Double(position), forKey: DividerKey.terminal.key)
+                storeDivider(.terminal, Double(position), in: defaults)
             }
         }
+    }
+
+    private func storePaneShown(
+        _ pane: ClosablePane, item: NSSplitViewItem?, in defaults: UserDefaults
+    ) {
+        guard let item else { return }
+        let shown = !item.isCollapsed
+        guard lastPaneShownWrite[pane.key] != shown else { return }
+        lastPaneShownWrite[pane.key] = shown
+        defaults.set(shown, forKey: pane.key)
+    }
+
+    private func storeDivider(_ divider: DividerKey, _ position: Double, in defaults: UserDefaults) {
+        guard lastDividerWrite[divider.key] != position else { return }
+        lastDividerWrite[divider.key] = position
+        defaults.set(position, forKey: divider.key)
     }
 }

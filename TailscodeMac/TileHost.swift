@@ -61,16 +61,45 @@ final class TileHost: NSViewController, PaneTiling {
     var liveResizing = false
     var deferredPeers: [PaneID] = []
 
+    /// What a hidden pane's chip is drawn from that can be read without walking the listing: the
+    /// chat it holds and the watch's presence for it, the summary a slot pane shows instead, and a
+    /// count of the listing refreshes it was built from.
+    struct StripChipFacts: Equatable {
+        var entry: String?
+        var held: SplitPaneSession?
+        var summary: String?
+        var activity: ActivityKind?
+        var presence: SessionPresence?
+        var listing: Int
+    }
+    var stripChips: [PaneID: OverflowStripView.Chip] = [:]
+    var stripChipFacts: [PaneID: StripChipFacts] = [:]
+    var stripListing = 0
+    /// The row the strip was last handed and the panes it was built for: a layout pass over the
+    /// same hidden panes and an unchanged listing is an array handed back, nothing rebuilt.
+    var stripRow: [OverflowStripView.Chip] = []
+    var stripHidden: [PaneID] = []
+    var stripPending = true
+    /// The line each shell was last told it is: a pane whose words did not change is not told again.
+    var spokenLines: [PaneID: String] = [:]
+    /// The seams' names, counted in the tree they were built for.
+    var dividerRoot: SplitNode?
+    var dividerLabels: [SplitID: String] = [:]
+
     /// How long a demoted pane keeps its rows before letting them go, and how long a glance's
     /// last words are kept for the paused face.
     var demotedKeep: TimeInterval = 20
     static let readingKeep: TimeInterval = 600
 
-    let writer = TrailingWriter<String?>(label: "tailscode.layout-writer") { encoded in
-        if let encoded {
-            UserDefaults.standard.set(encoded, forKey: SplitSnapshot.defaultsKey)
-        } else {
+    /// The layout written a moment after the last change rather than on every focus move; the
+    /// snapshot is encoded on the writer's own queue, never the main thread. Nil clears the record.
+    let writer = TrailingWriter<SplitSnapshot?>(label: "tailscode.layout-writer") { snapshot in
+        guard let snapshot else {
             UserDefaults.standard.removeObject(forKey: SplitSnapshot.defaultsKey)
+            return
+        }
+        if let encoded = snapshot.encoded {
+            UserDefaults.standard.set(encoded, forKey: SplitSnapshot.defaultsKey)
         }
     }
     var persistRequests = 0

@@ -12,6 +12,51 @@ import TailscodeCore
 /// few hundred discs and a handful of gradients, and a view that draws it does so once for a
 /// size.
 enum SceneryPainter {
+    /// The colours and halos a sky draws, kept from one draw to the next: a sky is a thousand stars
+    /// in a handful of tints, and re-parsing a hex and building a gradient per star is most of what
+    /// a resize tick spends. The lock is the only state the painter has, and every entry is a pure
+    /// function of the tint it was made for, so two draws racing make the same value.
+    private final class Ink: @unchecked Sendable {
+        static let shared = Ink()
+        private let lock = NSLock()
+        private var colors: [String: CGColor] = [:]
+        private var halos: [String: CGGradient] = [:]
+
+        func color(_ hex: String, alpha: Double) -> CGColor {
+            lock.lock()
+            defer { lock.unlock() }
+            return cachedColor(hex, alpha: alpha)
+        }
+
+        /// One halo per tint and share: the star's own alpha is the context's, so the gradient the
+        /// discs spill is the same gradient whichever star is wearing it.
+        func halo(_ tint: String, share: Double) -> CGGradient? {
+            let key = "\(tint)@\(share)"
+            lock.lock()
+            defer { lock.unlock() }
+            if let made = halos[key] { return made }
+            let stops = [(0.0, 1.0), (0.25, 0.78), (0.5, 0.37), (0.75, 0.1), (1.0, 0.0)]
+            let colors = stops.map { cachedColor(tint, alpha: $0.1) }
+            let locations = stops.map { CGFloat($0.0) }
+            let made = CGGradient(
+                colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: colors as CFArray,
+                locations: locations)
+            halos[key] = made
+            return made
+        }
+
+        private func cachedColor(_ hex: String, alpha: Double) -> CGColor {
+            let key = "\(hex)@\(alpha)"
+            if let made = colors[key] { return made }
+            let channels = Contrast.channels(hex) ?? (red: 0.5, green: 0.5, blue: 0.5)
+            let made = CGColor(
+                srgbRed: CGFloat(channels.red), green: CGFloat(channels.green),
+                blue: CGFloat(channels.blue), alpha: CGFloat(alpha))
+            colors[key] = made
+            return made
+        }
+    }
+
     /// The ground and everything on it: the canvas colour, the washes, and then the stars or the
     /// dunes. Opaque, so the view that draws it needs nothing behind it.
     static func drawSky(_ scenery: Scenery, canvas: String, in context: CGContext, sky: CGRect) {
@@ -64,17 +109,16 @@ enum SceneryPainter {
         _ star: StarField.Star, halo: Double, at centre: CGPoint, in context: CGContext
     ) {
         let radius = CGFloat(star.radius)
-        if halo > 0,
-            let spill = gradient(
-                [(0, 1), (0.25, 0.78), (0.5, 0.37), (0.75, 0.1), (1, 0)].map {
-                    ($0.0, star.tint, star.alpha * halo * $0.1)
-                })
-        {
+        if halo > 0, let spill = Ink.shared.halo(star.tint, share: halo) {
+            context.saveGState()
+            context.setAlpha(CGFloat(star.alpha * halo))
             context.drawRadialGradient(
                 spill, startCenter: centre, startRadius: 0, endCenter: centre,
                 endRadius: radius * 3.2, options: [])
+            context.restoreGState()
         }
-        context.setFillColor(color(star.tint, alpha: min(star.alpha, Scenery.starAlphaCeiling)))
+        context.setFillColor(
+            Ink.shared.color(star.tint, alpha: min(star.alpha, Scenery.starAlphaCeiling)))
         context.fillEllipse(
             in: CGRect(
                 x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2))
@@ -213,10 +257,7 @@ enum SceneryPainter {
     }
 
     static func color(_ hex: String, alpha: Double = 1) -> CGColor {
-        let channels = Contrast.channels(hex) ?? (red: 0.5, green: 0.5, blue: 0.5)
-        return CGColor(
-            srgbRed: CGFloat(channels.red), green: CGFloat(channels.green),
-            blue: CGFloat(channels.blue), alpha: CGFloat(alpha))
+        Ink.shared.color(hex, alpha: alpha)
     }
 
     private static func gradient(_ stops: [(Double, String, Double)]) -> CGGradient? {

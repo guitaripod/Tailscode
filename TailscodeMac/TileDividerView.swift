@@ -35,6 +35,15 @@ final class TileDividerView: NSView {
     private var grabOffset: Double = 0
     private var moved = false
     private var tracking: NSTrackingArea?
+    /// What the seam has already told a screen reader, what it was last drawn in, and which
+    /// appearance made those colours: a layout pass that moved nothing pays for neither a string
+    /// nor a `CGColor`.
+    private var spokenLabel: String?
+    private var spokenValue: Double?
+    private var ink: (accent: CGColor, separator: CGColor)?
+    private var styledActive: Bool?
+    private var styledAppearance = 0
+    private var appearanceRun = 0
 
     init(placement: DividerPlacement) {
         self.id = placement.id
@@ -44,6 +53,9 @@ final class TileDividerView: NSView {
         layer?.addSublayer(line)
         setAccessibilityElement(true)
         setAccessibilityRole(.splitter)
+        setAccessibilityOrientation(placement.axis == .horizontal ? .vertical : .horizontal)
+        setAccessibilityMinValue(NSNumber(value: 0))
+        setAccessibilityMaxValue(NSNumber(value: 1))
     }
 
     @available(*, unavailable)
@@ -74,21 +86,32 @@ final class TileDividerView: NSView {
     private var vertical: Bool { placement.axis == .horizontal }
 
     /// Takes the divider's latest geometry: its band, the rectangle it divides and how far it may
-    /// travel, and the words a screen reader says for it.
+    /// travel, and the words a screen reader says for it. Only what actually moved is written, so
+    /// a layout pass that left the seam where it was costs no second layout and no string.
     func update(_ placement: DividerPlacement, label: String) {
         let axisChanged = placement.axis != self.placement.axis
         self.placement = placement
         let frame = NSRect(
             x: placement.hit.x, y: placement.hit.y, width: placement.hit.width,
             height: placement.hit.height)
-        if self.frame != frame { self.frame = frame }
-        if axisChanged { window?.invalidateCursorRects(for: self) }
-        setAccessibilityLabel(label)
-        setAccessibilityOrientation(vertical ? .vertical : .horizontal)
-        setAccessibilityValue(NSNumber(value: fraction))
-        setAccessibilityMinValue(NSNumber(value: 0))
-        setAccessibilityMaxValue(NSNumber(value: 1))
-        needsLayout = true
+        if self.frame != frame {
+            self.frame = frame
+            needsLayout = true
+        }
+        if axisChanged {
+            window?.invalidateCursorRects(for: self)
+            setAccessibilityOrientation(vertical ? .vertical : .horizontal)
+            needsLayout = true
+        }
+        if spokenLabel != label {
+            spokenLabel = label
+            setAccessibilityLabel(label)
+        }
+        let share = fraction
+        if spokenValue != share {
+            spokenValue = share
+            setAccessibilityValue(NSNumber(value: share))
+        }
     }
 
     /// Where the seam sits as a share of the room it can divide.
@@ -115,17 +138,36 @@ final class TileDividerView: NSView {
     }
 
     /// A seam at rest is the separator; under the pointer or while it moves it takes the accent,
-    /// two points wide, so the band a person can grab is visible before they grab it.
+    /// two points wide, so the band a person can grab is visible before they grab it. Both colours
+    /// are made once for the appearance that made them, and written only when the state changed.
     private func restyle() {
         let active = hovered || dragging || holdsKeyboard
+        guard styledActive != active || styledAppearance != appearanceRun else { return }
+        styledActive = active
+        styledAppearance = appearanceRun
+        let ink = inkColors()
+        line.backgroundColor = active ? ink.accent : ink.separator
+    }
+
+    private func inkColors() -> (accent: CGColor, separator: CGColor) {
+        if let ink { return ink }
+        var made = (
+            accent: MacTheme.Color.accent.cgColor, separator: MacTheme.Color.separator.cgColor
+        )
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            line.backgroundColor =
-                (active ? MacTheme.Color.accent : MacTheme.Color.separator).cgColor
+            made = (
+                accent: MacTheme.Color.accent.cgColor,
+                separator: MacTheme.Color.separator.cgColor
+            )
         }
+        ink = made
+        return made
     }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
+        ink = nil
+        appearanceRun &+= 1
         restyle()
     }
 

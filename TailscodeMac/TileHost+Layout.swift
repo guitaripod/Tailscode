@@ -47,8 +47,9 @@ extension TileHost {
             }
             let frame = NSRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height)
             if shell.frame != frame {
+                let resized = shell.frame.size != frame.size
                 shell.frame = frame
-                panes[id]?.sky.needsDisplay = true
+                if !resized { panes[id]?.sky.needsDisplay = true }
             }
             if shell.isHidden { shell.isHidden = false }
         }
@@ -67,23 +68,43 @@ extension TileHost {
     }
 
     private func placeDividers(_ placement: PanePlacement) {
+        let labels = dividerWords()
         var seen: Set<SplitID> = []
-        let order = layout.paneIDs
         for divider in placement.dividers {
             seen.insert(divider.id)
             let view = dividers[divider.id] ?? makeDivider(divider)
-            let (first, second) = adjacentPanes(divider.id)
-            let label = Localized.text(
-                "Divider between pane %@ and pane %@",
-                "\((first.flatMap { order.firstIndex(of: $0) } ?? 0) + 1)",
-                "\((second.flatMap { order.firstIndex(of: $0) } ?? 1) + 1)")
-            view.update(divider, label: label)
+            view.update(divider, label: labels[divider.id] ?? "")
             if view.isHidden { view.isHidden = false }
         }
         for (id, view) in dividers where !seen.contains(id) {
             view.removeFromSuperview()
             dividers[id] = nil
         }
+    }
+
+    /// What each seam tells a screen reader, counted once for the tree it divides: the words name
+    /// two pane numbers, so a layout pass over an unchanged tree pays for no walk and no string.
+    private func dividerWords() -> [SplitID: String] {
+        if layout.root == dividerRoot { return dividerLabels }
+        var labels: [SplitID: String] = [:]
+        let order = layout.paneIDs
+        func walk(_ node: SplitNode) -> (first: PaneID, last: PaneID)? {
+            switch node {
+            case .pane(let id):
+                return (id, id)
+            case .split(let id, _, _, let first, let second):
+                guard let leading = walk(first), let trailing = walk(second) else { return nil }
+                labels[id] = Localized.text(
+                    "Divider between pane %@ and pane %@",
+                    "\((order.firstIndex(of: leading.last) ?? 0) + 1)",
+                    "\((order.firstIndex(of: trailing.first) ?? 1) + 1)")
+                return (leading.first, trailing.last)
+            }
+        }
+        _ = walk(layout.root)
+        dividerRoot = layout.root
+        dividerLabels = labels
+        return labels
     }
 
     private func makeDivider(_ placement: DividerPlacement) -> TileDividerView {
@@ -110,23 +131,6 @@ extension TileHost {
         return view
     }
 
-    /// The pane that ends at a seam and the pane that starts after it, in reading order.
-    private func adjacentPanes(_ split: SplitID) -> (PaneID?, PaneID?) {
-        func find(_ node: SplitNode) -> (PaneID?, PaneID?)? {
-            guard case .split(let id, _, _, let first, let second) = node else { return nil }
-            if id == split { return (Self.leaves(first).last, Self.leaves(second).first) }
-            return find(first) ?? find(second)
-        }
-        return find(layout.root) ?? (nil, nil)
-    }
-
-    private static func leaves(_ node: SplitNode) -> [PaneID] {
-        switch node {
-        case .pane(let id): return [id]
-        case .split(_, _, _, let first, let second): return leaves(first) + leaves(second)
-        }
-    }
-
     /// A divider step from the pointer: Core clamps it, the canvas lays out live.
     func drag(_ split: SplitID, to position: Double) {
         guard let placement else { return }
@@ -151,19 +155,53 @@ extension TileHost {
     private func placeStrip(_ placement: PanePlacement) {
         guard let rect = placement.strip else {
             if !strip.isHidden { strip.isHidden = true }
+            forgetStripChips()
             return
         }
         let frame = NSRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height)
         if strip.frame != frame { strip.frame = frame }
         strip.isHidden = false
-        strip.show(placement.hidden.map(chip(for:)))
+        if stripPending || placement.hidden != stripHidden {
+            stripPending = false
+            stripHidden = placement.hidden
+            stripRow = placement.hidden.map(chip(for:))
+        }
+        strip.show(stripRow)
     }
 
+    /// The chip a hidden pane wears, kept until one of the cheap facts it was built from moved: a
+    /// chip is read out of the chat list's whole listing, so a layout pass and the governor's
+    /// second cost a handful of lookups here instead of a scan of every chat on every machine.
     private func chip(for id: PaneID) -> OverflowStripView.Chip {
+        let facts = chipFacts(id)
+        if let known = stripChipFacts[id], known == facts, let chip = stripChips[id] { return chip }
         let face = describe(id)
-        return OverflowStripView.Chip(
+        let chip = OverflowStripView.Chip(
             id: id, title: face.title, activity: face.activity,
             needsYou: face.activity == .needsApproval || face.activity == .needsAnswer)
+        stripChips[id] = chip
+        stripChipFacts[id] = facts
+        return chip
+    }
+
+    /// What a chip says that can be read without walking the listing, and the refresh count the
+    /// walk it did make belongs to.
+    private func chipFacts(_ id: PaneID) -> StripChipFacts {
+        let pane = panes[id]
+        let entry = pane?.currentEntry
+        let identity = entry.map {
+            "\($0.profileID)|\($0.session.id)|\($0.session.hasPlaceholderTitle)|\($0.session.title)"
+        }
+        let key = entry.map { SessionPinStore.key($0.profileID, $0.session.id) }
+        let preview = pane?.previewIdentity
+        var summary = pane?.webSummary ?? preview?.title
+        #if !TAILSCODE_MAS
+            summary = summary ?? pane?.videoSummary
+        #endif
+        return StripChipFacts(
+            entry: identity, held: held[id], summary: summary, activity: preview?.activity,
+            presence: key.flatMap { TileRuntime.shared.backgroundPresence[$0] },
+            listing: stripListing)
     }
 
     /// The name and the face a pane is known by right now, from whatever it already holds: the
@@ -213,11 +251,32 @@ extension TileHost {
             .activity
     }
 
-    /// Redraws the overflow chips from what is known now: the window calls it when a watched
-    /// conversation's reading changes, since the strip is otherwise only drawn by a layout pass.
+    /// Redraws the overflow chips from what is known now. A chip whose cheap facts did not move is
+    /// kept, so the governor's second and a layout pass cost the strip nothing they did not already
+    /// pay for.
     func refreshStrip() {
-        guard let placement, !placement.hidden.isEmpty else { return }
+        guard let placement, !placement.hidden.isEmpty else {
+            forgetStripChips()
+            return
+        }
         placeStrip(placement)
+    }
+
+    /// The listing the chips are read out of, or the watches' presence, moved on: every chip is
+    /// read again on the next refresh, and one whose facts moved is built again.
+    func noteListingChanged() {
+        stripListing &+= 1
+        stripPending = true
+        refreshStrip()
+    }
+
+    private func forgetStripChips() {
+        guard !stripChips.isEmpty || !stripRow.isEmpty else { return }
+        stripChips.removeAll()
+        stripChipFacts.removeAll()
+        stripRow = []
+        stripHidden = []
+        stripPending = true
     }
 
     private func densityGeometryChanged(_ placement: PanePlacement) -> Bool {

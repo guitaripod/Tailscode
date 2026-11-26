@@ -118,10 +118,11 @@ extension TileHost {
             }
             pane.setIdentityExtras(pinned: pinned.contains(id), alsoOpenIn: other)
         }
-        speakPanes()
     }
 
-    /// "Pane 2 of 5, <title>, <activity>" on every shell, in reading order.
+    /// "Pane 2 of 5, <title>, <activity>" on every shell, in reading order. The lines are built for
+    /// the one reconcile that changed what a pane says, never for the rings that follow it, and a
+    /// pane whose line it already wears is not spoken to again.
     func speakPanes() {
         let order = layout.paneIDs
         for (index, id) in order.enumerated() {
@@ -129,7 +130,14 @@ extension TileHost {
             let face = describe(id)
             var parts = [Localized.text("Pane %@ of %@", "\(index + 1)", "\(order.count)"), face.title]
             if let activity = face.activity { parts.append(activity.spoken) }
-            shell.setAccessibilityLabel(parts.joined(separator: ", "))
+            let line = parts.joined(separator: ", ")
+            guard spokenLines[id] != line else { continue }
+            spokenLines[id] = line
+            shell.setAccessibilityLabel(line)
+        }
+        if spokenLines.count != order.count {
+            let live = Set(order)
+            spokenLines = spokenLines.filter { live.contains($0.key) }
         }
     }
 

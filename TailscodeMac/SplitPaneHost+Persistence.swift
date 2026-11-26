@@ -45,10 +45,9 @@ extension SplitPaneHost {
         persistRequests += 1
         let current = snapshot()
         if paneCount > 1 || !current.videos.isEmpty || !current.pages.isEmpty
-            || !current.draws.isEmpty,
-            let encoded = current.encoded
+            || !current.draws.isEmpty
         {
-            writer.schedule(encoded)
+            writer.schedule(current)
         } else {
             writer.schedule(nil)
         }

@@ -30,6 +30,12 @@ final class MainWindowController: NSWindowController {
     var sidebarItem: NSSplitViewItem?
     var terminalItem: NSSplitViewItem?
     var dividerSavingEnabled = false
+    /// What the last divider write left in the defaults, and the write a moving divider has coming:
+    /// a drag ticks many times a second and must land as the one write at the place the hand
+    /// stopped, and a tick that lands where the last write did must land nowhere.
+    var lastPaneShownWrite: [String: Bool] = [:]
+    var lastDividerWrite: [String: Double] = [:]
+    var dividerWriteWork: DispatchWorkItem?
     /// The questions for later being asked right now, so a slow mint is never asked twice.
     var laterInFlight: Set<String> = []
     var laterBeat: Timer?
@@ -166,7 +172,7 @@ final class MainWindowController: NSWindowController {
         runtime.clock.host = window.contentView
         runtime.onPresenceChanged = { [weak self] in
             self?.sidebar.notePresenceChanged()
-            (self?.splitPanes as? TileHost)?.refreshStrip()
+            (self?.splitPanes as? TileHost)?.noteListingChanged()
         }
         splitPanes.onRefused = { [weak self] text in self?.toast(text) }
         Seatbelts.shared.onDecision = { [weak self] decision in

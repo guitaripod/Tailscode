@@ -41,18 +41,27 @@ final class SplitPaneHost: NSViewController, PaneTiling {
     var governorParked: Set<PaneID> = []
     var occluded = false
     /// The layout written a moment after the last change rather than on every focus move and every
-    /// divider notification; nil clears the record. Flushed on every exit path.
-    let writer = TrailingWriter<String?>(label: "tailscode.layout-writer") { encoded in
-        if let encoded {
-            UserDefaults.standard.set(encoded, forKey: SplitSnapshot.defaultsKey)
-        } else {
+    /// divider notification; the snapshot is encoded on the writer's own queue, never the main
+    /// thread. Nil clears the record. Flushed on every exit path.
+    let writer = TrailingWriter<SplitSnapshot?>(label: "tailscode.layout-writer") { snapshot in
+        guard let snapshot else {
             UserDefaults.standard.removeObject(forKey: SplitSnapshot.defaultsKey)
+            return
+        }
+        if let encoded = snapshot.encoded {
+            UserDefaults.standard.set(encoded, forKey: SplitSnapshot.defaultsKey)
         }
     }
     /// Layout writes asked for, and divider notifications that moved a ratio — counted for the
     /// selftest that proves a burst of changes is one write and a programmatic resize is none.
     var persistRequests = 0
     var ratioCaptures = 0
+    /// The write a divider drag has coming, and the chain of ratio passes a clamp left pending:
+    /// both are cancelled by the next one, so a drag writes once when it ends and a clamp cannot
+    /// stack a second chain on top of itself.
+    var dividerDragWork: DispatchWorkItem?
+    var settleWork: DispatchWorkItem?
+    var settleRun = 0
 
     init() {
         super.init(nibName: nil, bundle: nil)
