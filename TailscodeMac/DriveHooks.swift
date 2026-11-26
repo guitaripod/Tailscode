@@ -245,6 +245,35 @@
                 NSApp.terminate(nil)
             case "kill":
                 kill(getpid(), SIGKILL)
+            case "mark":
+                FrameWalk.shared.mark(argument.isEmpty ? "unnamed" : argument)
+            case "scroll":
+                let fields = argument.split(separator: ",").map(String.init)
+                say(
+                    WalkDrive.scroll(
+                        fields.first ?? "transcript",
+                        seconds: fields.count > 1 ? Double(fields[1]) ?? 8 : 8, main: main))
+            case "resize":
+                say(WalkDrive.resize(main, seconds: Double(argument) ?? 3))
+            case "zoom":
+                main?.window?.performZoom(nil)
+                say("ZOOM")
+            case "theme":
+                say(WalkDrive.theme(argument))
+            case "open":
+                say(WalkDrive.open(argument, main: main))
+            case "closewindows":
+                say(WalkDrive.closeSecondary())
+            case "single":
+                main?.unsplit(keeping: nil)
+                say("SINGLE")
+            case "cycle":
+                say(WalkDrive.cycle(Int(argument) ?? 8, main: main))
+            case "type":
+                say(WalkDrive.type(argument, main: main))
+            case "draftclear":
+                main?.transcript.composer.fill(with: "")
+                say("DRAFTCLEAR")
             default:
                 say("DRIVE unknown verb \(verb)")
             }

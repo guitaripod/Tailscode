@@ -48,6 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             controller.showWindow(nil)
         }
+        #if DEBUG
+            FrameWalk.startIfRequested(in: controller.window)
+        #endif
         MacMenuBar.shared.start(hub: controller)
         PointerSweep.install()
         let menu = MainMenu(hub: controller)
