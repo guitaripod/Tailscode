@@ -268,51 +268,64 @@ final class ChatRowContentView: UIView, UIContentView {
         guard let configuration = configuration as? ChatRowConfiguration else { return }
         let facts = configuration.facts
         guard facts != applied else { return }
+        let before = applied
         applied = facts
         let large = traitCollection.preferredContentSizeCategory.isAccessibilityCategory
 
-        switch facts.mark {
-        case .activity:
-            tile.backgroundColor = facts.icon.tone.color.withAlphaComponent(0.14)
-            badge.show(facts.icon, spoken: nil)
-            unreadDot.isHidden = true
-        case .unread:
-            tile.backgroundColor = Theme.Color.accent.withAlphaComponent(0.14)
-            badge.show(nil, spoken: nil)
-            unreadDot.isHidden = false
-        case .none:
-            tile.backgroundColor = .clear
-            badge.show(nil, spoken: nil)
-            unreadDot.isHidden = true
+        if before?.mark != facts.mark || before?.icon != facts.icon || before == nil {
+            switch facts.mark {
+            case .activity:
+                tile.backgroundColor = facts.icon.tone.color.withAlphaComponent(0.14)
+                badge.show(facts.icon, spoken: nil)
+                unreadDot.isHidden = true
+            case .unread:
+                tile.backgroundColor = Theme.Color.accent.withAlphaComponent(0.14)
+                badge.show(nil, spoken: nil)
+                unreadDot.isHidden = false
+            case .none:
+                tile.backgroundColor = .clear
+                badge.show(nil, spoken: nil)
+                unreadDot.isHidden = true
+            }
         }
 
-        titleLabel.font = Theme.Ramp.font(facts.emphasis == .strong ? .rowTitleStrong : .rowTitle)
-        titleLabel.textColor = Theme.Color.label.withAlphaComponent(
-            ChatRowInk.titleOpacity(facts.emphasis))
-        titleLabel.numberOfLines = large ? 0 : 1
-        titleLabel.text = facts.title
-
-        if let news = facts.news {
-            newsLabel.isHidden = false
-            newsLabel.numberOfLines = large ? 0 : ChatRowInk.newsLines(news.voice, roomy: true)
-            newsLabel.attributedText = Self.newsText(news, live: facts.icon.tone.color)
-        } else {
-            newsLabel.isHidden = true
-            newsLabel.attributedText = nil
+        if before?.title != facts.title || before?.emphasis != facts.emphasis || before == nil {
+            titleLabel.font = Theme.Ramp.font(facts.emphasis == .strong ? .rowTitleStrong : .rowTitle)
+            titleLabel.textColor = Theme.Color.label.withAlphaComponent(
+                ChatRowInk.titleOpacity(facts.emphasis))
+            titleLabel.numberOfLines = large ? 0 : 1
+            titleLabel.text = facts.title
         }
 
-        metaLabel.numberOfLines = large ? 0 : 1
-        metaLabel.attributedText = ModelChipText.line(
-            chip: facts.chip,
-            pieces: facts.pieces.map {
-                ($0.text, $0.isQuiet ? Theme.Color.tertiaryLabel : Theme.Color.secondaryLabel)
-            },
-            size: Theme.Ramp.font(.panelFootnote).pointSize, chipTrails: true,
-            strength: ChatRowInk.chipOpacity(facts.emphasis))
-        pinView.isHidden = !facts.pinned
-        ageLabel.text = facts.age
+        if before?.news != facts.news || before?.icon != facts.icon || before == nil {
+            if let news = facts.news {
+                newsLabel.isHidden = false
+                newsLabel.numberOfLines = large ? 0 : ChatRowInk.newsLines(news.voice, roomy: true)
+                newsLabel.attributedText = Self.newsText(news, live: facts.icon.tone.color)
+            } else {
+                newsLabel.isHidden = true
+                newsLabel.attributedText = nil
+            }
+        }
 
-        alpha = facts.dimmed ? 0.62 : 1
+        if before?.chip != facts.chip || before?.pieces != facts.pieces
+            || before?.emphasis != facts.emphasis || before == nil
+        {
+            metaLabel.numberOfLines = large ? 0 : 1
+            metaLabel.attributedText = ModelChipText.line(
+                chip: facts.chip,
+                pieces: facts.pieces.map {
+                    ($0.text, $0.isQuiet ? Theme.Color.tertiaryLabel : Theme.Color.secondaryLabel)
+                },
+                size: Theme.Ramp.font(.panelFootnote).pointSize, chipTrails: true,
+                strength: ChatRowInk.chipOpacity(facts.emphasis))
+        }
+
+        if before?.pinned != facts.pinned || before == nil { pinView.isHidden = !facts.pinned }
+        if before?.age != facts.age || before == nil { ageLabel.text = facts.age }
+        if before?.dimmed != facts.dimmed || before == nil {
+            alpha = facts.dimmed ? 0.62 : 1
+        }
         accessibilityLabel = facts.spoken
     }
 

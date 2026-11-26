@@ -49,9 +49,26 @@ struct QuotaGlanceTests {
         #expect(line.tone == .warn)
     }
 
+    @Test("The card behind the strip shows every window of every provider, each with its own reset")
+    func everyWindow() {
+        let reports = [
+            ("arch", quota("Claude", [("Session", 0.62), ("Weekly", 0.34)], resetsIn: 7_200)),
+            ("arch", quota("Grok", [("Weekly credits", 0.71)], resetsIn: 86_400)),
+            ("arch", balance(4.2)),
+        ]
+        let card = QuotaGlance.make(from: reports, answeredAt: now, now: now, everyWindow: true)
+        #expect(card.lines.map(\.kind) == [.window, .window, .window, .balance])
+        #expect(card.lines[0].text.hasPrefix("Claude Session"))
+        #expect(card.lines[1].text.hasPrefix("Claude Weekly"), "the window the strip folds away")
+        #expect(card.lines[2].text.hasPrefix("Grok Weekly credits"))
+        #expect(card.lines[0].text.contains("2h"))
+        #expect(card.lines[2].text.contains("1d"))
+        let strip = glance(reports)
+        #expect(strip.lines.count == 3, "the strip still folds to one line per provider")
+    }
+
     @Test("A quiet account names each provider's window closest to mattering")
-    func quiet() {
-        let strip = glance([("arch", quota("Claude", [("Weekly", 0.3), ("Session", 0.1)]))])
+    func quiet() {        let strip = glance([("arch", quota("Claude", [("Weekly", 0.3), ("Session", 0.1)]))])
         #expect(strip.lines.count == 1)
         let line = try! #require(strip.lines.first)
         #expect(line.tone == .ok)

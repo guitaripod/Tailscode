@@ -337,15 +337,16 @@ final class AppCoordinator: NSObject {
         private func seedDebugConnectionIfNeeded() {
             let env = ProcessInfo.processInfo.environment
             guard let host = env["TAILSCODE_HOST"], let url = URL(string: host) else { return }
-            guard !ConnectionController.shared.hasConnection else {
-                MidgarLog.info("seed skipped — already connected", category: .connection)
-                return
+            let known = Set(ConnectionController.shared.profiles.map(\.baseURL))
+            if known.contains(url) {
+                MidgarLog.info("seed skipped — \(host) is already saved", category: .connection)
+            } else {
+                seed(
+                    id: "debug", url: url, backend: Self.debugBackend(env["TAILSCODE_BACKEND"]),
+                    password: env["TAILSCODE_PASSWORD"])
             }
-            seed(
-                id: "debug", url: url, backend: Self.debugBackend(env["TAILSCODE_BACKEND"]),
-                password: env["TAILSCODE_PASSWORD"])
 
-            if let extra = env["TAILSCODE_HOST2"], let url2 = URL(string: extra) {
+            if let extra = env["TAILSCODE_HOST2"], let url2 = URL(string: extra), !known.contains(url2) {
                 seed(
                     id: "debug2", url: url2, backend: Self.debugBackend(env["TAILSCODE_BACKEND2"]),
                     password: env["TAILSCODE_PASSWORD2"])

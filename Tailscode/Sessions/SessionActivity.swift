@@ -215,6 +215,30 @@ final class SessionActivity {
         }
     }
 
+    /// Every conversation this device is driving, read once, **without the step each is on**. A
+    /// board walking a fleet asks this once and looks nothing up for the rest: everything missing
+    /// is `.unobserved`.
+    ///
+    /// Naming the step reads the live transcript afresh (`LiveActivityReading.live`, which walks
+    /// every message), and a board that asked for it paid milliseconds for each running turn on
+    /// every rebuild — a second of that was most of the hitch during a live session. A row says
+    /// the listing's own task line instead, and the chat's status line, which is drawn once and
+    /// for the turn in front of the person, is where the step is spelled out.
+    func presenceSummary() -> [String: SessionPresence] {
+        var presence: [String: SessionPresence] = [:]
+        presence.reserveCapacity(statuses.count)
+        for (sessionID, status) in statuses {
+            switch status {
+            case .running: presence[sessionID] = .running(nil)
+            case .awaitingApproval: presence[sessionID] = .awaitingApproval
+            case .background(let tasks): presence[sessionID] = .background(tasks: tasks)
+            case .stalled(let tasks): presence[sessionID] = .stalled(tasks: tasks)
+            case .idle: break
+            }
+        }
+        return presence
+    }
+
     /// What a turn waiting on the person is asking to do, for a conversation this device is
     /// streaming. Anything else has no call in hand and the row says the plain thing.
     func approvalAsk(for sessionID: String) -> ApprovalAsk? {

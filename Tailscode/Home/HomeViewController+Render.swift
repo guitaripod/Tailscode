@@ -4,37 +4,68 @@ import UIKit
 
 extension HomeViewController {
     func renderSnapshot() {
+        #if DEBUG
+            let passBegan = BoardBench.cpuTime()
+            var bench = BoardBench.Stages()
+            defer {
+                bench.mark("rest")
+                BoardBench.note(pass: BoardBench.cpuTime() - passBegan, stages: bench)
+            }
+        #endif
         deferredSnapshot = false
         lastRenderAt = Date()
-        savedChats = SavedChatStore.all()
+        let readings = storeReadings()
+        savedChats = readings.saved
         let today = showsToday
         let limits = (today ? HomeBandLimits.column : .phone).reaching(recentReach)
-        let folds = today ? [] : HomeFolds.shut()
+        let folds = today ? [] : readings.folds
         let servers = viewModel.servers
         let down = hasLoadedOnce ? servers.filter { viewModel.unreachable.contains($0.id) } : []
-        let archived = ArchivedChatStore.all()
-        let isUnread = SessionSeenStore.unreadEvaluator()
-        let pins = Set(SessionPinStore.all())
-        let rows = viewModel.entries
-            .filter { !archived.contains(ArchivedChatStore.key($0.profileID, $0.session.id)) }
-            .map { entry in
-                SessionRowModel(
-                    entry: entry, unreachable: viewModel.unreachable.contains(entry.profileID),
-                    unread: isUnread(entry.session.id, entry.session.updatedAt), saved: false,
-                    pinned: pins.contains(SessionPinStore.key(entry.profileID, entry.session.id)),
-                    presence: SessionActivity.shared.presence(for: entry.session.id),
-                    observedAt: viewModel.observedAt[entry.profileID])
+        let archived = readings.archived
+        let isUnread = readings.unread
+        let pins = readings.pins
+        #if DEBUG
+            bench.mark("stores")
+        #endif
+        let presence = SessionActivity.shared.presenceSummary()
+        appliedPresence = presence
+        #if DEBUG
+            bench.mark("presence")
+        #endif
+        let keptEntries = viewModel.entries
+            .filter {
+                !archived.contains(
+                    ArchivedChatStore.ChatKey(
+                        profileID: $0.profileID, sessionID: $0.session.id))
             }
-        let vocabulary = ChatListVocabulary(rows: rows)
+        #if DEBUG
+            bench.mark("filter")
+        #endif
+        let seeds = keptEntries.map { entry in
+            HomeRowSeed(
+                entry: entry, unreachable: viewModel.unreachable.contains(entry.profileID),
+                unread: isUnread(entry.session.id, entry.session.updatedAt), saved: false,
+                pinned: pins.contains(SessionPinStore.key(entry.profileID, entry.session.id)),
+                presence: presence[entry.session.id] ?? .unobserved)
+        }
+        #if DEBUG
+            bench.mark("rows")
+        #endif
+        let vocabulary = ChatListVocabulary(rows: seeds)
         let missed = Dictionary(
             ActivityInbox.all().map { ($0.sessionID, $0.reason) }, uniquingKeysWith: { first, _ in first })
+        appliedVocabulary = vocabulary
+        appliedMissed = missed
+        #if DEBUG
+            bench.mark("vocab")
+        #endif
 
         func key(_ profileID: String, _ sessionID: String) -> String { "\(profileID)\u{1}\(sessionID)" }
         let serverIDs = Set(servers.map(\.id))
         let listed =
             savedChats.isEmpty ? Set<String>() : Set(viewModel.entries.map { key($0.profileID, $0.session.id) })
         let kept = Set(
-            rows.filter { $0.state.isInFlight || $0.pinned }.map { key($0.entry.profileID, $0.entry.session.id) })
+            seeds.filter { $0.state.isInFlight || $0.pinned }.map { key($0.entry.profileID, $0.entry.session.id) })
         let savedCards = Array(
             savedChats.lazy
                 .filter { self.isOpenable($0, servers: serverIDs, listed: listed) }
@@ -42,16 +73,19 @@ extension HomeViewController {
                 .prefix(limits.saved)
                 .map { SavedCard(chat: $0, unread: isUnread($0.sessionID, $0.updatedAt)) })
         let savedKeys = Set(savedCards.map { key($0.chat.profileID, $0.chat.sessionID) })
-        let board = HomeBoard.make(
-            rows: rows.filter { !savedKeys.contains(key($0.entry.profileID, $0.entry.session.id)) },
-            limits: limits, offline: down.map(\.name))
+        let boardBands = HomeBoard.bands(
+            rows: seeds.filter { !savedKeys.contains(key($0.entry.profileID, $0.entry.session.id)) },
+            limits: limits)
+        #if DEBUG
+            bench.mark("bands")
+        #endif
 
         var snapshot = NSDiffableDataSourceSnapshot<HomeSection, HomeItem>()
         if hasLoadedOnce, !servers.isEmpty {
             let status = HomeStatus.reading(
-                rows: rows, offline: down.map(\.name),
+                rows: seeds, offline: down.map(\.name),
                 range: RangeHome.line(
-                    quotas: quotas, board: QuotaBoardStore.current, trail: RangeStore.trail))
+                    quotas: quotas, board: readings.quotaBoard, trail: readings.trail))
             snapshot.appendSections([.status])
             snapshot.appendItems([.status(HomeStatusCard(status: status))], toSection: .status)
             if let line = scheduleLine {
@@ -63,7 +97,13 @@ extension HomeViewController {
                 snapshot.appendItems([.agentNews(news)], toSection: .agentNews)
             }
         }
+        #if DEBUG
+            bench.mark("status")
+        #endif
         appendShelf(to: &snapshot, masters: hasLoadedOnce && !servers.isEmpty ? masterShelf : nil)
+        #if DEBUG
+            bench.mark("shelf")
+        #endif
         if let reach = ReachReading.here(
             silent: down.map(\.name), answering: servers.count - down.count)
         {
@@ -83,9 +123,11 @@ extension HomeViewController {
             snapshot.appendItems([.proInvitation(card)], toSection: .proInvitation)
         }
 
-        func cards(_ band: HomeBoard.Band) -> [HomeItem] {
-            band.rows.map { row in
-                let id = row.entry.session.id
+        func cards(_ band: HomeBoard.Band<HomeRowSeed>) -> [HomeItem] {
+            band.rows.map { seed in
+                let id = seed.entry.session.id
+                let row = SessionRowModel(
+                    seed: seed, observedAt: viewModel.observedAt[seed.entry.profileID])
                 return .chat(
                     ChatRowCard(
                         row: row,
@@ -96,10 +138,12 @@ extension HomeViewController {
                         band: band.section))
             }
         }
-        let bands = Dictionary(uniqueKeysWithValues: board.bands.map { ($0.section, $0) })
+        let bands = Dictionary(uniqueKeysWithValues: boardBands.map { ($0.section, $0) })
         if today {
-            let asks = (bands[.needsYou]?.rows ?? []).map { row -> HomeItem in
-                let id = row.entry.session.id
+            let asks = (bands[.needsYou]?.rows ?? []).map { seed -> HomeItem in
+                let id = seed.entry.session.id
+                let row = SessionRowModel(
+                    seed: seed, observedAt: viewModel.observedAt[seed.entry.profileID])
                 return .ask(
                     AskCard(
                         row: row,
@@ -124,18 +168,18 @@ extension HomeViewController {
                 }
             }
         }
-        var readings: [HomeSection: (total: Int, fresh: Int)] = [:]
+        var bandCounts: [HomeSection: (total: Int, fresh: Int)] = [:]
         for section in today ? [] : [SessionSection.needsYou, .working, .pinned] {
             guard let band = bands[section] else { continue }
             let id = HomeSection(section)
             snapshot.appendSections([id])
-            readings[id] = (band.total, band.fresh)
+            bandCounts[id] = (band.total, band.fresh)
             guard !folds.contains(section) else { continue }
             snapshot.appendItems(uniqued(cards(band), in: id), toSection: id)
         }
         if !today, !savedCards.isEmpty {
             snapshot.appendSections([.saved])
-            readings[.saved] = (savedCards.count, savedCards.count { $0.facts.unread })
+            bandCounts[.saved] = (savedCards.count, savedCards.count { $0.facts.unread })
             if !folds.contains(.saved) {
                 snapshot.appendItems(
                     uniqued(savedCards.map(HomeItem.saved), in: .saved), toSection: .saved)
@@ -143,7 +187,7 @@ extension HomeViewController {
         }
         if !today, let band = bands[.recent] {
             snapshot.appendSections([.recent])
-            readings[.recent] = (band.total, band.fresh)
+            bandCounts[.recent] = (band.total, band.fresh)
             if !folds.contains(.recent) {
                 snapshot.appendItems(uniqued(cards(band), in: .recent), toSection: .recent)
                 if let foot = recentReach.foot(hidden: band.hidden) {
@@ -151,14 +195,20 @@ extension HomeViewController {
                         [.more(HomeMoreCard(band: .recent, foot: foot))], toSection: .recent)
                 }
             }
-        } else if !today, rows.isEmpty, !hasLoadedOnce, !servers.isEmpty, workspace == nil {
+        } else if !today, seeds.isEmpty, !hasLoadedOnce, !servers.isEmpty, workspace == nil {
             snapshot.appendSections([.recent])
             snapshot.appendItems((0..<3).map(HomeItem.placeholder), toSection: .recent)
         }
-        bandReadings = readings
+        #if DEBUG
+            bench.mark("cards")
+        #endif
+        bandReadings = bandCounts
         hasNews =
             !missed.isEmpty || savedCards.contains { $0.facts.unread }
             || viewModel.entries.contains { isUnread($0.session.id, $0.session.updatedAt) }
+        #if DEBUG
+            bench.mark("snapshot")
+        #endif
 
         let previous = dataSource.snapshot()
         let existing = Set(previous.itemIdentifiers)
@@ -171,6 +221,9 @@ extension HomeViewController {
         }
         appliedContent = content
         if !stale.isEmpty { snapshot.reconfigureItems(stale) }
+        #if DEBUG
+            bench.mark("compare")
+        #endif
         let rowItems = snapshot.itemIdentifiers.filter {
             switch $0 {
             case .chat, .ask, .saved, .placeholder: return true
@@ -189,6 +242,9 @@ extension HomeViewController {
             return
         }
         dataSource.apply(snapshot, animatingDifferences: shouldAnimate(from: previous, to: snapshot))
+        #if DEBUG
+            bench.mark("apply")
+        #endif
         refreshVisibleHeaders()
         updateEmptyState(itemCount: rowItems)
         applyOrbState()
@@ -210,6 +266,7 @@ extension HomeViewController {
         NotificationManager.clearAllNotices()
         MidgarLog.info("home: everything marked read, \(chats.count) chat(s)", category: .ui)
         Theme.Haptics.success()
+        forgetStoreReadings()
         renderSnapshot()
     }
 
@@ -217,6 +274,7 @@ extension HomeViewController {
     func toggleFold(_ section: SessionSection) {
         let shut = HomeFolds.toggle(section)
         if shut, section == .recent { recentReach = HomeReach() }
+        forgetStoreReadings()
         renderSnapshot()
         UIAccessibility.post(
             notification: .layoutChanged,
@@ -318,11 +376,13 @@ extension HomeViewController {
     private func appendShelf(
         to snapshot: inout NSDiffableDataSourceSnapshot<HomeSection, HomeItem>, masters: MasterShelfCard?
     ) {
+        let readings = storeReadings()
         var glance: QuotaGlance?
+        let reports = quotas.map { ("", $0) }
         if !showsQuotaCards, !quotas.isEmpty {
             let made = QuotaGlance.make(
-                from: quotas.map { ("", $0) }, answeredAt: quotasAnsweredAt,
-                board: QuotaBoardStore.current, trail: RangeStore.trail)
+                from: reports, answeredAt: quotasAnsweredAt,
+                board: readings.quotaBoard, trail: readings.trail)
             if !made.isEmpty { glance = made }
         }
         guard masters != nil || glance != nil else { return }
@@ -337,9 +397,31 @@ extension HomeViewController {
             snapshot.appendSections([.masters])
             snapshot.appendItems([.masters(masters)], toSection: .masters)
         }
-        if peek == .quota, let glance {
+        if peek == .quota, glance != nil {
+            let opened = QuotaGlance.make(
+                from: reports, answeredAt: quotasAnsweredAt,
+                board: readings.quotaBoard, trail: readings.trail, everyWindow: true)
             snapshot.appendSections([.glance])
-            snapshot.appendItems([.glance(QuotaGlanceCard(glance: glance))], toSection: .glance)
+            snapshot.appendItems(
+                [.glance(QuotaGlanceCard(glance: opened.isEmpty ? glance! : opened))],
+                toSection: .glance)
         }
+    }
+
+    /// The stores as the board last read them, decoded on demand. Something that changes one of
+    /// them calls ``forgetStoreReadings()``; a listing push does not, because nothing a push
+    /// carries lives in them.
+    func storeReadings() -> StoreReadings {
+        if let readingsCache { return readingsCache }
+        let made = StoreReadings(
+            saved: SavedChatStore.all(), archived: ArchivedChatStore.keys(),
+            pins: Set(SessionPinStore.all()), unread: SessionSeenStore.unreadEvaluator(),
+            folds: HomeFolds.shut(), quotaBoard: QuotaBoardStore.current, trail: RangeStore.trail)
+        readingsCache = made
+        return made
+    }
+
+    func forgetStoreReadings() {
+        readingsCache = nil
     }
 }

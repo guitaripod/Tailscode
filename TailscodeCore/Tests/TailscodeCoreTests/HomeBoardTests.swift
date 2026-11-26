@@ -108,7 +108,7 @@ struct HomeBoardTests {
         #expect(quiet.tone == .quiet)
         #expect(quiet.detail == "Nothing running · last finished 2m ago")
 
-        let empty = HomeStatus.reading(rows: [], now: now, calendar: calendar)
+        let empty = HomeStatus.reading(rows: [SessionRowModel](), now: now, calendar: calendar)
         #expect(empty.sentence == "No chats yet")
         #expect(empty.tone == .quiet)
     }

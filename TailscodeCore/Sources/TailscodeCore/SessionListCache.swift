@@ -8,7 +8,7 @@ import Synchronization
 /// network, so `isActive` is stripped on load — a cached list can never show
 /// phantom live sessions.
 public enum SessionListCache {
-    private struct Entry: Codable {
+    private struct Entry: Codable, Equatable {
         let profileID: String
         let profileName: String
         let host: String
@@ -42,20 +42,29 @@ public enum SessionListCache {
                 profileID: $0.profileID, profileName: $0.profileName, host: $0.host,
                 backendType: $0.backendType, session: $0.session)
         }
+        guard lastSaved.withLock({ $0 != cached }) else { return }
         guard let data = try? JSONEncoder().encode(cached) else { return }
-        guard lastWritten.withLock({ $0 != data }) else { return }
+        guard lastWritten.withLock({ $0 != data }) else {
+            lastSaved.withLock { $0 = cached }
+            return
+        }
         guard
             (try? data.write(
                 to: fileURL,
                 options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])) != nil
         else { return }
         lastWritten.withLock { $0 = data }
+        lastSaved.withLock { $0 = cached }
     }
 
     /// The bytes the file holds. Every poll and every status change republishes the listing, and
     /// nearly all of them leave the two hundred rows exactly as they were, so a write that would
     /// replace the file with itself is not made.
     private static let lastWritten = Mutex<Data?>(nil)
+
+    /// The rows last encoded. Comparing them costs a fraction of encoding two hundred sessions to
+    /// find the bytes unchanged, which every refresh of a busy fleet did.
+    private static let lastSaved = Mutex<[Entry]?>(nil)
 
     @MainActor private static var pending: [SessionEntry]?
     @MainActor private static var writer: Task<Void, Never>?

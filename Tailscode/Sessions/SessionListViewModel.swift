@@ -410,9 +410,7 @@ final class SessionListViewModel {
         for id in candidates where !down.contains(id) { healthilySlow.insert(id) }
         let verdicts = candidates.filter { down.contains($0) || !healthilySlow.contains($0) }
         let changed = collected.count != entries.count || verdicts != unreachable
-        var seen = Set<SessionEntry>()
-        entries = collected.filter { seen.insert($0).inserted }
-            .sorted { $0.session.updatedAt > $1.session.updatedAt }
+        entries = Self.distinct(collected).sorted { $0.session.updatedAt > $1.session.updatedAt }
         unreachable = verdicts
         SessionListCache.scheduleSave(entries)
         SessionMarks.reconcile(with: fresh.values.flatMap { $0 })
@@ -431,6 +429,15 @@ final class SessionListViewModel {
         }
         onChange?()
         scheduleConfirmation(live.filter { failureStreaks[$0] == 1 })
+    }
+
+    /// The listing with each conversation once, the first copy kept. Telling copies apart by
+    /// their whole value hashed every field of every row, titles and last words included, on each
+    /// refresh of a fleet of over a thousand.
+    private static func distinct(_ entries: [SessionEntry]) -> [SessionEntry] {
+        var seen = Set<String>()
+        seen.reserveCapacity(entries.count)
+        return entries.filter { seen.insert("\($0.profileID)\u{1}\($0.session.id)").inserted }
     }
 
     /// A server that has missed once is re-checked on its own a moment later

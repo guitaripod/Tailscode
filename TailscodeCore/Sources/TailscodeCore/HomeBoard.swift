@@ -27,6 +27,18 @@ public struct HomeStatus: Equatable, Sendable {
         self.range = range
     }
 
+    /// The calendar day `now` falls in, worked out once: asking the calendar whether each of a
+    /// fleet's conversations was on the same day cost a time-zone lookup per row, which on an
+    /// iPhone XS with fourteen hundred conversations was 35 ms of every listing refresh.
+    static func day(of now: Date, calendar: Calendar) -> (start: Date, end: Date, holds: (Date) -> Bool) {
+        guard let interval = calendar.dateInterval(of: .day, for: now) else {
+            return (now, now, { calendar.isDate($0, inSameDayAs: now) })
+        }
+        let start = interval.start
+        let end = interval.end
+        return (start, end, { $0 >= start && $0 < end })
+    }
+
     /// The whole reading in one breath, for a screen reader that cannot see the light.
     public var spoken: String {
         let head = detail.isEmpty ? sentence : "\(sentence). \(detail)"
@@ -37,19 +49,33 @@ public struct HomeStatus: Equatable, Sendable {
     /// - Parameter rows: every conversation Home can see, archived ones already left out.
     /// - Parameter offline: the names of servers that did not answer the last listing; a machine
     ///   that is down is a fact about the whole board, not about one of its rows.
-    public static func reading(
-        rows: [SessionRowModel], offline: [String] = [], range: String? = nil, now: Date = Date(),
+    public static func reading<Row: HomeRow>(
+        rows: [Row], offline: [String] = [], range: String? = nil, now: Date = Date(),
         calendar: Calendar = .current
     ) -> HomeStatus {
-        let waiting = rows.filter { $0.state.needsYou }.count
-        let working = rows.filter { $0.state.isInFlight && !$0.state.needsYou }.count
-        let settled = rows.filter { !$0.state.isInFlight }
-        let finishedToday = settled.filter {
-            $0.state == .idle && calendar.isDate($0.entry.session.updatedAt, inSameDayAs: now)
-        }.count
-        let failedToday = settled.filter {
-            $0.state == .failed && calendar.isDate($0.entry.session.updatedAt, inSameDayAs: now)
-        }.count
+        var waiting = 0
+        var working = 0
+        var finishedToday = 0
+        var failedToday = 0
+        var lastSettled: Date?
+        let today = Self.day(of: now, calendar: calendar)
+        for row in rows {
+            let state = row.state
+            if state.needsYou {
+                waiting += 1
+            } else if state.isInFlight {
+                working += 1
+            }
+            guard !state.isInFlight else { continue }
+            let updated = row.entry.session.updatedAt
+            if lastSettled == nil || updated > lastSettled! { lastSettled = updated }
+            guard today.holds(updated) else { continue }
+            if state == .idle {
+                finishedToday += 1
+            } else if state == .failed {
+                failedToday += 1
+            }
+        }
 
         let sentence: String
         let tone: ActivityTone
@@ -72,7 +98,7 @@ public struct HomeStatus: Equatable, Sendable {
             sentence = Localized.text("All quiet")
             tone = .quiet
             parts.append(Localized.text("Nothing running"))
-            if let last = settled.map(\.entry.session.updatedAt).max() {
+            if let last = lastSettled {
                 parts.append(
                     Localized.text(
                         "last finished %@ ago", SessionRowModel.age(of: last, asOf: now)))
@@ -209,16 +235,18 @@ public enum HomeFolds {
 /// Home's bands and the sentence over them, decided once and shared by every client that draws a
 /// board.
 public struct HomeBoard: Equatable, Sendable {
-    public struct Band: Equatable, Sendable {
+    /// One band of the board, whatever it is holding: full rows for a screen that draws them, seeds
+    /// for a screen that is still deciding which ones to.
+    public struct Band<Row: HomeRow>: Equatable, Sendable {
         public let section: SessionSection
-        public let rows: [SessionRowModel]
+        public let rows: [Row]
         /// How many more the band holds than it shows, so the foot can say "See all 48 chats".
         public let hidden: Int
         /// How many of the band's chats are unread, the hidden ones counted, so a heading can say
         /// there is news below its last row.
         public let fresh: Int
 
-        public init(section: SessionSection, rows: [SessionRowModel], hidden: Int, fresh: Int = 0) {
+        public init(section: SessionSection, rows: [Row], hidden: Int, fresh: Int = 0) {
             self.section = section
             self.rows = rows
             self.hidden = hidden
@@ -228,10 +256,12 @@ public struct HomeBoard: Equatable, Sendable {
         public var total: Int { rows.count + hidden }
     }
 
-    public let status: HomeStatus
-    public let bands: [Band]
+    public typealias DrawnBand = Band<SessionRowModel>
 
-    public init(status: HomeStatus, bands: [Band]) {
+    public let status: HomeStatus
+    public let bands: [DrawnBand]
+
+    public init(status: HomeStatus, bands: [DrawnBand]) {
         self.status = status
         self.bands = bands
     }
@@ -240,19 +270,97 @@ public struct HomeBoard: Equatable, Sendable {
         rows: [SessionRowModel], limits: HomeBandLimits = .phone, offline: [String] = [],
         now: Date = Date(), calendar: Calendar = .current
     ) -> HomeBoard {
-        let bands: [Band] = groupIntoSections(rows).compactMap { section, members in
-            let fresh = members.count { $0.unread }
-            guard let limit = limits.limit(for: section) else {
-                return Band(section: section, rows: members, hidden: 0, fresh: fresh)
-            }
-            guard limit > 0 else { return nil }
-            return Band(
-                section: section, rows: Array(members.prefix(limit)),
-                hidden: max(0, members.count - limit), fresh: fresh)
-        }
-        return HomeBoard(
+        HomeBoard(
             status: HomeStatus.reading(rows: rows, offline: offline, now: now, calendar: calendar),
-            bands: bands)
+            bands: bands(rows: rows, limits: limits))
+    }
+
+    /// The bands a board draws, found in one walk of the fleet that copies only what the bands
+    /// will show: a band's heading needs counts, not a second array of two thousand rows. A recent
+    /// conversation arrives in the listing's own order (newest first), so the recent band takes the
+    /// first few it meets while still counting the rest; only the three bands that re-order what
+    /// they hold (waiting, working, pinned) keep every member to sort.
+    public static func bands<Row: HomeRow>(
+        rows: [Row], limits: HomeBandLimits = .phone
+    ) -> [Band<Row>] {
+        var needs: [Row] = []
+        var working: [Row] = []
+        var pinned: [Row] = []
+        var saved: [Row] = []
+        var recent: [Row] = []
+        var fresh: [SessionSection: Int] = [:]
+        var totals: [SessionSection: Int] = [:]
+        let savedLimit = limits.limit(for: .saved) ?? 0
+        let recentLimit = limits.limit(for: .recent) ?? 0
+        for row in rows {
+            let section: SessionSection
+            if row.state.needsYou {
+                section = .needsYou
+                needs.append(row)
+            } else if row.state.isInFlight {
+                section = .working
+                working.append(row)
+            } else if row.pinned {
+                section = .pinned
+                pinned.append(row)
+            } else if row.saved {
+                section = .saved
+                if saved.count < savedLimit { saved.append(row) }
+            } else {
+                section = .recent
+                if recent.count < recentLimit { recent.append(row) }
+            }
+            totals[section, default: 0] += 1
+            if row.unread { fresh[section, default: 0] += 1 }
+        }
+        func key(_ row: Row) -> String {
+            SessionPinStore.key(row.entry.profileID, row.entry.session.id)
+        }
+        if needs.count > 1 {
+            needs.sort {
+                $0.entry.session.updatedAt == $1.entry.session.updatedAt
+                    ? key($0) < key($1)
+                    : $0.entry.session.updatedAt < $1.entry.session.updatedAt
+            }
+        }
+        if working.count > 1 {
+            working.sort {
+                $0.entry.session.createdAt == $1.entry.session.createdAt
+                    ? key($0) < key($1)
+                    : $0.entry.session.createdAt > $1.entry.session.createdAt
+            }
+        }
+        if pinned.count > 1 {
+            let ranks = SessionPinStore.ranks()
+            pinned.sort {
+                guard let a = ranks[key($0)], let b = ranks[key($1)] else { return false }
+                return a < b
+            }
+        }
+        var bands: [Band<Row>] = []
+        func add(_ section: SessionSection, _ members: [Row]) {
+            guard !members.isEmpty else { return }
+            guard let limit = limits.limit(for: section) else {
+                bands.append(
+                    Band(
+                        section: section, rows: members, hidden: 0,
+                        fresh: fresh[section] ?? 0))
+                return
+            }
+            guard limit > 0 else { return }
+            let shown = members.count > limit ? Array(members.prefix(limit)) : members
+            bands.append(
+                Band(
+                    section: section, rows: shown,
+                    hidden: max(0, (totals[section] ?? shown.count) - shown.count),
+                    fresh: fresh[section] ?? 0))
+        }
+        add(.needsYou, needs)
+        add(.working, working)
+        add(.pinned, pinned)
+        add(.saved, saved)
+        add(.recent, recent)
+        return bands
     }
 
     public var rows: [SessionRowModel] { bands.flatMap(\.rows) }

@@ -50,52 +50,128 @@ extension HomeViewController {
     /// A tick only moves text that counts itself: an age or a background task's duration, which
     /// reads in seconds under a minute and in whole minutes above it. Building the board to find
     /// out whether that happened cost the phone most of a frame every second — every row on every
-    /// server measured and worded again — for a screen whose cards read the same. So the reading a
-    /// second ago is compared with the reading now, on the cards that are actually drawn, and a
-    /// full pass runs only when one of them would say something new, or when the minute turned and
-    /// the minute-granular text (a quota countdown, the status line) can have.
+    /// server measured and worded again — for a screen whose cards read the same. So the cards that
+    /// are actually drawn are re-worded in place, and a full pass runs only when the minute turned
+    /// and the minute-granular text (a quota countdown, the status line, a master's age) can have.
     private func redrawTickedBoardIfNeeded() {
         let now = Date()
-        let minute = Int(now.timeIntervalSince1970 / 60)
-        let crossedMinute = minute != Int(lastRenderAt.timeIntervalSince1970 / 60)
-        guard crossedMinute || tickedReadings(asOf: now) != tickedReadings(asOf: lastRenderAt)
+        defer { lastTickAt = now }
+        guard Int(now.timeIntervalSince1970 / 60) == Int(lastTickAt.timeIntervalSince1970 / 60)
+        else { return applySnapshot() }
+        refreshTickedCards(asOf: now)
+    }
+
+    /// Reconfigures only the drawn cards whose own words have moved on, swapping their values in a
+    /// copy of the snapshot's structure: identity is the chat, so nothing moves, no agent is asked,
+    /// and the fleet is not walked.
+    private func refreshTickedCards(asOf now: Date) {
+        #if DEBUG
+            let began = BoardBench.cpuTime()
+        #endif
+        defer {
+            #if DEBUG
+                BoardBench.note(tick: BoardBench.cpuTime() - began)
+            #endif
+        }
+        guard viewIfLoaded?.window != nil, !isUnderSettings, !isLeaving,
+            !collectionView.isTracking, !collectionView.isDragging, !collectionView.isDecelerating
         else { return }
-        applySnapshot()
-    }
-
-    /// Every reading on a drawn card that counts itself, in the words that card shows at `now`.
-    /// A row whose server stopped answering draws an age frozen at the last reading, so it is left
-    /// out of the comparison; including it would make every tick look like a change.
-    private func tickedReadings(asOf now: Date) -> [String] {
-        dataSource.snapshot().itemIdentifiers.flatMap { item -> [String] in
-            switch item {
-            case .chat(let card):
-                guard isCounting(card.row) else { return [] }
-                return Self.tickedReadings(of: card.row, asOf: now)
-            case .ask(let card):
-                guard isCounting(card.row) else { return [] }
-                return Self.tickedReadings(of: card.row, asOf: now)
-            case .saved(let card):
-                return viewModel.unreachable.contains(card.chat.profileID)
-                    ? [] : [SessionRowModel.age(of: card.chat.updatedAt, asOf: now)]
-            case .masters(let card):
-                return [String(MasterShelf.signature(card.board, now: now))]
-            default:
-                return []
+        #if DEBUG
+            guard !BoardBench.isDrivingScroll else { return }
+        #endif
+        let current = dataSource.snapshot()
+        var next = NSDiffableDataSourceSnapshot<HomeSection, HomeItem>()
+        next.appendSections(current.sectionIdentifiers)
+        var changed: [HomeItem] = []
+        for section in current.sectionIdentifiers {
+            var items: [HomeItem] = []
+            items.reserveCapacity(current.numberOfItems(inSection: section))
+            for item in current.itemIdentifiers(inSection: section) {
+                guard needsRetiming(item, at: now) else {
+                    items.append(item)
+                    continue
+                }
+                let updated = retimed(item, at: now)
+                items.append(updated)
+                if updated.contentSignature != item.contentSignature { changed.append(updated) }
             }
+            guard !items.isEmpty else { continue }
+            next.appendItems(items, toSection: section)
+        }
+        guard !changed.isEmpty else { return }
+        next.reconfigureItems(changed)
+        lastRenderAt = now
+        dataSource.apply(next, animatingDifferences: false)
+    }
+
+    /// Whether a drawn card's own clock has moved on since it was worded. An age reads in seconds
+    /// under a minute and in whole minutes above it, so most cards say the same words for a
+    /// minute: asking first costs one string and saves rebuilding the row and its facts.
+    private func needsRetiming(_ item: HomeItem, at now: Date) -> Bool {
+        switch item {
+        case .chat(let card):
+            guard card.row.entry.session.backgroundWork == nil else { return true }
+            return age(card, at: now)
+        case .ask(let card):
+            guard card.row.entry.session.backgroundWork == nil else { return true }
+            return age(card.row, card.facts.age, at: now)
+        case .saved(let card):
+            return SessionRowModel.age(of: card.chat.updatedAt, asOf: now) != card.facts.age
+        default:
+            return false
         }
     }
 
-    private func isCounting(_ row: SessionRowModel) -> Bool {
-        !viewModel.unreachable.contains(row.entry.profileID)
+    private func age(_ card: ChatRowCard, at now: Date) -> Bool {
+        age(card.row, card.facts.age, at: now)
     }
 
-    private static func tickedReadings(of row: SessionRowModel, asOf now: Date) -> [String] {
-        var readings = [SessionRowModel.age(of: row.entry.session.updatedAt, asOf: now)]
-        if let since = row.entry.session.backgroundWork?.since {
-            readings.append(SessionRowModel.age(of: since, asOf: now))
+    private func age(_ row: SessionRowModel, _ drawn: String, at now: Date) -> Bool {
+        let reference: Date
+        if row.state == .offline {
+            reference = viewModel.observedAt[row.entry.profileID] ?? now
+        } else {
+            reference = now
         }
-        return readings
+        return SessionRowModel.age(of: row.entry.session.updatedAt, asOf: reference) != drawn
+    }
+
+    /// The same card, worded against `now`. A row's age and the duration of work it carries are
+    /// baked into its facts, so the row itself is rebuilt — one row, not the board.
+    private func retimed(_ item: HomeItem, at now: Date) -> HomeItem {
+        switch item {
+        case .chat(let card):
+            let row = retimed(card.row, at: now)
+            return .chat(
+                ChatRowCard(
+                    row: row,
+                    facts: ChatRowFacts(
+                        row: row, vocabulary: appliedVocabulary,
+                        ask: SessionActivity.shared.approvalAsk(for: card.entry.session.id),
+                        missed: appliedMissed[card.entry.session.id], section: card.band),
+                    band: card.band))
+        case .ask(let card):
+            let row = retimed(card.row, at: now)
+            return .ask(
+                AskCard(
+                    row: row,
+                    facts: ChatRowFacts(
+                        row: row, vocabulary: appliedVocabulary,
+                        ask: SessionActivity.shared.approvalAsk(for: card.entry.session.id),
+                        missed: appliedMissed[card.entry.session.id])))
+        case .saved(let card):
+            return .saved(SavedCard(chat: card.chat, unread: card.facts.unread))
+        default:
+            return item
+        }
+    }
+
+    private func retimed(_ row: SessionRowModel, at now: Date) -> SessionRowModel {
+        SessionRowModel(
+            entry: row.entry, unreachable: viewModel.unreachable.contains(row.entry.profileID),
+            unread: row.unread, saved: row.saved, pinned: row.pinned,
+            presence: appliedPresence[row.entry.session.id] ?? .unobserved,
+            observedAt: viewModel.observedAt[row.entry.profileID], now: now)
     }
 
     /// Whether any card on the board is measuring against `now` rather than against a host that
@@ -264,6 +340,7 @@ extension HomeViewController {
         {
             UsageWarnings.evaluate(providers: [ollama])
         }
+        forgetStoreReadings()
         applySnapshot()
     }
 
@@ -276,27 +353,40 @@ extension HomeViewController {
     /// asking for it now.
     ///
     /// A finished turn alone runs this three or four times in a row — the listing upsert, the
-    /// activity change, the load's own pass — and the live cadence asks again every couple of
-    /// seconds, from a screen that is very often behind a chat nobody would see it redraw. So a
-    /// request is a request: it is dropped entirely while Home is off screen or on its way off
-    /// (`viewWillAppear` takes the deferred one), and otherwise coalesced to one pass per runloop turn, so a burst
-    /// costs what one change costs. The deep link is the exception on the off-screen path — it is
-    /// parked with a deadline and a notification tap must not wait behind a screen coming back.
-    func applySnapshot() {
+    /// activity change, the load's own pass — and the live cadence asks again every second or so,
+    /// from a screen that is very often behind a chat nobody would see it redraw. So a request is a
+    /// request: it is dropped entirely while Home is off screen or on its way off (`viewWillAppear`
+    /// takes the deferred one), held back while a finger is on the list (the end of the scroll takes
+    /// it), and otherwise gathered — `budgeted` requests, which are the listing's own, share one
+    /// pass and the board keeps a quarter second between them. The deep link is the exception on
+    /// the off-screen path: it is parked with a deadline and a notification tap must not wait
+    /// behind a screen coming back.
+    func applySnapshot(budgeted: Bool = false) {
         guard viewIfLoaded?.window != nil, !isUnderSettings, !isLeaving else {
             deferredSnapshot = true
             consumePendingDeepLink()
             return
         }
-        guard !scheduledSnapshot else { return }
-        if collectionView.isTracking || collectionView.isDragging || collectionView.isDecelerating
-        {
+        guard !collectionView.isTracking, !collectionView.isDragging, !collectionView.isDecelerating
+        else {
             deferredWhileTouching = true
             return
         }
+        #if DEBUG
+            guard !BoardBench.isDrivingScroll else {
+                deferredWhileTouching = true
+                return
+            }
+        #endif
+        let wait = budgeted ? budgetedWait() : Double(Self.snapshotGather) / 1000
+        if scheduledSnapshot, snapshotWait <= wait { return }
+        snapshotGeneration += 1
+        let generation = snapshotGeneration
         scheduledSnapshot = true
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.scheduledSnapshot else { return }
+        snapshotWait = wait
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.snapshotGeneration == generation, self.scheduledSnapshot
+            else { return }
             self.scheduledSnapshot = false
             guard !self.isLeaving else {
                 self.deferredSnapshot = true
@@ -304,7 +394,26 @@ extension HomeViewController {
             }
             self.renderSnapshot()
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: work)
     }
+
+    /// How long a listing-driven request waits: a push's own notices arrive a few milliseconds
+    /// apart and one row moving is one pass, not three. The board also holds itself to a quarter of
+    /// a second between passes at most — a live turn pushes a listing every second or so, and a
+    /// board of thousands does not need to rebuild faster than the tick it already draws at. A
+    /// person's own press is never held to this; only the listing is.
+    private func budgetedWait() -> TimeInterval {
+        let since = Date().timeIntervalSince(lastRenderAt)
+        return max(Double(Self.snapshotGather) / 1000, Self.snapshotSpacing - since)
+    }
+
+    /// How long a request waits before the board is rebuilt around it. One listing push arrives as
+    /// several notices — the listing itself, the activity change, a desk refresh — and each of them
+    /// used to buy a full pass of its own, so a single row moving cost the phone a tenth of a
+    /// second in three pieces. Gathered, the burst costs one pass, and nothing a finger did is ever
+    /// waiting on more than two frames.
+    private static let snapshotGather = 40
+    private static let snapshotSpacing: TimeInterval = 0.25
 
     /// Settings is a full-height sheet over the phone's board, leaving a sliver of it at the top
     /// edge and nothing a person reads, so Home holds still under it the way it does off screen: no

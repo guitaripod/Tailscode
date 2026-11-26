@@ -50,7 +50,7 @@ public struct ChatListVocabulary: Equatable, Sendable {
     /// two backends. Two servers each running their own is a distinction the machine's name
     /// already draws, and in a sidebar the width spent writing "Claude Code" on every row is
     /// taken straight out of the title, which is the only part that identifies the conversation.
-    public init(rows: [SessionRowModel]) {
+    public init<Row: HomeRow>(rows: [Row]) {
         var backendsPerServer: [String: Set<AgentType>] = [:]
         for row in rows {
             backendsPerServer[row.entry.profileID, default: []].insert(row.entry.backendType)

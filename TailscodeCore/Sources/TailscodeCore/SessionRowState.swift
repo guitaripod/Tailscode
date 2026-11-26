@@ -205,9 +205,7 @@ public struct SessionRowModel: Equatable, Sendable {
         self.title =
             entry.session.hasPlaceholderTitle
             ? Localized.text("New conversation") : entry.session.title
-        self.project = entry.session.directory.map {
-            URL(fileURLWithPath: $0, isDirectory: true).lastPathComponent
-        }
+        self.project = entry.session.directory.map(Self.folderName)
         self.serverName = entry.profileName
         self.backendName = ServerLabel.agent(entry.backendType)
         self.age = Self.age(
@@ -216,7 +214,7 @@ public struct SessionRowModel: Equatable, Sendable {
         self.detail = [
             project, ServerLabel.display(name: entry.profileName, backend: entry.backendType), age,
         ].compactMap { $0 }.joined(separator: " · ")
-        self.state = Self.resolve(entry: entry, unreachable: unreachable, presence: presence)
+        self.state = Self.resolvedState(entry: entry, unreachable: unreachable, presence: presence)
         self.lastWords = entry.session.lastWords.flatMap { $0.isEmpty ? nil : $0 }
         switch presence {
         case .running(let step) where step?.isEmpty == false:
@@ -282,7 +280,7 @@ public struct SessionRowModel: Equatable, Sendable {
     /// `isWorking` — not the bare `isActive` — is the listing's own answer, so a session whose
     /// subagents are still out counts as live. Work a process carries between turns comes after a
     /// turn, because a turn is the louder fact, and before idle, because it is not.
-    private static func resolve(
+    public static func resolvedState(
         entry: SessionEntry, unreachable: Bool, presence: SessionPresence
     ) -> SessionRowState {
         switch presence {
@@ -304,6 +302,15 @@ public struct SessionRowModel: Equatable, Sendable {
     /// Compact and monospace-friendly, so a column of them lines up: seconds, minutes, hours, days.
     public static func age(of date: Date) -> String { age(of: date, asOf: Date()) }
 
+    /// The last component of a folder path, read off the string: building a file URL for it cost
+    /// more than the rest of a row together, and Home builds every row of the fleet on each refresh.
+    static func folderName(_ path: String) -> String {
+        var trimmed = Substring(path)
+        while trimmed.utf8.count > 1, trimmed.hasSuffix("/") { trimmed = trimmed.dropLast() }
+        guard trimmed != "/", let slash = trimmed.lastIndex(of: "/") else { return String(trimmed) }
+        return String(trimmed[trimmed.index(after: slash)...])
+    }
+
     /// `reference` is the instant the age is measured against — this device's now while the row's
     /// server is answering, and the moment it was last heard from once it is not. Skew clamps at
     /// zero: a session stamped into this device's future is two clocks disagreeing, not a negative
@@ -316,6 +323,46 @@ public struct SessionRowModel: Equatable, Sendable {
         case ..<86400: return "\(seconds / 3600)h"
         default: return "\(seconds / 86400)d"
         }
+    }
+}
+
+/// The facts a band, a heading and the sentence over them read from a conversation — everything
+/// Home decides *before* it decides to draw the row.
+///
+/// A full ``SessionRowModel`` words a row for the glass: a title, a folder, a machine, an age, the
+/// line under it. Home shows twenty rows out of a fleet of thousands, and wording all of them to
+/// find out which twenty cost most of a frame on every listing refresh. A client walks the fleet in
+/// this instead, and builds the row only for what it draws.
+public protocol HomeRow: Sendable, Equatable {
+    var entry: SessionEntry { get }
+    var state: SessionRowState { get }
+    var unread: Bool { get }
+    var pinned: Bool { get }
+    var saved: Bool { get }
+}
+
+/// One conversation as Home needs it before it is drawn.
+public struct HomeRowSeed: HomeRow, Equatable, Sendable {
+    public let entry: SessionEntry
+    public let state: SessionRowState
+    public let unread: Bool
+    public let pinned: Bool
+    public let saved: Bool
+    /// What this device is watching first-hand, kept so the row can be worded from the seed
+    /// without asking again.
+    public let presence: SessionPresence
+
+    public init(
+        entry: SessionEntry, unreachable: Bool, unread: Bool, saved: Bool = false,
+        pinned: Bool = false, presence: SessionPresence = .unobserved
+    ) {
+        self.entry = entry
+        self.unread = unread
+        self.saved = saved
+        self.pinned = pinned
+        self.presence = presence
+        self.state = SessionRowModel.resolvedState(
+            entry: entry, unreachable: unreachable, presence: presence)
     }
 }
 
@@ -335,6 +382,19 @@ public enum SessionSection: String, CaseIterable, Sendable {
         case .saved: return Localized.text("SAVED")
         case .recent: return Localized.text("RECENT")
         }
+    }
+}
+
+extension SessionRowModel: HomeRow {}
+
+extension SessionRowModel {
+    /// The row Home actually draws, from the seed it decided to draw. The seed already resolved
+    /// the state, so only the words are left — and only for the rows on screen.
+    public init(seed: HomeRowSeed, observedAt: Date? = nil, now: Date = Date()) {
+        self.init(
+            entry: seed.entry, unreachable: seed.state == .offline, unread: seed.unread,
+            saved: seed.saved, pinned: seed.pinned, presence: seed.presence,
+            observedAt: observedAt, now: now)
     }
 }
 
@@ -359,29 +419,48 @@ public enum SessionSection: String, CaseIterable, Sendable {
 /// there, and the moment it started is the one fact about a live turn that cannot change.
 /// NEEDS YOU is ordered the other way, longest-waiting first, because the oldest question is the
 /// one somebody has been kept from the longest.
-public func groupIntoSections(_ rows: [SessionRowModel]) -> [(SessionSection, [SessionRowModel])] {
-    func key(_ row: SessionRowModel) -> String {
+public func groupIntoSections<Row: HomeRow>(_ rows: [Row]) -> [(SessionSection, [Row])] {
+    var needs: [Row] = []
+    var working: [Row] = []
+    var pinned: [Row] = []
+    var saved: [Row] = []
+    var recent: [Row] = []
+    recent.reserveCapacity(rows.count)
+    for row in rows {
+        if row.state.needsYou {
+            needs.append(row)
+        } else if row.state.isInFlight {
+            working.append(row)
+        } else if row.pinned {
+            pinned.append(row)
+        } else if row.saved {
+            saved.append(row)
+        } else {
+            recent.append(row)
+        }
+    }
+    func key(_ row: Row) -> String {
         SessionPinStore.key(row.entry.profileID, row.entry.session.id)
     }
-    let needs = rows.filter { $0.state.needsYou }.sorted {
-        $0.entry.session.updatedAt == $1.entry.session.updatedAt
-            ? key($0) < key($1) : $0.entry.session.updatedAt < $1.entry.session.updatedAt
+    if needs.count > 1 {
+        needs.sort {
+            $0.entry.session.updatedAt == $1.entry.session.updatedAt
+                ? key($0) < key($1) : $0.entry.session.updatedAt < $1.entry.session.updatedAt
+        }
     }
-    var seen = Set(needs.map(key))
-    let working = rows.filter { $0.state.isInFlight && !seen.contains(key($0)) }.sorted {
-        $0.entry.session.createdAt == $1.entry.session.createdAt
-            ? key($0) < key($1) : $0.entry.session.createdAt > $1.entry.session.createdAt
+    if working.count > 1 {
+        working.sort {
+            $0.entry.session.createdAt == $1.entry.session.createdAt
+                ? key($0) < key($1) : $0.entry.session.createdAt > $1.entry.session.createdAt
+        }
     }
-    seen.formUnion(working.map(key))
-    let ranks = rows.contains { $0.pinned } ? SessionPinStore.ranks() : [:]
-    let pinned = rows.filter { $0.pinned && !seen.contains(key($0)) }.sorted {
-        guard let a = ranks[key($0)], let b = ranks[key($1)] else { return false }
-        return a < b
+    if pinned.count > 1 {
+        let ranks = SessionPinStore.ranks()
+        pinned.sort {
+            guard let a = ranks[key($0)], let b = ranks[key($1)] else { return false }
+            return a < b
+        }
     }
-    seen.formUnion(pinned.map(key))
-    let saved = rows.filter { $0.saved && !seen.contains(key($0)) }
-    seen.formUnion(saved.map(key))
-    let recent = rows.filter { !seen.contains(key($0)) }
     return [
         (.needsYou, needs), (.working, working), (.pinned, pinned), (.saved, saved),
         (.recent, recent),

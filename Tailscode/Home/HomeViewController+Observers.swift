@@ -10,7 +10,7 @@ extension HomeViewController {
             AgentsHub.shared.listingChanged()
             self.updateComposeButton()
             self.updateComposer()
-            self.applySnapshot()
+            self.applySnapshot(budgeted: true)
             SessionActivity.shared.wakeHeldQueues(entries: self.viewModel.entries) {
                 self.viewModel.backend(forProfileID: $0)
             }
@@ -36,9 +36,14 @@ extension HomeViewController {
             self, selector: #selector(savedDidChange),
             name: SavedChatStore.didChange, object: nil)
         NotificationCenter.default.addObserver(
-            self, selector: #selector(activityDidChange),
+            self, selector: #selector(archiveDidChange),
+            name: ArchivedChatStore.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(pinsDidChange),
+            name: SessionPinStore.didChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(seenDidSync),
             name: SessionSeenStore.didSync, object: nil)
-
         NotificationCenter.default.addObserver(
             self, selector: #selector(activityDidChange),
             name: ActivityInbox.didChange, object: nil)
@@ -91,18 +96,37 @@ extension HomeViewController {
 
     @objc private func activityDidChange() {
         AgentsHub.shared.listingChanged()
+        applySnapshot(budgeted: true)
+    }
+
+    /// A server's read marks arrived: the marks are one of the stores the board holds, so the next
+    /// pass decodes them again.
+    @objc private func seenDidSync() {
+        forgetStoreReadings()
         applySnapshot()
     }
 
-    @objc private func archiveDidChange() { applySnapshot() }
+    @objc private func archiveDidChange() {
+        forgetStoreReadings()
+        applySnapshot()
+    }
 
-    @objc private func boardDidChange() { applySnapshot() }
+    @objc private func pinsDidChange() {
+        forgetStoreReadings()
+        applySnapshot()
+    }
+
+    @objc private func boardDidChange() {
+        forgetStoreReadings()
+        applySnapshot()
+    }
 
     /// Settings edited the servers. Rebuilding the backends here — rather than
     /// recreating the whole screen — keeps scroll position, the composer draft,
     /// and any in-flight chat intact through something as small as a rename.
     @objc private func connectionsDidChange() {
         viewModel.refreshSources()
+        forgetStoreReadings()
         resolvedComposeTarget = nil
         updateLeftBarItems()
         updateComposeButton()
@@ -125,6 +149,7 @@ extension HomeViewController {
 
     @objc private func sceneDidActivate(_ note: Notification) {
         guard ownsScene(note) else { return }
+        forgetStoreReadings()
         Task { await load(.user) }
         startLiveRefresh()
         presentProWeekEndIfDue()
@@ -156,6 +181,7 @@ extension HomeViewController {
     @objc func refresh() { Task { await load(.user) } }
 
     @objc private func savedDidChange() {
+        forgetStoreReadings()
         savedChats = SavedChatStore.all()
         applySnapshot()
     }

@@ -93,6 +93,8 @@ final class HomeViewController: UIViewController {
     private var appliedTodayState: String?
     var scheduledSnapshot = false
     var deferredSnapshot = false
+    var snapshotWait: TimeInterval = 0
+    var snapshotGeneration = 0
     /// Whether another screen is sliding over Home right now. The board is a whole frame or three
     /// to rebuild on an older phone, and one rebuilt under a chat on its way in is paid for out of
     /// that chat's first words and never seen.
@@ -102,9 +104,31 @@ final class HomeViewController: UIViewController {
     /// whether anything on it moved, so reconfiguring everything that survived a diff redrew the
     /// whole board on a tick that changed one word.
     var appliedContent: [HomeItem: Int] = [:]
+    /// The words the board's rows were folded against, kept so a tick can re-word one row without
+    /// mapping the fleet again.
+    var appliedVocabulary: ChatListVocabulary = .full
+    var appliedMissed: [String: MissedActivity.Reason] = [:]
+    var appliedPresence: [String: SessionPresence] = [:]
+    /// Everything the board reads out of a store on every rebuild: the archive, the pins, the read
+    /// marks, the bookmarks, the folds and the quota board. UserDefaults decodes on each read and
+    /// the read marks alone are a thousand rows, so a board rebuilt on every listing push paid for
+    /// all of it each time. The stores say when they move, so the reading is held until they do.
+    struct StoreReadings {
+        var saved: [SavedChat]
+        var archived: Set<ArchivedChatStore.ChatKey>
+        var pins: Set<String>
+        var unread: (String, Date) -> Bool
+        var folds: Set<SessionSection>
+        var quotaBoard: QuotaBoardPreferences
+        var trail: QuotaTrail?
+    }
+    var readingsCache: StoreReadings?
     /// When the board was last built, which is the reference its drawn ages and durations were
     /// measured against.
     var lastRenderAt = Date()
+    /// When the clock last looked, which is how a minute boundary is noticed without a full pass
+    /// every second.
+    var lastTickAt = Date()
     /// How far RECENT has been opened past its limit on this screen.
     var recentReach = HomeReach()
     /// What each band holds and how much of it is news, read by the headings: a shut band draws no
@@ -385,6 +409,7 @@ final class HomeViewController: UIViewController {
         if navigationController?.isToolbarHidden == false {
             navigationController?.setToolbarHidden(true, animated: animated)
         }
+        forgetStoreReadings()
         composerFollowsKeyboard(composerBar.isEditing)
         isLeaving = false
         if deferredSnapshot { renderSnapshot() }
@@ -400,6 +425,8 @@ final class HomeViewController: UIViewController {
         presentProWeekEndIfDue()
         #if DEBUG
             DelegateGate.debugOpenIfAsked(from: self)
+            BoardBench.startIfAsked(in: self)
+            BoardBench.probeIfAsked(controller: self)
         #endif
         if let draft = pendingComposerDraft {
             pendingComposerDraft = nil

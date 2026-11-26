@@ -100,10 +100,15 @@ public struct QuotaGlance: Sendable, Equatable {
     /// `board` is the person's board: a provider hidden there is left out of the strip as well,
     /// because the strip is the account glanced at and the board is what the account looks like
     /// to them. What the chat says about a wall is decided elsewhere and never hidden.
+    ///
+    /// `everyWindow` is the card's reading rather than the strip's: every window of every provider
+    /// with its own reset, because a strip folded to one line per provider is a headline and the
+    /// card that opens under it is the page. The strip keeps a provider's tightest window so a row
+    /// of rings still reads at a glance.
     public static func make(
         from reports: [(String, UsageQuota)], answeredAt: Date?, now: Date = Date(),
         board: QuotaBoardPreferences = .default, trail: QuotaTrail? = nil,
-        clock: RangeClock = .current
+        clock: RangeClock = .current, everyWindow: Bool = false
     ) -> QuotaGlance {
         let reading = Reading(now: now, trail: trail, clock: clock)
         let all = QuotaRollup.account(from: reports).filter {
@@ -126,56 +131,80 @@ public struct QuotaGlance: Sendable, Equatable {
                 lines.append(notice)
             }
 
-            let windows = holdings.flatMap { holding in
-                holding.gauges.filter { !isBalance($0) }.map { (holding, $0) }
-            }
-            let walls =
-                windows
-                .filter { $0.1.fraction >= QuotaSurface.exhaustedFloor && standing($0.1, now: now) }
-                .sorted { soonest($0.1) < soonest($1.1) }
-
-            if !walls.isEmpty {
-                lines += walls.prefix(maxWindows).map {
-                    line(for: $0.0, $0.1, tone: .danger, reading: reading)
+            if everyWindow {
+                lines += eachWindow(among: holdings, board: board, reading: reading)
+                if let money = balance(in: holdings) {
+                    lines.append(balanceLine(money.0, money.1))
                 }
-                if walls.count > maxWindows {
-                    lines.append(
-                        Line(
-                            kind: .notice,
-                            text: Localized.text(
-                                "+%@ more used up", String(walls.count - maxWindows)),
-                            tone: .danger))
-                }
-                lines += relief(
-                    among: windows, walls: walls, holdings: holdings, board: board, reading: reading)
             } else {
-                lines += standing(among: windows, holdings: holdings, board: board, reading: reading)
-            }
+                let windows = holdings.flatMap { holding in
+                    holding.gauges.filter { !isBalance($0) }.map { (holding, $0) }
+                }
+                let walls =
+                    windows
+                    .filter { $0.1.fraction >= QuotaSurface.exhaustedFloor && standing($0.1, now: now) }
+                    .sorted { soonest($0.1) < soonest($1.1) }
 
-            if let money = balance(in: holdings) {
-                lines.append(balanceLine(money.0, money.1))
+                if !walls.isEmpty {
+                    lines += walls.prefix(maxWindows).map {
+                        line(for: $0.0, $0.1, tone: .danger, reading: reading)
+                    }
+                    if walls.count > maxWindows {
+                        lines.append(
+                            Line(
+                                kind: .notice,
+                                text: Localized.text(
+                                    "+%@ more used up", String(walls.count - maxWindows)),
+                                tone: .danger))
+                    }
+                    lines += relief(
+                        among: windows, walls: walls, holdings: holdings, board: board, reading: reading)
+                } else {
+                    lines += standing(among: windows, holdings: holdings, board: board, reading: reading)
+                }
+
+                if let money = balance(in: holdings) {
+                    lines.append(balanceLine(money.0, money.1))
+                }
             }
         }
 
         for failure in failures.prefix(2) {
-            lines.append(
-                Line(
-                    kind: .notice,
-                    text: QuotaSurface.failureLine(
-                        failure.quota,
-                        machines: failure.failedMachines.isEmpty
-                            ? failure.machines : failure.failedMachines),
-                    tone: .warn))
+            lines.append(failureLine(failure))
         }
         if failures.count > 2 {
-            lines.append(
-                Line(
-                    kind: .notice,
-                    text: Localized.text(
-                        "+%@ more unavailable", String(failures.count - 2)),
-                    tone: .warn))
+            lines.append(moreUnavailable(failures.count))
         }
         return QuotaGlance(lines: lines, tooltip: tooltip(all, answeredAt: answeredAt, now: now))
+    }
+
+    /// Every window of every provider the board shows, in the board's order and in the order the
+    /// provider states them, each with its own reset. The card this feeds is the page behind the
+    /// strip: a person opening it wants the times, not one provider folded to its tightest window.
+    private static func eachWindow(
+        among holdings: [QuotaHolding], board: QuotaBoardPreferences, reading: Reading
+    ) -> [Line] {
+        QuotaBoard.arrange(holdings, preferences: board).flatMap { holding in
+            holding.gauges.filter { !isBalance($0) }.map {
+                line(for: holding, $0, tone: tone(of: holding, $0, reading: reading), reading: reading)
+            }
+        }
+    }
+
+    private static func failureLine(_ failure: QuotaHolding) -> Line {
+        Line(
+            kind: .notice,
+            text: QuotaSurface.failureLine(
+                failure.quota,
+                machines: failure.failedMachines.isEmpty
+                    ? failure.machines : failure.failedMachines),
+            tone: .warn)
+    }
+
+    private static func moreUnavailable(_ count: Int) -> Line {
+        Line(
+            kind: .notice, text: Localized.text("+%@ more unavailable", String(count - 2)),
+            tone: .warn)
     }
 
     /// One window's line: who meters it and which window, the reset as a dim tail, and the number

@@ -7,6 +7,19 @@ public enum ArchivedChatStore {
     nonisolated(unsafe) private static let defaults = UserDefaults.standard
     static let storageKey = "tailscode.archived.sessions"
 
+    /// A conversation's identity as two strings rather than one joined key: a board walks a fleet
+    /// of thousands on every refresh, and building a "profile/session" line for each one just to
+    /// ask a set whether it holds it was most of a refresh's CPU.
+    public struct ChatKey: Hashable, Sendable {
+        public let profileID: String
+        public let sessionID: String
+
+        public init(profileID: String, sessionID: String) {
+            self.profileID = profileID
+            self.sessionID = sessionID
+        }
+    }
+
     /// Posted after every toggle. A client with more than one surface reading the archive —
     /// a board, a list and an archived view at once — listens here instead of each surface
     /// re-rendering the others by hand.
@@ -14,6 +27,17 @@ public enum ArchivedChatStore {
 
     public static func all() -> Set<String> {
         Set(defaults.stringArray(forKey: storageKey) ?? [])
+    }
+
+    /// The archive as identities, for a reader that asks once per row.
+    public static func keys() -> Set<ChatKey> {
+        Set(
+            (defaults.stringArray(forKey: storageKey) ?? []).compactMap { line in
+                guard let slash = line.firstIndex(of: "/") else { return nil }
+                return ChatKey(
+                    profileID: String(line[..<slash]),
+                    sessionID: String(line[line.index(after: slash)...]))
+            })
     }
 
     public static func contains(profileID: String, sessionID: String) -> Bool {
