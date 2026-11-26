@@ -80,7 +80,7 @@ final class AgentHourView: NSView, NSViewToolTipOwner {
     }
 
     func update(_ next: AgentHour?, now: Date) {
-        let structural = next?.lanes != hour?.lanes || next?.unseen != hour?.unseen
+        let structural = !Self.sameReading(hour, next)
         hour = next
         self.now = now
         if structural {
@@ -88,8 +88,43 @@ final class AgentHourView: NSView, NSViewToolTipOwner {
             if abs(frame.height - height) > 0.5 { setFrameSize(NSSize(width: frame.width, height: height)) }
             rebuildToolTips()
             invalidateAccessibility()
+            needsDisplay = true
         }
-        needsDisplay = true
+    }
+
+    /// Whether a fetch changed what the lanes say. The span a session is in now ends at the moment it
+    /// was read, and so does the hatching's last gap, so those two tails are left out: a fetch a few
+    /// seconds after the last one moves only them, and the clock alone slides the picture along
+    /// without anything being painted again for it.
+    static func sameReading(_ a: AgentHour?, _ b: AgentHour?) -> Bool {
+        guard let a, let b else { return a == nil && b == nil }
+        return sameLanes(a.lanes, b.lanes) && sameUnseen(a.unseen, b.unseen)
+    }
+
+    private static func sameLanes(_ a: [AgentHourLane], _ b: [AgentHourLane]) -> Bool {
+        guard a.count == b.count else { return false }
+        for (old, new) in zip(a, b) {
+            guard old.id == new.id, old.parentID == new.parentID, old.profileID == new.profileID,
+                old.sessionID == new.sessionID, old.title == new.title, old.machine == new.machine,
+                old.marks == new.marks, old.spans.count == new.spans.count
+            else { return false }
+            for (index, span) in new.spans.enumerated() {
+                let was = old.spans[index]
+                guard was.start == span.start, was.phase == span.phase else { return false }
+                if index < new.spans.count - 1, was.end != span.end { return false }
+            }
+        }
+        return true
+    }
+
+    private static func sameUnseen(_ a: [DateInterval], _ b: [DateInterval]) -> Bool {
+        guard a.count == b.count else { return false }
+        for (index, gap) in b.enumerated() {
+            let was = a[index]
+            guard was.start == gap.start else { return false }
+            if index < b.count - 1, was.end != gap.end { return false }
+        }
+        return true
     }
 
     /// The clock moved: the picture is redrawn only once the line for now has travelled a whole

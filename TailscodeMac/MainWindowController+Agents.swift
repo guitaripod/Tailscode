@@ -7,6 +7,8 @@ extension MainWindowController {
     /// shortcut, and built the first time somebody asks.
     @discardableResult
     func presentAgents(fixture: Bool = false) -> AgentsWindowController {
+        let trace = Pace.traceStart()
+        defer { Pace.traceEnd("agents.open", trace) }
         let controller = agentsController(fixture: fixture)
         controller.present()
         return controller

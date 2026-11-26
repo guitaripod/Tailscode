@@ -30,6 +30,9 @@ final class MacImageLibrary {
     private let client: ImageGenClient
     private let cache: ImageGenLibraryCache
     private var facts: [String: ImageGenLibraryFacts] = [:]
+    private var noFacts: Set<String> = []
+    private var originalURLs: [String: URL] = [:]
+    private var thumbnailURLs: [String: URL] = [:]
     private var describing: Set<String> = []
     private let thumbnails = NSCache<NSString, NSImage>()
     private var thumbnailLoads: [String: Task<NSImage?, Never>] = [:]
@@ -90,6 +93,7 @@ final class MacImageLibrary {
                 self.freshAt = Date()
                 self.rememberedAt = nil
                 self.state = .loaded
+                self.noFacts.removeAll()
                 self.cache.store(listing: listed)
                 self.cache.pruneOriginals()
             case .failure(let failure):
@@ -106,10 +110,16 @@ final class MacImageLibrary {
         thumbnailLoads = [:]
     }
 
-    /// What is known about one picture, from memory, then disk. Nil until `describe` has landed.
+    /// What is known about one picture, from memory, then disk. Nil until `describe` has landed —
+    /// and nil is remembered too, because a shelf asks after every tile on each reload and a
+    /// picture with nothing filed beside it has no fact file to read until the machine is asked.
     func facts(of item: ImageGenLibraryItem) -> ImageGenLibraryFacts? {
         if let held = facts[item.id] { return held }
-        guard let stored = cache.facts(item) else { return nil }
+        guard !noFacts.contains(item.id) else { return nil }
+        guard let stored = cache.facts(item) else {
+            noFacts.insert(item.id)
+            return nil
+        }
         facts[item.id] = stored
         return stored
     }
@@ -125,6 +135,7 @@ final class MacImageLibrary {
             self.describing.remove(item.id)
             guard let learned else { return }
             self.facts[item.id] = learned
+            self.noFacts.remove(item.id)
             self.cache.store(learned, for: item)
             self.onChange?(item.id)
         }
@@ -134,13 +145,29 @@ final class MacImageLibrary {
         thumbnails.object(forKey: item.id as NSString)
     }
 
+    /// Where a picture's kept bytes live. The cache makes the folder on every ask and a shelf asks
+    /// for the same tile's files on every reload, so each picture's answer is kept once.
+    private func originalURL(of item: ImageGenLibraryItem) -> URL {
+        if let held = originalURLs[item.id] { return held }
+        let url = cache.originalURL(item)
+        originalURLs[item.id] = url
+        return url
+    }
+
+    private func thumbnailURL(of item: ImageGenLibraryItem) -> URL {
+        if let held = thumbnailURLs[item.id] { return held }
+        let url = cache.thumbnailURL(item, format: Self.thumbnailFormat)
+        thumbnailURLs[item.id] = url
+        return url
+    }
+
     /// A tile's picture: memory, then the disk copy, then the machine's re-encoded preview —
     /// decoded small, because a shelf of full renders is a shelf this Mac cannot scroll.
     func thumbnail(of item: ImageGenLibraryItem) async -> NSImage? {
         if let held = cachedThumbnail(of: item) { return held }
         if let running = thumbnailLoads[item.id] { return await running.value }
         let client = self.client
-        let file = cache.thumbnailURL(item, format: Self.thumbnailFormat)
+        let file = thumbnailURL(of: item)
         let format = Self.thumbnailFormat
         let load = Task<NSImage?, Never> {
             let bytes: Data?
@@ -168,7 +195,7 @@ final class MacImageLibrary {
     /// The bytes as the machine wrote them, kept on disk once fetched so a save, a share, a drag
     /// and the stage all read one copy.
     func original(of item: ImageGenLibraryItem) async -> Data? {
-        let file = cache.originalURL(item)
+        let file = originalURL(of: item)
         if let stored = FileManager.default.contents(atPath: file.path), !stored.isEmpty {
             return stored
         }
@@ -187,12 +214,12 @@ final class MacImageLibrary {
 
     /// Where the original lives on disk once fetched, which is the path a reference is named by.
     func originalPath(of item: ImageGenLibraryItem) -> String? {
-        let file = cache.originalURL(item)
+        let file = originalURL(of: item)
         return FileManager.default.fileExists(atPath: file.path) ? file.path : nil
     }
 
     func thumbnailPath(of item: ImageGenLibraryItem) -> String? {
-        let file = cache.thumbnailURL(item, format: Self.thumbnailFormat)
+        let file = thumbnailURL(of: item)
         return FileManager.default.fileExists(atPath: file.path) ? file.path : nil
     }
 

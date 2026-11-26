@@ -73,6 +73,8 @@ final class AgentsTableView: NSTableView {
 /// under a pointer resting on a row, and a hairline between rows.
 @MainActor
 final class AgentsTableRowView: NSTableRowView {
+    static let reuseIdentifier = NSUserInterfaceItemIdentifier("agents.row")
+
     enum Kind { case plain, card, row }
 
     var kind: Kind = .plain {

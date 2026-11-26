@@ -323,6 +323,8 @@ extension MainWindowController {
     }
 
     func presentPreferences(typeSize: Bool = false, page: Int? = nil) {
+        let trace = Pace.traceStart()
+        defer { Pace.traceEnd("preferences.open", trace) }
         if preferencesWindow == nil {
             preferencesWindow = PreferencesWindow(
                 onComposerChanged: { [weak self] in

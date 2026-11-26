@@ -68,6 +68,7 @@ final class AgentsBoardViewController: NSViewController {
         context.showsMachines = next.showsMachines
         let fresh = Self.items(for: next, actions: context.actions)
         let previous = items
+        let keep = selectedKey
         items = fresh
         context.actions.forget(
             keepingOnly: Set(next.needsYou.map(\.id) + next.working.map(\.id) + next.background.map(\.id)))
@@ -81,14 +82,75 @@ final class AgentsBoardViewController: NSViewController {
             if !heights.isEmpty { table.noteHeightOfRows(withIndexesChanged: heights) }
             return
         }
-        let keep = selectedKey
-        suppressSelection = true
-        table.reloadData()
-        if let keep, let row = fresh.firstIndex(where: { $0.sessionKey == keep && $0.isSelectable }) {
-            table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        applyDelta(previous, fresh, keeping: keep)
+    }
+
+    /// What a publish added, took away or moved, applied as that delta: a row that stayed keeps the
+    /// height the table measured for it, and only a row whose item changed is measured again, since
+    /// the table measures every visible row again when it is told to reload.
+    private func applyDelta(_ previous: [AgentsItem], _ fresh: [AgentsItem], keeping keep: String?) {
+        let old = previous.map(\.id)
+        let new = fresh.map(\.id)
+        let oldSet = Set(old)
+        let newSet = Set(new)
+        guard oldSet.count == old.count, newSet.count == new.count else {
+            reloadAll(keeping: keep)
+            return
         }
+        var working = old.filter { newSet.contains($0) }
+        var steps: [Update] = []
+        for (index, id) in new.enumerated() {
+            if index < working.count, working[index] == id { continue }
+            if let at = working.firstIndex(of: id) {
+                working.remove(at: at)
+                working.insert(id, at: index)
+                steps.append(.move(from: at, to: index))
+            } else {
+                working.insert(id, at: index)
+                steps.append(.insert(index))
+            }
+        }
+        let removed = IndexSet(old.indices.filter { !newSet.contains(old[$0]) })
+        suppressSelection = true
+        table.beginUpdates()
+        if !removed.isEmpty { table.removeRows(at: removed, withAnimation: []) }
+        for step in steps {
+            switch step {
+            case .insert(let index): table.insertRows(at: IndexSet(integer: index), withAnimation: [])
+            case .move(let from, let to): table.moveRow(at: from, to: to)
+            }
+        }
+        table.endUpdates()
+        var heights = IndexSet()
+        let before = Dictionary(previous.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for (index, item) in fresh.enumerated() {
+            guard let was = before[item.id], was != item else { continue }
+            reconfigure(row: index)
+            heights.insert(index)
+        }
+        if !heights.isEmpty { table.noteHeightOfRows(withIndexesChanged: heights) }
+        restoreSelection(keeping: keep)
         suppressSelection = false
         if keep != nil, selectedKey == nil { onSelect?(nil) }
+    }
+
+    private enum Update {
+        case insert(Int)
+        case move(from: Int, to: Int)
+    }
+
+    private func reloadAll(keeping keep: String?) {
+        suppressSelection = true
+        table.reloadData()
+        restoreSelection(keeping: keep)
+        suppressSelection = false
+        if keep != nil, selectedKey == nil { onSelect?(nil) }
+    }
+
+    private func restoreSelection(keeping keep: String?) {
+        guard let keep, let row = items.firstIndex(where: { $0.sessionKey == keep && $0.isSelectable })
+        else { return }
+        table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
     }
 
     static func items(for board: AgentBoard, actions: AgentsActions) -> [AgentsItem] {
@@ -258,7 +320,15 @@ extension AgentsBoardViewController: NSTableViewDelegate {
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        let view = AgentsTableRowView()
+        let reused = tableView.makeView(withIdentifier: AgentsTableRowView.reuseIdentifier, owner: nil)
+            as? AgentsTableRowView
+        let view: AgentsTableRowView
+        if let reused {
+            view = reused
+        } else {
+            view = AgentsTableRowView()
+            view.identifier = AgentsTableRowView.reuseIdentifier
+        }
         switch items[row] {
         case .ask: view.kind = .card
         case .row: view.kind = .row

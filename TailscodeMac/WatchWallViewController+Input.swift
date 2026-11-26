@@ -5,6 +5,9 @@ import TailscodeCore
 extension WatchWallViewController {
     static let handBackAfter: TimeInterval = 2.6
     static let idleHides: TimeInterval = 3
+    /// How recently a board publish makes the second's own read redundant: the tower coalesces its
+    /// publishes to about this long, so a read a second after one reads the board it just drew.
+    static let boardQuiet: TimeInterval = 0.9
 
     func setActive(_ on: Bool) {
         isActive = on
@@ -45,7 +48,11 @@ extension WatchWallViewController {
         let now = Date()
         updateDrift(now)
         palette = Self.palette(for: style, at: now)
-        reread(now: now)
+        if now.timeIntervalSince(lastBoardAt) >= Self.boardQuiet {
+            reread(now: now)
+        } else {
+            refreshLiveWords(now: now)
+        }
         keepAwake.hold(WatchKeepAwake.allows(style))
         fetchHourIfDue(now)
         hideChromeIfIdle(now)

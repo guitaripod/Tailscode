@@ -50,6 +50,17 @@ final class WatchWordsHost: WatchPassView {
 
     func tileView(_ id: String) -> WatchTileWordsView? { tiles[id] }
 
+    /// The second's share of a wall that did not change: the state word beside every title, the
+    /// band's time and date and the rails' ages, written where they stand. Nothing is measured and
+    /// no word is moved, because the wall it says this on is the one already placed.
+    func refreshLive(wall: AgentWall, layout: WallLayout, face: WatchFace, now: Date) {
+        for tile in wall.tiles {
+            tiles[tile.id]?.refreshLive(now: now)
+        }
+        _ = bands.apply(wall, layout: layout, face: face, now: now)
+        _ = rails.apply(wall, layout: layout, face: face, now: now)
+    }
+
     func prepare(
         wall: AgentWall, layout: WallLayout, face: WatchFace, now: Date,
         presses: [String: WatchTileWordsView.Press]

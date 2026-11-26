@@ -161,9 +161,11 @@ final class StudioShelfView: NSView, NSCollectionViewDelegate {
     }
 
     private func updateNote() {
-        let text = lane?.shelfNote
-        note.stringValue = text ?? (items.isEmpty ? ImageGenLibraryWords.emptyTitle : "")
-        note.isHidden = note.stringValue.isEmpty
+        let text = lane?.shelfNote ?? (items.isEmpty ? ImageGenLibraryWords.emptyTitle : "")
+        let hidden = text.isEmpty
+        guard text != note.stringValue || hidden != note.isHidden else { return }
+        note.stringValue = text
+        note.isHidden = hidden
         needsLayout = true
     }
 

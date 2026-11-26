@@ -25,6 +25,18 @@ final class ImageLane: StudioLane {
         let notify: (StudioLaneChange) -> Void
     }
 
+    /// What the shelf's job tile and the toolbar wear from a report. The socket sends a census many
+    /// times a step, and a report that moves none of these has nothing to lay out.
+    private struct ProgressFacts: Equatable {
+        let queue: Int
+        let stage: ImageGenProgress.Stage?
+        let step: Int?
+        let steps: Int?
+    }
+
+    private var progressQueued = false
+    private var progressFacts: ProgressFacts?
+
     var stage: NSView & StudioStaging { imageStage }
     var dock: NSView & StudioDocking { imageDock }
 
@@ -55,9 +67,14 @@ final class ImageLane: StudioLane {
     private func studioChanged(_ change: MacImageStudio.Change) {
         let lane: StudioLaneChange
         switch change {
-        case .state: lane = .everything
-        case .progress: lane = .progress
-        case .sketch: lane = .sketch
+        case .state:
+            lane = .everything
+            progressFacts = nil
+        case .progress:
+            queueProgress()
+            return
+        case .sketch:
+            lane = .sketch
         case .rewrite:
             imageDock.rewriteChanged()
             return
@@ -67,6 +84,28 @@ final class ImageLane: StudioLane {
         imageDock.studioChanged(lane)
         watchers = watchers.filter { $0.value.owner != nil }
         for watcher in watchers.values { watcher.notify(lane) }
+    }
+
+    /// The newest report wins and is applied once the run loop has turned, so a burst of socket
+    /// messages is one frame of the stage; the shelf and the toolbar are told only when what they
+    /// wear — the queue behind the render and where it has got to — actually moved.
+    private func queueProgress() {
+        guard !progressQueued else { return }
+        progressQueued = true
+        DispatchQueue.main.async { [weak self] in MainThread.call { self?.applyProgress() } }
+    }
+
+    private func applyProgress() {
+        progressQueued = false
+        let progress = studio.progress
+        let facts = ProgressFacts(
+            queue: studio.queueCount, stage: progress?.stage, step: progress?.step,
+            steps: progress?.steps)
+        guard facts != progressFacts else { return }
+        progressFacts = facts
+        imageStage.studioChanged(.progress)
+        watchers = watchers.filter { $0.value.owner != nil }
+        for watcher in watchers.values { watcher.notify(.progress) }
     }
 
     func prepare() {

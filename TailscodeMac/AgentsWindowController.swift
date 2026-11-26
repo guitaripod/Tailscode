@@ -238,7 +238,7 @@ final class AgentsWindowController: NSWindowController {
                 closeWallPeek()
             }
         }
-        if mode == .hour { hour.reload() }
+        if mode == .hour { hour.tick(now: context.now()) }
     }
 
     private func tick() {
@@ -295,6 +295,7 @@ final class AgentsWindowController: NSWindowController {
         } else {
             inspector.isCollapsed = collapsed
         }
+        if !collapsed { peek.renderNow() }
     }
 
     func openChat(_ key: String) {

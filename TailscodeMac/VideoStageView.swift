@@ -92,6 +92,8 @@ final class VideoStageView: NSView, StudioStaging {
     private var link: CADisplayLink?
     private var sketchDirty = false
     private var dropping = false
+    private var invitationShown = false
+    private var captionFit: (text: String, font: CGFloat, width: CGFloat, dot: Bool)?
 
     private var player: AVPlayer?
     private var clipHold: VideoClipHold?
@@ -187,6 +189,7 @@ final class VideoStageView: NSView, StudioStaging {
             for fill in fills { fill.backgroundColor = MacTheme.Color.accent.cgColor }
         }
         caption.font = MacTheme.Ramp.font(.panelFootnote)
+        captionFit = nil
         needsLayout = true
     }
 
@@ -377,8 +380,23 @@ final class VideoStageView: NSView, StudioStaging {
         }
         caption.stringValue = model.caption
         sketchPill.text = model.sketchCaption
+        let shown = !clockDot.isHidden
+        guard captionFit?.text != caption.stringValue || captionFit?.dot != shown else { return }
+        captionFit = nil
         needsLayout = true
         layoutSubtreeIfNeeded()
+    }
+
+    /// The caption's own width, remembered by its words: the stage is laid out on every frame of a
+    /// render, and a sentence that has not changed measures the same as it did last time.
+    private func fittedCaptionWidth() -> CGFloat {
+        let font = caption.font?.pointSize ?? 0
+        if let captionFit, captionFit.text == caption.stringValue, captionFit.font == font {
+            return captionFit.width
+        }
+        let width = ceil(caption.intrinsicContentSize.width)
+        captionFit = (text: caption.stringValue, font: font, width: width, dot: !clockDot.isHidden)
+        return width
     }
 
     private func updateProgress() {
@@ -474,54 +492,74 @@ final class VideoStageView: NSView, StudioStaging {
         let captionHeight = StudioTheme.height(of: .panelFootnote)
         let dotWidth: CGFloat = clockDot.isHidden ? 0 : 18
         let captionWidth = min(
-            bounds.width - 2 * StudioTheme.stageMargin - dotWidth, ceil(caption.intrinsicContentSize.width) + 14)
+            bounds.width - 2 * StudioTheme.stageMargin - dotWidth, fittedCaptionWidth() + 14)
         let total = captionWidth + dotWidth
         let originX = (bounds.width - total) / 2
         let captionY = (StudioTheme.captionBand - 8 - captionHeight) / 2 + 4
         clockDot.frame = NSRect(x: originX, y: captionY - 1, width: dotWidth, height: captionHeight + 2)
         caption.frame = NSRect(x: originX + dotWidth, y: captionY, width: captionWidth, height: captionHeight)
 
-        let pill = sketchPill.fittingSize
-        sketchPill.frame = NSRect(
-            x: pictureRect.minX + 12, y: pictureRect.minY + 12, width: pill.width, height: pill.height)
-        let sound = soundPill.fittingSize
-        soundPill.frame = NSRect(
-            x: pictureRect.maxX - 12 - sound.width, y: pictureRect.minY + 12, width: sound.width,
-            height: sound.height)
-        let note = dropNote.fittingSize
-        dropNote.frame = NSRect(
-            x: pictureRect.midX - note.width / 2, y: pictureRect.minY + 16, width: note.width,
-            height: note.height)
+        if !sketchPill.isHidden {
+            let pill = sketchPill.fittingSize
+            sketchPill.frame = NSRect(
+                x: pictureRect.minX + 12, y: pictureRect.minY + 12, width: pill.width, height: pill.height)
+        }
+        if !soundPill.isHidden {
+            let sound = soundPill.fittingSize
+            soundPill.frame = NSRect(
+                x: pictureRect.maxX - 12 - sound.width, y: pictureRect.minY + 12, width: sound.width,
+                height: sound.height)
+        }
+        if !dropNote.isHidden {
+            let note = dropNote.fittingSize
+            dropNote.frame = NSRect(
+                x: pictureRect.midX - note.width / 2, y: pictureRect.minY + 16, width: note.width,
+                height: note.height)
+        }
 
-        let inviteWidth = min(max(pictureRect.width - 40, 0), 560)
-        let invite = invitation.fitting(width: inviteWidth)
-        invitation.frame = NSRect(
-            x: pictureRect.midX - invite.width / 2, y: pictureRect.midY - invite.height / 2,
-            width: invite.width, height: invite.height)
-        invitation.needsLayout = true
+        let inviting = !invitation.isHidden
+        if inviting {
+            let inviteWidth = min(max(pictureRect.width - 40, 0), 560)
+            let invite = invitation.fitting(width: inviteWidth)
+            invitation.frame = NSRect(
+                x: pictureRect.midX - invite.width / 2, y: pictureRect.midY - invite.height / 2,
+                width: invite.width, height: invite.height)
+        }
+        if inviting != invitationShown {
+            invitationShown = inviting
+            if inviting { invitation.needsLayout = true }
+        }
 
-        let statusSize = status.fitting(width: min(pictureRect.width - 32, 520))
-        status.frame = NSRect(
-            x: pictureRect.midX - statusSize.width / 2, y: pictureRect.midY - statusSize.height / 2,
-            width: statusSize.width, height: statusSize.height)
-        let failureSize = failure.fitting(width: min(max(pictureRect.width - 48, 0), 520))
-        failure.frame = NSRect(
-            x: pictureRect.midX - failureSize.width / 2, y: pictureRect.midY - failureSize.height / 2,
-            width: failureSize.width, height: failureSize.height)
-        let continuationSize = continuation.fitting(width: min(max(pictureRect.width - 48, 0), 520))
-        continuation.frame = NSRect(
-            x: pictureRect.midX - continuationSize.width / 2,
-            y: pictureRect.midY - continuationSize.height / 2, width: continuationSize.width,
-            height: continuationSize.height)
+        if !status.isHidden {
+            let statusSize = status.fitting(width: min(pictureRect.width - 32, 520))
+            status.frame = NSRect(
+                x: pictureRect.midX - statusSize.width / 2, y: pictureRect.midY - statusSize.height / 2,
+                width: statusSize.width, height: statusSize.height)
+        }
+        if !failure.isHidden {
+            let failureSize = failure.fitting(width: min(max(pictureRect.width - 48, 0), 520))
+            failure.frame = NSRect(
+                x: pictureRect.midX - failureSize.width / 2, y: pictureRect.midY - failureSize.height / 2,
+                width: failureSize.width, height: failureSize.height)
+        }
+        if !continuation.isHidden {
+            let continuationSize = continuation.fitting(width: min(max(pictureRect.width - 48, 0), 520))
+            continuation.frame = NSRect(
+                x: pictureRect.midX - continuationSize.width / 2,
+                y: pictureRect.midY - continuationSize.height / 2, width: continuationSize.width,
+                height: continuationSize.height)
+        }
         playGlyph.frame = NSRect(
             x: pictureRect.midX - VideoPlayGlyph.side / 2, y: pictureRect.midY - VideoPlayGlyph.side / 2,
             width: VideoPlayGlyph.side, height: VideoPlayGlyph.side)
 
-        let capsuleSize = capsule.fitting(maxWidth: max(0, pictureRect.width - 24))
-        capsule.frame = NSRect(
-            x: pictureRect.midX - capsuleSize.width / 2,
-            y: pictureRect.maxY - StudioTheme.capsuleLift - capsuleSize.height,
-            width: capsuleSize.width, height: capsuleSize.height)
+        if !capsule.isHidden {
+            let capsuleSize = capsule.fitting(maxWidth: max(0, pictureRect.width - 24))
+            capsule.frame = NSRect(
+                x: pictureRect.midX - capsuleSize.width / 2,
+                y: pictureRect.maxY - StudioTheme.capsuleLift - capsuleSize.height,
+                width: capsuleSize.width, height: capsuleSize.height)
+        }
         layoutProgress()
         updateStillTracks()
     }
@@ -765,6 +803,7 @@ final class VideoInvitationView: NSView {
     private let title = StudioTheme.label(.headline, color: MacTheme.Color.label, lines: 2, alignment: .center)
     private let body = StudioTheme.label(.panelFootnote, color: MacTheme.Color.secondaryLabel, lines: 3, alignment: .center)
     private let button = NSButton(title: "", target: nil, action: nil)
+    private var fitted: (title: String, body: String, width: CGFloat, needsRenderer: Bool, size: NSSize)?
 
     init() {
         super.init(frame: .zero)
@@ -790,11 +829,18 @@ final class VideoInvitationView: NSView {
         body.stringValue = words
         button.title = ForgeSetup.title
         button.isHidden = !needsRenderer
+        fitted = nil
         setAccessibilityLabel([text, words].filter { !$0.isEmpty }.joined(separator: ". "))
         needsLayout = true
     }
 
     func fitting(width: CGFloat) -> NSSize {
+        let needsRenderer = !button.isHidden
+        if let fitted, fitted.title == title.stringValue, fitted.body == body.stringValue,
+            fitted.width == width, fitted.needsRenderer == needsRenderer
+        {
+            return fitted.size
+        }
         let titleHeight = ceil(
             title.attributedStringValue.boundingRect(
                 with: NSSize(width: max(40, width), height: 200), options: [.usesLineFragmentOrigin]
@@ -803,7 +849,10 @@ final class VideoInvitationView: NSView {
             body.attributedStringValue.boundingRect(
                 with: NSSize(width: max(40, width), height: 200), options: [.usesLineFragmentOrigin]
             ).height)
-        return NSSize(width: width, height: titleHeight + 8 + bodyHeight + (button.isHidden ? 0 : 44))
+        let size = NSSize(
+            width: width, height: titleHeight + 8 + bodyHeight + (needsRenderer ? 44 : 0))
+        fitted = (title.stringValue, body.stringValue, width, needsRenderer, size)
+        return size
     }
 
     override func layout() {
@@ -837,6 +886,7 @@ final class VideoContinuationCard: StudioRaisedView {
     private let title = StudioTheme.label(.rowTitleStrong, color: MacTheme.Color.label, lines: 3)
     private let body = StudioTheme.label(.cardBody, color: MacTheme.Color.secondaryLabel, lines: 4)
     private let button = NSButton(title: "", target: nil, action: nil)
+    private var fitted: (title: String, body: String, width: CGFloat, size: NSSize)?
 
     private static let pad: CGFloat = 20
     private static let iconSide: CGFloat = 26
@@ -875,6 +925,7 @@ final class VideoContinuationCard: StudioRaisedView {
         icon.contentTintColor = MacTheme.Color.accent
         title.font = MacTheme.Ramp.font(.rowTitleStrong)
         body.font = MacTheme.Ramp.font(.cardBody)
+        fitted = nil
     }
 
     func show(title words: String, body detail: String, action: String) {
@@ -882,6 +933,7 @@ final class VideoContinuationCard: StudioRaisedView {
         body.stringValue = detail
         button.title = action
         button.setAccessibilityLabel(action)
+        fitted = nil
         setAccessibilityRole(.group)
         setAccessibilityLabel([words, detail].joined(separator: ". "))
         needsLayout = true
@@ -895,9 +947,16 @@ final class VideoContinuationCard: StudioRaisedView {
     }
 
     func fitting(width: CGFloat) -> NSSize {
+        if let fitted, fitted.title == title.stringValue, fitted.body == body.stringValue,
+            fitted.width == width
+        {
+            return fitted.size
+        }
         let textWidth = max(120, width - 2 * Self.pad - Self.iconSide - 12)
         let height = 2 * Self.pad + height(of: title, width: textWidth) + 6 + height(of: body, width: textWidth) + 14 + 28
-        return NSSize(width: min(width, 420), height: height)
+        let size = NSSize(width: min(width, 420), height: height)
+        fitted = (title.stringValue, body.stringValue, width, size)
+        return size
     }
 
     override func layout() {

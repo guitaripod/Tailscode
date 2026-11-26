@@ -16,6 +16,7 @@ final class StudioVerbsCapsule: NSView {
     private let glass = NSGlassEffectView()
     private let scrim = NSView()
     private var iconsOnly = false
+    private var fitted: (maxWidth: CGFloat, size: NSSize, iconsOnly: Bool)?
 
     init() {
         super.init(frame: .zero)
@@ -49,6 +50,8 @@ final class StudioVerbsCapsule: NSView {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             scrim.layer?.backgroundColor = StudioTheme.scrim.cgColor
         }
+        fitted = nil
+        for button in buttons { button.forgetWidth() }
     }
 
     func show(_ next: [StudioStageVerb], holdsRoom: Bool) {
@@ -62,16 +65,24 @@ final class StudioVerbsCapsule: NSView {
             scrim.addSubview(button)
             return button
         }
+        fitted = nil
         needsLayout = true
         superview?.needsLayout = true
     }
 
     func fitting(maxWidth: CGFloat) -> NSSize {
         guard !buttons.isEmpty else { return NSSize(width: 0, height: StudioTheme.capsuleHeight) }
+        if let fitted, fitted.maxWidth == maxWidth {
+            iconsOnly = fitted.iconsOnly
+            return fitted.size
+        }
         let full = buttons.reduce(CGFloat(16)) { $0 + $1.width(iconsOnly: false) + 2 }
-        iconsOnly = full > maxWidth
-        let width = iconsOnly ? buttons.reduce(CGFloat(16)) { $0 + $1.width(iconsOnly: true) + 2 } : full
-        return NSSize(width: min(maxWidth, width), height: StudioTheme.capsuleHeight)
+        let narrow = full > maxWidth
+        let width = narrow ? buttons.reduce(CGFloat(16)) { $0 + $1.width(iconsOnly: true) + 2 } : full
+        let size = NSSize(width: min(maxWidth, width), height: StudioTheme.capsuleHeight)
+        fitted = (maxWidth, size, narrow)
+        iconsOnly = narrow
+        return size
     }
 
     override func layout() {
@@ -102,6 +113,7 @@ final class StudioVerbButton: NSView {
     private let plate = PointerPlate()
     private var tracking: NSTrackingArea?
     private var pressing = false
+    private var fullWidth: CGFloat?
 
     init(verb: StudioStageVerb) {
         self.verb = verb
@@ -124,8 +136,15 @@ final class StudioVerbButton: NSView {
     private var title: String { verb.title.replacingOccurrences(of: "…", with: "") }
 
     func width(iconsOnly: Bool) -> CGFloat {
-        iconsOnly ? 32 : 14 + 16 + 6 + StudioTheme.width(of: title, role: .control) + 14
+        guard !iconsOnly else { return 32 }
+        if let fullWidth { return fullWidth }
+        let width = 14 + 16 + 6 + StudioTheme.width(of: title, role: .control) + 14
+        fullWidth = width
+        return width
     }
+
+    /// The type scale can change under a capsule nobody rebuilt: the word is measured again.
+    func forgetWidth() { fullWidth = nil }
 
     override func layout() {
         super.layout()

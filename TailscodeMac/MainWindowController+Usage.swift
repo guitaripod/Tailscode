@@ -113,6 +113,8 @@ extension MainWindowController {
     /// The usage board, one window per app, held in a property because a window presented from a
     /// local is dead on arrival — released while shown, its buttons do nothing.
     func presentUsageWindow() {
+        let trace = Pace.traceStart()
+        defer { Pace.traceEnd("usage.open", trace) }
         if usageWindow == nil {
             usageWindow = UsageWindowController(
                 initial: lastQuotas,

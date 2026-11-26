@@ -50,8 +50,9 @@ extension PreferencesWindow {
         let tabs = NSTabViewController()
         tabs.tabStyle = .toolbar
         for pane in Pane.allCases {
-            let controller = NSViewController()
-            controller.view = held(content(of: pane))
+            let controller = LazyPreferencesPane {
+                [weak self] in self?.held(self?.content(of: pane) ?? NSView()) ?? NSView()
+            }
             controller.title = pane.title
             let item = NSTabViewItem(viewController: controller)
             item.label = pane.title
@@ -66,7 +67,7 @@ extension PreferencesWindow {
     /// page by its frame — which a view that opts out of autoresizing never gets, so every page
     /// but the one open at presentation came up with no size and showed nothing. The page stands
     /// in a plain view the controller can size, pinned to all four edges of it.
-    private func held(_ page: NSView) -> NSView {
+    fileprivate func held(_ page: NSView) -> NSView {
         let container = NSView(frame: NSRect(origin: .zero, size: Self.openSize))
         container.autoresizingMask = [.width, .height]
         page.translatesAutoresizingMaskIntoConstraints = false
@@ -89,6 +90,24 @@ extension PreferencesWindow {
         case .accounts: return accountsPane()
         case .keyboard: return keyboardPane()
         case .advanced: return advancedPane()
+        }
+    }
+
+    /// One Settings page, drawn the first time its tab is shown. Seven pages were built to open
+    /// the first, and the click that opened the window waited for all of them.
+    @MainActor
+    final class LazyPreferencesPane: NSViewController {
+        private let make: () -> NSView
+
+        init(make: @escaping () -> NSView) {
+            self.make = make
+            super.init(nibName: nil, bundle: nil)
+        }
+
+        @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+        override func loadView() {
+            view = make()
         }
     }
 

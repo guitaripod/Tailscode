@@ -53,6 +53,11 @@ final class StudioStageView: NSView, StudioStaging {
     private var referenceLoads: Set<String> = []
     private var backdropID: String?
     private var backdropLoad: Task<Void, Never>?
+    private var referenceAspect: Double?
+    private var referenceAspectPath: String?
+    private var referenceAspectLoad: Task<Void, Never>?
+    private var invitationShown = false
+    private var captionFit: (text: String, font: CGFloat, width: CGFloat, dot: Bool)?
     private var pictureRect: NSRect = .zero
     private var link: CADisplayLink?
     private lazy var gate = DisplayGate(self) { [weak self] in self?.gateChanged() }
@@ -142,6 +147,7 @@ final class StudioStageView: NSView, StudioStaging {
             fill.backgroundColor = MacTheme.Color.accent.cgColor
         }
         caption.font = MacTheme.Ramp.font(.panelFootnote)
+        captionFit = nil
         needsLayout = true
     }
 
@@ -193,6 +199,7 @@ final class StudioStageView: NSView, StudioStaging {
             announce(studio.caption(of: exhibit).words)
         }
         applyState(crossfading: crossfading)
+        syncReferenceAspect()
         needsLayout = true
         layoutSubtreeIfNeeded()
         if crossfading { fadeSketchIntoPicture() } else if !state.isWorking { dropSketchIfSettled() }
@@ -334,6 +341,45 @@ final class StudioStageView: NSView, StudioStaging {
             self.recompute()
         }
         return nil
+    }
+
+    /// A reference's own shape is one header, read once per file and never on a layout pass: the
+    /// stage asks for it every time it lays itself out, so the read happens when the held picture
+    /// changes and the rectangle keeps the shape that was asked for until the answer lands.
+    private func syncReferenceAspect() {
+        let path = studio.slot.reference?.path
+        guard path != referenceAspectPath else { return }
+        referenceAspectPath = path
+        referenceAspectLoad?.cancel()
+        referenceAspectLoad = nil
+        referenceAspect = nil
+        guard let path, !path.isEmpty else { return }
+        if let held = StudioDrops.heldAspect(ofFileAt: path) {
+            referenceAspect = held
+            return
+        }
+        referenceAspectLoad = Task { [weak self] in
+            let aspect = await Task.detached(priority: .utility) {
+                StudioDrops.readAspect(ofFileAt: path)
+            }.value
+            guard let self, self.referenceAspectPath == path else { return }
+            self.referenceAspectLoad = nil
+            guard let aspect else { return }
+            self.referenceAspect = aspect
+            self.needsLayout = true
+        }
+    }
+
+    /// The caption's own width, remembered by its words: the stage is laid out on every frame of a
+    /// render, and a sentence that has not changed measures the same as it did last time.
+    private func fittedCaptionWidth() -> CGFloat {
+        let font = caption.font?.pointSize ?? 0
+        if let captionFit, captionFit.text == caption.stringValue, captionFit.font == font {
+            return captionFit.width
+        }
+        let width = ceil(caption.intrinsicContentSize.width)
+        captionFit = (text: caption.stringValue, font: font, width: width, dot: !clockDot.isHidden)
+        return width
     }
 
     private func applyState(crossfading: Bool) {
@@ -481,6 +527,9 @@ final class StudioStageView: NSView, StudioStaging {
         case .stopped:
             caption.stringValue = ImageGenWords.stoppedNotice
         }
+        let shown = !clockDot.isHidden
+        guard captionFit?.text != caption.stringValue || captionFit?.dot != shown else { return }
+        captionFit = nil
         needsLayout = true
         layoutSubtreeIfNeeded()
     }
@@ -566,43 +615,59 @@ final class StudioStageView: NSView, StudioStaging {
         let captionHeight = StudioTheme.height(of: .panelFootnote)
         let dotWidth: CGFloat = clockDot.isHidden ? 0 : 18
         let captionWidth = min(
-            bounds.width - 2 * StudioTheme.stageMargin - dotWidth, ceil(caption.intrinsicContentSize.width) + 14)
+            bounds.width - 2 * StudioTheme.stageMargin - dotWidth, fittedCaptionWidth() + 14)
         let total = captionWidth + dotWidth
         let originX = (bounds.width - total) / 2
         let captionY = (StudioTheme.captionBand - 8 - captionHeight) / 2 + 4
         clockDot.frame = NSRect(x: originX, y: captionY - 1, width: dotWidth, height: captionHeight + 2)
         caption.frame = NSRect(x: originX + dotWidth, y: captionY, width: captionWidth, height: captionHeight)
 
-        let pill = sketchPill.fittingSize
-        sketchPill.frame = NSRect(
-            x: pictureRect.minX + 12, y: pictureRect.minY + 12, width: pill.width, height: pill.height)
-        let note = dropNote.fittingSize
-        dropNote.frame = NSRect(
-            x: pictureRect.midX - note.width / 2, y: pictureRect.minY + 16, width: note.width,
-            height: note.height)
+        if !sketchPill.isHidden {
+            let pill = sketchPill.fittingSize
+            sketchPill.frame = NSRect(
+                x: pictureRect.minX + 12, y: pictureRect.minY + 12, width: pill.width, height: pill.height)
+        }
+        if !dropNote.isHidden {
+            let note = dropNote.fittingSize
+            dropNote.frame = NSRect(
+                x: pictureRect.midX - note.width / 2, y: pictureRect.minY + 16, width: note.width,
+                height: note.height)
+        }
 
-        let inviteWidth = min(max(pictureRect.width - 40, 0), 720)
-        let invite = invitation.fitting(width: inviteWidth)
-        invitation.frame = NSRect(
-            x: pictureRect.midX - invite.width / 2,
-            y: pictureRect.midY - invite.height / 2 - 6, width: invite.width, height: invite.height)
-        invitation.needsLayout = true
+        let inviting = !invitation.isHidden
+        if inviting {
+            let inviteWidth = min(max(pictureRect.width - 40, 0), 720)
+            let invite = invitation.fitting(width: inviteWidth)
+            invitation.frame = NSRect(
+                x: pictureRect.midX - invite.width / 2,
+                y: pictureRect.midY - invite.height / 2 - 6, width: invite.width, height: invite.height)
+        }
+        if inviting != invitationShown {
+            invitationShown = inviting
+            if inviting { invitation.needsLayout = true }
+        }
 
-        let statusSize = status.fitting(width: min(pictureRect.width - 32, 520))
-        status.frame = NSRect(
-            x: pictureRect.midX - statusSize.width / 2, y: pictureRect.midY - statusSize.height / 2,
-            width: statusSize.width, height: statusSize.height)
-        let failureSize = failure.fitting(width: min(max(pictureRect.width - 48, 0), 520))
-        failure.frame = NSRect(
-            x: pictureRect.midX - failureSize.width / 2,
-            y: pictureRect.midY - failureSize.height / 2, width: failureSize.width,
-            height: failureSize.height)
+        if !status.isHidden {
+            let statusSize = status.fitting(width: min(pictureRect.width - 32, 520))
+            status.frame = NSRect(
+                x: pictureRect.midX - statusSize.width / 2, y: pictureRect.midY - statusSize.height / 2,
+                width: statusSize.width, height: statusSize.height)
+        }
+        if !failure.isHidden {
+            let failureSize = failure.fitting(width: min(max(pictureRect.width - 48, 0), 520))
+            failure.frame = NSRect(
+                x: pictureRect.midX - failureSize.width / 2,
+                y: pictureRect.midY - failureSize.height / 2, width: failureSize.width,
+                height: failureSize.height)
+        }
 
-        let capsuleSize = capsule.fitting(maxWidth: max(0, bounds.width - 2 * StudioTheme.stageMargin))
-        capsule.frame = NSRect(
-            x: pictureRect.midX - capsuleSize.width / 2,
-            y: pictureRect.maxY - StudioTheme.capsuleLift - capsuleSize.height,
-            width: capsuleSize.width, height: capsuleSize.height)
+        if !capsule.isHidden {
+            let capsuleSize = capsule.fitting(maxWidth: max(0, bounds.width - 2 * StudioTheme.stageMargin))
+            capsule.frame = NSRect(
+                x: pictureRect.midX - capsuleSize.width / 2,
+                y: pictureRect.maxY - StudioTheme.capsuleLift - capsuleSize.height,
+                width: capsuleSize.width, height: capsuleSize.height)
+        }
         layoutProgress(studio.progress?.bar ?? 0)
     }
 
@@ -617,14 +682,15 @@ final class StudioStageView: NSView, StudioStaging {
     /// The shape the picture rectangle is. Decided before a render starts, from what was asked for:
     /// an edit takes the shape of the picture it starts from, words take the aspect chosen, and a
     /// finished picture is its own — so the rectangle the sketch filled is the one the picture lands
-    /// in.
+    /// in. A held reference's shape comes from the header read once for it, never from the file
+    /// under a layout pass.
     private var frameAspect: Double {
         let slot = studio.slot
         if state == .done, let heldBitmap, heldBitmap.height > 0 {
             return Double(heldBitmap.width) / Double(heldBitmap.height)
         }
-        if let reference = slot.reference, let aspect = StudioDrops.aspect(of: reference) {
-            return aspect
+        if let reference = slot.reference, reference.path == referenceAspectPath, let referenceAspect {
+            return referenceAspect
         }
         if state == .done || state == .stopped, let heldBitmap, heldBitmap.height > 0 {
             return Double(heldBitmap.width) / Double(heldBitmap.height)
@@ -718,8 +784,28 @@ extension StudioStageView: NSMenuItemValidation {
 }
 
 enum StudioDrops {
-    /// The aspect of what an edit starts from, when it can be read from the file's own header.
-    static func aspect(of reference: ImageGenReference) -> Double? {
-        StudioDrop.aspect(ofFileAt: reference.path)
+    /// Every shape already read from a file's own header, by path, because the stage asks for the
+    /// held reference on every layout pass and a file's header does not change under a working
+    /// surface. `NSCache` is thread-safe, which is what lets the read happen off the main actor.
+    nonisolated(unsafe) private static let aspects: NSCache<NSString, NSNumber> = {
+        let cache = NSCache<NSString, NSNumber>()
+        cache.countLimit = 32
+        return cache
+    }()
+
+    /// What is already known about a picture's shape, nil until it has been read at least once.
+    static func heldAspect(ofFileAt path: String) -> Double? {
+        guard !path.isEmpty else { return nil }
+        return aspects.object(forKey: path as NSString)?.doubleValue
+    }
+
+    /// Reads the shape of a picture on disk once and keeps it, so the same picture held again costs
+    /// no file at all.
+    nonisolated static func readAspect(ofFileAt path: String) -> Double? {
+        guard !path.isEmpty else { return nil }
+        if let held = aspects.object(forKey: path as NSString) { return held.doubleValue }
+        guard let aspect = StudioDrop.aspect(ofFileAt: path) else { return nil }
+        aspects.setObject(NSNumber(value: aspect), forKey: path as NSString)
+        return aspect
     }
 }

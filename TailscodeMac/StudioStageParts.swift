@@ -17,6 +17,7 @@ final class StudioPill: NSView {
     }
 
     private let label = StudioTheme.label(.panelFootnote, color: MacTheme.Color.label)
+    private var fitted: (text: String, size: NSSize)?
 
     init() {
         super.init(frame: .zero)
@@ -46,12 +47,16 @@ final class StudioPill: NSView {
             layer?.backgroundColor = StudioTheme.scrim.cgColor
         }
         label.font = MacTheme.Ramp.font(.panelFootnote)
+        fitted = nil
     }
 
     override var fittingSize: NSSize {
-        NSSize(
+        if let fitted, fitted.text == label.stringValue { return fitted.size }
+        let size = NSSize(
             width: ceil(label.intrinsicContentSize.width) + 28,
             height: StudioTheme.height(of: .panelFootnote) + 10)
+        fitted = (label.stringValue, size)
+        return size
     }
 
     override var intrinsicContentSize: NSSize { fittingSize }
@@ -70,6 +75,7 @@ final class StudioPill: NSView {
 final class StudioStatusView: NSView {
     private let badge = ActivityBadgeView(pointSize: 26)
     private let line = StudioTheme.label(.cardTitle, color: MacTheme.Color.label, lines: 3, alignment: .center)
+    private var fitted: (text: String, width: CGFloat, working: Bool, size: NSSize)?
 
     init() {
         super.init(frame: .zero)
@@ -94,10 +100,22 @@ final class StudioStatusView: NSView {
     }
 
     func fitting(width: CGFloat) -> NSSize {
+        let working = !badge.isHidden
+        if let fitted, fitted.text == line.stringValue, fitted.width == width, fitted.working == working {
+            return fitted.size
+        }
+        let size = measured(width: width, working: working)
+        fitted = (line.stringValue, width, working, size)
+        return size
+    }
+
+    /// The sentence wrapped to the room it is given, remembered by its words and that room: the
+    /// stage asks for a fit on every layout pass, and the same sentence wraps the same way.
+    private func measured(width: CGFloat, working: Bool) -> NSSize {
         let text = line.attributedStringValue.boundingRect(
             with: NSSize(width: max(40, width), height: 400),
             options: [.usesLineFragmentOrigin, .usesFontLeading])
-        let badgeHeight: CGFloat = badge.isHidden ? 0 : 36
+        let badgeHeight: CGFloat = working ? 36 : 0
         return NSSize(width: ceil(min(width, text.width + 8)), height: ceil(text.height) + badgeHeight + 4)
     }
 
@@ -119,6 +137,8 @@ final class StudioFailureCard: StudioRaisedView {
     private let sentence = StudioTheme.label(.cardBody, color: MacTheme.Color.label, lines: 6)
     private let button = NSButton(title: "", target: nil, action: nil)
     private var remedy: StudioRemedy = .retry
+    private var fitted: (text: String, width: CGFloat, size: NSSize)?
+    private var wrapped: (text: String, width: CGFloat, used: CGFloat, height: CGFloat)?
 
     init() {
         super.init(radius: StudioTheme.stageRadius)
@@ -153,6 +173,8 @@ final class StudioFailureCard: StudioRaisedView {
     private func restyle() {
         icon.contentTintColor = MacTheme.Color.danger
         sentence.font = MacTheme.Ramp.font(.cardBody)
+        fitted = nil
+        wrapped = nil
     }
 
     func show(reason: String, remedy: StudioRemedy) {
@@ -169,26 +191,41 @@ final class StudioFailureCard: StudioRaisedView {
     private static let iconSide: CGFloat = 26
 
     func fitting(width: CGFloat) -> NSSize {
+        if let fitted, fitted.text == sentence.stringValue, fitted.width == width { return fitted.size }
         let textWidth = max(120, width - 2 * Self.pad - Self.iconSide - 12)
-        let text = sentence.attributedStringValue.boundingRect(
-            with: NSSize(width: textWidth, height: 600), options: [.usesLineFragmentOrigin, .usesFontLeading])
+        let text = wrappedText(textWidth)
         let buttonHeight: CGFloat = 28
-        let height = 2 * Self.pad + ceil(text.height) + 14 + buttonHeight
-        let usedWidth = min(width, ceil(text.width) + 2 * Self.pad + Self.iconSide + 12 + 4)
-        return NSSize(width: max(usedWidth, min(width, 280)), height: height)
+        let height = 2 * Self.pad + text.height + 14 + buttonHeight
+        let usedWidth = min(width, text.used + 2 * Self.pad + Self.iconSide + 12 + 4)
+        let size = NSSize(width: max(usedWidth, min(width, 280)), height: height)
+        fitted = (sentence.stringValue, width, size)
+        return size
+    }
+
+    /// The sentence wrapped to the room it is given, remembered by its words and that room: the
+    /// stage asks for a fit on every layout pass and the card measures itself again when it is
+    /// placed, and neither has any reason to lay the text out twice.
+    private func wrappedText(_ textWidth: CGFloat) -> (used: CGFloat, height: CGFloat) {
+        if let wrapped, wrapped.text == sentence.stringValue, wrapped.width == textWidth {
+            return (wrapped.used, wrapped.height)
+        }
+        let box = sentence.attributedStringValue.boundingRect(
+            with: NSSize(width: textWidth, height: 600), options: [.usesLineFragmentOrigin, .usesFontLeading])
+        let measured = (used: ceil(box.width), height: ceil(box.height))
+        wrapped = (sentence.stringValue, textWidth, measured.used, measured.height)
+        return measured
     }
 
     override func layout() {
         super.layout()
         let textWidth = bounds.width - 2 * Self.pad - Self.iconSide - 12
-        let text = sentence.attributedStringValue.boundingRect(
-            with: NSSize(width: textWidth, height: 600), options: [.usesLineFragmentOrigin, .usesFontLeading])
+        let text = wrappedText(textWidth)
         icon.frame = NSRect(x: Self.pad, y: Self.pad - 2, width: Self.iconSide, height: Self.iconSide)
         sentence.frame = NSRect(
-            x: Self.pad + Self.iconSide + 12, y: Self.pad, width: textWidth, height: ceil(text.height))
+            x: Self.pad + Self.iconSide + 12, y: Self.pad, width: textWidth, height: text.height)
         let size = button.fittingSize
         button.frame = NSRect(
-            x: Self.pad + Self.iconSide + 12, y: Self.pad + ceil(text.height) + 14, width: size.width,
+            x: Self.pad + Self.iconSide + 12, y: Self.pad + text.height + 14, width: size.width,
             height: 28)
     }
 

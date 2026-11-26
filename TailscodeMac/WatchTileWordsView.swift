@@ -261,16 +261,26 @@ final class WatchTileWordsView: WatchPassView {
         if newSize != laidOutSize { fit() }
     }
 
+    /// Fits the words to the view, trying the level that last worked before any other: a tile that is
+    /// set again usually keeps its size and its level, and measuring four strings down from the
+    /// largest at every streamed push is the cost this saves. Only a tile that no longer fits its own
+    /// level is measured again from the top.
     func fit() {
         guard tile != nil, bounds.width > 8, bounds.height > 8 else { return }
         laidOutSize = bounds.size
         let last = Self.levels.count - 1
-        for (index, _) in Self.levels.enumerated() {
-            if let plan = plan(index, truncating: index == last) {
+        if let plan = plan(level, truncating: level == last) {
+            place(plan)
+            return
+        }
+        for index in 0..<last {
+            if let plan = plan(index, truncating: false) {
                 level = index
                 place(plan)
                 return
             }
         }
+        level = last
+        if let plan = plan(last, truncating: true) { place(plan) }
     }
 }

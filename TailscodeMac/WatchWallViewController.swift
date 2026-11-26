@@ -108,6 +108,7 @@ final class WatchWallViewController: NSViewController {
     var observers: [NSObjectProtocol] = []
     var hourFetchedAt = Date.distantPast
     var hourFetching = false
+    var lastBoardAt = Date.distantPast
     var stylePopover: NSPopover?
     var appliedCap = 0
     var drewCritical = false
@@ -198,6 +199,7 @@ final class WatchWallViewController: NSViewController {
 
     func apply(board next: AgentBoard) {
         board = next
+        lastBoardAt = Date()
         guard fixedWall == nil, isActive else { return }
         reread(now: Date())
     }
@@ -238,7 +240,7 @@ final class WatchWallViewController: NSViewController {
         if WallMotes.count(width: target.width, height: target.height) != motes.count {
             motes = WallMotes(width: target.width, height: target.height, seed: 0x7A11)
         }
-        reread(now: Date())
+        relayout(now: Date())
     }
 
     func reread(now: Date) {
@@ -258,14 +260,43 @@ final class WatchWallViewController: NSViewController {
                 board: board, hour: hour, now: now, aspect: reading.aspect, gridAspect: reading.gridAspect,
                 pages: reading.pages, maxColumns: reading.maxColumns, previous: initialRead ? nil : wall)
         }
-        let made = WallLayout.make(
-            width: width, height: height, safe: safe, fold: nil, wall: next, style: style, drift: drift)
-        adopt(next, made, now: now)
+        adopt(next, makeLayout(width: width, height: height, safe: safe, wall: next), now: now)
+    }
+
+    /// The wall already read, laid out again for a new size: a window being dragged changes the screen
+    /// and nothing else, so the board is not read again and only the grid the tiles sit on is placed
+    /// for the shape it now has.
+    func relayout(now: Date) {
+        let target = size
+        guard target.width > 80, target.height > 80, isActive || fixedWall != nil, !initialRead,
+            layout != nil
+        else {
+            reread(now: now)
+            return
+        }
+        let width = Double(target.width)
+        let height = Double(target.height)
+        let safe = safeInsets
+        let reading = WallLayout.reading(width: width, height: height, safe: safe, fold: nil, style: style)
+        let next = wall.reflowed(
+            aspect: reading.aspect, gridAspect: reading.gridAspect, pages: reading.pages,
+            maxColumns: reading.maxColumns)
+        adopt(next, makeLayout(width: width, height: height, safe: safe, wall: next), now: now)
+    }
+
+    private func makeLayout(width: Double, height: Double, safe: WallInsets, wall: AgentWall) -> WallLayout {
+        WallLayout.make(
+            width: width, height: height, safe: safe, fold: nil, wall: wall, style: style, drift: drift)
     }
 
     private func adopt(_ next: AgentWall, _ made: WallLayout, now: Date) {
         let t = CACurrentMediaTime()
         let before = initialRead ? nil : wall
+        if let before, let drawn = layout, Self.sameWall(before, next), drawn == made, wordsMatchFace {
+            wall = next
+            refreshLiveWords(now: now)
+            return
+        }
         let events = effects.observe(from: before, to: next, previousLayout: layout, style: effectiveStyle, at: t)
         if let before, Self.beatShifted(before, next) { slideStart = t }
         dimmer.observe(next.mood, at: now)
@@ -291,6 +322,24 @@ final class WatchWallViewController: NSViewController {
         if appliedCap <= 1 { metal?.drawOnce() }
     }
 
+    /// The second's share of a wall the board did not change: every word that moves with the clock
+    /// alone is written where it stands, and nothing is read, measured or placed again.
+    func refreshLiveWords(now: Date) {
+        palette = Self.palette(for: style, at: now)
+        ribbon = WallRibbon.read(hour, now: now)
+        if let layout { words.refreshLive(wall: wall, layout: layout, face: face, now: now) }
+        applyCadence()
+        if appliedCap <= 1 { metal?.drawOnce() }
+    }
+
+    /// Whether the words were set for the face the wall now wears. A style, a palette or a unit that
+    /// moved while the wall and its layout did not still has to reach every tile, so it takes the
+    /// words being measured again rather than written over.
+    private var wordsMatchFace: Bool {
+        words.lastFace.type.unit == face.type.unit && words.lastFace.style == face.style
+            && words.lastFace.palette == face.palette
+    }
+
     /// A glide ends when the renderer's frames say so, and also on the clock, so the words are where
     /// they belong even when nothing is drawing (a window that was covered while the wall moved).
     private func settleAfterGlide(startedAt start: TimeInterval) {
@@ -311,6 +360,16 @@ final class WatchWallViewController: NSViewController {
 
     static func sameTiles(_ a: AgentWall, _ b: AgentWall) -> Bool {
         a.tiles.map(\.id) == b.tiles.map(\.id)
+    }
+
+    /// Whether two reads of the wall draw the same picture. `at` is when the second one was read and
+    /// is never equal, so it is left out: a board that did not move between two reads gives the same
+    /// wall twice, and the words on it are only written again, not measured.
+    static func sameWall(_ a: AgentWall, _ b: AgentWall) -> Bool {
+        a.mood == b.mood && a.headline == b.headline && a.watchLine == b.watchLine && a.tiles == b.tiles
+            && a.columns == b.columns && a.rows == b.rows && a.listed == b.listed
+            && a.listedOverflow == b.listedOverflow && a.recent == b.recent && a.calm == b.calm
+            && a.watched == b.watched && a.running == b.running && a.subagents == b.subagents
     }
 
     /// Whether any tile's place changed by more than a few points, which is when it glides.
