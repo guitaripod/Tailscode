@@ -10,16 +10,19 @@ import Foundation
 /// re-entering it asks, and this decides whether asking is worth a read: what moved a moment ago
 /// (the warm conversation a press starts, a turn already streaming onto the page) is current, and
 /// a screen that has just asked is not asked again.
+///
+/// Only differences between the stamps are read, so a host's monotonic clock and a wall clock
+/// answer it alike.
 public enum ChatOpenRead {
     /// How old what a device holds may be before opening a chat asks again.
     public static let freshness: TimeInterval = 3
 
     public static func needed(
-        hasTranscript: Bool, changedAt: Date?, lastAsked: Date?, now: Date = Date()
+        hasTranscript: Bool, changedAt: TimeInterval?, lastAsked: TimeInterval?, now: TimeInterval
     ) -> Bool {
         guard hasTranscript else { return false }
-        if let lastAsked, now.timeIntervalSince(lastAsked) < freshness { return false }
+        if let lastAsked, now - lastAsked < freshness { return false }
         guard let changedAt else { return true }
-        return now.timeIntervalSince(changedAt) >= freshness
+        return now - changedAt >= freshness
     }
 }

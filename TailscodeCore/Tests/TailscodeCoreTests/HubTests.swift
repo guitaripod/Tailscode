@@ -64,6 +64,7 @@ struct HubTests {
         let opens = Tally<LiveKey>()
         private let lock = NSLock()
         private var made: [AgentConversation] = []
+        private var backends: [MockBackend] = []
 
         func open(_ key: LiveKey) -> AgentConversation {
             opens.add(key)
@@ -81,6 +82,7 @@ struct HubTests {
             let conversation = AgentConversation(backend: backend, sessionID: key.sessionID)
             lock.lock()
             made.append(conversation)
+            backends.append(backend)
             lock.unlock()
             return conversation
         }
@@ -89,6 +91,12 @@ struct HubTests {
             lock.lock()
             defer { lock.unlock() }
             return made.last
+        }
+
+        var lastBackend: MockBackend? {
+            lock.lock()
+            defer { lock.unlock() }
+            return backends.last
         }
     }
 
@@ -145,6 +153,24 @@ struct HubTests {
         #expect(world.opener.opens.count == 1)
         first.cancel()
         late.cancel()
+    }
+
+    @Test("A chat opened again asks the server what it says when what it holds has gone quiet")
+    func reopenAsksAgain() async {
+        let world = World()
+        let first = world.hub.lease(key, interest: .full) {}
+        #expect(await eventually { world.hub.latest(key)?.state.messages.count == 6 })
+        world.opener.lastBackend?.serveInTranscriptOnly(
+            ChatMessage(
+                id: "reopened", role: .assistant, agentType: .claudeCode,
+                parts: [MessagePart(id: "p", kind: .text("the latest word"))],
+                createdAt: Date(timeIntervalSince1970: 99), completedAt: Date()),
+            for: "s")
+        world.clock.advance(4)
+        let second = world.hub.lease(key, interest: .full) {}
+        #expect(await eventually { world.hub.latest(key)?.state.messages.count == 7 })
+        first.cancel()
+        second.cancel()
     }
 
     @Test("The last lease out keeps the stream through the grace, then stops the Kit's run loop")

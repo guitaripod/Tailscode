@@ -107,8 +107,10 @@ extension ChatViewModel {
         let now = Date()
         guard
             ChatOpenRead.needed(
-                hasTranscript: state.hasLoadedTranscript, changedAt: transcriptChangedAt,
-                lastAsked: lastOpenReadAt, now: now)
+                hasTranscript: state.hasLoadedTranscript,
+                changedAt: transcriptChangedAt?.timeIntervalSinceReferenceDate,
+                lastAsked: lastOpenReadAt?.timeIntervalSinceReferenceDate,
+                now: now.timeIntervalSinceReferenceDate)
         else { return }
         lastOpenReadAt = now
         let age = transcriptChangedAt.map { now.timeIntervalSince($0) } ?? -1

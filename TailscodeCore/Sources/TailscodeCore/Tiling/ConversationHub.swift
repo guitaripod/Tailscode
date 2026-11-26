@@ -95,6 +95,10 @@ public final class ConversationHub: @unchecked Sendable {
         var subscriptionID: UInt64 = 0
         var leases: [UInt64: LeaseRecord] = [:]
         var latest: LiveFrame?
+        /// When `latest` was received, so an open can tell a conversation it watched a moment ago
+        /// from one it has held, quiet, for long enough that the server may have moved.
+        var latestAt: TimeInterval?
+        var lastOpenRead: TimeInterval?
         var sequence: UInt64 = 0
         var releaseDue: TimeInterval?
         var graceID: UInt64 = 0
@@ -156,6 +160,7 @@ public final class ConversationHub: @unchecked Sendable {
         let entry = entries[key] ?? Entry()
         if entries[key] == nil, let shelved = takeShelved(key) {
             entry.latest = LiveFrame(state: shelved.state, sequence: shelved.sequence)
+            entry.latestAt = shelved.at
             entry.sequence = shelved.sequence
             entry.seeded = true
         }
@@ -167,8 +172,19 @@ public final class ConversationHub: @unchecked Sendable {
         entry.leases[id] = LeaseRecord(mailbox: mailbox, dirty: dirty, interest: interest)
         entry.revision &+= 1
         let held = entry.latest
+        let reading = clock.now()
+        let askAgain =
+            interest >= .full && entry.subscription != nil
+            && ChatOpenRead.needed(
+                hasTranscript: held?.state.hasLoadedTranscript ?? false,
+                changedAt: entry.latestAt, lastAsked: entry.lastOpenRead, now: reading)
+        let opening = askAgain ? entry.opening : nil
+        if askAgain { entry.lastOpenRead = reading }
         lock.unlock()
         if let held, mailbox.post(held) { dirty() }
+        if let opening {
+            Task { try? await opening.value?.refresh() }
+        }
         reconcile(key)
         return LiveLease(hub: self, key: key, id: id, mailbox: mailbox)
     }
@@ -458,6 +474,7 @@ public final class ConversationHub: @unchecked Sendable {
         if state.connection == .live { entry.redials = 0 }
         let frame = LiveFrame(state: state, sequence: entry.sequence)
         entry.latest = frame
+        entry.latestAt = clock.now()
         let records = Array(entry.leases.values)
         let watchingOnly = !records.isEmpty && records.allSatisfy { $0.interest == .watching }
         lock.unlock()

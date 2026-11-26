@@ -4,14 +4,13 @@ import Testing
 
 @Suite("Chat open read")
 struct ChatOpenReadTests {
-    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    private let now: TimeInterval = 1_800_000_000
 
     @Test func aChatWithNothingLoadedHasNothingToAskAbout() {
         #expect(!ChatOpenRead.needed(hasTranscript: false, changedAt: nil, lastAsked: nil, now: now))
         #expect(
             !ChatOpenRead.needed(
-                hasTranscript: false, changedAt: now.addingTimeInterval(-60),
-                lastAsked: nil, now: now))
+                hasTranscript: false, changedAt: now - 60, lastAsked: nil, now: now))
     }
 
     @Test func aHeldTranscriptThatNeverMovedIsAskedAgain() {
@@ -21,35 +20,29 @@ struct ChatOpenReadTests {
     @Test func whatMovedAMomentAgoIsCurrent() {
         #expect(
             !ChatOpenRead.needed(
-                hasTranscript: true, changedAt: now.addingTimeInterval(-2), lastAsked: nil,
-                now: now))
+                hasTranscript: true, changedAt: now - 2, lastAsked: nil, now: now))
     }
 
     @Test func whatHasBeenStillLongerThanTheFreshnessIsAskedAgain() {
         #expect(
-            ChatOpenRead.needed(
-                hasTranscript: true, changedAt: now.addingTimeInterval(-4), lastAsked: nil,
-                now: now))
+            ChatOpenRead.needed(hasTranscript: true, changedAt: now - 4, lastAsked: nil, now: now))
     }
 
     @Test func aChatJustAskedIsNotAskedTwice() {
         #expect(
             !ChatOpenRead.needed(
-                hasTranscript: true, changedAt: now.addingTimeInterval(-60),
-                lastAsked: now.addingTimeInterval(-1), now: now))
+                hasTranscript: true, changedAt: now - 60, lastAsked: now - 1, now: now))
     }
 
     @Test func aChatAskedBeforeTheFreshnessIsAskedAgain() {
         #expect(
             ChatOpenRead.needed(
-                hasTranscript: true, changedAt: now.addingTimeInterval(-60),
-                lastAsked: now.addingTimeInterval(-4), now: now))
+                hasTranscript: true, changedAt: now - 60, lastAsked: now - 4, now: now))
     }
 
     @Test func aStampFromEarlierThanTheClockReadsAsCurrent() {
         #expect(
             !ChatOpenRead.needed(
-                hasTranscript: true, changedAt: now.addingTimeInterval(30), lastAsked: nil,
-                now: now))
+                hasTranscript: true, changedAt: now + 30, lastAsked: nil, now: now))
     }
 }
