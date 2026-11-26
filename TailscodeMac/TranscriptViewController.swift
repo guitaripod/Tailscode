@@ -528,6 +528,11 @@ final class TranscriptViewController: NSViewController {
         didSet { syncJumpPill() }
     }
 
+    /// The laid-out height the live row's reveal has left unread, remembered against the reveal,
+    /// the row and the label's width so the wave measures a prefix only when the writing turns a
+    /// line rather than on every frame it paints.
+    var unrevealedMemo: (key: String, width: CGFloat, shown: Int, height: CGFloat)?
+
     /// The anchor the canvas rose to, followed across the swap from this device's echo to the
     /// server's own account of the same send.
     var canvasKey: String?

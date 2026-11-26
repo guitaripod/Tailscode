@@ -179,26 +179,49 @@ extension TranscriptViewController {
 
     /// How much of the live row is laid out past its reveal: text the reader has not been shown
     /// yet, drawn clear under the wave. Zero when nothing is being written.
+    ///
+    /// Measured from the label's own layout, and remembered until the reveal has moved far enough
+    /// to cross a line: the wave asks this every frame, and laying a whole prefix of the answer out
+    /// again to learn a height that only changes when the writing turns a line is the one thing the
+    /// wave must not spend its frames on.
     func unrevealedHeight() -> CGFloat {
         guard let key = cascade.key, !placeholderShown,
             let index = renderedRows.lastIndex(where: { $0.key == key }), index < rowViews.count,
             let label = Self.streamedLabel(in: rowViews[index], kind: renderedRows[index].kind)
-        else { return 0 }
+        else {
+            unrevealedMemo = nil
+            return 0
+        }
+        let width = label.bounds.width
         let rendered = label.attributedStringValue
         let shown = min(max(cascade.revealed, 0), rendered.length)
-        guard shown < rendered.length, label.bounds.width > 0 else { return 0 }
+        guard shown < rendered.length, width > 0 else {
+            unrevealedMemo = nil
+            return 0
+        }
         guard shown > 0 else { return label.bounds.height }
+        if let memo = unrevealedMemo, memo.key == key, memo.width == width,
+            abs(memo.shown - shown) < Self.unrevealedStep
+        {
+            return memo.height
+        }
         let wraps: Bool
         if case .agentProse = renderedRows[index].kind { wraps = true } else { wraps = false }
         let prefix = rendered.attributedSubstring(from: NSRange(location: 0, length: shown))
         let size = NSSize(
-            width: wraps ? label.bounds.width : .greatestFiniteMagnitude,
+            width: wraps ? width : .greatestFiniteMagnitude,
             height: .greatestFiniteMagnitude)
         let written = prefix.boundingRect(
             with: size, options: [.usesLineFragmentOrigin, .usesFontLeading]
         ).height
-        return max(0, label.bounds.height - ceil(written))
+        let height = max(0, label.bounds.height - ceil(written))
+        unrevealedMemo = (key, width, shown, height)
+        return height
     }
+
+    /// How far the reveal may run before the laid-out height is measured again: about half a line
+    /// of prose at the sizes this app sets, which is the most the pin can trail the writing.
+    static let unrevealedStep = 32
 
     /// The room goes: with the reader at the bottom the transcript settles onto its end, and
     /// anywhere else nothing moves that they did not move.

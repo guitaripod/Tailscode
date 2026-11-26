@@ -69,6 +69,10 @@ final class MessageHoverBar: NSResponder {
     private let codeLabel = NSTextField(labelWithString: "")
     private var codeShown: CodeTarget?
     private var codeHideWork: DispatchWorkItem?
+    /// The word a block's language is said by, per row, with the words it was read from: a diff
+    /// reads its name out of up to forty header lines, and a pointer crossing the block — or a
+    /// turn streaming under it — asks for that name on every pass.
+    private var codeNames: [String: (source: String, name: String)] = [:]
 
     func install(in host: NSView, over scrollView: NSScrollView, canvas: NSView) {
         self.host = host
@@ -331,6 +335,17 @@ final class MessageHoverBar: NSResponder {
             if inside { self?.cancelCodeHide() } else { self?.refresh() }
         }
         host.addSubview(codeTag, positioned: .above, relativeTo: scrollView)
+    }
+
+    /// The word a block's language is said by, read once per row and kept until the block's own
+    /// words change: the pointer asks for it on every move and every scroll, and a diff's name is
+    /// not on the fence but forty header lines down.
+    func displayName(forRow key: String, language: String?, source: String) -> String {
+        if let known = codeNames[key], known.source == source { return known.name }
+        let name = SyntaxHighlighter.displayName(for: language, source: source)
+        if codeNames.count >= 64 { codeNames.removeAll() }
+        codeNames[key] = (source, name)
+        return name
     }
 
     /// The block under the pointer gets its language and its Copy at its top corner; the pointer

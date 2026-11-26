@@ -62,7 +62,6 @@ extension TranscriptViewController {
     /// want with it (`forgetWantedImages`) and so cannot arrive here wearing a card's meaning.
     private func sweepWantedImages() {
         guard !wantedImages.isEmpty, !placeholderShown else { return }
-        view.layoutSubtreeIfNeeded()
         let clip = scrollView.contentView
         let margin = max(clip.bounds.height, 400)
         let top = clip.bounds.origin.y - margin

@@ -26,6 +26,8 @@ extension TranscriptViewController {
     }
 
     func apply(state: ConversationState, rows: [TranscriptRow]) {
+        let trace = Pace.traceStart()
+        defer { Pace.traceEnd("transcript.apply", trace) }
         let interval = Pace.signposter.beginInterval("apply")
         defer { Pace.signposter.endInterval("apply", interval) }
         noteHapticEdges(state: state)
@@ -100,7 +102,7 @@ extension TranscriptViewController {
             applyRows(
                 pacedByCascade(
                     windowed, running: pending.turnIsOpen(running: state.status == .running)))
-            settleStreamedTail(in: windowed)
+                settleStreamedTail(in: windowed)
             paintCascade()
         }
     }

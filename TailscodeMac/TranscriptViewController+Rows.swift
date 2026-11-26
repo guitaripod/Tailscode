@@ -91,7 +91,7 @@ extension TranscriptViewController {
 
     /// How many rows go up in one runloop hop while a fill is still climbing, and the size of edit
     /// past which an arrival is treated as a fill rather than as growth.
-    private static let rowChunk = 40
+    private static let rowChunk = 12
 
     func applyRows(_ rows: [TranscriptRow]) {
         assert(

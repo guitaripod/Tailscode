@@ -21,6 +21,7 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
     @MainActor private var guardArmed = false
     @MainActor private var wakeArmed: TimeInterval?
     @MainActor private var lastRun: TimeInterval = 0
+    @MainActor private var lastEdgePass: TimeInterval = 0
     /// When the next pass may run. A pass is charged for everything it set off — its applies and
     /// the layout, display and Core Animation commit AppKit runs for them before the run loop turns
     /// again — and the next one waits until that cost is `duty` of the time since it started, so
@@ -133,11 +134,27 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
     @MainActor private func guardFired() {
         guardArmed = false
         guard isPending else { return }
+        if pacingIsHidden {
+            runEdgesOnly()
+            armGuard()
+            return
+        }
         if now() >= restUntil, now() - lastRun >= Self.starvationGuard {
             guardRuns += 1
             runDrain()
         }
         if isPending { armGuard() }
+    }
+
+    /// The frame a hidden window is not given still has a duty to the person: a notice for a turn
+    /// that ended while they were in another app has to be raised. Only the edge services run —
+    /// never layout or a commit for a window nobody can see — and at a quarter-second, which is
+    /// faster than a notice can be read and slower than a frame.
+    @MainActor private func runEdgesOnly() {
+        let moment = now()
+        guard moment - lastEdgePass >= 0.25 else { return }
+        lastEdgePass = moment
+        beforePass?()
     }
 
     @MainActor private func runIfPending() {
@@ -207,6 +224,7 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
     }
 
     @MainActor private func turnEnded() {
+        removeTurnObserver()
         guard let started = chargedFrom else { return }
         chargedFrom = nil
         let cost = now() - started
@@ -214,6 +232,16 @@ final class MacHostClock: NSObject, HostClock, @unchecked Sendable {
         chargedTime += cost
         worstFrame = max(worstFrame, cost)
         restUntil = max(restUntil, started + cost / Self.duty)
+    }
+
+    /// The observer lives for the one turn it was made for. Left installed it enqueued a main-queue
+    /// block on every run-loop turn for the life of the process — two per turn of an idle window —
+    /// which kept the loop from ever resting and made the governor read its own bookkeeping as load.
+    @MainActor private func removeTurnObserver() {
+        guard let observer = turnObserver else { return }
+        CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes)
+        CFRunLoopObserverInvalidate(observer)
+        turnObserver = nil
     }
 
     /// The governor's tick cap, read the same way the cascade reads it.

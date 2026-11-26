@@ -29,16 +29,17 @@ extension TranscriptViewController {
     }
 
     /// Which message a row draws, when it draws one's words. An answer's rows are keyed by the
-    /// message and the part they came from, so the message is the one whose id leads the key.
+    /// message and the part they came from, so the message is the id the key leads with — read
+    /// from the row rather than by walking the conversation, since this is asked on every move,
+    /// every scroll and every frame of a streaming turn.
     private func messageOwner(of row: TranscriptRow) -> (id: String, prompt: Bool)? {
         switch row.kind {
         case .userText(_, let messageID), .pastedText(_, let messageID, _):
             return (messageID, true)
         case .file(_, let mine, let messageID): return mine ? (messageID, true) : nil
         case .agentProse, .codeBlock, .table, .tableDraft:
-            guard let message = lastState?.messages.last(where: { row.key.hasPrefix($0.id + ":") })
-            else { return nil }
-            return (message.id, false)
+            guard let colon = row.key.firstIndex(of: ":") else { return nil }
+            return (String(row.key[..<colon]), false)
         default: return nil
         }
     }
@@ -177,10 +178,10 @@ extension TranscriptViewController {
         else { return nil }
         let frame = rowViews[index].convert(rowViews[index].bounds, to: canvas)
         guard frame.contains(point) else { return nil }
+        let key = renderedRows[index].key
         return MessageHoverBar.CodeTarget(
-            key: renderedRows[index].key,
-            language: SyntaxHighlighter.displayName(for: language, source: body), body: body,
-            block: frame)
+            key: key, language: hoverBar.displayName(forRow: key, language: language, source: body),
+            body: body, block: frame)
     }
 
     func railLine(at point: NSPoint) -> LinkRailLine? {
