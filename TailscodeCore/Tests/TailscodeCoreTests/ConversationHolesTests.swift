@@ -49,6 +49,31 @@ private let epoch = Date(timeIntervalSince1970: 1_000_000)
                 == "Loaded src/AGENTS.md")
     }
 
+    @Test("A background command names only its first line, never the script")
+    func backgroundCommandIsOneLine() {
+        let script = """
+            cat > /tmp/scan.py <<'EOF'
+            import json
+            print("a page of work")
+            EOF
+            python3 /tmp/scan.py
+            """
+        let line = TranscriptNoteReading.read(
+            TranscriptNote(.workFinished(script, work: .command, outcome: .completed)))
+        #expect(line.text == "Background command finished: cat > /tmp/scan.py <<'EOF'")
+    }
+
+    @Test("A long background command is cut rather than wrapped")
+    func longBackgroundCommandIsCut() {
+        let command = "python3 " + String(repeating: "a", count: 200)
+        let line = TranscriptNoteReading.read(
+            TranscriptNote(.workFinished(command, work: .command, outcome: .completed)))
+        let prefix = "Background command finished: "
+        #expect(line.text.hasPrefix(prefix))
+        #expect(line.text.count == prefix.count + 80)
+        #expect(line.text.hasSuffix("…"))
+    }
+
     @Test("A note message is found by its part")
     func noteIsFound() {
         let message = ChatMessage(

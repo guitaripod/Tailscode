@@ -54,13 +54,14 @@ public enum TranscriptNoteReading {
         case .resumedAfterRestart:
             return Localized.text("The server restarted and picked this turn back up")
         case .workFinished(let title, let work, let outcome):
+            let name = oneLine(title)
             switch (work, outcome) {
-            case (.command, .completed): return Localized.text("Background command finished: %@", title)
-            case (.command, .cancelled): return Localized.text("Background command cancelled: %@", title)
-            case (.command, .failed): return Localized.text("Background command failed: %@", title)
-            case (.agent, .completed): return Localized.text("Background agent finished: %@", title)
-            case (.agent, .cancelled): return Localized.text("Background agent cancelled: %@", title)
-            case (.agent, .failed): return Localized.text("Background agent failed: %@", title)
+            case (.command, .completed): return Localized.text("Background command finished: %@", name)
+            case (.command, .cancelled): return Localized.text("Background command cancelled: %@", name)
+            case (.command, .failed): return Localized.text("Background command failed: %@", name)
+            case (.agent, .completed): return Localized.text("Background agent finished: %@", name)
+            case (.agent, .cancelled): return Localized.text("Background agent cancelled: %@", name)
+            case (.agent, .failed): return Localized.text("Background agent failed: %@", name)
             }
         case .instructions(let words), .remark(let words):
             return words
@@ -69,6 +70,23 @@ public enum TranscriptNoteReading {
         case .skill(let name):
             return Localized.text("Using the %@ skill", name)
         }
+    }
+
+    /// How much of a command a note names. A note is one quiet line across the transcript, never
+    /// the script that ran: opencode hands the whole shell command as the line's description, so
+    /// every `cat > script <<'EOF'` the agent ran put its entire body in the transcript when it
+    /// finished. The first line is what a person recognises, and a long one is cut with an
+    /// ellipsis rather than wrapping the line.
+    private static let nameLimit = 80
+
+    private static func oneLine(_ words: String) -> String {
+        let first =
+            words.split(whereSeparator: \.isNewline)
+            .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            .map(String.init) ?? words
+        let trimmed = first.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > nameLimit else { return trimmed }
+        return String(trimmed.prefix(nameLimit - 1)) + "…"
     }
 
     private static func face(_ subject: TranscriptNote.Subject)
