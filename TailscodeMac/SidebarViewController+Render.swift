@@ -4,6 +4,91 @@ import CodingAgentKitApple
 import TailscodeCore
 
 extension SidebarViewController {
+    /// What the stores decide a row from, read once and dropped when their own notification says
+    /// they moved. The archive is held as identities because building a "profile/session" line per
+    /// row to ask a set whether it holds it was most of a refresh's CPU.
+    struct StoreReadings {
+        let savedChats: [SavedChat]
+        let saved: Set<String>
+        let pins: Set<String>
+        let archived: Set<ArchivedChatStore.ChatKey>
+        let unread: (String, Date) -> Bool
+    }
+
+    /// A conversation as it was last worded, and the facts that wording was made from.
+    struct RowMemo {
+        let session: AgentSession
+        let unreachable: Bool
+        let unread: Bool
+        let saved: Bool
+        let pinned: Bool
+        let presence: SessionPresence
+        let observedAt: Date?
+        let bucket: Int
+        let model: SessionRowModel
+
+        func matches(
+            session: AgentSession, unreachable: Bool, unread: Bool, saved: Bool, pinned: Bool,
+            presence: SessionPresence, observedAt: Date?, bucket: Int
+        ) -> Bool {
+            self.session == session && self.unreachable == unreachable && self.unread == unread
+                && self.saved == saved && self.pinned == pinned && self.presence == presence
+                && self.observedAt == observedAt && self.bucket == bucket
+        }
+    }
+
+    /// How an age column's word is bucketed: the one number that changes when the string would.
+    static func ageBucket(_ date: Date, asOf reference: Date) -> Int {
+        let seconds = max(0, Int(reference.timeIntervalSince(date)))
+        if seconds < 60 { return seconds }
+        if seconds < 3600 { return 60 + seconds / 60 }
+        if seconds < 86_400 { return 3_660 + seconds / 3_600 }
+        return 90_000 + seconds / 86_400
+    }
+
+    func readings() -> StoreReadings {
+        if let storeReadings { return storeReadings }
+        let savedChats = SavedChatStore.all()
+        let readings = StoreReadings(
+            savedChats: savedChats,
+            saved: Set(savedChats.map(\.sessionID)),
+            pins: Set(SessionPinStore.all()),
+            archived: ArchivedChatStore.keys(),
+            unread: SessionSeenStore.unreadEvaluator())
+        storeReadings = readings
+        return readings
+    }
+
+    /// A listing assigned its chats: what the whole fleet says can have moved, so the work that
+    /// speaks for it is due, and one draw is booked rather than one per pushed change.
+    func noteListingMoved(renderNow: Bool = false) {
+        listingVersion += 1
+        observationDirty = true
+        if renderNow {
+            render()
+        } else {
+            scheduleListingRender()
+        }
+    }
+
+    func scheduleListingRender() {
+        guard !listingRenderArmed else { return }
+        listingRenderArmed = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self else { return }
+            self.listingRenderArmed = false
+            self.render()
+        }
+    }
+
+    /// A draw deferred because the window could not be seen, or because a pointer was holding a
+    /// row under itself, is made the moment it can be.
+    func flushPendingRender() {
+        guard renderPending || renderHeld else { return }
+        renderPending = false
+        if !renderHeld { render() }
+    }
+
     func startRefreshing() {
         guard refreshTask == nil else { return }
         refreshTask = Task { [weak self] in
@@ -61,19 +146,21 @@ extension SidebarViewController {
                 $0.profileID == profile.id && $0.session.id == session.id
                     && $0.session.title != session.title
             }
-            var next = entries.filter {
-                !($0.profileID == profile.id && $0.session.id == session.id)
+            if let index = entries.firstIndex(where: {
+                $0.profileID == profile.id && $0.session.id == session.id
+            }) {
+                entries.remove(at: index)
             }
-            next.append(entry)
-            next.sort { $0.session.updatedAt > $1.session.updatedAt }
-            entries = next
-            if !next.isEmpty { SessionListCache.scheduleSave(next) }
+            let at =
+                entries.firstIndex { $0.session.updatedAt < session.updatedAt } ?? entries.endIndex
+            entries.insert(entry, at: at)
+            if !entries.isEmpty { SessionListCache.scheduleSave(entries) }
             SessionMarks.reconcile(with: [entry])
-            render()
+            noteListingMoved()
             if retitled { onTitleChanged?() }
         case .remove(let id):
             entries.removeAll { $0.profileID == profile.id && $0.session.id == id }
-            render()
+            noteListingMoved(renderNow: true)
         case .invalidated:
             Task { [weak self] in await self?.refresh() }
         }
@@ -94,6 +181,8 @@ extension SidebarViewController {
                 self.entries.insert(fresh, at: 0)
             }
         }
+        listingVersion += 1
+        observationDirty = true
         render()
         onEntriesChanged?()
         guard selectedID == nil, !entries.isEmpty else { return }
@@ -110,48 +199,86 @@ extension SidebarViewController {
             renderFixture(fixture)
             return
         }
+        let trace = Pace.traceStart()
+        defer { Pace.traceEnd("sidebar.render", trace) }
         if NSEvent.pressedMouseButtons != 0, view.window?.isKeyWindow == true {
             holdRender()
             return
         }
         let interval = Pace.signposter.beginInterval("list")
         defer { Pace.signposter.endInterval("list", interval) }
-        let savedChats = SavedChatStore.all()
-        let saved = Set(savedChats.map(\.sessionID))
-        let unread = SessionSeenStore.unreadEvaluator()
+        guard isOnScreen || DisplayGate.assumesVisible else {
+            renderPending = true
+            return
+        }
+        lastRenderAt = CACurrentMediaTime()
+        let readings = readings()
         let needle = filter.lowercased()
         let presence = presenceSource?() ?? [:]
         lastPresence = presence
-        let pins = Set(SessionPinStore.all())
-        var models = entries.filter { !pendingDeletes.contains(ChatSelection.key($0)) }.map {
-            SessionRowModel(
-                entry: $0,
-                unreachable: unreachable.contains(
-                    ServerLabel.display(name: $0.profileName, backend: $0.backendType)),
-                unread: unread($0.session.id, $0.session.updatedAt),
-                saved: saved.contains($0.session.id),
-                pinned: pins.contains(SessionPinStore.key($0.profileID, $0.session.id)),
-                presence: presence[ChatSelection.key($0)] ?? .unobserved,
-                observedAt: ServerDirectory.shared.lastHeard[
-                    ServerLabel.display(name: $0.profileName, backend: $0.backendType)])
+        let now = Date()
+        var models: [SessionRowModel] = []
+        models.reserveCapacity(entries.count + 8)
+        var freshMemo: [String: RowMemo] = [:]
+        freshMemo.reserveCapacity(entries.count + 8)
+        for entry in entries {
+            let key = ChatSelection.key(entry)
+            guard !pendingDeletes.contains(key) else { continue }
+            let label = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
+            let down = unreachable.contains(label)
+            let unread = readings.unread(entry.session.id, entry.session.updatedAt)
+            let saved = readings.saved.contains(entry.session.id)
+            let pinned = readings.pins.contains(
+                SessionPinStore.key(entry.profileID, entry.session.id))
+            let seen = presence[key] ?? .unobserved
+            let observedAt = ServerDirectory.shared.lastHeard[label]
+            let bucket = Self.ageBucket(
+                entry.session.updatedAt, asOf: down ? (observedAt ?? now) : now)
+            if let memo = rowMemo[key],
+                memo.matches(
+                    session: entry.session, unreachable: down, unread: unread, saved: saved,
+                    pinned: pinned, presence: seen, observedAt: observedAt, bucket: bucket)
+            {
+                models.append(memo.model)
+                freshMemo[key] = memo
+                continue
+            }
+            let model = SessionRowModel(
+                entry: entry, unreachable: down, unread: unread, saved: saved, pinned: pinned,
+                presence: seen, observedAt: observedAt, now: now)
+            models.append(model)
+            freshMemo[key] = RowMemo(
+                session: entry.session, unreachable: down, unread: unread, saved: saved,
+                pinned: pinned, presence: seen, observedAt: observedAt, bucket: bucket, model: model)
         }
-        models += Self.orphanedSavedRows(savedChats, listed: entries)
+        rowMemo = freshMemo
+        models += Self.orphanedSavedRows(readings.savedChats, listed: entries)
         known = models
         refreshOrb()
         refreshAgentsEntry()
-        selection.prune(to: models.map(\.entry))
-        let observations = models.map {
-            ActivityObservation(profileID: $0.entry.profileID, session: $0.entry.session, title: $0.title)
+        if !selection.isEmpty { selection.prune(to: models.map(\.entry)) }
+        if listingVersion != observedListingVersion || observationDirty {
+            observedListingVersion = listingVersion
+            observationDirty = false
+            let observations = models.map {
+                ActivityObservation(
+                    profileID: $0.entry.profileID, session: $0.entry.session, title: $0.title)
+            }
+            MacNotifier.shared.observeListing(observations)
+            ActivityInbox.reconcile(
+                observations,
+                authoritativeProfileIDs: listedFromNetwork
+                    ? Set(observations.map(\.profileID)) : [])
         }
-        MacNotifier.shared.observeListing(observations)
-        ActivityInbox.reconcile(
-            observations,
-            authoritativeProfileIDs: listedFromNetwork
-                ? Set(observations.map(\.profileID)) : [])
-        MacNotifier.withdrawRead()
-        let archivedKeys = ArchivedChatStore.all()
+        if readMarksMoved {
+            readMarksMoved = false
+            MacNotifier.withdrawRead()
+        }
+        let archivedKeys = readings.archived
         let isArchived: (SessionRowModel) -> Bool = {
-            archivedKeys.contains(ArchivedChatStore.key($0.entry.profileID, $0.entry.session.id))
+            archivedKeys.contains(
+                ArchivedChatStore.ChatKey(
+                    profileID: $0.entry.profileID, sessionID: $0.entry.session.id))
         }
         let scoped =
             projectScope.map { scope in models.filter { scope.matches($0.entry) } } ?? models
@@ -174,15 +301,16 @@ extension SidebarViewController {
         let missed = ActivityInbox.unsaid(by: Self.drawnRows(sections, limit: sidebarLimit), limit: 5)
         listedMissed = missed.all
         let vocabulary = ChatListVocabulary(rows: models)
-        let snapshot = (
-            visible.map(\.key), unreachable, filter,
-            "\(sidebarLimit)|\(showingArchive)|\(archivedTotal)"
+        let snapshot = SidebarShape(
+            visibleCount: visible.count, firstKey: visible.first?.key ?? "",
+            lastKey: visible.last?.key ?? "", unreachable: unreachable, filter: filter,
+            digest:
+                "\(sidebarLimit)|\(showingArchive)|\(archivedTotal)"
                 + "|\(selection.keys.sorted().joined(separator: ","))"
                 + "|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))"
                 + "|\(projectScope.map { "\($0.profileID):\($0.directory ?? "")" } ?? "")"
                 + "|\(sections.map { "\($0.0.key):\($0.1.count)" }.joined(separator: ","))"
-                + "|\(vocabulary.namesServer)\(vocabulary.namesBackend)|\(searchRunning)\(searchBoard != nil)"
-        )
+                + "|\(vocabulary.namesServer)\(vocabulary.namesBackend)|\(searchRunning)\(searchBoard != nil)")
         let sameShape = lastSidebar.map { $0 == snapshot } ?? false
         lastSidebar = snapshot
         renderBulkBar()

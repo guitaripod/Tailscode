@@ -3,6 +3,27 @@ import CodingAgentKit
 import CodingAgentKitApple
 import TailscodeCore
 
+/// What the chat list draws from the window's arrangement — the conversations a split holds as one
+/// row, the shape it is worn in and the slots open beside them — and whether it has been told at
+/// all. A focus move leaves every one of them where it was.
+struct SidebarLayoutNote: Equatable {
+    private(set) var known = false
+    private(set) var identity = ""
+    private(set) var worthShowing = false
+    private(set) var shape: SplitArrangement?
+    private(set) var slots = 0
+
+    init() {}
+
+    init(_ tab: SplitTab?) {
+        known = true
+        identity = tab?.identity ?? ""
+        worthShowing = tab?.isWorthShowing ?? false
+        shape = tab?.shape
+        slots = tab?.slotCount ?? 0
+    }
+}
+
 extension SidebarViewController {
     /// A chat created a heartbeat ago: seeded into the list by hand and opened on the spot,
     /// because a bridge that answers `GET /sessions` from a sweep a second old would otherwise
@@ -14,6 +35,8 @@ extension SidebarViewController {
             entries.insert(entry, at: 0)
         }
         lastSidebar = nil
+        listingVersion += 1
+        observationDirty = true
         render()
         open(entry, freshlyCreated: true)
     }
@@ -42,6 +65,8 @@ extension SidebarViewController {
     /// had is not asking, and a list that opens already scrolled past its pins, its missed news
     /// and its live chats reads as broken before anything has been touched.
     func open(_ entry: SessionEntry, freshlyCreated: Bool = false, reveal: Bool = true) {
+        let trace = Pace.traceStart()
+        defer { Pace.traceEnd("sidebar.open", trace) }
         let alreadyShowing =
             focusedSessionID.map { $0() == entry.session.id } ?? (selectedID == entry.session.id)
         selectedID = entry.session.id
@@ -215,15 +240,28 @@ extension SidebarViewController {
         presentDelete(entry: entry, backend: backend)
     }
 
+    /// The window's arrangement changed — a split, an unsplit, a pane rebound. A focus move is a
+    /// layout note too and changes nothing the list draws, so the note is compared before anything
+    /// is booked, and a burst of notes lands as the one rebuild once the hand stops.
+    func noteLayoutChanged() {
+        let note = SidebarLayoutNote(splitTabSource?())
+        guard note != lastLayoutNote else { return }
+        lastLayoutNote = note
+        layoutRenderWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.layoutRenderWork = nil
+            self.render()
+        }
+        layoutRenderWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.layoutSettle, execute: work)
+    }
+
+    private static let layoutSettle: TimeInterval = 0.12
+
     /// A pane's stream said something new. The list only rebuilds when what it would say about a
     /// conversation actually changed, because a running turn reports on every chunk and rebuilding
     /// the whole table per chunk is the one thing this list must never do.
-    /// The window's arrangement changed — a split, an unsplit, a pane rebound. The merged row is
-    /// a function of it, so the list re-reads; the render diff keeps a no-op cheap.
-    func noteLayoutChanged() {
-        render()
-    }
-
     func notePresenceChanged() {
         guard !presenceRenderPending else { return }
         presenceRenderPending = true

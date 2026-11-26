@@ -29,6 +29,8 @@ extension SidebarViewController {
             if let next = entries.first { open(next) }
         }
         lastSidebar = nil
+        listingVersion += 1
+        observationDirty = true
         render()
         Task { [weak self] in
             let outcome = await Self.fanOutDelete(targets)

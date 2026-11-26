@@ -17,8 +17,28 @@ extension SidebarViewController {
         for name in names {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {
                 [weak self] _ in
-                MainThread.call { self?.render() }
+                MainThread.call {
+                    guard let self else { return }
+                    self.storeReadings = nil
+                    if name == SessionSeenStore.didSync { self.readMarksMoved = true }
+                    if name == SavedChatStore.didChange { self.observationDirty = true }
+                    self.scheduleDecisionRender()
+                }
             }
+        }
+    }
+
+    /// One redraw per runloop turn for every store that spoke, and none at all for a store that
+    /// spoke while a draw that already carries its news was running: opening a chat marks it seen
+    /// and then draws, and the mark's own notification drew the whole list a second time.
+    private func scheduleDecisionRender() {
+        guard !decisionRenderArmed else { return }
+        decisionRenderArmed = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.decisionRenderArmed = false
+            guard CACurrentMediaTime() - self.lastRenderAt >= 0.04 else { return }
+            self.render()
         }
     }
 

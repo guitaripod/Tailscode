@@ -137,7 +137,25 @@ final class SidebarViewController: NSViewController {
     var searchTask: Task<Void, Never>?
     var cursor = 0
     var selectedID: String?
-    var lastSidebar: ([String], [String], String, String)?
+    /// What the list would draw, for deciding whether it has to draw it again: how many rows, the
+    /// two ends, and everything about the shape a row cannot be diffed out of. The whole order of
+    /// two thousand keys was rebuilt as strings on every pass just to compare with the last one;
+    /// a reorder in the middle changes neither count nor ends and is caught by the row diff below,
+    /// which reloads exactly the rows whose place it changed.
+    struct SidebarShape: Equatable {
+        var visibleCount: Int
+        var firstKey: String
+        var lastKey: String
+        var unreachable: [String]
+        var filter: String
+        var digest: String
+    }
+
+    var lastSidebar: SidebarShape?
+    /// The arrangement the list was last told about, and the rebuild booked for the newest note: a
+    /// focus move is a layout note too, and changes nothing the list draws.
+    var lastLayoutNote = SidebarLayoutNote()
+    var layoutRenderWork: DispatchWorkItem?
     /// A click is a press and a release, and a row reloaded between the two never becomes one:
     /// the action reads `clickedRow` on the release, and a table rebuilt under the press re-sorts
     /// what that index means. The list is held for the length of the press and redrawn on the
@@ -147,6 +165,28 @@ final class SidebarViewController: NSViewController {
     var holdMonitor: Any?
     var holdGeneration = 0
     static let pointerHoldCeiling: TimeInterval = 1.2
+    /// What the stores that decide a row said the last time the list read them. Decoded once and
+    /// dropped by each store's own notification, because a list redrawn by a push, a presence
+    /// settle and a keystroke was copying a thousand read marks out of UserDefaults per draw.
+    var storeReadings: StoreReadings?
+    /// The row each conversation was last worded as, reused while the facts it says are the same.
+    /// A fleet of thousands is re-worded on every push, and a title, a folder, a machine and an
+    /// age are the same strings until something about them moves.
+    var rowMemo: [String: RowMemo] = [:]
+    /// A listing change arrived and the list has not drawn it yet: one draw per settle rather than
+    /// one per pushed state, because a bridge streams a change whenever any chat moves.
+    var listingRenderArmed = false
+    /// Bumped by every change to `entries` that came from a listing. The work that speaks for the
+    /// whole fleet — observations, the inbox, a notice withdrawal — runs only when it moved.
+    var listingVersion = 0
+    var observedListingVersion = -1
+    var observationDirty = true
+    var readMarksMoved = true
+    /// Set when the list drew nothing because its window cannot be seen; the next appearance draws.
+    var renderPending = false
+    var decisionRenderArmed = false
+    var lastRenderAt: CFTimeInterval = 0
+    var occlusionWatch: Any?
     var refreshTask: Task<Void, Never>?
     var toldDeviceOnly: Set<String> = []
     /// One live listing per server, keyed by the profile it was opened for, so a server removed,
@@ -310,6 +350,19 @@ final class SidebarViewController: NSViewController {
         super.viewDidAppear()
         startRefreshing()
         syncListStreams()
+        watchOcclusion()
+        flushPendingRender()
+    }
+
+    /// The window was covered, minimised or hidden and is back: a draw deferred while it could not
+    /// be seen is made now rather than waiting for the next listing push.
+    private func watchOcclusion() {
+        guard occlusionWatch == nil, let window = view.window else { return }
+        occlusionWatch = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainThread.call { self?.flushPendingRender() }
+        }
     }
 
     override func viewDidDisappear() {
