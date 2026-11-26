@@ -17,6 +17,14 @@ final class ChatViewModel {
     var streamTask: Task<Void, Never>?
 
     var state = ConversationState()
+    /// When this device last saw the transcript itself move — a message arriving, or more of one
+    /// being written — never a status, a queue or a connection. What an open reads first to know
+    /// whether the server is worth asking again (``readAgainIfTheHeldTranscriptIsOld()``).
+    var transcriptChangedAt: Date?
+    var transcriptSignature: Int?
+    /// When this screen last asked the server what the chat says because it was opened; the
+    /// screen starts its view model in two turns and neither may buy a read of its own.
+    var lastOpenReadAt: Date?
     var selectedModel: ModelSelection?
     var currentEffort: String?
     /// A summoned turn is still running: the aura stays lit after the draft

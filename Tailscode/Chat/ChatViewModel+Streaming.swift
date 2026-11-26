@@ -14,6 +14,7 @@ extension ChatViewModel {
             MidgarLog.info(
                 "start reuse vm=\(vmTag) session=\(session.id) queued=\(queue.count) echoes=\(pending.count)", category: .chat)
             onState?(state)
+            readAgainIfTheHeldTranscriptIsOld()
             return
         }
         MidgarLog.info(
@@ -46,6 +47,7 @@ extension ChatViewModel {
                 }
                 let displayedBefore = (self.displayedModel, self.displayedEffort)
                 let cameBack = state.connection == .live && self.state.connection != .live
+                self.noteTranscriptMovement(state)
                 self.state = state
                 if let waited = self.firstAnswer.answered(state) {
                     MidgarLog.info(
@@ -90,6 +92,57 @@ extension ChatViewModel {
             self.handleStreamTermination(generation: generation)
         }
         Task { await loadDefaultModelIfNeeded() }
+    }
+
+    /// How old what this view model holds may be before opening the chat asks the server again.
+    /// Long enough that the conversation a press starts for the push is already current, short
+    /// enough that a chat left open while another machine spoke is not.
+    private static let openReadFreshness: TimeInterval = 3
+
+    /// A chat opened onto a conversation this process is already streaming is shown what the
+    /// stream last said and nothing else. A message written while that stream was quiet lives in
+    /// the server's transcript and nowhere this device holds — opencode's event bus belongs to one
+    /// process, so a prompt sent from another process on that machine never reaches a socket here —
+    /// and the one road that finds it is a refetch. Leaving the chat and coming back takes that
+    /// road; opening it has to take it too, or the message is missing until the record follower's
+    /// next tick. What moved a moment ago — the warm conversation a press starts, a turn already
+    /// streaming onto the page — is current and is not asked for twice.
+    private func readAgainIfTheHeldTranscriptIsOld() {
+        guard state.hasLoadedTranscript else { return }
+        if let asked = lastOpenReadAt, Date().timeIntervalSince(asked) < Self.openReadFreshness {
+            return
+        }
+        let age = transcriptChangedAt.map { Date().timeIntervalSince($0) } ?? .greatestFiniteMagnitude
+        guard age >= Self.openReadFreshness else { return }
+        lastOpenReadAt = Date()
+        MidgarLog.info(
+            "open read session=\(session.id) age=\(age.isFinite ? Int(age) : -1)s", category: .chat)
+        refresh()
+    }
+
+    /// Whether the transcript this view model holds moved — a message arriving, or more of one
+    /// being written — rather than only a status, a queue or a connection. A cheap digest, so a
+    /// streamed token costs a handful of comparisons and nothing proportional to the conversation.
+    private func noteTranscriptMovement(_ state: ConversationState) {
+        var hasher = Hasher()
+        hasher.combine(state.messages.count)
+        if let last = state.messages.last {
+            hasher.combine(last.id)
+            hasher.combine(last.completedAt)
+            hasher.combine(last.parts.count)
+            if let part = last.parts.last {
+                hasher.combine(part.text?.utf8.count ?? 0)
+                if case .tool(let call) = part.kind {
+                    hasher.combine(call.status)
+                    hasher.combine(call.output?.utf8.count ?? 0)
+                }
+            }
+        }
+        let signature = hasher.finalize()
+        guard signature != transcriptSignature else { return }
+        transcriptSignature = signature
+        guard state.hasLoadedTranscript else { return }
+        transcriptChangedAt = Date()
     }
 
     /// Whether a view model nobody has on screen has nothing left to watch: the turn is over,
