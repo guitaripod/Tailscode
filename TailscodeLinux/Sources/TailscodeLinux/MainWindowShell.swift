@@ -263,12 +263,18 @@ extension MainWindow {
         }
     }
 
-    func paneShown(_ pane: ClosablePane) -> Bool { pane.isShown }
+    /// Whether a pane is on screen. The terminal is a shell on a machine, so while the app holds no
+    /// machine at all it stands down for the welcome instead of taking a third of a stranger's
+    /// first window to say it has nothing to show; what the person chose is kept and comes back
+    /// with the first server.
+    func paneShown(_ pane: ClosablePane) -> Bool {
+        pane.isShown && !(pane == .terminal && terminalStandsDown)
+    }
 
     /// A terminal someone just opened is a terminal they want to type into; focus follows the
     /// reveal, on idle so the widget is on screen by the time focus lands.
     func togglePane(_ pane: ClosablePane) {
-        SettingsFile.set(!paneShown(pane), forKey: pane.key)
+        SettingsFile.set(!pane.isShown, forKey: pane.key)
         applyPane(pane)
         if pane == .terminal, paneShown(.terminal) {
             Gtk.onMain { [weak self] in self?.focus(.terminal) }
@@ -423,7 +429,7 @@ extension MainWindow {
             isPaneShown: { pane in ClosablePane(pane).isShown },
             setPaneShown: { [weak self] pane, shown in
                 Gtk.onMain { [weak self] in
-                    guard let self, self.paneShown(ClosablePane(pane)) != shown else { return }
+                    guard let self, ClosablePane(pane).isShown != shown else { return }
                     self.togglePane(ClosablePane(pane))
                 }
             })

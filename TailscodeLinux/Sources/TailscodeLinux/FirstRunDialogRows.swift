@@ -8,18 +8,21 @@ import TailscodeCore
 extension FirstRunDialog {
     func makeRow(_ id: FirstRunPlan.Row.ID) -> UnsafeMutablePointer<GtkWidget> {
         let container = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
-        Gtk.margins(container, top: 8)
-        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        let number = Gtk.label("", css: "dim", selectable: false)
-        let title = Gtk.label("", css: "row-title", selectable: false)
+        Gtk.margins(container, top: 14)
+        let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        let number = Gtk.label("", css: "fr-badge", selectable: false)
+        gtk_label_set_xalign(op(number), 0.5)
+        gtk_label_set_ellipsize(op(number), PANGO_ELLIPSIZE_NONE)
+        gtk_widget_set_valign(number, GTK_ALIGN_CENTER)
+        let title = Gtk.label("", css: "fr-step-title", selectable: false)
         let pill = Gtk.label("", css: "row-detail", selectable: false)
         let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
         gtk_widget_set_hexpand(spacer, 1)
         for part in [number, title, spacer, pill] { gtk_box_append(ptr(header), part) }
-        let detail = FirstRunDialog.wrapped("", css: "row-detail")
-        Gtk.margins(detail, leading: 22)
+        let detail = FirstRunDialog.wrapped("", css: "fr-prose")
+        Gtk.margins(detail, leading: Self.bodyIndent)
         let body = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
-        Gtk.margins(body, leading: 22)
+        Gtk.margins(body, leading: Self.bodyIndent)
         for part in [header, detail, body] { gtk_box_append(ptr(container), part) }
         rows[id] = RowWidgets(
             container: container, number: number, title: title, pill: pill, detail: detail,
@@ -27,19 +30,52 @@ extension FirstRunDialog {
         return container
     }
 
+    /// Where a step's sentence and its blocks start: under its title, clear of the badge.
+    static let bodyIndent: Int32 = 34
+
+    /// A step's badge says where the step stands before a word of it is read: its number while it
+    /// waits or is the one in hand, a tick once the app has proven it, a mark when it needs the
+    /// person. The pill beside the title carries the words; this is the glance.
+    func renderBadge(_ row: FirstRunPlan.Row, _ badge: UnsafeMutablePointer<GtkWidget>) {
+        let text: String
+        let tone: String?
+        switch row.glyph {
+        case .proven:
+            text = "✓"
+            tone = "fr-badge-proven"
+        case .attention:
+            text = "!"
+            tone = "fr-badge-attention"
+        case .current, .working:
+            text = "\(row.number)"
+            tone = "fr-badge-current"
+        case .waiting:
+            text = "\(row.number)"
+            tone = nil
+        }
+        gtk_label_set_text(op(badge), text)
+        for name in ["fr-badge-proven", "fr-badge-attention", "fr-badge-current"] {
+            gtk_widget_remove_css_class(badge, name)
+        }
+        if let tone { Gtk.addClass(badge, tone) }
+    }
+
     func buildPermissionsStep(in content: UnsafeMutablePointer<GtkWidget>) {
         let header = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
-        gtk_box_append(ptr(header), Gtk.label("4 ·", css: "dim", selectable: false))
+        let badge = Gtk.label("4", css: "fr-badge", selectable: false)
+        gtk_label_set_xalign(op(badge), 0.5)
+        Gtk.addClass(badge, "fr-badge-current")
+        gtk_box_append(ptr(header), badge)
         gtk_box_append(ptr(header), permissionsStepTitle)
         gtk_box_append(ptr(permissionsStepArea), header)
-        Gtk.margins(permissionsDetailLabel, leading: 22)
+        Gtk.margins(permissionsDetailLabel, leading: Self.bodyIndent)
         gtk_box_append(ptr(permissionsStepArea), permissionsDetailLabel)
         let wrapper = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
-        Gtk.margins(wrapper, top: 6, leading: 22)
+        Gtk.margins(wrapper, top: 6, leading: Self.bodyIndent)
         gtk_box_append(ptr(wrapper), permissionsBox.widget)
         gtk_box_append(ptr(permissionsStepArea), wrapper)
         let skip = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
-        Gtk.margins(skip, top: 6, leading: 22)
+        Gtk.margins(skip, top: 6, leading: Self.bodyIndent)
         gtk_box_append(
             ptr(skip),
             Gtk.button(MachinePermissionReading.skip, css: ["flat"]) { [self] in
@@ -140,7 +176,7 @@ extension FirstRunDialog {
     }
 
     func renderRow(_ row: FirstRunPlan.Row, _ widgets: RowWidgets) {
-        gtk_label_set_text(op(widgets.number), "\(row.number) ·")
+        renderBadge(row, widgets.number)
         gtk_label_set_text(op(widgets.title), row.title)
         gtk_label_set_text(op(widgets.pill), row.pill ?? "")
         for name in ["dim", "glyph-running", "glyph-error", "glyph-needs", "glyph-pending"] {
@@ -177,7 +213,7 @@ extension FirstRunDialog {
             case .signIn(let card):
                 appendSignIn(card, to: widgets.body)
             case .note(let text):
-                gtk_box_append(ptr(widgets.body), FirstRunDialog.wrapped(text, css: "row-detail"))
+                gtk_box_append(ptr(widgets.body), FirstRunDialog.wrapped(text, css: "fr-prose"))
             default:
                 break
             }

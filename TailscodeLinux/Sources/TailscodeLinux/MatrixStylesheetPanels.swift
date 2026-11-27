@@ -226,6 +226,42 @@ extension MatrixStylesheet {
         .gauge-fill-ok { background-color: \(accentDim); border-radius: 3px; }
         .gauge-fill-warn { background-color: \(warn); border-radius: 3px; }
         .gauge-fill-danger { background-color: \(danger); border-radius: 3px; }
+        .fr-prose { \(t(.panelDetail)) color: \(textDim); }
+        .fr-step-title { \(t(.cardTitle)) color: \(text); }
+        .fr-badge {
+            \(t(.control))
+            min-width: 22px;
+            min-height: 22px;
+            border-radius: 12px;
+            border: 1px solid alpha(\(text), 0.28);
+            color: \(textDim);
+        }
+        .fr-badge-current { background-color: \(accent); border-color: \(accent); color: \(canvas); }
+        .fr-badge-proven { background-color: alpha(\(accent), 0.14); border-color: \(accent); color: \(accent); }
+        .fr-badge-attention { border-color: \(warn); color: \(warn); }
+        button.fr-choice {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: \(Int(ChatChrome.Radius.card))px;
+            box-shadow: none;
+            padding: 8px 12px;
+        }
+        button.fr-choice:hover, button.fr-choice:focus-visible {
+            border-color: \(accent);
+            background-color: alpha(\(accent), 0.08);
+        }
+        .fr-choice-mark { \(t(.cardTitle)) min-width: 30px; color: \(accent); }
+        .fr-chevron { \(t(.cardTitle)) color: \(textDim); }
+        button.fr-choice:hover .fr-chevron { color: \(accent); }
+        .fr-command {
+            background-color: \(canvasRaised);
+            border: 1px solid \(rule);
+            border-radius: \(Int(ChatChrome.Radius.card))px;
+            padding: 4px 4px 4px 12px;
+        }
+        .fr-diagnosis { border-left: 2px solid \(warn); }
+        .welcome-step { margin: 6px 0; }
+        .welcome-emblem { font-size: 2.2rem; color: \(accent); }
         .brand-claude { color: \(palette.brandClaude); }
         .brand-opencode { color: \(palette.brandOpencode); }
         .brand-omp { color: \(brandOmp(in: palette)); }

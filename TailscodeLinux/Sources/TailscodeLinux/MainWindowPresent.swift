@@ -218,10 +218,18 @@ extension MainWindow {
             !pane.chooserShown
         else {
             pane.clearWelcome()
+            standTerminalDown(false)
             return
         }
         drawWelcome(in: pane)
+        standTerminalDown(knownProfiles.isEmpty)
         if welcomeFixture == nil { readTailscaleForWelcome() }
+    }
+
+    private func standTerminalDown(_ down: Bool) {
+        guard terminalStandsDown != down else { return }
+        terminalStandsDown = down
+        applyPane(.terminal)
     }
 
     func drawWelcome(in pane: ChatPane) {

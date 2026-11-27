@@ -36,13 +36,13 @@ extension FirstRunDialog {
         case .command(let card):
             appendCommand(card, to: box)
         case .waiting(let text):
-            gtk_box_append(ptr(box), FirstRunDialog.wrapped(text, css: "row-detail"))
+            gtk_box_append(ptr(box), FirstRunDialog.wrapped(text, css: "fr-prose"))
         case .link(let card):
             appendLink(card, to: box)
         case .diagnosis(let diagnosis):
             appendDiagnosis(diagnosis, to: box)
         case .note(let text):
-            gtk_box_append(ptr(box), FirstRunDialog.wrapped(text, css: "row-detail"))
+            gtk_box_append(ptr(box), FirstRunDialog.wrapped(text, css: "fr-prose"))
         case .paste, .password, .signIn, .remedy:
             break
         }
@@ -57,26 +57,75 @@ extension FirstRunDialog {
 
     func wayButton(_ way: FirstRunPlan.Way) -> UnsafeMutablePointer<GtkWidget> {
         let kind = way.kind
-        return choiceButton(title: way.title, detail: way.detail) { [self] in chose(kind) }
+        return choiceButton(mark: Self.mark(for: kind), tone: nil, title: way.title, detail: way.detail) {
+            [self] in chose(kind)
+        }
     }
 
     /// An answer to first run's question: a press, in the agent's own name, that opens its install.
     func answerButton(_ choice: FirstRunPlan.AgentChoice) -> UnsafeMutablePointer<GtkWidget> {
         let agent = choice.agent
-        return choiceButton(title: choice.title, detail: choice.detail) { [self] in
+        return choiceButton(
+            mark: Self.mark(for: agent), tone: Self.brandClass(for: agent), title: choice.title,
+            detail: choice.detail
+        ) { [self] in
             send { await $0.answer(agent) }
         }
     }
 
+    /// The marks the other clients draw as symbols, in glyphs every desktop font carries: the
+    /// spark, the angle brackets and the function sign an agent wears wherever it is named.
+    static func mark(for agent: AgentType) -> String {
+        switch agent {
+        case .claudeCode: return "✳"
+        case .openCode: return "</>"
+        case .omp: return "ƒ(x)"
+        }
+    }
+
+    static func brandClass(for agent: AgentType) -> String {
+        switch agent {
+        case .claudeCode: return "brand-claude"
+        case .openCode: return "brand-opencode"
+        case .omp: return "brand-omp"
+        }
+    }
+
+    static func mark(for kind: FirstRunPlan.Way.Kind) -> String {
+        switch kind {
+        case .scan: return "▣"
+        case .link: return "↗"
+        case .install: return ">_"
+        case .tailnet: return "◎"
+        }
+    }
+
+    /// One answer or one way in, as a row the whole of which is the press: a mark, the name, the
+    /// sentence that says what it means and a chevron that says it goes somewhere. Flat text on
+    /// the window's own ground read as a paragraph, and nothing about it said it could be pressed.
     func choiceButton(
-        title: String, detail: String, onPress: @escaping @Sendable () -> Void
+        mark: String, tone: String?, title: String, detail: String,
+        onPress: @escaping @Sendable () -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let button = gtk_button_new()!
-        Gtk.addClass(button, "flat")
+        Gtk.addClass(button, "fr-choice")
+        let glyph = Gtk.label(mark, css: "fr-choice-mark", selectable: false)
+        gtk_label_set_xalign(op(glyph), 0.5)
+        gtk_label_set_ellipsize(op(glyph), PANGO_ELLIPSIZE_NONE)
+        gtk_widget_set_valign(glyph, GTK_ALIGN_CENTER)
+        tailscode_set_accessible_hidden(glyph, 1)
+        if let tone { Gtk.addClass(glyph, tone) }
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
         gtk_box_append(ptr(column), Gtk.label(title, css: "row-title", selectable: false))
-        gtk_box_append(ptr(column), FirstRunDialog.wrapped(detail, css: "row-detail"))
-        gtk_button_set_child(ptr(button), column)
+        gtk_box_append(ptr(column), FirstRunDialog.wrapped(detail, css: "fr-prose"))
+        gtk_widget_set_hexpand(column, 1)
+        let chevron = Gtk.label("›", css: "fr-chevron", selectable: false)
+        gtk_label_set_ellipsize(op(chevron), PANGO_ELLIPSIZE_NONE)
+        gtk_widget_set_valign(chevron, GTK_ALIGN_CENTER)
+        tailscode_set_accessible_hidden(chevron, 1)
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
+        for part in [glyph, column, chevron] { gtk_box_append(ptr(row), part) }
+        gtk_button_set_child(ptr(button), row)
         gtk_widget_set_halign(button, GTK_ALIGN_FILL)
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") {
             Gtk.onMain { onPress() }
@@ -118,8 +167,9 @@ extension FirstRunDialog {
         _ card: FirstRunPlan.CommandCard, to box: UnsafeMutablePointer<GtkWidget>
     ) {
         gtk_box_append(ptr(box), Gtk.label(card.title, css: "row-title", selectable: false))
-        gtk_box_append(ptr(box), FirstRunDialog.wrapped(card.detail, css: "row-detail"))
+        gtk_box_append(ptr(box), FirstRunDialog.wrapped(card.detail, css: "fr-prose"))
         let line = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        Gtk.addClass(line, "fr-command")
         let text = Gtk.label(card.command, css: "tool-line", selectable: true)
         gtk_label_set_ellipsize(op(text), PANGO_ELLIPSIZE_END)
         gtk_widget_set_hexpand(text, 1)
@@ -133,28 +183,35 @@ extension FirstRunDialog {
             })
         gtk_box_append(ptr(box), line)
         if let note = card.note {
-            gtk_box_append(ptr(box), FirstRunDialog.wrapped(note, css: "row-detail"))
+            gtk_box_append(ptr(box), FirstRunDialog.wrapped(note, css: "fr-prose"))
         }
     }
 
     func appendLink(_ card: FirstRunPlan.LinkCard, to box: UnsafeMutablePointer<GtkWidget>) {
-        gtk_box_append(ptr(box), Gtk.label(card.headline, css: "row-title", selectable: false))
+        let frame = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+        Gtk.addClass(frame, "card")
+        gtk_box_append(ptr(frame), Gtk.label(card.headline, css: "row-title", selectable: false))
         for line in card.lines {
-            gtk_box_append(ptr(box), FirstRunDialog.wrapped(line, css: "row-detail"))
+            gtk_box_append(ptr(frame), FirstRunDialog.wrapped(line, css: "fr-prose"))
         }
         if let title = card.connectAnywayTitle {
             let button = Gtk.button(title) { [self] in send { await $0.confirmOffTailnet() } }
             gtk_widget_set_halign(button, GTK_ALIGN_START)
-            gtk_box_append(ptr(box), button)
+            gtk_box_append(ptr(frame), button)
         }
+        gtk_box_append(ptr(box), frame)
     }
 
     func appendDiagnosis(
         _ diagnosis: ConnectDiagnosis, to box: UnsafeMutablePointer<GtkWidget>
     ) {
-        gtk_box_append(
-            ptr(box),
-            FirstRunDialog.wrapped("\(diagnosis.title)\n\(diagnosis.detail)", css: "row-detail"))
+        let card = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 4)
+        Gtk.addClass(card, "card")
+        Gtk.addClass(card, "fr-diagnosis")
+        gtk_box_append(ptr(card), Gtk.label(diagnosis.title, css: "row-title", wrap: true, selectable: true))
+        gtk_box_append(ptr(card), FirstRunDialog.wrapped(diagnosis.detail, css: "fr-prose"))
+        gtk_box_append(ptr(box), card)
+        let box = card
         guard let title = diagnosis.actionTitle else { return }
         let button: UnsafeMutablePointer<GtkWidget>?
         switch diagnosis.fix {

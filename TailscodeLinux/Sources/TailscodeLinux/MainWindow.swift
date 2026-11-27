@@ -73,6 +73,7 @@ final class MainWindow: @unchecked Sendable {
 
     var splitWidget: UnsafeMutablePointer<GtkWidget>?
     var terminalPaned: UnsafeMutablePointer<GtkWidget>?
+    var terminalStandsDown = false
     var sidebarPane: UnsafeMutablePointer<GtkWidget>?
     var sidebarTitle: UnsafeMutablePointer<GtkWidget>?
     /// The name's own width, remembered rather than re-measured: GTK measures a hidden widget as

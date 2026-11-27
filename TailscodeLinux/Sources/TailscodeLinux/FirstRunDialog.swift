@@ -180,19 +180,19 @@ final class FirstRunDialog: @unchecked Sendable {
     var watchRounds = 0
     var syncing = false
 
-    let intro = FirstRunDialog.wrapped("", css: "row-detail")
+    let intro = FirstRunDialog.wrapped("", css: "fr-prose")
     let demoButton = gtk_button_new_with_label("")!
     let laterButton = gtk_button_new_with_label("")!
     let primaryButton = gtk_button_new_with_label("")!
     let backButton = gtk_button_new_with_label("")!
     let remedyOutput: UnsafeMutablePointer<GtkWidget> = {
-        let label = FirstRunDialog.wrapped("", css: "row-detail")
+        let label = FirstRunDialog.wrapped("", css: "fr-prose")
         g_object_ref_sink(UnsafeMutableRawPointer(label))
         return label
     }()
     let permissionsStepArea = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
     let permissionsStepTitle = Gtk.label("", css: "row-title", selectable: false)
-    let permissionsDetailLabel = FirstRunDialog.wrapped("", css: "row-detail")
+    let permissionsDetailLabel = FirstRunDialog.wrapped("", css: "fr-prose")
     let permissionsBox = MachinePermissionsBox(local: false)
     var permissionsBackend: (any PermissionReportingBackend)?
     var permissionsPollPending = false
@@ -202,16 +202,16 @@ final class FirstRunDialog: @unchecked Sendable {
     let pasteEntry = gtk_entry_new()!
     let offerBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)
     let offerButton = gtk_button_new_with_label("")!
-    let offerDetail = FirstRunDialog.wrapped("", css: "row-detail")
+    let offerDetail = FirstRunDialog.wrapped("", css: "fr-prose")
     var landing: FirstRunLanding?
     var fixed = false
-    let pasteReading = FirstRunDialog.wrapped("", css: "row-detail")
-    let pasteMessage = FirstRunDialog.wrapped("", css: "row-detail")
+    let pasteReading = FirstRunDialog.wrapped("", css: "fr-prose")
+    let pasteMessage = FirstRunDialog.wrapped("", css: "fr-prose")
     let installBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
     let linkBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
     let statusBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
     let passwordBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
-    let passwordNote = FirstRunDialog.wrapped("", css: "row-detail")
+    let passwordNote = FirstRunDialog.wrapped("", css: "fr-prose")
     let passwordEntry = gtk_password_entry_new()!
     let discoveryBox = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 6)
     var discovery: DiscoveryPanel?

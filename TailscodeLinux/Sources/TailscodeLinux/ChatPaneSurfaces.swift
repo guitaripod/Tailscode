@@ -150,17 +150,33 @@ extension ChatPane {
         gtk_box_append(ptr(transcriptBox), Self.welcomeView(welcome, onAction: onAction))
     }
 
+    /// The welcome stands in the middle of the pane it fills, centred the way the Mac's is: a mark,
+    /// the title, the sentence, the one step in the way and the presses, each on the pane's axis.
     static func welcomeView(
         _ welcome: EmptyWelcome, onAction: @escaping @Sendable (EmptyWelcome.Intent) -> Void
     ) -> UnsafeMutablePointer<GtkWidget> {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 12)
         Gtk.addClass(column, "empty-chat")
         gtk_widget_set_halign(column, GTK_ALIGN_CENTER)
-        gtk_box_append(ptr(column), Gtk.label(welcome.title, css: "empty-headline", selectable: false))
-        gtk_box_append(ptr(column), welcomeText(welcome.detail, css: "dim"))
+        gtk_widget_set_valign(column, GTK_ALIGN_CENTER)
+        gtk_widget_set_vexpand(column, 1)
+        let emblem = Gtk.label("◎", css: "welcome-emblem", selectable: false)
+        tailscode_set_accessible_hidden(emblem, 1)
+        let title = Gtk.label(welcome.title, css: "empty-headline", selectable: false)
+        let detail = welcomeText(welcome.detail, css: "dim")
+        gtk_label_set_justify(op(detail), GTK_JUSTIFY_CENTER)
+        for part in [emblem, title, detail] {
+            gtk_label_set_xalign(op(part), 0.5)
+            gtk_widget_set_halign(part, GTK_ALIGN_CENTER)
+            gtk_box_append(ptr(column), part)
+        }
         gtk_box_append(ptr(column), welcomeStep(welcome.step, onAction: onAction))
-        gtk_box_append(ptr(column), welcomeButtons(welcome, onAction: onAction))
-        gtk_box_append(ptr(column), WelcomeLookRow.welcomeLookRow())
+        let buttons = welcomeButtons(welcome, onAction: onAction)
+        gtk_widget_set_halign(buttons, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(column), buttons)
+        let look = WelcomeLookRow.welcomeLookRow()
+        gtk_widget_set_halign(look, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(column), look)
         return column
     }
 
@@ -175,7 +191,7 @@ extension ChatPane {
 
     static func welcomeText(_ text: String, css: String) -> UnsafeMutablePointer<GtkWidget> {
         let label = Gtk.label(text, css: css, wrap: true, selectable: false)
-        gtk_label_set_max_width_chars(op(label), 60)
+        gtk_label_set_max_width_chars(op(label), 64)
         return label
     }
 
@@ -185,9 +201,9 @@ extension ChatPane {
         let card = Gtk.groupBox(
             GTK_ORIENTATION_VERTICAL, spacing: 6, spoken: "\(step.title). \(step.detail)")
         Gtk.addClass(card, "card")
-        Gtk.margins(card, 12)
+        Gtk.addClass(card, "welcome-step")
         gtk_box_append(ptr(card), Gtk.label(step.title, css: "row-title", selectable: false))
-        gtk_box_append(ptr(card), welcomeText(step.detail, css: "row-detail"))
+        gtk_box_append(ptr(card), welcomeText(step.detail, css: "fr-prose"))
         if let fix = step.fix {
             let button = welcomeButton(fix, css: ["flat"], onAction: onAction)
             gtk_widget_set_halign(button, GTK_ALIGN_START)
