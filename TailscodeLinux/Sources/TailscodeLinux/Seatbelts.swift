@@ -261,9 +261,7 @@ final class Seatbelts: @unchecked Sendable {
     /// does nothing for the resident size until the allocator gives the pages up to the kernel.
     /// Off the main thread, because trimming a gigabyte heap is not instant.
     private static func returnFreedMemory() {
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.5) {
-            _ = tailscode_heap_trim()
-        }
+        HeapReturn.soon()
     }
 
     private func enqueue(_ event: String) {

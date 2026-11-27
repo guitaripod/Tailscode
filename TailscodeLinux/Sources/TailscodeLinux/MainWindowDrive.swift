@@ -203,6 +203,8 @@ extension MainWindow {
             let titles = self.visible.compactMap { $0.lead?.unread == true ? $0.title : nil }
             FileHandle.standardOutput.write(
                 Data("UNREAD \(titles.count) \(titles.joined(separator: " | "))\n".utf8))
+        case "memory":
+            MemoryReading.report(trim: argument == "trim", shelved: self.live.hub.shelved)
         case "sidebarbench":
             let rounds = max(1, Int(argument) ?? 40)
             var draws: [Double] = []

@@ -448,6 +448,7 @@ final class ClipSheet: @unchecked Sendable {
                 MediaPlayhead.keep(tailscode_mpv_number(player, "time-pos"), of: duration, for: playhead)
             }
             tailscode_mpv_free(player)
+            HeapReturn.soon()
             self.player = nil
         }
         if let box {

@@ -237,6 +237,7 @@ final class VideoPane: @unchecked Sendable {
         accountWatch = nil
         if let player {
             tailscode_mpv_free(player)
+            HeapReturn.soon()
             self.player = nil
             surface = nil
         }

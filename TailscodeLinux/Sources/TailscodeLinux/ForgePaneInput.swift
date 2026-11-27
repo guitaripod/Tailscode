@@ -73,6 +73,7 @@ extension ForgePane {
         dock.tray.release()
         if let player {
             tailscode_mpv_free(player)
+            HeapReturn.soon()
             self.player = nil
             surface = nil
         }

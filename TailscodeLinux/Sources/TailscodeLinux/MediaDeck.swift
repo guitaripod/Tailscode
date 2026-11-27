@@ -175,13 +175,28 @@ final class MediaDeck: @unchecked Sendable {
             try? FileManager.default.createDirectory(
                 at: posterDirectory, withIntermediateDirectories: true)
         }
-        var duration = -1.0
-        let opened = tailscode_mpv_probe(source, posterDirectory?.path, 25, &duration)
+        let (opened, duration) = await probe(source, posters: posterDirectory?.path)
         let poster = posterDirectory?.appendingPathComponent("00000001.jpg").path
         let wrote = poster.map { FileManager.default.fileExists(atPath: $0) } ?? false
         guard opened == 0 || wrote else { return .failure(.unplayable) }
         return .success(
             Ready(source: source, duration: duration > 0 ? duration : nil, poster: wrote ? poster : nil))
+    }
+
+    private static let probes = DispatchQueue(label: "tailscode.media.probe", qos: .utility)
+
+    /// One probe at a time, on a thread of its own. A probe blocks until mpv has the frame, and a
+    /// transcript that names six clips used to start six players at once on the pool every other
+    /// task waits for: 683 MB of decoders and read-ahead at the peak, for six small pictures.
+    private static func probe(_ source: String, posters: String?) async -> (Int32, Double) {
+        await withCheckedContinuation { continuation in
+            probes.async {
+                var duration = -1.0
+                let opened = tailscode_mpv_probe(source, posters, 25, &duration)
+                HeapReturn.soon()
+                continuation.resume(returning: (opened, duration))
+            }
+        }
     }
 
     static var cacheDirectory: URL {
@@ -345,6 +360,7 @@ final class MediaDeck: @unchecked Sendable {
             Gtk.onMain {
                 if let player, let pointer = OpaquePointer(bitPattern: player) {
                     tailscode_mpv_free(pointer)
+                    HeapReturn.soon()
                 }
                 if let box, let raw = UnsafeMutableRawPointer(bitPattern: box) {
                     Unmanaged<AudioBox>.fromOpaque(raw).release()

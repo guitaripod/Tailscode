@@ -164,6 +164,7 @@ final class LiveRuntime: @unchecked Sendable {
         drain = TileDrain(clock: clock)
         clock.attach(drain)
         hub = ConversationHub(open: LiveRuntime.open, clock: clock, edges: edges)
+        hub.onLetGo { HeapReturn.soon() }
         warmer = ConversationWarmer(hub: hub)
         edges.hub = hub
     }
