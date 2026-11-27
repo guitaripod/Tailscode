@@ -1,6 +1,7 @@
 import AppKit
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 
 /// The hub — the Mac's `MainWindow`: it owns the window, the toolbar, the split layout, the
@@ -163,6 +164,11 @@ final class MainWindowController: NSWindowController {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        MidgarSignals.noteScreen("home")
+    }
 
     /// The process's live conversations meet this window here: the drain's display link follows
     /// the window's screen, a watched chat's reading reaches the chat list, a window nobody can

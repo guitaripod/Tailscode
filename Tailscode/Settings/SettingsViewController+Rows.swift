@@ -558,6 +558,9 @@ extension SettingsViewController {
         case .privacy:
             content.text = Self.privacyRow.title
             cell.accessories = [.disclosureIndicator()]
+        case .usageCounts:
+            content.text = MidgarUsageCounts.title
+            cell.accessories = [.disclosureIndicator()]
         case .support:
             content.text = Self.supportRow.title
             cell.accessories = [.disclosureIndicator()]

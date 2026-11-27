@@ -1,6 +1,7 @@
 import AppKit
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 
 /// Every machine's masters in one window: the shelf on the left — each master's mark, name, the one
@@ -67,6 +68,11 @@ final class MastersWindow: NSWindowController, NSWindowDelegate, NSTableViewData
         page.onShowBrief = { [weak self] row in self?.showBrief(row) }
         page.onToast = { [weak self] text in self?.onToast?(text) }
         reload()
+    }
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        MidgarSignals.noteScreen("masters", feature: true)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }

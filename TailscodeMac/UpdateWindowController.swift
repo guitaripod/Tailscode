@@ -1,4 +1,5 @@
 import AppKit
+import MidgarCore
 import TailscodeCore
 
 /// The Software Updates window: one card per machine in the picture — this app and every server it
@@ -101,6 +102,11 @@ final class UpdateBoardViewController: NSViewController {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        MidgarSignals.noteScreen("update_center")
+    }
 
     override func loadView() {
         column.spacing = MacTheme.Spacing.m

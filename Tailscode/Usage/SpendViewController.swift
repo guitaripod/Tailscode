@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -74,6 +75,11 @@ final class SpendViewController: UIViewController {
             host: view,
             compact: [column.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor)],
             regular: [column.widthAnchor.constraint(equalTo: view.readableContentGuide.widthAnchor)])
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("spend", feature: true)
     }
 
     /// The number, then the facts that make it mean something.

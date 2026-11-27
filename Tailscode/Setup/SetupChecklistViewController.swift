@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -119,6 +120,7 @@ final class SetupChecklistViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("setup")
         SetupGate.desk.follow(target, lifetime: lifetime) { [weak self] snapshot in
             Task { @MainActor in
                 guard let self else { return }

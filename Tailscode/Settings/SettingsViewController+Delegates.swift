@@ -151,6 +151,8 @@ extension SettingsViewController: UICollectionViewDelegate {
             shareApp(from: indexPath)
         case .licenses:
             navigationController?.pushViewController(LicensesViewController(), animated: true)
+        case .usageCounts:
+            navigationController?.pushViewController(MidgarUsageCountsViewController(), animated: true)
         case .keyboardShortcuts:
             ShortcutCheatsheetViewController.present(from: self)
         case .dictationLanguage:

@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -106,6 +107,7 @@ final class ImageStudioViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("studio", feature: true)
         #if DEBUG
             let environment = ProcessInfo.processInfo.environment
             if environment["TAILSCODE_IMAGE_MACHINE"] != nil, presentedViewController == nil {

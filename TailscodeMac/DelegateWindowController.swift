@@ -1,6 +1,7 @@
 import AppKit
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 
 /// The one door into delegation on the Mac. The store build sells Pro and gates here; a copy
@@ -107,6 +108,11 @@ final class DelegateWindowController: NSWindowController {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        MidgarSignals.noteScreen("delegate", feature: true)
+    }
 
     func present() {
         reloadHosts()

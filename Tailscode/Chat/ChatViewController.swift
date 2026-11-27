@@ -574,6 +574,7 @@ final class ChatViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("chat")
         ChatSpares.prepare()
         timeline.mark("appeared")
         timeline.reportIfComplete(session: viewModel.session.id, rows: orderedIDs.count)

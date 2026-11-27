@@ -674197,6 +674197,208 @@
           }
         }
       }
+    },
+    "Anonymous counts of what is used, and crash reports, with nothing that identifies you or your code": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anonymous counts of what is used, and crash reports, with nothing that identifies you or your code"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anonyme Zahlen dazu, was genutzt wird, und Absturzberichte, ohne etwas, das dich oder deinen Code erkennbar macht"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recuentos anónimos de lo que se usa e informes de fallos, sin nada que te identifique a ti ni a tu código"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Des comptes anonymes de ce qui est utilisé, et des rapports de plantage, sans rien qui vous identifie, vous ou votre code"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conteggi anonimi di ciò che si usa e rapporti sugli arresti anomali, senza nulla che identifichi te o il tuo codice"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "何が使われているかの匿名の集計とクラッシュレポート。あなたやあなたのコードを特定できる情報は含みません"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "무엇이 쓰이는지에 대한 익명 집계와 충돌 보고서예요. 사용자나 코드를 식별할 수 있는 정보는 없어요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anonimowe liczniki tego, czego używasz, i raporty o awariach, bez niczego, co identyfikuje Ciebie lub Twój kod"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contagens anônimas do que é usado e relatórios de travamento, sem nada que identifique você ou seu código"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匿名统计哪些功能被使用，以及崩溃报告，不包含任何能识别你或你的代码的信息"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匿名統計哪些功能被使用，以及當機報告，不包含任何能識別你或你的程式碼的資訊"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anonyma siffror över vad som används, och kraschrapporter, utan något som identifierar dig eller din kod"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anonyme tal for, hvad der bruges, og nedbrudsrapporter, uden noget, der identificerer dig eller din kode"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anonyme tall for hva som brukes, og krasjrapporter, uten noe som identifiserer deg eller koden din"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nimettömiä määriä siitä, mitä käytetään, ja kaatumisraportteja, ilman mitään, mistä sinut tai koodisi voisi tunnistaa"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nafnlausar tölur um hvað er notað og hrunskýrslur, án nokkurs sem auðkennir þig eða kóðann þinn"
+          }
+        }
+      }
+    },
+    "usage counts analytics statistics crash reports diagnostics anonymous": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "usage counts analytics statistics crash reports diagnostics anonymous"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "nutzungszahlen analyse statistik absturzberichte diagnose anonym"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "recuentos de uso analítica estadísticas informes de fallos diagnóstico anónimo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "compteurs d'utilisation analyse statistiques rapports de plantage diagnostic anonyme"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "conteggi di utilizzo analisi statistiche rapporti arresti anomali diagnostica anonimo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "利用回数 分析 統計 クラッシュレポート 診断 匿名"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "사용 횟수 분석 통계 충돌 보고서 진단 익명"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "liczniki użycia analityka statystyki raporty awarii diagnostyka anonimowe"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "contagens de uso análise estatísticas relatórios de travamento diagnóstico anônimo"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用次数 分析 统计 崩溃报告 诊断 匿名"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用次數 分析 統計 當機報告 診斷 匿名"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "användningsstatistik analys statistik kraschrapporter diagnostik anonym"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "brugstal analyse statistik nedbrudsrapporter diagnostik anonym"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bruksstatistikk analyse statistikk krasjrapporter diagnostikk anonym"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "käyttömäärät analytiikka tilastot kaatumisraportit diagnostiikka nimetön"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "notkunartölur greining tölfræði hrunskýrslur greiningargögn nafnlaust"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

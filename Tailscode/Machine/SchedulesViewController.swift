@@ -1,5 +1,6 @@
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -28,6 +29,11 @@ final class SchedulesViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(deskChanged), name: MachineDesk.didChange, object: nil)
         render()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("schedules", feature: true)
     }
 
     override func viewWillAppear(_ animated: Bool) {

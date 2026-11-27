@@ -1,6 +1,7 @@
 import AppKit
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 import UserNotifications
 
@@ -119,6 +120,11 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        MidgarSignals.noteScreen("settings")
+    }
 
     /// The size the window opens at the first time: wide enough for eight toolbar pages and tall
     /// enough that most pages are read without scrolling.

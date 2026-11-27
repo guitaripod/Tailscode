@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -93,6 +94,11 @@ final class MastersViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(deskChanged), name: MasterDesk.didChange, object: nil)
         render()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("masters", feature: true)
     }
 
     override func viewWillAppear(_ animated: Bool) {

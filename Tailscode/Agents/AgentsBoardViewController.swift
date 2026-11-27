@@ -68,6 +68,7 @@ final class AgentsBoardViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("agents", feature: true)
         becomeFirstResponder()
     }
 

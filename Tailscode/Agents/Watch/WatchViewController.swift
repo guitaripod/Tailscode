@@ -148,6 +148,7 @@ final class WatchViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("watch", feature: true)
         becomeFirstResponder()
         refresh(.layout)
         #if DEBUG

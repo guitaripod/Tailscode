@@ -96,6 +96,7 @@ extension ChatViewModel {
             category: .chat)
         queueHeldAfterFailure = false
         queueHold = nil
+        MidgarSignals.noteFeature("chat")
         sendTask?.cancel()
         sendGeneration += 1
         let generation = sendGeneration

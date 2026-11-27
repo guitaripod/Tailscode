@@ -2,6 +2,7 @@ import TailscodeCore
 import CodingAgentKit
 import CodingAgentKitApple
 import UIKit
+import MidgarCore
 
 /// The app's front door, organized around three jobs: triage (what needs you
 /// right now — blocked or live agents, unreachable servers), continue (recent
@@ -431,6 +432,7 @@ final class HomeViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("home")
         ChatSpares.prepare()
         startLiveRefresh()
         DelegateGate.watchNotices()

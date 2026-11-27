@@ -38,6 +38,7 @@ final class WelcomeViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("welcome")
         #if DEBUG
             let environment = ProcessInfo.processInfo.environment
             if let answer = Self.seededAnswer(environment["TAILSCODE_WELCOME_ANSWER"]) {

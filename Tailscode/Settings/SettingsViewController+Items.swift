@@ -240,6 +240,7 @@ extension SettingsViewController {
         case version
         case source
         case privacy
+        case usageCounts
         case support
         case licenses
         case rate

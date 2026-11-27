@@ -31,6 +31,11 @@ extension PreferencesWindow {
 
     @objc func openPro() { actions.openPro() }
 
+    @objc func openUsageCounts() {
+        guard let window else { return }
+        UsageCountsSheet.present(on: window)
+    }
+
     @objc func showCheatsheet() { actions.showCheatsheet() }
 
     @objc func sidebarShownChanged(_ sender: NSButton) {

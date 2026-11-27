@@ -132,6 +132,7 @@ final class PreviewViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("preview", feature: true)
         MidgarLog.info("preview: appeared target=\(slot.target?.address ?? "none")", category: .ui)
         unpark()
         if let runner, runner.pictures.isDirty || runner.states.isDirty { arm() }

@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 import WebKit
@@ -57,6 +58,11 @@ final class DesignBoardViewController: UIViewController {
         build()
         render()
         readManifest()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("design_board", feature: true)
     }
 
     private func build() {

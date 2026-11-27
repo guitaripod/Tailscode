@@ -35,6 +35,7 @@ extension ChatViewModel {
                     if TurnSuccessReading.succeeded(state) {
                         ReviewPromptCoordinator.shared.turnCompleted()
                         ProInvitation.recordSuccessfulTurn()
+                        if !ConnectionController.shared.isDemoMode { MidgarSignals.noteValue() }
                     }
                     self.cachedUsage = nil
                     self.refreshTitleFromServer()

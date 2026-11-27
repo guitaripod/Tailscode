@@ -92,6 +92,11 @@ final class AgentsWindowController: NSWindowController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        MidgarSignals.noteScreen("agents", feature: true)
+    }
+
     isolated deinit {
         for token in observers { NotificationCenter.default.removeObserver(token) }
         ticker?.invalidate()

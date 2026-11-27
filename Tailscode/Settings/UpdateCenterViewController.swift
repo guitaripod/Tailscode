@@ -1,3 +1,4 @@
+import MidgarCore
 import SafariServices
 import TailscodeCore
 import UIKit
@@ -193,6 +194,11 @@ final class UpdateCenterViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self, selector: #selector(changed), name: UpdateMonitor.didChange, object: nil)
         UpdateMonitor.checkIfDue()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("update_center")
     }
 
     @objc private func changed() { render() }

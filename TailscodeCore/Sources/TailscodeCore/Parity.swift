@@ -287,6 +287,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case delegateHandoff
     case rateAndShare
     case midgarPortal
+    case usageCounts
     case worldClock
 }
 

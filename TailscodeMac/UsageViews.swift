@@ -1,6 +1,7 @@
 import AppKit
 import CodingAgentKit
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 
 /// The shared vocabulary of quota rendering: severity thresholds, brand tints, countdowns and
@@ -913,6 +914,11 @@ final class UsageWindowController: NSWindowController {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        MidgarSignals.noteScreen("usage", feature: true)
+    }
 
     /// Whether the window has a size somebody chose — a remembered one, or the one it opened at
     /// the first time. Only a window with neither is given the size the board was drawn for.

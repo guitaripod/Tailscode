@@ -2,6 +2,7 @@ import TailscodeCore
 import CodingAgentKit
 import CodingAgentKitApple
 import UIKit
+import MidgarCore
 
 /// The chats the user chose to keep, drawn from the local store first so the
 /// screen is useful before — and without — a network answer. Live data only ever
@@ -77,6 +78,11 @@ final class SavedChatsViewController: UIViewController {
             self?.applySnapshot()
         }
         Task { await load() }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("saved_chats", feature: true)
     }
 
     override func viewWillAppear(_ animated: Bool) {

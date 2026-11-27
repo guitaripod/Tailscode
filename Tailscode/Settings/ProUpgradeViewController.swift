@@ -73,6 +73,7 @@ final class ProUpgradeViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("paywall")
         ReviewPromptPolicy.notePaywallShown()
         reportShownOnce()
     }

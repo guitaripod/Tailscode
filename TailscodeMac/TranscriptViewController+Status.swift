@@ -1,6 +1,7 @@
 import AppKit
 import os
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 
 extension TranscriptViewController {
@@ -18,6 +19,7 @@ extension TranscriptViewController {
             if TurnSuccessReading.succeeded(state) {
                 MacReviewPrompt.shared.turnCompleted()
                 ProInvitation.recordSuccessfulTurn()
+                if !ServerDirectory.shared.isDemoMode { MidgarSignals.noteValue() }
             }
         }
         wasRunningForHaptics = state.status == .running

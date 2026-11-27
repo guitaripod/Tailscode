@@ -2,6 +2,7 @@ import AppKit
 import os
 import CodingAgentKit
 import TailscodeCore
+import MidgarCore
 
 /// The conversation, rendered the way a terminal agent renders it: the user's turn behind an
 /// accent rule, the agent's answer as plain prose at full measure, and every tool call as one
@@ -9,6 +10,11 @@ import TailscodeCore
 /// float over it as glass, and content scrolls underneath them.
 @MainActor
 final class TranscriptViewController: NSViewController {
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        MidgarSignals.noteScreen("chat")
+    }
     /// Every state the stream delivers, surfaced to the hub: the shortcut engine needs to know
     /// whether an approval is waiting without owning the conversation itself.
     var onState: ((ConversationState) -> Void)?

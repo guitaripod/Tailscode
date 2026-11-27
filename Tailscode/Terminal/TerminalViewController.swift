@@ -66,6 +66,7 @@ final class TerminalViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("terminal", feature: true)
         terminal.becomeFirstResponder()
         terminal.requestFrame()
     }

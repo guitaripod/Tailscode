@@ -1,4 +1,5 @@
 import AppKit
+import MidgarCore
 import TailscodeCore
 
 /// One capability's checklist on one machine, drawn from Core's `SetupChecklist` and nothing else: a
@@ -140,6 +141,7 @@ final class SetupChecklistViewController: NSViewController {
 
     override func viewDidAppear() {
         super.viewDidAppear()
+        MidgarSignals.noteScreen("setup")
         MacSetupGate.desk.follow(target, lifetime: lifetime) { [weak self] snapshot in
             Task { @MainActor in
                 guard let self else { return }

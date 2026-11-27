@@ -1,4 +1,5 @@
 import CodingAgentKitApple
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -76,6 +77,7 @@ final class SettingsViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("settings")
         #if DEBUG
             if let seeded = ProcessInfo.processInfo.environment["TAILSCODE_SETTINGS_QUERY"],
                 query.isEmpty

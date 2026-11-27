@@ -1,5 +1,6 @@
 import AppKit
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 
 extension GitTone {
@@ -45,6 +46,11 @@ final class GitPanelViewController: NSViewController {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        MidgarSignals.noteScreen("git", feature: true)
+    }
 
     /// A popover takes its size from the content controller's fitting height, and a scroll view
     /// has no fitting height of its own — pinning it to the container's four edges asks for zero.

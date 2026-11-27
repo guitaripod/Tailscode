@@ -74,7 +74,7 @@ extension SettingsViewController {
             return [
                 (.version, [.version]),
                 (.feedback, [.rate, .share]),
-                (.legal, [.source, .privacy, .support, .licenses]),
+                (.legal, [.source, .privacy, .usageCounts, .support, .licenses]),
             ]
         }
     }
@@ -338,6 +338,10 @@ extension SettingsViewController {
             return String(
                 localized: "source code github open source gpl", comment: "search keywords")
         case .privacy: return String(localized: "privacy policy data", comment: "search keywords")
+        case .usageCounts:
+            return String(
+                localized: "usage counts analytics statistics crash reports diagnostics anonymous",
+                comment: "search keywords")
         case .support: return String(localized: "support help contact", comment: "search keywords")
         case .rate:
             return String(localized: "rate review app store stars", comment: "search keywords")

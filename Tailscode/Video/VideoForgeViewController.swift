@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -119,6 +120,7 @@ final class VideoForgeViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("forge", feature: true)
         acknowledgeFailureIfShown()
         #if DEBUG
             scrollForVerification()

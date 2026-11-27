@@ -1,4 +1,5 @@
 import AppKit
+import MidgarCore
 import TailscodeCore
 
 /// The whole account behind the band's one price, in a popover off the price itself: what the
@@ -25,6 +26,11 @@ final class SpendPanelViewController: NSViewController {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        MidgarSignals.noteScreen("spend", feature: true)
+    }
 
     override func loadView() {
         let column = FillingStack()

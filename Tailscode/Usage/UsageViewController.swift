@@ -77,6 +77,11 @@ final class UsageViewController: UIViewController {
         startLoad()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("usage", feature: true)
+    }
+
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         refreshUpdatedLabel()

@@ -202,6 +202,14 @@ extension PreferencesWindow {
                         : ProAccess.shared.proWeekEndsAt.map { ProWeek.daysLeftText(until: $0) }
                             ?? Localized.text("Unlimited servers, and delegation to cheaper models"),
                     button: pro))
+            let usage = NSButton(
+                title: Localized.text("Open…"), target: self, action: #selector(openUsageCounts))
+            column.addArrangedSubview(
+                buttonRow(
+                    title: MidgarUsageCounts.title,
+                    subtitle: Localized.text(
+                        "Anonymous counts of what is used, and crash reports, with nothing that identifies you or your code"),
+                    button: usage))
         #endif
         return scrolled(column)
     }

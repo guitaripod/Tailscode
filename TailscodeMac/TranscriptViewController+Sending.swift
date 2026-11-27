@@ -1,5 +1,6 @@
 import AppKit
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 
 /// The life of a send after the press: one attempt at a time through Core's `SendCourier`, every
@@ -46,6 +47,7 @@ extension TranscriptViewController {
             return
         }
         heldForTranscript.remove(id)
+        MidgarSignals.noteFeature("chat")
         let owner = sendOwner
         let courier =
             courierFactory?(conversation, send)

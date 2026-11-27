@@ -1,4 +1,5 @@
 import AppKit
+import MidgarCore
 import TailscodeCore
 
 /// The Studio's presenter: one sheet for the whole app, risen inside the Tailscode window rather than
@@ -87,6 +88,7 @@ final class StudioWindowController: NSObject {
     /// A viewer raised on the Studio is closed by it: the lane the person asked for is what they look at.
     func show(lane id: StudioLaneID = .image, brief: String? = nil, in window: NSWindow? = nil) {
         guard let target = window ?? presentingWindow, target.contentView != nil else { return }
+        MidgarSignals.noteScreen(id == .video ? "forge" : "studio", feature: true)
         let presenter = ensurePresenter()
         closeWhatStandsOnTheStudio(presenter)
         let effect = presenter.show(

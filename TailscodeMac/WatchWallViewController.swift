@@ -132,6 +132,11 @@ final class WatchWallViewController: NSViewController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        MidgarSignals.noteScreen("watch", feature: true)
+    }
+
     isolated deinit {
         for token in observers { NotificationCenter.default.removeObserver(token) }
         ticker?.invalidate()

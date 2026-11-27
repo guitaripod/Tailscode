@@ -59,6 +59,11 @@ final class ProWindowController: NSWindowController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        MidgarSignals.noteScreen("paywall")
+    }
+
     /// A colour handed to a label is the theme it was handed under, and this window lives for the
     /// whole session — so a theme picked while it is open rebuilds the page around the buttons it
     /// already has, which keep their titles, their prices and whatever the status line was saying.

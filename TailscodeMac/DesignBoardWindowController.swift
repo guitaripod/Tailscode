@@ -1,5 +1,6 @@
 import AppKit
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import WebKit
 
@@ -69,6 +70,11 @@ final class DesignBoardWindowController: NSWindowController {
             self, selector: #selector(closing), name: NSWindow.willCloseNotification, object: window)
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
+    }
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        MidgarSignals.noteScreen("design_board", feature: true)
     }
 
     /// A closed board lets its page go. The window outlives its closing, and WebKit runs a mock's

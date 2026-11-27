@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -63,6 +64,11 @@ final class DelegateBoardViewController: UIViewController {
             self, selector: #selector(deskChanged), name: DelegateDesk.didChange, object: nil)
         applySnapshot()
         if board.phase == .idle { desk.probe(host: host, serverName: serverName) }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("delegate", feature: true)
     }
 
     override func viewWillAppear(_ animated: Bool) {

@@ -1,4 +1,5 @@
 import CodingAgentKit
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -116,6 +117,11 @@ final class GitStatusViewController: UIViewController {
 
         configureDataSource()
         load(showSpinner: true)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        MidgarSignals.noteScreen("git", feature: true)
     }
 
     private func configureDataSource() {
