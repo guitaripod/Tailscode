@@ -112,6 +112,7 @@ final class Seatbelts: @unchecked Sendable {
     /// Starts the meter, the watchdog and the governor once the window is realised, so the launch
     /// header can name the renderer it actually got.
     func start(window: UnsafeMutablePointer<GtkWidget>, panes: @escaping () -> SeatbeltPanes) {
+        KitRelief.install()
         guard !started else { return }
         started = true
         self.panes = panes

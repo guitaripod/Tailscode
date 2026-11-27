@@ -1,3 +1,4 @@
+import CodingAgentKit
 import MidgarCore
 import UIKit
 
@@ -11,6 +12,9 @@ import UIKit
 @MainActor
 enum MemoryRelief {
     static func install() {
+        #if DEBUG
+            MemoryWatch.install()
+        #endif
         NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main
         ) { _ in
@@ -23,8 +27,9 @@ enum MemoryRelief {
         CodeBlockCell.relieveHighlightCache()
         AttachmentImageStore.shared.relieve()
         LinkPreviewStore.shared.relieve()
+        HeldTranscripts.release()
         MidgarLog.info(
-            "memory warning: render, highlight, picture and link caches released",
+            "memory warning: render, highlight, picture and link caches and held transcripts released",
             category: .lifecycle
         )
     }

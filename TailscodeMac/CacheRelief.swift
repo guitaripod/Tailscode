@@ -22,6 +22,7 @@ enum CacheRelief {
 
     static func install() {
         guard tokens.isEmpty else { return }
+        KitRelief.install()
         register("decoded pictures") { ImageStore.shared.relieve($0) }
         register("head pictures") { BrainPictures.relieve($0) }
         register("rendered prose") { _ in MacMarkdown.invalidate() }
