@@ -153,7 +153,8 @@ enum Kit {
     /// the mock's shell bash.
     /// 0.66.0 holds a shell on opencode 2 too, in opencode's own pty.
     /// 0.67.0 seats an opencode workflow's agents on the call that started their run.
-    static let version = Version(0, 67, 0)
+    /// 0.68.0 passes over opencode events that cannot concern a listener before decoding them.
+    static let version = Version(0, 68, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
