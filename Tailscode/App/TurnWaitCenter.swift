@@ -442,7 +442,7 @@ final class TurnWaitCenter {
         let background = result.background ?? 0
         let body = detail.line(tool: nil, toolCount: toolCount, background: background)
         let title = MissedActivity.name(title: result.title ?? "", latestPrompt: nil)
-        AppActivityController.shared.settle(
+        await AppActivityController.shared.settleHeardAway(
             sessionID: info.sessionID,
             reading: LiveActivityReading(
                 detail: detail, toolCount: toolCount, background: background,

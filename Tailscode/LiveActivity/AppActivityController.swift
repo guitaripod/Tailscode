@@ -406,6 +406,12 @@ final class AppActivityController {
     ) {
         if whileStarting(sessionID, { $0.settle = (reading, title, brief) }) { return }
         guard isTracking(sessionID), var entry = entries[sessionID] else { return }
+        if Self.endsEarlierTurn(current(sessionID, entry), reading) {
+            MidgarLog.info(
+                "Live Activity kept for the turn it follows; the ending was for an earlier one \(sessionID)",
+                category: .chat)
+            return
+        }
         if isBeingRead(sessionID) {
             MidgarLog.info("Live Activity read as it ended for \(sessionID)", category: .chat)
             declineEnded(sessionID)
@@ -449,6 +455,27 @@ final class AppActivityController {
         scheduleRetirement(sessionID, settledAt: endedAt)
         MidgarLog.info(
             "Live Activity settled for \(sessionID) (\(reading.detail.rawValue))", category: .chat)
+    }
+
+    /// Settles the card on an ending heard while this process was suspended, after reading what
+    /// the card shows now: pushes moved it while nothing here was listening, and the next turn may
+    /// already have taken it back.
+    func settleHeardAway(
+        sessionID: String, reading: LiveActivityReading, title: String?
+    ) async {
+        await readCard(sessionID)
+        settle(sessionID: sessionID, reading: reading, title: title)
+    }
+
+    private func readCard(_ sessionID: String) async {
+        guard let entry = entries[sessionID], pendingWork[sessionID] == nil else { return }
+        let followed = Followed(cards: [(sessionID, entry.activity)])
+        guard let (_, id, state, platform) = await Self.offMain("one card", { followed.read() }).first,
+            var now = entries[sessionID], now.activity.id == id, pendingWork[sessionID] == nil
+        else { return }
+        now.card = state
+        now.platform = platform
+        entries[sessionID] = now
     }
 
     /// The conversation was looked at, which is what reads a card about it. A live card stays:

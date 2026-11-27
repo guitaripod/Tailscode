@@ -43,6 +43,15 @@ extension AppActivityController {
         return brief.isEmpty ? nil : brief
     }
 
+    /// Whether an ending belongs to a turn before the one the card is following: the card is live
+    /// for a turn that began after it. A turn wait answered while the phone slept and a chat woken
+    /// late both report the last turn's end, and by then the next turn, sent from the desk, may
+    /// already have taken the card back.
+    static func endsEarlierTurn(_ shown: State, _ reading: LiveActivityReading) -> Bool {
+        guard !shown.isSettled, let endedAt = reading.endedAt else { return false }
+        return shown.startedAt.timeIntervalSince(endedAt) > 1
+    }
+
     /// Whether a running reading is for a turn that began after the card's ending. A prompt other
     /// than the one this process settled the card on says so outright, while the card still shows
     /// that settle: the ending may be the phone's clock and the start the server's, and a turn
