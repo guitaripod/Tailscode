@@ -203,6 +203,7 @@ extension HomeViewController {
             bench.mark("cards")
         #endif
         bandReadings = bandCounts
+        canReachFurther = !today && !folds.contains(.recent) && (bands[.recent]?.hidden ?? 0) > 0
         hasNews = !ReadSweep.reading(
             entries: viewModel.entries, saved: readings.saved, presence: presence,
             unreachable: Set(viewModel.unreachable), notices: missed.count, isUnread: isUnread
@@ -260,6 +261,26 @@ extension HomeViewController {
             EverythingRead.sweep(entries: viewModel.entries, unreachable: viewModel.unreachable))
         forgetStoreReadings()
         renderSnapshot()
+    }
+
+    /// RECENT's next page, taken as its foot comes within a screen of the glass while a hand is
+    /// scrolling the board, so every chat is on Home without a press. It lands after the scroll
+    /// event that asked for it, once, and a board that is no longer cut short ignores it; a press
+    /// on Show fewer moves no hand, so the band it shrinks stays shrunk until the board is scrolled.
+    func reachFurther(in scrollView: UIScrollView) {
+        guard canReachFurther, !reachRequested,
+            scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating
+        else { return }
+        let below = scrollView.contentSize.height - scrollView.contentOffset.y - scrollView.bounds.height
+        guard below < scrollView.bounds.height else { return }
+        reachRequested = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.reachRequested = false
+            guard self.canReachFurther else { return }
+            self.recentReach.press(.more(hidden: 0))
+            self.renderSnapshot()
+        }
     }
 
     /// Shuts a band or opens it again, the rows leaving and arriving under the heading that stays.

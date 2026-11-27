@@ -123,20 +123,24 @@ public struct HomeStatus: Equatable, Sendable {
 /// waiting is never capped, because a decision must not be hidden, and everything the person set
 /// aside is held to what fits beside the rest.
 public struct HomeBandLimits: Equatable, Sendable {
-    public let working: Int
-    public let pinned: Int
+    /// Nil holds every member: a chat that is working or pinned is in no other band, so a cap on
+    /// either would take it off Home altogether.
+    public let working: Int?
+    public let pinned: Int?
     public let saved: Int
     public let recent: Int
 
-    public init(working: Int, pinned: Int, saved: Int, recent: Int) {
+    public init(working: Int?, pinned: Int?, saved: Int, recent: Int) {
         self.working = working
         self.pinned = pinned
         self.saved = saved
         self.recent = recent
     }
 
-    /// The phone's Home, which is the only place a person looks at all of it.
-    public static let phone = HomeBandLimits(working: 10, pinned: 3, saved: 3, recent: 6)
+    /// The phone's Home, which is the only place a person looks at all of it, so every chat is on
+    /// it: what is working and what is pinned in full, the saved ones past the first few under
+    /// RECENT, and RECENT a page at a time as it scrolls into view.
+    public static let phone = HomeBandLimits(working: nil, pinned: nil, saved: 3, recent: 6)
 
     /// Home beside a chat list, which already holds every recent conversation in its own column.
     public static let column = HomeBandLimits(working: 10, pinned: 3, saved: 3, recent: 0)
@@ -161,10 +165,11 @@ public struct HomeBandLimits: Equatable, Sendable {
     }
 }
 
-/// How far RECENT has been opened past its limit. Every chat is on Home, a press at a time: the
-/// band's foot adds a page under the rows already there, and once nothing is left it offers the
-/// way back to the board's own height. It lasts as long as the screen does and is never saved,
-/// so the board opens at a glance's length.
+/// How far RECENT has been opened past its limit. Every chat is on Home: the band's foot adds a
+/// page under the rows already there as it scrolls into view, or when it is pressed, and once
+/// nothing is left it offers the way back to the board's own height. It lasts as long as the
+/// screen does and is never saved, so the board opens at a glance's length and costs a page of
+/// rows for every page a person has scrolled past.
 public struct HomeReach: Equatable, Sendable {
     public static let step = 20
 

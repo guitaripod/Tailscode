@@ -438,6 +438,10 @@ extension HomeViewController {
         applySnapshot()
     }
 
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        reachFurther(in: scrollView)
+    }
+
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
         if !decelerate { releaseDeferredSnapshotIfNeeded() }
     }

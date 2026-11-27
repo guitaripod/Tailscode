@@ -154,6 +154,15 @@ struct HomeBoardTests {
         #expect(recent?.rows.count == 6)
         #expect(recent?.hidden == 3)
 
+        let pins = (0..<7).map { row(entry("p\($0)", updatedAgo: 7200 + Double($0)), pinned: true) }
+        let busy = (0..<14).map { row(entry("b\($0)", active: true, created: Double($0))) }
+        let full = HomeBoard.make(rows: pins + busy + recents, limits: .phone, now: now, calendar: calendar)
+        let pinned = full.bands.first { $0.section == .pinned }
+        let working = full.bands.first { $0.section == .working }
+        #expect(pinned?.rows.count == 7, "a pin is in no other band, so the phone never hides one")
+        #expect(working?.rows.count == 14, "nor a chat that is working")
+        #expect(pinned?.hidden == 0 && working?.hidden == 0)
+
         let column = HomeBoard.make(rows: waiting + recents, limits: .column, now: now, calendar: calendar)
         #expect(column.bands.map(\.section) == [.needsYou], "the column beside a chat list holds no recents")
         #expect(column.status.sentence == "5 need you", "the sentence counts what the bands do not show")

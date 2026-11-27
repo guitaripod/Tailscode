@@ -131,6 +131,11 @@ final class HomeViewController: UIViewController {
     var lastTickAt = Date()
     /// How far RECENT has been opened past its limit on this screen.
     var recentReach = HomeReach()
+    /// Whether RECENT is drawn with chats still below its foot, which is when scrolling to the
+    /// foot brings the next page.
+    var canReachFurther = false
+    /// A page asked for by the scroll and not yet drawn.
+    var reachRequested = false
     /// What each band holds and how much of it is news, read by the headings: a shut band draws no
     /// rows to count.
     var bandReadings: [HomeSection: (total: Int, fresh: Int)] = [:]
