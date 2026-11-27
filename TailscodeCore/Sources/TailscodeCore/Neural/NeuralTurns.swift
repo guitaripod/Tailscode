@@ -443,6 +443,30 @@ public enum NeuralTurns {
         return out
     }
 
+    /// A command with every run of whitespace folded to one space, compared byte by byte. Two
+    /// steps are tied when they ran the same command, and the whole command — a heredoc can be a
+    /// script of thousands of lines — was walked a grapheme at a time for every step of the turn on
+    /// every streamed token, which was most of what a Live Activity's update cost on an iPhone XS.
+    /// Only ASCII whitespace folds; a command differing in some other space is a different command.
+    static func collapsed(_ text: String) -> String {
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(text.utf8.count)
+        var pendingSpace = false
+        for byte in text.utf8 {
+            switch byte {
+            case 0x20, 0x09, 0x0A, 0x0B, 0x0C, 0x0D:
+                pendingSpace = !bytes.isEmpty
+            default:
+                if pendingSpace {
+                    bytes.append(0x20)
+                    pendingSpace = false
+                }
+                bytes.append(byte)
+            }
+        }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
     private static func outputLines(of call: ToolCall) -> [String] {
         guard let output = call.output, !output.isEmpty else { return [] }
         var lines: [String] = []
@@ -462,7 +486,7 @@ public enum NeuralTurns {
         switch kind {
         case .shell:
             guard let command = call.input?["command"]?.stringValue else { return nil }
-            let key = oneLine(command, limit: Int.max)
+            let key = collapsed(command)
             return key.isEmpty ? nil : (key, true)
         case .fileRead, .fileEdit, .fileWrite:
             guard

@@ -6,6 +6,16 @@ import Testing
 
 @Suite("Neural entity: header and vitals")
 struct NeuralEntityHeaderTests {
+    @Test("A shell step's tie folds whitespace runs and keeps everything else byte for byte")
+    func collapsedCommandKey() {
+        #expect(NeuralTurns.collapsed("  swift   build\n\t-c  release \n") == "swift build -c release")
+        #expect(NeuralTurns.collapsed("echo 'héllo  wörld'") == "echo 'héllo wörld'")
+        #expect(NeuralTurns.collapsed("\r\n") == "")
+        #expect(NeuralTurns.collapsed("a\r\nb") == "a b")
+        let script = "python3 - <<'EOF'\n" + String(repeating: "print(1)\n", count: 20_000) + "EOF"
+        #expect(NeuralTurns.collapsed(script).hasSuffix("print(1) EOF"))
+    }
+
     typealias A = AccountFixtures
     typealias NF = NeuralTurnFixtures
 
