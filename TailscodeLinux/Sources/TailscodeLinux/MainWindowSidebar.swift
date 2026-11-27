@@ -92,17 +92,22 @@ extension MainWindow {
         return readings
     }
 
+    /// Each store's notice drops the readings and books a draw. A notice posted on the GTK thread,
+    /// which is where every press writes, drops them before the post returns: the press redraws the
+    /// list straight after its write, and a drop that waited for the idle hop left that draw
+    /// reading the marks from before the click.
     private func watchSidebarStores() {
         guard sidebarStoreWatches.isEmpty else { return }
         let names = [
-            SessionPinStore.didChange, SessionSeenStore.didSync, SavedChatStore.didChange,
-            ArchivedChatStore.didChange,
+            SessionPinStore.didChange, SessionSeenStore.didSync, SessionSeenStore.didMark,
+            SavedChatStore.didChange, ArchivedChatStore.didChange,
         ]
         for name in names {
             sidebarStoreWatches.append(
                 NotificationCenter.default.addObserver(
                     forName: name, object: nil, queue: nil
                 ) { [weak self] _ in
+                    if Thread.isMainThread { self?.sidebarReadings = nil }
                     Gtk.onMain { [weak self] in
                         guard let self else { return }
                         self.sidebarReadings = nil

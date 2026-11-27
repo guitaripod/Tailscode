@@ -11,8 +11,9 @@ extension SidebarViewController {
     /// row, so listening to every store the rows are drawn from costs nothing at rest.
     func observeDecisions() {
         let names = [
-            SessionPinStore.didChange, SessionSeenStore.didSync, SavedChatStore.didChange,
-            ArchivedChatStore.didChange, ActivityInbox.didChange, ModelCatalogStore.didChange,
+            SessionPinStore.didChange, SessionSeenStore.didSync, SessionSeenStore.didMark,
+            SavedChatStore.didChange, ArchivedChatStore.didChange, ActivityInbox.didChange,
+            ModelCatalogStore.didChange,
         ]
         for name in names {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {

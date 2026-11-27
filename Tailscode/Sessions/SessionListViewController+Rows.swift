@@ -28,6 +28,9 @@ extension SessionListViewController {
             self, selector: #selector(readingsDidChange),
             name: SessionSeenStore.didSync, object: nil)
         NotificationCenter.default.addObserver(
+            self, selector: #selector(readingsDidChange),
+            name: SessionSeenStore.didMark, object: nil)
+        NotificationCenter.default.addObserver(
             self, selector: #selector(connectionsDidChange),
             name: ConnectionController.didChange, object: nil)
     }

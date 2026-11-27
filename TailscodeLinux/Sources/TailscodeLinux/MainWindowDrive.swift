@@ -197,6 +197,10 @@ extension MainWindow {
             let described = self.visible.map { "\($0.state):\($0.title)" }
                 .joined(separator: " | ")
             FileHandle.standardOutput.write(Data("SECTIONS \(described)\n".utf8))
+        case "unread":
+            let titles = self.visible.compactMap { $0.lead?.unread == true ? $0.title : nil }
+            FileHandle.standardOutput.write(
+                Data("UNREAD \(titles.count) \(titles.joined(separator: " | "))\n".utf8))
         case "sidebarbench":
             let rounds = max(1, Int(argument) ?? 40)
             var draws: [Double] = []

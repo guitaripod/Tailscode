@@ -45,6 +45,9 @@ extension HomeViewController {
             self, selector: #selector(seenDidSync),
             name: SessionSeenStore.didSync, object: nil)
         NotificationCenter.default.addObserver(
+            self, selector: #selector(seenDidSync),
+            name: SessionSeenStore.didMark, object: nil)
+        NotificationCenter.default.addObserver(
             self, selector: #selector(activityDidChange),
             name: ActivityInbox.didChange, object: nil)
         NotificationCenter.default.addObserver(
@@ -99,8 +102,8 @@ extension HomeViewController {
         applySnapshot(budgeted: true)
     }
 
-    /// A server's read marks arrived: the marks are one of the stores the board holds, so the next
-    /// pass decodes them again.
+    /// Read marks moved, here or in a server's listing: the marks are one of the stores the board
+    /// holds, so the next pass decodes them again.
     @objc private func seenDidSync() {
         forgetStoreReadings()
         applySnapshot()

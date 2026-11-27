@@ -19,6 +19,12 @@ public enum SessionSeenStore {
     /// unread state can draw it again without being asked to redraw for every chat opened here.
     public static let didSync = Notification.Name("tailscode.seen.didSync")
 
+    /// Posted when this device marks a chat read or unread. A list that keeps its reading of the
+    /// marks between draws drops it on this, or the row it was asked to redraw stays bold until a
+    /// server echoes the mark back seconds later, and a chat on a server that keeps no marks
+    /// (opencode) until something else happens to move.
+    public static let didMark = Notification.Name("tailscode.seen.didMark")
+
     public static func bootstrapIfNeeded() {
         if defaults.object(forKey: baselineKey) == nil {
             defaults.set(Date().timeIntervalSince1970, forKey: baselineKey)
@@ -80,6 +86,7 @@ public enum SessionSeenStore {
                 on: true)
             DeskLooks.note(sessionID)
         }
+        StoreNotice.post(didMark)
     }
 
     /// Rewinds the "last looked" mark to just before the session's latest change, so the row
@@ -91,6 +98,7 @@ public enum SessionSeenStore {
         MarkIntentStore.note(
             sessionID: sessionID, profileID: SessionOwners.profile(of: sessionID), mark: .read,
             on: false)
+        StoreNotice.post(didMark)
     }
 
     /// Every mark this device holds, by the clock it was made on.
