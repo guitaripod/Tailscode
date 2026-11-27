@@ -284,8 +284,7 @@ extension ChatViewController {
             return
         }
         let seconds = Int(Date().timeIntervalSince(started))
-        let elapsed = seconds >= 60
-            ? String(format: "%d:%02d", seconds / 60, seconds % 60) : "\(seconds)s"
+        let elapsed = seconds >= 60 ? StatusFacts.stopwatch(Double(seconds)) : "\(seconds)s"
         setNavStatusText(
             seconds >= 3 ? "\(lastStatusPhaseText) · \(elapsed)" : lastStatusPhaseText)
     }

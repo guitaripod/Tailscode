@@ -610,9 +610,21 @@ public struct StatusFacts: Sendable {
 
     static let dialPatience: TimeInterval = 2
 
+    /// A running span in words: "42s", "4m 12s", and past the hour "2h 03m", where "123m 12s"
+    /// would leave the reader to do the sum.
     public static func clock(_ interval: TimeInterval) -> String {
-        let seconds = Int(interval)
-        return seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
+        let seconds = max(0, Int(interval))
+        guard seconds >= 3600 else {
+            return seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
+        }
+        return "\(seconds / 3600)h " + String(format: "%02dm", seconds % 3600 / 60)
+    }
+
+    /// A running span on a stopwatch's face: "4:05", and past the hour "2:03:12", never "123:12".
+    public static func stopwatch(_ interval: TimeInterval) -> String {
+        let seconds = max(0, Int(interval))
+        guard seconds >= 3600 else { return String(format: "%d:%02d", seconds / 60, seconds % 60) }
+        return String(format: "%d:%02d:%02d", seconds / 3600, seconds % 3600 / 60, seconds % 60)
     }
 
     public enum Action: Equatable, Sendable {

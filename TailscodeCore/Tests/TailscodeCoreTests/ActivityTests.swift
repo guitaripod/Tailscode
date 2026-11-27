@@ -574,7 +574,7 @@ struct AgentClockTests {
     func liveDetailReadsTheGivenMoment() {
         #expect(
             StatusFacts.liveDetail(Self.errand, at: Self.now, under: AgentHold(Self.call(.running)))
-                .contains("150m 0s"))
+                .contains("2h 30m"))
         #expect(
             StatusFacts.liveDetail(
                 Self.errand, at: Self.aWeekLater, under: AgentHold(Self.call(.completed)))
@@ -591,7 +591,7 @@ struct AgentClockTests {
         #expect(facts.readAt == Self.now)
         #expect(facts.connectionFor == 9_000)
         #expect(facts.elapsed == 9_000)
-        #expect(Self.agentDetail(facts)?.contains("150m 0s") == true)
+        #expect(Self.agentDetail(facts)?.contains("2h 30m") == true)
     }
 
     @Test("A turn that is not open settles the agent rows under it")

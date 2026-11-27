@@ -42,8 +42,7 @@ public enum ImageGenStudioWords {
     public static func clockLine(since started: Date?, ahead: Int?, now: Date = Date()) -> String {
         var parts: [String] = []
         if let started {
-            let seconds = max(0, Int(now.timeIntervalSince(started).rounded()))
-            parts.append(String(format: "%d:%02d", seconds / 60, seconds % 60))
+            parts.append(StatusFacts.stopwatch(now.timeIntervalSince(started).rounded()))
         }
         if let ahead {
             parts.append(
