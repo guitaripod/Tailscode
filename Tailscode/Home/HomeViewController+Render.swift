@@ -203,9 +203,10 @@ extension HomeViewController {
             bench.mark("cards")
         #endif
         bandReadings = bandCounts
-        hasNews =
-            !missed.isEmpty || savedCards.contains { $0.facts.unread }
-            || viewModel.entries.contains { isUnread($0.session.id, $0.session.updatedAt) }
+        hasNews = !ReadSweep.reading(
+            entries: viewModel.entries, saved: readings.saved, presence: presence,
+            unreachable: Set(viewModel.unreachable), notices: missed.count, isUnread: isUnread
+        ).isEmpty
         #if DEBUG
             bench.mark("snapshot")
         #endif
@@ -252,20 +253,11 @@ extension HomeViewController {
     }
 
     /// Reads everything at once: every unread chat on every server, under any fold and below any
-    /// foot, the archived and the saved with them, and every notice still standing, so the board,
-    /// Notification Center and the app icon's number all come to rest together. Each chat is told
-    /// to its server like a single press, so it is read on every other device too.
+    /// foot, the archived and the saved with them, and every notice still standing. A turn still
+    /// running is left to say its ending when it lands (``ReadSweep``).
     func markEverythingRead() {
-        let isUnread = SessionSeenStore.unreadEvaluator()
-        var unread = viewModel.entries
-            .filter { isUnread($0.session.id, $0.session.updatedAt) }.map(\.session.id)
-        unread += SavedChatStore.all()
-            .filter { isUnread($0.sessionID, $0.updatedAt) }.map(\.sessionID)
-        let chats = Array(Set(unread))
-        SessionSeenStore.markSeen(chats)
-        NotificationManager.clearAllNotices()
-        MidgarLog.info("home: everything marked read, \(chats.count) chat(s)", category: .ui)
-        Theme.Haptics.success()
+        EverythingRead.perform(
+            EverythingRead.sweep(entries: viewModel.entries, unreachable: viewModel.unreachable))
         forgetStoreReadings()
         renderSnapshot()
     }

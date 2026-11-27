@@ -41,6 +41,7 @@ extension SessionListViewController {
         let foot: Bool
         let archived: Bool
         let empty: Bool
+        let readAll: Bool
     }
 
     func updateComposeButton() {
@@ -49,7 +50,8 @@ extension SessionListViewController {
             : ChromeSpec(
                 servers: viewModel.servers.map { "\($0.id)\u{1}\($0.name)\u{1}\($0.backend.rawValue)" },
                 column: showsAsColumn, foot: wantsFoot,
-                archived: !showsAsColumn && archivedCount() > 0, empty: viewModel.entries.isEmpty)
+                archived: !showsAsColumn && archivedCount() > 0, empty: viewModel.entries.isEmpty,
+                readAll: offersReadAll)
         guard spec == nil || spec != drawnChrome else { return }
         drawnChrome = spec
         guard !isSelecting else {
@@ -105,6 +107,13 @@ extension SessionListViewController {
             archived.accessibilityLabel = String(localized: "Archived chats")
             items.append(archived)
         }
+        if offersReadAll {
+            let read = UIBarButtonItem(
+                image: UIImage(systemName: "envelope.open"),
+                primaryAction: UIAction { [weak self] _ in self?.markEverythingRead() })
+            read.accessibilityLabel = String(localized: "Mark all as read")
+            items.append(read)
+        }
         if !viewModel.entries.isEmpty {
             let select = UIBarButtonItem(
                 image: UIImage(systemName: "checklist"),
@@ -113,6 +122,25 @@ extension SessionListViewController {
             items.append(select)
         }
         navigationItem.rightBarButtonItems = items
+    }
+
+    /// Home's tools and its RECENT heading are where the phone reads everything, and beside a
+    /// conversation Home has neither, so the column carries the press while there is anything
+    /// for it to read. It reads what Home's press reads, whatever the column is filtered to.
+    func refreshReadAll() {
+        let offers =
+            showsAsColumn && scope == nil
+            && !EverythingRead.sweep(entries: viewModel.entries, unreachable: viewModel.unreachable)
+                .isEmpty
+        guard offers != offersReadAll else { return }
+        offersReadAll = offers
+        updateComposeButton()
+    }
+
+    func markEverythingRead() {
+        EverythingRead.perform(
+            EverythingRead.sweep(entries: viewModel.entries, unreachable: viewModel.unreachable))
+        applySnapshot()
     }
 
     /// Whether this list is a column whose foot is under a thumb: in a window whose bars run down a

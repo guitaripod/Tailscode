@@ -396,6 +396,7 @@ extension SessionListViewController {
         if isSelecting || !selectionBar.isHidden { updateSelectionBar() }
         updateEmptyState(itemCount: snapshot.numberOfItems)
         syncOpenMark()
+        refreshReadAll()
         onListingChange?()
     }
 

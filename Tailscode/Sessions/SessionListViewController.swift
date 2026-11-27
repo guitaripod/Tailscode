@@ -95,6 +95,8 @@ final class SessionListViewController: UIViewController {
 
     var selection = ChatSelection()
     var isSelecting = false
+    /// Whether the column is offering to read everything, which it does only while there is news.
+    var offersReadAll = false
 
     init(filterProfileID: String? = nil, scope: ProjectScope? = nil) {
         let sources = ConnectionController.shared.allBackends().map {
