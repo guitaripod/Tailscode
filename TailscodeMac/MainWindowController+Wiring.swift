@@ -67,6 +67,7 @@ extension MainWindowController {
             self?.paneCleanupAfterDelete(entry)
         }
         sidebar.onNotice = { [weak self] text in self?.setNotice(text) }
+        sidebar.onNudge = { [weak self] nudge, entries in self?.sendNudge(nudge, to: entries) }
         sidebar.onToast = { [weak self] text in self?.toast(text) }
         sidebar.onOpenUpdates = { [weak self] in self?.presentUpdates() }
         sidebar.onOpenPro = { [weak self] in self?.presentPro(placement: .entry) }

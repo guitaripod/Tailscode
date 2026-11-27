@@ -110,6 +110,9 @@ extension HomeViewController: UICollectionViewDelegate {
                     [weak self] _ in self?.openChat(for: entry)
                 }
             ]
+            actions += self.viewModel.nudgeActions(for: entry) { [weak self] outcome in
+                self?.toast(outcome.sentence)
+            }
             if let directory = entry.session.directory,
                 let profile = self.viewModel.servers.first(where: { $0.id == entry.profileID })
             {

@@ -27,6 +27,9 @@ final class SidebarViewController: NSViewController {
     var onAddMachine: (() -> Void)?
     var onDeleted: ((SessionEntry) -> Void)?
     var onNotice: ((String) -> Void)?
+    /// Resume or Status? spent on one chat or a marked set; the window decides which chats go
+    /// through a pane showing them and which go straight to their servers.
+    var onNudge: ((ChatNudge, [SessionEntry]) -> Void)?
     var onOpenSplit: (([SessionEntry], SplitArrangement) -> Void)?
     /// The split's own row pressed: the arrangement is already on screen, so the window goes to
     /// it rather than rebuilding it.

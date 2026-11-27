@@ -302,6 +302,15 @@ extension MainWindowController: NSMenuDelegate {
             return
         }
         let capabilities = backend.capabilities
+        if transcript.composer.offersNudges {
+            for nudge in ChatNudge.all {
+                menu.addItem(
+                    actionsItem(nudge.title, subtitle: nudge.hint) { [weak self] in
+                        self?.transcript.composer.sendNudge(nudge)
+                    })
+            }
+            menu.addItem(.separator())
+        }
         let saved = SavedChatStore.contains(entry)
         menu.addItem(
             actionsItem(

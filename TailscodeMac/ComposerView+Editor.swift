@@ -20,7 +20,7 @@ extension ComposerView {
     }
 
     func configureLayout() {
-        let editorRow = NSStackView(views: [editor, nudgeRow, dictation.button, sendButton])
+        let editorRow = NSStackView(views: [editor, dictation.button, sendButton])
         editorRow.orientation = .horizontal
         editorRow.alignment = .bottom
         editorRow.spacing = MacTheme.Spacing.s

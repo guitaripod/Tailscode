@@ -237,6 +237,12 @@ extension MainWindow {
         case .delete: confirmBulkDelete(chosen)
         case .archive, .unarchive, .save, .unsave, .markRead, .markUnread:
             applyLocalBulk(action, to: chosen)
+        case .resume, .status:
+            guard let nudge = action.nudge else { return }
+            marks.clear()
+            lastSidebar = nil
+            renderSidebar()
+            sendNudge(nudge, to: chosen)
         }
     }
 
@@ -255,7 +261,7 @@ extension MainWindow {
             case .markUnread:
                 SessionSeenStore.markUnread(
                     entry.session.id, updatedAt: entry.session.updatedAt)
-            case .delete: continue
+            case .delete, .resume, .status: continue
             }
         }
         marks.clear()

@@ -16,6 +16,7 @@ final class SidebarBulkBar: NSView {
 
     private let badge = NSTextField(labelWithString: "")
     private let verbs = NSStackView()
+    private let asks = NSStackView()
     private let secondary = NSStackView()
     private let splitHeader = NSTextField(labelWithString: "")
     private let splitRow = NSStackView()
@@ -41,6 +42,10 @@ final class SidebarBulkBar: NSView {
         verbs.orientation = .horizontal
         verbs.spacing = MacTheme.Spacing.xs
         verbs.alignment = .centerY
+        asks.orientation = .horizontal
+        asks.spacing = MacTheme.Spacing.xs
+        asks.alignment = .centerY
+        asks.distribution = .fillProportionally
         secondary.orientation = .horizontal
         secondary.spacing = MacTheme.Spacing.xs
         secondary.alignment = .centerY
@@ -58,7 +63,7 @@ final class SidebarBulkBar: NSView {
         top.spacing = MacTheme.Spacing.xs
         top.alignment = .centerY
 
-        let column = FillingStack(views: [top, secondary, splitHeader, splitRow])
+        let column = FillingStack(views: [top, asks, secondary, splitHeader, splitRow])
         column.spacing = MacTheme.Spacing.xs
         addSubview(column)
         NSLayoutConstraint.activate([
@@ -83,15 +88,16 @@ final class SidebarBulkBar: NSView {
         applyWash()
     }
 
-    /// - Parameter actions: the destructive verb first, then the three that flip with what is
-    ///   held, so a button never offers the opposite of what its own word says.
+    /// - Parameter actions: the two that ask each chat's agent something on a line of their own,
+    ///   the destructive verb, then the three that flip with what is held, so a button never
+    ///   offers the opposite of what its own word says.
     func render(count: Int, actions: [BulkChatAction]) {
         applyWash()
         badge.font = MacTheme.Ramp.font(.badge)
         badge.stringValue = "\(count)"
         badge.setAccessibilityLabel("\(count)")
         splitHeader.font = MacTheme.Ramp.font(.panelFootnote)
-        for stack in [verbs, secondary, splitRow] {
+        for stack in [verbs, asks, secondary, splitRow] {
             for view in stack.arrangedSubviews {
                 stack.removeArrangedSubview(view)
                 view.removeFromSuperview()
@@ -101,6 +107,8 @@ final class SidebarBulkBar: NSView {
             let button = self.button(action, count: count)
             if action.isDestructive {
                 verbs.addArrangedSubview(button)
+            } else if action.nudge != nil {
+                asks.addArrangedSubview(button)
             } else {
                 secondary.addArrangedSubview(button)
             }
@@ -143,6 +151,10 @@ final class SidebarBulkBar: NSView {
     private func button(_ action: BulkChatAction, count: Int) -> NSButton {
         let title = BulkChatCopy.button(action, count: count)
         let button = NSButton(title: title, target: self, action: #selector(verbPicked))
+        if let nudge = action.nudge {
+            button.image = NSImage(systemSymbolName: nudge.symbol, accessibilityDescription: nil)
+            button.imagePosition = .imageLeading
+        }
         button.isBordered = false
         button.bezelStyle = .accessoryBar
         button.font = MacTheme.Ramp.font(.panelFootnote)
@@ -150,7 +162,7 @@ final class SidebarBulkBar: NSView {
             action.isDestructive ? MacTheme.Color.danger : MacTheme.Color.accent
         button.lineBreakMode = .byTruncatingTail
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        button.toolTip = title
+        button.toolTip = action.nudge?.hint ?? title
         button.identifier = NSUserInterfaceItemIdentifier(action.rawValue)
         return button
     }

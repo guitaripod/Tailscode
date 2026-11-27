@@ -153,7 +153,7 @@ extension ChatViewController {
                 ) { [weak self] _ in self?.presentCommandCatalog() }
             ])
         }
-        var children: [UIMenuElement] = []
+        var children: [UIMenuElement] = [nudgeMenuElement()]
         if !sideBarHoldsFind {
             children.append(
                 UIAction(

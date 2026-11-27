@@ -56,7 +56,7 @@ extension ChatPane {
     func actionRows() -> [(String, String?, @Sendable () -> Void)] {
         guard let entry else { return [] }
         let capabilities = backend?.capabilities
-        var rows: [(String, String?, @Sendable () -> Void)] = []
+        var rows: [(String, String?, @Sendable () -> Void)] = nudgeRows()
 
         let saved = SavedChatStore.contains(entry)
         rows.append(

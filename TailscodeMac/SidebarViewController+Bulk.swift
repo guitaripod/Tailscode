@@ -95,7 +95,7 @@ extension SidebarViewController {
         let saved = models.allSatisfy(\.saved)
         let unread = models.contains { $0.unread }
         return [
-            .delete, archived ? .unarchive : .archive, saved ? .unsave : .save,
+            .resume, .status, .delete, archived ? .unarchive : .archive, saved ? .unsave : .save,
             unread ? .markRead : .markUnread,
         ]
     }
@@ -134,6 +134,10 @@ extension SidebarViewController {
                     model.entry.session.id, updatedAt: model.entry.session.updatedAt)
             }
             finishBulk()
+        case .resume, .status:
+            guard let nudge = action.nudge else { return }
+            finishBulk()
+            onNudge?(nudge, marked.map(\.entry))
         }
     }
 

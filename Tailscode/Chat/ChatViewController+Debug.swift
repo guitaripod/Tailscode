@@ -1,4 +1,3 @@
-import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -290,11 +289,10 @@ extension ChatViewController {
         /// A scripted walk through the composer for a run with no finger, steps split on `;`:
         /// `draft:<words>`, `long`, `lift`, `drop`, `at:<letters>`, `pick:<n>`, `code:<at>:<length>`,
         /// `quote:<at>:<length>`, `attach`, `last`, `send`, `focus`, `blur`, `clear`, `wait:<seconds>`,
-        /// `nudge:<id>` (presses Resume or Status?), `type:<words>` (a letter at a time, `|` for a
-        /// new line) and `rewrite` (opens the last waiting message in the box). For timing:
-        /// `prose:<length>` and `inked:<length>` fill the box, `shelf:<files>` gives the file list a
-        /// project that size, and `bench:<name>:<keys>:<pattern>` and `drag:<frames>` log a
-        /// `COMPOSE_BENCH` line.
+        /// `nudge:<id>` (sends Resume or Status? from the chat's menu), `type:<words>` (a letter at
+        /// a time, `|` for a new line) and `rewrite` (opens the last waiting message in the box). For timing: `prose:<length>` and `inked:<length>` fill the
+        /// box, `shelf:<files>` gives the file list a project that size, and `bench:<name>:<keys>:
+        /// <pattern>` and `drag:<frames>` log a `COMPOSE_BENCH` line.
         func stageCompose(_ script: String) async {
             for step in script.split(separator: ";") {
                 let parts = step.split(separator: ":", maxSplits: 1).map(String.init)
@@ -318,9 +316,9 @@ extension ChatViewController {
                     }
                 case "rewrite": takeBackLastQueued()
                 case "nudge":
-                    nudgeChips.first { $0.nudge.id == argument }?.chip.sendActions(for: .touchUpInside)
-                    MidgarLog.info(
-                        "nudge: pressed \(argument) shown=\(nudgesShown)", category: .ui)
+                    if let nudge = ChatNudge.all.first(where: { $0.id == argument }) {
+                        sendNudge(nudge)
+                    }
                 case "last": composerDidAskForLastPrompt()
                 case "send": composer.triggerSend()
                 case "focus": composer.focus()

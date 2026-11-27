@@ -15,7 +15,7 @@ extension SessionListViewController {
         selectionStack.alignment = .fill
         selectionStack.spacing = Theme.Spacing.xs
         selectionStack.translatesAutoresizingMaskIntoConstraints = false
-        for action in [BulkChatAction.delete, .archive, .save, .markRead] {
+        for action in [BulkChatAction.delete, .archive, .save, .markRead, .resume, .status] {
             let button = bulkButton(action)
             bulkButtons[action] = button
             selectionStack.addArrangedSubview(button)
@@ -61,6 +61,7 @@ extension SessionListViewController {
         case .unsave: return "bookmark.slash"
         case .markRead: return "envelope.open"
         case .markUnread: return "envelope.badge"
+        case .resume, .status: return action.nudge?.symbol ?? "bubble"
         }
     }
 
@@ -147,6 +148,8 @@ extension SessionListViewController {
         case .markUnread:
             let unread = SessionSeenStore.unreadEvaluator()
             return marked.filter { !unread($0.session.id, $0.session.updatedAt) }
+        case .resume, .status:
+            return ChatNudgeRun.ready(marked)
         }
     }
 
@@ -157,6 +160,16 @@ extension SessionListViewController {
         guard !marked.isEmpty else { return }
         guard !action.isDestructive else {
             confirmBulkDelete(marked)
+            return
+        }
+        if let nudge = action.nudge {
+            let held = selection.resolve(in: visibleEntries)
+            Theme.Haptics.send()
+            setSelecting(false)
+            Task { [weak self] in
+                guard let self else { return }
+                self.reportNudge(await self.viewModel.sendNudge(nudge, to: held))
+            }
             return
         }
         apply(action, to: marked)
@@ -171,7 +184,7 @@ extension SessionListViewController {
     func apply(_ action: BulkChatAction, to marked: [SessionEntry]) {
         for entry in marked {
             switch action {
-            case .delete:
+            case .delete, .resume, .status:
                 continue
             case .archive, .unarchive:
                 ArchivedChatStore.toggle(profileID: entry.profileID, sessionID: entry.session.id)
@@ -218,6 +231,13 @@ extension SessionListViewController {
                 }
             })
         present(alert, animated: true)
+    }
+
+    /// What a nudge sent from the list came to, said over the bottom of the list.
+    func reportNudge(_ outcome: ChatNudgeOutcome) {
+        if outcome.failed > 0 { Theme.Haptics.error() }
+        ToastView(message: outcome.sentence).flash(
+            in: view, above: view.safeAreaLayoutGuide.bottomAnchor)
     }
 
     func toggleMark(_ entry: SessionEntry) {

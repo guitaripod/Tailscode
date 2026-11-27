@@ -11,9 +11,9 @@ import TailscodeCore
 /// alone on its own line and is the only thing on the band wearing a colour — an archive sitting
 /// shoulder to shoulder with a delete is how the wrong one gets clicked.
 enum SidebarSelectionBar {
-    /// The verbs a whole selection is worth: the one that reaches the server, and the three that
-    /// only change what this device remembers.
-    static let offered: [BulkChatAction] = [.delete, .archive, .save, .markRead]
+    /// The verbs a whole selection is worth: the two that ask each chat's agent something, the one
+    /// that removes from the server, and the three that only change what this device remembers.
+    static let offered: [BulkChatAction] = [.resume, .status, .delete, .archive, .save, .markRead]
 
     static func make(
         count: Int,
@@ -35,10 +35,17 @@ enum SidebarSelectionBar {
         gtk_box_append(ptr(headline), clear)
         gtk_box_append(ptr(column), headline)
 
+        let nudges = offered.filter { $0.nudge != nil }
+        let asks = reflowing(columns: nudges.count)
+        for action in nudges {
+            gtk_flow_box_append(op(asks), verb(action, count: count, onAction: onAction))
+        }
+        gtk_box_append(ptr(column), asks)
+
         for action in offered where action.isDestructive {
             gtk_box_append(ptr(column), verb(action, count: count, onAction: onAction))
         }
-        let verbs = offered.filter { !$0.isDestructive }
+        let verbs = offered.filter { !$0.isDestructive && $0.nudge == nil }
         let rest = reflowing(columns: verbs.count)
         for action in verbs {
             gtk_flow_box_append(op(rest), verb(action, count: count, onAction: onAction))
@@ -88,7 +95,9 @@ enum SidebarSelectionBar {
         let button = Gtk.button(BulkChatCopy.button(action, count: count), css: css) {
             onAction(action)
         }
-        gtk_widget_set_tooltip_text(button, BulkChatCopy.confirm(action, count: count))
+        gtk_widget_set_tooltip_text(
+            button, action.nudge?.hint ?? BulkChatCopy.confirm(action, count: count))
+        tailscode_set_accessible_label(button, BulkChatCopy.button(action, count: count))
         return button
     }
 }

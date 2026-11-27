@@ -45,7 +45,9 @@ extension SessionListViewController: UICollectionViewDelegate {
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) {
             [weak self] _ in
             guard let self else { return UIMenu() }
-            var actions: [UIMenuElement] = []
+            var actions: [UIMenuElement] = self.viewModel.nudgeActions(for: entry) {
+                [weak self] outcome in self?.reportNudge(outcome)
+            }
             if SceneRouting.supportsMultipleWindows,
                 let url = SceneRouting.sessionURL(entry.session.id)
             {

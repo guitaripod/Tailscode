@@ -2,37 +2,35 @@ import TailscodeCore
 import UIKit
 
 extension ChatViewController {
-    func configureNudgeChips() {
-        for (nudge, chip) in nudgeChips {
-            chip.setSymbol(nudge.symbol)
-            chip.text = nudge.title
-            chip.accessibilityLabel = nudge.title
-            chip.accessibilityHint = nudge.hint
-            chip.addAction(
-                UIAction { [weak self] _ in self?.sendNudge(nudge) }, for: .touchUpInside)
+    /// Resume and Status? for this chat, at the head of its own menu: offered only while the chat
+    /// is quiet and has been spoken to.
+    func nudgeMenuElement() -> UIMenuElement {
+        UIDeferredMenuElement.uncached { [weak self] completion in
+            guard let self,
+                ChatNudge.offers(
+                    running: self.viewModel.isBusy,
+                    hasTranscript: !self.viewModel.state.messages.isEmpty)
+            else { return completion([]) }
+            completion([
+                UIMenu(
+                    options: .displayInline,
+                    children: ChatNudge.all.map { nudge in
+                        UIAction(
+                            title: nudge.title, subtitle: nudge.hint,
+                            image: UIImage(systemName: nudge.symbol)
+                        ) { [weak self] _ in self?.sendNudge(nudge) }
+                    })
+            ])
         }
-        composer.onBareChanged = { [weak self] in self?.refreshNudges() }
     }
 
-    /// Shows the nudges exactly while Core offers them. Asked on every state a turn streams and on
-    /// every change to the box, so it touches the row only when the answer moves.
-    func refreshNudges() {
-        let shown = ChatNudge.offers(
-            running: viewModel.isBusy, holdsWords: composer.holdsWords,
-            holdsAttachments: composer.carriesAttachments, editingQueued: composer.isEditingQueued,
-            dictating: composer.dictation.isOpen, hasTranscript: !viewModel.state.messages.isEmpty)
-        guard shown != nudgesShown else { return }
-        nudgesShown = shown
-        for (_, chip) in nudgeChips { chip.isHidden = !shown }
-        factsRow.refresh()
-        syncFactsScrim()
-    }
-
-    /// The nudge's words, sent the way typed words are, so they are echoed, queued and refused for
-    /// the same reasons.
-    private func sendNudge(_ nudge: ChatNudge) {
-        guard nudgesShown else { return }
+    /// The nudge's words through this chat's ordinary send, leaving the box, its draft and
+    /// anything clipped to it exactly as they are.
+    func sendNudge(_ nudge: ChatNudge) {
+        guard !viewModel.isBusy else { return }
         Theme.Haptics.send()
-        composerDidSend(nudge.prompt)
+        userScrolledUp = false
+        animateNextRender = true
+        viewModel.send(nudge.prompt, model: nil, effort: nil, attachments: [])
     }
 }

@@ -79,12 +79,7 @@ final class ChatPane: @unchecked Sendable {
     /// Which waiting message the composer is rewriting. A message taken back and sent again would
     /// land at the end of the queue, which is not editing but deleting and re-adding, and it
     /// silently reorders what somebody wrote.
-    var editingQueued: String? {
-        didSet { refreshNudges() }
-    }
-    /// Resume and Status? beside the empty box while the chat is quiet, one press each.
-    let nudgeBox = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-    var nudgesShown = false
+    var editingQueued: String?
     var pendingFirstMessage:
         (sessionID: String, send: QuickAskSend, attachments: [PendingAttachment])?
     var notice: String?

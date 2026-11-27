@@ -220,6 +220,15 @@ extension MainWindow {
                 (Localized.text("Open"), nil,
                  { [weak self] in Gtk.onMain { [weak self] in self?.open(entry) } }))
         }
+        if !ChatNudge.turnOpen(entry) {
+            for nudge in ChatNudge.all {
+                rows.append(
+                    (nudge.title, nudge.hint,
+                     { [weak self] in
+                         Gtk.onMain { [weak self] in self?.sendNudge(nudge, to: [entry]) }
+                     }))
+            }
+        }
         rows.append(
             (Localized.text("Open in a new split"),
              Localized.text("Beside the conversations already on screen"),

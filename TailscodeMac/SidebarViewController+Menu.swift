@@ -30,6 +30,16 @@ extension SidebarViewController: NSMenuDelegate {
         if entry.session.id != selectedID {
             menu.addItem(menuItem(Localized.text("Open"), action: #selector(menuOpen)))
         }
+        if !ChatNudge.turnOpen(entry) {
+            menu.addItem(
+                menuItem(
+                    ChatNudge.resume.title, subtitle: ChatNudge.resume.hint,
+                    action: #selector(menuResume)))
+            menu.addItem(
+                menuItem(
+                    ChatNudge.status.title, subtitle: ChatNudge.status.hint,
+                    action: #selector(menuStatus)))
+        }
         menu.addItem(
             menuItem(
                 selection.contains(entry)
@@ -245,6 +255,16 @@ extension SidebarViewController: NSMenuDelegate {
 
     @objc private func menuScopeClear() {
         setProjectScope(nil)
+    }
+
+    @objc private func menuResume() {
+        guard let model = menuModel else { return }
+        onNudge?(.resume, [model.entry])
+    }
+
+    @objc private func menuStatus() {
+        guard let model = menuModel else { return }
+        onNudge?(.status, [model.entry])
     }
 
     @objc private func menuToggleUnread() {

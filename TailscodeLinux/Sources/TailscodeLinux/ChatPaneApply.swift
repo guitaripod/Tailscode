@@ -382,7 +382,6 @@ extension ChatPane {
             StatusBand.fit(
                 statusBand, state: bandState, width: bandFrame.map { gtk_widget_get_width($0) } ?? 0)
         }
-        refreshNudges()
         let sendName = running ? Localized.text("Queue") : Localized.text("Send")
         if let sendWord { gtk_label_set_text(op(sendWord), sendName.lowercased()) }
         tailscode_set_accessible_label(sendButton, sendName)

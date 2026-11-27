@@ -121,7 +121,7 @@ enum ParityManifest {
         case .draftVerbs: return .notApplicable("a desk has the backtick and the quote mark under a finger; the verbs exist because a touch keyboard keeps them three keys deep")
         case .promptRecall: return .gap("the up arrow in an empty box takes back only a message that is still waiting; the last prompt sent is not offered back")
         case .composerDoors: return .notApplicable("the slash and the @ are one keystroke on a desk's keyboard; the keys exist because a touch keyboard hides both")
-        case .chatNudges: return .implemented("configureNudges")
+        case .chatNudges: return .implemented("ChatNudgeRun.send")
         case .drafts: return .implemented("DraftStore")
         case .sendQueue: return .implemented("editQueued")
         case .sharedQueue: return .implemented("resumeQueue")

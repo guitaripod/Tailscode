@@ -108,7 +108,7 @@ enum ParityManifest {
         case .draftVerbs: return .implemented("DraftVerbs.code")
         case .promptRecall: return .implemented("composerDidAskForLastPrompt")
         case .composerDoors: return .implemented("ComposerDoors")
-        case .chatNudges: return .implemented("nudgeChips")
+        case .chatNudges: return .implemented("ChatNudgeRun.send")
         case .drafts: return .implemented("draftScope")
         case .sendQueue: return .implemented("editQueued")
         case .sharedQueue: return .implemented("QueuePausedCell")

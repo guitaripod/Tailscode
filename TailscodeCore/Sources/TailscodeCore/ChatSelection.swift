@@ -152,8 +152,20 @@ public enum BulkChatAction: String, Sendable, CaseIterable {
     case unsave
     case markRead
     case markUnread
+    case resume
+    case status
 
     public var isDestructive: Bool { self == .delete }
+
+    /// The words the verb sends, for the two that reach each chat's agent rather than this
+    /// device's stores.
+    public var nudge: ChatNudge? {
+        switch self {
+        case .resume: return .resume
+        case .status: return .status
+        case .delete, .archive, .unarchive, .save, .unsave, .markRead, .markUnread: return nil
+        }
+    }
 }
 
 /// The words a bulk gesture says, in one place because all three clients owe the same sentence.
@@ -172,6 +184,7 @@ public enum BulkChatCopy {
         case .unsave: return Localized.text("Remove from Saved")
         case .markRead: return Localized.text("Mark as read")
         case .markUnread: return Localized.text("Mark as unread")
+        case .resume, .status: return action.nudge?.title ?? ""
         }
     }
 
@@ -195,7 +208,7 @@ public enum BulkChatCopy {
         case .delete:
             return count == 1
                 ? Localized.text("Delete") : Localized.text("Delete %@", "\(count)")
-        case .archive, .unarchive, .save, .unsave, .markRead, .markUnread:
+        case .archive, .unarchive, .save, .unsave, .markRead, .markUnread, .resume, .status:
             return title(action, count: count)
         }
     }
