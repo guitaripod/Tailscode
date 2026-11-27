@@ -12,7 +12,7 @@ extension SidebarViewController {
         let saved: Set<String>
         let pins: Set<String>
         let archived: Set<ArchivedChatStore.ChatKey>
-        let unread: (String, Date) -> Bool
+        let unread: @Sendable (String, Date) -> Bool
     }
 
     /// A conversation as it was last worded, and the facts that wording was made from.
@@ -37,14 +37,6 @@ extension SidebarViewController {
         }
     }
 
-    /// How an age column's word is bucketed: the one number that changes when the string would.
-    static func ageBucket(_ date: Date, asOf reference: Date) -> Int {
-        let seconds = max(0, Int(reference.timeIntervalSince(date)))
-        if seconds < 60 { return seconds }
-        if seconds < 3600 { return 60 + seconds / 60 }
-        if seconds < 86_400 { return 3_660 + seconds / 3_600 }
-        return 90_000 + seconds / 86_400
-    }
 
     func readings() -> StoreReadings {
         if let storeReadings { return storeReadings }
@@ -77,7 +69,7 @@ extension SidebarViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             guard let self else { return }
             self.listingRenderArmed = false
-            self.render()
+            self.renderAway()
         }
     }
 
@@ -167,11 +159,12 @@ extension SidebarViewController {
     }
 
     /// Opens the conversation that was open last, not merely the newest one: reopening where you
-    /// were is the difference between a window that restores and a window that resets.
+    /// were is the difference between a window that restores and a window that resets. The first
+    /// listing draws in the same turn, because that open reads it; every one after walks away.
     func applyEntries(
         _ entries: [SessionEntry], unreachable: [String], fromNetwork: Bool = true
     ) {
-        self.entries = entries
+        self.entries = SidebarBench.padded(entries)
         self.unreachable = unreachable
         listedFromNetwork = listedFromNetwork || fromNetwork
         if let fresh = freshlyCreated {
@@ -183,7 +176,7 @@ extension SidebarViewController {
         }
         listingVersion += 1
         observationDirty = true
-        render()
+        if selectedID == nil { render() } else { renderAway() }
         onEntriesChanged?()
         guard selectedID == nil, !entries.isEmpty else { return }
         let remembered = UserDefaults.standard.string(forKey: "tailscode.lastSession")
@@ -193,7 +186,8 @@ extension SidebarViewController {
 
     /// Rebuilding the whole table is what the 10-second refresh would do whether or not anything
     /// changed — so nothing is touched unless what the list would say actually differs from what
-    /// it says now.
+    /// it says now. This draws in the same turn, which is what a press, a key, a filter typed or a
+    /// fresh listing needs; a server's push draws through ``renderAway()``.
     func render() {
         if let fixture {
             renderFixture(fixture)
@@ -201,69 +195,100 @@ extension SidebarViewController {
         }
         let trace = Pace.traceStart()
         defer { Pace.traceEnd("sidebar.render", trace) }
-        if NSEvent.pressedMouseButtons != 0, view.window?.isKeyWindow == true {
-            holdRender()
-            return
-        }
+        drawGeneration += 1
+        guard let plan = beginDraw() else { return }
         let interval = Pace.signposter.beginInterval("list")
         defer { Pace.signposter.endInterval("list", interval) }
+        let drawBegan = SidebarBench.isRunning ? SidebarBench.clock() : 0
+        defer { if SidebarBench.isRunning { SidebarBench.note(draw: SidebarBench.clock() - drawBegan) } }
+        SidebarBench.beginStages()
+        let walk = SidebarWalk.make(plan.input)
+        SidebarBench.stage("walk")
+        finishDraw(walk, plan: plan)
+    }
+
+    /// A draw a server's push asked for: the fleet is walked off the main thread (``SidebarWalk``)
+    /// and only the table comes back to it. A draw begun after this one, by a push or a press, makes
+    /// it stale and it is dropped; one that lands under a held pointer or in a window nobody can see
+    /// waits as a draw always has.
+    func renderAway() {
+        guard fixture == nil else { return render() }
+        drawGeneration += 1
+        let generation = drawGeneration
+        guard let plan = beginDraw() else { return }
+        Task { @MainActor [weak self] in
+            let (walk, spent) = await SidebarWalk.away(plan.input)
+            guard let self, self.drawGeneration == generation else { return }
+            if NSEvent.pressedMouseButtons != 0, self.view.window?.isKeyWindow == true {
+                self.holdRender()
+                return
+            }
+            guard self.isOnScreen || DisplayGate.assumesVisible else {
+                self.renderPending = true
+                return
+            }
+            let trace = Pace.traceStart()
+            defer { Pace.traceEnd("sidebar.render", trace) }
+            let drawBegan = SidebarBench.isRunning ? SidebarBench.clock() : 0
+            defer {
+                if SidebarBench.isRunning {
+                    SidebarBench.note(draw: SidebarBench.clock() - drawBegan + plan.cost, away: spent)
+                }
+            }
+            SidebarBench.beginStages()
+            self.finishDraw(walk, plan: plan)
+        }
+    }
+
+    /// What a draw reads on the main thread before the fleet is walked, or nil when it cannot draw
+    /// now: a pointer is holding a row, or nobody can see the list.
+    struct DrawPlan {
+        let input: SidebarWalk.Input
+        let listingVersion: Int
+        let observationStamp: Int
+        /// What reading it cost the main thread, for the bench.
+        let cost: Double
+    }
+
+    private func beginDraw() -> DrawPlan? {
+        if NSEvent.pressedMouseButtons != 0, view.window?.isKeyWindow == true {
+            holdRender()
+            return nil
+        }
         guard isOnScreen || DisplayGate.assumesVisible else {
             renderPending = true
-            return
+            return nil
         }
+        let began = SidebarBench.isRunning ? SidebarBench.clock() : 0
         lastRenderAt = CACurrentMediaTime()
         let readings = readings()
-        let needle = filter.lowercased()
         let presence = presenceSource?() ?? [:]
         lastPresence = presence
-        let now = Date()
-        var models: [SessionRowModel] = []
-        models.reserveCapacity(entries.count + 8)
-        var freshMemo: [String: RowMemo] = [:]
-        freshMemo.reserveCapacity(entries.count + 8)
-        for entry in entries {
-            let key = ChatSelection.key(entry)
-            guard !pendingDeletes.contains(key) else { continue }
-            let label = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
-            let down = unreachable.contains(label)
-            let unread = readings.unread(entry.session.id, entry.session.updatedAt)
-            let saved = readings.saved.contains(entry.session.id)
-            let pinned = readings.pins.contains(
-                SessionPinStore.key(entry.profileID, entry.session.id))
-            let seen = presence[key] ?? .unobserved
-            let observedAt = ServerDirectory.shared.lastHeard[label]
-            let bucket = Self.ageBucket(
-                entry.session.updatedAt, asOf: down ? (observedAt ?? now) : now)
-            if let memo = rowMemo[key],
-                memo.matches(
-                    session: entry.session, unreachable: down, unread: unread, saved: saved,
-                    pinned: pinned, presence: seen, observedAt: observedAt, bucket: bucket)
-            {
-                models.append(memo.model)
-                freshMemo[key] = memo
-                continue
-            }
-            let model = SessionRowModel(
-                entry: entry, unreachable: down, unread: unread, saved: saved, pinned: pinned,
-                presence: seen, observedAt: observedAt, now: now)
-            models.append(model)
-            freshMemo[key] = RowMemo(
-                session: entry.session, unreachable: down, unread: unread, saved: saved,
-                pinned: pinned, presence: seen, observedAt: observedAt, bucket: bucket, model: model)
-        }
-        rowMemo = freshMemo
-        models += Self.orphanedSavedRows(readings.savedChats, listed: entries)
+        let input = SidebarWalk.Input(
+            entries: entries, pendingDeletes: pendingDeletes, unreachable: unreachable,
+            savedChats: readings.savedChats, saved: readings.saved, pins: readings.pins,
+            archived: readings.archived, unread: readings.unread, presence: presence,
+            lastHeard: ServerDirectory.shared.lastHeard, memo: rowMemo, needle: filter.lowercased(),
+            scope: projectScope, showingArchive: showingArchive, splitTab: splitTabSource?(),
+            observes: listingVersion != observedListingVersion || observationDirty, now: Date())
+        return DrawPlan(
+            input: input, listingVersion: listingVersion, observationStamp: observationStamp,
+            cost: SidebarBench.isRunning ? SidebarBench.clock() - began : 0)
+    }
+
+    /// Lays out what a walk found: the orb, the notices the fleet owes, the rows that are drawn and
+    /// only the rows whose words moved reloaded.
+    private func finishDraw(_ walk: SidebarWalk, plan: DrawPlan) {
+        rowMemo = walk.memo
+        let models = walk.models
         known = models
         refreshOrb()
         refreshAgentsEntry()
         if !selection.isEmpty { selection.prune(to: models.map(\.entry)) }
-        if listingVersion != observedListingVersion || observationDirty {
-            observedListingVersion = listingVersion
-            observationDirty = false
-            let observations = models.map {
-                ActivityObservation(
-                    profileID: $0.entry.profileID, session: $0.entry.session, title: $0.title)
-            }
+        SidebarBench.stage("orb")
+        if let observations = walk.observations {
+            observedListingVersion = plan.listingVersion
+            if observationStamp == plan.observationStamp { observationDirty = false }
             MacNotifier.shared.observeListing(observations)
             ActivityInbox.reconcile(
                 observations,
@@ -274,33 +299,15 @@ extension SidebarViewController {
             readMarksMoved = false
             MacNotifier.withdrawRead()
         }
-        let archivedKeys = readings.archived
-        let isArchived: (SessionRowModel) -> Bool = {
-            archivedKeys.contains(
-                ArchivedChatStore.ChatKey(
-                    profileID: $0.entry.profileID, sessionID: $0.entry.session.id))
-        }
-        let scoped =
-            projectScope.map { scope in models.filter { scope.matches($0.entry) } } ?? models
-        let archivedTotal = scoped.filter(isArchived).count
-        let matching = scoped.filter {
-            needle.isEmpty || $0.title.lowercased().contains(needle)
-                || $0.detail.lowercased().contains(needle)
-                || ($0.snippet?.lowercased().contains(needle) ?? false)
-        }
-        let active = matching.filter { !isArchived($0) || $0.isUnfinished }
-        let grouped: [(ChatListSection, [SessionRowModel])] =
-            showingArchive
-            ? [(ChatListSection.archived, matching.filter(isArchived))].filter { !$0.1.isEmpty }
-            : groupIntoListSections(active)
-        let sections = SplitTabGrouping.apply(
-            to: grouped, tab: showingArchive ? nil : splitTabSource?())
+        SidebarBench.stage("observe")
+        let sections = walk.sections
+        let archivedTotal = walk.archivedTotal
         visible = (searchRunning || searchBoard != nil) ? [] : sections.flatMap(\.1)
         syncCursorToSelection()
-
+        SidebarBench.stage("sections")
         let missed = ActivityInbox.unsaid(by: Self.drawnRows(sections, limit: sidebarLimit), limit: 5)
         listedMissed = missed.all
-        let vocabulary = ChatListVocabulary(rows: models)
+        let vocabulary = walk.vocabulary
         let snapshot = SidebarShape(
             visibleCount: visible.count, firstKey: visible.first?.key ?? "",
             lastKey: visible.last?.key ?? "", unreachable: unreachable, filter: filter,
@@ -311,6 +318,7 @@ extension SidebarViewController {
                 + "|\(projectScope.map { "\($0.profileID):\($0.directory ?? "")" } ?? "")"
                 + "|\(sections.map { "\($0.0.key):\($0.1.count)" }.joined(separator: ","))"
                 + "|\(vocabulary.namesServer)\(vocabulary.namesBackend)|\(searchRunning)\(searchBoard != nil)")
+        SidebarBench.stage("vocab")
         let sameShape = lastSidebar.map { $0 == snapshot } ?? false
         lastSidebar = snapshot
         renderBulkBar()
@@ -383,14 +391,17 @@ extension SidebarViewController {
             if remaining > 0 { next.append(.more(remaining)) }
         }
         if !showingArchive, archivedTotal > 0 { next.append(.archived(archivedTotal)) }
+        SidebarBench.stage("rows")
         if sameShape, next.count == rows.count {
             reloadChangedRows(next)
         } else {
             rows = next
             tableView.reloadData()
         }
+        SidebarBench.stage("reload")
         reselect()
         refreshHover()
+        SidebarBench.stage("rest")
     }
 
     /// The chat rows the list is about to draw: the first `limit` items in the order the sections
@@ -433,14 +444,48 @@ extension SidebarViewController {
 
     /// The same rows in the same places, some of them saying something new: an age that crossed a
     /// minute, a tool step that changed, the row just opened losing its unread mark. Only those
-    /// rows are reloaded, so the rest of the list — and whatever the reader is about to click —
-    /// stays exactly where it is.
+    /// rows are touched, so the rest of the list — and whatever the reader is about to click —
+    /// stays exactly where it is. A chat row on screen whose height cannot have moved is dressed
+    /// again where it stands (``redressInPlace(_:from:to:)``): asking the table to reload it made
+    /// a new cell and measured it, three quarters of a millisecond a row, for the three to five
+    /// rows every push from a working turn changes.
     private func reloadChangedRows(_ next: [SidebarRow]) {
+        let before = rows
         let changed = IndexSet(rows.indices.filter { rows[$0] != next[$0] })
         rows = next
         guard !changed.isEmpty else { return }
-        tableView.reloadData(forRowIndexes: changed, columnIndexes: IndexSet(integer: 0))
-        tableView.noteHeightOfRows(withIndexesChanged: changed)
+        let reload = IndexSet(changed.filter { !redressInPlace($0, from: before[$0], to: next[$0]) })
+        guard !reload.isEmpty else { return }
+        tableView.reloadData(forRowIndexes: reload, columnIndexes: IndexSet(integer: 0))
+        tableView.noteHeightOfRows(withIndexesChanged: reload)
+    }
+
+    /// Dresses a chat row's cell again in place, and says whether it could: the row was a chat and
+    /// is one, its cell is made, and its news line keeps the one line it had or the none.
+    private func redressInPlace(_ index: Int, from old: SidebarRow, to new: SidebarRow) -> Bool {
+        guard case .session(_, _, let was) = old, case .session(let model, let marked, let dress) = new,
+            Self.keepsHeight(was.news, dress.news),
+            let cell = tableView.view(atColumn: 0, row: index, makeIfNecessary: false)
+                as? SidebarSessionCell
+        else { return false }
+        cell.configure(with: model, marked: marked, dress: dress)
+        let entry = model.entry
+        cell.onQuickAction = { [weak self] action, sender in
+            self?.performQuickAction(action, on: entry, from: sender)
+        }
+        return true
+    }
+
+    /// Whether a row's news can change without its height changing: none before and none after,
+    /// or one line both times.
+    private static func keepsHeight(_ was: ChatRowNews?, _ now: ChatRowNews?) -> Bool {
+        switch (was, now) {
+        case (nil, nil): return true
+        case (let was?, let now?):
+            return ChatRowInk.newsLines(was.voice, roomy: false) == 1
+                && ChatRowInk.newsLines(now.voice, roomy: false) == 1
+        default: return false
+        }
     }
 
     private func holdRender() {
@@ -527,24 +572,6 @@ extension SidebarViewController {
                 return model.members.contains { $0.entry.session.id == sessionID }
             default: return false
             }
-        }
-    }
-
-    /// A bookmark must still list and explain itself when its server is unreachable, its session
-    /// deleted, or its profile removed — the saved list never depends on a live listing. Rows for
-    /// chats the listing no longer covers are rebuilt from the bookmark's own snapshot.
-    private static func orphanedSavedRows(
-        _ savedChats: [SavedChat], listed: [SessionEntry]
-    ) -> [SessionRowModel] {
-        let listedIDs = Set(listed.map(\.session.id))
-        return savedChats.filter { !listedIDs.contains($0.sessionID) }.map { chat in
-            let session = AgentSession(
-                id: chat.sessionID, agentType: chat.backend, title: chat.displayTitle,
-                directory: chat.directory, createdAt: chat.savedAt, updatedAt: chat.updatedAt)
-            let entry = SessionEntry(
-                profileID: chat.profileID, profileName: chat.profileName,
-                host: chat.profileName, backendType: chat.backend, session: session)
-            return SessionRowModel(entry: entry, unreachable: true, unread: false, saved: true)
         }
     }
 }

@@ -180,7 +180,15 @@ final class SidebarViewController: NSViewController {
     /// whole fleet — observations, the inbox, a notice withdrawal — runs only when it moved.
     var listingVersion = 0
     var observedListingVersion = -1
-    var observationDirty = true
+    var observationDirty = true {
+        didSet { if observationDirty { observationStamp &+= 1 } }
+    }
+    /// Counts every time the notices were told the fleet needs saying again, so a draw that walked
+    /// away and came back clears the flag only when nothing set it again meanwhile.
+    var observationStamp = 0
+    /// Counts every draw begun, so a walk that went off the main thread lays out only if nothing
+    /// newer has been asked for or drawn while it was away.
+    var drawGeneration = 0
     var readMarksMoved = true
     /// Set when the list drew nothing because its window cannot be seen; the next appearance draws.
     var renderPending = false

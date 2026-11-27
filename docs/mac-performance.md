@@ -43,6 +43,33 @@ The passes behind those numbers, in process:
 | `TranscriptViewController.apply` for a streamed state | 1–6 ms |
 | `TranscriptViewController.apply` when a chat opens | 30–50 ms, plus the sidebar's own draw |
 
+## While turns stream
+
+`--bench sidebar[=<chats>:<seconds>]` (needs `TAILSCODE_HOST` and `TAILSCODE_PASSWORD`) puts the chat
+list alone in a borderless window parked off every screen, pads the server's listing with idle copies
+to `<chats>` and measures every draw the server's pushes and the ten-second poll cause: draws a
+second, each draw's main-thread CPU, the median of each stage, and what the walk cost off the main
+thread. Run it from a re-signed copy with its own bundle id and `CFFIXED_USER_HOME`, so the person's
+preferences are never written. Against the MacBook's bridge padded to 2,100 chats with four Haiku turns
+streaming steps:
+
+| A draw of the list | Before | After |
+|---|---|---|
+| main thread, median | 21.4 ms | 4.4 ms |
+| main thread, p90 | 25.3 ms | 6.9 ms |
+| main thread, worst | 28.6 ms | 7.1 ms |
+
+Before, the draw was the fleet walk (6.7 ms), sections (3.8), the fleet's word to the notices (3.6),
+the vocabulary (1.6) and reloading the three to five rows a push changes (4.4, three quarters of a
+millisecond a row for a new cell measured with automatic heights). Now a draw a push or the poll asks
+for walks the fleet on the cooperative pool (`SidebarWalk`: rows against their memo, orphaned
+bookmarks, the archive count, scope and filter, sections, vocabulary and, when the listing moved, the
+observations), and a draw begun meanwhile makes it stale (`drawGeneration`); a press, a key, a filter
+typed and the first listing still draw in the same turn. A changed chat row on screen whose news line
+keeps its one line, or its none, is dressed again in its own cell instead of reloaded. The walk costs
+7-10 ms on another core; the notices still hear the whole fleet on the main thread (1.8 ms), because
+re-observing an unchanged row is what tells them the listing still says it.
+
 ## What changed
 
 The list is a pure function of `rows`, and it used to be recomputed whole — every session worded,

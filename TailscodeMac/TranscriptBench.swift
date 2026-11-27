@@ -55,6 +55,9 @@ enum TranscriptBench {
         if paths.first == "tiles" {
             TileCanvasBench.run()
         }
+        if let spec = paths.first, spec.hasPrefix("sidebar") {
+            SidebarBench.run(spec)
+        }
         if TileBench.isRequested(paths), let spec = paths.first {
             TileBench.run(spec)
         }
