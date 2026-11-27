@@ -27,6 +27,7 @@ enum MacCLI {
           TailscodeMac --bench brain  time a streamed token, opening and closing one Megatron, and a scroll event over it
           TailscodeMac --bench tiles[=N:R:K:S]  time a window of panes: open, divider, resize, or N streaming (--bench-tiles is the older spelling)
           TailscodeMac --bench sidebar[=CHATS:SECONDS]  time the chat list's draws against TAILSCODE_HOST's pushes, padded to CHATS
+          TailscodeMac --bench memory=ID,ID[:SETTLE:HOLD]  say what TAILSCODE_HOST's named chats cost in memory, open, shed and closed
           TailscodeMac --flight [minutes]       print the flight recorder's ring, newest last
           TailscodeMac --version
         """

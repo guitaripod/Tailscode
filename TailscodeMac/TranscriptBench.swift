@@ -58,6 +58,9 @@ enum TranscriptBench {
         if let spec = paths.first, spec.hasPrefix("sidebar") {
             SidebarBench.run(spec)
         }
+        if let spec = paths.first, spec.hasPrefix("memory") {
+            MemoryBench.run(spec)
+        }
         if TileBench.isRequested(paths), let spec = paths.first {
             TileBench.run(spec)
         }
