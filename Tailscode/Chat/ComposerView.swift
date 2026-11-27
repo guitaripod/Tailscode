@@ -106,7 +106,21 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         didSet {
             guard carriesAttachments != oldValue else { return }
             updateSendButton()
+            noteBare()
         }
+    }
+
+    /// Hears the box go bare or stop being bare — no words, nothing beside them, no waiting message
+    /// open for rewriting and no take being heard. Told only on a change, because the box is asked
+    /// on every key.
+    var onBareChanged: (() -> Void)?
+    private var wasBare = true
+
+    private func noteBare() {
+        let bare = !holdsWords && !carriesAttachments && !isEditingQueued && !dictation.isOpen
+        guard bare != wasBare else { return }
+        wasBare = bare
+        onBareChanged?()
     }
 
     /// What the box says when it is empty. A quick ask is not a chat, and "Message your agent…"
@@ -397,6 +411,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         let stacked = accessory != nil || statusShown
         let open = stacked && (textView.text ?? "").isEmpty && !statusShown && !dictation.isOpen
         doors.show(command: open && offersCommandDoor, file: open && offersFileDoor)
+        noteBare()
     }
 
     private func openDoor(_ letter: String) {
@@ -526,7 +541,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
 
     /// Whether anything but spaces and new lines is in the box, read without copying the draft:
     /// Send asks on every key.
-    private var holdsWords: Bool {
+    var holdsWords: Bool {
         (textView.text ?? "").unicodeScalars.contains { !Self.blank.contains($0) }
     }
 
@@ -807,6 +822,7 @@ final class ComposerView: UIView, UITextViewDelegate, UIGestureRecognizerDelegat
         didSet {
             guard isEditingQueued != oldValue else { return }
             updateSendButton()
+            noteBare()
         }
     }
 

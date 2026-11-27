@@ -404,5 +404,6 @@ extension ChatPane {
             gtk_widget_set_margin_end(chip.button, 6)
             gtk_box_append(ptr(attachmentsBox), chip.button)
         }
+        refreshNudges()
     }
 }

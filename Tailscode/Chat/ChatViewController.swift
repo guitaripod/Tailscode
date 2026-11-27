@@ -189,10 +189,15 @@ final class ChatViewController: UIViewController {
     var chapterMessageCount = 0
     weak var chaptersSheet: ChaptersViewController?
     /// The way into the running app, offered only where this conversation's machine runs a preview
-    /// host and the folder is known. It is a control, so it is outlined, and it leads the one
-    /// chip row the chat has, so a row that scrolls sideways never hides it.
+    /// host and the folder is known. It is a control, so it is outlined, and it comes straight after
+    /// the nudges at the head of the one chip row the chat has, so a row that scrolls sideways never
+    /// hides it.
     let previewChip = ChatSpares.takeChip(.control)
-    lazy var factsRow = ChatFactsRow(chips: [
+    /// Resume and Status?, the prompts sent alone into a chat that went quiet, one press each. They
+    /// lead the row for the same reason the preview does.
+    let nudgeChips = ChatNudge.all.map { (nudge: $0, chip: ChatSpares.takeChip(.control)) }
+    var nudgesShown = false
+    lazy var factsRow = ChatFactsRow(chips: nudgeChips.map { $0.chip } + [
         previewChip, agentsChip, backgroundChip, goalChip, contextChip, wallChip, cacheChip,
         spendChip, gitChip, chaptersChip,
     ])
@@ -302,6 +307,7 @@ final class ChatViewController: UIViewController {
         configureChaptersChip()
         configureGitChip()
         configurePreviewChip()
+        configureNudgeChips()
         configureBackgroundChip()
         configureNavTitleView()
         bindMaster()

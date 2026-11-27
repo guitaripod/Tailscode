@@ -57,6 +57,7 @@ extension ComposerView {
 
     func syncChips() {
         chips.set(attachments, carry: carry, pastes: pastes)
+        refreshNudges()
         onAttachmentsChanged?()
     }
 

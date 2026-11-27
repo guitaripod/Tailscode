@@ -292,6 +292,7 @@ extension ChatViewController {
         }
 
         composer.setBusy(viewModel.isBusy)
+        refreshNudges()
         syncFAB()
         updateNavStatus(for: state, messagesMoved: rebuild != nil, facts: rebuild?.facts)
         if wasRunning && state.status != .running {

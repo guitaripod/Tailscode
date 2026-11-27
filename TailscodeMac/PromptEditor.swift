@@ -17,6 +17,8 @@ final class PromptEditor: NSView {
     /// Every path that changes what is in the box lands here — a keystroke, a vim edit, a
     /// completion accepted — so a surface can record its draft in one place.
     var onChanged: (() -> Void)?
+    /// A take began or ended writing into the box.
+    var onDictatingChanged: (() -> Void)?
     /// Whether the box took the pasteboard for itself. Words are handed back to AppKit rather
     /// than re-implemented, which is what keeps undo, selection and the system's own behaviour.
     var onPaste: (() -> Bool)?
@@ -252,6 +254,7 @@ final class PromptEditor: NSView {
         dictating = value
         placeholderLabel.stringValue = value ? DictationReading.listeningPlaceholder : restingPlaceholder
         aura.setParked(value)
+        onDictatingChanged?()
     }
 
     private var baseAttributes: [NSAttributedString.Key: Any] {

@@ -177,8 +177,10 @@ extension ChatPane {
             self?.updateSlashCompletion()
             self?.refreshUltracodeAura()
             self?.recordDraft()
+            self?.refreshNudges()
         }
         gtk_box_append(ptr(row), editor.widget)
+        gtk_box_append(ptr(row), makeNudges())
 
         Gtk.acceptFileDrops(on: row) { [weak self] paths in
             self?.attach(paths: paths)

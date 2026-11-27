@@ -34,6 +34,8 @@ final class PromptEditor: @unchecked Sendable {
     private var footerStepping = false
 
     var onChanged: (@Sendable () -> Void)?
+    /// A take began or ended writing into the box.
+    var onDictatingChanged: (@Sendable () -> Void)?
     /// The person changed the box with their own hands while a take was writing into it.
     var onEditDuringDictation: (@Sendable () -> Void)?
     /// The person changed the box with their own hands while no take was writing into it.
@@ -185,7 +187,9 @@ final class PromptEditor: @unchecked Sendable {
     /// Opens or closes the box to a take: the placeholder says it is listening, and the words the
     /// take writes from here on are its own and not the person's typing.
     func setDictating(_ value: Bool) {
+        let changed = dictating != value
         dictating = value
+        if changed { onDictatingChanged?() }
         gtk_label_set_text(op(placeholder), value ? DictationReading.listeningPlaceholder : restingPlaceholder)
         if !value { tailscode_text_tag_span(textView, Self.heardTag, 0, 0) }
         if !value { tailscode_text_tag_span(textView, Self.struckTag, 0, 0) }

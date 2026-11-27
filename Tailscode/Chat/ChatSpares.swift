@@ -23,7 +23,7 @@ enum ChatSpares {
 
     /// How many chips of each kind one chat's facts row holds.
     private static let chipsPerChat: [(kind: ChatChrome.Kind, count: Int)] = [
-        (.live, 3), (.fact, 6), (.control, 1),
+        (.live, 3), (.fact, 6), (.control, 3),
     ]
 
     static func takeComposer() -> ComposerView {

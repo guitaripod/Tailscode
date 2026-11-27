@@ -60,7 +60,10 @@ final class ComposerView: NSView {
     var entry: SessionEntry?
     var backend: (any CodingAgentBackend)?
     var lastState: ConversationState?
-    private var running = false
+    private(set) var running = false
+    /// Resume and Status? beside the empty box while the chat is quiet, one press each.
+    let nudgeRow = NSStackView()
+    var nudgesShown = false
     /// The pill row as it was last handed over, so a streamed state that repeats it is dropped
     /// before it reaches the views.
     var pillReading: PillReading?
@@ -87,6 +90,7 @@ final class ComposerView: NSView {
                 CarryShelf.hold(carry, profileID: entry.profileID, sessionID: entry.session.id)
             }
             chips.set(attachments, carry: carry, pastes: pastes)
+            refreshNudges()
         }
     }
     var models: [ModelInfo] = []
@@ -174,6 +178,7 @@ final class ComposerView: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         configureEditor()
         configureLayout()
+        configureNudges()
         wirePills()
         registerForDraggedTypes([.fileURL, .png, .tiff])
         setAccessibilityRole(.group)
@@ -281,6 +286,7 @@ final class ComposerView: NSView {
             sendButton.title = running ? Localized.text("Queue") : Localized.text("Send")
             pills.setStopShown(running)
         }
+        refreshNudges()
         let model = observedModelID()
         let effort = observedEffort()
         if running != wasRunning || model != pillObservedModel || effort != pillObservedEffort {

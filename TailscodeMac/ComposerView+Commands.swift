@@ -94,6 +94,7 @@ extension ComposerView {
         }
         updateSlashCompletion()
         refreshAura()
+        refreshNudges()
     }
 
     /// Which row is highlighted is kept by which command it is, never by where it sat: a narrowing

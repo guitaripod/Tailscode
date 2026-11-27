@@ -113,6 +113,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case draftVerbs
     case promptRecall
     case composerDoors
+    case chatNudges
     case drafts
     case sendQueue
     case sharedQueue
