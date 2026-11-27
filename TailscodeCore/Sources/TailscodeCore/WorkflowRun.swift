@@ -660,7 +660,7 @@ public enum WorkflowRunAssembly {
         for message in messages {
             let carries = message.parts.contains { part in
                 guard case .text(let value) = part.kind else { return false }
-                return value.contains("<task-notification>")
+                return value.holds("<task-notification>")
             }
             guard carries else { continue }
             let text = message.text
@@ -673,7 +673,7 @@ public enum WorkflowRunAssembly {
     public static func completions(in texts: [String]) -> [String: String] {
         var found: [String: String] = [:]
         for text in texts {
-            guard text.contains("<task-notification>"),
+            guard text.holds("<task-notification>"),
                 let taskID = tag("task-id", in: text)
             else { continue }
             found[taskID] = tag("result", in: text).map(unquoted) ?? tag("summary", in: text) ?? ""
