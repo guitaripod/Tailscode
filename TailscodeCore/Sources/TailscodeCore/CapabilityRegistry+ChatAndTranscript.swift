@@ -75,6 +75,10 @@ extension CapabilityRegistry {
             id: .autoOpenLastSession, area: "chat list", title: "Reopen the last chat on launch",
             spec: "Launch restores the previously open conversation instead of an empty pane."),
         CapabilityDefinition(
+            id: .chatTrail, area: "chat list", title: "Back and Forward walk the chats a pane has shown",
+            spec:
+                "Each pane keeps the trail of chats it has shown (ChatTrail, Core): a chat once, the newest last, so hopping between two chats from the list leaves those two and Back and Forward are the hop; opening a chat from the middle of the trail ends what lay ahead of it, as a browser does, and a trail holds at most ChatTrail.limit chats. A mouse's thumb buttons are the gesture (ChatTrail.Direction reads GDK buttons 8 and 11 as Back and 9 and 10 as Forward, AppKit's 3 and 4 the same way, the pairs Linux kernels and browsers both use), and Back and Forward are registered actions (chat.back, chat.forward, alt+left and alt+right) so a keyboard, the cheatsheet and the rebinding file reach them too. A step moves the trail's place at once and the pane catches up once per frame (ChatTrail.settle, run after every queued event and before the paint), so a burst of presses opens the chat the burst ended on and builds nothing it walked past; the chat on either side of the place is warmed after a hop so the next press finds its words in memory. A chat that is deleted, or already on screen in another pane of a split, is stepped over, and one that is merely missing from a listing stays in the trail. A press with nowhere to go does nothing and says nothing. A platform whose navigation stack is already the trail, which is what a phone is, answers notApplicable rather than growing a second history beside the system's."),
+        CapabilityDefinition(
             id: .liveListUpdates, area: "chat list", title: "List streams while visible",
             spec:
                 "The listing refreshes from SessionListStreaming pushes while the list is on screen; no manual refresh is the only path."),

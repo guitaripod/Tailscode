@@ -108,6 +108,7 @@ extension MainWindow {
                     $0.profileID == entry.profileID && $0.session.id == sessionID
                 }
                 self.noteListingMoved()
+                self.forgetInTrails(sessionIDs: [sessionID])
                 if self.freshlyCreated?.session.id == sessionID { self.freshlyCreated = nil }
                 let active = self.activePane
                 self.splitHost.eachPane { pane in

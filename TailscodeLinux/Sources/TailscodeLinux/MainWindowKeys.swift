@@ -132,6 +132,8 @@ extension MainWindow {
         case .selectFirst: cursor = 0; openCursor()
         case .selectLast: cursor = max(0, visible.count - 1); openCursor()
         case .openSelected: openCursor()
+        case .chatBack: return stepTrail(.back)
+        case .chatForward: return stepTrail(.forward)
         case .scrollDown: activePane.scroll(by: 60)
         case .scrollUp: activePane.scroll(by: -60)
         case .halfPageDown: activePane.scroll(byPages: 0.5)

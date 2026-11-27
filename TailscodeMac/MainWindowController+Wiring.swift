@@ -183,6 +183,7 @@ extension MainWindowController {
     /// Every pane showing a deleted session empties with an explanation; the sidebar's own flow
     /// already repopulates the focused one.
     private func paneCleanupAfterDelete(_ entry: SessionEntry) {
+        forgetInTrails(entry)
         splitPanes.eachPane { pane in
             guard pane.currentEntry?.session.id == entry.session.id,
                 pane.currentEntry?.profileID == entry.profileID

@@ -139,6 +139,9 @@ final class TranscriptViewController: NSViewController {
     var isFocusedPane = false
     var backend: (any CodingAgentBackend)?
     var entry: SessionEntry?
+    /// The chats this pane has shown, which the mouse's side buttons walk.
+    var trail = ChatTrail()
+    var trailSettleQueued = false
     #if !TAILSCODE_MAS
         /// What this pane is watching instead of talking, when it is a video slot rather than a
         /// chat.

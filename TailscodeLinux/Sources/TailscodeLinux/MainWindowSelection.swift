@@ -310,6 +310,7 @@ extension MainWindow {
         }
         marks.clear()
         let sessionIDs = Set(chosen.map(\.session.id))
+        forgetInTrails(sessionIDs: sessionIDs)
         let active = activePane
         splitHost.eachPane { pane in
             guard let id = pane.sessionID, sessionIDs.contains(id) else { return }

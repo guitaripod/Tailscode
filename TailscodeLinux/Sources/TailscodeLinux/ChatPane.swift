@@ -157,6 +157,9 @@ final class ChatPane: @unchecked Sendable {
     var pendingReveal = false
     var fillComplete = false
     var openTimer = OpenTimer()
+    /// The chats this pane has shown, which the mouse's side buttons walk.
+    var trail = ChatTrail()
+    var trailSettleQueued = false
     var rushing = false
     /// How much of a transcript is folded into rows at all — read from the streaming task, so it
     /// is a plain value rather than anything that needs the main context.

@@ -5,11 +5,20 @@ extension ShortcutRegistry {
     public static var appActionIDs: Set<String> { Set(appActions.map(\.id)) }
 
     /// The verbs that live in menus and header bars rather than in a pane: the windows the app
-    /// opens, the switches a person flips between conversations, and the list's own numbering.
+    /// opens, the switches a person flips between conversations, the list's own numbering, and the
+    /// trail a mouse's side buttons walk, which a phone's own navigation stack already is.
     /// Nearly all of them ship unbound — they exist so a person who wants a key for one has a
     /// place to put it, and so an upgrade never takes a key someone already uses.
     static let appActions: [ShortcutDefinition] =
         [
+            .init(
+                id: "chat.back", title: Localized.text("Back to the chat before"),
+                category: .chats, action: .chatBack, contexts: [.normal],
+                defaults: ["alt+left"]),
+            .init(
+                id: "chat.forward", title: Localized.text("Forward to the chat after"),
+                category: .chats, action: .chatForward, contexts: [.normal],
+                defaults: ["alt+right"]),
             .init(
                 id: "app.settings", title: Localized.text("Open Settings"), category: .app,
                 action: .openSettings, contexts: [.normal, .insert, .terminal],

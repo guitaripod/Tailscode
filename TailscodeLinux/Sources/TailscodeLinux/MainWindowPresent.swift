@@ -105,6 +105,7 @@ extension MainWindow {
 
         splitHost.eachPane { $0.rebuildHelpOverlay() }
         installKeymap(on: window)
+        installPointerButtons(on: window)
         installPressRouting(on: window)
         installSidebarLifecycle(on: window)
         if SummonSettings.isEnabled {

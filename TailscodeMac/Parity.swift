@@ -51,6 +51,7 @@ enum ParityManifest {
         case .transcriptSearch: return .implemented("runTranscriptSearch")
         case .listFilter: return .implemented("searchField")
         case .autoOpenLastSession: return .implemented("lastSession")
+        case .chatTrail: return .implemented("takesTrailButton")
         case .liveListUpdates: return .implemented("SessionListStreaming")
         case .rowContextActions: return .implemented("rowMenu")
         case .rowSnippet: return .implemented("ChatRowNews.reading")

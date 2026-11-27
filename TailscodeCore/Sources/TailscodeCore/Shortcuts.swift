@@ -779,6 +779,8 @@ public enum KeyAction: Equatable, Sendable {
     case selectFirst
     case selectLast
     case openSelected
+    case chatBack
+    case chatForward
     case scrollDown
     case scrollUp
     case halfPageDown

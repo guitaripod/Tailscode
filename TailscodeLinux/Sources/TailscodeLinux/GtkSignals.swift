@@ -429,6 +429,38 @@ extension Gtk {
         tailscode_connect_scroll(widget, callback, box)
     }
 
+    /// The side buttons of a mouse pressed anywhere under `widget`: each press's GDK button number
+    /// (8 and 9, or 10 and 11), in the capture phase. A press that is delivered is claimed, so the
+    /// widget under the pointer never also receives it.
+    static func onPointerButtons(
+        _ widget: UnsafeMutablePointer<GtkWidget>, _ handler: @escaping @Sendable (Int) -> Void
+    ) {
+        _ = releaseInstalled
+        let box = Unmanaged.passRetained(ButtonBox(handler)).toOpaque()
+        let callback: @convention(c) (Int32, UnsafeMutableRawPointer?) -> Void = { button, raw in
+            guard let raw else { return }
+            Unmanaged<ButtonBox>.fromOpaque(raw).takeUnretainedValue().handler(Int(button))
+        }
+        tailscode_connect_pointer_buttons(widget, callback, box)
+    }
+
+    /// Runs `work` after every event already queued has been dispatched and before the next frame
+    /// is painted, so a burst of requests made in one go is answered once, on the frame that
+    /// follows it.
+    static func beforePaint(_ work: @escaping @Sendable () -> Void) {
+        let box = Unmanaged.passRetained(Box(work)).toOpaque()
+        tailscode_on_main_before_paint(
+            { raw in
+                guard let raw else { return }
+                Unmanaged<Box>.fromOpaque(raw).takeRetainedValue().work()
+            }, box)
+    }
+
+    final class ButtonBox: @unchecked Sendable {
+        let handler: @Sendable (Int) -> Void
+        init(_ handler: @escaping @Sendable (Int) -> Void) { self.handler = handler }
+    }
+
     final class ScrollBox: @unchecked Sendable {
         let handler: @Sendable (Double) -> Bool
         init(_ handler: @escaping @Sendable (Double) -> Bool) { self.handler = handler }

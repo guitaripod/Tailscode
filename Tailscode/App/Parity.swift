@@ -36,6 +36,7 @@ enum ParityManifest {
                 "restorationActivity",
                 missing:
                     "only an iPad window the system restores reopens the conversation it was showing; the phone launches to the Home board by design, where Live cards and deep links reopen work")
+        case .chatTrail: return .notApplicable("a phone's navigation stack is the trail: the system's back swipe and button return to the chat before, and a side button on a mouse is not something UIKit reports")
         case .liveListUpdates: return .implemented("startStreams")
         case .rowContextActions: return .implemented("sessionMenu")
         case .rowSnippet: return .implemented("ChatRowNews.reading")

@@ -10,6 +10,7 @@ extension TranscriptViewController {
         railController.dismiss()
         guard self.entry?.session.id != entry.session.id || self.entry?.profileID != entry.profileID
         else { return }
+        trail.visit(ChatTarget(contextID: entry.profileID, sessionID: entry.session.id))
         beginOpenJourney()
         onStopWatch?(TileRuntime.key(entry))
         stopNamedSong()

@@ -32,6 +32,7 @@ final class MainWindow: @unchecked Sendable {
     /// beside it, and the keys whose model moved since the widgets were last made wait in
     /// `sidebarDirtyKeys` for a draw that can be seen.
     var sidebarCoalescer = RenderCoalescer()
+    var sidebarHoldUntil: TimeInterval = 0
     var sidebarRowCache = SessionRowModelCache()
     /// Counts every list draw begun, so a walk that went to a worker patches the rows only if no
     /// draw was made while it was away.

@@ -34,6 +34,7 @@ extension MainWindowController {
         mouseMonitor = NSEvent.addLocalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
         ) { [weak self] event in
+            if self?.takesTrailButton(event) == true { return nil }
             self?.pressLanded(event)
             return event
         }

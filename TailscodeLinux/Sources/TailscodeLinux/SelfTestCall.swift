@@ -180,6 +180,7 @@ extension SelfTest {
             case "share": report("analytics share: \(try checkAnalyticsShare()) claims hold")
             case "brain": report("brain: \(try checkBrain()) claims hold")
             case "chatswitch": report("chat switch: \(try checkChatSwitch()) claims hold")
+            case "chattrail": report("chat trail: \(try checkChatTrail()) claims hold")
             case "readoutswap": report("readout swap: \(try checkBrainSwap()) claims hold")
             case "setup": report("setup: \(try checkSetup()) claims hold")
             case "firstrun": report("first run: \(try checkFirstRun()) claims hold")

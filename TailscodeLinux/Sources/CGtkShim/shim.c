@@ -105,6 +105,18 @@ void tailscode_on_main(void (*handler)(void *), void *data) {
     g_idle_add_full(G_PRIORITY_DEFAULT, tailscode_idle_trampoline, box, NULL);
 }
 
+/// Work that must see every event already queued and still make the frame about to be drawn: an
+/// idle between `GDK_PRIORITY_EVENTS` and `GDK_PRIORITY_REDRAW`. Events are dispatched at
+/// `G_PRIORITY_DEFAULT`, so this one runs only once the queue is empty, and it runs before the frame
+/// clock paints, so what it changes is on the very next frame. A burst of presses that each ask for
+/// the same thing is therefore answered once, by the last of them, with no frame added.
+void tailscode_on_main_before_paint(void (*handler)(void *), void *data) {
+    TailscodeIdle *box = g_new0(TailscodeIdle, 1);
+    box->handler = handler;
+    box->data = data;
+    g_idle_add_full(G_PRIORITY_HIGH_IDLE + 10, tailscode_idle_trampoline, box, NULL);
+}
+
 #define TAILSCODE_SOAK_LAGS 4096
 
 static GMutex tailscode_soak_lock;
@@ -442,6 +454,45 @@ void tailscode_connect_scroll(
         controller, "scroll", G_CALLBACK(tailscode_scroll_trampoline), box,
         tailscode_scroll_destroy, 0);
     gtk_widget_add_controller(widget, controller);
+}
+
+typedef struct {
+    void (*handler)(int, void *);
+    void *data;
+} TailscodePointerButton;
+
+static void tailscode_pointer_button_pressed(
+    GtkGestureClick *gesture, gint n_press, gdouble x, gdouble y, gpointer raw) {
+    (void)n_press;
+    (void)x;
+    (void)y;
+    TailscodePointerButton *box = raw;
+    guint button = gtk_gesture_single_get_current_button(GTK_GESTURE_SINGLE(gesture));
+    if (button < 8) return;
+    gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+    box->handler((int)button, box->data);
+}
+
+static void tailscode_pointer_button_destroy(gpointer raw, GClosure *closure) {
+    (void)closure;
+    TailscodePointerButton *box = raw;
+    if (!box) return;
+    if (box->data && tailscode_box_release) tailscode_box_release(box->data);
+    g_free(box);
+}
+
+void tailscode_connect_pointer_buttons(
+    GtkWidget *widget, void (*handler)(int button, void *), void *data) {
+    TailscodePointerButton *box = g_new0(TailscodePointerButton, 1);
+    box->handler = handler;
+    box->data = data;
+    GtkGesture *click = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), 0);
+    gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(click), GTK_PHASE_CAPTURE);
+    g_signal_connect_data(
+        click, "pressed", G_CALLBACK(tailscode_pointer_button_pressed), box,
+        tailscode_pointer_button_destroy, 0);
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(click));
 }
 
 gboolean tailscode_focus_is_editable(GtkWidget *root) {

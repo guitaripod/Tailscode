@@ -668,6 +668,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkChatTrail()
+            report("chat trail: \(checks) claims hold — a pane's chats are a trail the side buttons walk, a burst lands on the last, and a chat in another pane or gone is stepped over")
+        } catch {
+            report("chat trail: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkBrainSwap()
             report("readout swap: \(checks) claims hold — a subject that arrives during the cross-fade waits for it, leaves the fading page whole and is never stale")
         } catch {

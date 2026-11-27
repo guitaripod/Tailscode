@@ -86,7 +86,7 @@ extension ChatPane {
         }
 
         let tailDone = start + renderedRows.count >= rows.count
-        if tailDone, start > 0, !initialFill {
+        if tailDone, start > 0, !initialFill, !FillTurns.isHeld {
             let from = max(0, start - FillTurns.chunk(level: CascadeBudget.level))
             holdingThePlace {
                 var previous: UnsafeMutablePointer<GtkWidget>?

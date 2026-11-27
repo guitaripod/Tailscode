@@ -57,6 +57,7 @@ extension ChatPane {
         else { return }
         Trace.mark("open begin \(entry.session.id.prefix(8))")
         openTimer.begin()
+        trail.visit(ChatTarget(contextID: entry.profileID, sessionID: entry.session.id))
         host?.stopWatching(SessionPinStore.key(entry.profileID, entry.session.id))
         MediaDeck.shared.release(owner: ObjectIdentifier(self))
         let previousEntry = self.entry

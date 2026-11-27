@@ -71,6 +71,8 @@ extension MainWindow {
                         "OPENID missing \(argument) of \(self.visible.count): \(ids.joined(separator: ","))\n"
                             .utf8))
             }
+        case "back", "forward", "trail", "trailburst", "trailbench":
+            self.driveTrail(verb, argument)
         case "openlink":
             self.openConnectLink(argument)
         case "frpaste", "frchoose", "frback", "frconfirm", "frconnect", "fragent", "franswer", "frhanded",

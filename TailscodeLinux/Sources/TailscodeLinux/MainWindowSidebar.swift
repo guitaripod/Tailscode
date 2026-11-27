@@ -17,7 +17,9 @@ extension MainWindow {
     }
 
     var sidebarInterval: TimeInterval {
-        SidebarCadence.interval(at: CascadeBudget.level, visible: sidebarWindowVisible)
+        max(
+            SidebarCadence.interval(at: CascadeBudget.level, visible: sidebarWindowVisible),
+            sidebarHoldUntil - Self.sidebarClock)
     }
 
     /// Asks for the list to be drawn. The first request after a quiet spell is drawn at once; the

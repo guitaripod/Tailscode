@@ -120,6 +120,10 @@ extension MainWindowController {
             sidebar.selectLast()
         case .openSelected:
             sidebar.openCursor()
+        case .chatBack:
+            return stepTrail(.back)
+        case .chatForward:
+            return stepTrail(.forward)
         case .search:
             sidebar.focusFilter()
         case .insert:

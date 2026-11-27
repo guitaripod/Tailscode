@@ -97,6 +97,16 @@ void tailscode_connect_key(
 void tailscode_connect_scroll(
     GtkWidget *widget, gboolean (*handler)(double dy, void *), void *data);
 
+/// A press of any pointer button past the third on `widget`, in the capture phase: the button's
+/// GDK number (8 and 9 for the side pair most mice carry, 10 and 11 for the forward and back keys the
+/// kernel names apart). The press is claimed, so nothing under the pointer also receives it.
+void tailscode_connect_pointer_buttons(
+    GtkWidget *widget, void (*handler)(int button, void *), void *data);
+
+/// Runs `handler` on the main context after every event already queued and before the next frame
+/// is painted.
+void tailscode_on_main_before_paint(void (*handler)(void *), void *data);
+
 /// Whether the widget that currently has focus inside `root` is one that takes text.
 gboolean tailscode_focus_is_editable(GtkWidget *root);
 

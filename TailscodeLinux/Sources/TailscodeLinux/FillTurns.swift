@@ -36,6 +36,7 @@ enum FillTurns {
     nonisolated(unsafe) private static var scheduled = false
     nonisolated(unsafe) private static var lastHop: (wall: Double, cpu: Double)?
     nonisolated(unsafe) private static var generation = 0
+    nonisolated(unsafe) private static var holdUntil = 0.0
 
     /// The share of the main thread a backfill may take over the time since its last hop.
     static let duty = 0.4
@@ -83,6 +84,17 @@ enum FillTurns {
         scheduled = false
         schedule()
     }
+
+    /// Keeps the backfill that is not urgent from taking its turn for `seconds` from now. A chat that
+    /// is about to be left again does not need the rows above its first screen, and building them
+    /// is what a hop's frame would otherwise be spent on.
+    static func hold(for seconds: Double) {
+        holdUntil = max(holdUntil, wallClock() + seconds)
+    }
+
+    /// Whether a hold is in force: a hand is hopping between chats, and what is built above the first
+    /// screen of the one on show is built for nothing.
+    static var isHeld: Bool { heldFor() > 0 }
 
     /// Takes back every hop a closing pane queued, so none of them runs for a pane that is gone.
     static func cancel(owner: AnyObject) {
@@ -148,17 +160,26 @@ enum FillTurns {
             }
             let wait =
                 waiting[next].isUrgent
-                ? 0 : rest(wall: wallClock(), cpu: mainThreadCPU(), since: lastHop, level: level)
-            if wait > 0 {
-                Gtk.after(UInt32((wait * 1000).rounded(.up))) {
-                    guard epoch == generation else { return }
-                    run()
-                }
-            } else {
-                run()
-            }
+                ? 0
+                : max(
+                    rest(wall: wallClock(), cpu: mainThreadCPU(), since: lastHop, level: level),
+                    heldFor())
+            proceed(after: wait, epoch: epoch)
         }
     }
+
+    /// Runs the next hop once `wait` has passed, asking again at the end of it: a hold taken while
+    /// the wait ran moves the turn, and a hop that has become urgent in the meantime does not wait.
+    private static func proceed(after wait: Double, epoch: Int) {
+        guard wait > 0 else { return run() }
+        Gtk.after(UInt32((wait * 1000).rounded(.up))) {
+            guard epoch == generation else { return }
+            let urgent = waiting.contains { $0.isUrgent }
+            proceed(after: urgent ? 0 : heldFor(), epoch: epoch)
+        }
+    }
+
+    private static func heldFor() -> Double { max(0, holdUntil - wallClock()) }
 
     private static func pause(epoch: Int) {
         Gtk.after(UInt32(pausedLook * 1000)) {

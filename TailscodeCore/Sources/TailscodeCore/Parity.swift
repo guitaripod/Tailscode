@@ -59,6 +59,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case listFilter
     case transcriptSearch
     case autoOpenLastSession
+    case chatTrail
     case liveListUpdates
     case rowContextActions
     case rowSnippet
