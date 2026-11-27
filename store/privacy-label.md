@@ -17,19 +17,21 @@ This replaces the earlier label, "Data Not Collected", which stops being true on
 | Identifiers, User ID | Yes | No | App Functionality | The random Midgar ID: sent as the sign-in token to `api.midgarcorp.cc` for the purchase ledger and for "Your Midgar" in the More Apps screen; carried by purchases as Apple's app account token |
 | Identifiers, Device ID | Yes | No | App Functionality | The app reads no advertising identifier and no vendor identifier. MidgarKit's App Attest key id, per app and per device, stored with the Midgar ID when the ID is created or joined. App Store and TestFlight builds use App Attest's production environment whether or not the app has the App Attest entitlement, so released builds create it. |
 | Purchases, Purchase History | Yes | No | App Functionality | The App Store transactions of Pro, and of the tips sold until 2026-11-13, sent to the Midgar ledger with the Midgar ID. App Store Server Notifications for the app already go to the same ledger; there is no RevenueCat SDK in the app. |
-| Usage Data, Product Interaction | No | No | Analytics | The anonymous More Apps events (opened, shown, tapped) and the purchase event with the product id, sent by MidgarKit's signals with no identifier. The app never starts MetricKit collection. |
+| Usage Data, Product Interaction | No | No | Analytics | The anonymous More Apps events (opened, shown, tapped) and the purchase event with the product id, sent by MidgarKit's signals with no identifier. From the first version released after 2026-11-27, through the same anonymous client, the app also counts which of its features are used in a week (chat, the Agents board, the Studio and others from a fixed list), whether the install is free, on a trial, paying or lapsed, how soon after installing the first answer an agent finished came, and, held back for hours and counted one fact at a time, what led up to a purchase. Each is a word from a fixed list; none carries an identifier, a conversation, a prompt, a file or a machine name. |
+| Diagnostics, Crash Data | No | No | App Functionality | From the same version: when the app crashes or freezes, MidgarKit sends one crash card to `api.midgarcorp.cc/v1/signals/diagnostics`: the kind of fault, the code addresses on the stack, the last screens shown (from a fixed list), the app build, the OS version and the device model, at most five a day. It holds no memory, no conversation, prompt or file text, no file path, no server or machine name, no Midgar ID and no device identifier, and the request carries no `Authorization` header. A TestFlight or development build sends none, and Usage Counts off stops it. |
+| Diagnostics, Performance Data | No | No | App Functionality | From the same version: daily numbers from MetricKit, sent as anonymous counts through the same signals client: how long the app takes to start, how long it stopped responding, the memory it used and how often the system ended it. Usage Counts turns them off too. |
 
 Everything else is "Data Not Collected".
 
 ## Data types answered "not collected", and why
 
 - User Content, Contact Info, Contacts, Browsing History, Search History, Sensitive Info, Financial Info, Health & Fitness, Location: none. Conversations, prompts, files and server credentials travel between the app and the servers the person runs over their own tailnet and never reach the developer. Server credentials stay in the Keychain.
-- Diagnostics: the log file (`tailscode.log`) stays on the device and is shared only when the person exports it or mails the diagnostic summary. MetricKit is not collected.
+- Other Diagnostic Data: none. Only the crash cards and the daily performance numbers in the table leave the device; MetricKit's full reports and the log file (`tailscode.log`) stay on it, and the log is shared only when the person exports it or mails the diagnostic summary.
 - Direct requests to the Ollama and DeepSeek usage endpoints and to Google, which the person enables with their own keys, go from the device to those providers and are not collected by the developer.
 
 ## Third-party SDK notes
 
-- MidgarKit: `MidgarPortal` ships a manifest that declares Product Interaction for Analytics, not linked, matching the row above. `MidgarCore`, `MidgarCommerce` and `MidgarUI` send only the Midgar ID, the App Attest key id and the ledger reports described above.
+- MidgarKit: `MidgarPortal` ships a manifest that declares Product Interaction for Analytics, not linked, matching the row above. `MidgarCore`, `MidgarCommerce` and `MidgarUI` send only the Midgar ID, the App Attest key id, the ledger reports and the anonymous counts and crash cards described above; Settings › About › Usage Counts on the phone and Settings › General › Usage Counts on the Mac turn the counts and the cards off.
 - CodingAgentKit: no data collected.
 
 ## Required-reason APIs (in the manifests, not in the label)
