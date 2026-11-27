@@ -61,6 +61,7 @@ extension MainWindow {
         Trace.mark("trail \(target.sessionID.prefix(8))")
         keepBackgroundWorkOut()
         pane.open(entry)
+        followInSidebar(target)
         warmTrailNeighbours(of: pane)
     }
 
@@ -71,6 +72,15 @@ extension MainWindow {
         let now = Self.sidebarClock
         sidebarHoldUntil = now + ChatTrail.quiet
         sidebarCoalescer.flush(at: now)
+    }
+
+    /// The list's mark moves with the chat, at once and in place: two rows change a style class, the
+    /// keyboard cursor is re-derived and a row that is out of view is brought just inside it. The
+    /// draw that settles everything else a hop changes (a chat now read, an order) waits for the hand.
+    private func followInSidebar(_ target: ChatTarget) {
+        markFocusedRow(target.sessionID)
+        syncCursorToSelection()
+        revealCursorRow()
     }
 
     /// The chats either side of the place are the next press's destination, so a chat the window no
