@@ -167,6 +167,9 @@ extension MainWindow {
             activePane.insertIntoComposer(seed.replacingOccurrences(of: "\\n", with: "\n"))
         }
         installDriver()
+        SettingsYourModelPage.open = { [weak self] in
+            Gtk.onMain { [weak self] in self?.presentSettings(page: .yourModel) }
+        }
         Soak.watchFrames(of: window)
     }
 

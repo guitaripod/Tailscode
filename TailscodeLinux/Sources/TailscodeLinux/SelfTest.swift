@@ -485,7 +485,7 @@ public enum SelfTest {
 
         do {
             let checks = try checkSettingsPages()
-            report("settings: \(checks) claims hold — seven pages that answer to their names, a remembered page, cards that name the chosen theme")
+            report("settings: \(checks) claims hold — eight pages that answer to their names, a remembered page, cards that name the chosen theme")
         } catch {
             report("settings: \(error)")
             failures += 1

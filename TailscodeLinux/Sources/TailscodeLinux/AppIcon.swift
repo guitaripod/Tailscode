@@ -14,6 +14,7 @@ enum AppIcon: String, CaseIterable {
     case notifications = "tailscode-notifications-symbolic"
     case accounts = "tailscode-accounts-symbolic"
     case keyboard = "tailscode-keyboard-symbolic"
+    case yourModel = "tailscode-your-model-symbolic"
     case advanced = "tailscode-advanced-symbolic"
     case warning = "tailscode-warning-symbolic"
 
@@ -87,6 +88,11 @@ enum AppIcon: String, CaseIterable {
         case .keyboard:
             return """
                 <path fill-rule="evenodd" d="M2.5 3.2h11A1.5 1.5 0 0 1 15 4.7v6.6a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 11.3V4.7a1.5 1.5 0 0 1 1.5-1.5ZM3 5.2v1.4h1.6V5.2ZM5.8 5.2v1.4h1.6V5.2ZM8.6 5.2v1.4h1.6V5.2ZM11.4 5.2v1.4H13V5.2ZM3 7.6V9h1.6V7.6ZM5.8 7.6V9h4.4V7.6ZM11.4 7.6V9H13V7.6ZM4.6 10v1.2h6.8V10Z"/>
+                """
+        case .yourModel:
+            return """
+                <path d="M6.4 3.2Q6.9 8.4 12.1 8.9Q6.9 9.4 6.4 14.6Q5.9 9.4 0.7 8.9Q5.9 8.4 6.4 3.2Z"/>\
+                <path d="M12.4 0.9Q12.7 3.2 15 3.5Q12.7 3.8 12.4 6.1Q12.1 3.8 9.8 3.5Q12.1 3.2 12.4 0.9Z"/>
                 """
         case .advanced:
             return """

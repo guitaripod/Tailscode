@@ -86,7 +86,7 @@ extension SettingsViewController {
             (.midgar, [.midgar]),
             (.alerts, alerts),
             (.network, [.page(.connections), .page(.tailnet), .softwareUpdate]),
-            (.experience, [.page(.notifications), .page(.chat), .page(.appearance), .haptics]),
+            (.experience, [.page(.notifications), .page(.chat), .yourModel, .page(.appearance), .haptics]),
             (.accounts, [.usage, .page(.keys)]),
             (.pro, [.pro]),
             (.support, [.page(.diagnostics), .page(.about)]),
@@ -276,6 +276,9 @@ extension SettingsViewController {
             return String(
                 localized: "haptics vibration taptic strength intensity feedback buzz",
                 comment: "search keywords")
+        case .yourModel:
+            return YourModelWords.title + " "
+                + Localized.text("local model llm ollama llama-swap lm studio helper prompt writer private")
         case .appearance:
             return String(
                 localized:

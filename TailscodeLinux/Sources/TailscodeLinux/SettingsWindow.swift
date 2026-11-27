@@ -12,6 +12,7 @@ enum SettingsPage: String, CaseIterable {
     case notifications
     case accounts
     case keyboard
+    case yourModel
     case advanced
 
     var title: String {
@@ -22,6 +23,7 @@ enum SettingsPage: String, CaseIterable {
         case .notifications: return Localized.text("Notifications")
         case .accounts: return Localized.text("Accounts")
         case .keyboard: return Localized.text("Keyboard")
+        case .yourModel: return YourModelWords.title
         case .advanced: return Localized.text("Advanced")
         }
     }
@@ -34,6 +36,7 @@ enum SettingsPage: String, CaseIterable {
         case .notifications: return AppIcon.notifications.name
         case .accounts: return AppIcon.accounts.name
         case .keyboard: return AppIcon.keyboard.name
+        case .yourModel: return AppIcon.yourModel.name
         case .advanced: return AppIcon.advanced.name
         }
     }
@@ -50,6 +53,7 @@ enum SettingsPage: String, CaseIterable {
         case .notifications: SettingsNotificationsPage.fill(page, context)
         case .accounts: SettingsAccountsPage.fill(page, context)
         case .keyboard: SettingsKeyboardPage.fill(page, context)
+        case .yourModel: SettingsYourModelPage.fill(page, context)
         case .advanced: SettingsAdvancedPage.fill(page, context)
         }
         return page
@@ -102,7 +106,7 @@ final class SettingsContext: @unchecked Sendable {
     }
 }
 
-/// The settings window: seven pages in an Adwaita preferences window — a switcher across the top,
+/// The settings window: eight pages in an Adwaita preferences window — a switcher across the top,
 /// search across every row of every page — and every control applying live, because the only
 /// honest way to pick a size or a theme is to watch it change. There is one: asking for Settings
 /// while it is open raises it, on the page asked for.

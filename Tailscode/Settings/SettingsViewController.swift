@@ -129,6 +129,8 @@ final class SettingsViewController: UIViewController {
                 navigationController?.pushViewController(LogViewerViewController(), animated: false)
             case "haptics":
                 navigationController?.pushViewController(HapticsViewController(), animated: false)
+            case "yourModel":
+                navigationController?.pushViewController(YourModelViewController(), animated: false)
             case "updates":
                 navigationController?.pushViewController(
                     UpdateCenterViewController(), animated: false)

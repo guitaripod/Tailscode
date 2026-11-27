@@ -267,6 +267,11 @@ enum StudioHelperMenu {
                         systemName: current.enabled ? "wand.and.stars.inverse" : "wand.and.stars")
                 ) { _ in studio.toggleHelper() })
         }
+        children.append(
+            UIAction(
+                title: YourModelWords.menuTitle, subtitle: YourModelWords.menuHint,
+                image: UIImage(systemName: "sparkles")
+            ) { _ in YourModelViewController.presentModally() })
         return UIMenu(title: ImageGenRewriteWords.chooseTitle, children: children)
     }
 }

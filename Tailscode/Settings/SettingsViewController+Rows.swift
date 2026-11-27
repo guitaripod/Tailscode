@@ -452,6 +452,12 @@ extension SettingsViewController {
             content.text = String(localized: "Streaming")
             content.secondaryText = StreamRendererSetting.choice.title
             cell.accessories = alphaMark() + [.disclosureIndicator()]
+        case .yourModel:
+            content = quiet(.valueCell())
+            content.text = YourModelWords.title
+            content.secondaryText = YourModelStore.current().map { $0.label ?? $0.model } ?? YourModelWords.setUp
+            content.image = tile(SettingsTile("sparkles", .purple))
+            cell.accessories = [.disclosureIndicator()]
         case .haptics:
             content = quiet(.valueCell())
             content.text = String(localized: "Haptics")

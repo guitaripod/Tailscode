@@ -62,6 +62,12 @@ enum HelperMenu {
                     detail: current.enabled ? ImageGenWords.helperOffHint : current.displayHost,
                     action: { Gtk.onMain { host.toggleHelper() } }))
         }
+        if SettingsYourModelPage.open != nil {
+            tail.append(
+                Gtk.MenuRow(
+                    title: YourModelWords.menuTitle, detail: YourModelWords.menuHint,
+                    action: { SettingsYourModelPage.open?() }))
+        }
         sections.append(Gtk.MenuSection(heading: nil, rows: tail))
         return sections
     }

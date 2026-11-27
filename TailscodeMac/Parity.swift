@@ -138,6 +138,7 @@ enum ParityManifest {
         case .agentPeek: return .implemented("AgentPeekViewController")
         case .agentsHour: return .implemented("AgentHourView")
         case .agentsLocalWords: return .gap("The wall is Linux's first; Foundation Models is the on-device way for the Mac's")
+        case .yourModel: return .implemented("YourModelPane")
         case .agentsWatchEffects: return .implemented("WatchEffectsDriver")
         case .agentsWatchStyle: return .implemented("WatchStylePopover")
         case .agentsWatchEmblems: return .implemented("showsEmblems")

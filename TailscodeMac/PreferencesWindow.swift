@@ -83,7 +83,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         super.init(window: window)
         window.delegate = self
         window.center()
-        window.setFrameAutosaveName("TailscodeSettingsPanes2")
+        window.setFrameAutosaveName("TailscodeSettingsPanes3")
         NotificationCenter.default.addObserver(
             self, selector: #selector(repaint), name: MacTheme.Chrome.didRepaint, object: nil)
         #if !TAILSCODE_MAS
@@ -120,9 +120,9 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    /// The size the window opens at the first time: wide enough for seven toolbar pages and tall
+    /// The size the window opens at the first time: wide enough for eight toolbar pages and tall
     /// enough that most pages are read without scrolling.
-    static let openSize = NSSize(width: 660, height: 680)
+    static let openSize = NSSize(width: 740, height: 680)
 
     /// Every row reads its value from a store as it is built, and this window is kept for the life
     /// of the app — so the pages are made at each presentation rather than once. A demo world
@@ -134,7 +134,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
     }
 
     /// The page a name stands for — `appearance`, `conversation`, `notifications`, `accounts`,
-    /// `keyboard` or `advanced` — for a launch argument that wants to look at one.
+    /// `keyboard`, `yourModel` or `advanced` — for a launch argument that wants to look at one.
     static func page(named name: String) -> Int? {
         Pane.allCases.firstIndex { String(describing: $0) == name }
     }
@@ -168,7 +168,7 @@ final class PreferencesWindow: NSWindowController, NSWindowDelegate {
         window.contentViewController = controller
         if wasShown {
             window.setFrame(frame, display: true)
-        } else if !window.setFrameUsingName("TailscodeSettingsPanes2") {
+        } else if !window.setFrameUsingName("TailscodeSettingsPanes3") {
             window.setContentSize(Self.openSize)
             window.center()
         }

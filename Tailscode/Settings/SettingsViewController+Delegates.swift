@@ -162,6 +162,9 @@ extension SettingsViewController: UICollectionViewDelegate {
         case .haptics:
             Theme.Haptics.tap()
             navigationController?.pushViewController(HapticsViewController(), animated: true)
+        case .yourModel:
+            Theme.Haptics.tap()
+            navigationController?.pushViewController(YourModelViewController(), animated: true)
         case .appearance:
             Theme.Haptics.tap()
             let picker = ThemePickerViewController()

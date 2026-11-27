@@ -15,6 +15,7 @@ extension PreferencesWindow {
         case notifications
         case accounts
         case keyboard
+        case yourModel
         case advanced
 
         var title: String {
@@ -25,6 +26,7 @@ extension PreferencesWindow {
             case .notifications: return Localized.text("Notifications")
             case .accounts: return Localized.text("Accounts")
             case .keyboard: return Localized.text("Keyboard")
+            case .yourModel: return YourModelWords.title
             case .advanced: return Localized.text("Advanced")
             }
         }
@@ -37,6 +39,7 @@ extension PreferencesWindow {
             case .notifications: return "bell"
             case .accounts: return "person.crop.circle"
             case .keyboard: return "keyboard"
+            case .yourModel: return "sparkles"
             case .advanced: return "gearshape.2"
             }
         }
@@ -89,11 +92,18 @@ extension PreferencesWindow {
         case .notifications: return notificationsPane()
         case .accounts: return accountsPane()
         case .keyboard: return keyboardPane()
+        case .yourModel: return yourModelPane()
         case .advanced: return advancedPane()
         }
     }
 
-    /// One Settings page, drawn the first time its tab is shown. Seven pages were built to open
+    private func yourModelPane() -> NSView {
+        let column = newColumn()
+        YourModelPane.fill(column)
+        return scrolled(column)
+    }
+
+    /// One Settings page, drawn the first time its tab is shown. Eight pages were built to open
     /// the first, and the click that opened the window waited for all of them.
     @MainActor
     final class LazyPreferencesPane: NSViewController {

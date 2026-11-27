@@ -384,6 +384,13 @@ extension MainWindow {
     }
 
     func presentSettings(page: SettingsPage? = nil) {
+        SettingsYourModelPage.askAgent = { [weak self] profile, draft in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.createChat(on: profile, directory: nil, carrying: CarryPlan(brief: nil, draft: draft))
+                if let window = self.window { gtk_window_present(ptr(window)) }
+            }
+        }
         SettingsWindow.present(
             parent: window, page: page,
             onLayoutChanged: { [weak self] in

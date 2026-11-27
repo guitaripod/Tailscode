@@ -219,6 +219,7 @@ extension SettingsViewController {
         case keyboardShortcuts
         case dictationLanguage
         case haptics
+        case yourModel
         case streamRenderer
         case appearance
         case chatDensity

@@ -491,6 +491,7 @@ public struct ImageGenRewriteContext: Sendable, Equatable {
 /// never learned to stream still answers.
 final class ChatCompletionStream: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let continuation: AsyncThrowingStream<String, Error>.Continuation
+    private let onUsage: (@Sendable (Int) -> Void)?
     private let lock = NSLock()
     private var status: Int?
     private var streaming = false
@@ -498,13 +499,20 @@ final class ChatCompletionStream: NSObject, URLSessionDataDelegate, @unchecked S
     private var whole = Data()
     private var finished = false
 
-    private init(continuation: AsyncThrowingStream<String, Error>.Continuation) {
+    private init(
+        continuation: AsyncThrowingStream<String, Error>.Continuation, onUsage: (@Sendable (Int) -> Void)?
+    ) {
         self.continuation = continuation
+        self.onUsage = onUsage
     }
 
-    static func open(_ request: URLRequest, session base: URLSession) -> AsyncThrowingStream<String, Error> {
+    /// `onUsage` is handed the completion's token count when the server reports one, which it does
+    /// in a last chunk when asked with `stream_options.include_usage`.
+    static func open(
+        _ request: URLRequest, session base: URLSession, onUsage: (@Sendable (Int) -> Void)? = nil
+    ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            let reader = ChatCompletionStream(continuation: continuation)
+            let reader = ChatCompletionStream(continuation: continuation, onUsage: onUsage)
             let session = URLSession(
                 configuration: base.configuration, delegate: reader, delegateQueue: nil)
             let task = session.dataTask(with: request)
@@ -583,8 +591,12 @@ final class ChatCompletionStream: NSObject, URLSessionDataDelegate, @unchecked S
         let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
         guard payload != "[DONE]", !payload.isEmpty else { return }
         guard let data = payload.data(using: .utf8),
-            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let choices = object["choices"] as? [[String: Any]],
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return }
+        if let tokens = ((object["usage"] as? [String: Any])?["completion_tokens"] as? NSNumber)?.intValue {
+            onUsage?(tokens)
+        }
+        guard let choices = object["choices"] as? [[String: Any]],
             let delta = choices.first?["delta"] as? [String: Any],
             let content = delta["content"] as? String, !content.isEmpty
         else { return }

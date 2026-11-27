@@ -4,13 +4,12 @@ import Foundation
 import TailscodeCore
 
 /// Advanced: what a bug report needs, what the app keeps on disk, how the agents wall looks and
-/// moves, the opt-in for plain words from a local model, and work that is not ready.
+/// moves, and work that is not ready. Plain words from a local model live on Your model.
 enum SettingsAdvancedPage {
     static func fill(_ page: UnsafeMutablePointer<GtkWidget>, _ context: SettingsContext) {
         addDiagnostics(to: page)
         addStorage(to: page)
         SettingsWatchStyle.add(to: page)
-        SettingsPlainWords.add(to: page)
         addAlpha(page, context)
     }
 

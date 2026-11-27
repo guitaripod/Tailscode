@@ -133,6 +133,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case agentsHour
     case agentsWatch
     case agentsLocalWords
+    case yourModel
     case agentsWatchEffects
     case agentsWatchStyle
     case agentsWatchEmblems

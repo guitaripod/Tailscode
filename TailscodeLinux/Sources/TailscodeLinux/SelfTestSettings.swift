@@ -4,7 +4,7 @@ import Foundation
 import TailscodeCore
 
 extension SelfTest {
-    /// Settings is seven pages the shell builds from one table: each must come out as a page that
+    /// Settings is eight pages the shell builds from one table: each must come out as a page that
     /// answers to its own name (the one `adw_preferences_window_set_visible_page_name` looks for),
     /// the shell must remember the page it was left on, and the theme cards must name the theme
     /// they show as chosen.
@@ -20,7 +20,7 @@ extension SelfTest {
             window: Gtk.WeakWidget(host), onLayoutChanged: {}, onShortcutsChanged: {},
             onShowCheatsheet: {}, onOrbChanged: {}, onUsageKeysChanged: {}, onOpenServers: {},
             onOpenUpdates: {}, isPaneShown: { _ in true }, setPaneShown: { _, _ in })
-        try expect(SettingsPage.allCases.count == 7, "the same seven pages the Mac has")
+        try expect(SettingsPage.allCases.count == 8, "the same eight pages the Mac has")
         for page in SettingsPage.allCases {
             let built = page.build(context)
             let name = adw_preferences_page_get_name(ptr(built)).map { String(cString: $0) }

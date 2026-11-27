@@ -268,6 +268,7 @@ enum ParityManifest {
         case .agentsHour: return .implemented("AgentHourView")
         case .agentsWatch: return .implemented("AgentsWatchView")
         case .agentsLocalWords: return .implemented("PlainWordsModel")
+        case .yourModel: return .implemented("SettingsYourModelPage")
         case .agentsWatchEffects: return .implemented("WatchEffectsLayer")
         case .agentsWatchStyle: return .implemented("SettingsWatchStyle")
         case .agentsWatchEmblems: return .implemented("emblemLayer")

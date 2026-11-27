@@ -16,7 +16,8 @@ final class PlainWordsCheckHeld: @unchecked Sendable {
 /// network is an address under Another server, vetted as it is typed. The wall rebuilds its model
 /// from the settings after every change.
 enum SettingsPlainWords {
-    static func add(to page: UnsafeMutablePointer<GtkWidget>) {
+    @discardableResult
+    static func add(to page: UnsafeMutablePointer<GtkWidget>) -> (group: UnsafeMutablePointer<GtkWidget>, setup: PlainWordsSetup) {
         let group = SettingsRows.group(Localized.text("Plain words"), on: page)
         let setup = PlainWordsSetup()
         SettingsRows.keep(setup, alive: group)
@@ -70,6 +71,7 @@ enum SettingsPlainWords {
         adw_expander_row_set_expanded(ptr(other), Preferences.plainWordsFound ? 0 : (Preferences.plainWordsAddress.isEmpty ? 0 : 1))
         SettingsRows.add(other, to: group)
         setup.opened()
+        return (group, setup)
     }
 
     static func changed() {
@@ -200,7 +202,7 @@ final class PlainWordsSetup: @unchecked Sendable {
         }
         show(
             title: Localized.text("Model"),
-            subtitle: Localized.text("Turn the switch on and a model on this machine is found and tried"),
+            subtitle: Self.idleHint,
             button: Localized.text("Find"))
     }
 
@@ -218,7 +220,7 @@ final class PlainWordsSetup: @unchecked Sendable {
         show(
             title: Localized.text("Model"),
             subtitle: address.isEmpty
-                ? Localized.text("Turn the switch on and a model on this machine is found and tried")
+                ? Self.idleHint
                 : Localized.text("Using %@", Self.place(address, Preferences.plainWordsModel)),
             button: Localized.text("Find again"))
     }
@@ -237,10 +239,51 @@ final class PlainWordsSetup: @unchecked Sendable {
         asking = nil
         show(title: Localized.text("Model"), subtitle: Localized.text("Looking on this machine…"), button: nil)
         let scout = scout()
+        let mine = Self.yourModel()
         Task { [self] in
+            if let mine, Self.asksFreely(mine, seen: await scout.look()), let proved = await scout.trial(mine) {
+                Gtk.onMain { self.landed(.ready(mine, line: proved.line, seconds: proved.seconds, pinned: true)) }
+                return
+            }
             let outcome = await scout.settle()
             Gtk.onMain { self.landed(outcome) }
         }
+    }
+
+    /// What the model row says before the switch is on: the person's own model when one is filed.
+    static var idleHint: String {
+        guard let filed = YourModelStore.current() else {
+            return Localized.text("Turn the switch on and a model on this machine is found and tried")
+        }
+        return Localized.text("Turn the switch on and %@, your model, is tried first", filed.label ?? filed.model)
+    }
+
+    /// Whether trying `mine` costs nothing: it is running where this machine's look saw it, or its
+    /// server never stops one model to load another. A model llama-swap would have to load is left
+    /// to the finder, which asks before starting anything.
+    static func asksFreely(_ mine: PlainModelScout.Model, seen models: [PlainModelScout.Model]) -> Bool {
+        let port = mine.base.port
+        if let seen = models.first(where: { $0.id == mine.id && $0.base.port == port }) {
+            return seen.running == true || !seen.kind.mayStopAnother
+        }
+        return !mine.kind.mayStopAnother
+    }
+
+    /// The model filed as the person's own, when it is on this machine or their network: plain words
+    /// tries it before looking for another, so the wall says lines with the model everything else
+    /// uses.
+    static func yourModel() -> PlainModelScout.Model? {
+        guard let filed = YourModelStore.current(), YourModelStore.isPrivate(filed),
+            let base = URL(string: YourModelStore.plainWordsAddress(filed))
+        else { return nil }
+        let kind: PlainModelScout.Kind =
+            switch base.port {
+            case 8081: .llamaSwap
+            case 11434: .ollama
+            case 1234: .lmStudio
+            default: .other
+            }
+        return PlainModelScout.Model(id: filed.model, name: filed.label ?? "", running: true, kind: kind, base: base)
     }
 
     private func start(_ model: PlainModelScout.Model) {

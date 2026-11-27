@@ -403,6 +403,13 @@ final class StudioDockView: NSView, StudioDocking {
             toggle.toolTip = current.enabled ? ImageGenWords.helperOffHint : current.displayHost
             menu.addItem(toggle)
         }
+        let yours = ClosureMenuItem(title: YourModelWords.menuTitle) {
+            let main = NSApp.windows.lazy.compactMap { $0.windowController as? MainWindowController }.first
+            main?.presentPreferences(page: PreferencesWindow.page(named: "yourModel"))
+        }
+        yours.toolTip = YourModelWords.menuHint
+        menu.addItem(.separator())
+        menu.addItem(yours)
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: anchor.bounds.height + 4), in: anchor)
     }
 
