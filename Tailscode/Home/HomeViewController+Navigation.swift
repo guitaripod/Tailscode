@@ -20,6 +20,9 @@ extension HomeViewController {
             return
         }
         guard let entry = viewModel.entries.first(where: { $0.session.id == id }) else {
+            MidgarLog.info(
+                "session link waits for a listing: \(id) is not among \(viewModel.entries.count) listed",
+                category: .session)
             pendingDeepLink = (id, Date())
             Task { await load() }
             return
@@ -57,6 +60,8 @@ extension HomeViewController {
     func consumePendingDeepLink() {
         guard let pending = pendingDeepLink else { return }
         guard Date().timeIntervalSince(pending.parkedAt) < 30 else {
+            MidgarLog.error(
+                "session link dropped: \(pending.sessionID) was not listed within 30 s", category: .session)
             pendingDeepLink = nil
             return
         }

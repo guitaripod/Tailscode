@@ -26,7 +26,6 @@ struct LiveActivityWidget: Widget {
                     CardOrb(model: model, size: 46)
                         .padding(.leading, 6)
                         .padding(.top, 4)
-                        .widgetURL(sessionURL(context))
                 }
                 DynamicIslandExpandedRegion(.center) {
                     IslandTitle(model: model)
@@ -52,6 +51,7 @@ struct LiveActivityWidget: Widget {
             } minimal: {
                 IslandDot(model: model, size: 22)
             }
+            .widgetURL(sessionURL(context))
             .keylineTint(model.ink)
             .contentMargins(.horizontal, 14, for: .expanded)
         }

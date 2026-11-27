@@ -556,6 +556,9 @@ final class AppCoordinator: NSObject {
         let sessionID = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let decoded = sessionID.removingPercentEncoding ?? sessionID
         guard !decoded.isEmpty else { return }
+        MidgarLog.info(
+            "session link opened \(decoded)\(home == nil ? ", parked until Home stands" : "")",
+            category: .session)
         guard let home else {
             pendingSessionLink = (url, Date())
             return
