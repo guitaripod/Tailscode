@@ -62,7 +62,7 @@ progress_ticker() {
 
 progress_ticker &
 TICKER=$!
-trap 'kill "$TICKER" 2>/dev/null; rm -f "$BUILD_STATE"' EXIT
+trap 'kill "$TICKER" 2>/dev/null || true; rm -f "$BUILD_STATE"' EXIT
 echo "building (full log: $BUILD_LOG)"
 set +e
 swift build -c release --manifest-cache none -v 2>&1 | tee "$BUILD_LOG" | sed -u 's/\xe2\x80\x89/ /g' |
@@ -172,6 +172,15 @@ if [ "${1:-}" != "--no-restart" ] && [ "$WAS_RUNNING" = yes ]; then
     # at login, so it answers even after a chain of restarts from agent shells left every
     # tailscode process without one — and an app whose environment names no display hands none
     # to the browser it opens, which then starts and dies unseen.
+    # A shell that came in over ssh has no session bus to speak to, so the user's systemd manager
+    # could not be asked for the display or for a scope: the old app was stopped and nothing came
+    # back. The bus lives at a fixed place for as long as the person is logged in.
+    if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "/run/user/$(id -u)" ]; then
+        export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    fi
+    if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -S "${XDG_RUNTIME_DIR:-/nonexistent}/bus" ]; then
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+    fi
     DISPLAY_ENV=""
     if [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
         DISPLAY_ENV=$(systemctl --user show-environment 2>/dev/null |
