@@ -305,6 +305,7 @@ final class ServerSetupViewController: UIViewController {
         var views = renderer.views(for: row.blocks, slot: row.id.rawValue)
         if row.id == .machine, plan.back != nil { views.insert(backButton, at: 0) }
         arrange(views, in: card.content)
+        card.contentDidChange()
     }
 
     private func arrange(_ views: [UIView], in stack: UIStackView) {

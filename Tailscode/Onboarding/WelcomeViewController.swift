@@ -90,8 +90,7 @@ final class WelcomeViewController: UIViewController {
                     localized: "Point to point over your own tailnet. No relay, no sign-in.")),
             Self.valueRow(
                 symbol: "bell.badge",
-                text: String(
-                    localized: "Turns finish on your Lock Screen while the phone is in your pocket.")),
+                text: DeviceWord.turnsOnLockScreen),
         ])
         values.axis = .vertical
         values.spacing = Theme.Spacing.m

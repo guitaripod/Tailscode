@@ -397,13 +397,37 @@ final class SetupStepCard: UIView {
         applyHeaderAxis()
     }
 
-    /// At accessibility text sizes a status chip beside the title squeezes it into
-    /// a two-character column, so the header becomes two rows instead.
+    /// A status chip beside the title is one line only while both fit on it. At accessibility
+    /// text sizes, or with a chip as long as a tailnet address on a narrow phone, the chip squeezes
+    /// the title onto two lines, so the header becomes two rows instead.
     private func applyHeaderAxis() {
-        let accessible = traitCollection.preferredContentSizeCategory.isAccessibilityCategory
-        headerText?.axis = accessible ? .vertical : .horizontal
-        headerText?.alignment = accessible ? .leading : .firstBaseline
-        headerText?.spacing = accessible ? Theme.Spacing.xs : Theme.Spacing.s
+        guard let headerText else { return }
+        let stacked =
+            traitCollection.preferredContentSizeCategory.isAccessibilityCategory || !headerFitsOneLine
+        guard (headerText.axis == .vertical) != stacked else { return }
+        headerText.axis = stacked ? .vertical : .horizontal
+        headerText.alignment = stacked ? .leading : .firstBaseline
+        headerText.spacing = stacked ? Theme.Spacing.xs : Theme.Spacing.s
+    }
+
+    /// Measured from what the title and the chip ask for and the width of the column the header
+    /// fills, which is placed by this card's own pass and depends on no axis of the header's, so
+    /// the answer is there on the first layout and cannot flip the layout back.
+    private var headerFitsOneLine: Bool {
+        guard let room = headerText?.superview?.bounds.width, room > 0, !statusPill.isHidden else {
+            return true
+        }
+        let wanted =
+            titleLabel.sizeThatFits(
+                CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+            ).width + Theme.Spacing.s
+            + statusPill.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize).width
+        return wanted <= room
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        applyHeaderAxis()
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -427,6 +451,13 @@ final class SetupStepCard: UIView {
 
     func setPill(_ text: String?, symbol: String = "checkmark.circle.fill", tint: UIColor = Theme.Color.success) {
         statusPill.set(text, symbol: symbol, tint: tint)
+        setNeedsLayout()
+    }
+
+    /// A step with nothing under its sentence ends at the sentence. An empty stack still takes
+    /// the gap in front of it, which left a done step with a taller foot than the steps around it.
+    func contentDidChange() {
+        content.isHidden = content.arrangedSubviews.isEmpty
     }
 
     private func applyStatus(animated: Bool) {
@@ -798,9 +829,9 @@ final class OnboardingFooterBar: UIView {
 
         NSLayoutConstraint.activate([
             glass.topAnchor.constraint(equalTo: topAnchor),
-            glass.leadingAnchor.constraint(equalTo: leadingAnchor),
-            glass.trailingAnchor.constraint(equalTo: trailingAnchor),
-            glass.bottomAnchor.constraint(equalTo: bottomAnchor),
+            glass.leadingAnchor.constraint(equalTo: leadingAnchor).withPriority(.defaultHigh),
+            glass.trailingAnchor.constraint(equalTo: trailingAnchor).withPriority(.defaultHigh),
+            glass.bottomAnchor.constraint(equalTo: bottomAnchor).withPriority(.defaultHigh),
             stack.topAnchor.constraint(equalTo: topAnchor, constant: Theme.Spacing.m),
             stack.centerXAnchor.constraint(equalTo: centerXAnchor),
             stack.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -2 * Theme.Spacing.l),
@@ -812,6 +843,20 @@ final class OnboardingFooterBar: UIView {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// The bar is docked above the keyboard's guide, which rests on the safe area, so glass that
+    /// stopped at the bar's own edges left a strip of bare screen under it beside the home
+    /// indicator and, held sideways, beside the sensor housing. The glass runs to the edges of the
+    /// screen it is on instead, and the buttons stay where the bar is.
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        guard let superview else { return }
+        NSLayoutConstraint.activate([
+            glass.leadingAnchor.constraint(equalTo: superview.leadingAnchor),
+            glass.trailingAnchor.constraint(equalTo: superview.trailingAnchor),
+            glass.bottomAnchor.constraint(equalTo: superview.bottomAnchor),
+        ])
+    }
 
     var hasContent: Bool { !primary.isHidden || !secondary.isHidden }
 

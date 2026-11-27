@@ -673490,6 +673490,107 @@
           }
         }
       }
+    },
+    "Turns finish on your Lock Screen while the iPad is put away.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turns finish on your Lock Screen while the iPad is put away."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Züge laufen auf dem Sperrbildschirm zu Ende, während das iPad beiseite liegt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los turnos terminan en tu pantalla bloqueada mientras el iPad está guardado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les tours se terminent sur votre écran verrouillé pendant que l’iPad est rangé."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I turni si concludono sulla schermata di blocco mentre l’iPad è riposto."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPad を置いている間も、ターンの完了はロック画面に届きます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPad를 내려놓은 동안 잠금 화면에서 턴이 완료됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tury kończą się na ekranie blokady, gdy iPad jest odłożony."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os turnos terminam na Tela Bloqueada com o iPad guardado."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPad 放在一旁时，回合会在锁定屏幕上完成。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPad 放在一旁時，回合會在鎖定畫面上完成。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turer slutförs på låsskärmen medan iPaden ligger undanlagd."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ture afsluttes på låseskærmen, mens iPad'en er lagt væk."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turer fullføres på låseskjermen mens iPaden er lagt bort."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vuorojen valmistumisesta ilmoitetaan lukitusnäytöllä, kun iPad on sivussa."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Umferðir ljúka á lásskjánum meðan iPad-inn liggur til hliðar."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

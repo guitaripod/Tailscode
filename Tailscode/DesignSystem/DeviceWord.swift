@@ -10,6 +10,14 @@ enum DeviceWord {
 
     static var heroSymbol: String { isPad ? "ipad" : "iphone" }
 
+    /// What the Lock Screen is for, said of the device it is read on: a phone goes in a pocket, an
+    /// iPad is put away.
+    static var turnsOnLockScreen: String {
+        isPad
+            ? String(localized: "Turns finish on your Lock Screen while the iPad is put away.")
+            : String(localized: "Turns finish on your Lock Screen while the phone is in your pocket.")
+    }
+
     static var thisDevice: String {
         isPad ? String(localized: "This iPad") : String(localized: "This iPhone")
     }
