@@ -132,7 +132,7 @@ extension ChatViewModel {
     /// card on the lock screen can never disagree about the same second; the sentence is Core's,
     /// because a lock screen has room for a sentence where a band has room for a word.
     static func liveLine(for state: ConversationState) -> String {
-        LiveActivityReading.live(in: state).line
+        LiveActivityReading.liveLine(in: state)
     }
 
     static func readable(_ error: Error) -> String {

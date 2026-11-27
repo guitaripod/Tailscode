@@ -2,6 +2,28 @@ import TailscodeCore
 import UIKit
 
 extension SessionListViewController: UICollectionViewDelegate {
+    func collectionView(
+        _ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell,
+        forItemAt indexPath: IndexPath
+    ) {
+        redrawIfStale(cell, at: indexPath)
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate { renderOwedAfterScroll() }
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        renderOwedAfterScroll()
+    }
+
+    /// The draw that landed under the finger, now that the list is still.
+    private func renderOwedAfterScroll() {
+        guard owesRenderAfterScroll else { return }
+        owesRenderAfterScroll = false
+        requestRender()
+    }
+
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         if !showsAsColumn || isSelecting { collectionView.deselectItem(at: indexPath, animated: true) }
         guard let entry = entry(at: indexPath) else { return }

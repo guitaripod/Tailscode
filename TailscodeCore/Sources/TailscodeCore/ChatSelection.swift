@@ -133,6 +133,7 @@ public struct ChatSelection: Sendable, Equatable {
     /// selection — a stream upsert, a filter chip, a server going quiet — and a set holding chats
     /// that are no longer anywhere would delete rows the person can no longer see.
     public mutating func prune(to visible: [SessionEntry]) {
+        guard !keys.isEmpty || anchorKey != nil else { return }
         keys.formIntersection(Set(visible.map(Self.key)))
         if let anchor = anchorKey, !visible.contains(where: { Self.key($0) == anchor }) {
             anchorKey = nil

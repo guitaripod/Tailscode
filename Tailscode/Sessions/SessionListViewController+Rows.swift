@@ -20,6 +20,9 @@ extension SessionListViewController {
             self, selector: #selector(pinDidChange),
             name: SessionPinStore.didChange, object: nil)
         NotificationCenter.default.addObserver(
+            self, selector: #selector(savedDidChange),
+            name: SavedChatStore.didChange, object: nil)
+        NotificationCenter.default.addObserver(
             forName: ModelCatalogStore.didChange, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.readingsDidChange() }
@@ -51,15 +54,23 @@ extension SessionListViewController {
     }
 
     @objc private func pinDidChange() {
+        forgetListReadings()
         requestRender()
     }
 
     @objc private func archiveDidChange() {
+        forgetListReadings()
         updateComposeButton()
         requestRender()
     }
 
+    @objc private func savedDidChange() {
+        forgetListReadings()
+        requestRender()
+    }
+
     @objc private func readingsDidChange() {
+        forgetListReadings()
         reconfigureActivity()
         rebuildChips()
     }
@@ -106,6 +117,11 @@ extension SessionListViewController {
     /// stopping moves rows between sections and draws the list.
     @objc private func activityDidChange() {
         guard dataSource != nil else { return }
+        #if DEBUG
+            let began = BoardBench.cpuTime()
+            var moved = -1
+            defer { BoardBench.note(listActivity: BoardBench.cpuTime() - began, moved: moved) }
+        #endif
         let reading = ActivityReading.now()
         guard let rendered = renderedActivity, !renderPacing.isWaiting, mayRender() else {
             reconfigureActivity()
@@ -118,7 +134,11 @@ extension SessionListViewController {
             rebuildChips()
             return
         }
-        refreshRows(of: reading.moved(since: rendered))
+        let movedRows = reading.moved(since: rendered)
+        #if DEBUG
+            moved = movedRows.count
+        #endif
+        refreshRows(of: movedRows)
         renderedActivity = reading
     }
 
@@ -128,22 +148,17 @@ extension SessionListViewController {
         guard !sessionIDs.isEmpty else { return }
         let entries = visibleEntries.filter { sessionIDs.contains($0.session.id) }
         guard !entries.isEmpty else { return }
-        let saved = Set(SavedChatStore.all().map { SessionPinStore.key($0.profileID, $0.sessionID) })
-        let context = RowContext.read(saved: saved, unreachable: Set(viewModel.unreachable))
+        let context = RowContext(listReadings(), unreachable: Set(viewModel.unreachable))
         let now = Date()
-        var keys: [String] = []
+        var keys: Set<String> = []
         for entry in entries {
             let key = ChatSelection.key(entry)
             rowModels[key] = cachedRowModel(for: entry, in: context, now: now)
             drawnAsks[entry.session.id] = SessionActivity.shared.approvalAsk(for: entry.session.id)
-            keys.append(key)
+            keys.insert(key)
         }
         _ = rowCache.takeRebuilt()
-        var snapshot = dataSource.snapshot()
-        let present = keys.filter { snapshot.indexOfItem($0) != nil }
-        guard !present.isEmpty else { return }
-        snapshot.reconfigureItems(present)
-        dataSource.apply(snapshot, animatingDifferences: false)
+        redrawRowsInPlace(keys)
     }
 
     /// A turn starting or stopping moves the row between sections, not just its pill, so the whole
@@ -174,7 +189,7 @@ extension SessionListViewController {
         let interval = SidebarCadence.interval(at: .calm, visible: true)
         switch renderPacing.request(at: CACurrentMediaTime(), interval: interval) {
         case .runNow:
-            applySnapshot()
+            applySnapshotAway()
         case .covered:
             break
         case .wait(let delay, let token):
@@ -182,7 +197,7 @@ extension SessionListViewController {
                 guard let self, self.renderPacing.fire(token: token, at: CACurrentMediaTime()) else {
                     return
                 }
-                self.applySnapshot()
+                self.applySnapshotAway()
             }
         }
     }
@@ -229,32 +244,6 @@ extension SessionListViewController {
         return viewModel.entries.filter(scope.matches)
     }
 
-    private func filteredEntries() -> [SessionEntry] {
-        let archived = ArchivedChatStore.all()
-        var list =
-            archived.isEmpty
-            ? viewModel.entries
-            : viewModel.entries.filter {
-                !archived.contains(ArchivedChatStore.key($0.profileID, $0.session.id)) || isLive($0)
-            }
-        if let scope { list = list.filter(scope.matches) }
-        switch filter {
-        case .all:
-            break
-        case .live:
-            list = list.filter(isLive)
-        case .profile(let id):
-            list = list.filter { $0.profileID == id }
-        }
-        guard !searchQuery.isEmpty else { return list }
-        return list.filter {
-            $0.session.title.localizedCaseInsensitiveContains(searchQuery)
-                || ($0.session.agentTask?.localizedCaseInsensitiveContains(searchQuery) ?? false)
-                || ($0.session.directory?.localizedCaseInsensitiveContains(searchQuery) ?? false)
-                || $0.profileName.localizedCaseInsensitiveContains(searchQuery)
-        }
-    }
-
     /// What this device is watching first-hand, so a row is live the moment a turn starts here
     /// rather than when the server's next sweep agrees, and a turn stopped for an approval says so.
     func presence(for entry: SessionEntry) -> SessionPresence {
@@ -270,11 +259,39 @@ extension SessionListViewController {
         let pins: Set<String>
         let isUnread: (String, Date) -> Bool
 
-        static func read(saved: Set<String>, unreachable: Set<String>) -> RowContext {
-            RowContext(
-                saved: saved, unreachable: unreachable, pins: Set(SessionPinStore.all()),
-                isUnread: SessionSeenStore.unreadEvaluator())
+        init(_ readings: ListReadings, unreachable: Set<String>) {
+            saved = readings.saved
+            self.unreachable = unreachable
+            pins = Set(readings.pins)
+            isUnread = readings.unread
         }
+    }
+
+    /// The stores every draw reads — the archive, the bookmarks, the pins and the read marks — each
+    /// decoded out of `UserDefaults` once and held until the store says it moved
+    /// (``forgetListReadings()``), where every draw, every activity tick and the sidebar's digest
+    /// used to decode all of them again.
+    struct ListReadings {
+        let archived: Set<String>
+        let savedChats: [SavedChat]
+        let saved: Set<String>
+        let pins: [String]
+        let unread: @Sendable (String, Date) -> Bool
+    }
+
+    func listReadings() -> ListReadings {
+        if let readingsCache { return readingsCache }
+        let savedChats = SavedChatStore.all()
+        let made = ListReadings(
+            archived: Set(ArchivedChatStore.all()), savedChats: savedChats,
+            saved: Set(savedChats.map { SessionPinStore.key($0.profileID, $0.sessionID) }),
+            pins: SessionPinStore.all(), unread: SessionSeenStore.unreadEvaluator())
+        readingsCache = made
+        return made
+    }
+
+    func forgetListReadings() {
+        readingsCache = nil
     }
 
     private func rowModel(for entry: SessionEntry, in context: RowContext) -> SessionRowModel {
@@ -303,104 +320,245 @@ extension SessionListViewController {
             now: now)
     }
 
-    /// The listing as the shared `groupIntoListSections` groups it — NEEDS YOU, WORKING, PINNED,
-    /// SAVED, then the rest by when: Today, Yesterday, the last week, the last month, months and
-    /// years — with empty sections dropped so no heading ever sits over nothing. Every row carries the
-    /// presence this device knows first-hand, which is what puts the conversation being streamed
-    /// right now in WORKING instead of waiting for the server's next sweep to agree.
-    private func sectionedRows(for entries: [SessionEntry]) -> [(ChatListSection, [SessionRowModel])]
-    {
-        let saved = Set(SavedChatStore.all().map { SessionPinStore.key($0.profileID, $0.sessionID) })
-        let context = RowContext.read(saved: saved, unreachable: Set(viewModel.unreachable))
-        let now = Date()
-        rowCache.beginPass()
-        let rows = entries.map { cachedRowModel(for: $0, in: context, now: now) }
-        rowCache.sweep()
-        return groupIntoListSections(rows, now: now)
-    }
-
     /// The flattened order the sections draw becomes `visibleEntries` — the one list the keyboard
     /// cursor, select-all and the held selection all address, because an `IndexPath` into a
     /// sectioned snapshot is not a position a person has.
     ///
-    /// Only what moved is drawn. A row is reconfigured when its model was rebuilt or something
-    /// else its cell reads changed (the listing's vocabulary, why it was missed, the heading it sits
-    /// under, the call a waiting turn is asking about), and a render that moved nothing applies no
-    /// snapshot at all. Every activity tick used to reconfigure every row and animate the lot, which
-    /// beside a running conversation was most of what the main thread did.
+    /// Draws now, on the main thread, for what a person did to the list (a filter, a search, a
+    /// mark); what the listing and the activity ask for is drawn by ``applySnapshotAway()``.
     func applySnapshot() {
         guard mayRender() else { return }
+        renderGeneration += 1
         renderPacing.flush(at: CACurrentMediaTime())
-        renderedActivity = ActivityReading.now()
-        let entries = filteredEntries()
-        let fixture = fixtureSections()
-        let sections = fixture ?? sectionedRows(for: entries)
-        let rebuilt = fixture == nil ? rowCache.takeRebuilt() : nil
-        let rows = sections.flatMap(\.1)
+        #if DEBUG
+            let began = BoardBench.cpuTime()
+        #endif
+        let reading = ActivityReading.now()
+        renderedActivity = reading
+        let walk: ChatListWalk
+        if let fixture = fixtureSections() {
+            walk = ChatListWalk.laid(
+                fixture, cache: rowCache, boards: rowBoards, digest: digestNow(),
+                readAll: showsAsColumn && scope == nil
+                    && !EverythingRead.sweep(entries: viewModel.entries, unreachable: viewModel.unreachable)
+                        .isEmpty)
+        } else {
+            walk = ChatListWalk.make(walkInput(reading))
+        }
+        #if DEBUG
+            var bench = BoardBench.Stages(spent: BoardBench.cpuTime() - began, as: "walk")
+            present(walk, readAll: walk.readAll, bench: &bench, began: began)
+        #else
+            present(walk, readAll: walk.readAll)
+        #endif
+    }
 
-        rowModels = Dictionary(
-            rows.map { (SessionPinStore.key($0.entry.profileID, $0.entry.session.id), $0) },
-            uniquingKeysWith: { first, _ in first })
-        let vocabulary = ChatListVocabulary(rows: rows)
-        let vocabularyMoved = vocabulary != self.vocabulary
-        self.vocabulary = vocabulary
-        visibleEntries = rows.map(\.entry)
+    /// Draws for something the listing or the activity said, which nobody pressed: the fleet is
+    /// walked off the main thread (``ChatListWalk``) and only the drawing comes back to it. A draw
+    /// asked for after this one began, or one a person's press made meanwhile, makes this one stale
+    /// and it is dropped; one that lands under a finger waits for the scroll to end.
+    func applySnapshotAway() {
+        guard mayRender() else { return }
+        guard !showsFixture else { return applySnapshot() }
+        renderGeneration += 1
+        let generation = renderGeneration
+        renderPacing.flush(at: CACurrentMediaTime())
+        #if DEBUG
+            let planBegan = BoardBench.cpuTime()
+        #endif
+        let reading = ActivityReading.now()
+        renderedActivity = reading
+        let input = walkInput(reading)
+        #if DEBUG
+            let planned = BoardBench.cpuTime() - planBegan
+        #endif
+        Task { @MainActor [weak self] in
+            #if DEBUG
+                let awayBegan = Date()
+            #endif
+            let walk = await ChatListWalk.away(input)
+            guard let self, self.renderGeneration == generation, self.mayRender() else { return }
+            guard !self.isUnderFinger else {
+                self.owesRenderAfterScroll = true
+                return
+            }
+            #if DEBUG
+                let began = BoardBench.cpuTime() - planned
+                var bench = BoardBench.Stages(spent: planned, as: "plan")
+                bench.note(away: Date().timeIntervalSince(awayBegan))
+                self.present(walk, readAll: walk.readAll, bench: &bench, began: began)
+            #else
+                self.present(walk, readAll: walk.readAll)
+            #endif
+            if ActivityReading.now() != reading { self.activityMovedDuringWalk() }
+        }
+    }
+
+    /// Whether a hand is moving the list.
+    var isUnderFinger: Bool {
+        collectionView.isTracking || collectionView.isDragging || collectionView.isDecelerating
+    }
+
+    /// What a draw reads on the main thread before the fleet is walked: the listing, the stores the
+    /// list holds, and the activity this device witnesses with the step each running turn is on.
+    private func walkInput(_ reading: ActivityReading) -> ChatListWalk.Input {
+        let readings = listReadings()
+        var presence: [String: SessionPresence] = [:]
+        for (id, status) in reading.statuses {
+            switch status {
+            case .running: presence[id] = .running(reading.steps[id])
+            case .awaitingApproval: presence[id] = .awaitingApproval
+            case .background(let tasks): presence[id] = .background(tasks: tasks)
+            case .stalled(let tasks): presence[id] = .stalled(tasks: tasks)
+            case .idle: break
+            }
+        }
+        return ChatListWalk.Input(
+            entries: viewModel.entries, archived: readings.archived, scope: scope, filter: filter,
+            search: searchQuery, saved: readings.saved, savedChats: readings.savedChats,
+            unreachable: Set(viewModel.unreachable), pins: readings.pins, unread: readings.unread,
+            presence: presence, observedAt: viewModel.observedAt, cache: rowCache, boards: rowBoards,
+            servers: viewModel.servers, notices: ActivityInbox.all().count,
+            offersReadAll: showsAsColumn && scope == nil, now: Date())
+    }
+
+    #if DEBUG
+        private func present(
+            _ walk: ChatListWalk, readAll: Bool, bench: inout BoardBench.Stages, began: TimeInterval
+        ) {
+            presentWalk(walk, readAll: readAll) { bench.mark($0) }
+            bench.mark("rest")
+            BoardBench.note(list: BoardBench.cpuTime() - began, stages: bench, rows: walk.visible.count)
+        }
+    #endif
+
+    private func present(_ walk: ChatListWalk, readAll: Bool) {
+        presentWalk(walk, readAll: readAll) { _ in }
+    }
+
+    /// Draws what a walk found. Only what moved is drawn: a row is redrawn when its model was
+    /// rebuilt or something else its cell reads changed (the listing's vocabulary, why it was
+    /// missed, the heading it sits under, the call a waiting turn is asking about). When the rows
+    /// and their order are what the list already holds, no snapshot is applied at all and the moved
+    /// rows on screen are dressed where they stand (``redrawRowsInPlace(_:)``): applying a snapshot
+    /// of two thousand rows to change the words of a few was a third of a draw on an iPad.
+    private func presentWalk(_ walk: ChatListWalk, readAll: Bool, mark: (String) -> Void) {
+        rowCache = walk.cache
+        rowModels = walk.rowModels
+        let vocabularyMoved = walk.vocabulary != vocabulary
+        vocabulary = walk.vocabulary
+        visibleEntries = walk.visible
         selection.prune(to: visibleEntries)
 
-        var snapshot = NSDiffableDataSourceSnapshot<ChatListSection, String>()
-        var headings: [ChatListSection: SectionHeading] = [:]
-        var boards: [String: SessionSection] = [:]
-        for (section, members) in sections {
-            let keys = members.map { ChatSelection.key($0.entry) }
-            snapshot.appendSections([section])
-            snapshot.appendItems(keys, toSection: section)
-            headings[section] = SectionHeading(
-                section: section, rows: members.count, fresh: members.count { $0.unread })
-            guard let board = section.board else { continue }
-            for key in keys { boards[key] = board }
-        }
-        let headingsMoved = headings != self.headings
-        self.headings = headings
+        let headingsMoved = walk.headings != headings
+        headings = walk.headings
         var missed = Dictionary(
             ActivityInbox.all().map { ($0.sessionID, $0.reason) },
             uniquingKeysWith: { first, _ in first })
         if showsFixture { missed = ChatListFixture.missed }
-
         var asks: [String: ApprovalAsk] = [:]
-        for row in sections.first(where: { $0.0 == .needsYou })?.1 ?? [] {
+        for row in walk.sections.first(where: { $0.0 == .needsYou })?.1 ?? [] {
             let id = row.entry.session.id
             asks[id] = SessionActivity.shared.approvalAsk(for: id)
         }
+        let sections = walk.sections.map(\.0)
+        mark("tables")
 
-        let previous = dataSource.snapshot()
-        let existing = Set(previous.itemIdentifiers)
-        let retained = snapshot.itemIdentifiers.filter { existing.contains($0) }
-        let stale = vocabularyMoved || rebuilt == nil
-            ? retained
-            : retained.filter { key in
-                guard let id = rowModels[key]?.entry.session.id else { return true }
-                return rebuilt?.contains(key) == true || boards[key] != rowBoards[key]
-                    || missed[id] != missedReasons[id] || asks[id] != drawnAsks[id]
+        if sections == appliedSections, walk.keys == appliedKeys {
+            var stale: Set<String>
+            if vocabularyMoved || walk.rebuilt == nil {
+                stale = Set(walk.keys.joined())
+            } else {
+                stale = (walk.rebuilt ?? []).union(walk.boardsMoved).filter { rowModels[$0] != nil }
+                var moved: Set<String> = []
+                for id in Set(missed.keys).union(missedReasons.keys) where missed[id] != missedReasons[id] {
+                    moved.insert(id)
+                }
+                for id in Set(asks.keys).union(drawnAsks.keys) where asks[id] != drawnAsks[id] {
+                    moved.insert(id)
+                }
+                if !moved.isEmpty {
+                    for entry in walk.visible where moved.contains(entry.session.id) {
+                        stale.insert(ChatSelection.key(entry))
+                    }
+                }
             }
-        rowBoards = boards
-        missedReasons = missed
-        drawnAsks = asks
-
-        let moved = previous.sectionIdentifiers != snapshot.sectionIdentifiers
-            || previous.itemIdentifiers != snapshot.itemIdentifiers
-        if moved || !stale.isEmpty {
+            rowBoards = walk.boards
+            missedReasons = missed
+            drawnAsks = asks
+            redrawRowsInPlace(stale)
+            mark("redraw \(stale.count)")
+        } else {
+            var snapshot = NSDiffableDataSourceSnapshot<ChatListSection, String>()
+            for (section, keys) in zip(sections, walk.keys) {
+                snapshot.appendSections([section])
+                snapshot.appendItems(keys, toSection: section)
+            }
+            let previous = dataSource.snapshot()
+            let existing = Set(previous.itemIdentifiers)
+            let retained = snapshot.itemIdentifiers.filter { existing.contains($0) }
+            let stale =
+                vocabularyMoved || walk.rebuilt == nil
+                ? retained
+                : retained.filter { key in
+                    guard let id = rowModels[key]?.entry.session.id else { return true }
+                    return walk.rebuilt?.contains(key) == true || walk.boards[key] != rowBoards[key]
+                        || missed[id] != missedReasons[id] || asks[id] != drawnAsks[id]
+                }
+            rowBoards = walk.boards
+            missedReasons = missed
+            drawnAsks = asks
             if !stale.isEmpty { snapshot.reconfigureItems(stale) }
             let animated = shouldAnimate(from: previous, to: snapshot, retained: retained.count)
             dataSource.apply(snapshot, animatingDifferences: animated)
+            appliedSections = sections
+            appliedKeys = walk.keys
+            redrawWhenShown.removeAll()
+            mark("apply")
         }
         if headingsMoved { refreshVisibleHeaders() }
         refreshControl.endRefreshing()
         clampKeyCursor()
         if isSelecting || !selectionBar.isHidden { updateSelectionBar() }
-        updateEmptyState(itemCount: snapshot.numberOfItems)
+        updateEmptyState(itemCount: walk.visible.count)
         syncOpenMark()
-        refreshReadAll()
+        latestDigest = walk.digest
+        refreshReadAll(offers: readAll)
         onListingChange?()
+    }
+
+    /// Dresses the rows among `keys` that are on screen from their newest models, measuring each on
+    /// its own, without applying a snapshot. A row the list has made but not put on screen —
+    /// prefetched ahead of the scroll — is dressed as it comes (``redrawIfStale(_:at:)``), and one
+    /// it has not made is drawn from the models when it is.
+    func redrawRowsInPlace(_ keys: Set<String>) {
+        for key in keys {
+            guard let row = rowModels[key], let path = dataSource.indexPath(for: key) else { continue }
+            guard let cell = collectionView.cellForItem(at: path) as? ChatRowCell else {
+                redrawWhenShown.insert(key)
+                continue
+            }
+            configure(cell, with: row)
+            cell.invalidateIntrinsicContentSize()
+        }
+    }
+
+    /// A row coming on screen whose words moved while it was made but not shown.
+    func redrawIfStale(_ cell: UICollectionViewCell, at indexPath: IndexPath) {
+        guard !redrawWhenShown.isEmpty, let key = dataSource.itemIdentifier(for: indexPath),
+            redrawWhenShown.remove(key) != nil, let row = rowModels[key], let cell = cell as? ChatRowCell
+        else { return }
+        configure(cell, with: row)
+    }
+
+    /// The activity moved while a walk was away, so the rows the walk read before it moved are
+    /// drawn again from what this device witnesses now.
+    private func activityMovedDuringWalk() {
+        guard let rendered = renderedActivity else { return }
+        let reading = ActivityReading.now()
+        guard reading.statuses == rendered.statuses else { return requestRender() }
+        refreshRows(of: reading.moved(since: rendered))
+        renderedActivity = reading
     }
 
     /// Only a list that gained or lost rows or headings animates, and only once it is on screen
@@ -510,13 +668,23 @@ extension SessionListViewController {
     /// conversations are running and whether it answered, the pinned chats in pin order wearing
     /// their own faces, and how many chats are archived. Built from the listing already held and
     /// the same readings the rows use, so the sidebar and the list can never disagree.
+    /// What the sidebar shows of the listing, as the last draw walked it.
     func digest() -> ChatListDigest {
-        let archived = ArchivedChatStore.all()
+        latestDigest ?? digestNow()
+    }
+
+    func digestNow() -> ChatListDigest {
+        let readings = listReadings()
+        let archived = readings.archived
         let unreachable = Set(viewModel.unreachable)
         let live = viewModel.entries.filter(isLive)
-        let context = RowContext.read(saved: [], unreachable: unreachable)
+        let context = RowContext(
+            ListReadings(
+                archived: readings.archived, savedChats: [], saved: [], pins: readings.pins,
+                unread: readings.unread),
+            unreachable: unreachable)
         let pinRanks = Dictionary(
-            SessionPinStore.all().enumerated().map { ($0.element, $0.offset) },
+            readings.pins.enumerated().map { ($0.element, $0.offset) },
             uniquingKeysWith: { first, _ in first })
         let pinned = viewModel.entries
             .compactMap { entry in

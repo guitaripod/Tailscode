@@ -174,20 +174,36 @@ public struct LiveActivityReading: Sendable, Equatable {
     /// disagree about the same second.
     public static func live(in state: ConversationState) -> LiveActivityReading {
         let calls = turnCalls(in: state)
-        let detail: LiveActivityDetail
-        switch ActivityKind.inFlight(in: state) {
-        case .needsAnswer?: detail = .question
-        case .needsApproval?: detail = .approval
-        case .usingTool?: detail = .tool
-        case .compacting?: detail = .compacting
-        case .writing?: detail = .writing
-        default: detail = .thinking
-        }
-        let tool = (calls.last { $0.status == .running } ?? calls.last)?.name
+        let activity = ActivityKind.inFlight(in: state)
         return LiveActivityReading(
-            detail: detail, tool: tool, toolCount: calls.count, startedAt: turnStart(in: state),
-            glyph: glyph(in: state, activity: ActivityKind.inFlight(in: state)),
+            detail: liveDetail(activity), tool: liveTool(calls), toolCount: calls.count,
+            startedAt: turnStart(in: state), glyph: glyph(in: state, activity: activity),
             prompt: turnPrompt(in: state))
+    }
+
+    /// What ``live(in:)`` says in words, without the head, the clock or the prompt a card also
+    /// carries. A chat list asks a running turn for its line on every draw, and the head alone
+    /// partitions the whole turn: four turns of a few hundred steps each were most of a draw of the
+    /// iPad's chat list.
+    public static func liveLine(in state: ConversationState) -> String {
+        let calls = turnCalls(in: state)
+        return liveDetail(ActivityKind.inFlight(in: state))
+            .line(tool: liveTool(calls), toolCount: calls.count)
+    }
+
+    private static func liveDetail(_ activity: ActivityKind?) -> LiveActivityDetail {
+        switch activity {
+        case .needsAnswer?: return .question
+        case .needsApproval?: return .approval
+        case .usingTool?: return .tool
+        case .compacting?: return .compacting
+        case .writing?: return .writing
+        default: return .thinking
+        }
+    }
+
+    private static func liveTool(_ calls: [ToolCall]) -> String? {
+        (calls.last { $0.status == .running } ?? calls.last)?.name
     }
 
     /// How a turn that has just ended is remembered. A question it left waiting outranks

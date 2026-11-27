@@ -74,6 +74,43 @@ struct LiveActivityTests {
         #expect(reading.endedAt == nil)
     }
 
+    @Test("A running turn's line alone says what its whole reading says")
+    func liveLineMatchesTheReading() {
+        var asking = Self.state(.running, [Self.prompt()])
+        asking.pendingPermissions = [PermissionRequest(id: "p", sessionID: "s", toolName: "Bash")]
+        let states = [
+            Self.state(.running, [Self.prompt()]),
+            Self.state(.running, [Self.prompt(), Self.answer([Self.text("Here")], done: false)]),
+            Self.state(
+                .running,
+                [
+                    Self.prompt(),
+                    Self.answer(
+                        [Self.call("r", "Read", .completed), Self.call("b", "Bash", .running)],
+                        done: false),
+                ]),
+            Self.state(
+                .running,
+                [
+                    Self.prompt(),
+                    Self.answer(
+                        [Self.call("r", "Read", .completed), Self.call("g", "Grep", .completed)],
+                        done: false),
+                ]),
+            Self.state(
+                .running,
+                [
+                    Self.prompt("u1"), Self.answer([Self.call("old", "Edit", .completed)]),
+                    Self.prompt("u2"), Self.answer([Self.call("e", "Edit", .running)], done: false),
+                ]),
+            asking,
+            Self.state(.idle, [Self.prompt(), Self.answer([Self.text("Done.")])]),
+        ]
+        for state in states {
+            #expect(LiveActivityReading.liveLine(in: state) == LiveActivityReading.live(in: state).line)
+        }
+    }
+
     @Test("A card taken back mid-turn starts its clock where the turn began")
     func turnStart() {
         let asked = Date(timeIntervalSince1970: 1_000)

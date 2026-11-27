@@ -30,7 +30,7 @@ enum ParityManifest {
         case .renameSession: return .implemented("promptRename")
         case .forkSession: return .implemented("forkConversation")
         case .transcriptSearch: return .implemented("TranscriptSearchViewController")
-        case .listFilter: return .implemented("filteredEntries")
+        case .listFilter: return .implemented("ChatListWalk")
         case .autoOpenLastSession:
             return .partial(
                 "restorationActivity",

@@ -128,10 +128,14 @@ extension SessionListViewController {
     /// conversation Home has neither, so the column carries the press while there is anything
     /// for it to read. It reads what Home's press reads, whatever the column is filtered to.
     func refreshReadAll() {
-        let offers =
-            showsAsColumn && scope == nil
-            && !EverythingRead.sweep(entries: viewModel.entries, unreachable: viewModel.unreachable)
-                .isEmpty
+        refreshReadAll(
+            offers: showsAsColumn && scope == nil
+                && !EverythingRead.sweep(entries: viewModel.entries, unreachable: viewModel.unreachable)
+                    .isEmpty)
+    }
+
+    /// Offers Mark read or takes it back, for a draw whose walk already decided it.
+    func refreshReadAll(offers: Bool) {
         guard offers != offersReadAll else { return }
         offersReadAll = offers
         updateComposeButton()

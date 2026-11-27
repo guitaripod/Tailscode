@@ -97,6 +97,20 @@ final class SessionListViewController: UIViewController {
     var isSelecting = false
     /// Whether the column is offering to read everything, which it does only while there is news.
     var offersReadAll = false
+    /// Counts every draw begun, so a walk that went off the main thread draws only if nothing newer
+    /// has been asked for or drawn while it was away.
+    var renderGeneration = 0
+    /// The sections and the rows under each that the list's snapshot holds, in order: a draw that
+    /// finds the same applies no snapshot.
+    var appliedSections: [ChatListSection] = []
+    var appliedKeys: [[String]] = []
+    /// Rows whose words moved while the list held them made but off screen.
+    var redrawWhenShown: Set<String> = []
+    /// A draw that landed under a finger and waits for the scroll to end.
+    var owesRenderAfterScroll = false
+    /// The sidebar's digest as the last draw walked it.
+    var latestDigest: ChatListDigest?
+    var readingsCache: ListReadings?
 
     init(filterProfileID: String? = nil, scope: ProjectScope? = nil) {
         let sources = ConnectionController.shared.allBackends().map {

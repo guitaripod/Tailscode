@@ -34,6 +34,23 @@ enum BoardBench {
             "Board tick \(milliseconds(tick)) ms cards \(cards) [\(work)]", category: .performance)
     }
 
+    /// A render of the chat list column, the list beside a conversation on a phone held sideways
+    /// and on the iPad, in this thread's CPU time with what each stage of it cost.
+    static func note(list: TimeInterval, stages: Stages, rows: Int) {
+        let work = takeRowWork()
+        guard list >= 0.004 else { return }
+        MidgarLog.notice(
+            "List render \(milliseconds(list)) ms rows \(rows) [\(stages.summary) | \(work)]",
+            category: .performance)
+    }
+
+    /// The list column answering an activity tick, which redraws at most the rows that moved.
+    static func note(listActivity: TimeInterval, moved: Int) {
+        guard listActivity >= 0.004 else { return }
+        MidgarLog.notice(
+            "List activity \(milliseconds(listActivity)) ms moved \(moved)", category: .performance)
+    }
+
     private static var measures = 0
     private static var measured: TimeInterval = 0
     private static var applies = 0
