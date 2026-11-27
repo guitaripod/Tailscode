@@ -222,14 +222,14 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
         environment = Self.environment()
         flow = FirstRunFlow(platform: .mac, mode: mode, environment: environment)
         window = FloatingWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 620),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         super.init()
         build(linked: linked)
     }
 
     private func build(linked: Bool) {
-        column.spacing = MacTheme.Spacing.s
+        column.spacing = MacTheme.Spacing.l
         column.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 18, right: 20)
         column.addArrangedSubview(intro)
         column.addArrangedSubview(footer())
@@ -582,7 +582,7 @@ final class FirstRunWindow: NSObject, NSWindowDelegate {
         backend: any PermissionReportingBackend, permissions: MachinePermissions?
     ) {
         let column = FillingStack(topDown: true)
-        column.spacing = MacTheme.Spacing.s
+        column.spacing = MacTheme.Spacing.l
         column.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 18, right: 20)
 
         column.addArrangedSubview(

@@ -40,7 +40,7 @@ final class FirstRunRow {
     private let number = RowKit.label(
         "", font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
     private let title = RowKit.label(
-        "", font: MacTheme.Ramp.font(.panelLabel), color: MacTheme.Color.label)
+        "", font: MacTheme.Ramp.font(.cardTitle), color: MacTheme.Color.label)
     private let pill = MacDialogs.detailLabel("")
     private let glyph = NSImageView()
     private let spinner = NSProgressIndicator()
@@ -265,29 +265,13 @@ enum FirstRunBlocks {
         return row
     }
 
-    /// The three ways in are one choice, so their buttons share a width instead of ragging by title length.
-    private static let wayButtonWidth: CGFloat = 280
-
     private static func way(_ way: FirstRunPlan.Way, intents: FirstRunIntents) -> NSView {
-        choice(title: way.title, detail: way.detail) { intents.choose(way.kind) }
+        FirstRunChoiceRow(way: way) { intents.choose(way.kind) }
     }
 
     /// An answer to first run's question: a press, in the agent's own name, that opens its install.
     private static func answer(_ choice: FirstRunPlan.AgentChoice, intents: FirstRunIntents) -> NSView {
-        self.choice(title: choice.title, detail: choice.detail) { intents.answer(choice.agent) }
-    }
-
-    private static func choice(title: String, detail: String, action: @escaping () -> Void) -> NSView {
-        let column = FillingStack(topDown: true)
-        column.spacing = 2
-        let button = RowKit.ActionButton(title: title, action: action)
-        button.widthAnchor.constraint(greaterThanOrEqualToConstant: wayButtonWidth).isActive = true
-        column.addArrangedSubview(buttonRow([button]))
-        column.addArrangedSubview(
-            RowKit.wrapping(
-                detail, font: MacTheme.Ramp.font(.panelFootnote),
-                color: MacTheme.Color.secondaryLabel))
-        return column
+        FirstRunChoiceRow(choice: choice) { intents.answer(choice.agent) }
     }
 
     private static func heading(_ text: String) -> NSView {
