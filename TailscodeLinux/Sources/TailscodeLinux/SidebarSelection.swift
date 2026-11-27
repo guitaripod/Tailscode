@@ -38,12 +38,10 @@ enum SidebarSelectionBar {
         for action in offered where action.isDestructive {
             gtk_box_append(ptr(column), verb(action, count: count, onAction: onAction))
         }
-        let rest = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-        gtk_box_set_homogeneous(ptr(rest), 1)
-        for action in offered where !action.isDestructive {
-            let button = verb(action, count: count, onAction: onAction)
-            gtk_widget_set_hexpand(button, 1)
-            gtk_box_append(ptr(rest), button)
+        let verbs = offered.filter { !$0.isDestructive }
+        let rest = reflowing(columns: verbs.count)
+        for action in verbs {
+            gtk_flow_box_append(op(rest), verb(action, count: count, onAction: onAction))
         }
         gtk_box_append(ptr(column), rest)
 
@@ -54,20 +52,32 @@ enum SidebarSelectionBar {
             gtk_label_set_xalign(op(header), 0)
             Gtk.margins(header, top: 4)
             gtk_box_append(ptr(column), header)
-            let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
-            gtk_box_set_homogeneous(ptr(row), 1)
+            let row = reflowing(columns: arrangements.count)
             for arrangement in arrangements {
                 let button = Gtk.button(
                     "\(arrangement.glyph) \(arrangement.title)", css: ["flat", "selection-verb"]
                 ) { onSplit(arrangement) }
                 gtk_widget_set_tooltip_text(button, arrangement.caption(count: count))
                 tailscode_set_accessible_label(button, arrangement.accessibleLabel(count: count))
-                gtk_widget_set_hexpand(button, 1)
-                gtk_box_append(ptr(row), button)
+                gtk_flow_box_append(op(row), button)
             }
             gtk_box_append(ptr(column), row)
         }
         return column
+    }
+
+    /// A row of equal buttons that folds onto further lines when the list is narrower than the
+    /// row, rather than holding the list open at the width of every button laid side by side.
+    private static func reflowing(columns: Int) -> UnsafeMutablePointer<GtkWidget> {
+        let flow = gtk_flow_box_new()!
+        gtk_flow_box_set_selection_mode(op(flow), GTK_SELECTION_NONE)
+        gtk_flow_box_set_homogeneous(op(flow), 1)
+        gtk_flow_box_set_min_children_per_line(op(flow), 1)
+        gtk_flow_box_set_max_children_per_line(op(flow), UInt32(max(columns, 1)))
+        gtk_flow_box_set_column_spacing(op(flow), 6)
+        gtk_flow_box_set_row_spacing(op(flow), 6)
+        Gtk.addClass(flow, "selection-flow")
+        return flow
     }
 
     private static func verb(

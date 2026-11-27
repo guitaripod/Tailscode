@@ -21,6 +21,7 @@ extension MatrixStylesheet {
             background-color: alpha(\(accent), 0.10);
             border: 1px solid alpha(\(accent), 0.45);
             border-radius: 6px;
+            padding: 6px 8px;
         }
         .selection-count { \(t(.metricValue)) color: \(accent); }
         .selection-verb {
@@ -30,6 +31,7 @@ extension MatrixStylesheet {
             border-radius: 4px;
         }
         .selection-verb:hover { border-color: \(accent); }
+        .selection-flow > flowboxchild { padding: 0; min-width: 0; background: none; }
         .selection-split-header { \(t(.sectionLabel)) opacity: 0.5; }
         .row-title { \(t(.rowTitle)) color: \(text); }
         .row-title-unread { \(t(.rowTitleStrong)) color: \(text); }
