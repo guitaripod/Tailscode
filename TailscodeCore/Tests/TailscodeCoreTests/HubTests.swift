@@ -1,6 +1,7 @@
 import AgentTestSupport
 import CodingAgentKit
 import Foundation
+import Synchronization
 import Testing
 @testable import TailscodeCore
 
@@ -357,7 +358,11 @@ struct HubTests {
         world.clock.advance(6)
         world.scheduled.runAll()
         #expect(world.hub.keys.isEmpty)
+        #expect(world.opener.opens.count == 1)
+        world.clock.advance(ConversationHub.shelfLife + 2)
+        world.scheduled.runAll()
         #expect(world.scheduled.pending == 0)
+        #expect(world.opener.opens.count == 1)
     }
 
     @Test("A chat visited again starts from the transcript it last held, and never goes blank")
@@ -417,5 +422,30 @@ struct HubTests {
 
         world.hub.clearShelf()
         #expect(world.hub.shelved == 0)
+    }
+
+    @Test("A shelved transcript nobody came back for is let go when it is too old to show")
+    func shelfExpires() async {
+        let world = World()
+        let released = Mutex(0)
+        world.hub.onLetGo { released.withLock { $0 += 1 } }
+        let lease = world.hub.lease(key, interest: .full) {}
+        #expect(await eventually { world.hub.latest(key)?.state.messages.count == 6 })
+        lease.cancel()
+        world.clock.advance(6)
+        world.scheduled.runAll()
+        #expect(world.hub.shelved == 1)
+        let afterDrop = released.withLock { $0 }
+        #expect(afterDrop >= 1)
+
+        world.clock.advance(ConversationHub.shelfLife / 2)
+        world.scheduled.runAll()
+        #expect(world.hub.shelved == 1)
+        #expect(released.withLock { $0 } == afterDrop)
+
+        world.clock.advance(ConversationHub.shelfLife)
+        world.scheduled.runAll()
+        #expect(world.hub.shelved == 0)
+        #expect(released.withLock { $0 } == afterDrop + 1)
     }
 }

@@ -123,6 +123,8 @@ public final class ConversationHub: @unchecked Sendable {
     private var entries: [LiveKey: Entry] = [:]
     private var shelf: [LiveKey: Shelved] = [:]
     private var shelfOrder: [LiveKey] = []
+    private var shelfSweepArmed = false
+    private var letGo: (@Sendable () -> Void)?
     private var nextID: UInt64 = 0
     private var reliefToken: MemoryReliefToken?
 
@@ -351,6 +353,16 @@ public final class ConversationHub: @unchecked Sendable {
         entry.opening?.cancel()
         entries[key] = nil
         if let frame = entry.latest { shelve(key, frame) }
+        letGo?()
+    }
+
+    /// Tells the host each time the hub lets go of a conversation or of a shelved transcript, so a
+    /// host whose allocator keeps what is freed can hand it back to the system. Called with the
+    /// hub's lock held: `handler` must be O(1), callable on any thread, and must not call the hub.
+    public func onLetGo(_ handler: @escaping @Sendable () -> Void) {
+        lock.lock()
+        letGo = handler
+        lock.unlock()
     }
 
     /// Keeps what a conversation last said once nothing is listening, as the transcript alone:
@@ -369,6 +381,33 @@ public final class ConversationHub: @unchecked Sendable {
         while shelfOrder.count > Self.shelfLimit {
             shelf[shelfOrder.removeFirst()] = nil
         }
+        armShelfSweep(after: Self.shelfLife)
+    }
+
+    /// One timer for the whole shelf, due when its oldest transcript stops being worth showing.
+    /// Called with the lock held.
+    private func armShelfSweep(after delay: TimeInterval) {
+        guard !shelfSweepArmed else { return }
+        shelfSweepArmed = true
+        schedule(delay + 1) { [weak self] in self?.sweepShelf() }
+    }
+
+    /// Lets go of every shelved transcript too old to be shown first. A transcript used to stay
+    /// until six newer ones pushed it off, so a chat closed in the morning was still held, whole,
+    /// in the evening. A timer that fires early is re-armed for what is left, so the injected
+    /// clock decides.
+    private func sweepShelf() {
+        lock.lock()
+        defer { lock.unlock() }
+        shelfSweepArmed = false
+        let now = clock.now()
+        let expired = shelfOrder.filter { key in shelf[key].map { now - $0.at > Self.shelfLife } ?? true }
+        for key in expired { shelf[key] = nil }
+        shelfOrder.removeAll { shelf[$0] == nil }
+        if let oldest = shelfOrder.compactMap({ shelf[$0]?.at }).min() {
+            armShelfSweep(after: max(0, Self.shelfLife - (now - oldest)))
+        }
+        if !expired.isEmpty { letGo?() }
     }
 
     /// The shelved transcript for a key if it is still young enough, taken off the shelf: the next
@@ -390,8 +429,10 @@ public final class ConversationHub: @unchecked Sendable {
     /// Lets go of every shelved transcript, for a host under memory pressure.
     public func clearShelf() {
         lock.lock()
+        let held = !shelf.isEmpty
         shelf = [:]
         shelfOrder = []
+        if held { letGo?() }
         lock.unlock()
     }
 
