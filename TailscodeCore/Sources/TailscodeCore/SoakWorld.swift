@@ -31,22 +31,24 @@ public enum SoakWorld {
             self.paragraphCharacters = max(0, paragraphCharacters)
         }
 
-        /// `N:R:K[:T[:P]]` — panes, tokens per second, transcript messages, how long one reply
-        /// streams for, and the length of the one unbroken paragraph each text segment of the
-        /// reply is (zero keeps the mixed markdown segments). Anything unreadable is nil rather
-        /// than a guess.
+        /// `N:R:K[:T[:P[:L]]]` — panes, tokens per second, transcript messages, how long one reply
+        /// streams for, the length of the one unbroken paragraph each text segment of the reply is
+        /// (zero keeps the mixed markdown segments), and how many chats the list holds in all.
+        /// Anything unreadable is nil rather than a guess.
         public init?(parsing text: String) {
             let fields = text.split(separator: ":").map { String($0) }
-            guard (3...5).contains(fields.count), let panes = Int(fields[0]),
+            guard (3...6).contains(fields.count), let panes = Int(fields[0]),
                 let rate = Double(fields[1]), let rows = Int(fields[2]), panes > 0, rate > 0,
                 rows >= 0
             else { return nil }
             let seconds = fields.count >= 4 ? Int(fields[3]) : 240
-            let paragraph = fields.count == 5 ? Int(fields[4]) : 0
-            guard let seconds, seconds > 0, let paragraph, paragraph >= 0 else { return nil }
+            let paragraph = fields.count >= 5 ? Int(fields[4]) : 0
+            let listed = fields.count == 6 ? Int(fields[5]) : 200
+            guard let seconds, seconds > 0, let paragraph, paragraph >= 0, let listed, listed >= 0
+            else { return nil }
             self.init(
                 panes: panes, tokensPerSecond: rate, rows: rows, turnSeconds: seconds,
-                paragraphCharacters: paragraph)
+                listedSessions: listed, paragraphCharacters: paragraph)
         }
 
         public var tokenInterval: Duration {

@@ -16,6 +16,8 @@ struct SoakWorldTests {
         #expect(SoakWorld.Configuration(parsing: "3:200:10:30")?.turnSeconds == 30)
         #expect(spec?.paragraphCharacters == 0)
         #expect(SoakWorld.Configuration(parsing: "1:80:200:30:8000")?.paragraphCharacters == 8000)
+        #expect(SoakWorld.Configuration(parsing: "3:1:600:1:0:2000")?.listedSessions == 2000)
+        #expect(SoakWorld.Configuration(parsing: "3:1:600:1:0:x") == nil)
         #expect(SoakWorld.Configuration(parsing: "1:80:200:30:x") == nil)
         #expect(SoakWorld.Configuration(parsing: "0:80:600") == nil)
         #expect(SoakWorld.Configuration(parsing: "5:x:600") == nil)
