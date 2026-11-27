@@ -221,6 +221,7 @@ extension TranscriptRow {
     static func rows(
         for messages: [ChatMessage], modelName: (ModelSelection) -> String? = { _ in nil }
     ) -> [TranscriptRow] {
+        let messages = MediaMentions.expanded(messages)
         var all: [TranscriptRow] = []
         var prompt: ChatMessage?
         var sawUser = false

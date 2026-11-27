@@ -58,6 +58,7 @@ enum ParityManifest {
         case .toolDiffs: return .implemented("editDiff")
         case .compactActivity: return .implemented("ActivityGroupCell")
         case .imageParts: return .implemented("ImageBubbleCell")
+        case .mediaByPath: return .implemented("VideoTileCell")
         case .imageViewer: return .implemented("ImageViewerViewController")
         case .pictureFlight: return .implemented("PictureHoming")
         case .pictureActions: return .implemented("PictureVerbs.touch")

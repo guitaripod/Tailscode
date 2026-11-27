@@ -12,6 +12,7 @@ extension TranscriptViewController {
         else { return }
         beginOpenJourney()
         onStopWatch?(TileRuntime.key(entry))
+        stopNamedSong()
         keepPage(of: self.entry)
         handToWatchIfInFlight()
         detachLive()
@@ -172,6 +173,9 @@ extension TranscriptViewController {
     /// half-typed into it is written first — closing a pane is not a decision to throw a prompt
     /// away, and the chat it belongs to can be opened again anywhere.
     func shutdownPane() {
+        stopNamedSong()
+        if let namedMediaObserver { NotificationCenter.default.removeObserver(namedMediaObserver) }
+        namedMediaObserver = nil
         handToWatchIfInFlight()
         composer.stashDraft()
         composer.stopWatching()

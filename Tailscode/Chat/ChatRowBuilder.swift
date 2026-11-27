@@ -21,6 +21,7 @@ enum ChatRowBuilder {
         modelName: (ModelSelection) -> String? = { _ in nil }
     ) -> [ChatRow] {
         defer { memo?.sweep() }
+        let messages = MediaMentions.expanded(messages, turnOpen: turnOpen)
         var rows: [ChatRow] = []
         var lastDate: Date?
         var seenMessageIDs = Set<String>()

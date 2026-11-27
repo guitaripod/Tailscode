@@ -58,6 +58,11 @@ final class TranscriptContext: @unchecked Sendable {
     /// show the opened body, never past the point where the clicked header would leave the top.
     var revealRow: (@Sendable (UInt) -> Void)?
     var requestImage: (@Sendable (FileReference, String) -> Void)?
+    /// A video or a song an agent named: the row's reference, its key, and whether a failed read
+    /// is to be tried again (`MediaDeck`).
+    var requestMedia: (@Sendable (FileReference, String, Bool) -> Void)?
+    /// A press on a video's tile or a song's button.
+    var playMedia: (@Sendable (FileReference, String) -> Void)?
     var requestSubagent: (@Sendable (ToolCall) -> Void)?
     /// A workflow agent is fetched by its own id: it has no spawning call to name it.
     var requestWorkflowAgent: (@Sendable (String) -> Void)?
@@ -256,6 +261,7 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     static func warm(
         _ messages: [ChatMessage], turnOpen: Bool, modelName: (ModelSelection) -> String?
     ) {
+        let messages = MediaMentions.expanded(messages, turnOpen: turnOpen)
         let look = Self.look
         let writing = messages.last?.id
         var prompt: ChatMessage?
@@ -299,6 +305,7 @@ final class TranscriptRowBuilder: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         let look = Self.look
+        let messages = MediaMentions.expanded(messages, turnOpen: turnOpen)
         let seams = seamTracker.update(messages, catalog: currentCatalog)
         if chapters != chapterSource {
             chapterSource = chapters

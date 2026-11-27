@@ -167,6 +167,24 @@ extension MatrixStylesheet {
         .workflow-model { color: \(special); \(t(.workflowModel)) }
         .workflow-answer { color: \(text); \(t(.cardBody)) }
         .image-part { border: 1px solid \(rule); }
+        .media-frame { background-color: alpha(currentColor, 0.06); }
+        .media-opener { padding: 0; }
+        .media-play {
+            color: white; font-size: 22px; min-width: 52px; min-height: 52px;
+            border-radius: 26px; background-color: alpha(black, 0.55);
+        }
+        .media-length {
+            color: white; \(t(.chip)) padding: 1px 6px; border-radius: 4px;
+            background-color: alpha(black, 0.6);
+        }
+        .media-audio {
+            border: 1px solid \(rule); border-radius: 8px; padding: 6px 10px;
+            background-color: alpha(currentColor, 0.03);
+        }
+        .media-audio-button { font-size: 16px; min-width: 32px; min-height: 32px; padding: 0; }
+        .media-audio-name { \(t(.cardBody)) }
+        .media-audio-bar trough, .media-audio-bar progress { min-height: 3px; }
+        .media-missing { \(t(.rowDetail)) opacity: 0.55; font-style: italic; }
         .task-board { border: 1px solid \(rule); border-radius: 8px; padding: 10px 12px; background-color: alpha(currentColor, 0.03); }
         .task-board-head { \(t(.sectionLabel)) color: \(palette.accent); }
         .task-board-item { \(t(.panelLabel)) }

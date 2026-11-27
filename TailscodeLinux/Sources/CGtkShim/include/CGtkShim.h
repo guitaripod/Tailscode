@@ -647,6 +647,17 @@ void tailscode_mpv_command(TailscodeMpv *player, const char *const *args);
 gboolean tailscode_mpv_flag(TailscodeMpv *player, const char *name);
 void tailscode_mpv_free(TailscodeMpv *player);
 
+/// A numeric property of a playing file ("time-pos", "duration"), or -1 while it has none.
+double tailscode_mpv_number(TailscodeMpv *player, const char *name);
+
+/// Puts the process's numeric locale where libmpv insists it be. Main thread, before any probe.
+void tailscode_mpv_numeric_locale(void);
+
+/// Opens a file or URL headlessly and reads its length; with `poster_dir`, also writes one frame a
+/// tenth of the way in as `00000001.jpg` there. Blocks for up to `timeout` seconds, so it runs off
+/// the main thread. Returns 0 when the file opened.
+int tailscode_mpv_probe(const char *url, const char *poster_dir, double timeout, double *duration);
+
 /// The browser slot's engine. WebKitGTK is a GtkWidget, so a page is a widget the tiling owns
 /// exactly like the transcript beside it — no window to place, no process to reparent, and the
 /// same compositor path the rest of the app draws through. Compiled out where it is absent, which

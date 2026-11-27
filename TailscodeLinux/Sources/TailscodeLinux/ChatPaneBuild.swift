@@ -573,6 +573,20 @@ extension ChatPane {
         context.requestImage = { [weak self] reference, key in
             Gtk.onMain { [weak self] in self?.fetchImage(reference, key: key) }
         }
+        context.requestMedia = { [weak self] reference, key, force in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                MediaDeck.shared.read(reference, key: key, backend: self.backend, force: force)
+            }
+        }
+        context.playMedia = { [weak self] reference, key in
+            Gtk.onMain { [weak self] in self?.playMedia(reference, key: key) }
+        }
+        if mediaListener == nil {
+            mediaListener = MediaDeck.shared.listen { [weak self] key in
+                Gtk.onMain { [weak self] in self?.pictureLanded(key) }
+            }
+        }
         context.onPictureLanded = { [weak self] key in
             Gtk.onMain { [weak self] in self?.pictureLanded(key) }
         }

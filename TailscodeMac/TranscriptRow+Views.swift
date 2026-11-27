@@ -46,6 +46,9 @@ extension TranscriptRow {
         case .subagentGroup(let fanout):
             return SubagentGroupView.make(fanout, key: key, context: context)
         case .file(let reference, let mine, let messageID):
+            if !mine, let kind = MediaKind.of(reference), kind != .picture {
+                return NamedMediaRowView.make(reference, kind: kind, key: key, context: context)
+            }
             let view = ImageRowView.make(reference, mine: mine, key: key, context: context)
             guard mine else { return view }
             return Self.wrappedForUndo(view, messageID: messageID, context: context)

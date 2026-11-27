@@ -33,6 +33,7 @@ targetTemplates:
       - path: Shared/Midgar
       - path: Shared/Neural
       - path: Shared/Scenery
+      - path: Shared/Media
       - path: Resources/Neural/ntex
         type: folder
         buildPhase: resources
@@ -130,6 +131,7 @@ targets:
       - path: Shared/Midgar
       - path: Shared/Neural
       - path: Shared/Scenery
+      - path: Shared/Media
       - path: Resources/Neural/ntex
         type: folder
         buildPhase: resources

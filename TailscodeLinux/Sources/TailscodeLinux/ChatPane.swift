@@ -300,6 +300,8 @@ final class ChatPane: @unchecked Sendable {
     /// What this pane is streaming instead of talking, when it is a preview slot rather than a chat.
     var preview: PreviewPane?
     var backend: (any CodingAgentBackend)?
+    /// This pane's ear on `MediaDeck`, which redraws a video's or a song's row when it changes.
+    var mediaListener: Int?
     var inFlightDesignBoards: Set<String> = []
     var conversation: AgentConversation?
     var lastState: ConversationState?

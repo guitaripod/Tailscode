@@ -292,6 +292,7 @@ extension TranscriptViewController {
         context.requestImage = { [weak self] reference, key in
             self?.noteImageWanted(reference, key: key)
         }
+        wireNamedMedia()
         context.isImageRefused = { [weak self] key in
             self?.refusedImages.contains(key) ?? false
         }

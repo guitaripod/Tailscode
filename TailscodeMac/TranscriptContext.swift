@@ -50,6 +50,13 @@ final class TranscriptContext {
     /// move reveals is drawn as the parts come in and not all at once when the move lands.
     var revealAhead: ((NSView, CGFloat) -> Void)?
     var requestImage: ((FileReference, String) -> Void)?
+    /// A video or a song an agent named, to be read (`NamedMediaStore`); `true` reads a failed one
+    /// again.
+    var requestMedia: ((FileReference, Bool) -> Void)?
+    /// A press on a named video's frame or a song's button.
+    var playMedia: ((FileReference) -> Void)?
+    /// A named file handed to the share picker, anchored on the view that showed it.
+    var shareMedia: ((FileReference, NSView) -> Void)?
     /// Whether a picture's bytes arrived and would not decode, so its row settles as a filename.
     var isImageRefused: ((String) -> Bool)?
     var requestSubagent: ((ToolCall) -> Void)?

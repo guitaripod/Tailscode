@@ -78,6 +78,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case toolDiffs
     case compactActivity
     case imageParts
+    case mediaByPath
     case imageViewer
     case pictureFlight
     case pictureActions

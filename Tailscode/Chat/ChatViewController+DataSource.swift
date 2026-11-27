@@ -303,6 +303,9 @@ extension ChatViewController {
             ) { [weak self] in self?.openDesign(sighting.source) }
             return cell
         case .file(let file):
+            if row.role == .assistant, let media = self.namedMediaCell(collectionView, indexPath, file, row: row) {
+                return media
+            }
             let label = "📎 \(file.filename ?? file.mime ?? String(localized: "attachment"))"
             return self.bubble(collectionView, indexPath, label, row.role, reasoning: false)
         case .image(let file):

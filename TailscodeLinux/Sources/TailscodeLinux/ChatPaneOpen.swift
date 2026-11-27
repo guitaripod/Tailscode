@@ -58,6 +58,7 @@ extension ChatPane {
         Trace.mark("open begin \(entry.session.id.prefix(8))")
         openTimer.begin()
         host?.stopWatching(SessionPinStore.key(entry.profileID, entry.session.id))
+        MediaDeck.shared.release(owner: ObjectIdentifier(self))
         let previousEntry = self.entry
         let previousPresence = presence
         if let previousEntry, previousPresence.isInFlight {
@@ -399,6 +400,9 @@ extension ChatPane {
     /// still in flight is handed to the background watcher first, so the row keeps its LIVE NOW
     /// seat until the turn settles.
     func shutdown() {
+        if let mediaListener { MediaDeck.shared.stopListening(mediaListener) }
+        mediaListener = nil
+        MediaDeck.shared.release(owner: ObjectIdentifier(self))
         dictation.shutdown()
         stashDraft()
         call.shutdown()

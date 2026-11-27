@@ -647,10 +647,14 @@ final class ChatViewController: UIViewController {
         if !setAsideUnread { SessionSeenStore.markSeen(viewModel.session.id) }
         viewModel.stopSubagentTracking()
         callController.screenGone()
-        if !isChangingColumns, isCoveredByAnotherChat { callController.chatLeft() }
+        if !isChangingColumns, isCoveredByAnotherChat {
+            callController.chatLeft()
+            NamedMediaStore.shared.stop()
+        }
         if !isChangingColumns,
             isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true
         {
+            NamedMediaStore.shared.stop()
             releaseConversation()
         }
     }

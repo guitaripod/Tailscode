@@ -206,6 +206,7 @@ extension TranscriptRow {
     /// density.
     @MainActor
     static func rows(for messages: [ChatMessage]) -> [TranscriptRow] {
+        let messages = MediaMentions.expanded(messages)
         var all: [TranscriptRow] = []
         var prompt: ChatMessage?
         for message in messages {

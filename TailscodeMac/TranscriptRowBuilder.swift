@@ -67,6 +67,26 @@ final class TranscriptRowBuilder {
     /// Whether this is the array the last rebuild was handed, not one equal to it: an array that
     /// shares storage with another is the same messages without looking at one of them, which is
     /// what a rebuild for a choice the person made (a brain opened) is.
+    private var expansionInput: [ChatMessage] = []
+    private var expansionOpen = false
+    private var expansionOutput: [ChatMessage] = []
+
+    /// The messages with the media their replies name (`MediaMentions`), made once per arrival: the
+    /// same array asked again hands back the same expanded array, so `isLastMessages` still knows a
+    /// repeat when it sees one.
+    private func expanded(_ messages: [ChatMessage], turnOpen: Bool) -> [ChatMessage] {
+        let repeated =
+            turnOpen == expansionOpen && messages.count == expansionInput.count
+            && messages.withUnsafeBufferPointer { now in
+                expansionInput.withUnsafeBufferPointer { before in now.baseAddress == before.baseAddress }
+            }
+        if repeated { return expansionOutput }
+        expansionInput = messages
+        expansionOpen = turnOpen
+        expansionOutput = MediaMentions.expanded(messages, turnOpen: turnOpen)
+        return expansionOutput
+    }
+
     private func isLastMessages(_ messages: [ChatMessage]) -> Bool {
         messages.count == lastMessages.count
             && messages.withUnsafeBufferPointer { now in
@@ -111,6 +131,7 @@ final class TranscriptRowBuilder {
     func rows(
         for messages: [ChatMessage], turnOpen: Bool = false, awaiting: NeuralAwaiting = .none
     ) -> [TranscriptRow] {
+        let messages = expanded(messages, turnOpen: turnOpen)
         if builtWithEmbeds != LinkEmbedsSetting.isEnabled
             || builtWithDensity != ChatDensitySetting.current
         {
@@ -344,6 +365,7 @@ final class TranscriptRowBuilder {
     static func referenceRows(
         for messages: [ChatMessage], turnOpen: Bool, catalog: [ModelInfo] = []
     ) -> [TranscriptRow] {
+        let messages = MediaMentions.expanded(messages, turnOpen: turnOpen)
         var all: [TranscriptRow] = []
         var tracker = ModelSeamTracker()
         let seams = tracker.update(messages, catalog: catalog)

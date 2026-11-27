@@ -70,6 +70,7 @@ final class MediaViewer: @unchecked Sendable {
             items.forEach { $0.release() }
             return
         }
+        ClipSheet.closeNow()
         let start = items.firstIndex { $0.key == startKey } ?? 0
         if let viewer = open {
             viewer.retarget(items: items, start: start, landing: landing, notice: notice)

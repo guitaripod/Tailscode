@@ -3155,6 +3155,71 @@ gboolean tailscode_mpv_flag(TailscodeMpv *player, const char *name) {
     return value ? TRUE : FALSE;
 }
 
+double tailscode_mpv_number(TailscodeMpv *player, const char *name) {
+    if (!player || !player->mpv) return -1;
+    double value = -1;
+    if (mpv_get_property(player->mpv, name, MPV_FORMAT_DOUBLE, &value) < 0) return -1;
+    return value;
+}
+
+void tailscode_mpv_numeric_locale(void) { setlocale(LC_NUMERIC, "C"); }
+
+int tailscode_mpv_probe(const char *url, const char *poster_dir, double timeout, double *duration) {
+    if (duration) *duration = -1;
+    if (!url) return -1;
+    mpv_handle *mpv = mpv_create();
+    if (!mpv) return -1;
+    mpv_set_option_string(mpv, "terminal", "no");
+    mpv_set_option_string(mpv, "msg-level", "all=no");
+    mpv_set_option_string(mpv, "config", "no");
+    mpv_set_option_string(mpv, "ytdl", "no");
+    mpv_set_option_string(mpv, "ao", "null");
+    mpv_set_option_string(mpv, "hwdec", "no");
+    mpv_set_option_string(mpv, "network-timeout", "15");
+    if (poster_dir) {
+        mpv_set_option_string(mpv, "aid", "no");
+        mpv_set_option_string(mpv, "vo", "image");
+        mpv_set_option_string(mpv, "vo-image-format", "jpg");
+        mpv_set_option_string(mpv, "vo-image-jpeg-quality", "85");
+        mpv_set_option_string(mpv, "vo-image-outdir", poster_dir);
+        mpv_set_option_string(mpv, "frames", "1");
+        mpv_set_option_string(mpv, "start", "10%");
+        mpv_set_option_string(mpv, "hr-seek", "yes");
+    } else {
+        mpv_set_option_string(mpv, "vo", "null");
+        mpv_set_option_string(mpv, "vid", "no");
+        mpv_set_option_string(mpv, "pause", "yes");
+    }
+    if (mpv_initialize(mpv) < 0) {
+        mpv_destroy(mpv);
+        return -1;
+    }
+    const char *command[] = {"loadfile", url, "replace", NULL};
+    mpv_command(mpv, command);
+    int status = -1;
+    gint64 deadline = g_get_monotonic_time() + (gint64)(timeout * G_USEC_PER_SEC);
+    while (g_get_monotonic_time() < deadline) {
+        mpv_event *event = mpv_wait_event(mpv, 0.25);
+        if (!event || event->event_id == MPV_EVENT_NONE) continue;
+        if (event->event_id == MPV_EVENT_FILE_LOADED) {
+            status = 0;
+            double length = -1;
+            if (mpv_get_property(mpv, "duration", MPV_FORMAT_DOUBLE, &length) >= 0 && duration) {
+                *duration = length;
+            }
+            if (!poster_dir) break;
+        } else if (event->event_id == MPV_EVENT_END_FILE) {
+            mpv_event_end_file *end = event->data;
+            if (end && end->reason == MPV_END_FILE_REASON_ERROR) status = -1;
+            break;
+        } else if (event->event_id == MPV_EVENT_SHUTDOWN) {
+            break;
+        }
+    }
+    mpv_terminate_destroy(mpv);
+    return status;
+}
+
 /// Teardown in the only order that is safe: stop mpv calling back, take the widget out of the
 /// tree so GTK can never render into a dead player, free the GL objects while their context is
 /// still current, and only then let mpv go.
@@ -3195,6 +3260,22 @@ void tailscode_mpv_free(TailscodeMpv *player) {
 #else
 
 gboolean tailscode_mpv_available(void) { return FALSE; }
+
+double tailscode_mpv_number(TailscodeMpv *player, const char *name) {
+    (void)player;
+    (void)name;
+    return -1;
+}
+
+void tailscode_mpv_numeric_locale(void) {}
+
+int tailscode_mpv_probe(const char *url, const char *poster_dir, double timeout, double *duration) {
+    (void)url;
+    (void)poster_dir;
+    (void)timeout;
+    if (duration) *duration = -1;
+    return -1;
+}
 
 const char *tailscode_mpv_last_error(void) { return "this build has no libmpv"; }
 

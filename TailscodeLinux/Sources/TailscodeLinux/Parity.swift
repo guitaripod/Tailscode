@@ -51,6 +51,7 @@ enum ParityManifest {
         case .toolDiffs: return .implemented("ToolDiff")
         case .compactActivity: return .implemented("ToolRowView.makeRun")
         case .imageParts: return .implemented("ImageCache")
+        case .mediaByPath: return .implemented("MediaTile")
         case .imageViewer: return .implemented("MediaViewer")
         case .pictureFlight: return .implemented("ViewerFlight")
         case .pictureActions: return .implemented("presentPictureMenu")

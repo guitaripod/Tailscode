@@ -261,6 +261,12 @@ final class TranscriptViewController: NSViewController {
     /// settles as a filename and is not asked for again. A fetch that failed on the network is not
     /// listed: the next time the row is built it asks again. Forgotten with the chat.
     var refusedImages: Set<String> = []
+    /// What each named video or song was when its row was last built — reading, ready or failed —
+    /// so a change of what it is rebuilds the row and a song's ticking does not.
+    var namedMediaShapes: [String: String] = [:]
+    var namedMediaObserver: NSObjectProtocol?
+    /// The song this pane started, which stops when the pane shows another chat or closes.
+    var namedSong: String?
     /// Pictures a row has asked for and the transcript has not yet judged worth fetching: held here
     /// until the reader is within a screen of the row that wants them.
     var wantedImages: [String: FileReference] = [:]

@@ -91,6 +91,9 @@ extension TranscriptRow {
         } ?? "file"
         let isImage = (reference.mime ?? "").hasPrefix("image/")
         guard isImage else {
+            if !mine, let kind = MediaKind.of(reference), kind != .picture {
+                return MediaTile.make(reference, kind: kind, key: key, context: context)
+            }
             return Gtk.label("📎 \(name)", css: "attachment")
         }
         let thumbWidth = Int32(ImagePreview.deskBound(ImagePreview.deskWidth, mine: mine))

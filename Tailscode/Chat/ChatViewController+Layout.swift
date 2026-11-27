@@ -40,6 +40,8 @@ extension ChatViewController {
             TableDraftCell.self, forCellWithReuseIdentifier: TableDraftCell.reuseID)
         collectionView.register(
             ImageBubbleCell.self, forCellWithReuseIdentifier: ImageBubbleCell.reuseID)
+        collectionView.register(VideoTileCell.self, forCellWithReuseIdentifier: VideoTileCell.reuseID)
+        collectionView.register(AudioLineCell.self, forCellWithReuseIdentifier: AudioLineCell.reuseID)
         collectionView.register(PermissionCell.self, forCellWithReuseIdentifier: PermissionCell.reuseID)
         collectionView.register(
             ActivityGroupCell.self, forCellWithReuseIdentifier: ActivityGroupCell.reuseID)
