@@ -5,8 +5,16 @@ import TailscodeCore
 /// Where the process's memory stands, in one line, for the `memory` drive verb: what the kernel
 /// counts resident, what malloc has in use, holds free and serves from its own mappings, and what
 /// the caches the app keeps say they hold. `memory=trim` returns the free tails first and says
-/// how much that gave back and how long it took.
+/// how much that gave back and how long it took; `memory=relieve` first asks everything in the
+/// relief registry to let go of all it holds, as the governor does at its last level, and names
+/// who answered.
 enum MemoryReading {
+    static func relieveAll() {
+        let names = MemoryRelief.shared.relieve(.all)
+        FileHandle.standardOutput.write(
+            Data("RELIEF \(names.count): \(names.sorted().joined(separator: ", "))\n".utf8))
+    }
+
     static func report(trim: Bool, shelved: Int) {
         var words: [String] = []
         if trim {
