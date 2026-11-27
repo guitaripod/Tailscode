@@ -159,12 +159,10 @@ enum MediaTile {
         let seek = context.seekMedia
         let barBits = UInt(bitPattern: bar)
         Gtk.connect(UnsafeMutableRawPointer(bar), "value-changed") {
-            Gtk.onMain {
-                guard !MediaDeck.shared.isSettingBar,
-                    let range = UnsafeMutablePointer<GtkWidget>(bitPattern: barBits)
-                else { return }
-                seek?(reference, key, gtk_range_get_value(ptr(range)))
-            }
+            guard !MediaDeck.shared.isSettingBar,
+                let range = UnsafeMutablePointer<GtkWidget>(bitPattern: barBits)
+            else { return }
+            seek?(reference, key, gtk_range_get_value(ptr(range)))
         }
         gtk_box_append(ptr(words), bar)
         gtk_box_append(ptr(line), words)

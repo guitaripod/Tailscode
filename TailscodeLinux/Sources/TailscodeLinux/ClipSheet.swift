@@ -187,7 +187,7 @@ final class ClipSheet: @unchecked Sendable {
         wire(muteButton) { $0.toggleMute() }
         wire(loopButton) { $0.toggleLoop() }
         Gtk.connect(UnsafeMutableRawPointer(bar), "value-changed") { [weak self] in
-            Gtk.onMain { [weak self] in self?.barMoved() }
+            self?.barMoved()
         }
         showLoop()
         return transport
@@ -295,6 +295,9 @@ final class ClipSheet: @unchecked Sendable {
             player, ["seek", String(format: "%.2f", seconds), (duration ?? 0) <= 120 ? "relative+exact" : "relative"])
     }
 
+    /// Read inside the signal, never after a hop to the main loop: the transport moves the bar
+    /// four times a second, and a change read later than the guard around that move is a seek to
+    /// where the clip already is, decoded from its last key frame each time.
     private func barMoved() {
         guard !settingBar, let player else { return }
         let length = tailscode_mpv_number(player, "duration")
