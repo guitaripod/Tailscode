@@ -33,6 +33,14 @@ final class MainWindow: @unchecked Sendable {
     /// `sidebarDirtyKeys` for a draw that can be seen.
     var sidebarCoalescer = RenderCoalescer()
     var sidebarRowCache = SessionRowModelCache()
+    /// Counts every list draw begun, so a walk that went to a worker patches the rows only if no
+    /// draw was made while it was away.
+    var sidebarGeneration = 0
+    /// A walk is out on a worker and holds the row cache; another request waits for it to land.
+    var sidebarWalking = false
+    var sidebarWalkAgain = false
+    /// What the last draw cost: the fleet walk wherever it ran, and the GTK thread's own share.
+    var sidebarCost: (walk: Double, gtk: Double) = (0, 0)
     var sidebarDirtyKeys: Set<String> = []
     var sidebarTornDown = false
     var pendingListChanges: [(change: SessionListChange, profile: ConnectionProfile)] = []
@@ -81,7 +89,7 @@ final class MainWindow: @unchecked Sendable {
         let saved: Set<String>
         let pins: Set<String>
         let archived: Set<ArchivedChatStore.ChatKey>
-        let unread: (String, Date) -> Bool
+        let unread: @Sendable (String, Date) -> Bool
     }
     var sidebarReadings: SidebarReadings?
     /// A listing change arrived: what speaks for the whole fleet — observations, the inbox, a
@@ -271,11 +279,18 @@ struct SidebarRowWidget {
     /// Every conversation the row stands for: a remembered split wears the accent when any of the
     /// chats inside it is the one on screen.
     let sessionIDs: [String]
+    /// What a chat row draws besides its moving words, so a reading that changes only those words
+    /// sets them where they stand. Nil for a remembered split, which is always built again.
+    let face: SidebarRow.Face?
     private let holder: Gtk.WeakWidget
 
-    init(key: String, sessionIDs: [String], widget: UnsafeMutablePointer<GtkWidget>) {
+    init(
+        key: String, sessionIDs: [String], widget: UnsafeMutablePointer<GtkWidget>,
+        face: SidebarRow.Face? = nil
+    ) {
         self.key = key
         self.sessionIDs = sessionIDs
+        self.face = face
         holder = Gtk.WeakWidget(widget)
     }
 

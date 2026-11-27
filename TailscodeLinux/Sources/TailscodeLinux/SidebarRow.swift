@@ -246,6 +246,7 @@ enum SidebarRow {
         gtk_box_append(ptr(row), glyph)
         gtk_box_append(ptr(row), column)
         gtk_button_set_child(ptr(button), row)
+        gtk_widget_set_name(button, Words.button)
         tailscode_set_accessible_label(button, spoken(model, news: news, marks: marks))
 
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onOpen)
@@ -345,7 +346,79 @@ enum SidebarRow {
         gtk_label_set_lines(op(label), Int32(lines))
         gtk_label_set_xalign(op(label), 0)
         gtk_widget_set_tooltip_text(label, words.joined(separator: " "))
+        gtk_widget_set_name(label, Words.news)
         return label
+    }
+
+    /// Everything a chat row draws except the words that move while its turn runs — the news
+    /// line's text and the age. Two readings with the same face are the same widgets with other
+    /// words in them, so the list sets the words (`patchWords`) instead of building the row again.
+    struct Face: Equatable {
+        let state: SessionRowState
+        let column: ChatRowInk.ColumnMark
+        let title: String
+        let emphasis: ChatRowInk.Emphasis
+        let marks: [ChatRowInk.TitleMark]
+        let expert: String?
+        let news: ChatRowNews.Voice?
+        let newsObject: Bool
+        let project: String?
+        let origin: String?
+        let chip: ModelChip?
+        let agents: String?
+        let focused: Bool
+        let marked: Bool
+    }
+
+    static func face(
+        _ model: SessionRowModel, focused: Bool, marked: Bool, vocabulary: ChatListVocabulary,
+        section: SessionSection?, news: ChatRowNews?
+    ) -> Face {
+        let facets = model.facets(vocabulary)
+        let count = model.entry.session.activeAgents ?? 0
+        return Face(
+            state: model.state, column: model.columnMark, title: model.title, emphasis: model.emphasis,
+            marks: model.titleMarks(under: section), expert: model.entry.session.expertID,
+            news: news?.voice, newsObject: !(news?.object ?? "").isEmpty, project: facets.project,
+            origin: facets.origin, chip: ModelBadge.chip(for: model.entry),
+            agents: count > 0 && (model.state == .live || model.state == .awaitingApproval)
+                ? AgentsReading.agentsWords(count) : nil,
+            focused: focused, marked: marked)
+    }
+
+    /// The names the moving parts of a row answer to, so a patch can find them again.
+    enum Words {
+        static let button = "row-open"
+        static let news = "row-news-words"
+        static let age = "row-age-words"
+    }
+
+    /// Sets the words of a row whose face has not changed: the news line, its tooltip, the age and
+    /// what the row is called aloud. Says false when a part it needs is not where it was left, and
+    /// the caller builds the row instead.
+    static func patchWords(
+        _ holder: UnsafeMutablePointer<GtkWidget>, model: SessionRowModel,
+        vocabulary: ChatListVocabulary, section: SessionSection?, news: ChatRowNews?
+    ) -> Bool {
+        guard let button = Gtk.descendant(of: holder, named: Words.button),
+            let age = Gtk.descendant(of: holder, named: Words.age)
+        else { return false }
+        let label = Gtk.descendant(of: holder, named: Words.news)
+        guard (label != nil) == (news != nil) else { return false }
+        if let news, let label {
+            let words = [news.lead, news.object].compactMap { $0 }.filter { !$0.isEmpty }
+            if let object = news.object, !object.isEmpty {
+                gtk_label_set_markup(
+                    op(label), "\(PangoMarkdown.escape(news.lead)) <tt>\(PangoMarkdown.escape(object))</tt>")
+            } else {
+                gtk_label_set_text(op(label), news.lead)
+            }
+            gtk_widget_set_tooltip_text(label, words.joined(separator: " "))
+        }
+        gtk_label_set_text(op(age), model.facets(vocabulary).age)
+        tailscode_set_accessible_label(
+            button, spoken(model, news: news, marks: model.titleMarks(under: section)))
+        return true
     }
 
     /// What the row is called aloud: its name, what it is doing, what it has to say, and whether
@@ -552,6 +625,7 @@ enum SidebarRow {
         gtk_widget_set_hexpand(spacer, 1)
         gtk_box_append(ptr(line), spacer)
         let age = Gtk.label(facets.age, css: "row-age", selectable: false)
+        gtk_widget_set_name(age, Words.age)
         gtk_label_set_ellipsize(op(age), PANGO_ELLIPSIZE_NONE)
         gtk_label_set_xalign(op(age), 1)
         gtk_widget_set_size_request(age, 30, -1)

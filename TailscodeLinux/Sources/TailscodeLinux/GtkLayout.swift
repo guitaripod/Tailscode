@@ -140,6 +140,23 @@ extension Gtk {
         for widget in doomed { gtk_box_remove(ptr(parent), widget) }
     }
 
+    /// The first widget at or under `root`, depth first, that answers to `name` — how a patch finds
+    /// the label it set before without the builder handing every part back.
+    static func descendant(
+        of root: UnsafeMutablePointer<GtkWidget>, named name: String
+    ) -> UnsafeMutablePointer<GtkWidget>? {
+        var pending = [root]
+        while let widget = pending.popLast() {
+            if let raw = gtk_widget_get_name(widget), String(cString: raw) == name { return widget }
+            var child = gtk_widget_get_first_child(widget)
+            while let current = child {
+                pending.append(current)
+                child = gtk_widget_get_next_sibling(current)
+            }
+        }
+        return nil
+    }
+
     /// Puts exactly `children` in a box, in this order. A child the box already held is
     /// referenced across the teardown: the box owns the only reference to what was appended to
     /// it, so taking a row out to put it back frees it, and whoever kept the pointer to draw into

@@ -285,11 +285,11 @@ public enum ActivityInbox {
     ///   would empty the list exactly when the app can least afford to lose it.
     public static func reconcile(
         _ rows: [ActivityObservation], authoritativeProfileIDs: Set<String>,
-        now: Date = Date()
+        isUnread: ((String, Date) -> Bool)? = nil, now: Date = Date()
     ) {
         let current = all()
         guard !current.isEmpty else { return }
-        let isUnread = SessionSeenStore.unreadEvaluator()
+        let isUnread = isUnread ?? SessionSeenStore.unreadEvaluator()
         guard
             let next = reconciled(
                 current, rows: rows, authoritative: authoritativeProfileIDs, isUnread: isUnread,

@@ -204,10 +204,14 @@ extension MainWindow {
         case "sidebarbench":
             let rounds = max(1, Int(argument) ?? 40)
             var draws: [Double] = []
+            var walks: [Double] = []
+            var gtk: [Double] = []
             for _ in 0..<rounds {
                 let began = Date.timeIntervalSinceReferenceDate
                 self.drawSidebar()
                 draws.append((Date.timeIntervalSinceReferenceDate - began) * 1000)
+                walks.append(self.sidebarCost.walk)
+                gtk.append(self.sidebarCost.gtk)
             }
             var forced: [Double] = []
             for _ in 0..<rounds {
@@ -218,6 +222,8 @@ extension MainWindow {
             }
             draws.sort()
             forced.sort()
+            walks.sort()
+            gtk.sort()
             func describe(_ values: [Double]) -> String {
                 let median = values[values.count / 2]
                 let p90 = values[min(values.count - 1, Int(Double(values.count) * 0.9))]
@@ -226,7 +232,7 @@ extension MainWindow {
             }
             FileHandle.standardOutput.write(
                 Data(
-                    "SIDEBARBENCH entries=\(self.entries.count) draws \(describe(draws)) · rebuild \(describe(forced))\n"
+                    "SIDEBARBENCH entries=\(self.entries.count) draws \(describe(draws)) (walk \(describe(walks)), GTK share \(describe(gtk))) · rebuild \(describe(forced))\n"
                         .utf8))
         case "gallery":
             self.activePane.driverOpenGallery()

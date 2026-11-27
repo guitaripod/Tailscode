@@ -176,6 +176,42 @@ in the window. Release build, the Xvfb harness, 2,093 sessions across five serve
 A draw now fits a 120 Hz frame where it did not. The rebuild is the same work it was — it is
 bounded by the 60 rows drawn, not by the fleet — and is paid only when the shape changed.
 
+### With agents at work
+
+With five turns streaming the list was asked to draw about once a second, and each draw held the
+GTK thread for 17 ms at the median, 24-77 ms at p90 and up to 125 ms (`TAILSCODE_TRACE=1`'s
+`renderSidebar begin`/`end`, release build, the real 2,110-chat fleet): 13 ms of the fleet-wide
+model before any widget was touched (rows 4-6, filing into sections 3-5, the orb and Agents entry
+1-4, the inbox and notifier 2-4, asks, the order digest) and then every row whose session had
+moved rebuilt as a whole widget tree, which for a working row is every push because its age and
+its step change. On the person's 144 Hz screen a frame is 6.9 ms.
+
+A draw the listing, a presence or a store asks for (`scheduleSidebarRender`) now reads the stores
+and the presence on the GTK thread, walks the fleet on a dispatch worker (`SidebarWalk`: the rows
+through `SessionRowModelCache`, which the walk owns while it is out, the orphaned bookmarks, the
+orb's reading, the observations when the listing moved, the sections, the vocabulary and the
+digest), and patches the widgets back on the GTK thread (`presentSidebar`). One walk is out at a
+time; a request made meanwhile is drawn once after it lands, and a draw made in between — a press,
+a keystroke in the filter, `sidebarbench` — makes it stale, so it is dropped with its cache.
+`renderSidebar()` still walks in place, because the person is looking at the row that moves. A
+chat row remembers its `SidebarRow.Face` — everything it draws except the news line's words and
+the age — and a reading with the same face sets those words in place (`SidebarRow.patchWords`,
+the parts found by name with `Gtk.descendant(of:named:)`) instead of building the row again. The
+inbox reconcile reads the marks the draw already holds rather than decoding them again.
+
+Matched runs, the harness at 1920x1200, five Haiku turns started on the Mac's bridge fifteen
+seconds before a 45-second window, release builds:
+
+| | before | after |
+|---|---|---|
+| a draw on the GTK thread | 17 ms median, 24 p90, 41 max | 4 ms median, 5 p90, 6 max |
+| its share of the GTK thread | 2.3 % | 0.3 % |
+| the process | 23.2 % of a core, GTK thread 18.4 % | 15.6 %, GTK thread 12.3 % |
+
+`sidebarbench=40` now prints the walk and the GTK thread's share of a draw beside the total: a
+draw is the same 8.7 ms it was, 7.2 ms of it the walk, which a push no longer pays on the GTK
+thread (1.5 ms median there).
+
 ### Measuring it again
 
 `scripts/bench-linuxapp.py` walks launch, the list scrolled, seven chats, the transcript scrolled,
@@ -194,11 +230,11 @@ scripts/dev-linuxapp.sh run gamescope --backend headless -W 1920 -H 2160 -r 120 
 user namespace that keeps `CAP_SYS_PTRACE`); `scripts/prof-linuxapp.sh` takes one ad-hoc sample of
 every thread.
 
-### What is left
+### The background core with five servers
 
-With five servers configured the app holds about one core of background work that disappears with
-one server (1-5 % with any single profile). It is not the list: `applyListChange` and `refresh` are
-called about once in four seconds at rest, the work is on libdispatch workers, and Swift task
-enqueues are zero — what the workers are doing between waits has not been pinned down yet. The
-next step is to profile the Kit's per-server session-list stream and keep-alive work rather than
-the window.
+With five servers configured the app used to hold about one core of background work on libdispatch
+workers that disappeared with one server. Measured again on 2026-11-27 with the Kit at 0.68.0,
+which passes over opencode events that cannot concern a listener before decoding them, the
+workers take 1.4-4.6 % of a core with the same five servers, at rest and with five turns
+streaming; one 45-second window read 32 % while five new turns were starting at once and the next
+ten seconds read 1.4 %. What 0.68.0 removed — every streamed token of every session on an opencode machine decoded by each listener — is the likeliest cause; the core has not come back in these runs.

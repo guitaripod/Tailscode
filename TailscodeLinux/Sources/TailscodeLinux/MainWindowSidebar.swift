@@ -27,7 +27,7 @@ extension MainWindow {
         guard !sidebarTornDown, !Gtk.isQuitting else { return }
         switch sidebarCoalescer.request(at: Self.sidebarClock, interval: sidebarInterval) {
         case .runNow:
-            drawSidebar()
+            drawSidebarAway()
         case .covered:
             break
         case .wait(let delay, let token):
@@ -35,7 +35,7 @@ extension MainWindow {
                 guard let self, !self.sidebarTornDown,
                     self.sidebarCoalescer.fire(token: token, at: Self.sidebarClock)
                 else { return }
-                self.drawSidebar()
+                self.drawSidebarAway()
             }
         }
     }
@@ -130,10 +130,8 @@ extension MainWindow {
         scheduleSidebarRender()
     }
 
-    /// Rebuilding two hundred rows of widgets is a visible stutter — nothing is touched unless
-    /// what the list would say actually differs from what it says now, and only the first
-    /// screenful or two are built. A list nobody can see keeps its models and its side effects (the
-    /// notices and the orb read them) and leaves its widgets alone until it can be seen.
+    /// Draws the list now, the fleet walked on the GTK thread: what a press, a keystroke in the
+    /// filter or a bench needs, because the person is looking at the row that moves.
     func drawSidebar() {
         guard !sidebarTornDown, !Gtk.isQuitting else { return }
         if let sidebarFixture {
@@ -144,109 +142,133 @@ extension MainWindow {
             sidebarRenderHeld = true
             return
         }
-        let canDraw = sidebarWindowVisible
-        defer { if canDraw { scheduleRowVerbsRefresh() } }
+        sidebarGeneration += 1
         Trace.mark("renderSidebar begin \(entries.count) entries")
         defer { Trace.mark("renderSidebar end") }
-        let selectedID = activePane.sessionID
-        let readings = sidebarStoreReadings()
-        let needle = filter.lowercased()
-        let presence = observedPresence()
-        let now = Date()
-        sidebarRowCache.beginPass()
-        var servers: [String: (unreachable: Bool, observedAt: Date?)] = [:]
-        var rows: [SessionRowModel] = []
-        rows.reserveCapacity(entries.count)
-        for entry in entries {
-            let key = SessionPinStore.key(entry.profileID, entry.session.id)
-            if !pendingDeletes.isEmpty, pendingDeletes.contains(key) { continue }
-            let serverKey = "\(entry.profileID)|\(entry.profileName)"
-            let server: (unreachable: Bool, observedAt: Date?)
-            if let known = servers[serverKey] {
-                server = known
-            } else {
-                let label = ServerLabel.display(name: entry.profileName, backend: entry.backendType)
-                server = (unreachable.contains(label), lastHeard[label])
-                servers[serverKey] = server
-                Notifier.shared.noteServer(profileID: entry.profileID, name: entry.profileName)
+        let began = SidebarWalk.threadTime()
+        let plan = sidebarPlan()
+        var cache = sidebarRowCache
+        let walked = SidebarWalk.threadTime()
+        let walk = SidebarWalk.make(plan.input, cache: &cache)
+        sidebarRowCache = cache
+        let presented = SidebarWalk.threadTime()
+        presentSidebar(walk, plan: plan)
+        sidebarCost = (presented - walked, SidebarWalk.threadTime() - presented + walked - began)
+    }
+
+    /// Draws the list for something the listing, a presence or a store said, which nobody pressed:
+    /// the fleet is walked on a dispatch worker (``SidebarWalk``) and only the patching comes back
+    /// to the GTK thread. One walk is out at a time and owns the row cache while it is; a request
+    /// that arrives meanwhile is drawn once after it lands, and a draw made in between — a press,
+    /// a keystroke in the filter — makes the walk stale, so it is dropped with its cache.
+    func drawSidebarAway() {
+        guard !sidebarTornDown, !Gtk.isQuitting else { return }
+        guard sidebarFixture == nil else { return drawSidebar() }
+        if sidebarPointerHeld {
+            sidebarRenderHeld = true
+            return
+        }
+        guard !sidebarWalking else {
+            sidebarWalkAgain = true
+            return
+        }
+        sidebarGeneration += 1
+        let generation = sidebarGeneration
+        let began = SidebarWalk.threadTime()
+        let plan = sidebarPlan()
+        let planned = SidebarWalk.threadTime() - began
+        let cache = sidebarRowCache
+        sidebarWalking = true
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var cache = cache
+            let walkBegan = SidebarWalk.threadTime()
+            let walk = SidebarWalk.make(plan.input, cache: &cache)
+            let walked = SidebarWalk.threadTime() - walkBegan
+            Gtk.onMain { [weak self, cache] in
+                guard let self else { return }
+                self.sidebarWalking = false
+                defer {
+                    if self.sidebarWalkAgain {
+                        self.sidebarWalkAgain = false
+                        self.scheduleSidebarRender()
+                    }
+                }
+                guard !self.sidebarTornDown, !Gtk.isQuitting, self.sidebarGeneration == generation
+                else { return }
+                if self.sidebarPointerHeld {
+                    self.sidebarRenderHeld = true
+                    return
+                }
+                self.sidebarRowCache = cache
+                Trace.mark(
+                    "renderSidebar begin \(plan.input.entries.count) entries, walked away in \(Int(walked.rounded())) ms, planned in \(Int(planned.rounded())) ms")
+                defer { Trace.mark("renderSidebar end") }
+                let presented = SidebarWalk.threadTime()
+                self.presentSidebar(walk, plan: plan)
+                self.sidebarCost = (walked, SidebarWalk.threadTime() - presented + planned)
             }
-            rows.append(
-                sidebarRowCache.model(
-                    for: entry, key: key, unreachable: server.unreachable,
-                    unread: readings.unread(entry.session.id, entry.session.updatedAt),
-                    saved: readings.saved.contains(entry.session.id),
-                    pinned: readings.pins.contains(key),
-                    presence: presence[key] ?? .unobserved, observedAt: server.observedAt,
-                    now: now))
         }
-        sidebarRowCache.sweep()
-        sidebarDirtyKeys.formUnion(sidebarRowCache.takeRebuilt())
-        let listedCount = rows.count
-        rows += Self.orphanedSavedRows(readings.savedChats, listed: entries)
-        for orphan in rows[listedCount...] {
-            Notifier.shared.noteServer(
-                profileID: orphan.entry.profileID, name: orphan.entry.profileName)
-            sidebarDirtyKeys.insert(
-                SessionPinStore.key(orphan.entry.profileID, orphan.entry.session.id))
-        }
-        orbTarget =
-            rows.first { $0.state == .awaitingApproval }?.entry
-            ?? rows.first { $0.state == .live }?.entry
-        orbKinds = rows.map { $0.state.activity }
-        refreshOrb()
-        refreshAgentsEntry(rows: rows)
-        if sidebarListingVersion != sidebarObservedListing || sidebarObservationDirty {
+    }
+
+    /// What a draw reads on the GTK thread before the fleet is walked.
+    struct SidebarPlan: Sendable {
+        let input: SidebarWalk.Input
+        let selectedID: String?
+        let canDraw: Bool
+    }
+
+    private func sidebarPlan() -> SidebarPlan {
+        let readings = sidebarStoreReadings()
+        let observe = sidebarListingVersion != sidebarObservedListing || sidebarObservationDirty
+        if observe {
             sidebarObservedListing = sidebarListingVersion
             sidebarObservationDirty = false
-            let observations = rows.map {
-                ActivityObservation(
-                    profileID: $0.entry.profileID, session: $0.entry.session, title: $0.title)
-            }
+        }
+        let input = SidebarWalk.Input(
+            entries: entries, pendingDeletes: pendingDeletes, unreachable: unreachable,
+            lastHeard: lastHeard, savedChats: readings.savedChats, saved: readings.saved,
+            pins: readings.pins, archived: readings.archived, unread: readings.unread,
+            presence: observedPresence(), needle: filter.lowercased(), projectScope: projectScope,
+            showingArchive: showingArchive,
+            splitTab: showingArchive ? nil : SplitTab(snapshot: splitHost.snapshot()),
+            observe: observe, now: Date())
+        return SidebarPlan(input: input, selectedID: activePane.sessionID, canDraw: sidebarWindowVisible)
+    }
+
+    /// Rebuilding two hundred rows of widgets is a visible stutter — nothing is touched unless
+    /// what the list would say actually differs from what it says now, and only the first
+    /// screenful or two are built. A list nobody can see keeps its models and its side effects (the
+    /// notices and the orb read them) and leaves its widgets alone until it can be seen.
+    private func presentSidebar(_ walk: SidebarWalk, plan: SidebarPlan) {
+        let canDraw = plan.canDraw
+        defer { if canDraw { scheduleRowVerbsRefresh() } }
+        let selectedID = plan.selectedID
+        let rows = walk.rows
+        let sections = walk.sections
+        let archivedTotal = walk.archivedTotal
+        for server in walk.servers {
+            Notifier.shared.noteServer(profileID: server.profileID, name: server.name)
+        }
+        sidebarDirtyKeys.formUnion(walk.rebuilt)
+        sidebarDirtyKeys.formUnion(walk.orphanKeys)
+        orbTarget = walk.orbTarget
+        orbKinds = walk.orbKinds
+        refreshOrb()
+        refreshAgentsEntry(rows: rows)
+        if let observations = walk.observations {
             Notifier.shared.observeListing(observations, windowActive: windowIsActive)
             ActivityInbox.reconcile(
                 observations,
                 authoritativeProfileIDs: listedFromNetwork
-                    ? Set(observations.map(\.profileID)) : [])
+                    ? Set(observations.map(\.profileID)) : [],
+                isUnread: plan.input.unread)
         }
         if sidebarReadMarksMoved {
             sidebarReadMarksMoved = false
             Notifier.shared.withdrawRead()
         }
-        let archived = readings.archived
-        let candidates: [(row: SessionRowModel, archived: Bool)] = rows.map {
-            (
-                $0,
-                archived.contains(
-                    ArchivedChatStore.ChatKey(
-                        profileID: $0.entry.profileID, sessionID: $0.entry.session.id))
-            )
-        }
-        let scoped =
-            projectScope.map { scope in candidates.filter { scope.matches($0.row.entry) } }
-            ?? candidates
-        let archivedTotal = scoped.count { $0.archived }
-        let matching =
-            needle.isEmpty
-            ? scoped
-            : scoped.filter {
-                $0.row.title.lowercased().contains(needle)
-                    || $0.row.detail.lowercased().contains(needle)
-                    || ($0.row.snippet?.lowercased().contains(needle) ?? false)
-            }
-        let grouped: [(ChatListSection, [SessionRowModel])] =
-            showingArchive
-            ? [(ChatListSection.archived, matching.filter { $0.archived }.map { $0.row })]
-                .filter { !$0.1.isEmpty }
-            : groupIntoListSections(
-                matching.filter { !$0.archived || $0.row.isUnfinished }.map { $0.row }, now: now)
-        let sections = SplitTabGrouping.apply(
-            to: grouped, tab: showingArchive ? nil : SplitTab(snapshot: splitHost.snapshot()))
-        visible = sections.flatMap(\.1)
-        sidebarBoardOfKey = [:]
-        for (section, members) in sections {
-            guard let board = section.board else { continue }
-            for item in members { sidebarBoardOfKey[item.key] = board }
-        }
+        visible = walk.visible
+        sidebarBoardOfKey = walk.boardOfKey
         sidebarMissedReasons = Dictionary(
             ActivityInbox.all().map { ($0.sessionID, $0.reason) },
             uniquingKeysWith: { first, _ in first })
@@ -257,6 +279,7 @@ extension MainWindow {
         syncCursorToSelection()
         guard canDraw else { return }
 
+
         let drawn = visible.prefix(sidebarLimit).flatMap { item -> [SessionRowModel] in
             switch item {
             case .chat(let row): return [row]
@@ -265,24 +288,9 @@ extension MainWindow {
         }
         let missed = ActivityInbox.unsaid(by: drawn, limit: 5)
         let listed = missed.all
-        let vocabulary = ChatListVocabulary(rows: rows)
-        var order = Hasher()
-        order.combine(visible.count)
-        for item in visible {
-            switch item {
-            case .chat(let row):
-                order.combine(row.entry.profileID)
-                order.combine(row.entry.session.id)
-            case .tab(let row):
-                order.combine(row.members.count)
-                for member in row.members {
-                    order.combine(member.entry.profileID)
-                    order.combine(member.entry.session.id)
-                }
-            }
-        }
+        let vocabulary = walk.vocabulary
         let snapshot = (
-            order.finalize(), unreachable, filter,
+            walk.order, unreachable, filter,
             "\(sidebarLimit)|\(showingArchive)|\(archivedTotal)|\(splitHost.paneCount)|\(marks.keys.sorted().joined(separator: ","))|\(missed.total)|\(missed.shown.map(\.identifier).joined(separator: ","))|\(projectScope.map { "\($0.profileID):\($0.directory ?? "")" } ?? "")|\(sections.map { "\($0.0.key):\($0.1.count)" }.joined(separator: ","))|\(vocabulary.namesServer)\(vocabulary.namesBackend)|\(knownProfiles.isEmpty)"
         )
         let previous = lastVisible
@@ -410,7 +418,7 @@ extension MainWindow {
                 sidebarRows.append(
                     SidebarRowWidget(
                         key: item.key, sessionIDs: item.entries.map(\.session.id),
-                        widget: widget))
+                        widget: widget, face: sidebarFace(of: item, vocabulary: vocabulary)))
                 built += 1
             }
         }
@@ -585,11 +593,19 @@ extension MainWindow {
                 changed.contains(item.key) || item.isTab || moved,
                 previous[index] != item || moved, let old = sidebarRows[index].widget
             else { continue }
+            let face = sidebarFace(of: item, vocabulary: vocabulary)
+            if let face, face == sidebarRows[index].face, case .chat(let row) = item,
+                SidebarRow.patchWords(
+                    old, model: row, vocabulary: vocabulary, section: sidebarBoardOfKey[item.key],
+                    news: sidebarNews(for: row, key: item.key))
+            {
+                continue
+            }
             let fresh = makeSidebarItem(item, vocabulary: vocabulary)
             gtk_box_insert_child_after(ptr(sidebarList), fresh, old)
             gtk_box_remove(ptr(sidebarList), old)
             sidebarRows[index] = SidebarRowWidget(
-                key: item.key, sessionIDs: item.entries.map(\.session.id), widget: fresh)
+                key: item.key, sessionIDs: item.entries.map(\.session.id), widget: fresh, face: face)
         }
     }
 

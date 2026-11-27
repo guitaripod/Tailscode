@@ -52,6 +52,21 @@ extension MainWindow {
         visible.flatMap(\.entries)
     }
 
+    /// The news line a chat row wears right now.
+    func sidebarNews(for row: SessionRowModel, key: String) -> ChatRowNews? {
+        ChatRowNews.reading(
+            for: row, ask: sidebarAsks[key], missed: sidebarMissedReasons[row.entry.session.id])
+    }
+
+    /// What a chat row draws besides its moving words (``SidebarRow/Face``); nil for a split.
+    func sidebarFace(of item: ChatListItem, vocabulary: ChatListVocabulary) -> SidebarRow.Face? {
+        guard case .chat(let row) = item else { return nil }
+        return SidebarRow.face(
+            row, focused: row.entry.session.id == activePane.sessionID,
+            marked: marks.contains(row.entry), vocabulary: vocabulary,
+            section: sidebarBoardOfKey[item.key], news: sidebarNews(for: row, key: item.key))
+    }
+
     func makeSidebarItem(_ item: ChatListItem, vocabulary: ChatListVocabulary)
         -> UnsafeMutablePointer<GtkWidget>
     {
@@ -61,9 +76,7 @@ extension MainWindow {
                 row, focused: row.entry.session.id == activePane.sessionID,
                 marked: marks.contains(row.entry), vocabulary: vocabulary,
                 section: sidebarBoardOfKey[item.key],
-                news: ChatRowNews.reading(
-                    for: row, ask: sidebarAsks[item.key],
-                    missed: sidebarMissedReasons[row.entry.session.id]),
+                news: sidebarNews(for: row, key: item.key),
                 onOpen: { [weak self] in
                     self?.open(row.entry)
                 },
