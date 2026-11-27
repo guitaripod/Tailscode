@@ -215,7 +215,9 @@ enum Kit {
     /// streams it from.
     /// 0.70.0 asks a bridge for a copy Apple's players read, streams a named file to disk, and says
     /// what the app shows on every request.
-    static let version = Version(0, 70, 0)
+    /// 0.71.0 keeps a transcript's pictures on disk instead of in its messages, receives a
+    /// transcript page into a file, and lets go of a bridge's held transcripts when asked.
+    static let version = Version(0, 71, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

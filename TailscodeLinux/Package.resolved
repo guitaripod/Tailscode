@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/guitaripod/CodingAgentKit.git",
       "state" : {
-        "revision" : "59f0f945a4a23b77f3908de92781f29d1ab4ca3e",
-        "version" : "0.70.0"
+        "revision" : "449b6f7d2ca6a67eed3bcb474743c5fd708d77f4",
+        "version" : "0.71.0"
       }
     },
     {
