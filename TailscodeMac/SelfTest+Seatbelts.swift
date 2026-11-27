@@ -241,6 +241,53 @@ extension SelfTest {
         return checks
     }
 
+    /// Decoded pictures are held to a bound in bytes with the newest always kept, the registry
+    /// gives the Mac's caches back by half and whole, and an app nobody can see gives them back
+    /// once, unless it is seen again first.
+    static func checkCacheRelief() async throws -> Int {
+        var checks = 0
+        func expect(_ condition: Bool, _ label: String) throws {
+            guard condition else { throw SelfTestFailure("cache relief case failed: \(label)") }
+            checks += 1
+        }
+        func picture(megabytes: Int) -> DecodedImage {
+            let image = NSImage(size: NSSize(width: 4, height: 4))
+            return DecodedImage(
+                image: image, preview: image, data: Data(count: megabytes * 1024 * 1024),
+                pixelWidth: 4, pixelHeight: 4)
+        }
+        let store = ImageStore.shared
+        store.relieve(.all)
+        try expect(store.heldBytes == 0, "an emptied store holds nothing")
+        for index in 0..<8 { store.store(picture(megabytes: 20), forKey: "relief-\(index)") }
+        try expect(store.heldBytes <= ImageStore.mostBytes, "eight 20 MB pictures stay under the bound")
+        try expect(store.entry(forKey: "relief-7") != nil, "the newest is kept")
+        try expect(store.entry(forKey: "relief-0") == nil, "the oldest went first")
+        store.store(picture(megabytes: 200), forKey: "relief-huge")
+        try expect(store.entry(forKey: "relief-huge") != nil, "one picture over the bound is still shown")
+        try expect(store.entry(forKey: "relief-7") == nil, "and it stands alone")
+        for index in 0..<4 { store.store(picture(megabytes: 20), forKey: "relief-\(index)") }
+        CacheRelief.install()
+        let names = MemoryRelief.shared.relieve(.half)
+        try expect(names.contains("decoded pictures"), "the pictures are in the registry")
+        try expect(store.heldBytes <= ImageStore.mostBytes / 2, "half gives back to half the bound")
+        try expect(store.heldBytes > 0, "and keeps the rest")
+        MemoryRelief.shared.relieve(.all)
+        try expect(store.heldBytes == 0, "all gives back everything")
+        let before = CacheRelief.awayReliefs
+        store.store(picture(megabytes: 1), forKey: "relief-away")
+        CacheRelief.noteVisibility(isSeen: false, after: 0.05)
+        CacheRelief.noteVisibility(isSeen: true)
+        try await Task.sleep(for: .milliseconds(200))
+        try expect(CacheRelief.awayReliefs == before, "an app seen again in time keeps its caches")
+        CacheRelief.noteVisibility(isSeen: false, after: 0.05)
+        try await Task.sleep(for: .milliseconds(300))
+        try expect(CacheRelief.awayReliefs == before + 1, "an app nobody sees gives them back once")
+        try expect(store.heldBytes == 0, "the pictures among them")
+        CacheRelief.noteVisibility(isSeen: true)
+        return checks
+    }
+
     /// The kernel's memory words, the heat and the footprint as the governor reads them, and the
     /// drive hook's injected pressure landing on the governor's floor.
     static func checkMemoryPressureMapping() throws -> Int {

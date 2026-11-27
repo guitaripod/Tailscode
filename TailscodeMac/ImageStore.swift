@@ -14,6 +14,9 @@ struct DecodedImage: @unchecked Sendable {
     let data: Data
     let pixelWidth: Int
     let pixelHeight: Int
+    /// What holding this picture costs in bytes: the server's own bytes and the preview's pixels.
+    /// The picture at its own size is decoded only when the viewer shows it and is not counted.
+    let cost: Int
 
     init(image: NSImage, preview: NSImage? = nil, data: Data, pixelWidth: Int, pixelHeight: Int) {
         self.image = image
@@ -21,6 +24,8 @@ struct DecodedImage: @unchecked Sendable {
         self.data = data
         self.pixelWidth = pixelWidth
         self.pixelHeight = pixelHeight
+        let drawn = preview?.representations.first.map { $0.pixelsWide * $0.pixelsHigh }
+        cost = data.count + (drawn ?? pixelWidth * pixelHeight) * 4
     }
 
     /// The longest side a preview keeps, in pixels: twice the tallest tile the layout draws on a
@@ -72,15 +77,42 @@ final class ImageStore {
         return CGSize(width: width, height: height)
     }
 
-    /// Decoded pictures are kept across chat switches, bounded: past the cap the least recently
-    /// decoded is released — its bytes are still on disk, one frame away.
+    /// The most decoded pictures kept, and the most bytes they may take together. A screenshot is
+    /// a megabyte or four of its own bytes and as much again as a preview, so a count alone let
+    /// forty-eight of them hold three hundred megabytes.
+    static let mostPictures = 48
+    static let mostBytes = 96 * 1024 * 1024
+
+    private(set) var heldBytes = 0
+
+    /// Decoded pictures are kept across chat switches, bounded by count and by bytes: past either
+    /// the least recently decoded is released — its bytes are still on disk, one frame away, and a
+    /// tile that finds its picture gone asks for it again as it is drawn. The newest is always
+    /// kept, whatever it weighs.
     func store(_ entry: DecodedImage, forKey key: String) {
+        heldBytes += entry.cost - (entries[key]?.cost ?? 0)
         entries[key] = entry
         onStored?(key)
         order.removeAll { $0 == key }
         order.append(key)
-        while order.count > 48 {
-            entries[order.removeFirst()] = nil
+        trim(toBytes: Self.mostBytes, keeping: 1)
+    }
+
+    /// Releases the least recently decoded pictures until no more than `bytes` are held.
+    private func trim(toBytes bytes: Int, keeping kept: Int) {
+        while order.count > kept, order.count > Self.mostPictures || heldBytes > bytes {
+            let oldest = order.removeFirst()
+            heldBytes -= entries.removeValue(forKey: oldest)?.cost ?? 0
+        }
+    }
+
+    /// Gives decoded pictures back when the Mac is short of memory or nobody is looking: half the
+    /// bound, or all of them.
+    func relieve(_ depth: ReliefDepth) {
+        trim(toBytes: depth == .all ? 0 : Self.mostBytes / 2, keeping: 0)
+        if depth == .all {
+            icons = [:]
+            iconOrder = []
         }
     }
 

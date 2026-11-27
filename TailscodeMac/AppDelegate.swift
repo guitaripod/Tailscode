@@ -42,6 +42,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ThemeSelection.welcome(newcomer: ServerDirectory.shared.profiles.isEmpty)
         NSApp.appearance = MacTheme.Chrome.appearance
         Seatbelts.shared.start()
+        CacheRelief.install()
+        CacheRelief.watchAbsence()
         let controller = MainWindowController()
         main = controller
         if MacAgent.shared.launchedAtLogin {

@@ -126,6 +126,16 @@ enum BrainPictures {
         for callback in callbacks { callback(image) }
     }
 
+    /// Lets go of the pictures of looks nothing is drawing: a card that needs one again asks, and
+    /// it is rendered again.
+    static func relieve(_ depth: ReliefDepth) {
+        let kept = depth == .all ? 0 : capacity / 2
+        while order.count > kept, let oldest = order.first {
+            order.removeFirst()
+            images[oldest] = nil
+        }
+    }
+
     private static func touch(_ id: String) {
         order.removeAll { $0 == id }
         order.append(id)

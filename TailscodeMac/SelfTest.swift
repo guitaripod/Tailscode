@@ -616,6 +616,14 @@ enum SelfTest {
         }
 
         do {
+            let checks = try await checkCacheRelief()
+            report("cache relief: \(checks) claims hold — pictures are bounded by bytes and given back when asked or unseen")
+        } catch {
+            report("cache relief: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkShedEffects()
             report("shed effects: \(checks) claims hold — loaded stops the reveal, strained everything")
         } catch {

@@ -28,6 +28,9 @@ enum MacClipPosters {
 
     static func cached(_ key: String) -> NSImage? { held.object(forKey: key as NSString) }
 
+    /// Lets go of every poster; a tile that is drawn again reads its first frame again.
+    static func relieve() { held.removeAllObjects() }
+
     /// A poster put in by hand, for a state staged without a machine to read one from.
     static func seed(_ image: NSImage, key: String) {
         held.setObject(image, forKey: key as NSString, cost: Int(image.size.width * image.size.height * 4))

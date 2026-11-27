@@ -394,6 +394,8 @@ final class TileRuntime {
         return moved
     }
 
+    private var sweepPending = false
+
     private func sweep() {
         let live = Set(hub.keys)
         for key in instances.keys where !live.contains(key) && holders[key] == nil {
@@ -437,6 +439,21 @@ final class TileRuntime {
     func detach(_ pane: ObjectIdentifier, from key: LiveKey) {
         holders[key]?.removeAll { $0 == pane }
         if holders[key]?.isEmpty == true { holders[key] = nil }
+        sweepAfterGrace()
+    }
+
+    /// Forgets the chats nobody holds once the hub's grace has let their streams go. A sweep ran
+    /// only when the next chat was opened, so the last chat a closed pane showed kept its
+    /// conversation, and every message in it, for as long as nothing else was opened.
+    private func sweepAfterGrace() {
+        guard !sweepPending else { return }
+        sweepPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + ConversationHub.defaultGrace + 2) { [weak self] in
+            MainThread.call {
+                self?.sweepPending = false
+                self?.sweep()
+            }
+        }
     }
 
     /// Whether this pane is the one that drains its chat's queue: the first that took it. A chat in
