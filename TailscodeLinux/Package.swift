@@ -64,6 +64,7 @@ if hasMpv {
     appSettings.append(.define("HAS_MPV"))
     shimDependencies.append("CMpv")
     shimSettings.append(.define("TAILSCODE_HAS_MPV", to: "1"))
+    shimLinkerSettings.append(.linkedLibrary("gbm"))
     targets.append(
         .systemLibrary(
             name: "CMpv", pkgConfig: "mpv",

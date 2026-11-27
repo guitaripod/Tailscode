@@ -245,6 +245,11 @@ extension MainWindow {
             self.activePane.driverPictureMenu(Int(argument) ?? 0)
         case "viewer":
             self.driveViewer(argument)
+        case "clip":
+            ClipSheet.present(
+                name: (argument as NSString).lastPathComponent, source: argument, duration: nil,
+                playhead: "drive:" + argument, failed: {},
+                notice: { words in FileHandle.standardOutput.write(Data("CLIP \(words)\n".utf8)) })
         case "newchat":
             Task { [weak self] in
                 let profiles = await ServerDirectory.shared.profiles()

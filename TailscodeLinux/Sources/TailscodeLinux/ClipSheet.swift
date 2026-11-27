@@ -246,6 +246,69 @@ final class ClipSheet: @unchecked Sendable {
         started = true
         tailscode_mpv_play(player, source)
         tick()
+        if ProcessInfo.processInfo.environment["TAILSCODE_CLIP_STATS"] == "1" { ClipStats(sheet: self).run() }
+    }
+
+    /// One line a second under `TAILSCODE_CLIP_STATS=1`: how often GTK painted, how long mpv held
+    /// the main thread to draw, how late the main loop answered a 10 ms timer, and what mpv says
+    /// of its own decoding and timing.
+    func statsLine(lagMax: Double, lagAverage: Double) -> String? {
+        guard !closed, let player else { return nil }
+        var renders: guint64 = 0
+        var total: gint64 = 0
+        var worst: gint64 = 0
+        tailscode_mpv_take_render_stats(player, &renders, &total, &worst)
+        let area = tailscode_mpv_area(player)
+        let fps = area.flatMap { gtk_widget_get_frame_clock($0) }.map { gdk_frame_clock_get_fps($0) } ?? -1
+        func number(_ name: String) -> Double { tailscode_mpv_number(player, name) }
+        let average = renders > 0 ? Double(total) / Double(renders) / 1000 : 0
+        return String(
+            format: "CLIPSTATS clock=%.1f renders=%llu render=%.2fms max=%.2fms lag=%.2fms lagmax=%.2fms vfps=%.1f dfps=%.1f drop=%.0f vodrop=%.0f delayed=%.0f mistimed=%.0f",
+            fps, renders, average, Double(worst) / 1000, lagAverage, lagMax,
+            number("estimated-vf-fps"), number("display-fps"), number("frame-drop-count"),
+            number("decoder-frame-drop-count"), number("vo-delayed-frame-count"), number("mistimed-frame-count"))
+            + " hwdec=" + String(cString: tailscode_mpv_text(player, "hwdec-current"))
+            + " cpu=" + Self.processCPU() + " main=" + Self.mainCPU()
+    }
+
+    var isClosed: Bool { closed }
+
+    var frameClock: OpaquePointer? {
+        guard let player, let area = tailscode_mpv_area(player) else { return nil }
+        return gtk_widget_get_frame_clock(area)
+    }
+
+    nonisolated(unsafe) private static var lastCPU: (ticks: Double, at: Double)?
+    nonisolated(unsafe) private static var lastMain: (ticks: Double, at: Double)?
+
+    /// The main thread's share of one core since the last line: the thread whose id is the
+    /// process's, which is the one GTK and every callback here run on.
+    private static func mainCPU() -> String {
+        let pid = getpid()
+        guard let stat = try? String(contentsOfFile: "/proc/self/task/\(pid)/stat", encoding: .utf8),
+            let close = stat.lastIndex(of: ")")
+        else { return "?" }
+        let fields = stat[stat.index(after: close)...].split(separator: " ")
+        guard fields.count > 13, let user = Double(fields[11]), let system = Double(fields[12]) else { return "?" }
+        let ticks = user + system
+        let now = Double(g_get_monotonic_time()) / 1_000_000
+        defer { lastMain = (ticks, now) }
+        guard let last = lastMain, now > last.at else { return "?" }
+        return String(format: "%.2f", (ticks - last.ticks) / 100 / (now - last.at))
+    }
+
+    /// This process's CPU since the last line, in cores, read from /proc so it needs no tool.
+    private static func processCPU() -> String {
+        guard let stat = try? String(contentsOfFile: "/proc/self/stat", encoding: .utf8),
+            let close = stat.lastIndex(of: ")")
+        else { return "?" }
+        let fields = stat[stat.index(after: close)...].split(separator: " ")
+        guard fields.count > 13, let user = Double(fields[11]), let system = Double(fields[12]) else { return "?" }
+        let ticks = user + system
+        let now = Double(g_get_monotonic_time()) / 1_000_000
+        defer { lastCPU = (ticks, now) }
+        guard let last = lastCPU, now > last.at else { return "?" }
+        return String(format: "%.2f", (ticks - last.ticks) / 100 / (now - last.at))
     }
 
     private func heard(_ event: String, _ payload: String) {

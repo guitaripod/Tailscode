@@ -649,6 +649,11 @@ TailscodeMpv *tailscode_mpv_new(
 const char *tailscode_mpv_last_error(void);
 
 GtkWidget *tailscode_mpv_area(TailscodeMpv *player);
+/// How many frames the area drew since the last call, the time `mpv_render_context_render` held
+/// the main thread for them in total and at most, in microseconds; the counters start again.
+/// A property as mpv prints it, in a buffer the next call overwrites; empty when it has none.
+const char *tailscode_mpv_text(TailscodeMpv *player, const char *name);
+void tailscode_mpv_take_render_stats(TailscodeMpv *player, guint64 *renders, gint64 *total_us, gint64 *max_us);
 void tailscode_mpv_play(TailscodeMpv *player, const char *url);
 
 /// A NULL-terminated mpv command, exactly as `VideoCommand.mpvCommand` states it.

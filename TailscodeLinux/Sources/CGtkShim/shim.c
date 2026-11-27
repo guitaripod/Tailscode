@@ -2981,6 +2981,102 @@ void tailscode_orb_set(
 #include <epoxy/glx.h>
 #include <mpv/client.h>
 #include <mpv/render_gl.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <gbm.h>
+#ifdef GDK_WINDOWING_WAYLAND
+#include <gdk/wayland/gdkwayland.h>
+#endif
+#ifdef GDK_WINDOWING_X11
+#include <gdk/x11/gdkx.h>
+#endif
+
+#define TAILSCODE_MPV_BUFFERS 3
+#ifndef EGL_DRM_RENDER_NODE_FILE_EXT
+#define EGL_DRM_RENDER_NODE_FILE_EXT 0x3377
+#endif
+
+/// The lock and the wake-up the frame thread, the player and the textures it hands GTK share. A
+/// texture can outlive the player that made it — GTK lets go of it after drawing the frame that
+/// follows it — so this is counted rather than owned.
+typedef struct {
+    gint refs;
+    GMutex lock;
+    GCond cond;
+} TailscodeMpvSync;
+
+static TailscodeMpvSync *tailscode_mpv_sync_new(void) {
+    TailscodeMpvSync *sync = g_new0(TailscodeMpvSync, 1);
+    sync->refs = 1;
+    g_mutex_init(&sync->lock);
+    g_cond_init(&sync->cond);
+    return sync;
+}
+
+static TailscodeMpvSync *tailscode_mpv_sync_ref(TailscodeMpvSync *sync) {
+    g_atomic_int_inc(&sync->refs);
+    return sync;
+}
+
+static void tailscode_mpv_sync_unref(TailscodeMpvSync *sync) {
+    if (!g_atomic_int_dec_and_test(&sync->refs)) return;
+    g_mutex_clear(&sync->lock);
+    g_cond_clear(&sync->cond);
+    g_free(sync);
+}
+
+/// One frame-sized dmabuf mpv draws into: a GL texture on the frame thread's context, exported once
+/// as a dmabuf GTK reads without a copy. It is busy from the moment a frame in it is handed over
+/// until GTK drops the texture made of it, and only a free one is drawn into again.
+typedef struct {
+    gint refs;
+    gint busy;
+    TailscodeMpvSync *sync;
+    int fd;
+    int stride;
+    int offset;
+    int width;
+    int height;
+    guint32 fourcc;
+    guint64 modifier;
+    GLuint texture;
+    GLuint fbo;
+    EGLImage image;
+    struct gbm_bo *bo;
+} TailscodeMpvBuffer;
+
+static TailscodeMpvBuffer *tailscode_mpv_buffer_ref(TailscodeMpvBuffer *buffer) {
+    g_atomic_int_inc(&buffer->refs);
+    return buffer;
+}
+
+static void tailscode_mpv_buffer_unref(TailscodeMpvBuffer *buffer) {
+    if (!g_atomic_int_dec_and_test(&buffer->refs)) return;
+    if (buffer->fd >= 0) close(buffer->fd);
+    tailscode_mpv_sync_unref(buffer->sync);
+    g_free(buffer);
+}
+
+/// GTK is done with a frame: its buffer may be drawn into again.
+static void tailscode_mpv_buffer_release(TailscodeMpvBuffer *buffer) {
+    g_mutex_lock(&buffer->sync->lock);
+    g_atomic_int_set(&buffer->busy, 0);
+    g_cond_broadcast(&buffer->sync->cond);
+    g_mutex_unlock(&buffer->sync->lock);
+}
+
+typedef struct {
+    TailscodeMpvBuffer *buffer;
+    int fd;
+} TailscodeMpvHold;
+
+static void tailscode_mpv_hold_done(gpointer raw) {
+    TailscodeMpvHold *hold = raw;
+    if (hold->fd >= 0) close(hold->fd);
+    tailscode_mpv_buffer_release(hold->buffer);
+    tailscode_mpv_buffer_unref(hold->buffer);
+    g_free(hold);
+}
 
 struct TailscodeMpv {
     mpv_handle *mpv;
@@ -2992,6 +3088,32 @@ struct TailscodeMpv {
     gboolean playing;
     guint pending_render;
     guint pending_events;
+    guint64 renders;
+    gint64 render_us;
+    gint64 render_max_us;
+    /// The frame path: mpv draws on `thread` into dmabufs `picture` shows, standing in a graphics
+    /// offload so the compositor can put them on screen without GTK drawing them. Unset, the player
+    /// draws into `area` as a GtkGLArea on GTK's own thread.
+    gboolean frames;
+    TailscodeMpvSync *sync;
+    GThread *thread;
+    EGLDisplay egl;
+    GtkWidget *picture;
+    GtkWidget *probe;
+    int context_state;
+    gboolean stop;
+    gboolean wake;
+    gboolean redraw;
+    int want_width;
+    int want_height;
+    TailscodeMpvBuffer *ready;
+    gboolean failed;
+    guint pending_present;
+    TailscodeMpvBuffer *pool[TAILSCODE_MPV_BUFFERS];
+    int pool_width;
+    int pool_height;
+    struct gbm_device *gbm;
+    int gbm_fd;
 };
 
 gboolean tailscode_mpv_available(void) { return TRUE; }
@@ -3127,12 +3249,42 @@ static gboolean tailscode_mpv_render(GtkGLArea *area, GdkGLContext *context, gpo
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
     mpv_opengl_fbo target = {.fbo = (int)fbo, .w = width, .h = height};
     int flip = 1;
+    int block = 0;
     mpv_render_param params[] = {
         {MPV_RENDER_PARAM_OPENGL_FBO, &target},
         {MPV_RENDER_PARAM_FLIP_Y, &flip},
+        {MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, &block},
         {0, NULL}};
+    gint64 began = g_get_monotonic_time();
     mpv_render_context_render(player->render, params);
+    gint64 spent = g_get_monotonic_time() - began;
+    mpv_render_context_report_swap(player->render);
+    player->renders++;
+    player->render_us += spent;
+    if (spent > player->render_max_us) player->render_max_us = spent;
     return TRUE;
+}
+
+const char *tailscode_mpv_text(TailscodeMpv *player, const char *name) {
+    static char held[256];
+    held[0] = 0;
+    if (!player || !player->mpv) return held;
+    char *value = mpv_get_property_string(player->mpv, name);
+    if (value) {
+        g_strlcpy(held, value, sizeof held);
+        mpv_free(value);
+    }
+    return held;
+}
+
+void tailscode_mpv_take_render_stats(TailscodeMpv *player, guint64 *renders, gint64 *total_us, gint64 *max_us) {
+    if (!player) return;
+    if (renders) *renders = player->renders;
+    if (total_us) *total_us = player->render_us;
+    if (max_us) *max_us = player->render_max_us;
+    player->renders = 0;
+    player->render_us = 0;
+    player->render_max_us = 0;
 }
 
 /// What a player may hold besides the frame on screen. mpv reads 150 MiB ahead and keeps 50 MiB
@@ -3145,6 +3297,430 @@ static void tailscode_mpv_bound(mpv_handle *mpv) {
     char threads[8];
     g_snprintf(threads, sizeof threads, "%u", MIN(g_get_num_processors(), 8u));
     mpv_set_option_string(mpv, "vd-lavc-threads", threads);
+}
+
+/// Whether a player may draw on a thread of its own into dmabufs GTK shows without a copy: the
+/// display must speak EGL and export a GL texture as a dmabuf. Asked once; `TAILSCODE_MPV_GLAREA=1`
+/// keeps every player on GTK's thread in a GtkGLArea, and a dmabuf GTK would not take moves every
+/// later player there too.
+static int tailscode_mpv_frames_ok = -1;
+
+/// The layouts a frame buffer may be allocated in: the ones GTK says it can import for 8-bit RGBA,
+/// with NVIDIA's compressed block-linear left out because GTK's Vulkan renderer cannot sample it and
+/// would copy every such frame back through GL. Linear is always among them.
+static guint64 tailscode_mpv_modifiers[64];
+static int tailscode_mpv_modifier_count = 0;
+static char tailscode_mpv_render_node[128] = "";
+
+static void tailscode_mpv_learn_modifiers(GdkDisplay *display) {
+    tailscode_mpv_modifier_count = 0;
+    tailscode_mpv_modifiers[tailscode_mpv_modifier_count++] = 0;
+    GdkDmabufFormats *formats = gdk_display_get_dmabuf_formats(display);
+    if (!formats) return;
+    gsize count = gdk_dmabuf_formats_get_n_formats(formats);
+    for (gsize index = 0; index < count && tailscode_mpv_modifier_count < 64; index++) {
+        guint32 fourcc = 0;
+        guint64 modifier = 0;
+        gdk_dmabuf_formats_get_format(formats, index, &fourcc, &modifier);
+        if (fourcc != GBM_FORMAT_ABGR8888 || modifier == 0 || modifier == ((1ULL << 56) - 1)) continue;
+        if ((modifier >> 56) == 0x03 && ((modifier >> 23) & 0x7) != 0) continue;
+        tailscode_mpv_modifiers[tailscode_mpv_modifier_count++] = modifier;
+    }
+}
+
+/// The GPU GTK's EGL display draws with, by its render node, which is where the frame buffers are
+/// allocated. A display with none — a software renderer — keeps the GL area.
+static gboolean tailscode_mpv_learn_render_node(EGLDisplay egl) {
+    EGLAttrib device = 0;
+    if (!eglQueryDisplayAttribEXT(egl, EGL_DEVICE_EXT, &device) || !device) return FALSE;
+    const char *node = eglQueryDeviceStringEXT((EGLDeviceEXT)device, EGL_DRM_RENDER_NODE_FILE_EXT);
+    if (!node || !*node) return FALSE;
+    g_strlcpy(tailscode_mpv_render_node, node, sizeof tailscode_mpv_render_node);
+    return TRUE;
+}
+
+static EGLDisplay tailscode_mpv_egl_display(GdkDisplay *display) {
+#ifdef GDK_WINDOWING_WAYLAND
+    if (GDK_IS_WAYLAND_DISPLAY(display)) return gdk_wayland_display_get_egl_display(display);
+#endif
+#ifdef GDK_WINDOWING_X11
+    if (GDK_IS_X11_DISPLAY(display)) {
+        G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+        return gdk_x11_display_get_egl_display(display);
+        G_GNUC_END_IGNORE_DEPRECATIONS
+    }
+#endif
+    return EGL_NO_DISPLAY;
+}
+
+static gboolean tailscode_mpv_has_extension(const char *list, const char *name) {
+    if (!list) return FALSE;
+    size_t length = strlen(name);
+    for (const char *at = strstr(list, name); at; at = strstr(at + length, name)) {
+        if ((at == list || at[-1] == ' ') && (at[length] == ' ' || at[length] == 0)) return TRUE;
+    }
+    return FALSE;
+}
+
+static EGLDisplay tailscode_mpv_frames_display(void) {
+    if (tailscode_mpv_frames_ok == 0) return EGL_NO_DISPLAY;
+    GdkDisplay *display = gdk_display_get_default();
+    if (!display) return EGL_NO_DISPLAY;
+    if (tailscode_mpv_frames_ok < 0) {
+        tailscode_mpv_frames_ok = 0;
+        if (g_strcmp0(g_getenv("TAILSCODE_MPV_GLAREA"), "1") == 0) return EGL_NO_DISPLAY;
+        GError *error = NULL;
+        if (!gdk_display_prepare_gl(display, &error)) {
+            g_clear_error(&error);
+            return EGL_NO_DISPLAY;
+        }
+        EGLDisplay egl = tailscode_mpv_egl_display(display);
+        if (egl == EGL_NO_DISPLAY) return EGL_NO_DISPLAY;
+        const char *extensions = eglQueryString(egl, EGL_EXTENSIONS);
+        if (!tailscode_mpv_has_extension(extensions, "EGL_EXT_image_dma_buf_import_modifiers") ||
+            !tailscode_mpv_has_extension(extensions, "EGL_KHR_surfaceless_context")) {
+            return EGL_NO_DISPLAY;
+        }
+        const char *client = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
+        if (!tailscode_mpv_has_extension(client, "EGL_EXT_device_query") ||
+            !tailscode_mpv_learn_render_node(egl)) {
+            return EGL_NO_DISPLAY;
+        }
+        tailscode_mpv_learn_modifiers(display);
+        tailscode_mpv_frames_ok = 1;
+    }
+    return tailscode_mpv_egl_display(display);
+}
+
+static void *tailscode_mpv_egl_proc(void *ctx, const char *name) {
+    (void)ctx;
+    return (void *)eglGetProcAddress(name);
+}
+
+static void tailscode_mpv_buffer_drop_gl(TailscodeMpv *player, TailscodeMpvBuffer *buffer) {
+    if (buffer->fbo) glDeleteFramebuffers(1, &buffer->fbo);
+    if (buffer->texture) glDeleteTextures(1, &buffer->texture);
+    if (buffer->image != EGL_NO_IMAGE) eglDestroyImage(player->egl, buffer->image);
+    if (buffer->bo) gbm_bo_destroy(buffer->bo);
+    buffer->fbo = 0;
+    buffer->texture = 0;
+    buffer->image = EGL_NO_IMAGE;
+    buffer->bo = NULL;
+}
+
+/// A frame-sized dmabuf allocated where GTK can read it, made a GL texture with a framebuffer on
+/// the frame thread's context for mpv to draw into.
+static TailscodeMpvBuffer *tailscode_mpv_buffer_new(TailscodeMpv *player, int width, int height) {
+    TailscodeMpvBuffer *buffer = g_new0(TailscodeMpvBuffer, 1);
+    buffer->refs = 1;
+    buffer->fd = -1;
+    buffer->image = EGL_NO_IMAGE;
+    buffer->sync = tailscode_mpv_sync_ref(player->sync);
+    buffer->width = width;
+    buffer->height = height;
+    buffer->fourcc = GBM_FORMAT_ABGR8888;
+    buffer->bo = gbm_bo_create_with_modifiers2(
+        player->gbm, (uint32_t)width, (uint32_t)height, GBM_FORMAT_ABGR8888, tailscode_mpv_modifiers,
+        (unsigned)tailscode_mpv_modifier_count, GBM_BO_USE_RENDERING);
+    if (!buffer->bo) {
+        buffer->bo = gbm_bo_create(
+            player->gbm, (uint32_t)width, (uint32_t)height, GBM_FORMAT_ABGR8888,
+            GBM_BO_USE_RENDERING | GBM_BO_USE_LINEAR);
+    }
+    if (!buffer->bo || gbm_bo_get_plane_count(buffer->bo) != 1) goto failed;
+    buffer->fd = gbm_bo_get_fd_for_plane(buffer->bo, 0);
+    buffer->stride = (int)gbm_bo_get_stride_for_plane(buffer->bo, 0);
+    buffer->offset = (int)gbm_bo_get_offset(buffer->bo, 0);
+    buffer->modifier = gbm_bo_get_modifier(buffer->bo);
+    if (buffer->fd < 0) goto failed;
+    EGLAttrib attributes[] = {
+        EGL_WIDTH, width, EGL_HEIGHT, height,
+        EGL_LINUX_DRM_FOURCC_EXT, GBM_FORMAT_ABGR8888,
+        EGL_DMA_BUF_PLANE0_FD_EXT, buffer->fd,
+        EGL_DMA_BUF_PLANE0_OFFSET_EXT, buffer->offset,
+        EGL_DMA_BUF_PLANE0_PITCH_EXT, buffer->stride,
+        EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT, (EGLAttrib)(buffer->modifier & 0xffffffffu),
+        EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT, (EGLAttrib)(buffer->modifier >> 32),
+        EGL_NONE};
+    buffer->image = eglCreateImage(player->egl, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, attributes);
+    if (buffer->image == EGL_NO_IMAGE) goto failed;
+    glGenTextures(1, &buffer->texture);
+    glBindTexture(GL_TEXTURE_2D, buffer->texture);
+    glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, buffer->image);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glGenFramebuffers(1, &buffer->fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, buffer->fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, buffer->texture, 0);
+    gboolean complete = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (!complete) goto failed;
+    return buffer;
+failed:
+    tailscode_mpv_buffer_drop_gl(player, buffer);
+    tailscode_mpv_buffer_unref(buffer);
+    return NULL;
+}
+
+static void tailscode_mpv_pool_clear(TailscodeMpv *player) {
+    for (int index = 0; index < TAILSCODE_MPV_BUFFERS; index++) {
+        TailscodeMpvBuffer *buffer = player->pool[index];
+        if (!buffer) continue;
+        tailscode_mpv_buffer_drop_gl(player, buffer);
+        tailscode_mpv_buffer_unref(buffer);
+        player->pool[index] = NULL;
+    }
+    player->pool_width = 0;
+    player->pool_height = 0;
+}
+
+static gboolean tailscode_mpv_pool_fit(TailscodeMpv *player, int width, int height) {
+    if (player->pool_width == width && player->pool_height == height && player->pool[0]) return TRUE;
+    tailscode_mpv_pool_clear(player);
+    for (int index = 0; index < TAILSCODE_MPV_BUFFERS; index++) {
+        player->pool[index] = tailscode_mpv_buffer_new(player, width, height);
+        if (!player->pool[index]) {
+            tailscode_mpv_pool_clear(player);
+            return FALSE;
+        }
+    }
+    player->pool_width = width;
+    player->pool_height = height;
+    return TRUE;
+}
+
+/// A buffer GTK is not showing, waited for a little while GTK draws; none means this frame is
+/// skipped, which mpv counts as a drop and plays on from.
+static TailscodeMpvBuffer *tailscode_mpv_free_buffer(TailscodeMpv *player) {
+    gint64 until = g_get_monotonic_time() + 100 * G_TIME_SPAN_MILLISECOND;
+    TailscodeMpvBuffer *found = NULL;
+    g_mutex_lock(&player->sync->lock);
+    while (!player->stop && !found) {
+        for (int index = 0; index < TAILSCODE_MPV_BUFFERS; index++) {
+            TailscodeMpvBuffer *buffer = player->pool[index];
+            if (buffer && !g_atomic_int_get(&buffer->busy)) {
+                found = buffer;
+                break;
+            }
+        }
+        if (!found && !g_cond_wait_until(&player->sync->cond, &player->sync->lock, until)) break;
+    }
+    if (found) g_atomic_int_set(&found->busy, 1);
+    g_mutex_unlock(&player->sync->lock);
+    return found;
+}
+
+/// On GTK's thread: the newest drawn frame becomes the picture. A frame that was overtaken by a
+/// newer one before GTK got to it was released by the frame thread without ever being shown.
+static gboolean tailscode_mpv_present(gpointer raw) {
+    TailscodeMpv *player = raw;
+    g_mutex_lock(&player->sync->lock);
+    TailscodeMpvBuffer *buffer = player->ready;
+    gboolean failed = player->failed;
+    player->ready = NULL;
+    player->pending_present = 0;
+    player->failed = FALSE;
+    g_mutex_unlock(&player->sync->lock);
+    if (failed) {
+        tailscode_mpv_frames_ok = 0;
+        tailscode_mpv_report(player, "error", "mpv could not hand its frames to GTK");
+    }
+    if (!buffer) return G_SOURCE_REMOVE;
+    if (player->disposed || !player->picture) {
+        tailscode_mpv_buffer_release(buffer);
+        tailscode_mpv_buffer_unref(buffer);
+        return G_SOURCE_REMOVE;
+    }
+    TailscodeMpvHold *hold = g_new0(TailscodeMpvHold, 1);
+    hold->buffer = buffer;
+    hold->fd = dup(buffer->fd);
+    GdkDmabufTextureBuilder *builder = gdk_dmabuf_texture_builder_new();
+    gdk_dmabuf_texture_builder_set_display(builder, gtk_widget_get_display(player->picture));
+    gdk_dmabuf_texture_builder_set_width(builder, (unsigned)buffer->width);
+    gdk_dmabuf_texture_builder_set_height(builder, (unsigned)buffer->height);
+    gdk_dmabuf_texture_builder_set_fourcc(builder, buffer->fourcc);
+    gdk_dmabuf_texture_builder_set_modifier(builder, buffer->modifier);
+    gdk_dmabuf_texture_builder_set_premultiplied(builder, TRUE);
+    gdk_dmabuf_texture_builder_set_n_planes(builder, 1);
+    gdk_dmabuf_texture_builder_set_fd(builder, 0, hold->fd);
+    gdk_dmabuf_texture_builder_set_stride(builder, 0, (unsigned)buffer->stride);
+    gdk_dmabuf_texture_builder_set_offset(builder, 0, (unsigned)buffer->offset);
+    GError *error = NULL;
+    GdkTexture *texture = gdk_dmabuf_texture_builder_build(builder, tailscode_mpv_hold_done, hold, &error);
+    g_object_unref(builder);
+    if (!texture) {
+        tailscode_mpv_frames_ok = 0;
+        tailscode_mpv_report(player, "error", error ? error->message : "GTK took no dmabuf");
+        g_clear_error(&error);
+        tailscode_mpv_hold_done(hold);
+        return G_SOURCE_REMOVE;
+    }
+    gtk_picture_set_paintable(GTK_PICTURE(player->picture), GDK_PAINTABLE(texture));
+    g_object_unref(texture);
+    return G_SOURCE_REMOVE;
+}
+
+static void tailscode_mpv_frames_update(void *raw) {
+    TailscodeMpv *player = raw;
+    g_mutex_lock(&player->sync->lock);
+    player->wake = TRUE;
+    g_cond_broadcast(&player->sync->cond);
+    g_mutex_unlock(&player->sync->lock);
+}
+
+static gboolean tailscode_mpv_frames_context(TailscodeMpv *player, EGLContext *made) {
+    eglBindAPI(EGL_OPENGL_API);
+    const EGLint attributes[] = {
+        EGL_CONTEXT_MAJOR_VERSION, 3, EGL_CONTEXT_MINOR_VERSION, 2,
+        EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT, EGL_NONE};
+    EGLConfig config = EGL_NO_CONFIG_KHR;
+    if (!tailscode_mpv_has_extension(eglQueryString(player->egl, EGL_EXTENSIONS), "EGL_KHR_no_config_context")) {
+        const EGLint wanted[] = {EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT, EGL_NONE};
+        EGLint count = 0;
+        if (!eglChooseConfig(player->egl, wanted, &config, 1, &count) || count < 1) return FALSE;
+    }
+    *made = eglCreateContext(player->egl, config, EGL_NO_CONTEXT, attributes);
+    if (*made == EGL_NO_CONTEXT) return FALSE;
+    if (!eglMakeCurrent(player->egl, EGL_NO_SURFACE, EGL_NO_SURFACE, *made)) {
+        eglDestroyContext(player->egl, *made);
+        *made = EGL_NO_CONTEXT;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/// The frame thread: mpv's GL context lives here, so drawing a frame — and waiting for the moment
+/// it is due, which mpv does inside the render call — never holds GTK's thread. Each frame is drawn
+/// into a free buffer, finished on the GPU, and handed to GTK as the newest one.
+static gpointer tailscode_mpv_frames_run(gpointer raw) {
+    TailscodeMpv *player = raw;
+    EGLContext context = EGL_NO_CONTEXT;
+    mpv_render_context *render = NULL;
+    gboolean made = tailscode_mpv_frames_context(player, &context);
+    player->gbm_fd = -1;
+    if (made) {
+        player->gbm_fd = open(tailscode_mpv_render_node, O_RDWR | O_CLOEXEC);
+        player->gbm = player->gbm_fd >= 0 ? gbm_create_device(player->gbm_fd) : NULL;
+        made = player->gbm != NULL;
+    }
+    if (made) {
+        mpv_opengl_init_params gl = {.get_proc_address = tailscode_mpv_egl_proc};
+        int advanced = 0;
+        mpv_render_param params[] = {
+            {MPV_RENDER_PARAM_API_TYPE, (void *)MPV_RENDER_API_TYPE_OPENGL},
+            {MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl},
+            {MPV_RENDER_PARAM_ADVANCED_CONTROL, &advanced},
+            {0, NULL}};
+        made = mpv_render_context_create(&render, player->mpv, params) >= 0;
+    }
+    g_mutex_lock(&player->sync->lock);
+    player->context_state = made ? 1 : -1;
+    g_cond_broadcast(&player->sync->cond);
+    g_mutex_unlock(&player->sync->lock);
+    if (made) mpv_render_context_set_update_callback(render, tailscode_mpv_frames_update, player);
+    while (made) {
+        g_mutex_lock(&player->sync->lock);
+        while (!player->wake && !player->stop) g_cond_wait(&player->sync->cond, &player->sync->lock);
+        gboolean stop = player->stop;
+        gboolean redraw = player->redraw;
+        int width = player->want_width;
+        int height = player->want_height;
+        player->wake = FALSE;
+        player->redraw = FALSE;
+        g_mutex_unlock(&player->sync->lock);
+        if (stop) break;
+        uint64_t flags = mpv_render_context_update(render);
+        if (width <= 0 || height <= 0) continue;
+        if (width != player->pool_width || height != player->pool_height) redraw = TRUE;
+        if (!(flags & MPV_RENDER_UPDATE_FRAME) && !redraw) continue;
+        if (!tailscode_mpv_pool_fit(player, width, height)) {
+            g_mutex_lock(&player->sync->lock);
+            player->failed = TRUE;
+            if (!player->pending_present && !player->stop) {
+                player->pending_present = g_idle_add_full(G_PRIORITY_HIGH, tailscode_mpv_present, player, NULL);
+            }
+            g_mutex_unlock(&player->sync->lock);
+            break;
+        }
+        TailscodeMpvBuffer *buffer = tailscode_mpv_free_buffer(player);
+        if (!buffer) continue;
+        mpv_opengl_fbo target = {.fbo = (int)buffer->fbo, .w = width, .h = height, .internal_format = GL_RGBA8};
+        int flip = 0;
+        mpv_render_param frame[] = {
+            {MPV_RENDER_PARAM_OPENGL_FBO, &target},
+            {MPV_RENDER_PARAM_FLIP_Y, &flip},
+            {0, NULL}};
+        gint64 began = g_get_monotonic_time();
+        mpv_render_context_render(render, frame);
+        glFinish();
+        gint64 spent = g_get_monotonic_time() - began;
+        tailscode_mpv_buffer_ref(buffer);
+        g_mutex_lock(&player->sync->lock);
+        player->renders++;
+        player->render_us += spent;
+        if (spent > player->render_max_us) player->render_max_us = spent;
+        TailscodeMpvBuffer *overtaken = player->ready;
+        player->ready = buffer;
+        if (!player->pending_present && !player->stop) {
+            player->pending_present = g_idle_add_full(G_PRIORITY_HIGH, tailscode_mpv_present, player, NULL);
+        }
+        g_mutex_unlock(&player->sync->lock);
+        if (overtaken) {
+            tailscode_mpv_buffer_release(overtaken);
+            tailscode_mpv_buffer_unref(overtaken);
+        }
+        mpv_render_context_report_swap(render);
+    }
+    if (render) {
+        mpv_render_context_set_update_callback(render, NULL, NULL);
+        mpv_render_context_free(render);
+    }
+    if (context != EGL_NO_CONTEXT) {
+        tailscode_mpv_pool_clear(player);
+        eglMakeCurrent(player->egl, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        eglDestroyContext(player->egl, context);
+    }
+    if (player->gbm) gbm_device_destroy(player->gbm);
+    player->gbm = NULL;
+    if (player->gbm_fd >= 0) close(player->gbm_fd);
+    player->gbm_fd = -1;
+    eglReleaseThread();
+    return NULL;
+}
+
+/// The pane's size in device pixels is the size every frame is drawn at, so GTK shows each one
+/// pixel for pixel and mpv does the scaling it does best.
+static void tailscode_mpv_frames_resize(GtkDrawingArea *area, int width, int height, gpointer raw) {
+    TailscodeMpv *player = raw;
+    double scale = gtk_widget_get_scale_factor(GTK_WIDGET(area));
+    GtkNative *native = gtk_widget_get_native(GTK_WIDGET(area));
+    GdkSurface *surface = native ? gtk_native_get_surface(native) : NULL;
+    if (surface) scale = gdk_surface_get_scale(surface);
+    g_mutex_lock(&player->sync->lock);
+    player->want_width = (int)ceil(width * scale);
+    player->want_height = (int)ceil(height * scale);
+    player->wake = TRUE;
+    player->redraw = TRUE;
+    g_cond_broadcast(&player->sync->cond);
+    g_mutex_unlock(&player->sync->lock);
+}
+
+/// The frame thread is started when the pane first exists on screen, as a GL area made its context
+/// then, and the caller waits for it: mpv opens a video only into a render context that is there.
+static void tailscode_mpv_frames_realize(GtkWidget *widget, gpointer raw) {
+    (void)widget;
+    TailscodeMpv *player = raw;
+    if (player->thread) return;
+    player->thread = g_thread_new("tailscode-mpv", tailscode_mpv_frames_run, player);
+    gint64 until = g_get_monotonic_time() + 3 * G_TIME_SPAN_SECOND;
+    g_mutex_lock(&player->sync->lock);
+    while (player->context_state == 0) {
+        if (!g_cond_wait_until(&player->sync->cond, &player->sync->lock, until)) break;
+    }
+    int state = player->context_state;
+    g_mutex_unlock(&player->sync->lock);
+    if (state != 1) tailscode_mpv_report(player, "error", "mpv could not use this pane's OpenGL");
 }
 
 TailscodeMpv *tailscode_mpv_new(
@@ -3176,6 +3752,16 @@ TailscodeMpv *tailscode_mpv_new(
     mpv_set_option_string(player->mpv, "input-default-bindings", "no");
     mpv_set_option_string(player->mpv, "input-vo-keyboard", "no");
     mpv_set_option_string(player->mpv, "osc", "no");
+    const char *extra = g_getenv("TAILSCODE_MPV_OPTIONS");
+    if (extra && *extra) {
+        gchar **pairs = g_strsplit(extra, ",", -1);
+        for (gchar **pair = pairs; *pair; pair++) {
+            gchar **kv = g_strsplit(*pair, "=", 2);
+            if (kv[0] && kv[1]) mpv_set_option_string(player->mpv, kv[0], kv[1]);
+            g_strfreev(kv);
+        }
+        g_strfreev(pairs);
+    }
     int started = mpv_initialize(player->mpv);
     if (started < 0) {
         tailscode_mpv_error = mpv_error_string(started);
@@ -3187,6 +3773,33 @@ TailscodeMpv *tailscode_mpv_new(
     mpv_observe_property(player->mpv, 0, "pause", MPV_FORMAT_FLAG);
     mpv_observe_property(player->mpv, 0, "mute", MPV_FORMAT_FLAG);
     mpv_set_wakeup_callback(player->mpv, tailscode_mpv_wakeup, player);
+
+    EGLDisplay egl = tailscode_mpv_frames_display();
+    if (egl != EGL_NO_DISPLAY) {
+        player->frames = TRUE;
+        player->egl = egl;
+        player->sync = tailscode_mpv_sync_new();
+        GtkWidget *stage = gtk_overlay_new();
+        player->probe = gtk_drawing_area_new();
+        gtk_widget_set_hexpand(player->probe, TRUE);
+        gtk_widget_set_vexpand(player->probe, TRUE);
+        gtk_overlay_set_child(GTK_OVERLAY(stage), player->probe);
+        player->picture = gtk_picture_new();
+        gtk_picture_set_content_fit(GTK_PICTURE(player->picture), GTK_CONTENT_FIT_FILL);
+        gtk_picture_set_can_shrink(GTK_PICTURE(player->picture), TRUE);
+        GtkWidget *offload = gtk_graphics_offload_new(player->picture);
+        gtk_graphics_offload_set_black_background(GTK_GRAPHICS_OFFLOAD(offload), TRUE);
+        gtk_widget_set_halign(offload, GTK_ALIGN_FILL);
+        gtk_widget_set_valign(offload, GTK_ALIGN_FILL);
+        gtk_widget_set_can_target(offload, FALSE);
+        gtk_overlay_add_overlay(GTK_OVERLAY(stage), offload);
+        gtk_widget_set_hexpand(stage, TRUE);
+        gtk_widget_set_vexpand(stage, TRUE);
+        g_signal_connect(player->probe, "resize", G_CALLBACK(tailscode_mpv_frames_resize), player);
+        g_signal_connect(stage, "realize", G_CALLBACK(tailscode_mpv_frames_realize), player);
+        player->area = stage;
+        return player;
+    }
 
     player->area = gtk_gl_area_new();
     gtk_gl_area_set_has_depth_buffer(GTK_GL_AREA(player->area), FALSE);
@@ -3298,10 +3911,55 @@ int tailscode_mpv_probe(const char *url, const char *poster_dir, double timeout,
 /// Teardown in the only order that is safe: stop mpv calling back, take the widget out of the
 /// tree so GTK can never render into a dead player, free the GL objects while their context is
 /// still current, and only then let mpv go.
+/// The frame path's teardown: the thread is stopped and joined first, so mpv's render context and
+/// every GL object die on the thread that made them, and no frame is handed over after this.
+static void tailscode_mpv_frames_free(TailscodeMpv *player) {
+    g_mutex_lock(&player->sync->lock);
+    player->stop = TRUE;
+    g_cond_broadcast(&player->sync->cond);
+    g_mutex_unlock(&player->sync->lock);
+    if (player->thread) g_thread_join(player->thread);
+    player->thread = NULL;
+    if (player->pending_present) {
+        g_source_remove(player->pending_present);
+        player->pending_present = 0;
+    }
+    if (player->ready) {
+        tailscode_mpv_buffer_release(player->ready);
+        tailscode_mpv_buffer_unref(player->ready);
+        player->ready = NULL;
+    }
+    if (player->picture) gtk_picture_set_paintable(GTK_PICTURE(player->picture), NULL);
+    GtkWidget *stage = player->area;
+    player->area = NULL;
+    player->picture = NULL;
+    if (stage) {
+        g_signal_handlers_disconnect_by_data(stage, player);
+        if (player->probe) g_signal_handlers_disconnect_by_data(player->probe, player);
+        if (gtk_widget_get_parent(stage)) gtk_widget_unparent(stage);
+    }
+    player->probe = NULL;
+    if (player->pending_events) {
+        g_source_remove(player->pending_events);
+        player->pending_events = 0;
+    }
+    if (player->mpv) {
+        mpv_destroy(player->mpv);
+        player->mpv = NULL;
+    }
+    tailscode_mpv_sync_unref(player->sync);
+    g_free(player);
+}
+
 void tailscode_mpv_free(TailscodeMpv *player) {
     if (!player) return;
     player->disposed = TRUE;
     player->event = NULL;
+    if (player->frames) {
+        if (player->mpv) mpv_set_wakeup_callback(player->mpv, NULL, NULL);
+        tailscode_mpv_frames_free(player);
+        return;
+    }
     if (player->render) mpv_render_context_set_update_callback(player->render, NULL, NULL);
     if (player->mpv) mpv_set_wakeup_callback(player->mpv, NULL, NULL);
     if (player->pending_render) {
@@ -3335,6 +3993,19 @@ void tailscode_mpv_free(TailscodeMpv *player) {
 #else
 
 gboolean tailscode_mpv_available(void) { return FALSE; }
+
+const char *tailscode_mpv_text(TailscodeMpv *player, const char *name) {
+    (void)player;
+    (void)name;
+    return "";
+}
+
+void tailscode_mpv_take_render_stats(TailscodeMpv *player, guint64 *renders, gint64 *total_us, gint64 *max_us) {
+    (void)player;
+    if (renders) *renders = 0;
+    if (total_us) *total_us = 0;
+    if (max_us) *max_us = 0;
+}
 
 double tailscode_mpv_number(TailscodeMpv *player, const char *name) {
     (void)player;
