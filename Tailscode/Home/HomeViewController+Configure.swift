@@ -395,8 +395,7 @@ extension HomeViewController {
         }
         let chatCell = UICollectionView.CellRegistration<ChatRowCell, ChatRowCard> {
             cell, _, card in
-            cell.wantsAttention = card.band == .needsYou
-            cell.contentConfiguration = ChatRowConfiguration(facts: card.facts)
+            Self.dress(cell, facts: card.facts, attention: card.band == .needsYou)
         }
         let askCell = UICollectionView.CellRegistration<AskCardCell, AskCard> {
             [weak self] cell, _, card in
@@ -408,8 +407,7 @@ extension HomeViewController {
         }
         let savedCell = UICollectionView.CellRegistration<ChatRowCell, SavedCard> {
             cell, _, card in
-            cell.wantsAttention = false
-            cell.contentConfiguration = ChatRowConfiguration(facts: card.facts)
+            Self.dress(cell, facts: card.facts, attention: false)
         }
         let moreCell = UICollectionView.CellRegistration<ChatRowCell, HomeMoreCard> {
             cell, _, card in
@@ -437,7 +435,8 @@ extension HomeViewController {
         }
 
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) {
-            collectionView, indexPath, item in
+            [weak self] collectionView, indexPath, listed in
+            let item = self?.boardItems[listed] ?? listed
             switch item {
             case .status(let card):
                 return collectionView.dequeueConfiguredReusableCell(

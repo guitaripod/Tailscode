@@ -253,6 +253,10 @@ final class ChatRowContentView: UIView, UIContentView {
         _ targetSize: CGSize, withHorizontalFittingPriority horizontalFittingPriority: UILayoutPriority,
         verticalFittingPriority: UILayoutPriority
     ) -> CGSize {
+        #if DEBUG
+            let began = BoardBench.cpuTime()
+            defer { BoardBench.note(measure: BoardBench.cpuTime() - began) }
+        #endif
         let margins = directionalLayoutMargins
         let textWidth = max(
             0, targetSize.width - margins.leading - margins.trailing - Self.tileSize
@@ -268,6 +272,10 @@ final class ChatRowContentView: UIView, UIContentView {
         guard let configuration = configuration as? ChatRowConfiguration else { return }
         let facts = configuration.facts
         guard facts != applied else { return }
+        #if DEBUG
+            let began = BoardBench.cpuTime()
+            defer { BoardBench.note(rowApply: BoardBench.cpuTime() - began) }
+        #endif
         let before = applied
         applied = facts
         let large = traitCollection.preferredContentSizeCategory.isAccessibilityCategory

@@ -61,47 +61,40 @@ extension HomeViewController {
         refreshTickedCards(asOf: now)
     }
 
-    /// Reconfigures only the drawn cards whose own words have moved on, swapping their values in a
-    /// copy of the snapshot's structure: identity is the chat, so nothing moves, no agent is asked,
-    /// and the fleet is not walked.
+    /// Reconfigures only the drawn cards whose own words have moved on, from their newest values
+    /// (``redrawInPlace(_:)``): identity is the chat, so nothing moves, no agent is asked, no
+    /// snapshot is applied, and the fleet is not walked.
     private func refreshTickedCards(asOf now: Date) {
         #if DEBUG
             let began = BoardBench.cpuTime()
+            var retimedCards = 0
         #endif
         defer {
             #if DEBUG
-                BoardBench.note(tick: BoardBench.cpuTime() - began)
+                BoardBench.note(tick: BoardBench.cpuTime() - began, cards: retimedCards)
             #endif
         }
-        guard viewIfLoaded?.window != nil, !isUnderSettings, !isLeaving,
-            !collectionView.isTracking, !collectionView.isDragging, !collectionView.isDecelerating
-        else { return }
-        #if DEBUG
-            guard !BoardBench.isDrivingScroll else { return }
-        #endif
-        let current = dataSource.snapshot()
-        var next = NSDiffableDataSourceSnapshot<HomeSection, HomeItem>()
-        next.appendSections(current.sectionIdentifiers)
+        guard viewIfLoaded?.window != nil, !isUnderSettings, !isLeaving, !isUnderFinger else { return }
         var changed: [HomeItem] = []
-        for section in current.sectionIdentifiers {
-            var items: [HomeItem] = []
-            items.reserveCapacity(current.numberOfItems(inSection: section))
-            for item in current.itemIdentifiers(inSection: section) {
-                guard needsRetiming(item, at: now) else {
-                    items.append(item)
-                    continue
-                }
-                let updated = retimed(item, at: now)
-                items.append(updated)
-                if updated.contentSignature != item.contentSignature { changed.append(updated) }
-            }
-            guard !items.isEmpty else { continue }
-            next.appendItems(items, toSection: section)
+        for listed in dataSource.snapshot().itemIdentifiers {
+            let item = boardItems[listed] ?? listed
+            guard needsRetiming(item, at: now) else { continue }
+            let updated = retimed(item, at: now)
+            let signature = updated.contentSignature
+            guard signature != item.contentSignature else { continue }
+            boardItems[updated] = updated
+            appliedContent[updated] = signature
+            changed.append(updated)
         }
         guard !changed.isEmpty else { return }
-        next.reconfigureItems(changed)
+        #if DEBUG
+            retimedCards = changed.count
+        #endif
         lastRenderAt = now
-        dataSource.apply(next, animatingDifferences: false)
+        guard !redrawInPlace(changed) else { return }
+        var current = dataSource.snapshot()
+        current.reconfigureItems(changed)
+        dataSource.apply(current, animatingDifferences: false)
     }
 
     /// Whether a drawn card's own clock has moved on since it was worded. An age reads in seconds
@@ -367,17 +360,10 @@ extension HomeViewController {
             consumePendingDeepLink()
             return
         }
-        guard !collectionView.isTracking, !collectionView.isDragging, !collectionView.isDecelerating
-        else {
+        guard !isUnderFinger else {
             deferredWhileTouching = true
             return
         }
-        #if DEBUG
-            guard !BoardBench.isDrivingScroll else {
-                deferredWhileTouching = true
-                return
-            }
-        #endif
         let wait = budgeted ? budgetedWait() : Double(Self.snapshotGather) / 1000
         if scheduledSnapshot, snapshotWait <= wait { return }
         snapshotGeneration += 1
@@ -392,7 +378,11 @@ extension HomeViewController {
                 self.deferredSnapshot = true
                 return
             }
-            self.renderSnapshot()
+            guard !self.isUnderFinger else {
+                self.deferredWhileTouching = true
+                return
+            }
+            self.renderSnapshotAway()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: work)
     }

@@ -118,7 +118,7 @@ public enum SessionSeenStore {
 
     /// One snapshot of the store per list render: returns a closure judging
     /// `(sessionID, updatedAt)` so callers don't hit `UserDefaults` per row.
-    public static func unreadEvaluator() -> (String, Date) -> Bool {
+    public static func unreadEvaluator() -> @Sendable (String, Date) -> Bool {
         let seen = defaults.dictionary(forKey: seenKey) as? [String: Double] ?? [:]
         let baseline = defaults.double(forKey: baselineKey)
         return { sessionID, updatedAt in

@@ -95,6 +95,9 @@ final class HomeViewController: UIViewController {
     var deferredSnapshot = false
     var snapshotWait: TimeInterval = 0
     var snapshotGeneration = 0
+    /// Counts every rebuild begun, so a walk that went off the main thread draws only if nothing
+    /// newer has been asked for or drawn while it was away.
+    var boardGeneration = 0
     /// Whether another screen is sliding over Home right now. The board is a whole frame or three
     /// to rebuild on an older phone, and one rebuilt under a chat on its way in is paid for out of
     /// that chat's first words and never seen.
@@ -104,6 +107,10 @@ final class HomeViewController: UIViewController {
     /// whether anything on it moved, so reconfiguring everything that survived a diff redrew the
     /// whole board on a tick that changed one word.
     var appliedContent: [HomeItem: Int] = [:]
+    /// The newest value of every card on the board, by identity. A pass that moves only words
+    /// leaves the list's snapshot as it was and redraws the cards from here, so everything that
+    /// reads a card back out of the list reads it through ``boardItem(at:)``.
+    var boardItems: [HomeItem: HomeItem] = [:]
     /// The words the board's rows were folded against, kept so a tick can re-word one row without
     /// mapping the fleet again.
     var appliedVocabulary: ChatListVocabulary = .full
@@ -117,7 +124,7 @@ final class HomeViewController: UIViewController {
         var saved: [SavedChat]
         var archived: Set<ArchivedChatStore.ChatKey>
         var pins: Set<String>
-        var unread: (String, Date) -> Bool
+        var unread: @Sendable (String, Date) -> Bool
         var folds: Set<SessionSection>
         var quotaBoard: QuotaBoardPreferences
         var trail: QuotaTrail?

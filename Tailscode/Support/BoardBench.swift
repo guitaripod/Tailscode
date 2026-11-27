@@ -27,9 +27,40 @@ enum BoardBench {
 
     /// A tick's own cost: it re-words the cards on screen and rebuilds no board, so it should be a
     /// fraction of a pass. Anything near a frame is written down.
-    static func note(tick: TimeInterval) {
+    static func note(tick: TimeInterval, cards: Int = 0) {
+        let work = takeRowWork()
         guard tick >= 0.004 else { return }
-        MidgarLog.notice("Board tick \(milliseconds(tick)) ms", category: .performance)
+        MidgarLog.notice(
+            "Board tick \(milliseconds(tick)) ms cards \(cards) [\(work)]", category: .performance)
+    }
+
+    private static var measures = 0
+    private static var measured: TimeInterval = 0
+    private static var applies = 0
+    private static var applied: TimeInterval = 0
+
+    /// A chat card measuring itself for the list, which is what a reconfigured card costs past
+    /// its own words.
+    static func note(measure: TimeInterval) {
+        measures += 1
+        measured += measure
+    }
+
+    /// A chat card setting its words.
+    static func note(rowApply: TimeInterval) {
+        applies += 1
+        applied += rowApply
+    }
+
+    /// What the cards cost since the last time this was asked, as one phrase for a pass or a tick.
+    static func takeRowWork() -> String {
+        defer {
+            measures = 0
+            measured = 0
+            applies = 0
+            applied = 0
+        }
+        return "measure \(measures)x \(String(format: "%.1f", measured * 1000)) apply \(applies)x \(String(format: "%.1f", applied * 1000))"
     }
 
     /// A full board rebuild, in seconds of this thread's own CPU time — not wall clock, which a
@@ -40,8 +71,9 @@ enum BoardBench {
         passes += 1
         spent += pass
         worst = max(worst, pass)
+        let work = takeRowWork()
         guard pass >= 0.008 else { return }
-        let detail = stages.map { " [\($0.summary)]" } ?? ""
+        let detail = stages.map { " [\($0.summary) | \(work)]" } ?? ""
         MidgarLog.notice("Board pass \(milliseconds(pass)) ms\(detail)", category: .performance)
     }
 
@@ -59,10 +91,24 @@ enum BoardBench {
         private var last = BoardBench.cpuTime()
         private var parts: [String] = []
 
+        init() {}
+
+        /// Stages that begin with work already done on the main thread before a wait, so a pass
+        /// whose walk went away from it still counts what it cost the main thread on either side.
+        init(spent: TimeInterval, as name: String) {
+            parts.append("\(name) \(Int((spent * 1000).rounded()))")
+        }
+
         mutating func mark(_ name: String) {
             let now = BoardBench.cpuTime()
             parts.append("\(name) \(Int(((now - last) * 1000).rounded()))")
             last = now
+        }
+
+        /// The walk worked out on another thread, which the main thread did not pay for.
+        mutating func note(away spent: TimeInterval) {
+            parts.append("(walk away \(Int((spent * 1000).rounded())))")
+            last = BoardBench.cpuTime()
         }
 
         var summary: String { parts.joined(separator: " ") }

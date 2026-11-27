@@ -49,6 +49,18 @@ enum HomeItem: Hashable {
 }
 
 extension HomeItem {
+    /// Whether a change to this card's words can be drawn into its cell where it stands
+    /// (``HomeViewController/redrawInPlace(_:)``): the cards that move while agents work. The rest
+    /// go through a snapshot, an ask and a server alert among them because their cells hold
+    /// handlers made from the old value, which only the registration hands the new one.
+    var redrawsInPlace: Bool {
+        switch self {
+        case .chat, .saved, .status, .glance, .shelfBar, .quota: return true
+        case .schedule, .agentNews, .masters, .alert, .demoNudge, .proInvitation, .ask, .more, .placeholder:
+            return false
+        }
+    }
+
     /// Everything the cell for this item would draw, folded to one value.
     ///
     /// Identity answers which card a row *is* — deliberately just the session or the bookmark, so a

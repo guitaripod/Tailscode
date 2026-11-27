@@ -1,8 +1,11 @@
+import CodingAgentKitApple
 import MidgarCore
 import TailscodeCore
 import UIKit
 
 extension HomeViewController {
+    /// Rebuilds the board now, on the main thread: what a press, a fold or a page of RECENT needs,
+    /// because the person is looking at the very row that moves.
     func renderSnapshot() {
         #if DEBUG
             let passBegan = BoardBench.cpuTime()
@@ -12,80 +15,136 @@ extension HomeViewController {
                 BoardBench.note(pass: BoardBench.cpuTime() - passBegan, stages: bench)
             }
         #endif
+        boardGeneration += 1
+        let plan = boardPlan()
+        #if DEBUG
+            bench.mark("plan")
+        #endif
+        let walk = HomeBoardWalk.make(plan.input)
+        #if DEBUG
+            bench.mark("walk")
+            present(walk, plan: plan, bench: &bench)
+        #else
+            present(walk, plan: plan)
+        #endif
+    }
+
+    /// Rebuilds the board for something the listing or a store said, which nobody pressed: the
+    /// fleet is walked off the main thread (``HomeBoardWalk``) and only the drawing comes back to
+    /// it. A rebuild asked for after this one started, or a press drawn in the meantime, makes this
+    /// one stale and it is dropped; one that lands under a finger waits for the scroll to end.
+    func renderSnapshotAway() {
+        boardGeneration += 1
+        let generation = boardGeneration
+        deferredSnapshot = false
+        #if DEBUG
+            let planBegan = BoardBench.cpuTime()
+        #endif
+        let plan = boardPlan()
+        #if DEBUG
+            let planned = BoardBench.cpuTime() - planBegan
+        #endif
+        Task { @MainActor [weak self] in
+            let (walk, spent) = await HomeBoardWalk.away(plan.input)
+            guard let self, self.boardGeneration == generation else { return }
+            guard self.viewIfLoaded?.window != nil, !self.isUnderSettings, !self.isLeaving else {
+                self.deferredSnapshot = true
+                return
+            }
+            guard !self.isUnderFinger else {
+                self.deferredWhileTouching = true
+                return
+            }
+            #if DEBUG
+                let passBegan = BoardBench.cpuTime() - planned
+                var bench = BoardBench.Stages(spent: planned, as: "plan")
+                bench.note(away: spent)
+                defer {
+                    bench.mark("rest")
+                    BoardBench.note(pass: BoardBench.cpuTime() - passBegan, stages: bench)
+                }
+                self.present(walk, plan: plan, bench: &bench)
+            #else
+                self.present(walk, plan: plan)
+            #endif
+        }
+    }
+
+    /// Whether a hand, or the bench standing in for one, is moving the board.
+    var isUnderFinger: Bool {
+        #if DEBUG
+            if BoardBench.isDrivingScroll { return true }
+        #endif
+        return collectionView.isTracking || collectionView.isDragging || collectionView.isDecelerating
+    }
+
+    /// What a rebuild reads on the main thread before the fleet is walked: the stores, the activity
+    /// this device witnesses, the notices and the shape of the screen.
+    struct BoardPlan {
+        let input: HomeBoardWalk.Input
+        let readings: StoreReadings
+        let presence: [String: SessionPresence]
+        let missed: [String: MissedActivity.Reason]
+        let today: Bool
+        let limits: HomeBandLimits
+        let folds: Set<SessionSection>
+        let servers: [ConnectionProfile]
+        let down: [ConnectionProfile]
+    }
+
+    private func boardPlan() -> BoardPlan {
         deferredSnapshot = false
         lastRenderAt = Date()
         let readings = storeReadings()
-        savedChats = readings.saved
         let today = showsToday
         let limits = (today ? HomeBandLimits.column : .phone).reaching(recentReach)
-        let folds = today ? [] : readings.folds
         let servers = viewModel.servers
         let down = hasLoadedOnce ? servers.filter { viewModel.unreachable.contains($0.id) } : []
-        let archived = readings.archived
-        let isUnread = readings.unread
-        let pins = readings.pins
-        #if DEBUG
-            bench.mark("stores")
-        #endif
         let presence = SessionActivity.shared.presenceSummary()
-        appliedPresence = presence
-        #if DEBUG
-            bench.mark("presence")
-        #endif
-        let keptEntries = viewModel.entries
-            .filter {
-                !archived.contains(
-                    ArchivedChatStore.ChatKey(
-                        profileID: $0.profileID, sessionID: $0.session.id))
-            }
-        #if DEBUG
-            bench.mark("filter")
-        #endif
-        let seeds = keptEntries.map { entry in
-            HomeRowSeed(
-                entry: entry, unreachable: viewModel.unreachable.contains(entry.profileID),
-                unread: isUnread(entry.session.id, entry.session.updatedAt), saved: false,
-                pinned: pins.contains(SessionPinStore.key(entry.profileID, entry.session.id)),
-                presence: presence[entry.session.id] ?? .unobserved)
-        }
-        #if DEBUG
-            bench.mark("rows")
-        #endif
-        let vocabulary = ChatListVocabulary(rows: seeds)
         let missed = Dictionary(
             ActivityInbox.all().map { ($0.sessionID, $0.reason) }, uniquingKeysWith: { first, _ in first })
+        let input = HomeBoardWalk.Input(
+            entries: viewModel.entries, unreachable: viewModel.unreachable, archived: readings.archived,
+            pins: readings.pins, unread: readings.unread, presence: presence, saved: readings.saved,
+            serverIDs: Set(servers.map(\.id)), limits: limits, hasLoadedOnce: hasLoadedOnce,
+            notices: missed.count,
+            status: hasLoadedOnce && !servers.isEmpty
+                ? HomeBoardWalk.StatusInput(
+                    offline: down.map(\.name), quotas: quotas, board: readings.quotaBoard,
+                    trail: readings.trail)
+                : nil)
+        return BoardPlan(
+            input: input, readings: readings, presence: presence, missed: missed, today: today,
+            limits: limits, folds: today ? [] : readings.folds, servers: servers, down: down)
+    }
+
+    #if DEBUG
+        private func present(_ walk: HomeBoardWalk, plan: BoardPlan, bench: inout BoardBench.Stages) {
+            presentBoard(walk, plan: plan) { bench.mark($0) }
+        }
+    #endif
+
+    private func present(_ walk: HomeBoardWalk, plan: BoardPlan) {
+        presentBoard(walk, plan: plan) { _ in }
+    }
+
+    /// Draws what a walk found: the cards for the rows that are drawn, the snapshot, and only the
+    /// cards whose words moved reconfigured.
+    private func presentBoard(_ walk: HomeBoardWalk, plan: BoardPlan, mark: (String) -> Void) {
+        let readings = plan.readings
+        let today = plan.today
+        let folds = plan.folds
+        let servers = plan.servers
+        let down = plan.down
+        let missed = plan.missed
+        let vocabulary = walk.vocabulary
+        savedChats = readings.saved
+        appliedPresence = plan.presence
         appliedVocabulary = vocabulary
         appliedMissed = missed
-        #if DEBUG
-            bench.mark("vocab")
-        #endif
-
-        func key(_ profileID: String, _ sessionID: String) -> String { "\(profileID)\u{1}\(sessionID)" }
-        let serverIDs = Set(servers.map(\.id))
-        let listed =
-            savedChats.isEmpty ? Set<String>() : Set(viewModel.entries.map { key($0.profileID, $0.session.id) })
-        let kept = Set(
-            seeds.filter { $0.state.isInFlight || $0.pinned }.map { key($0.entry.profileID, $0.entry.session.id) })
-        let savedCards = Array(
-            savedChats.lazy
-                .filter { self.isOpenable($0, servers: serverIDs, listed: listed) }
-                .filter { !kept.contains(key($0.profileID, $0.sessionID)) }
-                .prefix(limits.saved)
-                .map { SavedCard(chat: $0, unread: isUnread($0.sessionID, $0.updatedAt)) })
-        let savedKeys = Set(savedCards.map { key($0.chat.profileID, $0.chat.sessionID) })
-        let boardBands = HomeBoard.bands(
-            rows: seeds.filter { !savedKeys.contains(key($0.entry.profileID, $0.entry.session.id)) },
-            limits: limits)
-        #if DEBUG
-            bench.mark("bands")
-        #endif
-
+        let savedCards = walk.saved.map { SavedCard(chat: $0.chat, unread: $0.unread) }
         var snapshot = NSDiffableDataSourceSnapshot<HomeSection, HomeItem>()
-        if hasLoadedOnce, !servers.isEmpty {
-            let status = HomeStatus.reading(
-                rows: seeds, offline: down.map(\.name),
-                range: RangeHome.line(
-                    quotas: quotas, board: readings.quotaBoard, trail: readings.trail))
+        if hasLoadedOnce, !servers.isEmpty, let status = walk.status {
             snapshot.appendSections([.status])
             snapshot.appendItems([.status(HomeStatusCard(status: status))], toSection: .status)
             if let line = scheduleLine {
@@ -97,13 +156,9 @@ extension HomeViewController {
                 snapshot.appendItems([.agentNews(news)], toSection: .agentNews)
             }
         }
-        #if DEBUG
-            bench.mark("status")
-        #endif
+        mark("status")
         appendShelf(to: &snapshot, masters: hasLoadedOnce && !servers.isEmpty ? masterShelf : nil)
-        #if DEBUG
-            bench.mark("shelf")
-        #endif
+        mark("shelf")
         if let reach = ReachReading.here(
             silent: down.map(\.name), answering: servers.count - down.count)
         {
@@ -138,7 +193,7 @@ extension HomeViewController {
                         band: band.section))
             }
         }
-        let bands = Dictionary(uniqueKeysWithValues: boardBands.map { ($0.section, $0) })
+        let bands = Dictionary(uniqueKeysWithValues: walk.bands.map { ($0.section, $0) })
         if today {
             let asks = (bands[.needsYou]?.rows ?? []).map { seed -> HomeItem in
                 let id = seed.entry.session.id
@@ -195,22 +250,15 @@ extension HomeViewController {
                         [.more(HomeMoreCard(band: .recent, foot: foot))], toSection: .recent)
                 }
             }
-        } else if !today, seeds.isEmpty, !hasLoadedOnce, !servers.isEmpty, workspace == nil {
+        } else if !today, walk.isEmpty, !hasLoadedOnce, !servers.isEmpty, workspace == nil {
             snapshot.appendSections([.recent])
             snapshot.appendItems((0..<3).map(HomeItem.placeholder), toSection: .recent)
         }
-        #if DEBUG
-            bench.mark("cards")
-        #endif
+        mark("cards")
         bandReadings = bandCounts
         canReachFurther = !today && !folds.contains(.recent) && (bands[.recent]?.hidden ?? 0) > 0
-        hasNews = !ReadSweep.reading(
-            entries: viewModel.entries, saved: readings.saved, presence: presence,
-            unreachable: Set(viewModel.unreachable), notices: missed.count, isUnread: isUnread
-        ).isEmpty
-        #if DEBUG
-            bench.mark("snapshot")
-        #endif
+        hasNews = walk.hasNews
+        mark("snapshot")
 
         let previous = dataSource.snapshot()
         let existing = Set(previous.itemIdentifiers)
@@ -222,10 +270,8 @@ extension HomeViewController {
             if existing.contains(item), appliedContent[item] != signature { stale.append(item) }
         }
         appliedContent = content
-        if !stale.isEmpty { snapshot.reconfigureItems(stale) }
-        #if DEBUG
-            bench.mark("compare")
-        #endif
+        boardItems = Dictionary(snapshot.itemIdentifiers.map { ($0, $0) }, uniquingKeysWith: { first, _ in first })
+        mark("compare")
         let rowItems = snapshot.itemIdentifiers.filter {
             switch $0 {
             case .chat, .ask, .saved, .placeholder: return true
@@ -234,19 +280,25 @@ extension HomeViewController {
                 return false
             }
         }.count
-        if stale.isEmpty, previous.sectionIdentifiers == snapshot.sectionIdentifiers,
+        if previous.sectionIdentifiers == snapshot.sectionIdentifiers,
             previous.itemIdentifiers == snapshot.itemIdentifiers
         {
+            if redrawInPlace(stale) {
+                mark("redraw")
+            } else {
+                snapshot.reconfigureItems(stale)
+                dataSource.apply(snapshot, animatingDifferences: false)
+                mark("fallback")
+            }
             refreshVisibleHeaders()
             updateEmptyState(itemCount: rowItems)
             applyOrbState()
             consumePendingDeepLink()
             return
         }
+        if !stale.isEmpty { snapshot.reconfigureItems(stale) }
         dataSource.apply(snapshot, animatingDifferences: shouldAnimate(from: previous, to: snapshot))
-        #if DEBUG
-            bench.mark("apply")
-        #endif
+        mark("apply")
         refreshVisibleHeaders()
         updateEmptyState(itemCount: rowItems)
         applyOrbState()
@@ -321,13 +373,71 @@ extension HomeViewController {
         }
     }
 
-    /// Home lists a saved chat only while it is something you can actually open.
-    /// A bookmark whose conversation was deleted, or whose server was
-    /// disconnected, is a tidying-up job for the Saved screen, not a launch pad.
-    private func isOpenable(_ chat: SavedChat, servers: Set<String>, listed: Set<String>) -> Bool {
-        guard servers.contains(chat.profileID) else { return false }
-        if listed.contains("\(chat.profileID)\u{1}\(chat.sessionID)") { return true }
-        return !hasLoadedOnce || viewModel.unreachable.contains(chat.profileID)
+    /// The card at a place in the list as it was last worded, which can be newer than the
+    /// snapshot the list holds (``redrawInPlace(_:)``).
+    func boardItem(at indexPath: IndexPath) -> HomeItem? {
+        dataSource.itemIdentifier(for: indexPath).map { boardItems[$0] ?? $0 }
+    }
+
+    /// Redraws the cards among `items` that are on screen, from their newest values, without
+    /// applying a snapshot, and says whether it could. Their identity and order are what the list
+    /// already holds, so there is nothing to diff, and applying a snapshot anyway re-measured every
+    /// visible card: five to ten milliseconds of an iPhone Air's main thread for a pass that changed
+    /// one card's words, once or twice a second while agents work. Each card is dressed by the same
+    /// function its registration uses and measured again on its own; one the list has not put on
+    /// screen is dressed from ``boardItems`` when it comes (``redrawIfStale(_:at:)``). A set holding
+    /// any kind that is not redrawn in place (``HomeItem/redrawsInPlace``) is left to a snapshot.
+    /// UIKit's own `reconfigureItems(at:)` is not an option: a list run by a diffable data source
+    /// raises on it.
+    func redrawInPlace(_ items: [HomeItem]) -> Bool {
+        guard items.allSatisfy(\.redrawsInPlace) else { return false }
+        for item in items {
+            guard let path = dataSource.indexPath(for: item),
+                let cell = collectionView.cellForItem(at: path)
+            else { continue }
+            dress(cell, with: item)
+            cell.invalidateIntrinsicContentSize()
+        }
+        return true
+    }
+
+    /// A card coming on screen that the list made before its words last moved — prefetched ahead of
+    /// the scroll — is dressed again from its newest value.
+    func redrawIfStale(_ cell: UICollectionViewCell, at indexPath: IndexPath) {
+        guard let item = boardItem(at: indexPath), let row = cell as? ChatRowCell else { return }
+        let facts: ChatRowFacts
+        switch item {
+        case .chat(let card): facts = card.facts
+        case .saved(let card): facts = card.facts
+        default: return
+        }
+        guard (row.contentConfiguration as? ChatRowConfiguration)?.facts != facts else { return }
+        dress(cell, with: item)
+    }
+
+    private func dress(_ cell: UICollectionViewCell, with item: HomeItem) {
+        switch item {
+        case .chat(let card):
+            (cell as? ChatRowCell).map { Self.dress($0, facts: card.facts, attention: card.band == .needsYou) }
+        case .saved(let card):
+            (cell as? ChatRowCell).map { Self.dress($0, facts: card.facts, attention: false) }
+        case .status(let card):
+            (cell as? HomeStatusCell)?.configure(card)
+        case .glance(let card):
+            (cell as? HomeGlanceCell)?.configure(card)
+        case .shelfBar(let card):
+            (cell as? HomeShelfBarCell)?.configure(card)
+        case .quota(let card):
+            (cell as? QuotaCardCell)?.configure(card)
+        case .schedule, .agentNews, .masters, .alert, .demoNudge, .proInvitation, .ask, .more, .placeholder:
+            return
+        }
+    }
+
+    /// How a chat card's cell is dressed, by its registration and by a redraw in place alike.
+    static func dress(_ cell: ChatRowCell, facts: ChatRowFacts, attention: Bool) {
+        cell.wantsAttention = attention
+        cell.contentConfiguration = ChatRowConfiguration(facts: facts)
     }
 
     /// Only structural changes animate, and only once something is on screen to

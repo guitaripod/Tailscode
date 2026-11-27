@@ -6,18 +6,25 @@ extension HomeViewController: UICollectionViewDelegate {
     func collectionView(
         _ collectionView: UICollectionView, didHighlightItemAt indexPath: IndexPath
     ) {
-        switch dataSource.itemIdentifier(for: indexPath) {
+        switch boardItem(at: indexPath) {
         case .chat(let card): warm(card.entry)
         case .ask(let card): warm(card.entry)
         default: break
         }
     }
 
+    func collectionView(
+        _ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell,
+        forItemAt indexPath: IndexPath
+    ) {
+        redrawIfStale(cell, at: indexPath)
+    }
+
     /// The status sentence is read, not pressed: the bar's orb is Home's one way to the agents.
     func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt indexPath: IndexPath)
         -> Bool
     {
-        switch dataSource.itemIdentifier(for: indexPath) {
+        switch boardItem(at: indexPath) {
         case .status, .shelfBar, .masters: return false
         default: return true
         }
@@ -26,7 +33,7 @@ extension HomeViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         releaseDeferredSnapshotIfNeeded()
-        guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
+        guard let item = boardItem(at: indexPath) else { return }
         switch item {
         case .alert:
             onOpenSettings?()
@@ -54,7 +61,7 @@ extension HomeViewController: UICollectionViewDelegate {
         contextMenuConfigurationForItemsAt indexPaths: [IndexPath], point: CGPoint
     ) -> UIContextMenuConfiguration? {
         guard let indexPath = indexPaths.first,
-            let item = dataSource.itemIdentifier(for: indexPath)
+            let item = boardItem(at: indexPath)
         else { return nil }
         switch item {
         case .saved(let card):

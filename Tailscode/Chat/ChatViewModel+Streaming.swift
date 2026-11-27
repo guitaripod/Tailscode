@@ -25,6 +25,10 @@ extension ChatViewModel {
             guard let self else { return }
             for await state in await self.conversation.states() {
                 guard generation == self.streamGeneration else { break }
+                #if DEBUG
+                    let probe = LiveLoadProbe.begin()
+                    defer { LiveLoadProbe.end(probe, session: self.session.id, bound: self.isBound) }
+                #endif
                 if state.connection == .live { self.streamRestarts = 0 }
                 self.reconcileOptimisticState(with: state)
                 if self.state.status == .running, state.status != .running {
