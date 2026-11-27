@@ -16,6 +16,7 @@ public enum MediaKind: String, Sendable, CaseIterable {
     }
 
     public static func of(_ file: FileReference) -> MediaKind? {
+        guard !MediaMisses.isMissed(file) else { return nil }
         let mime = (file.mime ?? "").lowercased()
         if mime.hasPrefix("image/") { return .picture }
         if mime.hasPrefix("video/") { return .video }
@@ -112,11 +113,12 @@ public enum MediaMentions {
         }
         closeTurn(before: messages.count)
         guard !placements.isEmpty else { return messages }
+        let anyMissed = !MediaMisses.isEmpty
         var byMessage: [Int: [Placement]] = [:]
         for placement in placements { byMessage[placement.message, default: []].append(placement) }
         var expanded = messages
         for (messageIndex, placed) in byMessage {
-            expanded[messageIndex] = withMentions(messages[messageIndex], placed)
+            expanded[messageIndex] = withMentions(messages[messageIndex], placed, checkMisses: anyMissed)
         }
         return expanded
     }
@@ -150,9 +152,12 @@ public enum MediaMentions {
                 continue
             }
             if wholeLinePath(line) { keep(unwrapped(line)) }
-            for span in codeSpans(in: line) { keep(span) }
-            for target in linkTargets(in: line) { keep(target) }
-            for token in line.split(whereSeparator: \.isWhitespace) { keep(trimmed(token)) }
+            let candidates =
+                codeSpans(in: line) + linkTargets(in: line)
+                + line.split(whereSeparator: \.isWhitespace).map(trimmed)
+            for candidate in candidates.sorted(by: { $0.startIndex < $1.startIndex }) {
+                keep(candidate)
+            }
         }
         return found
     }
@@ -165,7 +170,9 @@ public enum MediaMentions {
         let mime: String
     }
 
-    private static func withMentions(_ message: ChatMessage, _ placed: [Placement]) -> ChatMessage {
+    private static func withMentions(
+        _ message: ChatMessage, _ placed: [Placement], checkMisses: Bool
+    ) -> ChatMessage {
         var after: [Int: [Placement]] = [:]
         for placement in placed { after[placement.part, default: []].append(placement) }
         var parts: [MessagePart] = []
@@ -173,12 +180,14 @@ public enum MediaMentions {
         for (index, part) in message.parts.enumerated() {
             parts.append(part)
             for (offset, placement) in (after[index] ?? []).enumerated() {
+                var file = ServerFile.reference(
+                    path: placement.path, mime: placement.mime, revision: message.id)
+                if checkMisses, let url = file.url, MediaMisses.contains(url) {
+                    file.mime = MediaMisses.missingMime
+                }
                 parts.append(
                     MessagePart(
-                        id: partID(after: part.id, index: offset),
-                        kind: .file(
-                            ServerFile.reference(
-                                path: placement.path, mime: placement.mime, revision: message.id)),
+                        id: partID(after: part.id, index: offset), kind: .file(file),
                         startedAt: part.startedAt))
             }
         }

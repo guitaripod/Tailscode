@@ -114,7 +114,8 @@ enum MediaTile {
         return column
     }
 
-    /// A song as one line: a play button, its name, where it is against its length, and a bar.
+    /// A song as one line: a play button, its name, where it is against its length, and a bar that
+    /// seeks. While it plays, the deck moves the button, the time and the bar where they stand.
     private static func audioLine(
         _ name: String, ready: MediaDeck.Ready?, key: String, context: TranscriptContext,
         reference: FileReference
@@ -125,11 +126,10 @@ enum MediaTile {
         Gtk.addClass(line, "media-audio")
         gtk_widget_set_halign(line, GTK_ALIGN_START)
         gtk_widget_set_size_request(line, Int32(ImagePreview.deskWidth), -1)
-        let glyph = playing && !deck.audioPaused ? "⏸" : "▶"
-        let button = Gtk.button(glyph, css: ["flat", "media-audio-button"], onClick: {})
+        let running = playing && !deck.audioPaused
+        let button = Gtk.button(running ? "⏸" : "▶", css: ["flat", "media-audio-button"], onClick: {})
         gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
-        let label = playing && !deck.audioPaused
-            ? Localized.text("Pause %@", name) : Localized.text("Play %@", name)
+        let label = running ? Localized.text("Pause %@", name) : Localized.text("Play %@", name)
         gtk_widget_set_tooltip_text(button, label)
         tailscode_set_accessible_label(button, label)
         gtk_widget_set_sensitive(button, ready == nil ? 0 : 1)
@@ -143,16 +143,37 @@ enum MediaTile {
         gtk_label_set_ellipsize(op(title), PANGO_ELLIPSIZE_MIDDLE)
         gtk_box_append(ptr(words), title)
         let position = playing ? deck.audioPosition : nil
-        let detail = ready == nil
-            ? Localized.text("Loading…")
-            : MediaTileReading.progress(at: position, of: ready?.duration) ?? MediaTileReading.kindWord(.audio)
-        gtk_box_append(ptr(words), Gtk.label(detail, css: "row-detail", selectable: false))
-        let bar = gtk_progress_bar_new()!
+        let detail = Gtk.label(
+            ready == nil
+                ? Localized.text("Loading…")
+                : MediaTileReading.progress(at: position, of: ready?.duration)
+                    ?? MediaTileReading.kindWord(.audio),
+            css: "row-detail", selectable: false)
+        gtk_box_append(ptr(words), detail)
+        let bar = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 1, 0.001)!
         Gtk.addClass(bar, "media-audio-bar")
-        gtk_progress_bar_set_fraction(
-            op(bar), MediaTileReading.fraction(at: position, of: ready?.duration))
+        gtk_scale_set_draw_value(ptr(bar), 0)
+        gtk_range_set_value(ptr(bar), MediaTileReading.fraction(at: position, of: ready?.duration))
+        gtk_widget_set_sensitive(bar, ready?.duration == nil ? 0 : 1)
+        tailscode_set_accessible_label(bar, Localized.text("Position in %@", name))
+        let seek = context.seekMedia
+        let barBits = UInt(bitPattern: bar)
+        Gtk.connect(UnsafeMutableRawPointer(bar), "value-changed") {
+            Gtk.onMain {
+                guard !MediaDeck.shared.isSettingBar,
+                    let range = UnsafeMutablePointer<GtkWidget>(bitPattern: barBits)
+                else { return }
+                seek?(reference, key, gtk_range_get_value(ptr(range)))
+            }
+        }
         gtk_box_append(ptr(words), bar)
         gtk_box_append(ptr(line), words)
+        if ready != nil {
+            deck.attach(
+                key,
+                line: MediaDeck.LiveLine(
+                    button: UInt(bitPattern: button), detail: UInt(bitPattern: detail), bar: barBits))
+        }
         return line
     }
 

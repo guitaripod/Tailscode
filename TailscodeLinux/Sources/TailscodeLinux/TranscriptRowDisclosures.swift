@@ -91,6 +91,9 @@ extension TranscriptRow {
         } ?? "file"
         let isImage = (reference.mime ?? "").hasPrefix("image/")
         guard isImage else {
+            if MediaMisses.isMissed(reference) {
+                return Gtk.label(MediaTileReading.missing(name), css: "media-missing", selectable: false)
+            }
             if !mine, let kind = MediaKind.of(reference), kind != .picture {
                 return MediaTile.make(reference, kind: kind, key: key, context: context)
             }

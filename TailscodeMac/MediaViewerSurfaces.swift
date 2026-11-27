@@ -453,12 +453,23 @@ final class PictureGalleryView: ViewerSurface {
     }
 }
 
+/// How a clip plays in the viewer: a clip of a few seconds loops like a picture that moves, a
+/// longer one can open where it was left, and the viewer says where it was left when it closes.
+struct ClipPlayback {
+    var loops = false
+    var startAt: Double?
+    var left: (Double) -> Void = { _ in }
+}
+
 /// A clip at full size on the same canvas, with the system's own controls: the Studio's stage keeps its
-/// room and a second look at a clip is not a reason to give up the first. Space plays and pauses.
+/// room and a second look at a clip is not a reason to give up the first. Space plays and pauses, and
+/// Picture in Picture keeps it playing small over whatever comes next.
 @MainActor
 final class ClipPlayerView: ViewerSurface {
     let url: URL
     private let player: AVPlayer
+    private let playback: ClipPlayback
+    private var looper: AVPlayerLooper?
     private let playerView = AVPlayerView()
     private let title = ViewerTitle()
     private let save: (@escaping @MainActor (String) -> Void) -> Void
@@ -466,15 +477,27 @@ final class ClipPlayerView: ViewerSurface {
 
     init(
         url: URL, title name: String, save: @escaping (@escaping @MainActor (String) -> Void) -> Void,
-        share: @escaping (NSView) -> Void
+        share: @escaping (NSView) -> Void, playback: ClipPlayback = ClipPlayback()
     ) {
         self.url = url
         self.save = save
         self.share = share
-        player = AVPlayer(url: url)
+        self.playback = playback
+        let item = AVPlayerItem(url: url)
+        if playback.loops {
+            let queue = AVQueuePlayer()
+            looper = AVPlayerLooper(player: queue, templateItem: item)
+            player = queue
+        } else {
+            player = AVPlayer(playerItem: item)
+            if let start = playback.startAt, start > 0 {
+                player.seek(to: CMTime(seconds: start, preferredTimescale: 600))
+            }
+        }
         super.init(frame: .zero)
         playerView.controlsStyle = .floating
         playerView.videoGravity = .resizeAspect
+        playerView.allowsPictureInPicturePlayback = true
         playerView.player = player
         addSubview(playerView)
         title.name.stringValue = name
@@ -519,6 +542,8 @@ final class ClipPlayerView: ViewerSurface {
     }
 
     override func finish() {
+        let seconds = CMTimeGetSeconds(player.currentTime())
+        if seconds.isFinite { playback.left(seconds) }
         player.pause()
         playerView.player = nil
     }

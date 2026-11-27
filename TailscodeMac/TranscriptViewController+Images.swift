@@ -154,7 +154,11 @@ extension TranscriptViewController {
         Task { [weak self] in
             var data = await Task.detached { ImageDisk.load(reference) }.value
             if data == nil, let backend {
-                data = try? await backend.attachmentData(reference)
+                do {
+                    data = try await backend.attachmentData(reference)
+                } catch {
+                    if MediaMisses.isMissing(error) { MediaMisses.note(reference) }
+                }
                 if let fetched = data {
                     await Task.detached { ImageDisk.save(fetched, for: reference) }.value
                 }

@@ -302,6 +302,9 @@ final class ChatPane: @unchecked Sendable {
     var backend: (any CodingAgentBackend)?
     /// This pane's ear on `MediaDeck`, which redraws a video's or a song's row when it changes.
     var mediaListener: Int?
+    /// This pane's ear on `MediaMisses`: a picture a reply named that is not there is drawn again
+    /// as one quiet line.
+    var missesObserver: NSObjectProtocol?
     var inFlightDesignBoards: Set<String> = []
     var conversation: AgentConversation?
     var lastState: ConversationState?

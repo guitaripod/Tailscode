@@ -12,12 +12,25 @@ extension TranscriptViewController {
         }
         context.playMedia = { [weak self] reference in self?.playNamedMedia(reference) }
         context.shareMedia = { [weak self] reference, anchor in self?.shareNamedMedia(reference, from: anchor) }
+        context.seekMedia = { [weak self] reference, fraction in
+            NamedMediaStore.shared.toggle(reference, at: fraction)
+            self?.namedSong = NamedMediaStore.shared.playingKey
+        }
         guard namedMediaObserver == nil else { return }
         namedMediaObserver = NotificationCenter.default.addObserver(
             forName: NamedMediaStore.changed, object: nil, queue: .main
         ) { [weak self] note in
             guard let key = note.userInfo?[NamedMediaStore.keyInfo] as? String else { return }
             MainActor.assumeIsolated { self?.namedMediaChanged(key) }
+        }
+        missesObserver = NotificationCenter.default.addObserver(
+            forName: MediaMisses.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isViewLoaded else { return }
+                self.rowBuilder.invalidate()
+                self.rebuildRows()
+            }
         }
     }
 
@@ -51,11 +64,18 @@ extension TranscriptViewController {
         }
         stopNamedSong()
         let name = MediaTileReading.name(of: reference)
+        let key = NamedMediaStore.key(reference)
+        let looping = MediaLoop.loops(duration: ready.duration)
         MediaViewer.shared.play(
             clip: ready.source, title: name, host: view.window,
             save: { [weak self] report in self?.saveNamedMedia(reference, report: report) },
             share: { [weak self] anchor in self?.shareNamedMedia(reference, from: anchor) },
-            toast: context.toast)
+            toast: context.toast,
+            playback: ClipPlayback(
+                loops: looping, startAt: looping ? nil : MediaPlayhead.start(for: key),
+                left: { seconds in
+                    if !looping { MediaPlayhead.keep(seconds, of: ready.duration, for: key) }
+                }))
     }
 
     func stopNamedSong() {
@@ -70,7 +90,7 @@ extension TranscriptViewController {
         guard case .ready(let ready)? = NamedMediaStore.shared.state(for: reference) else {
             throw URLError(.fileDoesNotExist)
         }
-        let name = MediaTileReading.name(of: reference)
+        let name = NamedMediaStore.exportName(of: reference, ready: ready)
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("named-media-share", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

@@ -19,6 +19,7 @@ pkgbase = tailscode
 	depends = gtk4-layer-shell
 	depends = curl
 	optdepends = tailscale: reach the machine your agent runs on
+	optdepends = mpv-mpris: a song playing in a chat answers the desktop media keys and panel
 	source = tailscode-1.84.tar.gz::https://github.com/guitaripod/Tailscode/archive/refs/tags/v1.84.tar.gz
 	sha256sums = SKIP
 

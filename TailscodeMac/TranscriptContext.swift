@@ -57,6 +57,8 @@ final class TranscriptContext {
     var playMedia: ((FileReference) -> Void)?
     /// A named file handed to the share picker, anchored on the view that showed it.
     var shareMedia: ((FileReference, NSView) -> Void)?
+    /// A hand on a song's bar: the fraction of its length to play from.
+    var seekMedia: ((FileReference, Double) -> Void)?
     /// Whether a picture's bytes arrived and would not decode, so its row settles as a filename.
     var isImageRefused: ((String) -> Bool)?
     var requestSubagent: ((ToolCall) -> Void)?

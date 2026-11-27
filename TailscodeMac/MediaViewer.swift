@@ -142,9 +142,11 @@ final class MediaViewer {
     func play(
         clip url: URL, title: String, host: NSWindow?,
         save: @escaping (@escaping @MainActor (String) -> Void) -> Void, share: @escaping (NSView) -> Void,
-        toast: ((String) -> Void)? = nil
+        toast: ((String) -> Void)? = nil, playback: ClipPlayback = ClipPlayback()
     ) {
-        present(ClipPlayerView(url: url, title: title, save: save, share: share), host: host, toast: toast)
+        present(
+            ClipPlayerView(url: url, title: title, save: save, share: share, playback: playback),
+            host: host, toast: toast)
     }
 
     private func present(_ next: ViewerSurface, host: NSWindow?, toast: ((String) -> Void)?) {

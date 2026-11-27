@@ -9,12 +9,19 @@ extension ChatViewController {
         _ collectionView: UICollectionView, _ indexPath: IndexPath, _ file: FileReference,
         row: ChatRow
     ) -> UICollectionViewCell? {
+        if MediaMisses.isMissed(file) {
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: VideoTileCell.reuseID, for: indexPath) as! VideoTileCell
+            cell.showMissing(MediaTileReading.name(of: file))
+            return cell
+        }
         switch MediaKind.of(file) {
         case .video?:
             let cell = collectionView.dequeueReusableCell(
                 withReuseIdentifier: VideoTileCell.reuseID, for: indexPath) as! VideoTileCell
             cell.onPlay = { [weak self] file in self?.playNamedVideo(file) }
             cell.onShare = { [weak self] file, source in self?.shareNamedMedia(file, from: source) }
+            cell.onSaveToPhotos = { [weak self] file in self?.saveNamedVideoToPhotos(file) }
             cell.onRetry = { [weak self] file in
                 NamedMediaStore.shared.read(file, backend: self?.viewModel.backend, force: true)
             }
@@ -75,30 +82,59 @@ extension ChatViewController {
     /// all things it already has. A song playing in the chat stops first.
     func playNamedVideo(_ file: FileReference) {
         guard case .ready(let ready)? = NamedMediaStore.shared.state(for: file) else { return }
-        NamedMediaStore.shared.stop()
-        ClipTheatre.present(ready.source, from: self)
+        NamedVideoTheatre.present(ready, file: file, from: self)
+    }
+
+    /// The clip into the photo library as the file the server has: fetched over its ticket when
+    /// it is not on the phone, saved, and said so.
+    func saveNamedVideoToPhotos(_ file: FileReference) {
+        Task { [weak self] in
+            guard let self else { return }
+            guard let local = await self.localCopy(of: file) else {
+                Theme.Haptics.error()
+                self.presentToast(String(localized: "Couldn't save to Photos"))
+                return
+            }
+            let outcome = await NamedMediaExport.saveVideoToPhotos(local)
+            try? FileManager.default.removeItem(at: local)
+            switch outcome {
+            case .saved:
+                Theme.Haptics.success()
+                self.presentToast(String(localized: "Saved to Photos"))
+            case .denied:
+                Theme.Haptics.warning()
+                self.presentToast(String(localized: "Allow photo access in Settings to save videos."))
+            case .failed:
+                Theme.Haptics.error()
+                self.presentToast(String(localized: "Couldn't save to Photos"))
+            }
+        }
+    }
+
+    /// The named file on the phone under its own name: copied when it already is, fetched over
+    /// its ticket when it is not.
+    private func localCopy(of file: FileReference) async -> URL? {
+        guard case .ready(let ready)? = NamedMediaStore.shared.state(for: file) else { return nil }
+        let name = NamedMediaStore.exportName(of: file, ready: ready)
+        if ready.source.isFileURL { return Self.staged(ready.source, as: name) }
+        do {
+            let (received, response) = try await URLSession.shared.download(from: ready.source)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+            guard status < 400 else { throw URLError(.fileDoesNotExist) }
+            return Self.staged(received, as: name, moving: true)
+        } catch {
+            MidgarLog.error("could not fetch \(name): \(error)", category: .ui)
+            NamedMediaStore.shared.forget(file)
+            return nil
+        }
     }
 
     /// The file itself to the share sheet, where Save Video, Files and every app that takes a video
     /// already are. A ticket URL is fetched to a file first: a share sheet hands over files.
     func shareNamedMedia(_ file: FileReference, from source: UIView) {
-        guard case .ready(let ready)? = NamedMediaStore.shared.state(for: file) else { return }
-        let name = MediaTileReading.name(of: file)
-        guard !ready.source.isFileURL else {
-            ClipExport.share(Self.staged(ready.source, as: name) ?? ready.source, from: self, source: source)
-            return
-        }
         Task { [weak self] in
-            do {
-                let (received, response) = try await URLSession.shared.download(from: ready.source)
-                let status = (response as? HTTPURLResponse)?.statusCode ?? 200
-                guard status < 400 else { throw URLError(.fileDoesNotExist) }
-                guard let self, let staged = Self.staged(received, as: name, moving: true) else { return }
-                ClipExport.share(staged, from: self, source: source)
-            } catch {
-                MidgarLog.error("could not fetch \(name) to share: \(error)", category: .ui)
-                NamedMediaStore.shared.forget(file)
-            }
+            guard let self, let staged = await self.localCopy(of: file) else { return }
+            ClipExport.share(staged, from: self, source: source)
         }
     }
 

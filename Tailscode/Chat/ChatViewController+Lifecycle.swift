@@ -128,6 +128,15 @@ extension ChatViewController {
         render(viewModel.state)
     }
 
+    /// A picture a reply named turned out not to be there: the rows are built again and it stands
+    /// as one quiet line where its tile was. Posted from whichever thread learned it.
+    @objc func namedMediaMissed() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.render(self.viewModel.state)
+        }
+    }
+
     /// The cards are part of what the transcript is made of, so flipping the switch rebuilds the
     /// rows — a chat left open behind the settings screen answers the switch at once, not on its
     /// next turn.

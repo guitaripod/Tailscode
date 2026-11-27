@@ -297,7 +297,14 @@ enum PictureLoader {
             ImageCache.load(reference).flatMap { PictureDecode.preview(of: $0) }
         }
         if let cached, let preview = cached { return preview }
-        guard let backend, let data = try? await backend.attachmentData(reference) else { return nil }
+        guard let backend else { return nil }
+        let data: Data
+        do {
+            data = try await backend.attachmentData(reference)
+        } catch {
+            if MediaMisses.isMissing(error) { MediaMisses.note(reference) }
+            return nil
+        }
         let fetched = await gate.run(urgent: urgent, rank: rank) {
             ImageCache.save(data, for: reference)
             return PictureDecode.preview(of: data)

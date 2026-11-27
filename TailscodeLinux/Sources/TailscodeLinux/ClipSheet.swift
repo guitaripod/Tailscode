@@ -7,22 +7,29 @@ import TailscodeCore
     import FoundationNetworking
 #endif
 
-/// A video an agent named, playing on the viewer's sheet: the file's name and where it is, play and
-/// pause, Save to Downloads and Done over libmpv drawing into the sheet's body. It stands where the
+/// A video an agent named, playing on the viewer's sheet: the file's name, Save to Downloads and
+/// Done over libmpv drawing into the sheet's body, and under the picture a transport — play and
+/// pause, where it is, a bar to seek on, its length, speed, sound and loop. It stands where the
 /// picture viewer stands, so the two never stand together: either one opening closes the other.
 ///
-/// Keys while it is up: space plays and pauses, the arrows seek five seconds, m mutes, Escape
+/// A clip of a few seconds loops (`MediaLoop`), a longer one opens where it was left
+/// (`MediaPlayhead`) and the place it is left at is kept. A seek in a short clip lands on the exact
+/// frame and one in a long film on the nearest keyframe, which needs no decoding up to it.
+///
+/// Keys while it is up: space or k plays and pauses, the arrows seek five seconds and j and l ten,
+/// comma and period step a frame, [ and ] change speed, m mutes, Home goes to the start, Escape
 /// leaves.
 final class ClipSheet: @unchecked Sendable {
     nonisolated(unsafe) private static var open: ClipSheet?
 
     static var current: ClipSheet? { open }
 
-    /// Plays `source` (a ticket URL or a cached file). `failed` is told when the player cannot open
-    /// it, so the row can read the file again rather than offer a dead ticket twice.
+    /// Plays `source` (a ticket URL or a cached file). `playhead` is the key its place is kept
+    /// under; `failed` is told when the player cannot open it, so the row can read the file again
+    /// rather than offer a dead ticket twice.
     static func present(
-        name: String, source: String, failed: @escaping @Sendable () -> Void,
-        notice: @escaping @Sendable (String) -> Void
+        name: String, source: String, duration: Double?, playhead: String,
+        failed: @escaping @Sendable () -> Void, notice: @escaping @Sendable (String) -> Void
     ) {
         guard let stack = SheetStack.shared, tailscode_mpv_available() != 0 else {
             notice(MediaTileReading.unplayable(name))
@@ -31,7 +38,8 @@ final class ClipSheet: @unchecked Sendable {
         if MediaViewer.current != nil { stack.closeViewer() }
         open?.layer.closeNow()
         let sheet = ClipSheet(
-            layer: stack.viewerLayer, name: name, source: source, failed: failed, notice: notice)
+            layer: stack.viewerLayer, name: name, source: source, duration: duration,
+            playhead: playhead, failed: failed, notice: notice)
         open = sheet
         sheet.layer.present()
     }
@@ -41,36 +49,60 @@ final class ClipSheet: @unchecked Sendable {
         open?.layer.closeNow()
     }
 
+    static let speeds: [Double] = [1, 1.25, 1.5, 2, 0.5, 0.75]
+
     private let layer: SheetLayer
     private let name: String
     private let source: String
+    private let playhead: String
     private let failed: @Sendable () -> Void
     private let notice: @Sendable (String) -> Void
     private var player: OpaquePointer?
     private var box: UnsafeMutableRawPointer?
+    private var duration: Double?
     private var paused = false
+    private var muted = false
+    private var looping: Bool
+    private var speed = 1.0
     private var ticking = false
     private var closed = false
+    private var settingBar = false
+    private var startAt: Double?
+    private var started = false
 
     private let titleLabel = Gtk.label("", css: "viewer-title", selectable: false)
     private let subLabel = Gtk.label("", css: "viewer-sub", selectable: false)
-    private let playButton: UnsafeMutablePointer<GtkWidget>
     private let saveButton: UnsafeMutablePointer<GtkWidget>
     private let doneButton: UnsafeMutablePointer<GtkWidget>
+    private let playButton: UnsafeMutablePointer<GtkWidget>
+    private let speedButton: UnsafeMutablePointer<GtkWidget>
+    private let muteButton: UnsafeMutablePointer<GtkWidget>
+    private let loopButton: UnsafeMutablePointer<GtkWidget>
+    private let positionLabel = Gtk.label("0:00", css: "clip-time", selectable: false)
+    private let lengthLabel = Gtk.label("", css: "clip-time", selectable: false)
+    private let bar = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 1, 0.0005)!
     private let body = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
+    private let stage = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
 
     private init(
-        layer: SheetLayer, name: String, source: String, failed: @escaping @Sendable () -> Void,
-        notice: @escaping @Sendable (String) -> Void
+        layer: SheetLayer, name: String, source: String, duration: Double?, playhead: String,
+        failed: @escaping @Sendable () -> Void, notice: @escaping @Sendable (String) -> Void
     ) {
         self.layer = layer
         self.name = name
         self.source = source
+        self.duration = duration
+        self.playhead = playhead
         self.failed = failed
         self.notice = notice
-        playButton = Gtk.button(Localized.text("Pause"), css: ["viewer-button"], onClick: {})
+        looping = MediaLoop.loops(duration: duration)
+        startAt = looping ? nil : MediaPlayhead.start(for: playhead)
         saveButton = Gtk.button(Localized.text("Save to Downloads"), css: ["viewer-button"], onClick: {})
         doneButton = Gtk.button(Localized.text("Done"), css: ["studio-done", "viewer-done"], onClick: {})
+        playButton = Gtk.button("⏸", css: ["flat", "clip-button"], onClick: {})
+        speedButton = Gtk.button("1×", css: ["flat", "clip-button"], onClick: {})
+        muteButton = Gtk.button("🔊", css: ["flat", "clip-button"], onClick: {})
+        loopButton = Gtk.button("⟲", css: ["flat", "clip-button"], onClick: {})
         build()
         start()
     }
@@ -91,18 +123,18 @@ final class ClipSheet: @unchecked Sendable {
         gtk_widget_set_vexpand(body, 1)
         gtk_widget_set_focusable(body, 1)
         Gtk.addClass(body, "viewer-canvas")
+        gtk_widget_set_hexpand(stage, 1)
+        gtk_widget_set_vexpand(stage, 1)
+        gtk_box_append(ptr(body), stage)
+        gtk_box_append(ptr(body), makeTransport())
         layer.install(toolbar: makeToolbar(), body: body)
     }
 
     private func makeToolbar() -> UnsafeMutablePointer<GtkWidget> {
-        let bar = gtk_center_box_new()!
-        Gtk.addClass(bar, "studio-sheet-bar")
-        Gtk.addClass(bar, "viewer-bar")
-        gtk_widget_set_size_request(bar, -1, Int32(StudioSheetMetrics.toolbarHeight))
-        gtk_widget_set_valign(playButton, GTK_ALIGN_CENTER)
-        gtk_widget_set_tooltip_text(playButton, Localized.text("Play or pause (space)"))
-        gtk_center_box_set_start_widget(op(bar), playButton)
-
+        let toolbar = gtk_center_box_new()!
+        Gtk.addClass(toolbar, "studio-sheet-bar")
+        Gtk.addClass(toolbar, "viewer-bar")
+        gtk_widget_set_size_request(toolbar, -1, Int32(StudioSheetMetrics.toolbarHeight))
         let middle = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
         gtk_widget_set_valign(middle, GTK_ALIGN_CENTER)
         gtk_widget_set_halign(middle, GTK_ALIGN_CENTER)
@@ -114,20 +146,51 @@ final class ClipSheet: @unchecked Sendable {
             gtk_box_append(ptr(middle), label)
         }
         gtk_label_set_text(op(titleLabel), name)
-        gtk_center_box_set_center_widget(op(bar), middle)
-
+        gtk_label_set_text(
+            op(subLabel), MediaTileReading.caption(name: "", kind: .video, duration: duration)
+                .trimmingCharacters(in: CharacterSet(charactersIn: " ·")))
+        gtk_center_box_set_center_widget(op(toolbar), middle)
         let trailing = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         gtk_widget_set_valign(trailing, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(trailing), saveButton)
         gtk_box_append(ptr(trailing), doneButton)
-        gtk_center_box_set_end_widget(op(bar), trailing)
-        for button in [playButton, saveButton, doneButton] {
-            gtk_widget_set_focus_on_click(button, 0)
-        }
-        wire(playButton) { $0.togglePause() }
+        gtk_center_box_set_end_widget(op(toolbar), trailing)
+        for button in [saveButton, doneButton] { gtk_widget_set_focus_on_click(button, 0) }
         wire(saveButton) { $0.save() }
         wire(doneButton) { $0.layer.dismiss() }
-        return bar
+        return toolbar
+    }
+
+    private func makeTransport() -> UnsafeMutablePointer<GtkWidget> {
+        let transport = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        Gtk.addClass(transport, "clip-transport")
+        gtk_scale_set_draw_value(ptr(bar), 0)
+        gtk_widget_set_hexpand(bar, 1)
+        gtk_widget_set_valign(bar, GTK_ALIGN_CENTER)
+        tailscode_set_accessible_label(bar, Localized.text("Position in %@", name))
+        for (button, tip) in [
+            (playButton, Localized.text("Play or pause (space)")),
+            (speedButton, Localized.text("Speed ([ and ])")),
+            (muteButton, Localized.text("Sound (m)")),
+            (loopButton, Localized.text("Loop")),
+        ] {
+            gtk_widget_set_tooltip_text(button, tip)
+            tailscode_set_accessible_label(button, tip)
+            gtk_widget_set_focus_on_click(button, 0)
+            gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
+        }
+        for widget in [playButton, positionLabel, bar, lengthLabel, speedButton, loopButton, muteButton] {
+            gtk_box_append(ptr(transport), widget)
+        }
+        wire(playButton) { $0.togglePause() }
+        wire(speedButton) { $0.stepSpeed(by: 1) }
+        wire(muteButton) { $0.toggleMute() }
+        wire(loopButton) { $0.toggleLoop() }
+        Gtk.connect(UnsafeMutableRawPointer(bar), "value-changed") { [weak self] in
+            Gtk.onMain { [weak self] in self?.barMoved() }
+        }
+        showLoop()
+        return transport
     }
 
     private func wire(
@@ -158,23 +221,48 @@ final class ClipSheet: @unchecked Sendable {
         }
         player = created
         self.box = box
-        if let area = tailscode_mpv_area(created) {
-            gtk_widget_set_hexpand(area, 1)
-            gtk_widget_set_vexpand(area, 1)
-            gtk_box_append(ptr(body), area)
-        }
         MediaDeck.shared.stopAudio()
         MediaDeck.command(created, ["set", "keep-open", "yes"])
-        tailscode_mpv_play(created, source)
+        MediaDeck.command(created, ["set", "loop-file", looping ? "inf" : "no"])
+        MediaDeck.dress(created, title: name)
+        guard let area = tailscode_mpv_area(created) else { return }
+        gtk_widget_set_hexpand(area, 1)
+        gtk_widget_set_vexpand(area, 1)
+        gtk_box_append(ptr(stage), area)
+        if gtk_widget_get_realized(area) != 0 {
+            play()
+        } else {
+            Gtk.connect(UnsafeMutableRawPointer(area), "realize") { [weak self] in
+                Gtk.onMain { [weak self] in self?.play() }
+            }
+        }
+    }
+
+    /// The file is opened only once the sheet's GL area exists: the area makes mpv's render
+    /// context when it is realized, and a video mpv opens before that has nothing to draw into, so
+    /// a clip with no sound fails outright ("no audio or video data played").
+    private func play() {
+        guard !started, !closed, let player else { return }
+        started = true
+        tailscode_mpv_play(player, source)
         tick()
     }
 
     private func heard(_ event: String, _ payload: String) {
         switch event {
+        case "loaded":
+            if let player, let start = startAt, start > 0 {
+                MediaDeck.command(player, ["seek", String(format: "%.2f", start), "absolute"])
+            }
+            startAt = nil
         case "pause":
             paused = payload == "1"
-            gtk_button_set_label(ptr(playButton), paused ? Localized.text("Play") : Localized.text("Pause"))
+            gtk_button_set_label(ptr(playButton), paused ? "▶" : "⏸")
+        case "mute":
+            muted = payload == "1"
+            gtk_button_set_label(ptr(muteButton), muted ? "🔇" : "🔊")
         case "error":
+            AppLog.write(.ui, "clip sheet could not play \(name): \(payload)")
             gtk_label_set_text(op(subLabel), MediaTileReading.unreachable(name))
             failed()
         default:
@@ -187,8 +275,8 @@ final class ClipSheet: @unchecked Sendable {
     private func togglePause() {
         guard let player else { return }
         let position = tailscode_mpv_number(player, "time-pos")
-        let duration = tailscode_mpv_number(player, "duration")
-        if paused, duration > 0, position >= duration - 0.25 {
+        let length = tailscode_mpv_number(player, "duration")
+        if paused, length > 0, position >= length - 0.25 {
             MediaDeck.command(player, ["seek", "0", "absolute"])
             MediaDeck.command(player, ["set", "pause", "no"])
             return
@@ -196,21 +284,80 @@ final class ClipSheet: @unchecked Sendable {
         MediaDeck.command(player, ["cycle", "pause"])
     }
 
-    private func seek(_ seconds: Int) {
+    /// A short clip seeks to the exact frame; a long one to the keyframe nearest, at once.
+    private var seekFlag: String {
+        (duration ?? 0) <= 120 ? "absolute+exact" : "absolute+keyframes"
+    }
+
+    private func seek(by seconds: Double) {
         guard let player else { return }
-        MediaDeck.command(player, ["seek", String(seconds), "relative"])
+        MediaDeck.command(
+            player, ["seek", String(format: "%.2f", seconds), (duration ?? 0) <= 120 ? "relative+exact" : "relative"])
+    }
+
+    private func barMoved() {
+        guard !settingBar, let player else { return }
+        let length = tailscode_mpv_number(player, "duration")
+        guard length > 0 else { return }
+        let target = gtk_range_get_value(ptr(bar)) * length
+        MediaDeck.command(player, ["seek", String(format: "%.3f", target), seekFlag])
+        gtk_label_set_text(op(positionLabel), MediaTileReading.clock(target))
+    }
+
+    private func stepSpeed(by step: Int) {
+        guard let player else { return }
+        let index = Self.speeds.firstIndex(of: speed) ?? 0
+        speed = Self.speeds[(index + step + Self.speeds.count) % Self.speeds.count]
+        MediaDeck.command(player, ["set", "speed", String(speed)])
+        gtk_button_set_label(ptr(speedButton), Self.speedWord(speed))
+    }
+
+    static func speedWord(_ speed: Double) -> String {
+        let plain = speed == speed.rounded() ? String(Int(speed)) : String(speed)
+        return plain + "×"
+    }
+
+    private func toggleMute() {
+        guard let player else { return }
+        MediaDeck.command(player, ["cycle", "mute"])
+    }
+
+    private func toggleLoop() {
+        looping.toggle()
+        if let player { MediaDeck.command(player, ["set", "loop-file", looping ? "inf" : "no"]) }
+        showLoop()
+    }
+
+    private func showLoop() {
+        gtk_widget_set_opacity(loopButton, looping ? 1 : 0.45)
+        if looping { Gtk.addClass(loopButton, "clip-on") } else { gtk_widget_remove_css_class(loopButton, "clip-on") }
     }
 
     private func handleKey(_ keyval: UInt32) -> Bool {
+        guard let player else { return false }
         switch keyval {
-        case 0x0020:
+        case 0x0020, UInt32(UnicodeScalar("k").value):
             togglePause()
         case 0xFF51:
-            seek(-5)
+            seek(by: -5)
         case 0xFF53:
-            seek(5)
+            seek(by: 5)
+        case UInt32(UnicodeScalar("j").value):
+            seek(by: -10)
+        case UInt32(UnicodeScalar("l").value):
+            seek(by: 10)
+        case UInt32(UnicodeScalar(",").value):
+            MediaDeck.command(player, ["frame-back-step"])
+        case UInt32(UnicodeScalar(".").value):
+            MediaDeck.command(player, ["frame-step"])
+        case UInt32(UnicodeScalar("[").value):
+            stepSpeed(by: -1)
+        case UInt32(UnicodeScalar("]").value):
+            stepSpeed(by: 1)
         case UInt32(UnicodeScalar("m").value):
-            if let player { MediaDeck.command(player, ["cycle", "mute"]) }
+            toggleMute()
+        case 0xFF50:
+            MediaDeck.command(player, ["seek", "0", "absolute"])
         case 0xFF1B:
             layer.dismiss()
         default:
@@ -219,7 +366,7 @@ final class ClipSheet: @unchecked Sendable {
         return true
     }
 
-    /// Four times a second the line under the name says where the video is.
+    /// Four times a second the transport says where the video is.
     private func tick() {
         guard !ticking, !closed else { return }
         ticking = true
@@ -229,11 +376,17 @@ final class ClipSheet: @unchecked Sendable {
                 self.ticking = false
                 guard !self.closed, let player = self.player else { return }
                 let position = tailscode_mpv_number(player, "time-pos")
-                let duration = tailscode_mpv_number(player, "duration")
-                if let line = MediaTileReading.progress(
-                    at: position >= 0 ? position : nil, of: duration > 0 ? duration : nil)
-                {
-                    gtk_label_set_text(op(self.subLabel), line)
+                let length = tailscode_mpv_number(player, "duration")
+                if length > 0 {
+                    if self.duration == nil { self.duration = length }
+                    gtk_label_set_text(op(self.lengthLabel), MediaTileReading.clock(length.rounded()))
+                }
+                if position >= 0 {
+                    gtk_label_set_text(op(self.positionLabel), MediaTileReading.clock(position))
+                    self.settingBar = true
+                    gtk_range_set_value(
+                        ptr(self.bar), MediaTileReading.fraction(at: position, of: length > 0 ? length : nil))
+                    self.settingBar = false
                 }
                 self.tick()
             }
@@ -291,6 +444,9 @@ final class ClipSheet: @unchecked Sendable {
     private func tearDown() {
         closed = true
         if let player {
+            if !looping {
+                MediaPlayhead.keep(tailscode_mpv_number(player, "time-pos"), of: duration, for: playhead)
+            }
             tailscode_mpv_free(player)
             self.player = nil
         }

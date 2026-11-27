@@ -251,13 +251,13 @@ targets:
         NSCameraUsageDescription: Take a photo to ask your agent about it, or scan the code your computer prints to connect.
         NSMicrophoneUsageDescription: Dictate prompts on this device, where your voice never leaves it, or talk to your agent in a call, where it goes over your tailnet to the server you chose and nowhere else.
         NSSpeechRecognitionUsageDescription: Dictation turns your speech into text on this device. Nothing you say leaves it.
-        NSPhotoLibraryAddUsageDescription: Save pictures from a conversation to your photo library.
+        NSPhotoLibraryAddUsageDescription: Save pictures and videos from a conversation to your photo library.
         NSFaceIDUsageDescription: Confirm it is you before approving a command an agent is waiting on.
         NSLocalNetworkUsageDescription: Tailscode connects to coding-agent servers you run on your own machines, including ones on your local network.
         ITSAppUsesNonExemptEncryption: false
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
-        UIBackgroundModes: [fetch, remote-notification]
+        UIBackgroundModes: [audio, fetch, remote-notification]
         BGTaskSchedulerPermittedIdentifiers: [com.guitaripod.tailscode.usage-refresh]
     settings:
       base:

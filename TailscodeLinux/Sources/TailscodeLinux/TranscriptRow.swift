@@ -63,6 +63,8 @@ final class TranscriptContext: @unchecked Sendable {
     var requestMedia: (@Sendable (FileReference, String, Bool) -> Void)?
     /// A press on a video's tile or a song's button.
     var playMedia: (@Sendable (FileReference, String) -> Void)?
+    /// A hand on a song's bar: the row's reference, its key and the fraction of its length.
+    var seekMedia: (@Sendable (FileReference, String, Double) -> Void)?
     var requestSubagent: (@Sendable (ToolCall) -> Void)?
     /// A workflow agent is fetched by its own id: it has no spawning call to name it.
     var requestWorkflowAgent: (@Sendable (String) -> Void)?

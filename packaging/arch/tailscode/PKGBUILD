@@ -14,7 +14,8 @@ depends=('gtk4' 'libadwaita' 'glib2' 'gdk-pixbuf2' 'libepoxy' 'mpv' 'webkitgtk-6
          'gtk4-layer-shell' 'curl')
 # swift-bin is the AUR toolchain; a swiftly install on PATH satisfies this too.
 makedepends=('swift-bin' 'git')
-optdepends=('tailscale: reach the machine your agent runs on')
+optdepends=('tailscale: reach the machine your agent runs on'
+            'mpv-mpris: a song playing in a chat answers the desktop media keys and panel')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 

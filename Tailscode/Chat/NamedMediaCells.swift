@@ -1,3 +1,4 @@
+import AVFoundation
 import CodingAgentKit
 import TailscodeCore
 import UIKit
@@ -11,6 +12,7 @@ final class VideoTileCell: UICollectionViewCell {
     /// The press, and what the cell asks the chat to do with the file.
     var onPlay: ((FileReference) -> Void)?
     var onShare: ((FileReference, UIView) -> Void)?
+    var onSaveToPhotos: ((FileReference) -> Void)?
     var onRetry: ((FileReference) -> Void)?
     /// The row's height moved (a file turned out to be missing), so the list measures it again.
     var onResized: (() -> Void)?
@@ -116,8 +118,21 @@ final class VideoTileCell: UICollectionViewCell {
         poster.image = nil
         onPlay = nil
         onShare = nil
+        onSaveToPhotos = nil
         onRetry = nil
         onResized = nil
+    }
+
+    /// A clip a reply named that is not on its server: one quiet line, nothing to read.
+    func showMissing(_ name: String) {
+        if let listening { NotificationCenter.default.removeObserver(listening) }
+        listening = nil
+        file = nil
+        failed = .missing
+        line.text = MediaTileReading.missing(name)
+        line.isHidden = false
+        frameView.isHidden = true
+        caption.isHidden = true
     }
 
     func configure(file: FileReference, backend: (any CodingAgentBackend)?) {
@@ -186,18 +201,27 @@ extension VideoTileCell: UIContextMenuInteractionDelegate {
     func contextMenuInteraction(
         _ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint
     ) -> UIContextMenuConfiguration? {
-        guard let file, case .ready? = NamedMediaStore.shared.state(for: file) else { return nil }
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+        guard let file else { return nil }
+        guard case .ready(let ready)? = NamedMediaStore.shared.state(for: file) else { return nil }
+        return UIContextMenuConfiguration(
+            identifier: nil, previewProvider: { NamedVideoPeek(ready: ready) }
+        ) { [weak self] _ in
             let play = UIAction(
                 title: String(localized: "Play"), image: UIImage(systemName: "play.fill")
             ) { _ in self?.onPlay?(file) }
+            let photos = UIAction(
+                title: String(localized: "Save to Photos"), image: UIImage(systemName: "square.and.arrow.down")
+            ) { _ in self?.onSaveToPhotos?(file) }
             let share = UIAction(
                 title: String(localized: "Share"), image: UIImage(systemName: "square.and.arrow.up")
             ) { _ in
                 guard let self else { return }
                 self.onShare?(file, self.frameView)
             }
-            return UIMenu(children: [play, share])
+            let path = UIAction(
+                title: String(localized: "Copy path"), image: UIImage(systemName: "doc.on.doc")
+            ) { _ in UIPasteboard.general.string = ServerFile.path(of: file) ?? file.path }
+            return UIMenu(children: [play, photos, share, path])
         }
     }
 }
@@ -214,7 +238,7 @@ final class AudioLineCell: UICollectionViewCell {
     private let button = UIButton(type: .system)
     private let title = UILabel()
     private let detail = UILabel()
-    private let bar = UIProgressView(progressViewStyle: .bar)
+    private let bar = UISlider()
     private let line = UILabel()
     private var file: FileReference?
     private var failed: NamedMediaFailure?
@@ -232,8 +256,11 @@ final class AudioLineCell: UICollectionViewCell {
         title.lineBreakMode = .byTruncatingMiddle
         detail.font = Theme.Ramp.font(.rowStamp)
         detail.textColor = Theme.Color.secondaryLabel
-        bar.trackTintColor = Theme.Color.tertiaryLabel.withAlphaComponent(0.3)
-        bar.progressTintColor = Theme.Color.accent
+        bar.maximumTrackTintColor = Theme.Color.tertiaryLabel.withAlphaComponent(0.3)
+        bar.minimumTrackTintColor = Theme.Color.accent
+        bar.setThumbImage(Self.thumb, for: .normal)
+        bar.addTarget(self, action: #selector(seek), for: .valueChanged)
+        bar.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapBar(_:))))
         line.font = Theme.Ramp.font(.panelFootnote)
         line.textColor = Theme.Color.tertiaryLabel
         line.numberOfLines = 2
@@ -326,14 +353,18 @@ final class AudioLineCell: UICollectionViewCell {
         guard case .ready(let ready)? = state else {
             button.isEnabled = false
             detail.text = String(localized: "Loading…")
-            bar.progress = 0
+            bar.value = 0
+            bar.isEnabled = false
             return
         }
         button.isEnabled = true
+        bar.isEnabled = ready.duration != nil
         let position = playing ? store.position : nil
         detail.text = MediaTileReading.progress(at: position, of: ready.duration)
             ?? MediaTileReading.kindWord(.audio)
-        bar.progress = Float(MediaTileReading.fraction(at: position, of: ready.duration))
+        if !bar.isTracking {
+            bar.value = Float(MediaTileReading.fraction(at: position, of: ready.duration))
+        }
     }
 
     @objc private func toggle() {
@@ -341,8 +372,78 @@ final class AudioLineCell: UICollectionViewCell {
         NamedMediaStore.shared.toggle(file)
     }
 
+    /// A hand on the bar: the song moves there, or starts there when it was not playing.
+    @objc private func seek() {
+        guard let file else { return }
+        NamedMediaStore.shared.toggle(file, at: Double(bar.value))
+    }
+
+    /// A tap on the bar's track goes there, as on any player's: a slider alone moves only by its thumb.
+    @objc private func tapBar(_ tap: UITapGestureRecognizer) {
+        guard bar.isEnabled, bar.bounds.width > 0 else { return }
+        let track = bar.trackRect(forBounds: bar.bounds)
+        let x = tap.location(in: bar).x
+        let fraction = min(1, max(0, (x - track.minX) / max(1, track.width)))
+        bar.value = Float(fraction)
+        seek()
+    }
+
+    /// A small round thumb, so the bar reads as a song's place rather than a settings slider.
+    private static let thumb: UIImage = {
+        let size = CGSize(width: 14, height: 14)
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            UIColor.white.setFill()
+            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size).insetBy(dx: 1, dy: 1)).fill()
+        }
+    }()
+
     @objc private func retry() {
         guard let file, failed?.isRetryable == true else { return }
         onRetry?(file)
+    }
+}
+
+
+/// What a long press on a named video shows above its menu: the clip itself, playing silently and
+/// over again at its own shape.
+final class NamedVideoPeek: UIViewController {
+    private let player: AVQueuePlayer
+    private let looper: AVPlayerLooper
+    private let aspect: Double
+
+    init(ready: NamedMediaStore.Ready) {
+        let item = AVPlayerItem(url: ready.source)
+        player = AVQueuePlayer()
+        player.isMuted = true
+        looper = AVPlayerLooper(player: player, templateItem: item)
+        aspect = ready.aspect ?? 16.0 / 9.0
+        super.init(nibName: nil, bundle: nil)
+        let width: CGFloat = 320
+        preferredContentSize = CGSize(width: width, height: (width / aspect).rounded())
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func loadView() {
+        let view = PeekView()
+        view.playerLayer.player = player
+        view.playerLayer.videoGravity = .resizeAspectFill
+        view.backgroundColor = .black
+        self.view = view
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        player.play()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        player.pause()
+    }
+
+    private final class PeekView: UIView {
+        override class var layerClass: AnyClass { AVPlayerLayer.self }
+        var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
     }
 }

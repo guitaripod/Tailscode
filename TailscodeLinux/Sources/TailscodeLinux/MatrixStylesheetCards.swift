@@ -185,6 +185,13 @@ extension MatrixStylesheet {
         .media-audio-name { \(t(.cardBody)) }
         .media-audio-bar trough, .media-audio-bar progress { min-height: 3px; }
         .media-missing { \(t(.rowDetail)) opacity: 0.55; font-style: italic; }
+        .clip-transport { padding: 8px 14px 10px 14px; background-color: alpha(black, 0.85); }
+        .clip-button { color: white; font-size: 15px; min-width: 34px; min-height: 30px; padding: 0 6px; }
+        .clip-button.clip-on { color: \(accent); }
+        .clip-time { color: alpha(white, 0.85); \(t(.chip)) font-feature-settings: "tnum"; }
+        .clip-transport scale trough { background-color: alpha(white, 0.22); min-height: 4px; border-radius: 2px; }
+        .clip-transport scale highlight { background-color: \(accent); border-radius: 2px; }
+        .clip-transport scale slider { background-color: white; min-width: 14px; min-height: 14px; }
         .task-board { border: 1px solid \(rule); border-radius: 8px; padding: 10px 12px; background-color: alpha(currentColor, 0.03); }
         .task-board-head { \(t(.sectionLabel)) color: \(palette.accent); }
         .task-board-item { \(t(.panelLabel)) }

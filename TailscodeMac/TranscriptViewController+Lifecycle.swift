@@ -176,6 +176,8 @@ extension TranscriptViewController {
         stopNamedSong()
         if let namedMediaObserver { NotificationCenter.default.removeObserver(namedMediaObserver) }
         namedMediaObserver = nil
+        if let missesObserver { NotificationCenter.default.removeObserver(missesObserver) }
+        missesObserver = nil
         handToWatchIfInFlight()
         composer.stashDraft()
         composer.stopWatching()

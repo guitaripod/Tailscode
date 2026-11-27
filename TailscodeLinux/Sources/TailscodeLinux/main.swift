@@ -12,6 +12,7 @@ _ = tailscode_crash_logger_install(AppLog.current.path, TailscodeVersion.current
 Trace.stamp("main")
 SettingsFile.load()
 Preferences.welcomeNewcomer()
+TailscodeClientFeatures.declare()
 
 /// The quick ask's actions live beside the settings file, where a hand or an agent can edit them.
 QuickAskActions.fileURL = SettingsFile.url.deletingLastPathComponent()

@@ -582,6 +582,16 @@ extension ChatPane {
         context.playMedia = { [weak self] reference, key in
             Gtk.onMain { [weak self] in self?.playMedia(reference, key: key) }
         }
+        context.seekMedia = { [weak self] reference, key, fraction in
+            Gtk.onMain { [weak self] in self?.playMedia(reference, key: key, at: fraction) }
+        }
+        if missesObserver == nil {
+            missesObserver = NotificationCenter.default.addObserver(
+                forName: MediaMisses.didChange, object: nil, queue: nil
+            ) { [weak self] _ in
+                Gtk.onMain { [weak self] in self?.mediaMissed() }
+            }
+        }
         if mediaListener == nil {
             mediaListener = MediaDeck.shared.listen { [weak self] key in
                 Gtk.onMain { [weak self] in self?.pictureLanded(key) }

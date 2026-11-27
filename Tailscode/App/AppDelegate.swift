@@ -9,6 +9,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         TailscodeLogging.configure()
+        TailscodeClientFeatures.declare()
         MidgarLog.info("didFinishLaunching", category: .lifecycle)
         UNUserNotificationCenter.current().delegate = NotificationRouter.shared
         UsageBackgroundRefresh.register()

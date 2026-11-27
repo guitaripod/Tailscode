@@ -46,6 +46,9 @@ extension TranscriptRow {
         case .subagentGroup(let fanout):
             return SubagentGroupView.make(fanout, key: key, context: context)
         case .file(let reference, let mine, let messageID):
+            if !mine, MediaMisses.isMissed(reference) {
+                return NamedMediaRowView.missing(reference)
+            }
             if !mine, let kind = MediaKind.of(reference), kind != .picture {
                 return NamedMediaRowView.make(reference, kind: kind, key: key, context: context)
             }

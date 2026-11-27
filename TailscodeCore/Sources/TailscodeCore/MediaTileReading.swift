@@ -79,6 +79,8 @@ public enum MediaTileReading {
         switch error {
         case AgentError.http(let status, _) where status == 404 || status == 410:
             return .missing
+        case AgentError.http(let status, _) where status == 415 || status == 422:
+            return .unplayable
         case AgentError.unsupported:
             return .unsendable
         default:

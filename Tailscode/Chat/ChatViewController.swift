@@ -331,6 +331,8 @@ final class ChatViewController: UIViewController {
             self, selector: #selector(responseStatsDidChange),
             name: ResponseStatsSetting.didChange, object: nil)
         NotificationCenter.default.addObserver(
+            self, selector: #selector(namedMediaMissed), name: MediaMisses.didChange, object: nil)
+        NotificationCenter.default.addObserver(
             self, selector: #selector(linkEmbedsDidChange),
             name: LinkEmbedsSetting.didChange, object: nil)
         NotificationCenter.default.addObserver(

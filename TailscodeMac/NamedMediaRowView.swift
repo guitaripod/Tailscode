@@ -24,7 +24,7 @@ enum NamedMediaRowView {
         if case .ready(let held)? = state { ready = held }
         switch kind {
         case .audio:
-            return AudioLine(reference: reference, name: name, ready: ready)
+            return AudioLine(reference: reference, name: name, ready: ready, seek: context.seekMedia)
         default:
             return video(reference, name: name, ready: ready, context: context)
         }
@@ -114,6 +114,13 @@ enum NamedMediaRowView {
         return column
     }
 
+    /// A file a reply named that is not on its server: one quiet line.
+    static func missing(_ reference: FileReference) -> NSView {
+        RowKit.label(
+            MediaTileReading.missing(MediaTileReading.name(of: reference)),
+            font: MacTheme.Ramp.font(.panelFootnote), color: MacTheme.Color.tertiaryLabel)
+    }
+
     private static func failed(
         _ failure: NamedMediaFailure, name: String, reference: FileReference,
         context: TranscriptContext
@@ -197,12 +204,17 @@ enum NamedMediaRowView {
         private let ready: NamedMediaStore.Ready?
         private let button = NSButton()
         private let detail: NSTextField
-        private let bar = NSProgressIndicator()
+        private let bar = NSSlider(value: 0, minValue: 0, maxValue: 1, target: nil, action: nil)
+        private let seek: ((FileReference, Double) -> Void)?
         private var listening: NSObjectProtocol?
 
-        init(reference: FileReference, name: String, ready: NamedMediaStore.Ready?) {
+        init(
+            reference: FileReference, name: String, ready: NamedMediaStore.Ready?,
+            seek: ((FileReference, Double) -> Void)?
+        ) {
             self.reference = reference
             self.ready = ready
+            self.seek = seek
             detail = RowKit.label("", font: MacTheme.Ramp.font(.rowStamp), color: MacTheme.Color.secondaryLabel)
             super.init(frame: .zero)
             translatesAutoresizingMaskIntoConstraints = false
@@ -218,11 +230,12 @@ enum NamedMediaRowView {
             button.isEnabled = ready != nil
             let title = RowKit.label(name, font: MacTheme.Ramp.font(.rowTitle), color: MacTheme.Color.label)
             title.lineBreakMode = .byTruncatingMiddle
-            bar.style = .bar
-            bar.isIndeterminate = false
-            bar.minValue = 0
-            bar.maxValue = 1
             bar.controlSize = .small
+            bar.isContinuous = true
+            bar.target = self
+            bar.action = #selector(moved)
+            bar.isEnabled = ready?.duration != nil
+            bar.setAccessibilityLabel(Localized.text("Position in %@", name))
             let words = NSStackView(views: [title, detail, bar])
             words.orientation = .vertical
             words.alignment = .leading
@@ -284,11 +297,18 @@ enum NamedMediaRowView {
             detail.stringValue =
                 MediaTileReading.progress(at: position, of: ready.duration)
                 ?? MediaTileReading.kindWord(.audio)
-            bar.doubleValue = MediaTileReading.fraction(at: position, of: ready.duration)
+            if NSEvent.pressedMouseButtons & 1 == 0 {
+                bar.doubleValue = MediaTileReading.fraction(at: position, of: ready.duration)
+            }
         }
 
         @objc private func toggle() {
             NamedMediaStore.shared.toggle(reference)
+        }
+
+        /// A hand on the bar: the song moves there, or starts there when it was not playing.
+        @objc private func moved() {
+            seek?(reference, bar.doubleValue)
         }
     }
 }

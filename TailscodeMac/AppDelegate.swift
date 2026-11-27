@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
             LiveShot.prepare()
         #endif
+        TailscodeClientFeatures.declare()
         MidgarLog.info("launch: Tailscode \(MacCLI.version)", category: .lifecycle)
         NeuralMetalContext.warm()
         ReviewPromptPolicy.migrateIfNeeded()

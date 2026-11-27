@@ -402,6 +402,8 @@ extension ChatPane {
     func shutdown() {
         if let mediaListener { MediaDeck.shared.stopListening(mediaListener) }
         mediaListener = nil
+        if let missesObserver { NotificationCenter.default.removeObserver(missesObserver) }
+        missesObserver = nil
         MediaDeck.shared.release(owner: ObjectIdentifier(self))
         dictation.shutdown()
         stashDraft()

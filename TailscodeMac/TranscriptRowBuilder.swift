@@ -122,6 +122,8 @@ final class TranscriptRowBuilder {
     func invalidate() {
         cache = [:]
         prefix = nil
+        expansionInput = []
+        expansionOutput = []
     }
 
     /// A turn that said nothing is read against the question it answers, so the prompt walks along

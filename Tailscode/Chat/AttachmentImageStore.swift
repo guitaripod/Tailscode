@@ -107,7 +107,7 @@ final class AttachmentImageStore {
         if let held = cachedData(file) {
             data = held
         } else {
-            guard let fetched = try? await backend.attachmentData(file) else { return nil }
+            guard let fetched = await Self.fetch(file, using: backend) else { return nil }
             store(fetched, key: key)
             data = fetched
         }
@@ -122,7 +122,7 @@ final class AttachmentImageStore {
         if let hit = cache.object(forKey: key as NSString) { return hit }
         if let running = inFlight[key] { return await running.value }
         let task = Task<UIImage?, Never> { [weak self] in
-            let data = try? await backend.attachmentData(file)
+            let data = await Self.fetch(file, using: backend)
             guard let data, let image = await Self.decode(data) else { return nil }
             self?.store(image, key: key)
             self?.store(data, key: key)
@@ -162,6 +162,17 @@ final class AttachmentImageStore {
 
     private func store(_ data: Data, key: String) {
         originals.setObject(data as NSData, forKey: key as NSString, cost: data.count)
+    }
+
+    /// The bytes from the server, or nil; a picture a reply named that is not there is noted, so it
+    /// is drawn as one quiet line rather than an empty tile.
+    private static func fetch(_ file: FileReference, using backend: any CodingAgentBackend) async -> Data? {
+        do {
+            return try await backend.attachmentData(file)
+        } catch {
+            if MediaMisses.isMissing(error) { MediaMisses.note(file) }
+            return nil
+        }
     }
 
     private static func key(_ file: FileReference) -> String? {

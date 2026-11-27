@@ -108,97 +108,97 @@
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gem billeder fra en samtale i dit fotobibliotek."
+            "value": "Gem billeder og videoer fra en samtale i dit fotobibliotek."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sichere Bilder aus einer Unterhaltung in deiner Fotomediathek."
+            "value": "Sichere Bilder und Videos aus einer Unterhaltung in deiner Fotomediathek."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Save pictures from a conversation to your photo library."
+            "value": "Save pictures and videos from a conversation to your photo library."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Guarda imágenes de una conversación en tu fototeca."
+            "value": "Guarda imágenes y vídeos de una conversación en tu fototeca."
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tallenna kuvat keskustelusta kuvakirjastoosi."
+            "value": "Tallenna kuvat ja videot keskustelusta kuvakirjastoosi."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enregistrez les images d’une conversation dans votre photothèque."
+            "value": "Enregistrez les images et vidéos d’une conversation dans votre photothèque."
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vista myndir úr samtali í myndasafnið þitt."
+            "value": "Vista myndir og myndskeið úr samtali í myndasafnið þitt."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Salva le immagini di una conversazione nella tua libreria foto."
+            "value": "Salva le immagini e i video di una conversazione nella tua libreria foto."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "会話内の画像を写真ライブラリに保存します。"
+            "value": "会話内の画像と動画を写真ライブラリに保存します。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "대화의 사진을 사진 보관함에 저장합니다."
+            "value": "대화의 사진과 동영상을 사진 보관함에 저장합니다."
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lagre bilder fra en samtale i bildebiblioteket ditt."
+            "value": "Lagre bilder og videoer fra en samtale i bildebiblioteket ditt."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zapisuj zdjęcia z rozmowy w bibliotece zdjęć."
+            "value": "Zapisuj zdjęcia i wideo z rozmowy w bibliotece zdjęć."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Salve imagens de uma conversa na sua fototeca."
+            "value": "Salve imagens e vídeos de uma conversa na sua fototeca."
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Spara bilder från en konversation till ditt bildbibliotek."
+            "value": "Spara bilder och videor från en konversation till ditt bildbibliotek."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "将对话中的图片存储到你的照片图库。"
+            "value": "将对话中的图片和视频存储到你的照片图库。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "將對話中的圖片儲存至你的照片圖庫。"
+            "value": "將對話中的圖片和影片儲存至你的照片圖庫。"
           }
         }
       }

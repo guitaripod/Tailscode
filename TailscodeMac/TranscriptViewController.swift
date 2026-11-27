@@ -265,6 +265,7 @@ final class TranscriptViewController: NSViewController {
     /// so a change of what it is rebuilds the row and a song's ticking does not.
     var namedMediaShapes: [String: String] = [:]
     var namedMediaObserver: NSObjectProtocol?
+    var missesObserver: NSObjectProtocol?
     /// The song this pane started, which stops when the pane shows another chat or closes.
     var namedSong: String?
     /// Pictures a row has asked for and the transcript has not yet judged worth fetching: held here

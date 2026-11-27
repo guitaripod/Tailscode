@@ -66,6 +66,11 @@ import Testing
         #expect(MediaMentions.paths(in: text).isEmpty)
     }
 
+    @Test func pathsComeInTheOrderTheWordsNameThem() {
+        let text = "Recorded /tmp/m/run.webm and /tmp/m/memo.ogg; the cut, `/tmp/gone/cut.mp4`, is gone."
+        #expect(MediaMentions.paths(in: text) == ["/tmp/m/run.webm", "/tmp/m/memo.ogg", "/tmp/gone/cut.mp4"])
+    }
+
     @Test func aFencedLineThatIsOnlyAPathCounts() {
         let text = "Copy it:\n\n```\n/mnt/nvme8tb/Clips/launch film.mp4\n```\n"
         #expect(MediaMentions.paths(in: text) == ["/mnt/nvme8tb/Clips/launch film.mp4"])
@@ -192,5 +197,55 @@ import Testing
         #expect(MediaTileReading.failure(URLError(.timedOut)) == .unreachable)
         #expect(NamedMediaFailure.unreachable.isRetryable)
         #expect(!NamedMediaFailure.missing.isRetryable)
+    }
+}
+
+@Suite(.serialized) struct MediaMemoryTests {
+    private let now = Date()
+
+    @Test func aMissedPictureIsDrawnAsMissing() {
+        let messages = [
+            ChatMessage(
+                id: "u-miss", role: .user, agentType: .claudeCode,
+                parts: [MessagePart(id: "t", kind: .text("go"))], createdAt: now),
+            ChatMessage(
+                id: "a-miss", role: .assistant, agentType: .claudeCode,
+                parts: [MessagePart(id: "t", kind: .text("See /tmp/gone/shot.png"))], createdAt: now),
+        ]
+        guard case .file(let first)? = MediaMentions.expanded(messages)[1].parts.last?.kind else {
+            Issue.record("no mention")
+            return
+        }
+        #expect(first.mime == "image/png")
+        MediaMisses.note(first)
+        guard case .file(let again)? = MediaMentions.expanded(messages)[1].parts.last?.kind else {
+            Issue.record("no mention")
+            return
+        }
+        #expect(MediaMisses.isMissed(again))
+        #expect(MediaKind.of(again) == nil)
+    }
+
+    @Test func onlyANamedFileCanBeMissed() {
+        MediaMisses.note(FileReference(path: "/tmp/tool.png", mime: "image/png", url: "/attachments/s/a.png"))
+        #expect(!MediaMisses.contains("/attachments/s/a.png"))
+        #expect(MediaMisses.isMissing(AgentError.http(status: 404, body: "")))
+        #expect(!MediaMisses.isMissing(AgentError.http(status: 500, body: "")))
+    }
+
+    @Test func aPlayheadIsKeptOnlyWhereItIsWorthComingBackTo() {
+        MediaPlayhead.keep(42, of: 120, for: "k1")
+        #expect(MediaPlayhead.start(for: "k1") == 42)
+        MediaPlayhead.keep(118, of: 120, for: "k1")
+        #expect(MediaPlayhead.start(for: "k1") == nil)
+        MediaPlayhead.keep(2, of: 120, for: "k2")
+        #expect(MediaPlayhead.start(for: "k2") == nil)
+    }
+
+    @Test func shortClipsLoop() {
+        #expect(MediaLoop.loops(duration: 6))
+        #expect(!MediaLoop.loops(duration: 95))
+        #expect(!MediaLoop.loops(duration: nil))
+        #expect(MediaTileReading.failure(AgentError.http(status: 422, body: "")) == .unplayable)
     }
 }
