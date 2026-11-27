@@ -156,7 +156,9 @@ enum Kit {
     /// 0.68.0 passes over opencode events that cannot concern a listener before decoding them.
     /// 0.69.0 fetches a file an agent names by its path and asks a bridge for a ticket a player
     /// streams it from.
-    static let version = Version(0, 69, 0)
+    /// 0.70.0 asks a bridge for a copy Apple's players read, streams a named file to disk, and says
+    /// what the app shows on every request.
+    static let version = Version(0, 70, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""
