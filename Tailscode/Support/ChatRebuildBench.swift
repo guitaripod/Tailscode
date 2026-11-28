@@ -18,6 +18,12 @@ import TailscodeCore
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { run(turns: turns) }
         }
 
+        /// `TAILSCODE_BENCH_STEPS=<n>` gives every turn that many tool calls with a note after each
+        /// four, so its turns are long enough to be said in short; four calls and no notes otherwise.
+        private static var toolsPerTurn: Int {
+            ProcessInfo.processInfo.environment["TAILSCODE_BENCH_STEPS"].flatMap(Int.init).map { max($0, 1) } ?? 4
+        }
+
         static func conversation(turns: Int, growing: String) -> [ChatMessage] {
             var out: [ChatMessage] = []
             let origin = Date(timeIntervalSince1970: 1_792_000_000)
@@ -32,7 +38,13 @@ import TailscodeCore
                 var parts: [MessagePart] = [
                     MessagePart(id: "r", kind: .reasoning("Thinking about step \(turn)."))
                 ]
-                for tool in 0..<4 {
+                for tool in 0..<toolsPerTurn {
+                    if tool > 0, tool % 4 == 0 {
+                        parts.append(
+                            MessagePart(
+                                id: "n\(tool)",
+                                kind: .text("Part \(tool / 4) of turn \(turn) is in. Moving on to the next files.")))
+                    }
                     parts.append(
                         MessagePart(
                             id: "c\(tool)",

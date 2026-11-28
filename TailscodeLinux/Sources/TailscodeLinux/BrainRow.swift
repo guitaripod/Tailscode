@@ -119,6 +119,18 @@ final class BrainLedger: @unchecked Sendable {
     private var messageTurns: [String: String] = [:]
     private(set) var policy: NeuralOpenPolicy?
 
+    /// What a turn was asked and how it answered, read from the conversation for the one turn
+    /// that needs them. A row build gives them to the open Megatron only, because finding them
+    /// walks the messages and a build runs with every token; a closed card that says its turn
+    /// in short asks here once, when it comes on screen.
+    func words(of turnID: String, in messages: [ChatMessage]) -> (prompt: String?, answer: String)? {
+        guard let outline = outlines[turnID] else { return nil }
+        return (
+            Self.prompt(before: outline.id, in: messages),
+            outline.outcome == .running ? "" : Self.answer(of: outline, in: messages)
+        )
+    }
+
     /// How many turns the ledger has read from their messages: the harness's proof that a token
     /// reads one turn.
     var turnPartitions: Int { cache.turnPartitions }

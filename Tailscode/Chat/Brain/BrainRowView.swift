@@ -59,6 +59,7 @@ final class BrainRowView: UIView {
     /// gap between two of them.
     private(set) var lastMove: (frames: Int, maxGap: Double, duration: Double, direction: String)?
     private var lastStamp: CFTimeInterval = 0
+    private var tellingObserver: NSObjectProtocol?
     private var frames = 0
     private var maxGap = 0.0
 
@@ -85,12 +86,46 @@ final class BrainRowView: UIView {
         }
         card.onPrefetch = { [weak self] in self?.prefetch() }
         isAccessibilityElement = false
+        tellingObserver = NotificationCenter.default.addObserver(
+            forName: NeuralGistDesk.didChange, object: nil, queue: .main
+        ) { [weak self] note in
+            let changed = NeuralGistDesk.changedKey(note)
+            MainActor.assumeIsolated {
+                guard let self, changed == nil || changed == self.turnID else { return }
+                self.tellingChanged()
+            }
+        }
+    }
+
+    /// Says the turn's card is on screen, which is when the desk outlines the turn and, where a
+    /// model is filed, has it told. A row exists only while it is on screen or about to be, so a
+    /// long chat costs the model only the turns somebody scrolled to. What the turn was asked
+    /// and how it answered are read from the conversation once, when the desk lacks them.
+    private func wantCardInShort(_ model: NeuralBrainModel, isOpen: Bool) {
+        guard !isOpen, let store else { return }
+        let desk = NeuralGistDesk.shared
+        NeuralGistDemo.placeIfNeeded(key: turnID, model: model)
+        guard desk.lacksWords(for: turnID, model: model) else {
+            desk.want(key: turnID, model: model)
+            return
+        }
+        let answer = store.answerText(for: turnID)
+        desk.want(
+            key: turnID, model: model, answer: answer.isEmpty ? nil : answer, prompt: store.promptText(for: turnID),
+            bringsWords: true)
+    }
+
+    /// A telling arrived or went: a closed card says the turn in short from it.
+    private func tellingChanged() {
+        guard phase == .closed, window != nil, let model = store?.model(for: turnID) else { return }
+        card.refresh(model: model)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     deinit {
         MainActor.assumeIsolated {
+            if let tellingObserver { NotificationCenter.default.removeObserver(tellingObserver) }
             link?.invalidate()
             BrainLiveClock.shared.unregister(self)
         }
@@ -114,6 +149,7 @@ final class BrainRowView: UIView {
         metrics = makeMetrics(width: width, model: model)
         cardMetrics = makeCardMetrics(model: model)
         if !sameTurn { resetState() }
+        wantCardInShort(model, isOpen: new.isOpen)
         card.configure(model: model, row: new, memory: newStore.memory(for: new.turnID), metrics: cardMetrics!)
         cardRevision = model.revision
         let wantsOpen = new.isOpen
@@ -143,6 +179,7 @@ final class BrainRowView: UIView {
         case .closed:
             guard model.turn.outcome == .running || model.revision != cardRevision else { return }
             cardRevision = model.revision
+            wantCardInShort(model, isOpen: false)
             card.refresh(model: model)
         case .open:
             let asking = model.stepList.pendingAskID != nil

@@ -86,6 +86,7 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
         Self.rows.add(self)
         MacBrainIdle.shared.install()
         apply(row, initial: true)
+        observeTellings()
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -397,7 +398,8 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
         guard let store, let entry = store.entry(turnID) else { return }
         let model = entry.model
         let m = currentMetrics
-        let brainCard = model.brainCard(now: Date())
+        wantCardInShort(model)
+        let brainCard = model.brainCard(now: Date()).telling(NeuralGistDesk.shared.line(for: turnID))
         let content = BrainCardView.Content(
             card: brainCard, showsRows: row.showsRows, isReplaying: model.isReplaying,
             canReplay: model.turn.outcome != .running && model.steps.count > 1, inks: inks,
@@ -412,6 +414,32 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
         }
         setAccessibilityLabel(NeuralReading.named(brainCard.spoken))
         if phase == .closed { toolTip = nil }
+    }
+
+    /// Says the turn's card is on screen, which is when the desk outlines the turn and, where a
+    /// model is filed, has it told. A card nobody is shown asks for nothing, so a long chat
+    /// costs the model only the turns somebody scrolled to.
+    private func wantCardInShort(_ model: NeuralBrainModel) {
+        guard phase == .closed, isVisible else { return }
+        NeuralGistDemo.placeIfNeeded(key: turnID, model: model)
+        let answer = answerText
+        NeuralGistDesk.shared.want(
+            key: turnID, model: model, answer: answer.isEmpty ? nil : answer, prompt: promptText, bringsWords: true)
+    }
+
+    /// A telling arrived or went: a closed card on screen says the turn in short from it.
+    func observeTellings() {
+        let token = NotificationCenter.default.addObserver(
+            forName: NeuralGistDesk.didChange, object: nil, queue: .main
+        ) { [weak self] note in
+            let changed = NeuralGistDesk.changedKey(note)
+            MainThread.call {
+                guard let self, self.phase == .closed, self.isVisible, changed == nil || changed == self.turnID
+                else { return }
+                self.syncCard()
+            }
+        }
+        contextObservers.append(token)
     }
 
     private func cardHoverChanged() {

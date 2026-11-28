@@ -542,6 +542,7 @@ extension ChatPane {
         brains.revealApproval = { [weak self] in self?.scroll(toEnd: true) }
         brains.reply = { [weak self] quote in self?.replyWithQuote(quote) }
         brains.revealAnswer = { [weak self] turnID in self?.revealAnswer(afterBrain: turnID) }
+        brains.turnWords = { [weak self] turnID in self?.rowBuilder.brainWords(of: turnID) }
         brains.viewport = { [weak self] in
             guard let scroller = self?.transcriptScroller,
                 let adjustment = gtk_scrolled_window_get_vadjustment(op(scroller))

@@ -216,7 +216,7 @@ final class BrainCardView: UIView {
         memory = newMemory
         let changedWidth = metrics?.width != newMetrics.width || metrics?.density != newMetrics.density
         metrics = newMetrics
-        let made = newModel.brainCard(now: now)
+        let made = Self.inShort(newModel, now: now)
         card = made
         let palette = BrainPalette.palette(for: traitCollection)
         if ink == nil || ink?.palette != palette || ink?.face != newModel.face {
@@ -234,10 +234,15 @@ final class BrainCardView: UIView {
         guard row != nil, metrics != nil else { return }
         let before = card?.edge
         model = newModel
-        card = newModel.brainCard(now: now)
+        card = Self.inShort(newModel, now: now)
         if let before, before != .waiting, card?.edge == .waiting, window != nil { Theme.Haptics.needsYou() }
         rebuild(now: now)
         registerClock()
+    }
+
+    /// The card as the turn stands, saying it in short where the desk holds that.
+    private static func inShort(_ model: NeuralBrainModel, now: Date) -> NeuralBrainCard {
+        model.brainCard(now: now).telling(NeuralGistDesk.shared.line(for: model.turn.id))
     }
 
     var isLive: Bool { card?.live != nil }
@@ -298,7 +303,7 @@ final class BrainCardView: UIView {
     var wideHeadline = NSMutableAttributedString()
     var narrowMain = NSAttributedString()
 
-    var quoteSource: (speaker: String, words: String)?
+    var quoteSource: (speaker: String, words: String, told: Bool?)?
 
     var restPicture: PictureKey?
     var livePictures: (floor: PictureKey, peak: PictureKey)?

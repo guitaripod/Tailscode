@@ -121,7 +121,21 @@ public struct NeuralLiveCard: Sendable, Equatable {
     /// moment it first saw this step id. Words still streaming at the end of the turn are the
     /// answer, not a step, and are not quoted here; nor is a note the chat keeps showing, whose
     /// whole text is already on the page.
-    public let quote: Quote?
+    public private(set) var quote: Quote?
+    /// The quote is the turn told in short by a model, not a note of the agent's.
+    public private(set) var told = false
+
+    /// The card with a model's telling as the note it holds up: its title where the speaker's
+    /// name stood and its sentence where the note did, shown as a new note is each time the
+    /// telling changes. An outline is not put here: its sentence for a running turn is the
+    /// newest note, which this card already quotes.
+    public func telling(_ line: NeuralGistLine?) -> NeuralLiveCard {
+        guard let line, line.isModelWritten else { return self }
+        var card = self
+        card.quote = Quote(stepID: "told:\(line.sentence.hashValue)", speaker: line.heading, words: line.sentence)
+        card.told = true
+        return card
+    }
     /// A step is waiting on the person.
     public let isWaiting: Bool
     /// An error in flight: the card says so, in amber.

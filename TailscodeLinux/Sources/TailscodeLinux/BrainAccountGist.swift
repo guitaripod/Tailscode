@@ -7,8 +7,35 @@ import TailscodeCore
 /// the rail and the stages, standing as pins where the story would be, and a stage's part of the
 /// account when one is opened. Every word and number is `NeuralGistPane`'s; this lays them out,
 /// keeps which stage the keys are on, and asks the desk for a telling whenever the turn changes.
+extension BrainView {
+    /// The key the desk holds this turn's telling under.
+    var gistKey: String { (host?.sessionKey ?? "none") + "|" + turnID }
+
+    /// The closed card as the turn stands, saying it in short where the desk holds that.
+    func cardInShort() -> NeuralBrainCard {
+        model.brainCard(now: Date()).telling(NeuralGistDesk.shared.line(for: gistKey))
+    }
+
+    /// Says the turn's card is on screen, which is when the desk outlines the turn and, where a
+    /// model is filed, has it told. A card nobody is shown asks for nothing, so a long chat
+    /// costs the model only the turns somebody scrolled to.
+    func wantCardInShort() {
+        guard !isOpen, isVisible else { return }
+        let desk = NeuralGistDesk.shared
+        NeuralGistDemo.placeIfNeeded(key: gistKey, model: model)
+        guard desk.lacksWords(for: gistKey, model: model) else {
+            desk.want(key: gistKey, model: model)
+            return
+        }
+        let words = host?.turnWords?(turnID)
+        desk.want(
+            key: gistKey, model: model, answer: words.flatMap { $0.answer.isEmpty ? nil : $0.answer },
+            prompt: words?.prompt, bringsWords: true)
+    }
+}
+
 extension BrainAccount {
-    var gistTurnKey: String { (owner.host?.sessionKey ?? "none") + "|" + owner.turnID }
+    var gistTurnKey: String { owner.gistKey }
 
     /// The telling leads the account: its title and sentence stand above everything else.
     var gistLeads: Bool {
@@ -69,8 +96,12 @@ extension BrainAccount {
         let ref = self.ref
         gistObserver = NotificationCenter.default.addObserver(
             forName: NeuralGistDesk.didChange, object: nil, queue: nil
-        ) { _ in
-            Gtk.onMain { ref.view?.account?.gistChanged() }
+        ) { note in
+            let changed = NeuralGistDesk.changedKey(note)
+            Gtk.onMain {
+                guard let account = ref.view?.account, changed == nil || changed == account.gistTurnKey else { return }
+                account.gistChanged()
+            }
         }
         syncGistPane()
     }
@@ -80,7 +111,7 @@ extension BrainAccount {
         NeuralGistDemo.placeIfNeeded(key: gistTurnKey, model: owner.model)
         NeuralGistDesk.shared.want(
             key: gistTurnKey, model: owner.model, answer: owner.row.answer.isEmpty ? nil : owner.row.answer,
-            prompt: owner.row.prompt)
+            prompt: owner.row.prompt, bringsWords: true)
         syncGistPane()
     }
 
@@ -94,7 +125,7 @@ extension BrainAccount {
 
     @discardableResult
     func syncGistPane() -> Bool {
-        let next = NeuralGistPane.make(reading: NeuralGistDesk.shared.reading(for: gistTurnKey), model: owner.model)
+        let next = NeuralGistDesk.shared.pane(for: gistTurnKey, model: owner.model)
         guard next != gistPane else { return false }
         gistPane = next
         if let next {
@@ -114,16 +145,18 @@ extension BrainAccount {
         guard let pane = gistPane, owner.currentMetrics.arrangement == .split else { return nil }
         let box = BrainUI.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0, "bn-gs-switch")
         gtk_widget_set_valign(box, GTK_ALIGN_CENTER)
-        let short = BrainUI.label("\(NeuralGistWords.mark) \(NeuralGistWords.title)", "bn-gs-seg")
+        let short = BrainUI.label(
+            pane.isModelWritten ? "\(NeuralGistWords.mark) \(NeuralGistWords.title)" : NeuralGistWords.title, "bn-gs-seg")
         let total = fullAccount.utteranceCount
         let shown = gistScope == nil ? total : account.utteranceCount
         let told = BrainUI.label(NeuralGistWords.told(shown, of: gistScope == nil ? nil : total), "bn-gs-seg")
-        Gtk.addClass(showsShort ? short : told, showsShort ? "bn-gs-seg-short" : "bn-gs-seg-told")
+        Gtk.addClass(
+            showsShort ? short : told,
+            showsShort ? (pane.isModelWritten ? "bn-gs-seg-short" : "bn-gs-seg-own") : "bn-gs-seg-told")
         let ref = self.ref
         BrainUI.clickable(short) { ref.view?.account?.gistShow(short: true) }
         BrainUI.clickable(told) { ref.view?.account?.gistShow(short: false) }
-        Tip.set(
-            short, NeuralGistWords.provenance(writer: pane.byline, place: ""))
+        Tip.set(short, pane.provenance)
         BrainUI.add(box, short, told)
         return box
     }
@@ -181,21 +214,23 @@ extension BrainAccount {
     ) -> UnsafeMutablePointer<GtkWidget> {
         let box = BrainUI.box(GTK_ORIENTATION_VERTICAL, spacing: 6, "bn-gs-head")
         let top = BrainUI.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
-        let title = BrainUI.label(
-            "\(NeuralGistWords.mark) \(pane.title.uppercased())", "bn-gs-title", ellipsize: true)
-        if pane.isWriting { Gtk.addClass(title, "bn-gs-dim") }
+        let title = BrainUI.label(pane.heading.uppercased(), "bn-gs-title", ellipsize: true)
+        if pane.isWriting || !pane.isModelWritten { Gtk.addClass(title, "bn-gs-dim") }
         gtk_label_set_xalign(op(title), 0)
         gtk_widget_set_hexpand(title, 1)
-        let byline = BrainUI.label(pane.byline, "bn-gs-by")
-        gtk_widget_set_valign(byline, GTK_ALIGN_CENTER)
-        Tip.set(byline, NeuralGistWords.provenance(writer: pane.byline, place: ""))
-        BrainUI.add(top, title, byline)
+        gtk_box_append(ptr(top), title)
+        if !pane.byline.isEmpty {
+            let byline = BrainUI.label(pane.byline, "bn-gs-by")
+            gtk_widget_set_valign(byline, GTK_ALIGN_CENTER)
+            Tip.set(byline, pane.provenance)
+            gtk_box_append(ptr(top), byline)
+        }
         let sentence = BrainUI.label(pane.isWriting ? fallback : pane.now, "bn-gs-now", wrap: true, lines: lines)
         if pane.isWriting { Gtk.addClass(sentence, "bn-gs-dim") }
         gtk_label_set_xalign(op(sentence), 0)
         BrainUI.add(box, top, sentence)
         tailscode_set_accessible_label(
-            box, "\(NeuralGistWords.title). \(pane.title). \(pane.now). \(NeuralGistWords.provenance(writer: pane.byline, place: ""))")
+            box, "\(NeuralGistWords.title). \(pane.title). \(pane.now). \(pane.provenance)")
         return box
     }
 
@@ -293,7 +328,8 @@ extension BrainAccount {
         let back = BrainUI.label("\u{2039} \(NeuralGistWords.backToShort)", "bn-gs-back")
         let ref = self.ref
         BrainUI.clickable(back) { ref.view?.account?.gistBack() }
-        let says = BrainUI.label("\(NeuralGistWords.mark) \(row.says)", "bn-gs-crumb-says", ellipsize: true)
+        let says = BrainUI.label(
+            pane.isModelWritten ? "\(NeuralGistWords.mark) \(row.says)" : row.says, "bn-gs-crumb-says", ellipsize: true)
         gtk_label_set_xalign(op(says), 0)
         gtk_widget_set_hexpand(says, 1)
         let facts = BrainUI.label(row.facts(of: pane.rows.count), "bn-gs-fact")
@@ -351,7 +387,11 @@ extension BrainAccount {
         for row in pane.rows {
             let length = max(4, usable * row.weight)
             if let selected {
-                if selected == row.index { BrainDraw.fill(cr, inks.special, 1) } else { BrainDraw.fill(cr, inks.dim, 0.22) }
+                if selected == row.index {
+                    BrainDraw.fill(cr, pane.isModelWritten ? inks.special : inks.accent, 1)
+                } else {
+                    BrainDraw.fill(cr, inks.dim, 0.22)
+                }
             } else {
                 switch row.mark {
                 case .now: BrainDraw.fill(cr, inks.accent, 1)

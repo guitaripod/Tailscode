@@ -771,6 +771,14 @@ final class NeuralAccountCache: @unchecked Sendable {
         return built
     }
 
+    /// The account already read for this state of the turn, if it is the one held.
+    func heldAccount(stamp: Int, tz: TimeZone, answer: String?, prompt: String?) -> NeuralAccount? {
+        let wanted = Key(stamp: stamp, zone: tz.identifier, answer: answer, prompt: prompt)
+        lock.lock()
+        defer { lock.unlock() }
+        return key == wanted ? held : nil
+    }
+
     var readCount: Int {
         lock.lock()
         defer { lock.unlock() }
@@ -806,6 +814,12 @@ extension NeuralBrainModel {
         return accountCache.account(stamp: accountStamp, tz: tz, answer: answer, prompt: prompt) {
             NeuralAccount.make(model: model, now: now, tz: tz, answer: answer, prompt: prompt)
         }
+    }
+
+    /// The account if it has been read for the turn as it stands, and nil where reading it would
+    /// mean walking every step now: for a caller on a thread that must not.
+    public func accountIfRead(tz: TimeZone = .current, answer: String? = nil, prompt: String? = nil) -> NeuralAccount? {
+        accountCache.heldAccount(stamp: accountStamp, tz: tz, answer: answer, prompt: prompt)
     }
 
     /// How many times the account was actually read: a test hook for the memo.

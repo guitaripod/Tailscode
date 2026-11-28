@@ -163,6 +163,27 @@ extension SelfTest {
             account.gistPane == nil && account.gistPin == nil && account.stagesPin == nil
                 && gtk_widget_get_child_visible(account.story) != 0,
             "a telling taken away leaves the account exactly as it was")
+        guard
+            let outline = NeuralGistOutline.make(
+                account: view.model.account(answer: "It shipped. Every check is green."), stepCount: steps,
+                running: false, prompt: "ship the film", answer: "It shipped. Every check is green.", at: Date())
+        else { throw SelfTestFailure("brain: the account demo says too little to outline") }
+        NeuralGistDesk.shared.place(outline, for: key, model: view.model)
+        _ = brainPump(3) { account.gistPane != nil && account.stagesPin != nil }
+        guard let own = account.gistPane else { throw SelfTestFailure("brain: the outline was not taken") }
+        try expect(
+            !own.isModelWritten && account.showsShort && own.heading == "Ship the film" && own.now == "It shipped."
+                && own.byline.isEmpty && own.rows.count == outline.stages.count
+                && own.rows.map(\.stepCount).reduce(0, +) == steps,
+            "with no model the turn is outlined from its own words: what was asked, how the answer opens, a stage a note (\(own.rows.map(\.says)))")
+        let card = view.cardInShort()
+        try expect(
+            card.told == false && card.quote?.speaker == NeuralGistWords.title
+                && card.quote?.words == NeuralGistLine.journey(outline.stages),
+            "and the closed card says the stages in short where the agent's first words stood (\(card.quote?.words ?? "-"))")
+        NeuralGistDesk.shared.forget(key)
+        _ = brainPump(2) { account.gistPane == nil }
+        try expect(view.cardInShort().told == nil, "a card with nothing held says the agent's own first words again")
     }
 
     static func accountRow(

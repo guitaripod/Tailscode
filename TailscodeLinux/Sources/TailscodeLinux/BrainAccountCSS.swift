@@ -230,6 +230,7 @@ enum BrainAccountCSS {
         .bn-gs-seg:hover { color: \(text); }
         .bn-gs-seg-short { color: \(special); background-color: alpha(\(special), 0.14); }
         .bn-gs-seg-told { color: \(accent); background-color: alpha(\(accent), 0.14); }
+        .bn-gs-seg-own { color: \(text); background-color: alpha(\(text), 0.1); }
         .bn-gs-head { padding: 4px 0px 0px 0px; }
         .bn-gs-title { \(t(.sectionLabel)) color: \(special); letter-spacing: 1.4px; }
         .bn-gs-by { \(t(.rowStamp)) color: \(dim); }

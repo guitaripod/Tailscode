@@ -181,6 +181,31 @@ enum BrainAccountChecks {
         try check(
             account.gistPane == nil && account.gistView == nil && account.gistSwitch == nil && !account.scroll.isHidden,
             "a telling taken away leaves the account as it was")
+        guard
+            let outline = NeuralGistOutline.make(
+                account: row.model.account(answer: "It shipped. Every check is green."), stepCount: steps,
+                running: false, prompt: "ship the film", answer: "It shipped. Every check is green.", at: Date())
+        else {
+            try check(false, "the film turn says enough to outline")
+            return
+        }
+        NeuralGistDesk.shared.place(outline, for: key, model: row.model)
+        land()
+        guard let own = account.gistPane else {
+            try check(false, "the outline is taken")
+            return
+        }
+        try check(
+            !own.isModelWritten && account.showsShort && own.heading == "Ship the film" && own.now == "It shipped."
+                && own.byline.isEmpty && own.rows.map(\.stepCount).reduce(0, +) == steps,
+            "with no model the turn is outlined from its own words: what was asked, how the answer opens, a stage a note")
+        let card = row.model.brainCard(now: Date()).telling(NeuralGistDesk.shared.line(for: key))
+        try check(
+            card.told == false && card.quote?.speaker == NeuralGistWords.title
+                && card.quote?.words == NeuralGistLine.journey(outline.stages),
+            "and the closed card says the stages in short where the agent's first words stood")
+        NeuralGistDesk.shared.forget(key)
+        land()
 
         let narrow = BrainFixture(width: 700)
         defer { narrow.tearDown() }

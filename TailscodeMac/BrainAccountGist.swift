@@ -9,6 +9,8 @@ final class AccountGistSwitch: NSView {
     private var short = ""
     private var told = ""
     private var showsShort = true
+    /// The words in short are the turn's own, so the part wears the text's ink and no model's.
+    private var own = false
     private var shortWidth: CGFloat = 0
     var onChoose: ((Bool) -> Void)?
 
@@ -25,7 +27,10 @@ final class AccountGistSwitch: NSView {
 
     /// Takes the words and answers with the width they need.
     @discardableResult
-    func configure(short: String, told: String, showsShort: Bool, tip: String, paint: AccountPaint) -> CGFloat {
+    func configure(
+        short: String, told: String, showsShort: Bool, tip: String, paint: AccountPaint, own: Bool = false
+    ) -> CGFloat {
+        self.own = own
         self.short = short
         self.told = told
         self.showsShort = showsShort
@@ -47,10 +52,11 @@ final class AccountGistSwitch: NSView {
         let chosen = showsShort
             ? NSRect(x: 1, y: 1, width: shortWidth - 1, height: bounds.height - 2)
             : NSRect(x: shortWidth, y: 1, width: bounds.width - shortWidth - 1, height: bounds.height - 2)
-        let tone = showsShort ? paint.special : paint.accent
-        tone.withAlphaComponent(0.16).setFill()
+        let shortInk = own ? paint.text : paint.special
+        let tone = showsShort ? shortInk : paint.accent
+        tone.withAlphaComponent(own && showsShort ? 0.1 : 0.16).setFill()
         NSBezierPath(roundedRect: chosen, xRadius: 11, yRadius: 11).fill()
-        AccountType.draw(short, .control, showsShort ? paint.special : paint.dim, x: 12, midY: bounds.midY)
+        AccountType.draw(short, .control, showsShort ? shortInk : paint.dim, x: 12, midY: bounds.midY)
         AccountType.draw(told, .control, showsShort ? paint.dim : paint.accent, x: shortWidth + 12, midY: bounds.midY)
     }
 
@@ -136,7 +142,7 @@ final class AccountGistView: AccountBlock {
         let pane = content.pane
         var words = [NeuralGistWords.title, pane.title, pane.now]
         words += pane.rows.map { "\($0.says). \($0.facts(of: pane.rows.count))" }
-        words.append(NeuralGistWords.provenance(writer: pane.byline, place: ""))
+        words.append(pane.provenance)
         setAccessibilityLabel(words.filter { !$0.isEmpty }.joined(separator: ". "))
     }
 
@@ -211,19 +217,22 @@ final class AccountGistView: AccountBlock {
             let row = pane.rows[open]
             let mid = backRect.midY
             let back = "\u{2039} \(NeuralGistWords.backToShort)"
-            var x = AccountType.draw(back, .control, paint.special, x: 0, midY: mid) + 12
+            var x = AccountType.draw(
+                back, .control, pane.isModelWritten ? paint.special : paint.accent, x: 0, midY: mid) + 12
             let facts = row.facts(of: pane.rows.count)
             let factsWidth = AccountType.width(facts, .rowStamp)
             AccountType.draw(facts, .rowStamp, paint.dim, x: bounds.width, midY: mid, rightAligned: true)
             x += AccountType.draw(
-                "\(NeuralGistWords.mark) \(row.says)", .rowTitleStrong, paint.text, x: x, midY: mid,
+                pane.isModelWritten ? "\(NeuralGistWords.mark) \(row.says)" : row.says, .rowTitleStrong, paint.text,
+                x: x, midY: mid,
                 maxWidth: max(bounds.width - x - factsWidth - 12, 20))
             return
         }
         let byWidth = AccountType.draw(pane.byline, .rowStamp, paint.dim, x: bounds.width, midY: 4 + 9, rightAligned: true)
         AccountType.draw(
-            "\(NeuralGistWords.mark) \(pane.title.uppercased())", .sectionLabel,
-            pane.isWriting ? paint.dim : paint.special, x: 0, midY: 4 + 9, maxWidth: max(bounds.width - byWidth - 16, 40))
+            pane.heading.uppercased(), .sectionLabel,
+            pane.isWriting || !pane.isModelWritten ? paint.dim : paint.special, x: 0, midY: 4 + 9,
+            maxWidth: max(bounds.width - byWidth - 16, 40))
         sentence?.draw(
             with: sentenceRect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
         if let liveY, let title = content.liveTitle {
@@ -447,8 +456,12 @@ extension BrainAccountView {
     func observeGist() {
         gistObserver = NotificationCenter.default.addObserver(
             forName: NeuralGistDesk.didChange, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainThread.call { self?.gistChanged() }
+        ) { [weak self] note in
+            let changed = NeuralGistDesk.changedKey(note)
+            MainThread.call {
+                guard let self, changed == nil || changed == self.gistTurnKey else { return }
+                self.gistChanged()
+            }
         }
         syncGistPane()
     }
@@ -457,7 +470,8 @@ extension BrainAccountView {
     func gistWant() {
         guard let host else { return }
         NeuralGistDemo.placeIfNeeded(key: gistTurnKey, model: host.model)
-        NeuralGistDesk.shared.want(key: gistTurnKey, model: host.model, answer: answerOrNil, prompt: promptText)
+        NeuralGistDesk.shared.want(
+            key: gistTurnKey, model: host.model, answer: answerOrNil, prompt: promptText, bringsWords: true)
         syncGistPane()
     }
 
@@ -470,7 +484,7 @@ extension BrainAccountView {
     @discardableResult
     func syncGistPane() -> Bool {
         guard let host else { return false }
-        let next = NeuralGistPane.make(reading: NeuralGistDesk.shared.reading(for: gistTurnKey), model: host.model)
+        let next = NeuralGistDesk.shared.pane(for: gistTurnKey, model: host.model)
         guard next != gistPane else { return false }
         gistPane = next
         if let next {
@@ -502,9 +516,9 @@ extension BrainAccountView {
         let total = fullAccount.utteranceCount
         let shown = gistScope == nil ? total : account.utteranceCount
         return view.configure(
-            short: "\(NeuralGistWords.mark) \(NeuralGistWords.title)",
+            short: pane.isModelWritten ? "\(NeuralGistWords.mark) \(NeuralGistWords.title)" : NeuralGistWords.title,
             told: NeuralGistWords.told(shown, of: gistScope == nil ? nil : total), showsShort: showsShort,
-            tip: NeuralGistWords.provenance(writer: pane.byline, place: ""), paint: paint)
+            tip: pane.provenance, paint: paint, own: !pane.isModelWritten)
     }
 
     /// Makes the telling's block say what there is to say now, or takes it away.

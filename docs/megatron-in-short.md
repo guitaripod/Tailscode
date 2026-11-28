@@ -115,6 +115,29 @@ Left for a decision, because it changes what a turn is called: a turn that ended
 
 Not changed: the step detail still repeats the step's title and, under WHY, the note that stands right above it in the story.
 
+## 6d. The closed card says it too, with or without a model (2026-11-28, fifth ask)
+
+Asked for: "megatron mini should show the in short stuff. use iphone xs as benchmark, but also validate 120hz promotion with ipad pro", and "the in short stuff must be super performant and if there's no local model the default must also be streamlined and compact".
+
+- **No model is not no telling.** `NeuralGistOutline` makes the same title, sentence and stages from the turn's own words: the title is what was asked, the sentence is how the answer opens (the newest note while the turn runs), and a stage begins where the agent said something and is named by what it said there, folded to as many stages as a telling of that length would have. It wears no mark and no model's ink, costs no request and is the same on every machine. It is what shows with no model filed, the switch off, a model not in memory or one that did not answer, and it stands in while a first telling is written, so the skeleton that used to stand there is gone.
+- **The closed card.** Its third line was the agent's first words. It is now the turn in short (`NeuralBrainCard.telling`, `NeuralGistDesk.line`): a model's title in its ink before its sentence, or "In short" before the stages of an outline. An outline's own title and sentence are the prompt and the answer's opening, which a card in a chat sits between, so the card says the part the chat folded away. A running turn's card holds a model's new telling up the way it holds up a new note. On a phone the narrow card had no such line at all: a settled turn long enough to be said in short now keeps a last line for it from the start, holding the agent's first words until the outline lands, so a card never grows under a finger, and a model's telling there is its sentence behind the mark alone.
+- **What it costs.** A card asks only while it is on screen. What the turn was asked and how it answered are read from the conversation once per turn (`lacksWords`), because a row build reads them for the open Megatron only. Reading a turn's account for its outline took 3 to 4.5 ms on the iPhone XS for a 20-step turn, on the thread that was scrolling; it now happens on a queue of its own unless the account is already read (`accountIfRead`). A desk change names its turn (`NeuralGistDesk.Change`), so a pane of thirty cards redraws one. `NeuralGistDesk.pane(for:model:)` keeps the pane for each state of a turn: the open Megatron asked for it on every refresh and it counts every step. The phone card's line is fitted by halving, not four characters at a time.
+
+Measured with an optimised development build, a 30-turn chat of 20-step turns scrolled a screen every 0.7 s for 16 s (`TAILSCODE_BENCH_OPEN=30x1 TAILSCODE_BENCH_STEPS=16 TAILSCODE_BENCH_SCENARIO=resume TAILSCODE_BENCH_SCROLL=1 MIDGAR_FRAME_WATCH=2`, `TAILSCODE_GIST=off|outline|<address>|<model>|<name>`):
+
+| Device | Variant | Frames per 2 s | Late frames in the run | In short on the main thread, whole run | Slowest call |
+| --- | --- | --- | --- | --- | --- |
+| iPhone XS, 60 Hz | none | 119 to 121 | 7 to 22 | 0.4 to 0.8 ms | 0.04 ms |
+| | outline | 119 to 120 | 13 to 22 | 6.3 to 9.4 ms | 0.37 ms |
+| | Pennyroyal | 119 | 13 | 9 to 27 ms | 2.0 ms |
+| iPad Pro M1, 120 Hz | none | 237 to 240 | 16 to 21 | 0.5 ms | 0.007 ms |
+| | outline | 238 to 240 | 16 to 18 | 4.4 ms | 0.11 ms |
+| | Pennyroyal | 237 to 240 | 22 to 24 | 7.8 to 9.3 ms | 1.1 ms |
+
+The iPad holds 120 frames a second with thirty tellings landing while it scrolls; the late frames are the bench's own pushes and jumps and are there with the feature off. Before the outline left the main thread and a change named its turn the iPad dropped 70 frames in the outline run against 39 with it off.
+
+Not built: the iPad's open Megatron has no cover (its account is the phone's sheet at a desk's width, and the telling was built for the phone's list and the desk's pane); its cards say the turn in short.
+
 ## 7. What this leaves room for
 
 The head's window is a stage with a character in it; the telling is what the character says. When a 3D model stands there with a name the person gave it, the sentence is its speech, the stages are its journey, the byline is its name, and `NeuralGistPane` already hands a client all three as plain values. Nothing here knows the head is a head.

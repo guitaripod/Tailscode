@@ -114,7 +114,7 @@ final class BrainGistView: UIView {
         var made: [UIAccessibilityElement] = []
         let head = UIAccessibilityElement(accessibilityContainer: self)
         head.accessibilityLabel = [
-            NeuralGistWords.title, pane.title, pane.now, NeuralGistWords.provenance(writer: pane.byline, place: ""),
+            NeuralGistWords.title, pane.title, pane.now, pane.provenance,
         ].filter { !$0.isEmpty }.joined(separator: ". ")
         head.accessibilityFrameInContainerSpace = CGRect(x: 0, y: 0, width: bounds.width, height: railRect.minY)
         head.accessibilityTraits = .staticText
@@ -173,8 +173,9 @@ final class BrainGistView: UIView {
             Localized.text("Steps") + " \u{203A}", .control, Theme.Color.accent, x: bounds.width - inset, midY: titleMid,
             maxWidth: 120, rightAligned: true)
         _ = drawLine(
-            "\(NeuralGistWords.mark) \(pane.title.uppercased())", .sectionLabel,
-            pane.isWriting ? Theme.Color.secondaryLabel : Theme.Color.special, x: inset, midY: titleMid,
+            pane.heading.uppercased(), .sectionLabel,
+            pane.isWriting || !pane.isModelWritten ? Theme.Color.secondaryLabel : Theme.Color.special, x: inset,
+            midY: titleMid,
             maxWidth: max(bounds.width - 2 * inset - stepsUsed - 12, 60))
         sentence.draw(
             with: sentenceRect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)

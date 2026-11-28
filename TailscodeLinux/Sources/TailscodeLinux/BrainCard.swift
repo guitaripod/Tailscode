@@ -131,7 +131,8 @@ final class BrainCard: @unchecked Sendable {
     var widgets: [UnsafeMutablePointer<GtkWidget>] { [surface, edgeLive, picture, text, buttons] }
 
     func refresh() {
-        card = owner.model.brainCard(now: Date())
+        owner.wantCardInShort()
+        card = owner.cardInShort()
         refreshLive()
         let signature = Self.signature(of: card)
         if hasContent, signature != contentSignature { buildContent() }
@@ -409,6 +410,7 @@ final class BrainCard: @unchecked Sendable {
     /// Makes the column of words now, for a harness or a card that is about to be drawn.
     func ensureContent() {
         if !hasContent { buildContent() }
+        owner.wantCardInShort()
     }
 
     private func pieces() -> (number: String, unit: String) {
@@ -613,13 +615,18 @@ final class BrainCard: @unchecked Sendable {
         gtk_widget_set_margin_end(mark, Int32(wordmarkReserve.rounded()))
     }
 
-    /// The agent's own first words as the card's third line: the quote mark and its name in the
-    /// accent, the words in italic ink, cut at a whole word to what the line can say.
+    /// The card's third line, cut at a whole word to what the line can say. The agent's own
+    /// first words wear the quote mark and its name in the accent, the words in italic ink. The
+    /// turn in short is not a quote: its title stands where the name did, in a model's own ink
+    /// when a model wrote it, and its sentence is set upright.
     private func fittedQuote(width: Double, label: UnsafeMutablePointer<GtkWidget>) -> String {
         guard let quote = card.quote else { return "" }
         let hex = owner.inks.hex
         func markup(_ words: String) -> String {
-            "<span foreground=\"\(hex.accent)\" weight=\"bold\">\u{201C}</span>  <span foreground=\"\(hex.accent)\" weight=\"600\">\(BrainUI.escape(quote.speaker))</span>  <span style=\"italic\" foreground=\"\(hex.text)\">\(BrainUI.escape(words))</span>"
+            guard let told = card.told else {
+                return "<span foreground=\"\(hex.accent)\" weight=\"bold\">\u{201C}</span>  <span foreground=\"\(hex.accent)\" weight=\"600\">\(BrainUI.escape(quote.speaker))</span>  <span style=\"italic\" foreground=\"\(hex.text)\">\(BrainUI.escape(words))</span>"
+            }
+            return "<span foreground=\"\(told ? hex.special : hex.accent)\" weight=\"600\">\(BrainUI.escape(quote.speaker))</span>  <span foreground=\"\(hex.text)\">\(BrainUI.escape(words))</span>"
         }
         var best = markup(NeuralAccount.quote(of: quote.words, maxChars: 8))
         var characters = 12

@@ -52,8 +52,37 @@ public struct NeuralGist: Sendable, Equatable {
         self.writtenAt = writtenAt
     }
 
+    /// A model wrote this. An outline is made from the turn's own words and has no writer.
+    public var isModelWritten: Bool { !writer.isEmpty }
+
     public func stage(containing number: Int) -> (index: Int, stage: Stage)? {
         stages.enumerated().first { $0.element.contains(number) }.map { ($0.offset, $0.element) }
+    }
+}
+
+/// A turn in short as a closed card says it: what it is for and what it came to or is doing.
+public struct NeuralGistLine: Sendable, Equatable {
+    public let title: String
+    public let sentence: String
+    /// A model wrote the words, so they wear its mark; an outline's are the turn's own.
+    public let isModelWritten: Bool
+
+    public init(title: String, sentence: String, isModelWritten: Bool) {
+        self.title = title
+        self.sentence = sentence
+        self.isModelWritten = isModelWritten
+    }
+
+    /// The stages of a turn on one line, in order: what a card says of an outline.
+    public static func journey(_ stages: [NeuralGist.Stage]) -> String {
+        stages.map(\.says).joined(separator: " \u{00B7} ")
+    }
+
+    /// What stands where a speaker's name would: the model's mark and its title, or "In short"
+    /// for an outline, whose title is the prompt a card already sits under in the chat.
+    public var heading: String {
+        guard isModelWritten, !title.isEmpty else { return NeuralGistWords.title }
+        return "\(NeuralGistWords.mark) \(title)"
     }
 }
 

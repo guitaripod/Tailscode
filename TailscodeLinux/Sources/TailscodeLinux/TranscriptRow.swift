@@ -175,6 +175,7 @@ final class TranscriptRowBuilder: @unchecked Sendable {
     private let published = NSLock()
     private var brainSettings = BrainBuildSettings()
     private var publishedPolicy: NeuralOpenPolicy?
+    private var publishedMessages: [ChatMessage] = []
     private var seamTracker = ModelSeamTracker()
     private var catalog: [ModelInfo] = []
     private var chapterSource: [ConversationChapter] = []
@@ -218,10 +219,22 @@ final class TranscriptRowBuilder: @unchecked Sendable {
         return brainSettings
     }
 
-    private func publish(policy: NeuralOpenPolicy?) {
+    private func publish(policy: NeuralOpenPolicy?, messages: [ChatMessage]) {
         published.lock()
         publishedPolicy = policy
+        publishedMessages = messages
         published.unlock()
+    }
+
+    /// What a turn was asked and how it answered, from the conversation as the last build saw
+    /// it: for a closed card on screen, which a build reads neither for.
+    func brainWords(of turnID: String) -> (prompt: String?, answer: String)? {
+        published.lock()
+        let messages = publishedMessages
+        published.unlock()
+        lock.lock()
+        defer { lock.unlock() }
+        return brains.words(of: turnID, in: messages)
     }
 
     /// How many turns the brains have read from their messages, for the harness.
@@ -317,7 +330,7 @@ final class TranscriptRowBuilder: @unchecked Sendable {
         var brain = brains.pass(
             messages: messages, running: turnOpen, awaiting: awaiting,
             settings: currentBrainSettings)
-        publish(policy: brains.policy)
+        publish(policy: brains.policy, messages: messages)
         var all: [TranscriptRow] = []
         let writing = messages.last?.id
         var prompt: ChatMessage?

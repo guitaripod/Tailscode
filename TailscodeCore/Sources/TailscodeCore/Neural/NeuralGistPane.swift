@@ -86,8 +86,23 @@ public struct NeuralGistPane: Sendable, Equatable {
     public let isRefreshing: Bool
     /// How many steps the turn has.
     public let stepCount: Int
+    /// A model wrote the words, so they wear its mark and its ink. An outline's words are the
+    /// person's and the agent's own and wear neither.
+    public let isModelWritten: Bool
 
     public var isWriting: Bool { phase == .writing }
+
+    /// The title as a surface heads the pane with it: the model's mark before its title, the
+    /// title alone for an outline, and "In short" where a turn has none.
+    public var heading: String {
+        let words = title.isEmpty ? NeuralGistWords.title : title
+        return isModelWritten ? "\(NeuralGistWords.mark) \(words)" : words
+    }
+
+    /// Where the words come from, for a tooltip and a screen reader.
+    public var provenance: String {
+        isModelWritten ? NeuralGistWords.provenance(writer: byline, place: "") : NeuralGistWords.outlineProvenance
+    }
 
     /// The pane for a turn, or nil when there is nothing told and nothing being written, which
     /// is when a client shows the account as it always did.
@@ -102,7 +117,7 @@ public struct NeuralGistPane: Sendable, Equatable {
             return NeuralGistPane(
                 phase: .writing, title: NeuralGistWords.reading(writer: reading.writer, steps: steps.count),
                 byline: byline, now: "", rows: [], isRunning: running, isRefreshing: true,
-                stepCount: steps.count)
+                stepCount: steps.count, isModelWritten: true)
         case .told:
             guard let gist = reading.gist, !steps.isEmpty, gist.stepCount <= steps.count else { return nil }
             let verdicts = model.verdicts.steps
@@ -150,8 +165,9 @@ public struct NeuralGistPane: Sendable, Equatable {
             guard !rows.isEmpty else { return nil }
             if rows.contains(where: { $0.costUSD == nil }) { rows = rows.map { $0.unpriced } }
             return NeuralGistPane(
-                phase: .told, title: gist.title, byline: byline, now: gist.now, rows: rows,
-                isRunning: running, isRefreshing: reading.refreshing, stepCount: steps.count)
+                phase: .told, title: gist.title, byline: gist.isModelWritten ? byline : "", now: gist.now,
+                rows: rows, isRunning: running, isRefreshing: reading.refreshing, stepCount: steps.count,
+                isModelWritten: gist.isModelWritten)
         }
     }
 
@@ -222,6 +238,11 @@ public enum NeuralGistWords {
         Localized.text(
             "Written by %@ from this turn's notes and steps. The numbers are counted, not written.",
             byline(writer: writer, place: place))
+    }
+
+    /// What an outline is, where a model's telling would name its writer.
+    public static var outlineProvenance: String {
+        Localized.text("From what was asked and what the agent said along the way. The numbers are counted.")
     }
 
     public static var backToShort: String { Localized.text("In short") }

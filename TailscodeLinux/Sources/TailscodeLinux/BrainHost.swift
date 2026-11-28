@@ -38,6 +38,8 @@ final class BrainHost: @unchecked Sendable {
     var reply: ((String) -> Void)?
     /// Scrolls the transcript to the answer under a turn's brain.
     var revealAnswer: ((String) -> Void)?
+    /// What a turn was asked and how it answered, for a closed card that says it in short.
+    var turnWords: ((String) -> (prompt: String?, answer: String)?)?
     /// How tall the part of the transcript the reader sees is, which sets how many list rows an
     /// open brain asks for.
     var viewport: (() -> Double?)?
@@ -50,6 +52,7 @@ final class BrainHost: @unchecked Sendable {
         didSet { if sessionKey != oldValue { views.removeAll() } }
     }
     private(set) var suspended = false
+    private var tellingObserver: NSObjectProtocol?
     private var views: [String: Weak] = [:]
     private var live = NeuralBrainContext.none
     private(set) var forced: ActivityKind?
@@ -80,6 +83,25 @@ final class BrainHost: @unchecked Sendable {
     func register(_ view: BrainView) {
         views = views.filter { $0.value.view != nil }
         views[view.turnID] = Weak(view)
+        observeTellings()
+    }
+
+    /// A telling arrived or went: the cards on screen say the turn in short from it. One
+    /// observer for the pane, however many turns it shows; an open Megatron's account has its own.
+    private func observeTellings() {
+        guard tellingObserver == nil else { return }
+        tellingObserver = NotificationCenter.default.addObserver(
+            forName: NeuralGistDesk.didChange, object: nil, queue: nil
+        ) { [weak self] note in
+            let changed = NeuralGistDesk.changedKey(note)
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                for view in self.liveViews where !view.isOpen && view.isVisible {
+                    if let changed, view.gistKey != changed { continue }
+                    view.card.refresh()
+                }
+            }
+        }
     }
 
     func forget(_ view: BrainView) {

@@ -68,7 +68,19 @@ public final class NeuralGistURLTransport: NSObject, NeuralGistTransport, URLSes
 /// What was told is kept in memory for the turns last shown and never written to disk.
 public final class NeuralGistDesk: @unchecked Sendable {
     public static let shared = NeuralGistDesk()
+    /// Posted when what the desk holds for a turn changed. Its object is a `Change` naming the
+    /// turn, so a pane of thirty cards redraws the one that changed and not thirty; no object
+    /// means every turn.
     public static let didChange = Notification.Name("tailscode.neuralGist.didChange")
+
+    /// The turn a change is about.
+    public final class Change: Sendable {
+        public let key: String
+        init(_ key: String) { self.key = key }
+    }
+
+    /// The key of the turn a posted change is about, nil when it is about all of them.
+    public static func changedKey(_ note: Notification) -> String? { (note.object as? Change)?.key }
     public static let heldTurns = 48
     /// How long after a surface last showed a turn its telling may still be asked for.
     public static let fresh: TimeInterval = 120
@@ -109,12 +121,33 @@ public final class NeuralGistDesk: @unchecked Sendable {
     private struct Entry {
         var wanted: Wanted
         var gist: NeuralGist?
+        /// The turn in short from its own words, shown until a model's telling is held.
+        var outline: NeuralGist?
+        /// What a client last drew this turn from, and for which state of it.
+        var pane: (stamp: String, value: NeuralGistPane?)?
         var inFlight = false
         var asking = false
         /// The telling was put here and no model is asked for another.
         var placed = false
         var failed = false
+        /// Whether the turn was running when a surface last brought its prompt and answer; nil
+        /// until one has.
+        var wordsFor: Bool?
+        /// The turn as the outline was last made from it, whether or not it had stages to name:
+        /// its steps, whether it ran, and how much of a prompt and an answer there was to read,
+        /// since a row is often drawn before its answer is known.
+        var outlinedAt: (stepCount: Int, running: Bool, words: Int)?
         var lastAt: Date?
+
+        /// Whether the outline still stands for the turn. A settled turn's does until the turn
+        /// changes; a running turn's until it has grown by as much as a telling waits for, so a
+        /// turn that adds a step a second is not read whole a second.
+        func outlineHolds(stepCount: Int, running: Bool, words: Int) -> Bool {
+            guard let at = outlinedAt, at.running == running, at.stepCount <= stepCount, at.words == words else {
+                return false
+            }
+            return running ? stepCount - at.stepCount < NeuralGistPolicy.growth : at.stepCount == stepCount
+        }
         var lastTook: TimeInterval?
         var wake: Task<Void, Never>?
     }
@@ -127,6 +160,8 @@ public final class NeuralGistDesk: @unchecked Sendable {
     private let isReady: @Sendable (ImageGenHelper) async -> Bool
     private var entries: [String: Entry] = [:]
     private var busy = false
+    private var spent = Cost()
+    private let outliner = DispatchQueue(label: "tailscode.neuralGist.outline", qos: .userInitiated)
     private var readiness: (key: String, ready: Bool, at: Date)?
     private var sent = 0
     private var writerMemo: ImageGenHelper??
@@ -207,41 +242,104 @@ public final class NeuralGistDesk: @unchecked Sendable {
         if let placed {
             return Reading(phase: .told, gist: placed, writer: placed.writer, place: placed.place, refreshing: false)
         }
-        guard let helper = writer else { return .none }
-        let name = helper.label ?? helper.model
-        let place = YourModelWords.inSentence(YourModelWords.machine(of: helper))
-        return lock.withLock {
-            guard let entry = entries[key] else { return .none }
-            if let gist = entry.gist {
-                return Reading(phase: .told, gist: gist, writer: gist.writer, place: gist.place, refreshing: entry.inFlight)
-            }
-            guard entry.asking else { return .none }
-            return Reading(phase: .writing, gist: nil, writer: name, place: place, refreshing: true)
+        guard !isMuted, let entry = lock.withLock({ entries[key] }) else { return .none }
+        if let gist = entry.gist, writer != nil {
+            return Reading(phase: .told, gist: gist, writer: gist.writer, place: gist.place, refreshing: entry.inFlight)
         }
+        if let outline = entry.outline {
+            return Reading(phase: .told, gist: outline, writer: "", place: "", refreshing: entry.asking)
+        }
+        guard entry.asking, let helper = writer else { return .none }
+        return Reading(
+            phase: .writing, gist: nil, writer: helper.label ?? helper.model,
+            place: YourModelWords.inSentence(YourModelWords.machine(of: helper)), refreshing: true)
+    }
+
+    /// What a client draws for a turn, read from the turn once for each state of it. A surface
+    /// asks on every refresh, a running turn refreshes with every step, and the pane counts
+    /// every step of the turn, so the answer is kept until the turn or its telling changes.
+    public func pane(for key: String, model: NeuralBrainModel) -> NeuralGistPane? {
+        let began = DispatchTime.now().uptimeNanoseconds
+        defer { note(began) }
+        let reading = reading(for: key)
+        guard reading.phase != .none else { return nil }
+        let told = reading.gist.map { "\($0.writtenAt.timeIntervalSinceReferenceDate)|\($0.stepCount)|\($0.writer)" } ?? ""
+        let stamp = "\(reading.phase)|\(told)|\(reading.refreshing)|\(model.accountStamp)|\(model.steps.count)"
+        if let held = lock.withLock({ entries[key]?.pane }), held.stamp == stamp { return held.value }
+        let made = NeuralGistPane.make(reading: reading, model: model)
+        lock.withLock { entries[key]?.pane = (stamp, made) }
+        return made
+    }
+
+    /// What a closed card says of a turn in short, with whether a model wrote it. A model's
+    /// telling gives its title and its sentence. An outline's title is the prompt and its
+    /// sentence is how the answer opens, and a card in a chat sits between exactly those, so an
+    /// outline gives the card what the chat folded away instead: what the agent said at each
+    /// stage, in order. Nothing is counted, so a card asks for nothing but two strings.
+    public func line(for key: String) -> NeuralGistLine? {
+        let began = DispatchTime.now().uptimeNanoseconds
+        defer { note(began) }
+        let reading = reading(for: key)
+        guard reading.phase == .told, let gist = reading.gist else { return nil }
+        let sentence = gist.isModelWritten ? gist.now : NeuralGistLine.journey(gist.stages)
+        guard !sentence.isEmpty else { return nil }
+        return NeuralGistLine(title: gist.title, sentence: sentence, isModelWritten: gist.isModelWritten)
     }
 
     /// A surface is showing this turn and would show it told in short. Cheap enough to call each
     /// time the turn changes: it notes the turn as it stands and asks the model only when the
     /// policy says a telling is due.
-    public func want(key: String, model: NeuralBrainModel, answer: String? = nil, prompt: String? = nil) {
+    ///
+    /// A surface that knows what the turn was asked and how it answered says so with
+    /// `bringsWords`; one that does not (a closed card, for which finding them means reading the
+    /// conversation) keeps the ones the desk was last given, and asks `lacksWords` first.
+    public func want(
+        key: String, model: NeuralBrainModel, answer given: String? = nil, prompt asked: String? = nil,
+        bringsWords: Bool = false
+    ) {
+        let began = DispatchTime.now().uptimeNanoseconds
+        defer { note(began) }
         let stepCount = model.steps.count
         let now = clock()
-        guard NeuralGistPolicy.worthTelling(stepCount: stepCount) else {
+        let kept = bringsWords || given != nil || asked != nil
+            ? nil : lock.withLock { entries[key].map { ($0.wanted.answer, $0.wanted.prompt) } }
+        let answer = kept?.0 ?? given
+        let prompt = kept?.1 ?? asked
+        guard !isMuted, NeuralGistPolicy.worthTelling(stepCount: stepCount) else {
             lock.withLock { shed(now) }
             return
         }
         let running = model.turn.outcome == .running
-        let state = lock.withLock { () -> (told: Bool, placed: Bool) in
+        let words = (answer?.utf8.count ?? 0) &* 31 &+ (prompt?.utf8.count ?? 0)
+        let state = lock.withLock { () -> (told: Bool, placed: Bool, outlined: Bool) in
             shed(now)
-            guard let entry = entries[key] else { return (false, false) }
+            guard let entry = entries[key] else { return (false, false, false) }
             entries[key]?.wanted.at = now
             let told = entry.gist.map { $0.stepCount == stepCount && $0.running == running } ?? false
-            return (told, entry.placed)
+            return (told, entry.placed, entry.outlineHolds(stepCount: stepCount, running: running, words: words))
         }
-        if state.placed || state.told { return }
-        guard writer != nil else { return }
+        if state.placed { return }
+        let asks = !state.told && writer != nil
+        var outline: NeuralGist??
+        var outlineLater = false
+        if !state.outlined {
+            lock.withLock { spent.outlines += 1 }
+            if let account = model.accountIfRead(answer: answer, prompt: prompt) {
+                outline = .some(
+                    NeuralGistOutline.make(
+                        account: account, stepCount: stepCount, running: running, prompt: prompt, answer: answer,
+                        at: now))
+            } else {
+                outlineLater = true
+            }
+        }
+        guard asks || outline != nil || outlineLater else {
+            if bringsWords { lock.withLock { entries[key]?.wordsFor = running } }
+            return
+        }
         let wanted = Wanted(
-            model: model, answer: answer, prompt: prompt, stepCount: stepCount, running: running, at: now)
+            model: asks ? model : nil, answer: answer, prompt: prompt, stepCount: stepCount, running: running,
+            at: now)
         lock.withLock {
             if entries[key] == nil {
                 entries[key] = Entry(wanted: wanted)
@@ -254,8 +352,79 @@ public final class NeuralGistDesk: @unchecked Sendable {
                     entries[key]?.lastAt = nil
                 }
             }
+            if bringsWords { entries[key]?.wordsFor = running }
+            if let outline {
+                entries[key]?.outline = outline
+                entries[key]?.outlinedAt = (stepCount, running, words)
+            } else if outlineLater {
+                entries[key]?.outlinedAt = (stepCount, running, words)
+            }
         }
-        consider(key)
+        if outlineLater {
+            readOutline(
+                key, model: model, answer: answer, prompt: prompt, stepCount: stepCount, running: running, words: words)
+        }
+        if asks { consider(key) }
+    }
+
+    /// Reads a turn for its outline away from the thread that asked. A card that scrolls into
+    /// view has never had its turn's account read, and reading one walks every step and every
+    /// line its tools printed: milliseconds for a short turn on an old phone and far more for a
+    /// long one, on the thread that is scrolling. Whoever shows the turn hears when it is there.
+    private func readOutline(
+        _ key: String, model: NeuralBrainModel, answer: String?, prompt: String?, stepCount: Int, running: Bool,
+        words: Int
+    ) {
+        outliner.async { [self] in
+            let made = NeuralGistOutline.make(
+                account: model.account(answer: answer, prompt: prompt), stepCount: stepCount, running: running,
+                prompt: prompt, answer: answer, at: clock())
+            let landed = lock.withLock { () -> Bool in
+                guard let at = entries[key]?.outlinedAt, at.stepCount == stepCount, at.running == running,
+                    at.words == words
+                else { return false }
+                entries[key]?.outline = made
+                entries[key]?.pane = nil
+                return true
+            }
+            if landed { StoreNotice.post(Self.didChange, object: Change(key)) }
+        }
+    }
+
+    /// What saying turns in short has cost the thread that asked: every call a surface made to
+    /// `want`, `pane` and `line`, the time they took together, the slowest one, and how many
+    /// times a turn was read whole for an outline. A surface asks on every refresh, so this is
+    /// what a bench reads to know the asking stays free.
+    public struct Cost: Sendable, Equatable {
+        public var calls = 0
+        public var nanoseconds: UInt64 = 0
+        public var worst: UInt64 = 0
+        public var outlines = 0
+
+        public init() {}
+    }
+
+    public var cost: Cost { lock.withLock { spent } }
+
+    private func note(_ began: UInt64) {
+        let took = DispatchTime.now().uptimeNanoseconds &- began
+        lock.withLock {
+            spent.calls += 1
+            spent.nanoseconds &+= took
+            spent.worst = max(spent.worst, took)
+        }
+    }
+
+    /// Whether the desk has yet to be told what this turn was asked and how it answered, as the
+    /// turn stands: true until a surface has brought them, and again when the turn ends, which
+    /// is when it has an answer.
+    public func lacksWords(for key: String, model: NeuralBrainModel) -> Bool {
+        guard !isMuted, NeuralGistPolicy.worthTelling(stepCount: model.steps.count) else { return false }
+        let running = model.turn.outcome == .running
+        return lock.withLock {
+            guard let entry = entries[key], !entry.placed else { return entries[key] == nil }
+            return entry.wordsFor != running
+        }
     }
 
     /// Puts a telling in that no model here wrote: the demo world's, where no server answers, and
@@ -272,14 +441,14 @@ public final class NeuralGistDesk: @unchecked Sendable {
             entries[key] = entry
             evict()
         }
-        StoreNotice.post(Self.didChange)
+        StoreNotice.post(Self.didChange, object: Change(key))
     }
 
     /// Takes one turn's telling away, placed or written.
     public func forget(_ key: String) {
         let wake = lock.withLock { entries.removeValue(forKey: key)?.wake }
         wake?.cancel()
-        StoreNotice.post(Self.didChange)
+        StoreNotice.post(Self.didChange, object: Change(key))
     }
 
     /// Forgets everything told, so the next look asks again: the model or the switch changed.
@@ -408,7 +577,7 @@ public final class NeuralGistDesk: @unchecked Sendable {
             }
             entries[key] = entry
         }
-        StoreNotice.post(Self.didChange)
+        StoreNotice.post(Self.didChange, object: Change(key))
         let waiting = lock.withLock {
             entries.filter { !$0.value.inFlight }.sorted { $0.value.wanted.at > $1.value.wanted.at }.map(\.key)
         }
@@ -423,7 +592,7 @@ public final class NeuralGistDesk: @unchecked Sendable {
             sent += 1
             entries[key]?.asking = true
         }
-        StoreNotice.post(Self.didChange)
+        StoreNotice.post(Self.didChange, object: Change(key))
         guard let data = try? await transport.post(url, body: ask.body(model: helper.model)) else { return nil }
         return ask.read(
             completion: data, writer: helper.label ?? helper.model,

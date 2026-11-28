@@ -149,9 +149,11 @@ public struct NeuralGistAsk: Sendable, Equatable {
     /// More stages than a surface has rows for, folded: the lightest neighbouring pair becomes one
     /// stage under the heavier one's words, until they fit. A running turn's last stage keeps its
     /// own words, since it is the one that says what is happening.
-    static func folded(_ stages: [NeuralGist.Stage], keepLast: Bool) -> [NeuralGist.Stage] {
+    static func folded(
+        _ stages: [NeuralGist.Stage], keepLast: Bool, most: Int = NeuralGistPolicy.mostStages
+    ) -> [NeuralGist.Stage] {
         var held = stages
-        while held.count > NeuralGistPolicy.mostStages {
+        while held.count > max(most, 1) {
             var best = 0
             var lightest = Int.max
             for index in 0..<(held.count - 1) {

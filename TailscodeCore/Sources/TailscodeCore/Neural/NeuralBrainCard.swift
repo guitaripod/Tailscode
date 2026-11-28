@@ -126,9 +126,24 @@ public struct NeuralBrainCard: Sendable, Equatable {
     /// What the sentence a screen reader says for the whole card.
     public let spoken: String
     /// What the agent said first, nil for a turn that said nothing.
-    public let quote: Quote?
+    public private(set) var quote: Quote?
+    /// The third line is the turn in short and not the agent's first words; true when a model
+    /// wrote it, so a client draws its heading in the model's ink.
+    public private(set) var told: Bool?
 
     public var hasQuote: Bool { quote != nil }
+
+    /// The card with the turn in short as its third line: the telling's title where the
+    /// speaker's name stood and its sentence where the first note did. A turn's first words say
+    /// how it began; a card is read to learn what the turn is for and what it came to.
+    public func telling(_ line: NeuralGistLine?) -> NeuralBrainCard {
+        guard let line else { return self }
+        var card = self
+        card.quote = Quote(speaker: line.heading, words: line.sentence)
+        card.told = line.isModelWritten
+        card.live = live?.telling(line)
+        return card
+    }
 
     /// The speaker and the agent's first words, cut at a word to fit `characters`, with an
     /// ellipsis: "Fable: Building it from the existing film rig\u{2026}". Nil for a turn that said
@@ -204,7 +219,7 @@ public struct NeuralBrainCard: Sendable, Equatable {
 
     /// What a running turn's card says while it happens; nil for a settled turn, whose card is
     /// exactly what it was.
-    public let live: NeuralLiveCard?
+    public private(set) var live: NeuralLiveCard?
 
     /// How long the card takes to settle when its turn ends.
     public static let settleDuration = NeuralCardSettle.duration

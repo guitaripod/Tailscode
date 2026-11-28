@@ -197,7 +197,10 @@ extension BrainCardView {
     /// A phone's narrow card: two lines of words and nothing else. The buttons are icons at the
     /// first line's end (Open while the turn runs, Replay and Rows once it has), the first line is
     /// the verdict and its counts or the headline, and the second is the step in flight or what
-    /// the turn came to, at the card's full width.
+    /// the turn came to, at the card's full width. A settled turn long enough to be said in short
+    /// keeps a last line for it from the start, under whatever of the headline did not fit the
+    /// first: the line holds the agent's own first words or what the work came to until the
+    /// outline or a telling lands a moment later, so a card never grows under a finger.
     private func tuckedLayout(
         width: CGFloat, metrics: NeuralStageMetrics, card: NeuralBrainCard
     ) -> Layout {
@@ -217,7 +220,9 @@ extension BrainCardView {
             live
                 ? max(lineSize(nowLabel, width: textWidth).height, lineSize(quoteLabel, width: textWidth).height, 16)
                 : lineSize(clauses, width: textWidth).height, 0)
-        let total = firstHeight + (secondHeight > 0 ? 2 + secondHeight : 0)
+        let saysInShort = !live && NeuralGistPolicy.worthTelling(stepCount: model?.steps.count ?? 0)
+        let toldHeight: CGFloat = saysInShort ? ceil(Theme.Ramp.font(.rowTitleStrong).lineHeight) : 0
+        let total = firstHeight + (secondHeight > 0 ? 2 + secondHeight : 0) + (toldHeight > 0 ? 3 + toldHeight : 0)
         let rest: CGFloat = isCompact ? 4 : 6
         let height = max(CGFloat(geometry.height), total + rest * 2)
         let top = ((height - total) / 2).rounded(.down)
@@ -250,6 +255,10 @@ extension BrainCardView {
             layout.liveHeadline = layout.headline
             if secondHeight > 0 {
                 layout.clauses = CGRect(x: textX, y: secondY, width: textWidth, height: secondHeight)
+            }
+            if toldHeight > 0 {
+                let toldY = secondHeight > 0 ? secondY + secondHeight + 3 : top + firstHeight + 3
+                layout.third = CGRect(x: textX, y: toldY, width: textWidth, height: toldHeight)
             }
         }
         layout.wordmark = wordmarkFrame(layout, width: width, right: buttonsLeft - 4, live: live)
@@ -352,7 +361,7 @@ extension BrainCardView {
         }
         for hidden in chips.dropFirst(card.chips.count) { hidden.isHidden = true }
         let hasThird = layout.third != .zero
-        third.isHidden = !hasThird || !wide && true
+        third.isHidden = !hasThird || (!wide && !layout.tucked)
         third.frame = layout.third
         if hasThird, !third.isHidden {
             if quoteSource != nil {

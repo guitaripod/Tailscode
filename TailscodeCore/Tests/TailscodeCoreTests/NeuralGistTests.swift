@@ -279,7 +279,7 @@ struct NeuralGistTests {
         let model = G.model()
         #expect(desk.reading(for: "a").phase == .none)
         desk.want(key: "a", model: model, answer: "All shipped.", prompt: "ship the film")
-        #expect(await eventually { desk.reading(for: "a").phase == .told })
+        #expect(await eventually { desk.reading(for: "a").gist?.isModelWritten == true })
         #expect(desk.reading(for: "a").gist?.title == "Shipping the film")
         #expect(desk.reading(for: "a").gist?.writer == "Pennyroyal")
         desk.want(key: "a", model: model, answer: "All shipped.", prompt: "ship the film")
@@ -295,7 +295,7 @@ struct NeuralGistTests {
         let clock = GistClock()
         let desk = desk(transport, clock)
         desk.want(key: "a", model: G.model(rounds: 4, running: true))
-        #expect(await eventually { desk.reading(for: "a").phase == .told })
+        #expect(await eventually { desk.reading(for: "a").gist?.isModelWritten == true })
         desk.want(key: "a", model: G.model(rounds: 6, running: true))
         try? await Task.sleep(for: .milliseconds(60))
         #expect(desk.requests == 1)
@@ -335,7 +335,8 @@ struct NeuralGistTests {
         #expect(desk.heldModels == 0)
         transport.answer = G.completion(#"{"title": "T", "now": "Working.", "stages": [{"says": "Looked around", "to": 8}, {"says": "Building it", "to": 16}]}"#)
         desk.want(key: "b", model: G.model(rounds: 4, running: true))
-        #expect(await eventually { desk.reading(for: "b").phase == .told })
+        #expect(await eventually { desk.reading(for: "b").gist?.isModelWritten == true })
+        #expect(await eventually { desk.heldModels == 0 })
         desk.want(key: "b", model: G.model(rounds: 6, running: true))
         #expect(desk.heldModels == 1)
         clock.advance(NeuralGistDesk.fresh + 1)
@@ -350,7 +351,7 @@ struct NeuralGistTests {
         desk.want(key: "a", model: G.model())
         try? await Task.sleep(for: .milliseconds(80))
         #expect(desk.requests == 0)
-        #expect(desk.reading(for: "a").phase == .none)
+        #expect(desk.reading(for: "a").gist?.isModelWritten == false)
     }
 
     @Test func theSwitchOffAsksNothing() async {
@@ -369,7 +370,8 @@ struct NeuralGistTests {
         let desk = desk(transport, clock)
         desk.want(key: "a", model: G.model())
         #expect(await eventually { desk.requests == 1 })
-        #expect(await eventually { desk.reading(for: "a").phase == .none })
+        #expect(await eventually { !desk.reading(for: "a").refreshing })
+        #expect(desk.reading(for: "a").gist?.isModelWritten == false)
         clock.advance(30)
         desk.want(key: "a", model: G.model())
         try? await Task.sleep(for: .milliseconds(60))
@@ -377,7 +379,7 @@ struct NeuralGistTests {
         transport.fails = false
         clock.advance(100)
         desk.want(key: "a", model: G.model())
-        #expect(await eventually { desk.reading(for: "a").phase == .told })
+        #expect(await eventually { desk.reading(for: "a").gist?.isModelWritten == true })
     }
 
     @Test func aPlacedTellingShowsWithNoModelAndIsNeverAskedAgain() async throws {
@@ -397,6 +399,99 @@ struct NeuralGistTests {
         #expect(pane.byline == NeuralGistDemo.writer)
         desk.forget("demo")
         #expect(desk.reading(for: "demo").phase == .none)
+    }
+
+    @Test func aTurnNobodyTellsHasAnOutlineOfItsOwnWords() throws {
+        let model = G.model()
+        let outline = try #require(
+            NeuralGistOutline.make(
+                account: model.account(answer: "All shipped. Every round built."), stepCount: model.steps.count,
+                running: false, prompt: "ship the film\nand say when", answer: "All shipped. Every round built.",
+                at: Date()))
+        #expect(!outline.isModelWritten)
+        #expect(outline.title == "Ship the film")
+        #expect(outline.now == "All shipped.")
+        #expect(outline.stages.count == NeuralGistPolicy.stageBounds(stepCount: 20).upperBound)
+        #expect(outline.stages.first?.from == 1 && outline.stages.last?.to == 20)
+        #expect(zip(outline.stages, outline.stages.dropFirst()).allSatisfy { $0.to + 1 == $1.from })
+        #expect(outline.stages.allSatisfy { $0.says.hasPrefix("Round ") && $0.says.count <= NeuralGistOutline.stageLimit + 1 })
+        let running = G.model(running: true)
+        let live = try #require(
+            NeuralGistOutline.make(
+                account: running.account(), stepCount: running.steps.count, running: true, prompt: nil, answer: nil,
+                at: Date()))
+        #expect(live.title.isEmpty && live.now == "Round 4 of the work is under way.")
+        #expect(NeuralGistOutline.make(
+            account: G.model(rounds: 2).account(), stepCount: 8, running: false, prompt: nil, answer: nil, at: Date()) == nil)
+    }
+
+    @Test func withNoModelTheDeskHoldsTheOutlineAndAsksNobody() async throws {
+        let transport = GistTransport()
+        let desk = NeuralGistDesk(
+            transport: transport, clock: { Date() }, helper: { nil }, isOn: { true }, isReady: { _ in true })
+        let model = G.model()
+        desk.want(key: "a", model: model, answer: "All shipped.", prompt: "ship the film")
+        #expect(await eventually { desk.reading(for: "a").phase == .told })
+        let reading = desk.reading(for: "a")
+        #expect(reading.phase == .told && reading.gist?.isModelWritten == false && !reading.refreshing)
+        #expect(desk.heldModels == 0)
+        let line = try #require(desk.line(for: "a"))
+        #expect(line.heading == NeuralGistWords.title && !line.isModelWritten)
+        #expect(line.sentence == NeuralGistLine.journey(reading.gist?.stages ?? []) && line.sentence.contains(" \u{00B7} "))
+        let pane = try #require(desk.pane(for: "a", model: model))
+        #expect(!pane.isModelWritten && pane.heading == "Ship the film" && pane.byline.isEmpty)
+        #expect(pane.rows.map(\.stepCount).reduce(0, +) == 20)
+        #expect(pane.provenance == NeuralGistWords.outlineProvenance)
+        try? await Task.sleep(for: .milliseconds(40))
+        #expect(desk.requests == 0)
+        desk.isMuted = true
+        #expect(desk.reading(for: "a").phase == .none && desk.line(for: "a") == nil)
+    }
+
+    @Test func thePaneIsCountedOnceForEachStateOfATurn() async throws {
+        let desk = NeuralGistDesk(
+            transport: GistTransport(), clock: { Date() }, helper: { nil }, isOn: { true }, isReady: { _ in true })
+        var model = G.model()
+        desk.want(key: "a", model: model, answer: "All shipped.", prompt: "ship the film")
+        #expect(await eventually { desk.reading(for: "a").phase == .told })
+        let first = try #require(desk.pane(for: "a", model: model))
+        model.browse(.click(model.steps[3].id, double: false))
+        #expect(desk.pane(for: "a", model: model) == first)
+        let grown = G.model(rounds: 6)
+        desk.want(key: "a", model: grown, answer: "All shipped.", prompt: "ship the film")
+        #expect(await eventually { desk.pane(for: "a", model: grown)?.stepCount == 24 })
+        _ = grown.account(answer: "Read.", prompt: nil)
+        desk.want(key: "b", model: grown, answer: "Read.", prompt: nil)
+        #expect(desk.reading(for: "b").phase == .told)
+    }
+
+    @Test func aRunningTurnsOutlineIsNotReadAgainForEveryStep() async {
+        let desk = NeuralGistDesk(
+            transport: GistTransport(), clock: { Date() }, helper: { nil }, isOn: { true }, isReady: { _ in true })
+        let four = G.model(rounds: 4, running: true)
+        desk.want(key: "a", model: four)
+        #expect(await eventually { desk.reading(for: "a").gist?.stepCount == 16 })
+        let held = desk.reading(for: "a").gist
+        let five = G.model(rounds: 5, running: true)
+        desk.want(key: "a", model: five)
+        try? await Task.sleep(for: .milliseconds(40))
+        #expect(desk.reading(for: "a").gist == held)
+        #expect(desk.cost.outlines == 1)
+        desk.want(key: "a", model: G.model(rounds: 6, running: true))
+        #expect(await eventually { desk.reading(for: "a").gist?.stepCount == 24 })
+        desk.want(key: "a", model: G.model(rounds: 6, running: false), answer: "All shipped.")
+        #expect(await eventually { desk.reading(for: "a").gist?.running == false })
+    }
+
+    @Test func aCardSaysTheTurnInShortWhereItsFirstWordsStood() throws {
+        let model = G.model()
+        let card = model.brainCard(now: Date())
+        #expect(card.quote?.words == "Round 0 of the work is under way." && card.told == nil)
+        let outline = card.telling(NeuralGistLine(title: "Ship the film", sentence: "All shipped.", isModelWritten: false))
+        #expect(outline.quote?.speaker == NeuralGistWords.title && outline.quote?.words == "All shipped." && outline.told == false)
+        let told = card.telling(NeuralGistLine(title: "Shipping the film", sentence: "Everything shipped.", isModelWritten: true))
+        #expect(told.quote?.speaker == "\(NeuralGistWords.mark) Shipping the film" && told.told == true)
+        #expect(card.telling(nil) == card)
     }
 
     @Test func aModelOnTheInternetIsNeverTheWriter() {

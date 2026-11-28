@@ -230,9 +230,10 @@ extension BrainCardView {
 
     private func buildThird(_ card: NeuralBrainCard, line: NeuralLiveCard.Line?) {
         if let quote = card.quote {
+            let speaker = isTucked && card.told == true ? NeuralGistWords.mark : quote.speaker
             third.attributedText = Self.quoteText(
-                speaker: quote.speaker, words: quote.words, fit: nil, ink: Theme.Color.label)
-            quoteSource = (quote.speaker, quote.words)
+                speaker: speaker, words: quote.words, ink: Theme.Color.label, told: card.told)
+            quoteSource = (speaker, quote.words, card.told)
         } else {
             third.attributedText = NSAttributedString(
                 string: card.digest,
@@ -249,7 +250,8 @@ extension BrainCardView {
         case .quote:
             let quote = line.quote
             quoteLabel.attributedText = Self.quoteText(
-                speaker: quote?.speaker ?? "", words: quote?.words ?? "", fit: nil, ink: Theme.Color.label)
+                speaker: quote?.speaker ?? "", words: quote?.words ?? "", ink: Theme.Color.label,
+                told: card.live?.told == true ? true : nil)
             nowLabel.attributedText = nil
             nowTrailing.attributedText = nil
         case .step:
@@ -305,40 +307,54 @@ extension BrainCardView {
         DispatchQueue.main.asyncAfter(deadline: .now() + max(0.05, seconds + 0.05), execute: item)
     }
 
-    /// The agent's own words as a line: the quote mark and its name in the accent, the words in
-    /// italic ink. `fit` cuts the words at a whole word to what a width can say.
+    /// The card's line of words. The agent's own are a quote: the mark and its name in the
+    /// accent, the words in italic ink. The turn in short (`told` not nil) is no quote: its
+    /// title stands where the name did, in the model's ink when a model wrote it, and its
+    /// sentence is set upright.
     private static func quoteText(
-        speaker: String, words: String, fit width: CGFloat?, ink: UIColor
+        speaker: String, words: String, ink: UIColor, told: Bool? = nil
     ) -> NSAttributedString {
-        let out = NSMutableAttributedString(
-            string: "\u{201C} ",
-            attributes: Theme.Ramp.attributes(.cardTitle, color: Theme.Color.accent))
+        let out = NSMutableAttributedString()
+        if told == nil {
+            out.append(
+                NSAttributedString(
+                    string: "\u{201C} ", attributes: Theme.Ramp.attributes(.cardTitle, color: Theme.Color.accent)))
+        }
         out.append(
             NSAttributedString(
                 string: speaker + "  ",
-                attributes: Theme.Ramp.attributes(.rowTitleStrong, color: Theme.Color.accent)))
+                attributes: Theme.Ramp.attributes(
+                    .rowTitleStrong, color: told == true ? Theme.Color.special : Theme.Color.accent)))
         out.append(
             NSAttributedString(
-                string: words, attributes: Theme.Ramp.attributes(.thought, color: ink)))
+                string: words, attributes: Theme.Ramp.attributes(told == nil ? .thought : .cardBody, color: ink)))
         return out
     }
 
-    /// The quote cut at a whole word to the room the line has.
+    /// The quote cut at a whole word to the room the line has. The whole line is tried first, so
+    /// one that fits costs one measurement, and one that has to be cut is found by halving:
+    /// trying four characters more at a time measured a long sentence thirty times a layout.
     func fittedQuote(width: CGFloat) -> NSAttributedString? {
         guard let source = quoteSource else { return nil }
-        var best = Self.quoteText(
-            speaker: source.speaker,
-            words: NeuralAccount.quote(of: source.words, maxChars: 8), fit: nil, ink: Theme.Color.label)
-        var characters = 12
-        let limit = source.words.count + 8
-        while characters <= limit + 12 {
-            let words = NeuralAccount.quote(of: source.words, maxChars: characters)
-            let candidate = Self.quoteText(
-                speaker: source.speaker, words: words, fit: nil, ink: Theme.Color.label)
-            guard candidate.size().width.rounded(.up) <= width else { break }
-            best = candidate
-            if words == NeuralAccount.quote(of: source.words, maxChars: Int.max / 4) { break }
-            characters += 4
+        func line(_ characters: Int) -> NSAttributedString {
+            Self.quoteText(
+                speaker: source.speaker, words: NeuralAccount.quote(of: source.words, maxChars: characters),
+                ink: Theme.Color.label, told: source.told)
+        }
+        let whole = line(Int.max / 4)
+        if whole.size().width.rounded(.up) <= width { return whole }
+        var low = 8
+        var high = source.words.count
+        var best = line(low)
+        while low + 1 < high {
+            let middle = (low + high) / 2
+            let candidate = line(middle)
+            if candidate.size().width.rounded(.up) <= width {
+                best = candidate
+                low = middle
+            } else {
+                high = middle
+            }
         }
         return best
     }

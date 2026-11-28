@@ -214,8 +214,9 @@ extension BrainOpenView {
         NeuralGistDemo.placeIfNeeded(key: turnID, model: model)
         let answer = store.answerText(for: turnID)
         NeuralGistDesk.shared.want(
-            key: turnID, model: model, answer: answer.isEmpty ? nil : answer, prompt: store.promptText(for: turnID))
-        let next = NeuralGistPane.make(reading: NeuralGistDesk.shared.reading(for: turnID), model: model)
+            key: turnID, model: model, answer: answer.isEmpty ? nil : answer, prompt: store.promptText(for: turnID),
+            bringsWords: true)
+        let next = NeuralGistDesk.shared.pane(for: turnID, model: model)
         if next?.phase != gistPane?.phase || next?.rows.count != gistPane?.rows.count {
             MidgarLog.info(
                 "megatron in short: \(next.map { $0.isWriting ? "writing" : "told in \($0.rows.count) stages" } ?? "none") of \(model.steps.count) steps",
@@ -264,7 +265,7 @@ extension BrainOpenView {
         model: NeuralBrainModel, expanded: Bool, told: Bool, width: CGFloat, rowHeight: CGFloat
     ) -> Int {
         let list = model.stepList
-        let pane = NeuralGistPane.make(reading: NeuralGistDesk.shared.reading(for: model.turn.id), model: model)
+        let pane = NeuralGistDesk.shared.pane(for: model.turn.id, model: model)
         if let pane, !told, !list.isNarrowed, !model.browseState.searchOpen {
             return gistSlots(pane: pane, fallback: gistFallback(model), width: width, rowHeight: rowHeight)
         }

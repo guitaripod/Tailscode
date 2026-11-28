@@ -680257,6 +680257,107 @@
           }
         }
       }
+    },
+    "From what was asked and what the agent said along the way. The numbers are counted.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "From what was asked and what the agent said along the way. The numbers are counted."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aus dem, was gefragt wurde, und dem, was der Agent unterwegs gesagt hat. Die Zahlen sind gezählt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A partir de lo que se pidió y de lo que dijo el agente por el camino. Los números se cuentan."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "À partir de ce qui a été demandé et de ce que l’agent a dit en chemin. Les chiffres sont comptés."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Da ciò che è stato chiesto e da ciò che l’agente ha detto lungo il percorso. I numeri sono contati."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "依頼された内容と、エージェントが途中で言ったことから作成。数字は数えたものです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "요청한 내용과 에이전트가 진행 중에 한 말을 바탕으로 했습니다. 숫자는 세어서 나온 값입니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Z tego, o co poproszono, i z tego, co agent mówił po drodze. Liczby są policzone."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A partir do que foi pedido e do que o agente disse pelo caminho. Os números são contados."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "根据所提的要求和代理一路上说的话整理而成。数字是统计出来的。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "根據所提的要求和代理一路上說的話整理而成。數字是統計出來的。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utifrån vad som efterfrågades och vad agenten sa under vägen. Siffrorna är räknade."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ud fra hvad der blev bedt om, og hvad agenten sagde undervejs. Tallene er talt."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fra det som ble spurt om, og det agenten sa underveis. Tallene er telt."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koottu siitä, mitä pyydettiin ja mitä agentti sanoi matkan varrella. Luvut on laskettu."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Út frá því sem beðið var um og því sem umboðsmaðurinn sagði á leiðinni. Tölurnar eru taldar."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

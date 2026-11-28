@@ -164,8 +164,12 @@ final class BrainOpenView: UIView, BrainBrowsing {
         installRotors()
         gistObserver = NotificationCenter.default.addObserver(
             forName: NeuralGistDesk.didChange, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.gistChanged() }
+        ) { [weak self] note in
+            let changed = NeuralGistDesk.changedKey(note)
+            MainActor.assumeIsolated {
+                guard let self, changed == nil || changed == self.turnID else { return }
+                self.gistChanged()
+            }
         }
     }
 

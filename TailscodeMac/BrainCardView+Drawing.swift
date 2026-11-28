@@ -344,7 +344,7 @@ extension BrainCardView {
         if line.kind == .quote, let quote = line.quote {
             drawQuote(
                 speaker: quote.speaker, words: { quote.line(fittingChars: $0) }, rect: rect,
-                inks: inks, centerY: centerY)
+                inks: inks, centerY: centerY, told: live.told ? true : nil)
             return
         }
         let titleFont = NSFont.systemFont(ofSize: 13, weight: .semibold)
@@ -407,7 +407,7 @@ extension BrainCardView {
             drawQuote(
                 speaker: quote.speaker,
                 words: { card.quoteLine(fittingChars: $0) ?? quote.words }, rect: rect, inks: inks,
-                centerY: rect.midY)
+                centerY: rect.midY, told: card.told)
             return
         }
         let font = MacTheme.Ramp.font(.panelDetail)
@@ -446,23 +446,32 @@ extension BrainCardView {
         return best ?? make(0)
     }
 
+    /// The card's line of words. The agent's own are a quote: the mark, its name in the accent
+    /// and the words in italic. The turn in short (`told` not nil) is no quote: its title stands
+    /// where the name did, in the model's ink when a model wrote it, and its sentence is upright.
     private func drawQuote(
-        speaker: String, words: (Int) -> String, rect: CGRect, inks: BrainInks, centerY: CGFloat
+        speaker: String, words: (Int) -> String, rect: CGRect, inks: BrainInks, centerY: CGFloat,
+        told: Bool? = nil
     ) {
         let accent = NSColor(hex: inks.palette.accent) ?? inks.text
-        let mark = "\u{201C}"
-        let markFont = NSFont.systemFont(ofSize: 15, weight: .bold)
-        let markSize = (mark as NSString).size(withAttributes: [.font: markFont])
-        (mark as NSString).draw(
-            at: CGPoint(x: rect.minX, y: centerY - markSize.height / 2 + 2),
-            withAttributes: [.font: markFont, .foregroundColor: accent])
+        let nameInk = told == true ? (NSColor(hex: inks.palette.special) ?? accent) : accent
+        var nameX = rect.minX
+        if told == nil {
+            let mark = "\u{201C}"
+            let markFont = NSFont.systemFont(ofSize: 15, weight: .bold)
+            let markSize = (mark as NSString).size(withAttributes: [.font: markFont])
+            (mark as NSString).draw(
+                at: CGPoint(x: rect.minX, y: centerY - markSize.height / 2 + 2),
+                withAttributes: [.font: markFont, .foregroundColor: accent])
+            nameX += markSize.width + 4
+        }
         let nameFont = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
-        let nameAttributes: [NSAttributedString.Key: Any] = [.font: nameFont, .foregroundColor: accent]
+        let nameAttributes: [NSAttributedString.Key: Any] = [.font: nameFont, .foregroundColor: nameInk]
         let nameSize = (speaker as NSString).size(withAttributes: nameAttributes)
-        let nameX = rect.minX + markSize.width + 4
         (speaker as NSString).draw(
             at: CGPoint(x: nameX, y: centerY - nameSize.height / 2), withAttributes: nameAttributes)
-        let wordsFont = italic(MacTheme.Ramp.font(.panelDetail))
+        let detailFont = MacTheme.Ramp.font(.panelDetail)
+        let wordsFont = told == nil ? italic(detailFont) : detailFont
         let wordsAttributes: [NSAttributedString.Key: Any] = [.font: wordsFont, .foregroundColor: inks.text]
         let wordsX = nameX + ceil(nameSize.width) + 8
         let room = rect.maxX - wordsX

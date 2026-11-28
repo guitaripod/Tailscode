@@ -227,7 +227,7 @@ final class BrainLinkRow: UIControl {
         case .more(let count): return NeuralReading.moreSteps(count)
         case .earlier(let count): return NeuralReading.earlierSteps(count)
         case .less: return NeuralReading.showFewerSteps
-        case .short: return "\(NeuralGistWords.mark) \(NeuralGistWords.title)"
+        case .short: return NeuralGistWords.title
         case .ask(let row): return "\(NeuralReading.verdictWaiting): \(row.title)"
         case .step: return nil
         }

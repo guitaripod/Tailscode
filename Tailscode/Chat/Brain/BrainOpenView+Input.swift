@@ -64,7 +64,8 @@ extension BrainOpenView {
         let sheet = BrainReaderViewController(account: account, focus: focus ?? browseModel?.pinnedStep)
         if let stage {
             sheet.heading = BrainReaderViewController.Heading(
-                title: "\(NeuralGistWords.mark) \(stage.says)", detail: stage.facts(of: stages))
+                title: gistPane?.isModelWritten == false ? stage.says : "\(NeuralGistWords.mark) \(stage.says)",
+                detail: stage.facts(of: stages))
         }
         sheet.onLayout = { [weak self] width in self?.configureReader(width: width) }
         sheet.onDismiss = { [weak self] in self?.readerDismissed() }

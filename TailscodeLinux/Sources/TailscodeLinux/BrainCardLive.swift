@@ -408,12 +408,13 @@ extension BrainCard {
         let line = words.line
         let mid = height / 2
         if line.kind == .quote, let quote = line.quote {
-            BrainDraw.quoteGlyph(cr, cx: 6, cy: mid, color: inks.accent, alpha: alpha)
+            let told = card.live?.told == true
+            if !told { BrainDraw.quoteGlyph(cr, cx: 6, cy: mid, color: inks.accent, alpha: alpha) }
             let speaker = quote.speaker
-            let speakerX = 20.0
+            let speakerX = told ? 4.0 : 20.0
             BrainDraw.text(
-                cr, speaker, font: fonts.speaker, x: speakerX, y: mid - fonts.lineHeight / 2, color: inks.accent,
-                alpha: alpha)
+                cr, speaker, font: fonts.speaker, x: speakerX, y: mid - fonts.lineHeight / 2,
+                color: told ? inks.special : inks.accent, alpha: alpha)
             let wordsX = speakerX + BrainDraw.measure(speaker, fonts.speaker) + 10
             let fitted = cut(line.title, font: fonts.quote, width: width - wordsX)
             BrainDraw.text(

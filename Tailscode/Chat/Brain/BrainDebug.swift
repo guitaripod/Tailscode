@@ -102,14 +102,39 @@ enum BrainDebug {
         #endif
     }
 
-    /// `TAILSCODE_GIST=off` tells no turn in short for this launch, and
+    /// Writes what saying turns in short has cost the main thread to the performance log every
+    /// two seconds it changed: `IN_SHORT calls=… ms=… worstUs=… outlines=… requests=…`.
+    @MainActor private static func watchGistCost() {
+        #if DEBUG
+            Task {
+                var last = NeuralGistDesk.Cost()
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(2))
+                    let now = NeuralGistDesk.shared.cost
+                    guard now != last else { continue }
+                    let line =
+                        "IN_SHORT calls=\(now.calls - last.calls) ms=\(String(format: "%.2f", Double(now.nanoseconds - last.nanoseconds) / 1e6)) worstUs=\(now.worst / 1000) outlines=\(now.outlines) requests=\(NeuralGistDesk.shared.requests)"
+                    last = now
+                    MidgarLog.info(line, category: .performance)
+                }
+            }
+        #endif
+    }
+
+    /// `TAILSCODE_GIST=off` tells no turn in short for this launch, `outline` tells it from the
+    /// turn's own words with no model whatever the phone has filed, and
     /// `TAILSCODE_GIST=<address>|<model>|<name>` has that model tell them, whatever the phone has
     /// filed and without writing to it: how a telling is priced on a device that is somebody's.
     @MainActor static func stageGist() {
         #if DEBUG
             guard let value = environment["TAILSCODE_GIST"], !value.isEmpty else { return }
+            watchGistCost()
             if value == "off" {
                 NeuralGistDesk.shared.isMuted = true
+                return
+            }
+            if value == "outline" {
+                NeuralGistDesk.shared.pinWriter(ImageGenHelper(address: "https://nobody.invalid", model: "none"))
                 return
             }
             let parts = value.split(separator: "|").map(String.init)
