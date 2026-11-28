@@ -321,6 +321,7 @@ final class BrainStageView: NSView, BrainKeyTaker {
             host?.updateModel { $0.stopReplay() }
             refresh(force: true)
             onActivity?()
+            host?.replayEnded()
             return
         }
         updateDynamic(

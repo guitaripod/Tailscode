@@ -70,12 +70,18 @@ struct NeuralStageHeightTests {
         #expect(tall.rowsShown == M.rows(forViewportHeight: 1_600, head: tall.stage.height))
     }
 
-    @Test("the list gives up rows to the cap, to the floor of four, and the readout follows the column")
+    @Test("in a short pane the hint and then the head give way to the list, and the readout follows the column")
     func rowsAndReadout() {
         let short = open(1280, .comfortable, pane: 640)
-        #expect(short.rowsShown == M.rowsFloor)
+        let whole = M.headWidth(rowWidth: 1280) * M.aspect
+        #expect(short.rowsShown >= M.rowsFloor && short.rowsShown <= M.rowsComfort)
+        #expect(short.listHint == nil)
+        #expect(short.stage.height < whole && short.stage.height >= whole * M.headShortestShare - 1e-9)
+        #expect(abs(short.stage.height / short.stage.width - M.aspect) < 1e-9)
         #expect(short.readout.height == short.brainHeight)
-        #expect(short.brainHeight == short.list.maxY)
+        #expect(short.openHeight <= 640 * M.openHeightShare + 1e-9 || short.rowsShown == M.rowsFloor)
+        let roomy = open(1280, .comfortable, pane: 1_100)
+        #expect(roomy.stage.height == whole && roomy.listHint != nil)
         let middle = open(1280, .comfortable, pane: 900)
         #expect(middle.rowsShown > M.rowsFloor && middle.rowsShown < M.rowsMin + 4)
         #expect(middle.openHeight <= 900 * M.openHeightShare)

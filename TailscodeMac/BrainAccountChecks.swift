@@ -33,9 +33,10 @@ enum BrainAccountChecks {
 
     /// The claims about a turn told in short: a turn nobody told keeps its account; a telling
     /// stands in the story's place with a row a stage whose steps add up to the turn; a stage opens
-    /// its own part of the account with the cursor on its first step; the brackets, Esc and `i`
-    /// move between them; a narrow account lets the telling lead and keeps its story; and a telling
-    /// taken away leaves the account as it was.
+    /// its own part of the account with nothing chosen and makes the list its index; a step chosen
+    /// from the cover opens the stage that holds it; a filter shows the steps it leaves; the
+    /// brackets, Esc (one rung at a time) and `i` move between them; a narrow account lets the
+    /// telling lead and keeps its story; and a telling taken away leaves the account as it was.
     private static func short(_ check: (Bool, String) throws -> Void) throws {
         let fixture = BrainFixture(width: 1440)
         defer { fixture.tearDown() }
@@ -105,7 +106,11 @@ enum BrainAccountChecks {
             account.gistScope == second.numbers && !account.showsShort && !numbers.isEmpty
                 && numbers.allSatisfy { second.numbers.contains($0) } && !account.scroll.isHidden,
             "Enter opens the stage: only its part of the account (\(numbers) in \(second.from)-\(second.to))")
-        try check(row.model.pinnedStep == second.firstStepID, "the cursor is on the stage's first step")
+        let stageList = row.model.stepList
+        try check(
+            row.model.pinnedStep == nil && stageList.filter.range == second.numbers
+                && stageList.visibleCount == second.stepCount && !stageList.isNarrowed,
+            "a stage opens on its story with no step chosen, and the list beside it is the index of its \(second.stepCount) steps (\(stageList.visibleCount))")
         var saidOnly = row.model
         let start = NeuralListStart.override
         NeuralListStart.override = .said
@@ -130,6 +135,38 @@ enum BrainAccountChecks {
         try check(
             account.gistScope == nil && account.showsShort && account.account.items.count == whole,
             "Esc is the way back to the turn in short")
+        try check(
+            row.model.stepList.filter.range == nil && row.model.stepList.visibleCount == row.model.steps.count,
+            "and the list is the whole turn's again")
+        let third = pane.rows[2]
+        let chosen = row.model.steps[third.to - 1].id
+        row.browse(.click(chosen, double: false), grabFocus: false)
+        settle(row)
+        try check(
+            account.gistScope == third.numbers && !account.showsShort && row.model.pinnedStep == chosen
+                && row.model.stepList.filter.range == third.numbers,
+            "a step chosen while the telling is the cover opens the stage that holds it, on that step")
+        try check(!account.gistKeyAnywhere(.escape), "Esc is the cursor's before it is the stage's")
+        row.browse(.key(.escape), grabFocus: false)
+        settle(row)
+        try check(
+            row.model.pinnedStep == nil && account.gistScope == third.numbers,
+            "Esc lets go of the step first and keeps the stage")
+        try check(account.gistKeyAnywhere(.escape), "Esc with nothing chosen is the stage's")
+        settle(row)
+        try check(
+            account.gistScope == nil && account.showsShort && row.isOpenShown && row.model.stepList.filter.range == nil,
+            "Esc again is the cover, and the Megatron is still open")
+        if let other = row.model.stepList.zoneChips.first(where: { $0.zone != .say && $0.count > 0 }) {
+            row.browse(.zoneChip(other.zone, solo: false), grabFocus: false)
+            settle(row)
+            try check(
+                !account.showsShort && account.gistView == nil && !account.scroll.isHidden && !account.entries.isEmpty,
+                "a filter set from the cover shows the steps it leaves, because a cover lists none")
+            row.browse(.zoneChip(other.zone, solo: false), grabFocus: false)
+            settle(row)
+            try check(account.showsShort, "and the cover is back when the filter goes")
+        }
         _ = account.gistKey(.character("i"))
         settle(row)
         try check(

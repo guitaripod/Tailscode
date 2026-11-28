@@ -113,6 +113,7 @@ extension BrainView {
     }
 
     func diveChanged() {
+        account?.refreshChrome()
         refreshReadout(animate: true)
         relayout()
     }
@@ -191,10 +192,16 @@ extension BrainView {
         afterReplayChange()
     }
 
+    /// How often a replay's step is written out beside the head. A turn of hundreds of steps
+    /// passes thirty a second, which nobody reads and which built the detail on every frame.
+    static let replayReadoutPace = 0.12
+
     func afterReplayChange() {
         card.refresh()
         stage?.invalidate()
+        account?.refreshChrome()
         refreshReadout(animate: false)
+        footer?.replayChanged()
         footer?.sync(BrainClock.now)
         relayout()
         redrawNow()
@@ -226,9 +233,8 @@ extension BrainView {
         }
         if model.replayDone(now: time) {
             model.stopReplay()
-            card.refresh()
-            stage?.invalidate()
-            relayout()
+            afterReplayChange()
+            return
         }
         needsDraw = false
         var mark = DispatchTime.now().uptimeNanoseconds
@@ -253,7 +259,8 @@ extension BrainView {
         lap("list")
         tickLeader(time)
         lap("leader")
-        if model.isReplaying || (model.turn.outcome == .running && time - lastReadoutTick > 0.25) {
+        let readoutPace = model.isReplaying ? Self.replayReadoutPace : 0.25
+        if (model.isReplaying || model.turn.outcome == .running) && time - lastReadoutTick > readoutPace {
             lastReadoutTick = time
             refreshReadout(animate: false)
         }

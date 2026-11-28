@@ -91,6 +91,30 @@ Asked for: "test on the xs and optimize memory use". Run on the real phone (iOS 
 - **The head's textures** are 7.2 MB of ASTC while a head is on screen and already the size the picture needs; left alone.
 - Checked with `TAILSCODE_GIST=off` or `<address>|<model>|<name>` (a writer for one launch that never touches the phone's settings), `TAILSCODE_NEURAL_SHOW=<seconds>` (the open row brought to the top for a screenshot), the walk verbs `told`, `stage`, and `TAILSCODE_BENCH_OPEN` for `CHAT_LIFETIME_OK` with the telling on.
 
+## 6c. Every path walked, and what was in the way (2026-11-28, fourth ask)
+
+Asked for: "on desktop and in general, it's difficult to use all the small details in the megatron still. streamline it more and actual run through each ux path and back etc and redo what you can improve". Done on the Linux client in the harness against the real 378-step turn, with the mouse and the keys, each path there and back, then the same rules on the Mac and the phone.
+
+What was in the way, in the order it was met:
+
+| Path | What happened | Now |
+| --- | --- | --- |
+| Press a step in the list, or a node on the head, while the telling is the cover | The cursor moved, the head rang the node, and the pane beside it went on showing the telling: the step was shown nowhere | The stage that holds the step opens on it (`NeuralGistPane.row(holding:in:)`). On the phone, where the list is behind the telling, a node opens that stage's sheet at the step |
+| Open a stage by its row | The cursor was put on the stage's first step, which unfolded that run of work and opened the step's whole detail: the far end of a stage, not its beginning. Whether that happened depended on whether the first step was a note | A stage opens on its story, every run of work folded, and nothing is chosen |
+| A stage is open | The list beside it still listed all 378 steps | The list is the index of the stage (`NeuralStepList.Filter.range`, the reducer's `.scope`): its rows, its count ("92 of 378") and the head's dimming. The range is where the person is, not a filter: clearing the filters keeps it and nothing warns of it |
+| Filter to the failures, or search, from the cover | The list narrowed and the pane beside it stayed the telling, with a FILTERED pill over it | The telling steps aside for the steps the filter leaves and comes back when it goes (`NeuralGistPane.leads`, the one rule the phone already kept) |
+| Esc inside a stage | From the list or the head it let go of the cursor and then shut the whole Megatron, skipping the cover | One rung at a time: the search, the filters, the cursor, the stage, and only then the card (`gistKeyAnywhere`) |
+| `i` | Only switched while the keys were in the account | Switches from the list and the head too |
+| Dive into a zone, or replay, with a stage open or the cover up | The zone's steps were drawn across the telling's pins | The telling's pins go while a dive or a replay has the pane, and the body starts under whatever stays pinned |
+| Replay a Claude Code turn | Over in a second. The bridge hands a whole turn over as one message, so every step was read as a call made together: the replay fired all 378 at once and the list drew one bracket down all of them | A message in which words follow a call is several answers: words begin a group, a run of more than eight calls is one call after another (`NeuralTurns.regroup`), and a turn of hundreds of answers is fitted to the replay's twelve seconds |
+| A replay ends by itself | The button went on saying Stop (Linux), and the account kept the replay's last step (the Mac) | Both are drawn from the turn again |
+| The header | "FAILED" in the pill and "Failed" beside it | The pill, and beside it what failed: "7 steps failed" |
+| The list in a pane 700 points tall | Four rows of a 378-step turn, under a 230-point head and a row of key hints | The hint goes first and the head gives up to 30 percent of its height, for six rows (`rowsComfort`, `headShortestShare`) |
+
+Left for a decision, because it changes what a turn is called: a turn that ended with an answer but left a non-zero exit somewhere reads FAILED in red (`NeuralVerdict.turnVerdict` counts any unfixed failure), where `docs/neural-trace-readout.md` says "the turn ended on an unfixed failure". On real long turns that is nearly every turn. The recommendation is Done with "7 steps failed" beside it in the attention ink, and red only where the last step failed or the server reported an error.
+
+Not changed: the step detail still repeats the step's title and, under WHY, the note that stands right above it in the story.
+
 ## 7. What this leaves room for
 
 The head's window is a stage with a character in it; the telling is what the character says. When a 3D model stands there with a name the person gave it, the sentence is its speech, the stages are its journey, the byline is its name, and `NeuralGistPane` already hands a client all three as plain values. Nothing here knows the head is a head.

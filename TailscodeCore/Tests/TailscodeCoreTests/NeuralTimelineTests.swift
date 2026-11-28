@@ -1,3 +1,4 @@
+import CodingAgentKit
 import Foundation
 import Testing
 
@@ -44,6 +45,13 @@ import Testing
         for pair in zip(timeline.fireTimes, timeline.fireTimes.dropFirst()) {
             #expect(pair.1 - pair.0 >= NeuralTimeline.minimumGap - 0.0001)
         }
+    }
+
+    @Test func aTurnOfHundredsOfAnswersStillReplaysInTwelveSeconds() {
+        let many = steps(at: (0..<378).map { _ in 0 })
+        let timeline = NeuralTimeline.make(steps: many)
+        #expect(abs(timeline.duration - 12) < 0.01, "duration \(timeline.duration)")
+        for pair in zip(timeline.fireTimes, timeline.fireTimes.dropFirst()) { #expect(pair.0 < pair.1) }
     }
 
     @Test func fractionsRoundTrip() {
@@ -113,5 +121,44 @@ import Testing
         #expect(timeline.isTimed)
         #expect(timeline.fireTimes[1] > timeline.fireTimes[0])
         #expect(timeline.fireTimes[2] > timeline.fireTimes[1])
+    }
+}
+
+@Suite("A turn a bridge hands over as one message") struct NeuralFoldedTurnTests {
+    typealias NF = NeuralTurnFixtures
+
+    private func folded() -> NeuralTurn {
+        var parts: [MessagePart.Kind] = [
+            .text("Looking at the tree first."), NF.bash("ls", out: ["a"]), NF.bash("pwd", out: ["b"]),
+            .text("Now the long part of the work."),
+        ]
+        for index in 0..<10 { parts.append(NF.bash("step \(index)", out: ["ok"])) }
+        parts.append(.text("All of it is done."))
+        return NeuralTurns.partition(messages: [NF.user(0), NF.message(1, parts, model: "fable")], running: false)[0]
+    }
+
+    @Test func wordsBeginAGroupAndALongRunIsOneCallAfterAnother() {
+        let groups = folded().steps.map(\.group)
+        #expect(groups == [0, 0, 0, 1] + Array(2...11))
+    }
+
+    @Test func onlyCallsMadeTogetherShareABracket() {
+        let list = NeuralStepList(steps: folded().steps)
+        let brackets = list.rows(in: 0..<list.visibleCount).map(\.bracket)
+        #expect(brackets[1] != .none && brackets[2] != .none)
+        #expect(brackets[4...].allSatisfy { $0 == .none })
+    }
+
+    @Test func itsReplayIsSeen() {
+        let timeline = NeuralTimeline.make(steps: folded().steps)
+        #expect(timeline.duration > 2)
+    }
+
+    @Test func anAnswerThatIsOneMessageKeepsItsCallsTogether() {
+        let parts: [MessagePart.Kind] = [.text("Reading both."), NF.read("a", out: ["1"]), NF.read("b", out: ["2"])]
+        let turn = NeuralTurns.partition(
+            messages: [NF.user(0), NF.message(1, parts, model: "fable"), NF.message(2, [.text("Read.")], model: "fable")],
+            running: false)[0]
+        #expect(Set(turn.steps.map(\.group)).count == 1)
     }
 }

@@ -594,6 +594,8 @@ final class BrainRowView: NSView, BrainSurfaceHost, RowMotion {
         afterReplayChange()
     }
 
+    func replayEnded() { afterReplayChange() }
+
     private func afterReplayChange() {
         stage?.refresh(force: true)
         stage?.head.setNeedsRender()

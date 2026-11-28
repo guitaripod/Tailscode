@@ -171,6 +171,12 @@ public struct NeuralStageMetrics: Sendable, Equatable {
     /// a pane shorter than the floor sees the row taller than the share but never taller than
     /// itself, to the one row a list cannot do without.
     public static let rowsFloor = 4
+    /// The rows a list beside the account is worth having: under this, in a pane too short for
+    /// them, the hint under the list goes and the head gives up height, down to
+    /// `headShortestShare` of its own, because the head is a map and the list is how a turn of
+    /// hundreds of steps is walked.
+    public static let rowsComfort = 6
+    public static let headShortestShare = 0.7
     /// The narrow open row's account is this share of the pane, between these.
     public static let narrowAccountShare = 0.62
     public static let narrowAccountMin = 340.0
@@ -591,14 +597,23 @@ public struct NeuralStageMetrics: Sendable, Equatable {
         let footerHeight: Double = density == .compact ? 30 : 36
         let footerGap: Double = density == .compact ? 6 : 8
         let split = width >= splitBreakpoint
-        let headWidth = headWidth(rowWidth: width)
-        let headHeight = headWidth * aspect
+        var headWidth = headWidth(rowWidth: width)
+        var headHeight = headWidth * aspect
         let gap = regionGap
+        var hintShown = width >= hintMinWidth
+        if split, rows == nil, let viewportHeight {
+            let fixed = gap + chipsBlock + listHeaderHeight + listFootPadding + footerGap + footerHeight
+            let room = openHeightLimit(viewportHeight: viewportHeight) - fixed - Double(rowsComfort) * rowHeight
+            if room < headHeight + (hintShown ? listHintHeight : 0) {
+                hintShown = false
+                headHeight = min(headHeight, max(headHeight * headShortestShare, room))
+                headWidth = headHeight / aspect
+            }
+        }
 
         var shown = rows ?? viewportHeight.map {
             Self.rows(forViewportHeight: $0, head: headHeight, rowHeight: rowHeight)
         } ?? (split ? rowsSplit : rowsAccordion)
-        let hintShown = width >= hintMinWidth
         if !split {
             shown = min(shown, Int((listMaxHeight(input: input) / rowHeight).rounded(.down)))
         }

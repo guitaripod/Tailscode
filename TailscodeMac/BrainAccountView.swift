@@ -59,6 +59,8 @@ final class BrainAccountView: NSView, BrainKeyTaker {
     var gistScope: ClosedRange<Int>?
     /// The stage the keys are on, in short.
     var gistCursor: Int?
+    /// The cursor the telling last saw, so a step chosen since is told from one that was there.
+    var gistSeenCursor: String?
     var gistObserver: NSObjectProtocol?
     /// The whole account, which `account` is a stage's part of while one is open.
     var fullAccount: NeuralAccount

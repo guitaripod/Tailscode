@@ -68,11 +68,20 @@ extension BrainView {
 
     /// Everything a changed cursor, hover or filter redraws.
     private func afterBrowse() {
+        account?.gistFollowBrowse()
         list?.modelChanged()
         filters?.invalidate()
         refreshAccordion()
         afterSelection()
         relayout()
+    }
+
+    /// The list became the index of a stage, or of the whole turn again: its rows, its count and
+    /// the head's dimming are drawn from that.
+    func listScopeChanged() {
+        list?.modelChanged()
+        filters?.invalidate()
+        stage?.modelChanged()
     }
 
     func announce(_ words: String) {
@@ -191,8 +200,8 @@ extension BrainView {
 
     func clearAllFilters() {
         browse(.searchText(""), grabFocus: false)
-        if model.stepList.filter.isActive {
-            while model.stepList.filter.isActive {
+        if model.stepList.filter.isChosen {
+            while model.stepList.filter.isChosen {
                 let before = model.stepList.filter
                 browse(.key(.escape))
                 if before == model.stepList.filter { break }
@@ -268,11 +277,12 @@ extension BrainView {
         let reserved = GDK_CONTROL_MASK.rawValue | GDK_ALT_MASK.rawValue | GDK_SUPER_MASK.rawValue
         guard state & reserved == 0 else { return false }
         guard let key = Self.browseKey(keyval) else { return false }
-        if key == .escape, stage?.diveZone != nil, !model.stepList.filter.isActive, model.pinnedStep == nil {
+        if key == .escape, stage?.diveZone != nil, !model.stepList.filter.isChosen, model.pinnedStep == nil {
             stage?.dive(into: nil)
             return true
         }
         if key == .tab { return false }
+        if account?.gistKeyAnywhere(key) == true { return true }
         var modifiers: NeuralBrowse.Modifiers = []
         if state & GDK_SHIFT_MASK.rawValue != 0 { modifiers.insert(.shift) }
         let hadCursor = model.pinnedStep != nil

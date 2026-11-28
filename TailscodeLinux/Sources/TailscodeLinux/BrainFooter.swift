@@ -141,6 +141,9 @@ final class BrainFooter: @unchecked Sendable {
         fitChips(width: width)
     }
 
+    /// A replay began or ended: the button says the other thing.
+    func replayChanged() { refreshReplay() }
+
     private func refreshReplay() {
         let playing = owner.model.isReplaying
         let title: String

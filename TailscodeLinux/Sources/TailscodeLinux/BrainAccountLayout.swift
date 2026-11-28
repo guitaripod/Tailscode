@@ -44,12 +44,14 @@ extension BrainAccount {
     /// when the story holds it in place.
     func detailRect() -> NeuralRect? { frameCache?.detail }
 
-    /// The body, for a dive or a replay that takes the whole of it.
+    /// The body, for a dive or a replay that takes the whole of it: everything under the header
+    /// and whatever is pinned there, which a zone's steps must not be drawn across.
     func bodyRect() -> NeuralRect? {
         guard let frame = frameCache else { return nil }
+        let top = frame.pins.last.map { $0.rect.maxY + 8 } ?? headerHeight
         return NeuralRect(
-            x: 0, y: headerHeight, width: frame.width,
-            height: max(0, frame.height - headerHeight - (frame.footer?.height ?? 0)))
+            x: 0, y: top, width: frame.width,
+            height: max(0, frame.height - top - (frame.footer?.height ?? 0)))
     }
 
     func solveRoot(width: Int, height: Int, sink: OpaquePointer) {

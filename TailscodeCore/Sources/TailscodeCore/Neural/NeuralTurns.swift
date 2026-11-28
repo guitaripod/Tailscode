@@ -177,6 +177,7 @@ public enum NeuralTurns {
             steps[steps.count - 1].status = .running
         }
         markRecovered(&steps)
+        regroup(&steps)
         let answersSet = Set(answers)
         let cards = Set(steps.filter(\.isCard).map(\.id))
         for message in messages {
@@ -229,6 +230,74 @@ public enum NeuralTurns {
     static func isSeen(_ part: MessagePart) -> Bool {
         if case .file = part.kind { return true }
         return false
+    }
+
+    /// The most calls one answer of a model makes together. A longer run of calls in one message
+    /// is a server having handed several answers over as one, never a fan-out.
+    public static let largestFanOut = 8
+
+    /// Gives each step the group it fired in, message by message. Where the wire keeps a model's
+    /// answers apart a message is one answer and its calls were made together, which is what a
+    /// group has always been. A bridge that hands a whole turn over as one message (Claude
+    /// Code's) folds hundreds of answers into it: every call of the turn then read as made at
+    /// once, a list drew one bracket down all of them and a replay was over in a second.
+    private static func regroup(_ steps: inout [NeuralStep]) {
+        var next = 0
+        var begin = 0
+        while begin < steps.count {
+            var end = begin
+            while end < steps.count, steps[end].messageID == steps[begin].messageID { end += 1 }
+            next = regroup(&steps, in: begin..<end, from: next)
+            begin = end
+        }
+    }
+
+    /// Groups one message's steps from `first` on and answers with the next free group. A
+    /// message is several answers when words follow a call in it, because an answer leads with
+    /// what it says, or when a run of calls is too long to be a fan-out. Words then begin a
+    /// group, a short run of calls after them joins it, and a long run is told as calls made one
+    /// after another, which is what it nearly always was.
+    private static func regroup(_ steps: inout [NeuralStep], in range: Range<Int>, from first: Int) -> Int {
+        var folded = false
+        var seenCall = false
+        var run = 0
+        for index in range {
+            if NeuralReading.isTool(steps[index]) {
+                seenCall = true
+                run += 1
+                if run > largestFanOut { folded = true }
+            } else {
+                if seenCall { folded = true }
+                run = 0
+            }
+        }
+        guard folded else {
+            for index in range { steps[index].group = first }
+            return first + 1
+        }
+        var group = first - 1
+        var afterCall = true
+        var index = range.lowerBound
+        while index < range.upperBound {
+            guard NeuralReading.isTool(steps[index]) else {
+                if afterCall { group += 1 }
+                afterCall = false
+                steps[index].group = group
+                index += 1
+                continue
+            }
+            var end = index
+            while end < range.upperBound, NeuralReading.isTool(steps[end]) { end += 1 }
+            let together = end - index <= largestFanOut
+            if afterCall, together { group += 1 }
+            for member in index..<end {
+                if !together { group += 1 }
+                steps[member].group = group
+            }
+            afterCall = true
+            index = end
+        }
+        return group + 1
     }
 
     private static func append(

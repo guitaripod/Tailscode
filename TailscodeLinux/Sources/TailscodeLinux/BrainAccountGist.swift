@@ -11,7 +11,48 @@ extension BrainAccount {
     var gistTurnKey: String { (owner.host?.sessionKey ?? "none") + "|" + owner.turnID }
 
     /// The telling leads the account: its title and sentence stand above everything else.
-    var gistLeads: Bool { gistPane != nil && !gistTold && gistScope == nil }
+    var gistLeads: Bool {
+        guard let pane = gistPane else { return false }
+        let state = owner.model.browseState
+        return pane.leads(
+            told: gistTold, scope: gistScope, list: state.list, searchOpen: state.searchOpen,
+            busy: owner.readoutHoldsBody)
+    }
+
+    /// The run of steps the list is the index of: the open stage, where a telling has a pane to
+    /// open one in.
+    private var gistRange: ClosedRange<Int>? {
+        gistPane != nil && owner.currentMetrics.arrangement == .split ? gistScope : nil
+    }
+
+    /// Brings the telling to what a press, a key or a filter just did, before anything is drawn
+    /// from it. A step chosen while the telling is the cover, or from another stage than the one
+    /// open, opens the stage that holds it: a press on a row or a node asks about that step, and
+    /// a cover has nowhere to answer. The list is then made the index of the open stage.
+    func gistFollowBrowse() {
+        let cursor = owner.model.pinnedStep
+        defer { gistSeenCursor = cursor }
+        if let pane = gistPane, !pane.isWriting, owner.currentMetrics.arrangement == .split, let cursor,
+            cursor != gistSeenCursor, gistScope != nil || gistLeads,
+            let row = pane.row(holding: cursor, in: owner.model.stepList), row.numbers != gistScope
+        {
+            gistCursor = row.index
+            gistScope = row.numbers
+            headerStamp = ""
+            readStamp = nil
+            scroll = 0
+            target = 0
+        }
+        gistSyncRange()
+    }
+
+    /// Makes the list the index of the open stage, or of the whole turn when none is open.
+    func gistSyncRange() {
+        let range = gistRange
+        guard owner.model.stepList.filter.range != range else { return }
+        _ = owner.model.browse(.scope(range))
+        owner.refreshDimming()
+    }
 
     /// The telling stands in the story's place, stages and all. A narrow account has no room for
     /// that: there the telling only leads, and the story stays under it.
@@ -90,7 +131,7 @@ extension BrainAccount {
     /// The pins a telling adds: its head and its stages while it stands in the story's place, the
     /// way back while a stage is open, and nothing otherwise.
     func refreshGistPins() {
-        guard let pane = gistPane else {
+        guard let pane = gistPane, !owner.readoutHoldsBody else {
             setPin(&gistPin, signature: "") { nil }
             setPin(&stagesPin, signature: "") { nil }
             return
@@ -331,11 +372,13 @@ extension BrainAccount {
         }
     }
 
-    /// Switches between the telling and the account: the header's two parts and `i`.
+    /// Switches between the telling and the account: the header's two parts and `i`. Going to
+    /// the telling lets go of a filter and a search, which it would otherwise stand behind.
     func gistShow(short: Bool) {
         guard gistPane != nil else { return }
         gistTold = !short
         gistScope = nil
+        if short, owner.model.stepList.isNarrowed || owner.model.browseState.searchOpen { owner.clearAllFilters() }
         gistApplied(focusStages: short)
     }
 
@@ -344,15 +387,16 @@ extension BrainAccount {
         gistShow(short: !gistLeads)
     }
 
-    /// Opens a stage: the account's part of it, with the cursor on its first step so the list
-    /// and the head show where it is.
+    /// Opens a stage: its part of the account as a story, every run of work folded, and the
+    /// list beside it the index of its steps. No step is chosen for the person: a cursor opens
+    /// the work it stands in and the step's whole detail, which is the far end of the stage and
+    /// not its beginning.
     func gistOpen(_ index: Int) {
         guard let pane = gistPane, pane.rows.indices.contains(index) else { return }
         let row = pane.rows[index]
         gistCursor = index
         gistScope = row.numbers
         gistApplied(focusStages: false)
-        if let step = owner.model.firstVisibleStep(in: row.numbers) { ref.view?.gistPlaceCursor(on: step) }
     }
 
     func gistBack() {
@@ -381,19 +425,34 @@ extension BrainAccount {
         readStamp = nil
         scroll = 0
         target = 0
+        gistSyncRange()
+        owner.listScopeChanged()
         refresh(immediate: true)
         refreshChrome()
         if focusStages, let widget = stagesPin?.widget { gtk_widget_grab_focus(widget) } else { gtk_widget_grab_focus(story) }
+    }
+
+    /// The telling's keys that work wherever in the Megatron the keys are: `i` switches, and Esc
+    /// leaves an open stage once the search, the filters and the cursor are already let go, so
+    /// the way back is one rung at a time and the cover comes before the card.
+    func gistKeyAnywhere(_ key: NeuralBrowse.Key) -> Bool {
+        guard gistPane != nil, owner.currentMetrics.arrangement == .split else { return false }
+        if key == .character("i") {
+            gistToggle()
+            return true
+        }
+        guard key == .escape, gistScope != nil else { return false }
+        let state = owner.model.browseState
+        guard !state.legend, !state.searchOpen, !state.list.filter.isChosen, state.cursor == nil else { return false }
+        gistBack()
+        return true
     }
 
     /// What a key does to the telling, before the account sees it. False for a key that is the
     /// account's.
     func gistKey(_ key: NeuralBrowse.Key) -> Bool {
         guard gistPane != nil else { return false }
-        if key == .character("i") {
-            gistToggle()
-            return true
-        }
+        if gistKeyAnywhere(key) { return true }
         if showsShort {
             switch key {
             case .up, .character("k"): gistMove(-1)
@@ -409,7 +468,6 @@ extension BrainAccount {
         }
         guard gistScope != nil else { return false }
         switch key {
-        case .escape: gistBack()
         case .character("["): gistNeighbour(-1)
         case .character("]"): gistNeighbour(1)
         default: return false

@@ -37,7 +37,7 @@ extension NeuralStepList {
     /// The list is narrowed by something a person set for this look: any filter that is not the
     /// start itself. A surface that warns of a filter warns of this.
     public var isNarrowed: Bool {
-        guard isFiltered else { return false }
+        guard filter.isChosen else { return false }
         return !(isSaidOnly && NeuralListStart.current == .said)
     }
 }

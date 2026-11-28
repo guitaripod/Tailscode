@@ -67,6 +67,10 @@ public enum NeuralBrowse {
         case zoneChip(NeuralZone, solo: Bool)
         case failedToggle
         case searchText(String)
+        /// A stage of a telling was opened or left: the list becomes the index of its steps, or
+        /// of the whole turn again. A cursor the stage does not hold is let go, so a stage opens
+        /// on its story and not on a step somebody chose somewhere else.
+        case scope(ClosedRange<Int>?)
         /// The list was scrolled; only a person's scroll pauses following.
         case scrolled(manual: Bool)
         /// A new step arrived at the end of a running turn.
@@ -184,6 +188,15 @@ public enum NeuralBrowse {
             guard text != state.list.filter.search else { break }
             state.list.setSearch(text)
             state.searchOpen = state.searchOpen || !text.isEmpty
+            filtersChanged(&state, &effects)
+        case .scope(let range):
+            guard range != state.list.filter.range else { break }
+            state.list.setRange(range)
+            if let cursor = state.cursor, range != nil, !state.list.isVisible(cursor) {
+                state.cursor = nil
+                state.outputExpanded = false
+                effects.append(.ring(nil))
+            }
             filtersChanged(&state, &effects)
         case .scrolled(let manual):
             if manual { state.list.following = false }
@@ -378,11 +391,14 @@ public enum NeuralBrowse {
 
     /// Clears the filters when they hide a step the person is going to.
     private static func reveal(_ id: String, _ state: inout State, _ effects: inout [Effect]) {
-        guard !state.list.isVisible(id), state.list.row(id: id) != nil, state.list.isFiltered else {
+        guard !state.list.isVisible(id), let row = state.list.row(id: id), state.list.isFiltered else {
             return
         }
-        state.list.clearFilters()
-        state.searchOpen = false
+        if let range = state.list.filter.range, !range.contains(row.number) { state.list.setRange(nil) }
+        if !state.list.isVisible(id) {
+            state.list.clearFilters()
+            state.searchOpen = false
+        }
         filtersChanged(&state, &effects)
     }
 

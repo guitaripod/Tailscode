@@ -100,10 +100,16 @@ extension BrainView {
 
     /// The governor's debounced verdict moved. The stage's widgets stay as they are: a head that
     /// may not be drawn keeps its last picture and stops asking for frames, and takes them again
-    /// when it may, so a window at the edge of the threshold cannot make anything flap.
+    /// when it may, so a window at the edge of the threshold cannot make anything flap. A replay
+    /// is the one thing that cannot wait: a head that draws no frames would stand on Stop with
+    /// nothing moving while the replay's own clock ran out, so it ends and the turn is shown.
     func budgetChanged() {
         let allowed = BrainBudget.stageAllowed
         stage?.drawing = allowed
+        if !allowed, model.isReplaying {
+            model.stopReplay()
+            afterReplayChange()
+        }
         if allowed {
             stage?.invalidate()
             needsDraw = true

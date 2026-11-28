@@ -411,6 +411,7 @@ extension ChatPane {
     }
 
     func brainView(value: String) -> BrainView? {
+        if value.isEmpty, let open = brains.liveViews.first(where: { $0.isOpen }) { return open }
         if let turn = brainTurn(value) { return brains.view(forTurn: turn) }
         return brains.liveViews.first
     }

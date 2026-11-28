@@ -159,6 +159,21 @@ public struct NeuralGistPane: Sendable, Equatable {
         rows.first { $0.numbers.contains(number) }
     }
 
+    /// The stage a step belongs to.
+    public func row(holding stepID: String, in list: NeuralStepList) -> Row? {
+        list.row(id: stepID).flatMap { row(containing: $0.number) }
+    }
+
+    /// Whether the telling is the cover of its turn right now. It steps aside for whatever a
+    /// person asked for in its place: the account they switched to (`told`), a stage they
+    /// opened, a filter or a search (they are looking for steps, and a cover lists none), and a
+    /// dive or a replay (`busy`), which take the pane.
+    public func leads(
+        told: Bool, scope: ClosedRange<Int>?, list: NeuralStepList, searchOpen: Bool, busy: Bool
+    ) -> Bool {
+        !told && scope == nil && !list.isNarrowed && !searchOpen && !busy
+    }
+
     /// The row a move of `delta` from `index` lands on, held at the ends; from nothing, the stage
     /// the turn is in, which is the last.
     public func index(moving delta: Int, from index: Int?) -> Int? {

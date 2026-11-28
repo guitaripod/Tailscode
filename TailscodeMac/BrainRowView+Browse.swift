@@ -54,6 +54,7 @@ extension BrainRowView {
     }
 
     private func afterBrowse() {
+        account?.gistFollowBrowse()
         list?.modelChanged()
         chips?.invalidate()
         account?.refresh()
@@ -62,6 +63,14 @@ extension BrainRowView {
         updateLeader()
         if phase == .closed { syncCard() }
         relayout()
+    }
+
+    /// The list became the index of a stage, or of the whole turn again: its rows, its count and
+    /// the head's dimming are drawn from that.
+    func listScopeChanged() {
+        list?.modelChanged()
+        chips?.invalidate()
+        stage?.refresh(force: true)
     }
 
     private func copyText(_ id: String, _ text: (NeuralStep) -> String) {
@@ -211,11 +220,12 @@ extension BrainRowView {
         var modifiers: NeuralBrowse.Modifiers = []
         if event.modifierFlags.contains(.shift) { modifiers.insert(.shift) }
         if key == .escape, stage?.divedZone != nil || stage?.isDiving == true,
-            !model.stepList.filter.isActive, model.pinnedStep == nil
+            !model.stepList.filter.isChosen, model.pinnedStep == nil
         {
             stage?.surface()
             return true
         }
+        if account?.gistKeyAnywhere(key) == true { return true }
         let hadCursor = model.pinnedStep != nil
         browse(.key(key, modifiers), grabFocus: true)
         if key == .escape, hadCursor, model.pinnedStep == nil {

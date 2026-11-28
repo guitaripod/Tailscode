@@ -81,8 +81,9 @@ extension BrainAccount {
             gtk_box_append(ptr(headerBox), identity)
             gtk_box_append(ptr(headerBox), pill)
             gtk_box_append(ptr(headerBox), sentence)
-            if let word = filterWord { gtk_box_append(ptr(headerBox), filteredChipDetached(word)) }
-            if let switcher = gistSwitcher() { gtk_box_append(ptr(headerBox), switcher) }
+            let switcher = gistSwitcher()
+            if switcher == nil, let word = filterWord { gtk_box_append(ptr(headerBox), filteredChipDetached(word)) }
+            if let switcher { gtk_box_append(ptr(headerBox), switcher) }
             gtk_box_append(ptr(headerBox), counts)
         }
         tailscode_set_accessible_label(

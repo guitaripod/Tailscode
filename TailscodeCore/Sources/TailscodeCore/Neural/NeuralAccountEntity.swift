@@ -247,9 +247,11 @@ extension NeuralAccount {
             }
         }
         var sentence = line
-        if !header.isRunning, header.verdict != .failed || elapsed != nil {
+        let left = header.verdict == .failed && header.unfixedCount > 0
+            ? NeuralReading.stepsFailed(header.unfixedCount) : nil
+        if !header.isRunning, header.verdict != .failed || elapsed != nil || left != nil {
             let inTime = elapsed.map { Localized.text("in %@", NeuralReading.duration($0)) }
-            sentence = [inTime, header.clause].compactMap { $0 }.joined(separator: " \u{00B7} ")
+            sentence = [inTime, header.clause ?? left].compactMap { $0 }.joined(separator: " \u{00B7} ")
             if sentence.isEmpty { sentence = line }
         }
         return Vitals(

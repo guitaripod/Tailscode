@@ -26,6 +26,10 @@ protocol BrainSurfaceHost: AnyObject {
     /// false for events that did not come from the list itself (a filter's click, the search
     /// field's typing, a wheel), which must not take the keyboard from where the person put it.
     func browse(_ action: NeuralBrowse.Action, grabFocus: Bool)
+    /// The list became the index of a stage of a telling, or of the whole turn again.
+    func listScopeChanged()
+    /// A replay played to its end by itself: everything that drew it draws the turn again.
+    func replayEnded()
     /// The pointer is over a step's row (or none): the readout previews it and the head rings it.
     func hoverStep(_ id: String?)
     /// A row or part changed the size it wants.

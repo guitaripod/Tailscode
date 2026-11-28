@@ -48,9 +48,11 @@ public struct NeuralTimeline: Sendable, Equatable {
         let stamps = steps.map(\.at)
         let starts = groups.map { range in steps[range].compactMap(\.at).min() }
         let timed = starts.contains { $0 != nil }
-        let groupTimes = timed
-            ? fitted(starts: starts, target: target)
-            : groups.indices.map { Double($0) * fallbackGroupStep }
+        let groupTimes = within(
+            max(target - tail, 0),
+            timed
+                ? fitted(starts: starts, target: target)
+                : groups.indices.map { Double($0) * fallbackGroupStep })
         var fire = [TimeInterval](repeating: 0, count: steps.count)
         for (index, range) in groups.enumerated() {
             let each = range.count > 1
@@ -103,6 +105,18 @@ public struct NeuralTimeline: Sendable, Equatable {
             }
         }
         return out
+    }
+
+    /// Brings the group times of a turn with too many answers for the shortest beat back inside
+    /// the replay's length, evenly. The beat is a floor for a turn of a few dozen answers; a turn
+    /// of hundreds would play for a minute, and a replay is a look at the shape of a turn, never
+    /// its length.
+    private static func within(_ budget: TimeInterval, _ times: [TimeInterval]) -> [TimeInterval] {
+        guard let last = times.last, last > budget, budget > 0,
+            Double(times.count - 1) * minimumGap > budget
+        else { return times }
+        let scale = budget / last
+        return times.map { $0 * scale }
     }
 
     /// Group times from real gaps: a wait becomes `compressedGap`, quick gaps are scaled together

@@ -89,9 +89,11 @@ extension SelfTest {
                 && numbers.allSatisfy { second.numbers.contains($0) }
                 && gtk_widget_get_child_visible(account.story) != 0 && account.stagesPin == nil,
             "Enter opens the stage: only its part of the account (\(numbers) in \(second.from)-\(second.to)), and the story is back")
+        let stageList = view.model.stepList
         try expect(
-            view.model.pinnedStep == second.firstStepID,
-            "the cursor is on the stage's first step, so the list and the head show where it is")
+            view.model.pinnedStep == nil && stageList.filter.range == second.numbers
+                && stageList.visibleCount == second.stepCount && !stageList.isNarrowed,
+            "a stage opens on its story with no step chosen, and the list beside it is the index of its \(second.stepCount) steps (\(stageList.visibleCount))")
         var saidOnly = view.model
         NeuralListStart.override = .said
         _ = saidOnly.browse(.zoneChip(.say, solo: true))
@@ -114,6 +116,38 @@ extension SelfTest {
         try expect(
             account.gistScope == nil && account.showsShort && account.account.items.count == whole,
             "Esc is the way back to the turn in short, and the account is whole again behind it")
+        try expect(
+            view.model.stepList.filter.range == nil && view.model.stepList.visibleCount == view.model.steps.count,
+            "and the list is the whole turn's again")
+        let third = pane.rows[2]
+        let chosen = view.model.steps[third.to - 1].id
+        view.browse(.click(chosen, double: false), grabFocus: false)
+        _ = brainPump(0.4)
+        try expect(
+            account.gistScope == third.numbers && !account.showsShort && view.model.pinnedStep == chosen
+                && view.model.stepList.filter.range == third.numbers,
+            "a step chosen while the telling is the cover opens the stage that holds it, on that step")
+        _ = view.brainKey(keyval: UInt32(GDK_KEY_Escape), state: 0)
+        _ = brainPump(0.3)
+        try expect(
+            view.model.pinnedStep == nil && account.gistScope == third.numbers,
+            "Esc lets go of the step first and keeps the stage")
+        _ = view.brainKey(keyval: UInt32(GDK_KEY_Escape), state: 0)
+        _ = brainPump(0.3)
+        try expect(
+            account.gistScope == nil && account.showsShort && view.isOpen && view.model.stepList.filter.range == nil,
+            "Esc again is the cover, and the Megatron is still open")
+        if let other = view.model.stepList.zoneChips.first(where: { $0.zone != .say && $0.count > 0 }) {
+            view.browse(.zoneChip(other.zone, solo: false), grabFocus: false)
+            _ = brainPump(0.4)
+            try expect(
+                !account.showsShort && account.gistPin == nil && gtk_widget_get_child_visible(account.story) != 0
+                    && account.entries.count > 0,
+                "a filter set from the cover shows the steps it leaves, because a cover lists none")
+            view.browse(.zoneChip(other.zone, solo: false), grabFocus: false)
+            _ = brainPump(0.4)
+            try expect(account.showsShort, "and the cover is back when the filter goes")
+        }
         _ = account.gistKey(.character("i"))
         _ = brainPump(0.3)
         try expect(

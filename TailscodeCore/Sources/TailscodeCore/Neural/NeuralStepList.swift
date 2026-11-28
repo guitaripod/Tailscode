@@ -133,15 +133,25 @@ public struct NeuralStepList: Sendable, Equatable {
         public var zones: Set<NeuralZone> = []
         public var failedOnly = false
         public var search = ""
+        /// The run of steps the list is the index of, one-based and inclusive: a stage of a
+        /// telling that is open. It is where the person is, not something they filtered by, so
+        /// it survives the filters being cleared and no surface warns of it.
+        public var range: ClosedRange<Int>?
 
-        public init(zones: Set<NeuralZone> = [], failedOnly: Bool = false, search: String = "") {
+        public init(
+            zones: Set<NeuralZone> = [], failedOnly: Bool = false, search: String = "",
+            range: ClosedRange<Int>? = nil
+        ) {
             self.zones = zones
             self.failedOnly = failedOnly
             self.search = search
+            self.range = range
         }
 
         public var query: String { search.trimmingCharacters(in: .whitespacesAndNewlines) }
-        public var isActive: Bool { !zones.isEmpty || failedOnly || !query.isEmpty }
+        /// A zone, the failures or a search narrows the list: what a person set.
+        public var isChosen: Bool { !zones.isEmpty || failedOnly || !query.isEmpty }
+        public var isActive: Bool { isChosen || range != nil }
     }
 
     /// A zone chip in the list's header.
@@ -450,8 +460,16 @@ public struct NeuralStepList: Sendable, Equatable {
         return true
     }
 
+    /// Lets go of what the person filtered by. The stage the list is in stays.
     public mutating func clearFilters() {
-        filter = Filter()
+        filter = Filter(range: filter.range)
+        refilter()
+    }
+
+    /// Makes the list the index of a run of steps, or of the whole turn again.
+    public mutating func setRange(_ range: ClosedRange<Int>?) {
+        guard range != filter.range else { return }
+        filter.range = range
         refilter()
     }
 
@@ -577,6 +595,7 @@ public struct NeuralStepList: Sendable, Equatable {
         indices.reserveCapacity(steps.count)
         for index in steps.indices {
             let step = steps[index]
+            if let range = filter.range, !range.contains(index + 1) { continue }
             if !filter.zones.isEmpty, !filter.zones.contains(step.zone) { continue }
             if filter.failedOnly, step.status != .failed { continue }
             if !query.isEmpty, !Self.matches(step, row: rows[index], query: query) { continue }

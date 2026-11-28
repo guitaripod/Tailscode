@@ -574,7 +574,7 @@ final class BrainListView: NSView, BrainKeyTaker {
     func clearAllFilters() {
         guard let host else { return }
         var guardCount = 0
-        while host.model.browseState.list.filter.isActive, guardCount < 4 {
+        while host.model.browseState.list.filter.isChosen, guardCount < 4 {
             host.browse(.key(.escape), grabFocus: false)
             guardCount += 1
         }

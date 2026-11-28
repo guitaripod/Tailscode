@@ -27,11 +27,13 @@ extension BrainOpenView {
         }
         var effects: [NeuralBrowse.Effect] = []
         var account: [NeuralBrowse.AccountEffect] = []
+        let chosenBefore = browseModel?.pinnedStep
         store.mutate(turnID) {
             effects = $0.browse(action)
             account = $0.drainAccountEffects()
         }
         apply(effects)
+        gistFollow(from: chosenBefore)
         for effect in account {
             switch effect {
             case .goToAsk: actions?.goToAsk(turnID)
@@ -289,6 +291,17 @@ extension BrainOpenView {
         store?.interaction(for: turnID).listExpanded = value
         Theme.Haptics.selection()
         refreshAll(fromBrowse: true)
+    }
+
+    /// A step chosen while the turn in short stands where the steps would (a node of the head is
+    /// the way there) opens the sheet of the stage that holds it, at that step. The telling lists
+    /// no step, so a choice made behind it showed nothing at all.
+    private func gistFollow(from before: String?) {
+        guard metrics.isPhone, showsShort, let model = browseModel, let chosen = model.pinnedStep,
+            chosen != before, let pane = gistPane, !pane.isWriting,
+            let row = pane.row(holding: chosen, in: model.stepList)
+        else { return }
+        presentReader(focus: chosen, stage: row, of: pane.rows.count)
     }
 
     /// "N more steps": a short list opens where it stands, a long one in the sheet.

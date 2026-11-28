@@ -416,7 +416,7 @@ public struct NeuralAccount: Sendable, Equatable {
     /// asked for (a stage in which nothing was said would open on nothing); what they narrowed
     /// themselves narrows a stage as it narrows the turn.
     public func isNarrowed(by list: NeuralStepList) -> Bool {
-        scope == nil ? list.isFiltered : list.isNarrowed
+        scope == nil ? list.filter.isChosen : list.isNarrowed
     }
 
     private static func gapBetween(_ a: Date?, _ b: Date?) -> TimeInterval {
