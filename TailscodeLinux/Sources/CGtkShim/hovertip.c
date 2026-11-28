@@ -201,18 +201,53 @@ static void tip_watch_window(GtkWidget *widget) {
     g_signal_connect(root, "notify::is-active", G_CALLBACK(tip_on_inactive), NULL);
 }
 
+/// How far below the pointer's point the cursor's own picture reaches, so help placed under the
+/// pointer starts below the arrow and never behind it.
+static int tip_clearance(void) {
+    int size = 24;
+    GtkSettings *settings = gtk_settings_get_default();
+    if (settings) g_object_get(settings, "gtk-cursor-theme-size", &size, NULL);
+    if (size <= 0) size = 24;
+    return size * 9 / 10 + 4;
+}
+
+/// How far to slide help sideways so its card stays inside the window it is drawn for, when it
+/// would otherwise hang off an edge: a button at the window's left edge is centred on, and a
+/// centred card is wider than the room to its left.
+static int tip_slide(GtkWidget *widget, double centre) {
+    GtkNative *native = gtk_widget_get_native(widget);
+    if (!native || !GTK_IS_WINDOW(native)) return 0;
+    int minimum = 0, natural = 0;
+    gtk_widget_measure(tip.label, GTK_ORIENTATION_HORIZONTAL, -1, &minimum, &natural, NULL, NULL);
+    double half = (natural + 24) / 2.0;
+    double at = centre;
+    graphene_point_t in = GRAPHENE_POINT_INIT((float)centre, 0), out = in;
+    if (gtk_widget_compute_point(widget, GTK_WIDGET(native), &in, &out)) at = out.x;
+    double room = gtk_widget_get_width(GTK_WIDGET(native));
+    if (at - half < 6) return (int)(6 - (at - half));
+    if (at + half > room - 6) return (int)((room - 6) - (at + half));
+    return 0;
+}
+
 /// Where the help sits: under a small widget, centred on it; under the pointer for a big one — a
 /// row, a card, a strip of chart — where the widget's own edge is nowhere near where the eye is.
+/// Either way it starts below the cursor's arrow, and on a screen with no room below it goes
+/// above the point instead.
 static void tip_place(GtkWidget *widget) {
     int width = gtk_widget_get_width(widget);
     int height = gtk_widget_get_height(widget);
+    int clearance = tip_clearance();
     GdkRectangle rect;
+    int slide;
     if (width > TIP_BIG_WIDTH || height > TIP_BIG_HEIGHT) {
-        rect = (GdkRectangle){(int)tip.pointer_x, (int)tip.pointer_y, 1, 1};
-        gtk_popover_set_offset(GTK_POPOVER(tip.popover), 0, 14);
+        rect = (GdkRectangle){(int)tip.pointer_x, (int)tip.pointer_y, 1, clearance};
+        slide = tip_slide(widget, tip.pointer_x);
+        gtk_popover_set_offset(GTK_POPOVER(tip.popover), slide, 4);
     } else {
-        rect = (GdkRectangle){0, 0, width, height};
-        gtk_popover_set_offset(GTK_POPOVER(tip.popover), 0, 6);
+        int reach = (int)tip.pointer_y + clearance - 6;
+        rect = (GdkRectangle){0, 0, width, reach > height ? reach : height};
+        slide = tip_slide(widget, width / 2.0);
+        gtk_popover_set_offset(GTK_POPOVER(tip.popover), slide, 6);
     }
     gtk_popover_set_pointing_to(GTK_POPOVER(tip.popover), &rect);
 }
