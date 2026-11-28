@@ -72,6 +72,25 @@ Asked for: "can megatron neatly show what everything it did cost in the user's l
 - **Currency.** Every such figure is an estimate priced in dollars, so the currency is presentation: `Money.estimate` converts at the European Central Bank's daily reference rate and writes the amount as the locale writes money. It is the one home (`SessionSpend.money` goes through it), so the status bar under a Megatron never says dollars while the Megatron says euros. The currency is the region's unless chosen (Currency, beside the answer's figures in Settings on all three clients): the desk this was written on is an English system in Finland, where the region says dollars. No table, a table ten days old, or a currency the bank does not quote, is dollars as they were always written. A balance a provider bills is never converted.
 - **Said first.** The step list starts on what the agent said (`NeuralListStart`): it is the outline, and it is what the screenshot the first ask came with was already filtered to by hand. The SAID chip's last state is the start from then on, a turn in which nothing was said starts on every step, and the start is not a filter the header warns of. A stage puts the cursor on its first step the list is showing and never clears the start to do it.
 
+## 6b. On the iPhone XS, and what it holds (2026-11-28, third ask)
+
+Asked for: "test on the xs and optimize memory use". Run on the real phone (iOS 18.7, an optimised development build, the demo world with a 174-step turn, Pennyroyal over the tailnet writing the telling in 1.7 s), footprint as the system charges it:
+
+| State | MB |
+| --- | --- |
+| Home | 48 |
+| Chat, Megatron closed | 47 to 50 |
+| Megatron open, telling off | 52 to 55 |
+| Megatron open, telling on | 55 to 58 |
+| The same after four opens and closes of a second chat | 58, then 55 after a memory warning |
+
+- **The telling is its pixels.** `BrainGistView` is one drawn bitmap, 359 by 352 points at three pixels a point: 4.5 MB, measured by clearing it and drawing it again in place. The five step rows it stands in for are 2 MB, so a telling costs about 3 MB while it is on screen. Cutting the empty strips out of that bitmap would save another 1.4 MB for a view made of a dozen parts; not done.
+- **Nothing hidden keeps a picture.** The telling let go of its bitmap only when its view died, so a person who went to the steps held both. `BrainGistView`, `BrainStepRowView` and the compact list now drop a bitmap when they are hidden and draw it again when shown. A list reuses its rows, and a row put aside held 0.4 MB.
+- **The desk held every turn.** `NeuralGistDesk` kept the `NeuralBrainModel` of each of the 48 turns it remembers, long after the chat that owned them was closed. It now holds a turn's model only while a telling is owed and the turn was shown in the last two minutes (`fresh`), reads it once for the asking, and lets every one go on a memory warning (`relieve`).
+- **A stage with nothing said opened on nothing.** Found by pressing one on the phone: under the said-only start an account shows the notes only, so a stage in which nothing was said was an empty sheet, and an empty story on Linux and the Mac. `NeuralAccount.isNarrowed(by:)` is the one rule: a stage is told whole under the start, and what a person narrowed themselves still narrows it.
+- **The head's textures** are 7.2 MB of ASTC while a head is on screen and already the size the picture needs; left alone.
+- Checked with `TAILSCODE_GIST=off` or `<address>|<model>|<name>` (a writer for one launch that never touches the phone's settings), `TAILSCODE_NEURAL_SHOW=<seconds>` (the open row brought to the top for a screenshot), the walk verbs `told`, `stage`, and `TAILSCODE_BENCH_OPEN` for `CHAT_LIFETIME_OK` with the telling on.
+
 ## 7. What this leaves room for
 
 The head's window is a stage with a character in it; the telling is what the character says. When a 3D model stands there with a name the person gave it, the sentence is its speech, the stages are its journey, the byline is its name, and `NeuralGistPane` already hands a client all three as plain values. Nothing here knows the head is a head.

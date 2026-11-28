@@ -70,6 +70,8 @@ public final class NeuralGistDesk: @unchecked Sendable {
     public static let shared = NeuralGistDesk()
     public static let didChange = Notification.Name("tailscode.neuralGist.didChange")
     public static let heldTurns = 48
+    /// How long after a surface last showed a turn its telling may still be asked for.
+    public static let fresh: TimeInterval = 120
 
     public enum Phase: Sendable, Equatable {
         /// Nothing is told: the switch is off, no model is filed, the turn is short, or the model
@@ -91,8 +93,12 @@ public final class NeuralGistDesk: @unchecked Sendable {
         public static let none = Reading(phase: .none, gist: nil, writer: "", place: "", refreshing: false)
     }
 
+    /// A turn as a surface last showed it. The model is held only while a telling of it is still
+    /// owed, because a model holds every step of its turn and every line its tools printed:
+    /// once the turn is told as it stands, or nobody has shown it for `fresh` seconds, it goes,
+    /// and what is left of a turn here is its telling.
     private struct Wanted {
-        var model: NeuralBrainModel
+        var model: NeuralBrainModel?
         var answer: String?
         var prompt: String?
         var stepCount: Int
@@ -124,6 +130,7 @@ public final class NeuralGistDesk: @unchecked Sendable {
     private var readiness: (key: String, ready: Bool, at: Date)?
     private var sent = 0
     private var writerMemo: ImageGenHelper??
+    private var pinned: ImageGenHelper?
     private var muted = false
     private var settingsObserver: NSObjectProtocol?
 
@@ -160,8 +167,19 @@ public final class NeuralGistDesk: @unchecked Sendable {
         set { lock.withLock { muted = newValue } }
     }
 
+    /// Names the writer for this launch whatever the device has filed: a debug launch on a phone
+    /// whose own settings must not be written to. Nil gives the choice back to the settings.
+    public func pinWriter(_ helper: ImageGenHelper?) {
+        lock.withLock {
+            pinned = helper
+            writerMemo = nil
+        }
+        forgetAll()
+    }
+
     public var writer: ImageGenHelper? {
         if isMuted { return nil }
+        if let pinned = lock.withLock({ pinned }) { return YourModelStore.isPrivate(pinned) ? pinned : nil }
         if let held = lock.withLock({ writerMemo }) { return held }
         var found: ImageGenHelper?
         if isOn(), let helper = helper(), YourModelStore.isPrivate(helper) { found = helper }
@@ -207,20 +225,20 @@ public final class NeuralGistDesk: @unchecked Sendable {
     /// policy says a telling is due.
     public func want(key: String, model: NeuralBrainModel, answer: String? = nil, prompt: String? = nil) {
         let stepCount = model.steps.count
-        guard NeuralGistPolicy.worthTelling(stepCount: stepCount) else { return }
-        let running = model.turn.outcome == .running
         let now = clock()
-        let state = lock.withLock { () -> (same: Bool, placed: Bool) in
-            guard let entry = entries[key] else { return (false, false) }
-            entries[key]?.wanted.at = now
-            return (entry.wanted.stepCount == stepCount && entry.wanted.running == running, entry.placed)
-        }
-        if state.placed { return }
-        let same = state.same
-        if same {
-            consider(key)
+        guard NeuralGistPolicy.worthTelling(stepCount: stepCount) else {
+            lock.withLock { shed(now) }
             return
         }
+        let running = model.turn.outcome == .running
+        let state = lock.withLock { () -> (told: Bool, placed: Bool) in
+            shed(now)
+            guard let entry = entries[key] else { return (false, false) }
+            entries[key]?.wanted.at = now
+            let told = entry.gist.map { $0.stepCount == stepCount && $0.running == running } ?? false
+            return (told, entry.placed)
+        }
+        if state.placed || state.told { return }
         guard writer != nil else { return }
         let wanted = Wanted(
             model: model, answer: answer, prompt: prompt, stepCount: stepCount, running: running, at: now)
@@ -244,7 +262,7 @@ public final class NeuralGistDesk: @unchecked Sendable {
     /// a check's, which must read the same on every run. It is shown as it is and never told again.
     public func place(_ gist: NeuralGist, for key: String, model: NeuralBrainModel) {
         let wanted = Wanted(
-            model: model, answer: nil, prompt: nil, stepCount: model.steps.count,
+            model: nil, answer: nil, prompt: nil, stepCount: model.steps.count,
             running: model.turn.outcome == .running, at: clock())
         lock.withLock {
             entries[key]?.wake?.cancel()
@@ -287,6 +305,24 @@ public final class NeuralGistDesk: @unchecked Sendable {
         return YourModelPick.asksOnItsOwn(found)
     }
 
+    /// Lets go of every model nobody has shown for `fresh` seconds. Called with the lock held.
+    private func shed(_ now: Date) {
+        for (key, entry) in entries where entry.wanted.model != nil && !entry.inFlight {
+            if now.timeIntervalSince(entry.wanted.at) > Self.fresh { entries[key]?.wanted.model = nil }
+        }
+    }
+
+    /// Lets go of every turn's model at once: the system asked for memory back. A telling still
+    /// owed is asked for again the next time its turn is shown.
+    public func relieve() {
+        lock.withLock {
+            for (key, entry) in entries where !entry.inFlight { entries[key]?.wanted.model = nil }
+        }
+    }
+
+    /// How many turns' models are held, for a check.
+    public var heldModels: Int { lock.withLock { entries.values.filter { $0.wanted.model != nil }.count } }
+
     private func evict() {
         guard entries.count > Self.heldTurns else { return }
         let oldest = entries.filter { !$0.value.inFlight }.min { $0.value.wanted.at < $1.value.wanted.at }
@@ -306,6 +342,10 @@ public final class NeuralGistDesk: @unchecked Sendable {
         }
         let verdict = lock.withLock { () -> Verdict in
             guard var entry = entries[key], !entry.inFlight else { return .nothing }
+            guard entry.wanted.model != nil, now.timeIntervalSince(entry.wanted.at) <= Self.fresh else {
+                entries[key]?.wanted.model = nil
+                return .nothing
+            }
             let since = entry.lastAt.map { now.timeIntervalSince($0) }
             let told = entry.gist.map { (stepCount: $0.stepCount, running: $0.running) }
             let due = NeuralGistPolicy.isDue(
@@ -360,6 +400,9 @@ public final class NeuralGistDesk: @unchecked Sendable {
             if let gist {
                 entry.gist = gist
                 entry.failed = false
+                if gist.stepCount == entry.wanted.stepCount, gist.running == entry.wanted.running {
+                    entry.wanted.model = nil
+                }
             } else {
                 entry.failed = true
             }
@@ -373,14 +416,7 @@ public final class NeuralGistDesk: @unchecked Sendable {
     }
 
     private func write(_ key: String) async -> NeuralGist? {
-        guard let helper = writer, let wanted = lock.withLock({ entries[key]?.wanted }) else { return nil }
-        guard await ready(helper) else { return nil }
-        let account = wanted.model.account(answer: wanted.answer, prompt: wanted.prompt)
-        let told = lock.withLock { entries[key]?.gist }
-        guard
-            let ask = NeuralGistAsk.make(
-                account: account, stepCount: wanted.stepCount, running: wanted.running,
-                prompt: wanted.prompt, answer: wanted.answer, told: told),
+        guard let helper = writer, await ready(helper), let ask = ask(for: key),
             let url = URL(string: helper.address + "/v1/chat/completions")
         else { return nil }
         lock.withLock {
@@ -392,6 +428,20 @@ public final class NeuralGistDesk: @unchecked Sendable {
         return ask.read(
             completion: data, writer: helper.label ?? helper.model,
             place: YourModelWords.inSentence(YourModelWords.machine(of: helper)), at: clock())
+    }
+
+    /// What the model is asked for a turn as it was last shown. The turn's model is read here and
+    /// let go of before the request is out, so nothing of the transcript is held while a slow
+    /// model writes.
+    private func ask(for key: String) -> NeuralGistAsk? {
+        let held = lock.withLock { () -> (wanted: Wanted, told: NeuralGist?)? in
+            entries[key].map { ($0.wanted, $0.gist) }
+        }
+        guard let held, let model = held.wanted.model else { return nil }
+        return NeuralGistAsk.make(
+            account: model.account(answer: held.wanted.answer, prompt: held.wanted.prompt),
+            stepCount: held.wanted.stepCount, running: held.wanted.running, prompt: held.wanted.prompt,
+            answer: held.wanted.answer, told: held.told)
     }
 
     private func ready(_ helper: ImageGenHelper) async -> Bool {

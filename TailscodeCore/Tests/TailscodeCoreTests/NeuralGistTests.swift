@@ -324,6 +324,26 @@ struct NeuralGistTests {
         #expect(desk.reading(for: "a").gist?.running == true)
     }
 
+    @Test func aTurnsModelIsHeldOnlyWhileATellingIsOwed() async {
+        let transport = GistTransport()
+        let clock = GistClock()
+        let desk = desk(transport, clock)
+        desk.want(key: "a", model: G.model(), answer: "All shipped.")
+        #expect(await eventually { desk.reading(for: "a").phase == .told })
+        #expect(await eventually { desk.heldModels == 0 })
+        desk.want(key: "a", model: G.model(), answer: "All shipped.")
+        #expect(desk.heldModels == 0)
+        transport.answer = G.completion(#"{"title": "T", "now": "Working.", "stages": [{"says": "Looked around", "to": 8}, {"says": "Building it", "to": 16}]}"#)
+        desk.want(key: "b", model: G.model(rounds: 4, running: true))
+        #expect(await eventually { desk.reading(for: "b").phase == .told })
+        desk.want(key: "b", model: G.model(rounds: 6, running: true))
+        #expect(desk.heldModels == 1)
+        clock.advance(NeuralGistDesk.fresh + 1)
+        desk.want(key: "c", model: G.model(rounds: 2))
+        #expect(desk.heldModels == 0)
+        #expect(desk.requests == 2)
+    }
+
     @Test func aModelThatIsNotInMemoryIsNeverAsked() async {
         let transport = GistTransport()
         let desk = desk(transport, GistClock(), ready: false)

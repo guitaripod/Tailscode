@@ -92,6 +92,16 @@ extension SelfTest {
         try expect(
             view.model.pinnedStep == second.firstStepID,
             "the cursor is on the stage's first step, so the list and the head show where it is")
+        var saidOnly = view.model
+        NeuralListStart.override = .said
+        _ = saidOnly.browse(.zoneChip(.say, solo: true))
+        let underStart = AccountEntries.make(model: saidOnly, account: account.account, list: saidOnly.stepList)
+        NeuralListStart.override = .everything
+        let narrowed = AccountEntries.make(model: saidOnly, account: account.account, list: saidOnly.stepList)
+        try expect(
+            saidOnly.stepList.isSaidOnly && underStart.count == account.entries.count
+                && narrowed.count <= underStart.count,
+            "a stage is told whole where the list starts on what was said (\(underStart.count) of \(account.entries.count)), and a person's own SAID filter still narrows it (\(narrowed.count))")
         _ = account.gistKey(.character("]"))
         _ = brainPump(0.3)
         try expect(account.gistScope == pane.rows[2].numbers, "] opens the stage after")

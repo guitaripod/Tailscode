@@ -322,6 +322,7 @@ extension ChatViewController {
         openTimed = true
         #if DEBUG
             startBrainWalk()
+            startBrainShow()
             startBrainChecks()
         #endif
         MidgarLog.info(

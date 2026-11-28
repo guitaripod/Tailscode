@@ -87,7 +87,7 @@ enum BrainAccountItems {
     static func make(
         model: NeuralBrainModel, account: NeuralAccount, list: NeuralStepList
     ) -> [BrainAccountItem] {
-        let filtered = list.isFiltered
+        let filtered = account.isNarrowed(by: list)
         var out: [BrainAccountItem] = []
         if !filtered, let asked = account.asked {
             out.append(BrainAccountItem(id: askedID, kind: .asked(asked)))

@@ -38,6 +38,16 @@ final class BrainGistView: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// A telling nobody is shown keeps no picture of itself: its words are one bitmap as wide as
+    /// the screen (4.5 MB on a phone at three pixels a point), which goes while the steps stand
+    /// in its place and is drawn again when it comes back.
+    override var isHidden: Bool {
+        didSet {
+            guard isHidden != oldValue else { return }
+            if isHidden { layer.contents = nil } else { setNeedsDisplay() }
+        }
+    }
+
     private static func sentenceText(_ pane: NeuralGistPane, fallback: String) -> NSAttributedString {
         NSAttributedString(
             string: pane.isWriting ? fallback : pane.now,

@@ -100,7 +100,7 @@ enum AccountEntries {
     /// The ask is not among them: it is pinned above the story, and so are the Now line and a
     /// running turn's plan.
     static func make(model: NeuralBrainModel, account: NeuralAccount, list: NeuralStepList) -> [AccountEntry] {
-        let filtered = list.isFiltered
+        let filtered = account.isNarrowed(by: list)
         var out: [AccountEntry] = []
         if !filtered, let asked = account.asked { out.append(AccountEntry(id: asked.id, kind: .asked(asked))) }
         if !filtered, !account.header.isRunning, let plan = account.plan {

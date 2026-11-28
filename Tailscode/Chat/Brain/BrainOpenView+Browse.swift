@@ -1,3 +1,4 @@
+import MidgarCore
 import TailscodeCore
 import UIKit
 
@@ -212,7 +213,13 @@ extension BrainOpenView {
         let answer = store.answerText(for: turnID)
         NeuralGistDesk.shared.want(
             key: turnID, model: model, answer: answer.isEmpty ? nil : answer, prompt: store.promptText(for: turnID))
-        gistPane = NeuralGistPane.make(reading: NeuralGistDesk.shared.reading(for: turnID), model: model)
+        let next = NeuralGistPane.make(reading: NeuralGistDesk.shared.reading(for: turnID), model: model)
+        if next?.phase != gistPane?.phase || next?.rows.count != gistPane?.rows.count {
+            MidgarLog.info(
+                "megatron in short: \(next.map { $0.isWriting ? "writing" : "told in \($0.rows.count) stages" } ?? "none") of \(model.steps.count) steps",
+                category: .performance)
+        }
+        gistPane = next
     }
 
     func gistChanged() {

@@ -217,6 +217,24 @@ extension ChatViewController {
             }
         }
 
+        /// `TAILSCODE_NEURAL_SHOW=<seconds>` brings the open brain's row to the top of the page that
+        /// long after the chat appears, so a device nobody can touch shows it to a screenshot.
+        func startBrainShow() {
+            guard let delay = ProcessInfo.processInfo.environment["TAILSCODE_NEURAL_SHOW"].flatMap(Double.init) else {
+                return
+            }
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard let self else { return }
+                let open = self.rowsByID.values.first { row in
+                    if case .brain(let brain) = row.content { return brain.isOpen }
+                    return false
+                }
+                guard let open, let path = self.dataSource.indexPath(for: open.id) else { return }
+                self.collectionView.scrollToItem(at: path, at: .top, animated: false)
+            }
+        }
+
         /// Runs `TAILSCODE_NEURAL_CHECK`'s claims against this conversation's brains.
         func startBrainChecks() {
             guard BrainChecks.isEnabled || BrainChecks.isPerf else { return }

@@ -42,6 +42,14 @@ final class BrainCompactListView: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// The rows keep no pictures while the turn in short stands where the list would.
+    override var isHidden: Bool {
+        didSet {
+            guard isHidden != oldValue else { return }
+            for view in stepViews where !view.isHidden { view.setResting(isHidden) }
+        }
+    }
+
     func configure(metrics: NeuralStageMetrics) {
         let height = CGFloat(metrics.listRowHeight)
         let next = max(height / CGFloat(NeuralStageMetrics.phoneRowHeight), 1)

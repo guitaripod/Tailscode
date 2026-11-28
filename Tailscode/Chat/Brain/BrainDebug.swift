@@ -102,6 +102,23 @@ enum BrainDebug {
         #endif
     }
 
+    /// `TAILSCODE_GIST=off` tells no turn in short for this launch, and
+    /// `TAILSCODE_GIST=<address>|<model>|<name>` has that model tell them, whatever the phone has
+    /// filed and without writing to it: how a telling is priced on a device that is somebody's.
+    @MainActor static func stageGist() {
+        #if DEBUG
+            guard let value = environment["TAILSCODE_GIST"], !value.isEmpty else { return }
+            if value == "off" {
+                NeuralGistDesk.shared.isMuted = true
+                return
+            }
+            let parts = value.split(separator: "|").map(String.init)
+            guard parts.count >= 2 else { return }
+            NeuralGistDesk.shared.pinWriter(
+                ImageGenHelper(address: parts[0], model: parts[1], label: parts.count > 2 ? parts[2] : nil))
+        #endif
+    }
+
     /// Whether the launch asked for an open brain of its own, which every pass then re-reads.
     static var overridesOpen: Bool {
         #if DEBUG
@@ -133,7 +150,8 @@ enum BrainDebug {
     /// by name), `chip` (a zone's filter by its key digit), `dive` (a zone name: think, sense,
     /// act, shell, delegate, say), `replay` (a fraction to hold the playhead at), `prov` (the nth
     /// chip), `rows`, `share`, `scroll` (points to scroll the account), `reader` (points to scroll the open reader of a
-    /// whole file to, `y` or `y,x`) and `unfold` (the nth work line).
+    /// whole file to, `y` or `y,x`), `unfold` (the nth work line), `told` (the steps where the turn
+    /// in short stands, `0` for the telling back) and `stage` (the sheet of the nth stage).
     static var walk: [(delay: Double, verb: String, value: String)] {
         #if DEBUG
             guard let script = environment["TAILSCODE_NEURAL_WALK"] else { return [] }

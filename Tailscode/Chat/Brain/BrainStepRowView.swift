@@ -33,6 +33,20 @@ final class BrainStepRowView: UIControl {
 
     private(set) var row: NeuralStepList.Row?
     private var context = Context()
+
+    /// A row nobody is shown keeps no picture of itself, and is drawn again when it is shown: a
+    /// list reuses its rows, and one it has put aside held a bitmap as wide as the screen.
+    override var isHidden: Bool {
+        didSet {
+            guard isHidden != oldValue else { return }
+            setResting(isHidden)
+        }
+    }
+
+    /// Lets go of the row's picture, or has it drawn again: for a list that is itself hidden.
+    func setResting(_ resting: Bool) {
+        if resting { layer.contents = nil } else { setNeedsDisplay() }
+    }
     private let copyButton = UIButton(type: .system)
     private var pointerInside = false
     private var copiedUntil: CFTimeInterval = 0

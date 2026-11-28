@@ -90,7 +90,7 @@ struct MoneyTests {
     }
 }
 
-@Suite("What a turn cost, and where its list starts")
+@Suite("What a turn cost, and where its list starts", .serialized)
 struct NeuralTurnCostTests {
     typealias NF = NeuralTurnFixtures
 
@@ -164,6 +164,23 @@ struct NeuralTurnCostTests {
         #expect(whole.rows[1].facts(of: 2).hasSuffix("~$1.50"))
         let lump = try pane(model(everyMessagePriced: false))
         #expect(lump.rows.allSatisfy { $0.costUSD == nil })
+    }
+
+    @Test func aStageIsToldWholeUnderTheSaidOnlyStart() throws {
+        let was = NeuralListStart.override
+        defer { NeuralListStart.override = was }
+        NeuralListStart.override = .said
+        var turn = model(everyMessagePriced: true)
+        turn.startList()
+        #expect(turn.stepList.isSaidOnly)
+        let whole = turn.account(answer: "Done.")
+        #expect(whole.isNarrowed(by: turn.stepList))
+        #expect(whole.scope == nil)
+        #expect(!whole.scoped(to: 2...4).isNarrowed(by: turn.stepList))
+        let other = try #require(turn.stepList.zoneChips.first { $0.zone != .say && $0.count > 0 })
+        turn.browse(.zoneChip(other.zone, solo: false))
+        #expect(turn.stepList.isNarrowed)
+        #expect(turn.account(answer: nil).scoped(to: 2...4).isNarrowed(by: turn.stepList))
     }
 
     @Test func aListStartsOnWhatWasSaidUnlessThePersonChoseEverySte() {

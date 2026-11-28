@@ -241,6 +241,8 @@ public struct NeuralAccount: Sendable, Equatable {
     public let live: LiveStep?
 
     private let owner: [String: Int]
+    /// The run of steps this account is the part of, when a stage of a telling opened it.
+    public let scope: ClosedRange<Int>?
     private let stepIndex: [String: Int]
     private let saidOrder: [(index: Int, itemIndex: Int)]
 
@@ -350,8 +352,9 @@ public struct NeuralAccount: Sendable, Equatable {
         items: [Item], needsYou: Bool, answer: Answer?, speaker: String, utteranceCount: Int,
         thoughtCount: Int, revision: Int, header: Header, asked: Asked?, plan: Plan?,
         result: Result?, live: LiveStep?, owner: [String: Int], stepIndex: [String: Int],
-        saidOrder: [(index: Int, itemIndex: Int)]
+        saidOrder: [(index: Int, itemIndex: Int)], scope: ClosedRange<Int>? = nil
     ) {
+        self.scope = scope
         self.header = header
         self.asked = asked
         self.plan = plan
@@ -405,7 +408,15 @@ public struct NeuralAccount: Sendable, Equatable {
             items: kept, needsYou: needsYou, answer: numbers.upperBound >= stepIndex.count ? answer : nil,
             speaker: speaker, utteranceCount: order.count, thoughtCount: thoughts, revision: revision,
             header: header, asked: nil, plan: nil, result: nil, live: liveInside, owner: owners,
-            stepIndex: stepIndex, saidOrder: order)
+            stepIndex: stepIndex, saidOrder: order, scope: numbers)
+    }
+
+    /// Whether what `list` hides is left out of this account. A stage a person opened is told
+    /// whole under the said-only start, which is where a list begins and not something they
+    /// asked for (a stage in which nothing was said would open on nothing); what they narrowed
+    /// themselves narrows a stage as it narrows the turn.
+    public func isNarrowed(by list: NeuralStepList) -> Bool {
+        scope == nil ? list.isFiltered : list.isNarrowed
     }
 
     private static func gapBetween(_ a: Date?, _ b: Date?) -> TimeInterval {

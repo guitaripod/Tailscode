@@ -1,5 +1,6 @@
 import CodingAgentKit
 import MidgarCore
+import TailscodeCore
 import UIKit
 
 /// What the app lets go of when the system asks for memory back.
@@ -14,6 +15,7 @@ enum MemoryRelief {
     static func install() {
         #if DEBUG
             MemoryWatch.install()
+            BrainDebug.stageGist()
         #endif
         NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main
@@ -28,6 +30,7 @@ enum MemoryRelief {
         AttachmentImageStore.shared.relieve()
         LinkPreviewStore.shared.relieve()
         HeldTranscripts.release()
+        NeuralGistDesk.shared.relieve()
         MidgarLog.info(
             "memory warning: render, highlight, picture and link caches and held transcripts released",
             category: .lifecycle

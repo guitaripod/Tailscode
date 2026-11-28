@@ -49,6 +49,8 @@ import UIKit
             case "legend": browse(.key(.character("?")))
             case "more": openMore()
             case "less": setListExpanded(false)
+            case "told": setGistTold(value != "0")
+            case "stage": openStage((Int(value) ?? 1) - 1)
             case "sheet": presentReader(focus: step(value))
             case "dismiss": dismissReader()
             case "dump":

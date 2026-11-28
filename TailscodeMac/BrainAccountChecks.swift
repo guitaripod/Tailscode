@@ -106,6 +106,18 @@ enum BrainAccountChecks {
                 && numbers.allSatisfy { second.numbers.contains($0) } && !account.scroll.isHidden,
             "Enter opens the stage: only its part of the account (\(numbers) in \(second.from)-\(second.to))")
         try check(row.model.pinnedStep == second.firstStepID, "the cursor is on the stage's first step")
+        var saidOnly = row.model
+        let start = NeuralListStart.override
+        NeuralListStart.override = .said
+        _ = saidOnly.browse(.zoneChip(.say, solo: true))
+        let underStart = AccountEntries.make(model: saidOnly, account: account.account, list: saidOnly.stepList)
+        NeuralListStart.override = .everything
+        let narrowed = AccountEntries.make(model: saidOnly, account: account.account, list: saidOnly.stepList)
+        NeuralListStart.override = start
+        try check(
+            saidOnly.stepList.isSaidOnly && underStart.count == account.entries.count
+                && narrowed.count <= underStart.count,
+            "a stage is told whole where the list starts on what was said (\(underStart.count) of \(account.entries.count)), and a person's own SAID filter still narrows it (\(narrowed.count))")
         _ = account.gistKey(.character("]"))
         settle(row)
         try check(account.gistScope == pane.rows[2].numbers, "] opens the stage after")
