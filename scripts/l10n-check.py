@@ -9,6 +9,15 @@
   scripts/l10n-check.py --add FILE.json  add translations: {"English key": {"de": "...", "es": "...", ...}} for the ten
                                          non-English languages (the key itself is the English text)
   scripts/l10n-check.py --roundtrip      prove the writer reproduces the committed catalog byte for byte
+  scripts/l10n-check.py --pending        print the keys the Swift sources use that the catalog lacks as a JSON object
+                                         ({"English key": ""}), the input of a translation packet; with --since REV,
+                                         only the keys gained since REV
+  scripts/l10n-check.py --glossary FILE  print, for the keys in FILE, every short catalog entry whose English occurs in
+                                         one of them, with its translations ({"term": {"de": "...", ...}}), so a new
+                                         string is translated with the words the catalog already uses
+
+scripts/l10n-delegate.sh runs the three together: pending keys and their glossary go to a delegate answer packet, and
+its answer comes back through --add.
 
 Every key goes in with extractionState manual, the way the existing entries are, and the file is serialised so the
 entries already there stay byte-identical (check with `git diff --patience`).
@@ -25,19 +34,20 @@ CATALOG = ROOT / "Resources" / "Localizable.xcstrings"
 LANGUAGES = ["de", "en", "es", "fr", "it", "ja", "ko", "pl", "pt-BR", "zh-Hans", "zh-Hant", "sv", "da", "nb", "fi", "is"]
 SOURCES = ["Tailscode", "Shared", "TailscodeCore/Sources", "TailscodeLinux/Sources", "TailscodeMac", "TailscodeWidget", "TailscodeNSE", "TailscodeNotificationUI"]
 LITERAL = re.compile(r'Localized\.text\(\s*"((?:[^"\\]|\\.)*)"')
+UNICODE_ESCAPE = re.compile(r"\\u\{([0-9a-fA-F]{1,6})\}")
 SPECIFIER = re.compile(r"%(?:\d+\$)?(?:ll|l|hh|h)?[@dDfsSuUxXcC]|%%")
 
 
 def unescape(literal: str):
     if "\\(" in literal:
         return None
-    return (
+    plain = (
         literal.replace('\\"', '"')
         .replace("\\n", "\n")
         .replace("\\t", "\t")
         .replace("\\\\", "\\")
-        .replace("\\u{2026}", "…")
     )
+    return UNICODE_ESCAPE.sub(lambda match: chr(int(match.group(1), 16)), plain)
 
 
 def used_keys():
@@ -138,6 +148,32 @@ def add(path: str):
     return 0
 
 
+def pending(since: str = None):
+    strings = load()["strings"]
+    wanted = keys_since(since) if since else used_keys()
+    print(json.dumps({key: "" for key in sorted(wanted) if key not in strings}, indent=2, ensure_ascii=False))
+    return 0
+
+
+def is_term(key: str):
+    return len(key) >= 3 and len(key.split()) <= 3 and key[:1].isalpha() and not SPECIFIER.search(key)
+
+
+def glossary(path: str):
+    strings = load()["strings"]
+    wanted = " \n ".join(json.loads(Path(path).read_text(encoding="utf-8"))).casefold()
+    terms = {}
+    for key, entry in strings.items():
+        if not is_term(key) or not re.search(rf"(?<!\w){re.escape(key.casefold())}(?!\w)", wanted):
+            continue
+        localizations = entry.get("localizations", {})
+        values = {language: localizations.get(language, {}).get("stringUnit", {}).get("value") for language in LANGUAGES if language != "en"}
+        if all(values.values()):
+            terms[key] = values
+    print(json.dumps(dict(sorted(terms.items())), indent=2, ensure_ascii=False))
+    return 0
+
+
 def roundtrip():
     original = CATALOG.read_text(encoding="utf-8")
     same = dump(json.loads(original)) == original
@@ -151,9 +187,15 @@ if __name__ == "__main__":
     parser.add_argument("--add")
     parser.add_argument("--roundtrip", action="store_true")
     parser.add_argument("--since")
+    parser.add_argument("--pending", action="store_true")
+    parser.add_argument("--glossary")
     args = parser.parse_args()
     if args.roundtrip:
         sys.exit(roundtrip())
+    if args.pending:
+        sys.exit(pending(args.since))
+    if args.glossary:
+        sys.exit(glossary(args.glossary))
     if args.add:
         sys.exit(add(args.add))
     sys.exit(check(args.strict, args.since))
