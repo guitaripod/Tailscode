@@ -83,7 +83,7 @@ final class QuickAskStage: @unchecked Sendable {
             let layered: UnsafeMutablePointer<GtkWindow> = ptr(window)
             gtk_layer_init_for_window(layered)
             gtk_layer_set_namespace(layered, "tailscode-quick-ask")
-            gtk_layer_set_layer(layered, GTK_LAYER_SHELL_LAYER_OVERLAY)
+            gtk_layer_set_layer(layered, Self.layer)
             gtk_layer_set_keyboard_mode(layered, GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE)
             for edge in [
                 GTK_LAYER_SHELL_EDGE_LEFT, GTK_LAYER_SHELL_EDGE_RIGHT, GTK_LAYER_SHELL_EDGE_TOP,
@@ -102,6 +102,17 @@ final class QuickAskStage: @unchecked Sendable {
         let me = Unmanaged.passUnretained(self).toOpaque()
         tailscode_stage_backdrop(room, card, Self.backdrop, me)
     }
+
+    #if HAS_LAYER_SHELL
+        /// KWin stacks the overlay layer above its own popups, so on KDE the quick ask stands in
+        /// the top layer, where a popup the person calls over it — the clipboard history, a
+        /// panel's menu — is drawn above it, and an app full screen still falls behind it once the
+        /// quick ask takes the keyboard. Elsewhere a full-screen window covers the top layer, and
+        /// the launchers and clipboard pickers there stand in the overlay beside it.
+        private static var layer: GtkLayerShellLayer {
+            SummonDesktop.detect() == .kde ? GTK_LAYER_SHELL_LAYER_TOP : GTK_LAYER_SHELL_LAYER_OVERLAY
+        }
+    #endif
 
     /// The overlay keeps a window group of its own. A dialog open over the app — the welcome, the
     /// settings — holds the grab of the group it belongs to, and an overlay sharing that group
