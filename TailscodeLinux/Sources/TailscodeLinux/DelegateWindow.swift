@@ -83,6 +83,9 @@ final class DelegateWindow: @unchecked Sendable {
     private var currentHost = ""
     private var knownHosts: [String] = []
     private var serverNames: [String: String] = [:]
+    private var profilesByHost: [String: ConnectionProfile] = [:]
+    /// Opens a new chat on a server with a request written out and unsent; the main window sets it.
+    nonisolated(unsafe) static var askAgent: (@Sendable (ConnectionProfile, String) -> Void)?
     private var pendingHandoff: DelegateHandoff?
     private var askedPatch: Set<String> = []
     private var pendingScroll: Double?
@@ -187,7 +190,9 @@ final class DelegateWindow: @unchecked Sendable {
     private func adopt(profiles: [ConnectionProfile]) {
         var hosts = Set(profiles.compactMap { $0.baseURL.host })
         for profile in profiles {
-            if let host = profile.baseURL.host { serverNames[host] = profile.name }
+            guard let host = profile.baseURL.host else { continue }
+            serverNames[host] = profile.name
+            if profilesByHost[host] == nil { profilesByHost[host] = profile }
         }
         for access in DelegateAccessStore.all() { hosts.insert(access.host) }
         knownHosts = hosts.sorted()
@@ -337,8 +342,10 @@ final class DelegateWindow: @unchecked Sendable {
             return
         }
         let board = self.board
+        let rehearsing = DelegateRehearsal.isRehearsal(host: currentHost)
+        if rehearsing { gtk_box_append(ptr(root), rehearsalBlock()) }
         let top = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
-        let compose = Gtk.button(DelegateEntryPoint.newPacketTitle, css: ["suggested-action", "dg-primary"]) { [weak self] in
+        let compose = Gtk.button(DelegateEntryPoint.newPacketTitle, css: rehearsing ? ["dg-primary"] : ["suggested-action", "dg-primary"]) { [weak self] in
             Gtk.onMain { [weak self] in self?.presentComposer() }
         }
         gtk_widget_set_valign(compose, GTK_ALIGN_CENTER)
@@ -407,11 +414,59 @@ final class DelegateWindow: @unchecked Sendable {
         }
     }
 
-    /// The road from a machine with no dispatcher to one that answers: the commands, each with a
-    /// copy button and a line saying what it does.
+    /// The scripted machine's lesson: what a packet is in three lines and the one bold button
+    /// that sends the practice packet, whose run teaches the rest as it climbs.
+    private func rehearsalBlock() -> UnsafeMutablePointer<GtkWidget> {
+        let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 8)
+        gtk_box_append(ptr(column), DelegateRunView.sectionLabel(DelegateRehearsal.title))
+        for (index, point) in DelegateRehearsal.points.enumerated() {
+            gtk_box_append(ptr(column), Gtk.label("\(index + 1).  \(point)", css: "row-title", wrap: true, selectable: false))
+        }
+        let row = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 12)
+        let practice = Gtk.button(DelegateRehearsal.practiceTitle, css: ["suggested-action", "dg-primary"]) { [weak self] in
+            Gtk.onMain { [weak self] in self?.send(DelegateRehearsal.practice) }
+        }
+        gtk_widget_set_valign(practice, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(row), practice)
+        let detail = Gtk.label(DelegateRehearsal.practiceDetail, css: "dg-note", wrap: true, selectable: false)
+        gtk_widget_set_hexpand(detail, 1)
+        gtk_widget_set_valign(detail, GTK_ALIGN_CENTER)
+        gtk_box_append(ptr(row), detail)
+        gtk_box_append(ptr(column), row)
+        return column
+    }
+
+    /// The setup request handed to the agent already on that machine, unsent; with no main window
+    /// to take it, it goes to the clipboard and the window says so.
+    private func askAgent(_ profile: ConnectionProfile) {
+        guard let ask = Self.askAgent else {
+            Gtk.copyToClipboard(DelegateSetup.brief)
+            toast(DelegateSetup.copied)
+            return
+        }
+        ask(profile, DelegateSetup.brief)
+    }
+
+    /// The road from a machine with no dispatcher to one that answers: the agent on it asked to do
+    /// the work, a scripted run to watch first, then the commands, each with a copy button and a
+    /// line saying what it does.
     private func setupBlock() -> UnsafeMutablePointer<GtkWidget> {
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 10)
         gtk_box_append(ptr(column), DelegateRunView.sectionLabel(DelegateSetup.title))
+        let easy = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
+        if let profile = profilesByHost[currentHost] {
+            let ask = Gtk.button(DelegateSetup.askTitle(agent: profile.backend.displayName), css: ["suggested-action", "pill"]) { [weak self] in
+                Gtk.onMain { [weak self] in self?.askAgent(profile) }
+            }
+            Tip.set(ask, DelegateSetup.askDetail)
+            gtk_box_append(ptr(easy), ask)
+        }
+        let watch = Gtk.button(DelegateSetup.rehearseTitle, css: ["flat", "pill"]) { [weak self] in
+            Gtk.onMain { [weak self] in self?.selectHost(DelegateRehearsal.host) }
+        }
+        Tip.set(watch, DelegateSetup.rehearseDetail)
+        gtk_box_append(ptr(easy), watch)
+        gtk_box_append(ptr(column), easy)
         gtk_box_append(ptr(column), Gtk.label(DelegateSetup.lead(serverName: name(of: currentHost)), css: "row-detail", wrap: true, selectable: false))
         for step in DelegateSetup.steps {
             let block = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 2)

@@ -214,6 +214,8 @@ public struct DelegateRunReading: Sendable, Equatable {
     public var timeline: [DelegateStoryLine]
     public var repo: String
     public var isLive: Bool
+    /// One sentence saying what the run is showing right now, on the scripted machine only.
+    public var teaching: String?
 
     public static var timelineTitle: String { Localized.text("What happened") }
     public static var replayMenuTitle: String { Localized.text("Run again on…") }
@@ -243,6 +245,7 @@ public struct DelegateRunReading: Sendable, Equatable {
         lhs.runID == rhs.runID && lhs.facts == rhs.facts && lhs.badge == rhs.badge && lhs.lead == rhs.lead
             && lhs.ladder == rhs.ladder && lhs.primary == rhs.primary && lhs.secondary == rhs.secondary
             && lhs.files == rhs.files && lhs.timeline == rhs.timeline && lhs.filesTitle == rhs.filesTitle
+            && lhs.teaching == rhs.teaching
     }
 
     private static func facts(story: DelegateRunStory, run: DelegateRun?) -> String {

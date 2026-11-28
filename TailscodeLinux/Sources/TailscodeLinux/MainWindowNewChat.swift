@@ -31,6 +31,13 @@ extension MainWindow {
     @discardableResult
     func presentDelegate(host: String? = nil, handoff: DelegateHandoff? = nil) -> DelegateWindow {
         DelegateWindow.chatSource = { [weak self] in self?.entries ?? SessionListCache.load() }
+        DelegateWindow.askAgent = { [weak self] profile, draft in
+            Gtk.onMain { [weak self] in
+                guard let self else { return }
+                self.createChat(on: profile, directory: nil, carrying: CarryPlan(brief: nil, draft: draft))
+                if let window = self.window { gtk_window_present(ptr(window)) }
+            }
+        }
         return DelegateWindow.present(parent: window, host: host, handoff: handoff)
     }
 

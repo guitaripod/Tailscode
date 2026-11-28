@@ -25,8 +25,9 @@ public enum DelegateEntryPoint {
 
 /// What Pro has to do with it. Delegation is part of Pro on the clients that sell it, and its least
 /// prominent selling point: it is listed last among the perks and never leads the general sheet.
-/// A free copy that walks into it sees the board's pitch and the purchase, never a half of the
-/// feature. A client with no store sells nothing and gates nothing.
+/// A free copy that walks into it meets the rehearsal (`DelegateRehearsal`): the whole feature on
+/// the scripted machine, with the purchase one press away. A client with no store sells nothing
+/// and gates nothing.
 public enum DelegateProGate {
     /// The demo world is not the real thing, so it is never behind the price: a copy that has not
     /// bought Pro still works the whole feature on the scripted machines.

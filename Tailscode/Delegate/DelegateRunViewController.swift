@@ -9,9 +9,11 @@ import UIKit
 /// fold, so reopening a run finds it exactly where it is.
 @MainActor
 final class DelegateRunViewController: UIViewController {
-    private enum Section: Hashable { case head, lead, ladder, primary, actions, files, timeline }
+    private enum Section: Hashable { case head, teaching, unlock, lead, ladder, primary, actions, files, timeline }
     private enum Item: Hashable {
         case head
+        case teaching
+        case unlock
         case lead
         case ladder
         case primary
@@ -37,10 +39,13 @@ final class DelegateRunViewController: UIViewController {
 
     private var board: DelegateBoard { desk.board(host: host, serverName: serverName) }
 
-    init(host: String, serverName: String, runID: String) {
+    private let unlocks: DelegateBoardViewController.Unlock?
+
+    init(host: String, serverName: String, runID: String, unlocks: DelegateBoardViewController.Unlock? = nil) {
         self.host = host
         self.serverName = serverName
         self.runID = runID
+        self.unlocks = unlocks
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -182,6 +187,14 @@ final class DelegateRunViewController: UIViewController {
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         snapshot.appendSections([.head])
         snapshot.appendItems([.head], toSection: .head)
+        if reading.teaching != nil {
+            snapshot.appendSections([.teaching])
+            snapshot.appendItems([.teaching], toSection: .teaching)
+        }
+        if unlocks != nil, !reading.isLive, !DelegateGate.isOpen {
+            snapshot.appendSections([.unlock])
+            snapshot.appendItems([.unlock], toSection: .unlock)
+        }
         if reading.lead != nil {
             snapshot.appendSections([.lead])
             snapshot.appendItems([.lead], toSection: .lead)
@@ -211,7 +224,7 @@ final class DelegateRunViewController: UIViewController {
         let grew = snapshot.itemIdentifiers.count > existing.count
         dataSource.apply(snapshot, animatingDifferences: false)
         refreshHeaders()
-        if grew, followsBottom, reading.isLive, let last = reading.timeline.last,
+        if grew, followsBottom, reading.isLive, reading.teaching == nil, let last = reading.timeline.last,
             let indexPath = dataSource.indexPath(for: .line(last.seq))
         {
             collectionView.scrollToItem(at: indexPath, at: .bottom, animated: true)
@@ -270,6 +283,22 @@ final class DelegateRunViewController: UIViewController {
             accessories.append(.disclosureIndicator())
             cell.accessories = accessories
             cell.accessibilityLabel = [file.path, file.counts].compactMap { $0 }.joined(separator: ", ")
+        case .unlock:
+            content.text = DelegateRehearsal.unlockTitle(serverName: unlocks?.serverName ?? serverName)
+            content.textProperties.color = Theme.Color.accent
+            content.textProperties.font = Theme.Ramp.font(.rowTitle)
+            content.secondaryText = DelegateRehearsal.unlockDetail
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.secondaryTextProperties.numberOfLines = 0
+            content.image = UIImage(systemName: DelegateEntryPoint.symbol)
+            content.imageProperties.tintColor = Theme.Color.accent
+            cell.accessories = [.disclosureIndicator()]
+        case .teaching:
+            content.text = reading.teaching
+            content.textProperties.numberOfLines = 0
+            content.textProperties.font = Theme.Ramp.font(.cardBody)
+            content.image = UIImage(systemName: "graduationcap.fill")
+            content.imageProperties.tintColor = Theme.Color.special
         case .head, .lead, .ladder, .primary, .line:
             break
         }
@@ -467,7 +496,7 @@ final class DelegateRunViewController: UIViewController {
 extension DelegateRunViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath) -> Bool {
         switch dataSource.itemIdentifier(for: indexPath) {
-        case .action, .replay, .file: return true
+        case .action, .replay, .file, .unlock: return true
         default: return false
         }
     }
@@ -481,6 +510,9 @@ extension DelegateRunViewController: UICollectionViewDelegate {
             if let action = action(id) { perform(action.kind, source: source) }
         case .file(let path):
             if let file = reading?.files.first(where: { $0.path == path }) { openFile(file) }
+        case .unlock:
+            guard let unlocks else { break }
+            DelegateGate.unlock(from: self, host: unlocks.host, serverName: unlocks.serverName)
         default:
             break
         }

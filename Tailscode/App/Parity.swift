@@ -95,6 +95,7 @@ enum ParityManifest {
         case .delegateNotices: return .implemented("watchNotices")
         case .delegateReview: return .implemented("DelegateApplyCheck.cautions")
         case .delegateHandoff: return .implemented("DelegateGate.compose(from: self, handoff")
+        case .delegateRehearsal: return .implemented("DelegateRehearsal.practice")
         case .vimComposer: return .notApplicable("a touch composer; modal editing presumes a hardware keyboard")
         case .slashCompletion: return .implemented("SlashCommandPalette")
         case .slashDispatch: return .implemented("SlashDispatch.decide")

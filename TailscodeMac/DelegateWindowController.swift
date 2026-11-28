@@ -51,6 +51,7 @@ final class DelegateWindowController: NSWindowController {
     private let passwordButton = RowKit.ActionButton(title: Localized.text("Password…"), action: {})
     private let newButton = RowKit.ActionButton(title: DelegateEntryPoint.newPacketTitle, action: {})
     private let boardColumn = NSStackView()
+    private let rehearsalColumn = NSStackView()
     private let setupColumn = NSStackView()
     private let ladderColumn = NSStackView()
     private let runsColumn = NSStackView()
@@ -69,13 +70,26 @@ final class DelegateWindowController: NSWindowController {
     /// Where the window reads this Mac's chats from — the sidebar's live listing — so the composer
     /// can offer their repositories and an apply can see a chat working under it.
     var chatSource: () -> [SessionEntry] = { [] }
+    /// Opens a new chat on a server with the dispatcher's setup request written out and unsent.
+    var askAgent: (ConnectionProfile) -> Void = { _ in }
+    /// The price, asked from the rehearsal by a copy that has not bought Pro.
+    var onUnlock: () -> Void = {}
+    /// Whether the window is showing only the scripted machine, to a copy without Pro.
+    private var rehearsing = false
+    private var practicing = false
 
     /// What each part of the board was last built from. A live run streams its story in as desk
     /// changes several times a second, and a part rebuilt from identical rows costs a layout pass
     /// and a flicker for nothing, so a part is rebuilt only when what it shows has changed — and
     /// every one of them when the theme or the type scale did, since both are baked into the rows.
     private struct Drawn: Equatable {
+        struct Rehearsal: Equatable {
+            var unlock: String?
+            var practicing: Bool
+        }
+
         var scale: CGFloat
+        var rehearsal: Rehearsal?
         var setup: String?
         var rungs: [DelegateBoardRung]
         var promotions: [String]
@@ -111,7 +125,7 @@ final class DelegateWindowController: NSWindowController {
 
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
-        MidgarSignals.noteScreen("delegate", feature: true)
+        MidgarSignals.noteScreen(MacDelegateGate.isOpen ? "delegate" : "delegate-rehearsal", feature: true)
     }
 
     func present() {
@@ -163,7 +177,18 @@ final class DelegateWindowController: NSWindowController {
             guard let host = profile.baseURL.host, seen.insert(host).inserted else { return nil }
             return (host, profile.name)
         }
-        for kept in hosts where seen.insert(kept.host).inserted { found.append(kept) }
+        if MacDelegateGate.isOpen {
+            if rehearsing {
+                rehearsing = false
+                selectedHost = nil
+                selectedRun = nil
+                hosts = []
+            }
+            for kept in hosts where seen.insert(kept.host).inserted { found.append(kept) }
+        } else {
+            rehearsing = true
+            found = [(DelegateRehearsal.host, DelegateRehearsal.serverName)]
+        }
         hosts = found
         serverPopup.removeAllItems()
         serverPopup.addItems(withTitles: hosts.map { "\($0.name) · \($0.host)" })
@@ -250,6 +275,11 @@ final class DelegateWindowController: NSWindowController {
         statusBadge.setContentHuggingPriority(.required, for: .horizontal)
         boardColumn.addArrangedSubview(statusRow)
 
+        rehearsalColumn.orientation = .vertical
+        rehearsalColumn.alignment = .leading
+        rehearsalColumn.spacing = MacTheme.Spacing.s
+        boardColumn.addArrangedSubview(rehearsalColumn)
+
         setupColumn.orientation = .vertical
         setupColumn.alignment = .leading
         setupColumn.spacing = MacTheme.Spacing.xs
@@ -267,7 +297,7 @@ final class DelegateWindowController: NSWindowController {
         emptyLabel.textColor = MacTheme.Color.secondaryLabel
         boardColumn.addArrangedSubview(runsColumn)
 
-        for view in [statusRow, setupColumn, ladderColumn, runsColumn] {
+        for view in [statusRow, rehearsalColumn, setupColumn, ladderColumn, runsColumn] {
             view.widthAnchor.constraint(equalTo: boardColumn.widthAnchor, constant: -2 * MacTheme.Spacing.l).isActive = true
         }
         let boardScroll = MacDialogs.scrollColumn(holding: boardColumn)
@@ -368,12 +398,19 @@ final class DelegateWindowController: NSWindowController {
         statusLabel.textColor = board.statusTone == .quiet ? MacTheme.Color.secondaryLabel : board.statusTone.color
         statusBadge.show(board.phase == .checking ? ActivityKind.connecting.icon : nil, spoken: nil)
         newButton.isEnabled = board.isReady
+        let onRehearsal = DelegateRehearsal.isRehearsal(host: host)
+        newButton.bezelColor = onRehearsal ? nil : MacTheme.Color.accent
         noteLabel.stringValue = board.note ?? ""
         noteLabel.isHidden = board.note == nil
         passwordButton.isHidden = desk.isDemo(host: host) || !(reach.asksForPassword || desk.password(host: host) != nil)
 
         let next = Drawn(
             scale: MacTheme.UIScale.factor,
+            rehearsal: board.isReady && onRehearsal
+                ? Drawn.Rehearsal(
+                    unlock: MacDelegateGate.isOpen ? nil : (ServerDirectory.shared.profiles.first?.name ?? ""),
+                    practicing: practicing)
+                : nil,
             setup: DelegateSetup.isWanted(board: board, known: desk.isKnown(host: host)) ? serverName : nil,
             rungs: board.isReady ? board.ladderRungs : [],
             promotions: board.isReady ? board.promotions : [],
@@ -386,6 +423,9 @@ final class DelegateWindowController: NSWindowController {
             return last[keyPath: part] != next[keyPath: part]
         }
 
+        if changed(\.rehearsal) {
+            rebuildRehearsal(next.rehearsal)
+        }
         if changed(\.setup) {
             rebuildSetup(wanted: next.setup != nil)
         }
@@ -409,11 +449,85 @@ final class DelegateWindowController: NSWindowController {
         }
     }
 
+    /// The scripted machine's lesson: what a packet is in three lines, the one bold button that
+    /// sends the practice packet, and for a copy without Pro the way on to its own machine.
+    private func rebuildRehearsal(_ rehearsal: Drawn.Rehearsal?) {
+        rehearsalColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        rehearsalColumn.isHidden = rehearsal == nil
+        guard let rehearsal else { return }
+        rehearsalColumn.addArrangedSubview(MacDialogs.sectionHeader(DelegateRehearsal.title.uppercased()))
+        for (index, point) in DelegateRehearsal.points.enumerated() {
+            let line = RowKit.wrapping("\(index + 1).  \(point)", font: MacTheme.Ramp.font(.rowTitle), color: MacTheme.Color.label)
+            rehearsalColumn.addArrangedSubview(line)
+            line.widthAnchor.constraint(equalTo: rehearsalColumn.widthAnchor).isActive = true
+        }
+        let practice = RowKit.ActionButton(title: DelegateRehearsal.practiceTitle) { [weak self] in self?.sendPractice() }
+        practice.bezelColor = MacTheme.Color.accent
+        practice.controlSize = .large
+        practice.isEnabled = !rehearsal.practicing
+        rehearsalColumn.addArrangedSubview(practice)
+        let detail = RowKit.wrapping(DelegateRehearsal.practiceDetail, font: MacTheme.Ramp.font(.rowNote), color: MacTheme.Color.secondaryLabel)
+        rehearsalColumn.addArrangedSubview(detail)
+        detail.widthAnchor.constraint(equalTo: rehearsalColumn.widthAnchor).isActive = true
+        guard let name = rehearsal.unlock else { return }
+        let title = name.isEmpty ? ProOffer.title : DelegateRehearsal.unlockTitle(serverName: name)
+        let unlock = RowKit.ActionButton(title: title) { [weak self] in self?.onUnlock() }
+        unlock.controlSize = .large
+        rehearsalColumn.addArrangedSubview(unlock)
+        let requirement = RowKit.wrapping(DelegateRehearsal.unlockDetail, font: MacTheme.Ramp.font(.rowNote), color: MacTheme.Color.secondaryLabel)
+        rehearsalColumn.addArrangedSubview(requirement)
+        requirement.widthAnchor.constraint(equalTo: rehearsalColumn.widthAnchor).isActive = true
+    }
+
+    /// One press sends the practice packet and opens its run beside the board, where the lesson is.
+    private func sendPractice() {
+        guard !practicing, let host = selectedHost else { return }
+        practicing = true
+        render()
+        Task { [weak self] in
+            guard let self else { return }
+            if let runID = try? await self.desk.start(DelegateRehearsal.practice, host: host) {
+                MidgarSignals.noteScreen("delegate-practice", feature: true)
+                self.select(runID: runID)
+            }
+            self.practicing = false
+            self.render()
+        }
+    }
+
+    /// The scripted machine joins the list and takes the window, for a copy that may use its own
+    /// machine and wants to see a packet climb before installing anything.
+    private func rehearse() {
+        if !hosts.contains(where: { $0.host == DelegateRehearsal.host }) {
+            hosts.append((DelegateRehearsal.host, DelegateRehearsal.serverName))
+            serverPopup.addItem(withTitle: "\(DelegateRehearsal.serverName) · \(DelegateRehearsal.host)")
+        }
+        serverPopup.selectItem(at: hosts.firstIndex { $0.host == DelegateRehearsal.host } ?? 0)
+        select(host: DelegateRehearsal.host)
+    }
+
     private func rebuildSetup(wanted: Bool) {
         setupColumn.arrangedSubviews.forEach { $0.removeFromSuperview() }
         setupColumn.isHidden = !wanted
         guard wanted else { return }
         setupColumn.addArrangedSubview(MacDialogs.sectionHeader(DelegateSetup.title.uppercased()))
+        var easy: [NSView] = []
+        if let profile = ServerDirectory.shared.profiles.first(where: { $0.baseURL.host == selectedHost }) {
+            let ask = RowKit.ActionButton(title: DelegateSetup.askTitle(agent: profile.backend.displayName)) { [weak self] in
+                self?.askAgent(profile)
+            }
+            ask.bezelColor = MacTheme.Color.accent
+            ask.toolTip = DelegateSetup.askDetail
+            easy.append(ask)
+        }
+        let watch = RowKit.ActionButton(title: DelegateSetup.rehearseTitle) { [weak self] in self?.rehearse() }
+        watch.toolTip = DelegateSetup.rehearseDetail
+        easy.append(watch)
+        let easyRow = NSStackView(views: easy)
+        easyRow.orientation = .horizontal
+        easyRow.spacing = MacTheme.Spacing.s
+        setupColumn.addArrangedSubview(easyRow)
+        setupColumn.setCustomSpacing(MacTheme.Spacing.m, after: easyRow)
         let lead = RowKit.wrapping(DelegateSetup.lead(serverName: serverName), font: MacTheme.Ramp.font(.rowNote), color: MacTheme.Color.secondaryLabel)
         setupColumn.addArrangedSubview(lead)
         lead.widthAnchor.constraint(equalTo: setupColumn.widthAnchor).isActive = true

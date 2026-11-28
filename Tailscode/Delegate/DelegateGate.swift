@@ -5,8 +5,8 @@ import TailscodeCore
 import UIKit
 
 /// The one door into delegation on the phone. Every road — the server row, Home's button — comes
-/// through here, so a free copy meets the Pro sheet with the delegate pitch and a Pro copy meets
-/// the board, and neither meets half of the feature.
+/// through here, so a Pro copy meets its machine's board and a free copy meets the scripted
+/// machine, where a practice packet climbs before the price is named (`DelegateRehearsal`).
 @MainActor
 enum DelegateGate {
     static let desk = DelegateDesk(secrets: KeychainSecretStore())
@@ -43,14 +43,18 @@ enum DelegateGate {
     static func open(from presenter: UIViewController, host: String, serverName: String) {
         Theme.Haptics.tap()
         guard isOpen else {
-            MidgarLog.info("delegate gated: free copy, presenting Pro", category: .ui)
-            ProUpgradeViewController.present(from: presenter, lead: .delegate, placement: .feature) { [weak presenter] in
-                guard let presenter, isOpen else { return }
-                open(from: presenter, host: host, serverName: serverName)
-            }
+            MidgarLog.info("delegate: free copy, opening the rehearsal", category: .ui)
+            show(
+                DelegateBoardViewController(
+                    host: DelegateRehearsal.host, serverName: DelegateRehearsal.serverName,
+                    unlocks: DelegateBoardViewController.Unlock(host: host, serverName: serverName)),
+                from: presenter)
             return
         }
-        let board = DelegateBoardViewController(host: host, serverName: serverName)
+        show(DelegateBoardViewController(host: host, serverName: serverName), from: presenter)
+    }
+
+    private static func show(_ board: DelegateBoardViewController, from presenter: UIViewController) {
         if let nav = presenter.navigationController {
             nav.pushViewController(board, animated: true)
         } else {
@@ -60,16 +64,39 @@ enum DelegateGate {
         }
     }
 
+    /// The scripted machine for a copy that already may use its own: the setup road's "see it
+    /// work first".
+    static func rehearse(from presenter: UIViewController) {
+        Theme.Haptics.tap()
+        show(DelegateBoardViewController(host: DelegateRehearsal.host, serverName: DelegateRehearsal.serverName), from: presenter)
+    }
+
+    /// The price, asked after the rehearsal: Pro with the delegate pitch, and once it is open the
+    /// rehearsal gives way to the person's own machine.
+    static func unlock(from presenter: UIViewController, host: String, serverName: String) {
+        Theme.Haptics.tap()
+        ProUpgradeViewController.present(from: presenter, lead: .delegate, placement: .feature) { [weak presenter] in
+            guard let presenter, isOpen, let nav = presenter.navigationController else { return }
+            var stack = nav.viewControllers
+            if let rehearsal = stack.firstIndex(where: { ($0 as? DelegateBoardViewController)?.isRehearsal == true }) {
+                stack.removeSubrange(rehearsal...)
+            }
+            stack.append(DelegateBoardViewController(host: host, serverName: serverName))
+            nav.setViewControllers(stack, animated: true)
+        }
+    }
+
     /// A chat handing its task over: the composer opens on that chat's machine with the goal and
     /// the chat's directory already written, behind the same gate as every other door.
     static func compose(from presenter: UIViewController, handoff: DelegateHandoff) {
         Theme.Haptics.tap()
         guard isOpen else {
-            MidgarLog.info("delegate handoff gated: free copy, presenting Pro", category: .ui)
-            ProUpgradeViewController.present(from: presenter, lead: .delegate, placement: .feature) { [weak presenter] in
-                guard let presenter, isOpen else { return }
-                compose(from: presenter, handoff: handoff)
-            }
+            MidgarLog.info("delegate handoff: free copy, opening the rehearsal", category: .ui)
+            show(
+                DelegateBoardViewController(
+                    host: DelegateRehearsal.host, serverName: DelegateRehearsal.serverName,
+                    unlocks: DelegateBoardViewController.Unlock(host: handoff.host, serverName: handoff.serverName)),
+                from: presenter)
             return
         }
         let board = desk.board(host: handoff.host, serverName: handoff.serverName)
@@ -92,8 +119,11 @@ enum DelegateGate {
         presenter.present(nav, animated: true)
     }
 
-    static func showRun(_ runID: String, host: String, serverName: String, from presenter: UIViewController) {
-        let run = DelegateRunViewController(host: host, serverName: serverName, runID: runID)
+    static func showRun(
+        _ runID: String, host: String, serverName: String, from presenter: UIViewController,
+        unlocks: DelegateBoardViewController.Unlock? = nil
+    ) {
+        let run = DelegateRunViewController(host: host, serverName: serverName, runID: runID, unlocks: unlocks)
         if let nav = presenter.navigationController {
             nav.pushViewController(run, animated: true)
         } else {

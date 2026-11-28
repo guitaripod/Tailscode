@@ -1,4 +1,5 @@
 import CodingAgentKit
+import CodingAgentKitApple
 import MidgarCore
 import TailscodeCore
 import UIKit
@@ -8,7 +9,16 @@ import UIKit
 /// of the reader. Every word is `DelegateBoard`'s; this controller draws rows and forwards taps.
 @MainActor
 final class DelegateBoardViewController: UIViewController {
+    /// The machine a rehearsal was opened in place of, which the price leads on to.
+    struct Unlock {
+        let host: String
+        let serverName: String
+    }
+
     private enum Section: Hashable {
+        case rehearsal
+        case practice
+        case unlock
         case top
         case setup
         case ladder
@@ -19,6 +29,11 @@ final class DelegateBoardViewController: UIViewController {
         case compose
         case status
         case password
+        case point(Int)
+        case practice
+        case unlock
+        case setupAsk
+        case setupRehearse
         case setupLead
         case setup(String)
         case ladder
@@ -39,10 +54,16 @@ final class DelegateBoardViewController: UIViewController {
     private let ladderView = DelegateBoardLadderView()
     private lazy var composeView = makeComposeView()
     private let composeNote = UILabel()
+    private let unlocks: Unlock?
+    var isRehearsal: Bool { unlocks != nil }
+    private var practicing = false
+    private let practiceButton = PrimaryButton(title: DelegateRehearsal.practiceTitle)
+    private lazy var practiceView = makePracticeView()
 
-    init(host: String, serverName: String) {
+    init(host: String, serverName: String, unlocks: Unlock? = nil) {
         self.host = host
         self.serverName = serverName
+        self.unlocks = unlocks
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -68,7 +89,7 @@ final class DelegateBoardViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        MidgarSignals.noteScreen("delegate", feature: true)
+        MidgarSignals.noteScreen(unlocks == nil ? "delegate" : "delegate-rehearsal", feature: true)
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -113,6 +134,10 @@ final class DelegateBoardViewController: UIViewController {
                 self.composeNote.text = demoNote ?? DelegateEntryPoint.subtitle
                 cell.place(self.composeView)
                 cell.backgroundConfiguration = .clear()
+            case .practice:
+                self.practiceButton.setLoading(self.practicing)
+                cell.place(self.practiceView)
+                cell.backgroundConfiguration = .clear()
             case .ladder:
                 self.ladderView.show(self.board.ladderRungs)
                 cell.place(self.ladderView)
@@ -130,7 +155,7 @@ final class DelegateBoardViewController: UIViewController {
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) { collectionView, indexPath, item in
             switch item {
             case .run: return collectionView.dequeueConfiguredReusableCell(using: runCell, for: indexPath, item: item)
-            case .compose, .ladder: return collectionView.dequeueConfiguredReusableCell(using: hostCell, for: indexPath, item: item)
+            case .compose, .ladder, .practice: return collectionView.dequeueConfiguredReusableCell(using: hostCell, for: indexPath, item: item)
             default: return collectionView.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: item)
             }
         }
@@ -141,7 +166,8 @@ final class DelegateBoardViewController: UIViewController {
 
     /// The primary action and the board's one standing sentence, outside any card.
     private func makeComposeView() -> UIView {
-        let button = PrimaryButton(title: DelegateEntryPoint.newPacketTitle)
+        let button: UIButton = DelegateRehearsal.isRehearsal(host: host)
+            ? SecondaryButton(title: DelegateEntryPoint.newPacketTitle) : PrimaryButton(title: DelegateEntryPoint.newPacketTitle)
         button.configuration?.image = UIImage(systemName: "plus")
         button.configuration?.imagePadding = Theme.Spacing.s
         button.addAction(UIAction { [weak self] _ in self?.compose() }, for: .touchUpInside)
@@ -150,6 +176,24 @@ final class DelegateBoardViewController: UIViewController {
         composeNote.numberOfLines = 0
         composeNote.adjustsFontForContentSizeCategory = true
         let column = UIStackView(arrangedSubviews: [button, composeNote])
+        column.axis = .vertical
+        column.spacing = Theme.Spacing.s
+        return column
+    }
+
+    /// The rehearsal's one bold action, with what pressing it costs said under it: nothing.
+    private func makePracticeView() -> UIView {
+        practiceButton.configuration?.image = UIImage(systemName: "play.fill")
+        practiceButton.configuration?.imagePadding = Theme.Spacing.s
+        practiceButton.addAction(UIAction { [weak self] _ in self?.sendPractice() }, for: .touchUpInside)
+        let detail = UILabel()
+        detail.text = DelegateRehearsal.practiceDetail
+        detail.font = Theme.Ramp.font(.cardBody)
+        detail.textColor = Theme.Color.secondaryLabel
+        detail.numberOfLines = 0
+        detail.textAlignment = .center
+        detail.adjustsFontForContentSizeCategory = true
+        let column = UIStackView(arrangedSubviews: [practiceButton, detail])
         column.axis = .vertical
         column.spacing = Theme.Spacing.s
         return column
@@ -179,6 +223,8 @@ final class DelegateBoardViewController: UIViewController {
         case .top:
             if #available(iOS 26.0, *) { return nil }
             return board.subtitle
+        case .rehearsal: return DelegateRehearsal.title
+        case .practice, .unlock: return nil
         case .setup: return DelegateSetup.title
         case .ladder: return DelegateComposerWords.ladderLabel
         case .runs(let kind): return sections.first { $0.kind == kind }?.title
@@ -191,13 +237,24 @@ final class DelegateBoardViewController: UIViewController {
         if #available(iOS 26.0, *) { navigationItem.subtitle = board.subtitle }
         sections = board.isReady ? board.sections() : []
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
+        if board.isReady, DelegateRehearsal.isRehearsal(host: host) {
+            snapshot.appendSections([.rehearsal])
+            snapshot.appendItems(DelegateRehearsal.points.indices.map { .point($0) }, toSection: .rehearsal)
+            snapshot.appendSections([.practice])
+            snapshot.appendItems([.practice], toSection: .practice)
+            if unlocks != nil, !DelegateGate.isOpen {
+                snapshot.appendSections([.unlock])
+                snapshot.appendItems([.unlock], toSection: .unlock)
+            }
+        }
         snapshot.appendSections([.top])
         var top: [Item] = board.isReady ? [.compose] : [.status]
         if reach.asksForPassword || (desk.password(host: host) != nil && !desk.isDemo(host: host)) { top.append(.password) }
         snapshot.appendItems(top, toSection: .top)
         if DelegateSetup.isWanted(board: board, known: desk.isKnown(host: host)) {
             snapshot.appendSections([.setup])
-            snapshot.appendItems([.setupLead] + DelegateSetup.steps.map { .setup($0.id) }, toSection: .setup)
+            let easy: [Item] = hostProfile == nil ? [.setupRehearse] : [.setupAsk, .setupRehearse]
+            snapshot.appendItems(easy + [.setupLead] + DelegateSetup.steps.map { .setup($0.id) }, toSection: .setup)
         }
         if !board.tiers.isEmpty {
             snapshot.appendSections([.ladder])
@@ -239,6 +296,40 @@ final class DelegateBoardViewController: UIViewController {
             content.image = UIImage(systemName: DelegateEntryPoint.symbol)
             content.imageProperties.tintColor = (reach == .unknown ? board.statusTone : reach.tone).color
             if board.phase == .checking { cell.accessories = [.working()] }
+        case .point(let index):
+            content.text = DelegateRehearsal.points[safe: index]
+            content.textProperties.numberOfLines = 0
+            content.textProperties.font = Theme.Ramp.font(.cardBody)
+            content.image = UIImage(systemName: "\(index + 1).circle.fill")
+            content.imageProperties.tintColor = Theme.Color.accent
+        case .unlock:
+            content.text = DelegateRehearsal.unlockTitle(serverName: unlocks?.serverName ?? serverName)
+            content.textProperties.color = Theme.Color.accent
+            content.textProperties.font = Theme.Ramp.font(.rowTitle)
+            content.secondaryText = DelegateRehearsal.unlockDetail
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.secondaryTextProperties.numberOfLines = 0
+            content.image = UIImage(systemName: DelegateEntryPoint.symbol)
+            content.imageProperties.tintColor = Theme.Color.accent
+            cell.accessories = [.disclosureIndicator()]
+        case .setupAsk:
+            content.text = DelegateSetup.askTitle(agent: hostProfile?.backend.displayName ?? serverName)
+            content.textProperties.color = Theme.Color.accent
+            content.secondaryText = DelegateSetup.askDetail
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.secondaryTextProperties.numberOfLines = 0
+            content.image = UIImage(systemName: "sparkles")
+            content.imageProperties.tintColor = Theme.Color.accent
+            cell.accessories = [.disclosureIndicator()]
+        case .setupRehearse:
+            content.text = DelegateSetup.rehearseTitle
+            content.textProperties.color = Theme.Color.accent
+            content.secondaryText = DelegateSetup.rehearseDetail
+            content.secondaryTextProperties.color = Theme.Color.secondaryLabel
+            content.secondaryTextProperties.numberOfLines = 0
+            content.image = UIImage(systemName: "play.circle")
+            content.imageProperties.tintColor = Theme.Color.accent
+            cell.accessories = [.disclosureIndicator()]
         case .setupLead:
             content.text = DelegateSetup.lead(serverName: serverName)
             content.textProperties.numberOfLines = 0
@@ -279,7 +370,7 @@ final class DelegateBoardViewController: UIViewController {
             content.text = board.emptyLine
             content.textProperties.color = Theme.Color.secondaryLabel
             content.textProperties.numberOfLines = 0
-        case .compose, .ladder, .run:
+        case .compose, .ladder, .run, .practice:
             break
         }
         cell.contentConfiguration = content
@@ -313,6 +404,56 @@ final class DelegateBoardViewController: UIViewController {
     func compose() {
         Theme.Haptics.tap()
         DelegateGate.presentComposer(from: self, host: host, serverName: serverName, draft: nil)
+    }
+
+    /// The saved server on this board's machine, whose agent can be asked to install the dispatcher.
+    private var hostProfile: ConnectionProfile? {
+        ConnectionController.shared.profiles.first { $0.baseURL.host == host }
+    }
+
+    /// One press sends the practice packet and lands on its run, where the lesson is.
+    private func sendPractice() {
+        guard !practicing else { return }
+        practicing = true
+        Theme.Haptics.tap()
+        applySnapshot()
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let runID = try await self.desk.start(DelegateRehearsal.practice, host: self.host)
+                MidgarSignals.noteScreen("delegate-practice", feature: true)
+                DelegateGate.showRun(runID, host: self.host, serverName: self.serverName, from: self, unlocks: self.unlocks)
+            } catch {
+                MidgarLog.error("delegate practice packet did not start: \(error.localizedDescription)", category: .ui)
+            }
+            self.practicing = false
+            self.applySnapshot()
+        }
+    }
+
+    /// Hands the setup request to Home's box, aimed at this machine's server and unsent: the
+    /// person reads it and sends it, and the agent's every step is theirs to approve.
+    private func askAgent() {
+        guard let profile = hostProfile else { return }
+        Theme.Haptics.tap()
+        let brief = DelegateSetup.brief
+        let aim = {
+            guard let home = MachineRouter.home else {
+                UIPasteboard.general.string = brief
+                return
+            }
+            if let workspace = home.workspace {
+                workspace.showHome()
+            } else {
+                home.navigationController?.popToRootViewController(animated: false)
+            }
+            home.aimCompose(at: profile.id, carry: CarryPlan(brief: nil, draft: brief))
+        }
+        if let root = view.window?.rootViewController, root.presentedViewController != nil {
+            root.dismiss(animated: true, completion: aim)
+        } else {
+            aim()
+        }
     }
 
     /// One command onto the clipboard, and the row says so for a moment.
@@ -360,12 +501,19 @@ extension DelegateBoardViewController: UICollectionViewDelegate {
         case .run(let runID):
             Theme.Haptics.tap()
             navigationController?.pushViewController(
-                DelegateRunViewController(host: host, serverName: serverName, runID: runID), animated: true)
+                DelegateRunViewController(host: host, serverName: serverName, runID: runID, unlocks: unlocks), animated: true)
         case .empty:
             compose()
         case .setup(let id):
             copySetupCommand(id)
-        case .compose, .ladder, .hint, .setupLead:
+        case .unlock:
+            guard let unlocks else { break }
+            DelegateGate.unlock(from: self, host: unlocks.host, serverName: unlocks.serverName)
+        case .setupAsk:
+            askAgent()
+        case .setupRehearse:
+            DelegateGate.rehearse(from: self)
+        case .compose, .ladder, .hint, .setupLead, .point, .practice:
             break
         }
     }

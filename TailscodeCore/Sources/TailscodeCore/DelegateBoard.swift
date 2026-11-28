@@ -207,8 +207,10 @@ public struct DelegateBoard: Sendable, Equatable {
     /// The reading a run's own screen draws, with its patch's line counts once the patch is read.
     public func reading(for runID: String) -> DelegateRunReading? {
         guard let story = story(for: runID) else { return nil }
-        return DelegateRunReading(
+        var reading = DelegateRunReading(
             story: story, run: runs.first { $0.id == runID }, tierOrder: tierOrder, patch: patches[runID])
+        reading.teaching = DelegateRehearsal.lesson(story, host: host)
+        return reading
     }
 
     /// How many runs are waiting on a person, for a door that wants to say so.

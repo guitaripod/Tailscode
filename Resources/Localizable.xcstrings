@@ -678136,6 +678136,2127 @@
           }
         }
       }
+    },
+    "A packet is a goal, the files it may touch and a command that proves it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A packet is a goal, the files it may touch and a command that proves it."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Paket ist ein Ziel, die Dateien, die es berühren darf, und ein Befehl, der es beweist."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un paquete es un objetivo, los archivos que puede tocar y un comando que lo demuestra."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un paquet est un objectif, les fichiers qu'il peut toucher et une commande qui le prouve."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un pacchetto è un obiettivo, i file che può toccare e un comando che lo dimostra."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パケットとは、目標、触れてよいファイル、そしてそれを証明するコマンドです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "패킷은 목표, 건드릴 수 있는 파일, 그리고 그것을 증명하는 명령입니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pakiet to cel, pliki, których może dotknąć, i polecenie, które go dowodzi."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um pacote é um objetivo, os arquivos que ele pode tocar e um comando que o prova."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一个任务包包含目标、可触碰的文件，以及一条能证明它的命令。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一個任務包包含目標、可觸碰的檔案，以及一條能證明它的指令。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ett paket är ett mål, filerna det får röra och ett kommando som bevisar det."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En pakke er et mål, de filer den må røre, og en kommando, der beviser det."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En pakke er et mål, filene den får røre, og en kommando som beviser det."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paketti on tavoite, tiedostot joihin se saa koskea ja komento, joka todistaa sen."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pakki er markmið, skrárnar sem það má snerta og skipun sem sannar það."
+          }
+        }
+      }
+    },
+    "A rung you gated waits here. Nothing is spent until you say so.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A rung you gated waits here. Nothing is spent until you say so."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Stufe, die du gesperrt hast, wartet hier. Nichts wird ausgegeben, bis du es sagst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un nivel que bloqueaste espera aquí. No se gasta nada hasta que lo digas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un échelon que vous avez bloqué attend ici. Rien n'est dépensé tant que vous ne le dites pas."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un livello che hai bloccato attende qui. Non si spende nulla finché non lo dici."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "あなたが止めた段はここで待機します。あなたが言うまで何も消費されません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "직접 막아 둔 단계는 여기서 기다립니다. 말씀하시기 전까지는 아무것도 쓰이지 않습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zablokowany szczebel czeka tutaj. Nic nie zostanie wydane, dopóki nie powiesz."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um nível que você bloqueou espera aqui. Nada é gasto até você dizer."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你拦下的层级在这里等待。在你发话之前不会花费任何东西。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你攔下的層級在這裡等待。在你發話之前不會花費任何東西。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En nivå du spärrade väntar här. Ingenting spenderas förrän du säger till."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Et trin, du har spærret, venter her. Der bruges intet, før du siger til."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Et trinn du har sperret venter her. Ingenting brukes før du sier fra."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Portittamasi porras odottaa täällä. Mitään ei kuluteta ennen kuin sanot."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Þrep sem þú læstir bíður hér. Ekkert er eytt fyrr en þú segir til."
+          }
+        }
+      }
+    },
+    "A scripted run on a machine that does not exist.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A scripted run on a machine that does not exist."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein geskripteter Lauf auf einem Rechner, den es nicht gibt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una ejecución programada en una máquina que no existe."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une exécution scriptée sur une machine qui n'existe pas."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un'esecuzione scriptata su una macchina che non esiste."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存在しないマシンでのスクリプト実行。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "존재하지 않는 컴퓨터에서의 스크립트 실행."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uruchomienie skryptowe na komputerze, który nie istnieje."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma execução com script em uma máquina que não existe."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在一台不存在的机器上进行的脚本化运行。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在一台不存在的機器上進行的腳本化執行。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En skriptad körning på en dator som inte finns."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En scriptet kørsel på en computer, der ikke findes."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En skriptet kjøring på en maskin som ikke finnes."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriptattu ajo tietokoneella, jota ei ole olemassa."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skrifuð keyrsla á tölvu sem er ekki til."
+          }
+        }
+      }
+    },
+    "Ask %@ to set it up": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask %@ to set it up"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ bitten, es einzurichten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pedir a %@ que lo configure"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demander à %@ de le configurer"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiedi a %@ di configurarlo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ にセットアップを依頼"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@에게 설정을 요청하세요"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poproś %@ o skonfigurowanie"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peça a %@ para configurar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请 %@ 去设置"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請 %@ 去設定"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Be %@ att konfigurera det"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bed %@ om at opsætte det"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Be %@ sette det opp"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pyydä %@ ottamaan se käyttöön"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Biðja %@ að setja það upp"
+          }
+        }
+      }
+    },
+    "Every rung said no, and each reason is here in the verifier's own words.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every rung said no, and each reason is here in the verifier's own words."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jede Stufe hat Nein gesagt, und jeder Grund steht hier in den Worten des Prüfers."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cada nivel dijo que no, y cada motivo está aquí con las palabras del verificador."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chaque échelon a dit non, et chaque raison est ici dans les mots du vérificateur."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ogni livello ha detto di no, e ogni motivo è qui nelle parole del verificatore."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "どの段もノーと言い、その理由は検証者の言葉のままここにあります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "모든 단계가 거절했고, 각 이유가 검증자의 표현 그대로 여기 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Każdy szczebel odmówił, a każdy powód jest tutaj słowami weryfikatora."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todos os níveis disseram não, e cada motivo está aqui nas palavras do verificador."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每一层级都说了不行，每个理由都以验证者自己的话列在这里。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每一層級都說了不行，每個理由都以驗證者自己的話列在這裡。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varje nivå sa nej, och varje skäl står här med verifierarens egna ord."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvert trin sagde nej, og hver grund står her med verifiererens egne ord."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvert trinn sa nei, og hver grunn står her med verifisererens egne ord."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jokainen porras sanoi ei, ja jokainen syy on tässä tarkistajan omin sanoin."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvert þrep sagði nei, og hver ástæða er hér með orðum sannprófandans."
+          }
+        }
+      }
+    },
+    "It passed its own proof before the frontier was ever asked. Nothing is in the tree until you apply it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "It passed its own proof before the frontier was ever asked. Nothing is in the tree until you apply it."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es hat seinen eigenen Beweis bestanden, bevor Frontier überhaupt gefragt wurde. Nichts ist im Baum, bis du es anwendest."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Superó su propia prueba antes de que se preguntara siquiera a Frontier. Nada está en el árbol hasta que lo apliques."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il a réussi sa propre preuve avant même que Frontier soit sollicité. Rien n'est dans l'arbre tant que vous ne l'appliquez pas."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ha superato la propria prova prima che Frontier venisse mai interpellato. Niente è nell'albero finché non lo applichi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frontier に問い合わせる前に、自分自身の証明を通過しました。適用するまでツリーには何も入りません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frontier에 묻기도 전에 자체 증명을 통과했습니다. 적용하기 전까지는 트리에 아무것도 없습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zaliczył własny dowód, zanim w ogóle zapytano Frontier. Nic nie trafia do drzewa, dopóki tego nie zastosujesz."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passou na própria prova antes mesmo de o Frontier ser consultado. Nada está na árvore até você aplicar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在尚未询问 Frontier 之前，它就已通过了自己的证明。在你应用之前，树里什么都没有。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在尚未詢問 Frontier 之前，它就已通過了自己的證明。在你套用之前，樹裡什麼都沒有。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det klarade sitt eget bevis innan Frontier ens tillfrågades. Ingenting finns i trädet förrän du tillämpar det."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det bestod sit eget bevis, før Frontier overhovedet blev spurgt. Intet er i træet, før du anvender det."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det besto sitt eget bevis før Frontier i det hele tatt ble spurt. Ingenting er i treet før du bruker det."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se läpäisi oman todistuksensa ennen kuin Frontierilta edes kysyttiin. Mikään ei ole puussa ennen kuin otat sen käyttöön."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Það stóðst sína eigin sönnun áður en nokkurn tíma var spurt Frontier. Ekkert er í trénu fyrr en þú beitir því."
+          }
+        }
+      }
+    },
+    "Opens a new chat on this machine with the request written out. Read it, then send.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens a new chat on this machine with the request written out. Read it, then send."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öffnet einen neuen Chat auf diesem Rechner mit der ausgeschriebenen Anfrage. Lies ihn, dann sende."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre un nuevo chat en esta máquina con la solicitud ya escrita. Léela y luego envía."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvre une nouvelle discussion sur cette machine avec la demande rédigée. Lisez-la, puis envoyez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apre una nuova chat su questa macchina con la richiesta già scritta. Leggila, poi invia."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このマシンで新しいチャットを開き、リクエストを書き出します。読んでから送信してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 컴퓨터에서 요청이 작성된 새 대화를 엽니다. 읽어 본 뒤 보내세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otwiera nową rozmowę na tym komputerze z zapisanym żądaniem. Przeczytaj je, potem wyślij."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre uma nova conversa nesta máquina com o pedido já escrito. Leia e depois envie."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这台机器上打开一个新对话，并把请求写好。先读一遍，再发送。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在這台機器上開啟一個新對話，並把請求寫好。先讀一遍，再傳送。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öppnar en ny chatt på den här datorn med begäran utskriven. Läs den och skicka sedan."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åbner en ny chat på denne computer med anmodningen skrevet ud. Læs den, og send derefter."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpner en ny chat på denne maskinen med forespørselen skrevet ut. Les den, og send deretter."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avaa uuden keskustelun tällä tietokoneella ja kirjoittaa pyynnön valmiiksi. Lue se ja lähetä."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opnar nýtt spjall á þessari tölvu með beiðnina útritaða. Lestu hana og sendu svo."
+          }
+        }
+      }
+    },
+    "Scripted, on a machine that does not exist. About fifteen seconds.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scripted, on a machine that does not exist. About fifteen seconds."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geskriptet, auf einem Rechner, den es nicht gibt. Etwa fünfzehn Sekunden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Programado, en una máquina que no existe. Unos quince segundos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scripté, sur une machine qui n'existe pas. Environ quinze secondes."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scriptato, su una macchina che non esiste. Circa quindici secondi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スクリプト実行、存在しないマシン上で。約15秒。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "스크립트 실행, 존재하지 않는 컴퓨터에서. 약 15초."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skryptowo, na komputerze, który nie istnieje. Około piętnastu sekund."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Com script, em uma máquina que não existe. Cerca de quinze segundos."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "脚本化运行，在一台不存在的机器上。大约十五秒。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "腳本化執行，在一台不存在的機器上。大約十五秒。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriptat, på en dator som inte finns. Ungefär femton sekunder."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scriptet, på en computer der ikke findes. Cirka femten sekunder."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriptet, på en maskin som ikke finnes. Omtrent femten sekunder."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriptattu, tietokoneella jota ei ole olemassa. Noin viisitoista sekuntia."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skrifuð, á tölvu sem er ekki til. Um fimmtán sekúndur."
+          }
+        }
+      }
+    },
+    "Send the practice packet": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send the practice packet"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Übungspaket senden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar el paquete de práctica"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyer le paquet d'entraînement"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invia il pacchetto di prova"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "練習用パケットを送信"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "연습 패킷 보내기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wyślij pakiet ćwiczeniowy"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar o pacote de prática"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发送练习任务包"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "傳送練習任務包"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skicka övningspaketet"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send øvelsespakken"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send øvelsespakken"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lähetä harjoituspaketti"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Senda æfingapakkann"
+          }
+        }
+      }
+    },
+    "Set aside. The tree never saw it, and the patch is still here to read.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set aside. The tree never saw it, and the patch is still here to read."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beiseitegelegt. Der Baum hat es nie gesehen, und der Patch ist noch hier zum Lesen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apartado. El árbol nunca lo vio, y el parche sigue aquí para leerlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mis de côté. L'arbre ne l'a jamais vu, et le patch est toujours là à lire."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Messo da parte. L'albero non l'ha mai visto, e la patch è ancora qui da leggere."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保留しました。ツリーはそれを見ておらず、パッチはここに残っているので読めます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "보류했습니다. 트리는 그것을 본 적이 없고, 패치는 여기 남아 있어 읽을 수 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odłożono. Drzewo nigdy go nie widziało, a patch wciąż tu jest do przeczytania."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Separado. A árvore nunca o viu, e o patch continua aqui para leitura."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已搁置。树从未见过它，补丁仍在这里可以阅读。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已擱置。樹從未見過它，補丁仍在這裡可以閱讀。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åtsidosatt. Trädet såg det aldrig, och patchen finns kvar att läsa."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagt til side. Træet så det aldrig, og patchen er stadig her at læse."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagt til side. Treet så det aldri, og patchen er fortsatt her å lese."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sivuun jätetty. Puu ei koskaan nähnyt sitä, ja patch on yhä täällä luettavana."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagt til hliðar. Tréð sá það aldrei, og plásturinn er enn hér til að lesa."
+          }
+        }
+      }
+    },
+    "Set up the delegate dispatcher on this machine for Tailscode. 1. If `delegate` is not on the PATH, install it with `cargo install --git https://github.com/guitaripod/delegate` (install Rust with rustup first if cargo is missing, and ask me before installing anything else). 2. Run `delegate config init`, then read ~/.config/delegate/config.yml. 3. Fit its tiers to what this machine really has: check which agent CLIs are installed (omp, opencode, claude) and whether a local model server answers (llama-swap on 8081, Ollama on 11434), and edit the tiers so each one names a runner and model that exists here; leave out a tier this machine cannot run. 4. Run `delegate config check` and `delegate tiers` until both are clean. 5. Run `delegate install-service`, then prove it with `curl -s http://127.0.0.1:4100/v1/capabilities`. Report the tiers you configured, the version that answered, and anything you could not do. Do not commit anything.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set up the delegate dispatcher on this machine for Tailscode. 1. If `delegate` is not on the PATH, install it with `cargo install --git https://github.com/guitaripod/delegate` (install Rust with rustup first if cargo is missing, and ask me before installing anything else). 2. Run `delegate config init`, then read ~/.config/delegate/config.yml. 3. Fit its tiers to what this machine really has: check which agent CLIs are installed (omp, opencode, claude) and whether a local model server answers (llama-swap on 8081, Ollama on 11434), and edit the tiers so each one names a runner and model that exists here; leave out a tier this machine cannot run. 4. Run `delegate config check` and `delegate tiers` until both are clean. 5. Run `delegate install-service`, then prove it with `curl -s http://127.0.0.1:4100/v1/capabilities`. Report the tiers you configured, the version that answered, and anything you could not do. Do not commit anything."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Richte den Delegate-Dispatcher auf diesem Rechner für Tailscode ein. 1. Wenn `delegate` nicht im PATH ist, installiere es mit `cargo install --git https://github.com/guitaripod/delegate` (installiere zuerst Rust mit rustup, falls cargo fehlt, und frag mich, bevor du sonst etwas installierst). 2. Führe `delegate config init` aus und lies dann ~/.config/delegate/config.yml. 3. Passe die Tiers an das an, was dieser Rechner wirklich hat: Prüfe, welche Agent-CLIs installiert sind (omp, opencode, claude) und ob ein lokaler Modellserver antwortet (llama-swap auf 8081, Ollama auf 11434), und bearbeite die Tiers so, dass jedes einen Runner und ein Modell nennt, die es hier gibt; lass ein Tier weg, das dieser Rechner nicht ausführen kann. 4. Führe `delegate config check` und `delegate tiers` aus, bis beide sauber sind. 5. Führe `delegate install-service` aus und beweise es dann mit `curl -s http://127.0.0.1:4100/v1/capabilities`. Berichte die Tiers, die du konfiguriert hast, die Version, die geantwortet hat, und alles, was du nicht tun konntest. Committe nichts."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configura el despachador de Delegate en esta máquina para Tailscode. 1. Si `delegate` no está en el PATH, instálalo con `cargo install --git https://github.com/guitaripod/delegate` (instala Rust con rustup primero si falta cargo, y pregúntame antes de instalar cualquier otra cosa). 2. Ejecuta `delegate config init` y luego lee ~/.config/delegate/config.yml. 3. Ajusta sus niveles a lo que esta máquina realmente tiene: comprueba qué CLIs de agente están instaladas (omp, opencode, claude) y si responde un servidor de modelos local (llama-swap en 8081, Ollama en 11434), y edita los niveles para que cada uno nombre un runner y un modelo que existan aquí; omite un nivel que esta máquina no pueda ejecutar. 4. Ejecuta `delegate config check` y `delegate tiers` hasta que ambos estén limpios. 5. Ejecuta `delegate install-service` y demuéstralo con `curl -s http://127.0.0.1:4100/v1/capabilities`. Informa de los niveles que configuraste, la versión que respondió y cualquier cosa que no pudieras hacer. No hagas commit de nada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configurez le répartiteur Delegate sur cette machine pour Tailscode. 1. Si `delegate` n'est pas dans le PATH, installez-le avec `cargo install --git https://github.com/guitaripod/delegate` (installez Rust avec rustup d'abord si cargo manque, et demandez-moi avant d'installer quoi que ce soit d'autre). 2. Lancez `delegate config init`, puis lisez ~/.config/delegate/config.yml. 3. Adaptez ses niveaux à ce que cette machine a réellement : vérifiez quels CLI d'agent sont installés (omp, opencode, claude) et si un serveur de modèles local répond (llama-swap sur 8081, Ollama sur 11434), puis modifiez les niveaux pour que chacun nomme un runner et un modèle qui existent ici ; omettez un niveau que cette machine ne peut pas exécuter. 4. Lancez `delegate config check` et `delegate tiers` jusqu'à ce que les deux soient propres. 5. Lancez `delegate install-service`, puis prouvez-le avec `curl -s http://127.0.0.1:4100/v1/capabilities`. Indiquez les niveaux que vous avez configurés, la version qui a répondu et tout ce que vous n'avez pas pu faire. Ne committez rien."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configura il dispatcher di Delegate su questa macchina per Tailscode. 1. Se `delegate` non è nel PATH, installalo con `cargo install --git https://github.com/guitaripod/delegate` (installa prima Rust con rustup se cargo manca, e chiedimi prima di installare qualsiasi altra cosa). 2. Esegui `delegate config init`, poi leggi ~/.config/delegate/config.yml. 3. Adatta i suoi livelli a ciò che questa macchina ha davvero: controlla quali CLI di agente sono installate (omp, opencode, claude) e se risponde un server di modelli locale (llama-swap su 8081, Ollama su 11434), e modifica i livelli in modo che ognuno indichi un runner e un modello che esistono qui; lascia fuori un livello che questa macchina non può eseguire. 4. Esegui `delegate config check` e `delegate tiers` finché entrambi non sono puliti. 5. Esegui `delegate install-service`, poi dimostralo con `curl -s http://127.0.0.1:4100/v1/capabilities`. Riporta i livelli che hai configurato, la versione che ha risposto e tutto ciò che non sei riuscito a fare. Non committare nulla."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このマシンで Tailscode 用の Delegate ディスパッチャーをセットアップします。1. `delegate` が PATH にない場合は、`cargo install --git https://github.com/guitaripod/delegate` でインストールしてください（cargo がない場合は先に rustup で Rust をインストールし、それ以外をインストールする前に私に確認してください）。2. `delegate config init` を実行し、次に ~/.config/delegate/config.yml を読んでください。3. ティアをこのマシンの実際の環境に合わせてください。インストール済みのエージェント CLI（omp、opencode、claude）と、ローカルモデルサーバーが応答するか（llama-swap は 8081、Ollama は 11434）を確認し、各ティアがここに存在するランナーとモデルを指すように編集してください。このマシンで実行できないティアは省いてください。4. 両方がクリーンになるまで `delegate config check` と `delegate tiers` を実行してください。5. `delegate install-service` を実行し、`curl -s http://127.0.0.1:4100/v1/capabilities` で証明してください。設定したティア、応答したバージョン、できなかったことを報告してください。何もコミットしないでください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 컴퓨터에서 Tailscode용 Delegate 디스패처를 설정합니다. 1. `delegate`가 PATH에 없으면 `cargo install --git https://github.com/guitaripod/delegate`로 설치하세요 (cargo가 없으면 먼저 rustup으로 Rust를 설치하고, 그 밖의 것을 설치하기 전에 저에게 물어보세요). 2. `delegate config init`을 실행한 다음 ~/.config/delegate/config.yml을 읽으세요. 3. 이 컴퓨터에 실제로 있는 것에 맞춰 티어를 조정하세요. 설치된 에이전트 CLI(omp, opencode, claude)와 로컬 모델 서버가 응답하는지(llama-swap은 8081, Ollama는 11434) 확인하고, 각 티어가 여기에 존재하는 러너와 모델을 지정하도록 편집하세요. 이 컴퓨터에서 실행할 수 없는 티어는 빼세요. 4. 둘 다 깨끗해질 때까지 `delegate config check`와 `delegate tiers`를 실행하세요. 5. `delegate install-service`를 실행하고 `curl -s http://127.0.0.1:4100/v1/capabilities`로 증명하세요. 구성한 티어, 응답한 버전, 하지 못한 일을 보고하세요. 아무것도 커밋하지 마세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skonfiguruj dyspozytor Delegate na tym komputerze dla Tailscode. 1. Jeśli `delegate` nie ma w PATH, zainstaluj je poleceniem `cargo install --git https://github.com/guitaripod/delegate` (najpierw zainstaluj Rust przez rustup, jeśli brakuje cargo, i zapytaj mnie, zanim zainstalujesz cokolwiek innego). 2. Uruchom `delegate config init`, a potem przeczytaj ~/.config/delegate/config.yml. 3. Dopasuj poziomy do tego, co ten komputer naprawdę ma: sprawdź, które CLI agentów są zainstalowane (omp, opencode, claude) i czy odpowiada lokalny serwer modeli (llama-swap na 8081, Ollama na 11434), i edytuj poziomy tak, aby każdy wskazywał runner i model, które tu istnieją; pomiń poziom, którego ten komputer nie może uruchomić. 4. Uruchamiaj `delegate config check` i `delegate tiers`, aż oba będą czyste. 5. Uruchom `delegate install-service`, a potem udowodnij to poleceniem `curl -s http://127.0.0.1:4100/v1/capabilities`. Zgłoś skonfigurowane poziomy, wersję, która odpowiedziała, i wszystko, czego nie mogłeś zrobić. Niczego nie commituj."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configure o despachante Delegate nesta máquina para o Tailscode. 1. Se `delegate` não estiver no PATH, instale com `cargo install --git https://github.com/guitaripod/delegate` (instale o Rust com rustup primeiro se o cargo faltar, e pergunte antes de instalar qualquer outra coisa). 2. Execute `delegate config init` e depois leia ~/.config/delegate/config.yml. 3. Ajuste os níveis ao que esta máquina realmente tem: verifique quais CLIs de agente estão instaladas (omp, opencode, claude) e se um servidor de modelos local responde (llama-swap na 8081, Ollama na 11434), e edite os níveis para que cada um nomeie um runner e um modelo que existam aqui; deixe de fora um nível que esta máquina não consiga executar. 4. Execute `delegate config check` e `delegate tiers` até ambos ficarem limpos. 5. Execute `delegate install-service` e prove com `curl -s http://127.0.0.1:4100/v1/capabilities`. Relate os níveis que você configurou, a versão que respondeu e qualquer coisa que não conseguiu fazer. Não faça commit de nada."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在这台机器上为 Tailscode 设置 Delegate 调度器。1. 如果 `delegate` 不在 PATH 中，请用 `cargo install --git https://github.com/guitaripod/delegate` 安装它（如果缺少 cargo，先用 rustup 安装 Rust，安装其他任何东西之前先问我）。2. 运行 `delegate config init`，然后读取 ~/.config/delegate/config.yml。3. 让它的层级贴合这台机器的实际情况：检查已安装哪些智能体 CLI（omp、opencode、claude），以及本地模型服务器是否有响应（llama-swap 在 8081，Ollama 在 11434），并编辑层级，使每一层都指向这里存在的 runner 和模型；这台机器跑不了的层级就省掉。4. 运行 `delegate config check` 和 `delegate tiers`，直到两者都干净为止。5. 运行 `delegate install-service`，然后用 `curl -s http://127.0.0.1:4100/v1/capabilities` 验证。报告你配置的层级、应答的版本，以及任何你没能做到的事。不要提交任何内容。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在這台機器上為 Tailscode 設定 Delegate 調度器。1. 如果 `delegate` 不在 PATH 中，請用 `cargo install --git https://github.com/guitaripod/delegate` 安裝它（如果缺少 cargo，先用 rustup 安裝 Rust，安裝其他任何東西之前先問我）。2. 執行 `delegate config init`，然後讀取 ~/.config/delegate/config.yml。3. 讓它的層級貼合這台機器的實際情況：檢查已安裝哪些代理 CLI（omp、opencode、claude），以及本機模型伺服器是否有回應（llama-swap 在 8081，Ollama 在 11434），並編輯層級，使每一層都指向這裡存在的 runner 和模型；這台機器跑不了的層級就省掉。4. 執行 `delegate config check` 和 `delegate tiers`，直到兩者都乾淨為止。5. 執行 `delegate install-service`，然後用 `curl -s http://127.0.0.1:4100/v1/capabilities` 驗證。報告你設定的層級、應答的版本，以及任何你沒能做到的事。不要提交任何內容。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konfigurera Delegate-dispatcharen på den här datorn för Tailscode. 1. Om `delegate` inte finns i PATH, installera det med `cargo install --git https://github.com/guitaripod/delegate` (installera Rust med rustup först om cargo saknas, och fråga mig innan du installerar något annat). 2. Kör `delegate config init` och läs sedan ~/.config/delegate/config.yml. 3. Anpassa nivåerna till vad den här datorn faktiskt har: kontrollera vilka agent-CLI:er som är installerade (omp, opencode, claude) och om en lokal modellserver svarar (llama-swap på 8081, Ollama på 11434), och redigera nivåerna så att var och en anger en runner och en modell som finns här; lämna ute en nivå som datorn inte kan köra. 4. Kör `delegate config check` och `delegate tiers` tills båda är rena. 5. Kör `delegate install-service` och bevisa det sedan med `curl -s http://127.0.0.1:4100/v1/capabilities`. Rapportera nivåerna du konfigurerade, versionen som svarade och allt du inte kunde göra. Committa ingenting."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opsæt Delegate-dispatcheren på denne computer til Tailscode. 1. Hvis `delegate` ikke er i PATH, installer det med `cargo install --git https://github.com/guitaripod/delegate` (installer først Rust med rustup, hvis cargo mangler, og spørg mig, før du installerer noget andet). 2. Kør `delegate config init`, og læs derefter ~/.config/delegate/config.yml. 3. Tilpas dens trin til det, denne computer faktisk har: tjek hvilke agent-CLI'er der er installeret (omp, opencode, claude), og om en lokal modelserver svarer (llama-swap på 8081, Ollama på 11434), og rediger trinene, så hvert trin angiver en runner og en model, der findes her; udelad et trin, som computeren ikke kan køre. 4. Kør `delegate config check` og `delegate tiers`, indtil begge er rene. 5. Kør `delegate install-service`, og bevis det derefter med `curl -s http://127.0.0.1:4100/v1/capabilities`. Rapportér de trin, du konfigurerede, den version, der svarede, og alt, du ikke kunne gøre. Commit ikke noget."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sett opp Delegate-dispatcheren på denne maskinen for Tailscode. 1. Hvis `delegate` ikke er i PATH, installer det med `cargo install --git https://github.com/guitaripod/delegate` (installer Rust med rustup først hvis cargo mangler, og spør meg før du installerer noe annet). 2. Kjør `delegate config init`, og les deretter ~/.config/delegate/config.yml. 3. Tilpass trinnene til det denne maskinen faktisk har: sjekk hvilke agent-CLI-er som er installert (omp, opencode, claude) og om en lokal modellserver svarer (llama-swap på 8081, Ollama på 11434), og rediger trinnene slik at hvert trinn navngir en runner og en modell som finnes her; utelat et trinn denne maskinen ikke kan kjøre. 4. Kjør `delegate config check` og `delegate tiers` til begge er rene. 5. Kjør `delegate install-service`, og bevis det deretter med `curl -s http://127.0.0.1:4100/v1/capabilities`. Rapporter trinnene du konfigurerte, versjonen som svarte, og alt du ikke fikk gjort. Ikke commit noe."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Määritä Delegate-dispatchointi tälle tietokoneelle Tailscodea varten. 1. Jos `delegate` ei ole PATHissa, asenna se komennolla `cargo install --git https://github.com/guitaripod/delegate` (asenna ensin Rust rustupilla, jos cargo puuttuu, ja kysy minulta ennen kuin asennat mitään muuta). 2. Suorita `delegate config init` ja lue sitten ~/.config/delegate/config.yml. 3. Sovita portaat siihen, mitä tällä tietokoneella todella on: tarkista, mitkä agentti-CLI:t on asennettu (omp, opencode, claude) ja vastaako paikallinen mallipalvelin (llama-swap portissa 8081, Ollama portissa 11434), ja muokkaa portaat niin, että jokainen nimeää täällä olevan runnerin ja mallin; jätä pois porras, jota tämä tietokone ei voi suorittaa. 4. Suorita `delegate config check` ja `delegate tiers`, kunnes molemmat ovat puhtaat. 5. Suorita `delegate install-service` ja todista se komennolla `curl -s http://127.0.0.1:4100/v1/capabilities`. Raportoi määrittämäsi portaat, vastannut versio ja kaikki, mitä et pystynyt tekemään. Älä committaa mitään."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settu upp Delegate-sendingastjóran á þessari tölvu fyrir Tailscode. 1. Ef `delegate` er ekki í PATH, settu það upp með `cargo install --git https://github.com/guitaripod/delegate` (settu fyrst upp Rust með rustup ef cargo vantar, og spurðu mig áður en þú setur upp eitthvað annað). 2. Keyrðu `delegate config init` og lestu svo ~/.config/delegate/config.yml. 3. Lagaðu þrepin að því sem þessi tölva hefur í raun: athugaðu hvaða agenta-CLI eru uppsett (omp, opencode, claude) og hvort staðbundinn líkanamiðlari svarar (llama-swap á 8081, Ollama á 11434), og breyttu þrepunum þannig að hvert nefni keyrslu og líkan sem er til hér; slepptu þrepi sem tölvan getur ekki keyrt. 4. Keyrðu `delegate config check` og `delegate tiers` þar til bæði eru hrein. 5. Keyrðu `delegate install-service` og sannaðu það svo með `curl -s http://127.0.0.1:4100/v1/capabilities`. Tilkynntu þrepin sem þú stilltir, útgáfuna sem svaraði og allt sem þú gast ekki gert. Ekki committa neinu."
+          }
+        }
+      }
+    },
+    "That is the whole loop: a goal, a proof, and the cheapest model that passes it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That is the whole loop: a goal, a proof, and the cheapest model that passes it."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das ist die ganze Schleife: ein Ziel, ein Beweis und das günstigste Modell, das ihn besteht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ese es todo el ciclo: un objetivo, una prueba y el modelo más barato que la supera."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "C'est toute la boucle : un objectif, une preuve et le modèle le moins cher qui la réussit."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "È tutto il ciclo: un obiettivo, una prova e il modello più economico che la supera."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これがループの全体です。目標、証明、そしてそれを通過する最も安いモデル。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이것이 전체 루프입니다. 목표, 증명, 그리고 그것을 통과하는 가장 저렴한 모델."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To cała pętla: cel, dowód i najtańszy model, który go zalicza."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esse é o ciclo inteiro: um objetivo, uma prova e o modelo mais barato que a passa."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这就是整个循环：目标、证明，以及能通过它的最便宜模型。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這就是整個循環：目標、證明，以及能通過它的最便宜模型。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det är hela loopen: ett mål, ett bevis och den billigaste modellen som klarar det."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det er hele løkken: et mål, et bevis og den billigste model, der består det."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det er hele løkken: et mål, et bevis og den billigste modellen som består det."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se on koko silmukka: tavoite, todistus ja halvin malli, joka läpäisee sen."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Þetta er alla lykkjan: markmið, sönnun og ódýrasta líkanið sem stenst hana."
+          }
+        }
+      }
+    },
+    "The cheapest model that might do it goes first, and it climbs only when the proof fails.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The cheapest model that might do it goes first, and it climbs only when the proof fails."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das günstigste Modell, das es schaffen könnte, kommt zuerst, und es steigt nur auf, wenn der Beweis scheitert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El modelo más barato que podría hacerlo va primero, y solo sube cuando la prueba falla."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le modèle le moins cher qui pourrait y arriver passe en premier, et il ne monte que lorsque la preuve échoue."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il modello più economico che potrebbe farcela va per primo, e sale solo quando la prova fallisce."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "できるかもしれない最も安いモデルが最初に進み、証明が失敗したときだけ上に登ります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "해낼 수 있을 만한 가장 저렴한 모델이 먼저 나서고, 증명이 실패할 때만 위로 올라갑니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Najtańszy model, który może sobie poradzić, idzie pierwszy, a wspina się tylko wtedy, gdy dowód zawiedzie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O modelo mais barato que pode dar conta vai primeiro, e só sobe quando a prova falha."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可能做到的最便宜模型先上，只有证明失败时才往上爬。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可能做到的最便宜模型先上，只有證明失敗時才往上爬。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den billigaste modellen som kan klara det går först, och den klättrar bara när beviset misslyckas."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den billigste model, der kan klare det, går først, og den klatrer kun, når beviset fejler."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den billigste modellen som kan klare det går først, og den klatrer bare når beviset feiler."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Halvin malli, joka saattaa selvitä siitä, menee ensin, ja se kiipeää vain kun todistus epäonnistuu."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ódýrasta líkanið sem gæti ráðið við það fer fyrst, og það klifrar aðeins þegar sönnunin brestur."
+          }
+        }
+      }
+    },
+    "The cheapest rung goes first. A local model costs nothing to try.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The cheapest rung goes first. A local model costs nothing to try."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die günstigste Stufe kommt zuerst. Ein lokales Modell kostet nichts zum Ausprobieren."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El nivel más barato va primero. Un modelo local no cuesta nada probarlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'échelon le moins cher passe en premier. Un modèle local ne coûte rien à essayer."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il livello più economico va per primo. Un modello locale non costa nulla da provare."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最も安い段が最初に進みます。ローカルモデルは試すのに何もかかりません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "가장 저렴한 단계가 먼저 나섭니다. 로컬 모델은 시도하는 데 비용이 들지 않습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Najtańszy szczebel idzie pierwszy. Lokalny model nic nie kosztuje przy próbie."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O nível mais barato vai primeiro. Um modelo local não custa nada para experimentar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最便宜的层级先上。本地模型试用不花一分钱。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最便宜的層級先上。本機模型試用不花一毛錢。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den billigaste nivån går först. En lokal modell kostar inget att prova."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det billigste trin går først. En lokal model koster intet at prøve."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det billigste trinnet går først. En lokal modell koster ingenting å prøve."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Halvin porras menee ensin. Paikallisen mallin kokeilu ei maksa mitään."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ódýrasta þrepið fer fyrst. Staðbundið líkan kostar ekkert að prófa."
+          }
+        }
+      }
+    },
+    "The proof failed, so the next rung is handed the verifier's exact words.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The proof failed, so the next rung is handed the verifier's exact words."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Beweis ist gescheitert, also bekommt die nächste Stufe die exakten Worte des Prüfers."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La prueba falló, así que al siguiente nivel se le entregan las palabras exactas del verificador."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La preuve a échoué, donc l'échelon suivant reçoit les mots exacts du vérificateur."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La prova è fallita, quindi al livello successivo vengono date le parole esatte del verificatore."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "証明が失敗したので、次の段には検証者の正確な言葉が渡されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "증명이 실패했으므로 다음 단계에는 검증자의 정확한 표현이 전달됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dowód zawiódł, więc następny szczebel dostaje dokładne słowa weryfikatora."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A prova falhou, então o próximo nível recebe as palavras exatas do verificador."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "证明失败了，于是把验证者的原话交给下一层级。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "證明失敗了，於是把驗證者的原話交給下一層級。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beviset misslyckades, så nästa nivå får verifierarens exakta ord."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beviset fejlede, så det næste trin får verifiererens præcise ord."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beviset feilet, så det neste trinnet får verifisererens nøyaktige ord."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todistus epäonnistui, joten seuraavalle portaalle annetaan tarkistajan tarkat sanat."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sönnunin brást, svo næsta þrep fær nákvæm orð sannprófandans."
+          }
+        }
+      }
+    },
+    "Translate the three new strings in Localizable.xcstrings into Finnish.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translate the three new strings in Localizable.xcstrings into Finnish."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Übersetze die drei neuen Strings in Localizable.xcstrings ins Finnische."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Traduce las tres cadenas nuevas de Localizable.xcstrings al finés."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Traduisez les trois nouvelles chaînes de Localizable.xcstrings en finnois."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Traduci le tre nuove stringhe in Localizable.xcstrings in finlandese."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Localizable.xcstrings の新しい3つの文字列をフィンランド語に翻訳してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Localizable.xcstrings의 새 문자열 세 개를 핀란드어로 번역하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przetłumacz trzy nowe ciągi w Localizable.xcstrings na fiński."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Traduza as três novas strings em Localizable.xcstrings para finlandês."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把 Localizable.xcstrings 里的三个新字符串翻译成芬兰语。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把 Localizable.xcstrings 裡的三個新字串翻譯成芬蘭語。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Översätt de tre nya strängarna i Localizable.xcstrings till finska."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oversæt de tre nye strenge i Localizable.xcstrings til finsk."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oversett de tre nye strengene i Localizable.xcstrings til finsk."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Käännä Localizable.xcstrings-tiedoston kolme uutta merkkijonoa suomeksi."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Þýddu þrjá nýju strengina í Localizable.xcstrings yfir á finnsku."
+          }
+        }
+      }
+    },
+    "Use Delegate on %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use Delegate on %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegate auf %@ verwenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar Delegate en %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utiliser Delegate sur %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa Delegate su %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ で Delegate を使う"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@에서 Delegate 사용"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Użyj Delegate na %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar o Delegate em %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 上使用 Delegate"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 上使用 Delegate"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Använd Delegate på %@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brug Delegate på %@"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bruk Delegate på %@"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Käytä Delegatea %@:lla"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nota Delegate á %@"
+          }
+        }
+      }
+    },
+    "Watch a packet climb": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch a packet climb"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einem Paket beim Aufsteigen zusehen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver cómo sube un paquete"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regarder un paquet gravir les échelons"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guarda un pacchetto salire"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パケットが上がっていくのを見る"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "패킷이 올라가는 모습 보기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obserwuj wspinający się pakiet"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver um pacote subir"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "观看一个任务包往上爬"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "觀看一個任務包往上爬"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se ett paket klättra"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se en pakke klatre"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se en pakke klatre"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Katso, kun paketti kiipeää"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Horfa á pakka klifra"
+          }
+        }
+      }
+    },
+    "Watch a packet climb first": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch a packet climb first"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sieh zuerst zu, wie ein Paket aufsteigt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mira primero cómo sube un paquete"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regardez d'abord un paquet gravir les échelons"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guarda prima un pacchetto salire"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まずパケットが上がっていくのを見る"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "먼저 패킷이 올라가는 모습 보기"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Najpierw obserwuj wspinający się pakiet"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Veja primeiro um pacote subir"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先观看一个任务包往上爬"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先觀看一個任務包往上爬"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se först ett paket klättra"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se først en pakke klatre"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se først en pakke klatre"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Katso ensin, kun paketti kiipeää"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Horfa fyrst á pakka klifra"
+          }
+        }
+      }
+    },
+    "What passes waits for you, then lands in your tree unstaged.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What passes waits for you, then lands in your tree unstaged."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Was besteht, wartet auf dich und landet dann unstaged in deinem Baum."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo que se supera te espera y luego aterriza en tu árbol sin preparar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce qui réussit vous attend, puis atterrit dans votre arbre sans être indexé."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ciò che supera ti aspetta, poi atterra nel tuo albero senza staging."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通過したものはあなたを待ち、それからステージされていない状態でツリーに入ります。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "통과한 것은 당신을 기다렸다가 스테이징되지 않은 채 트리에 들어옵니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To, co zda, czeka na ciebie, a potem ląduje w twoim drzewie bez stage'owania."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O que passa espera por você e então cai na sua árvore sem staging."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通过的会等你，然后以未暂存的状态进入你的树。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通過的會等你，然後以未暫存的狀態進入你的樹。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det som godkänns väntar på dig och landar sedan ostagat i ditt träd."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det, der består, venter på dig og lander derefter ustaget i dit træ."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det som består venter på deg og lander deretter ustaget i treet ditt."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Läpäisty odottaa sinua ja laskeutuu sitten puuhusi ilman stagingia."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Það sem stenst bíður þín og lendir svo óstagað í trénu þínu."
+          }
+        }
+      }
+    },
+    "You held it before it spent that rung. Nothing ran there.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You held it before it spent that rung. Nothing ran there."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du hast es angehalten, bevor es diese Stufe ausgegeben hat. Dort lief nichts."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo detuviste antes de que gastara ese nivel. Allí no se ejecutó nada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous l'avez retenu avant qu'il ne dépense cet échelon. Rien ne s'y est exécuté."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'hai trattenuto prima che spendesse quel livello. Lì non è stato eseguito nulla."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "それがその段を使う前に、あなたが止めました。そこでは何も実行されていません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "그 단계를 쓰기 전에 당신이 막았습니다. 거기서는 아무것도 실행되지 않았습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wstrzymałeś to, zanim wydało ten szczebel. Nic tam nie uruchomiono."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você o reteve antes que gastasse esse nível. Nada foi executado ali."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在它花费那一层级之前，你拦住了它。那里什么都没运行。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在它花費那一層級之前，你攔住了它。那裡什麼都沒執行。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du höll det innan det spenderade den nivån. Ingenting kördes där."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du holdt det, før det brugte det trin. Intet blev kørt der."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du holdt det før det brukte det trinnet. Ingenting ble kjørt der."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pidätit sen ennen kuin se kulutti sen portaan. Siellä ei ajettu mitään."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Þú hélt því áður en það eyddi því þrepi. Ekkert var keyrt þar."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

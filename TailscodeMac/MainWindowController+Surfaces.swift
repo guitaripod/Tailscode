@@ -298,18 +298,20 @@ extension MainWindowController {
         updateWindow?.present()
     }
 
-    /// The dispatcher's window, one per app. A store copy without Pro meets the unlock instead,
-    /// because delegation is the door the purchase is sold through.
+    /// The dispatcher's window, one per app. A store copy without Pro meets the scripted machine
+    /// in it, where a practice packet climbs before the unlock is named (`DelegateRehearsal`).
     func presentDelegate(handoff: DelegateHandoff? = nil) {
-        guard MacDelegateGate.isOpen else {
-            presentPro(placement: .feature) { [weak self] in self?.presentDelegate(handoff: handoff) }
-            return
-        }
         MacDelegateGate.watchNotices()
         if delegateWindow == nil { delegateWindow = DelegateWindowController() }
         delegateWindow?.chatSource = { [weak self] in self?.sidebar.allEntries ?? [] }
+        delegateWindow?.askAgent = { [weak self] profile in
+            self?.presentNewChat(on: profile, carrying: CarryPlan(brief: nil, draft: DelegateSetup.brief))
+        }
+        delegateWindow?.onUnlock = { [weak self] in
+            self?.presentPro(placement: .feature) { [weak self] in self?.presentDelegate(handoff: handoff) }
+        }
         delegateWindow?.present()
-        if let handoff { delegateWindow?.compose(handoff: handoff) }
+        if let handoff, MacDelegateGate.isOpen { delegateWindow?.compose(handoff: handoff) }
     }
 
     /// The unlock, opened by hand — from the menu, or from the one gate that asks for it.

@@ -87,6 +87,7 @@ enum ParityManifest {
         case .delegateNotices: return .implemented("raiseDelegate")
         case .delegateReview: return .implemented("DelegateApplyCheck.cautions")
         case .delegateHandoff: return .implemented("func handOff")
+        case .delegateRehearsal: return .implemented("func rehearsalBlock")
         case .delegateProGate: return .notApplicable("there is no store on this desk; the client is built from the source and delegation is simply there")
         case .vimComposer: return .implemented("VimEngine")
         case .slashCompletion: return .implemented("renderCompletion")

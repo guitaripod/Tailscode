@@ -103,6 +103,7 @@ enum ParityManifest {
         case .delegateNotices: return .implemented("watchNotices")
         case .delegateReview: return .implemented("DelegateApplyCheck.cautions")
         case .delegateHandoff: return .implemented("DelegateHandoff(")
+        case .delegateRehearsal: return .implemented("rebuildRehearsal(")
         case .delegateProGate:
             return .varies(
                 direct: .notApplicable("a build somebody installed themselves sells nothing, so the dispatcher's window simply opens"),

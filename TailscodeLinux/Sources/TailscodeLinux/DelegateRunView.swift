@@ -43,6 +43,9 @@ enum DelegateRunView {
         if !reading.facts.isEmpty {
             gtk_box_append(ptr(block), Gtk.label(reading.facts, css: "dg-facts", wrap: true, selectable: false))
         }
+        if let teaching = reading.teaching {
+            gtk_box_append(ptr(block), Gtk.label(teaching, css: "row-title", wrap: true, selectable: false))
+        }
         return block
     }
 

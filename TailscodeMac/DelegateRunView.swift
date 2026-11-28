@@ -96,7 +96,7 @@ final class DelegateRunView: NSView {
         let labels = board.tiers.reduce(into: [String: String]()) { $0[$1.tier] = $1.label }
         let next = Drawn(
             scale: MacTheme.UIScale.factor, runID: reading.runID,
-            header: [reading.headline, reading.badge, reading.facts], tone: reading.tone,
+            header: [reading.headline, reading.badge, reading.facts, reading.teaching], tone: reading.tone,
             lead: reading.lead, ladder: reading.ladder, primary: reading.primary,
             secondary: reading.secondary, replay: reading.replayTiers.map { tier in
                 labels[tier].flatMap { $0.isEmpty ? nil : "\(tier) · \($0)" } ?? tier
@@ -145,6 +145,9 @@ final class DelegateRunView: NSView {
         var views: [NSView] = [titleRow]
         if !reading.facts.isEmpty {
             views.append(RowKit.wrapping(reading.facts, font: MacTheme.Ramp.font(.rowMeta), color: MacTheme.Color.secondaryLabel))
+        }
+        if let teaching = reading.teaching {
+            views.append(RowKit.wrapping(teaching, font: MacTheme.Ramp.font(.rowTitle), color: MacTheme.Color.mark))
         }
         refill(headerSlot, with: views)
     }
