@@ -69,10 +69,12 @@ The rule the orb, the radar and the head already follow: Core decides, a client 
 
 The card here can generate meshes: ComfyUI 0.41 carries TRELLIS.2 natively (MIT, a photo in, a textured GLB out, about 24 GB). It is the wrong tool for this window. A generated mesh is around a million triangles with lighting baked into its texture, its screen is not a separate surface that can show state, and thirteen of them would not look like one family. Six authored shapes are a few kilobytes, match each other, and take state as data. Hunyuan3D is out regardless: its licence excludes the European Union. Where the card earns its place is the mocks and the marketing renders, at seconds a frame.
 
-## 7. Open
+## 7. Decided, and open
 
-- The name. "Tailnet" in the mocks.
-- Free or Pro.
+Decided by Marcus on 2026-11-28: the name is Tailnet, and it is part of Pro. It opens on the same access every other Pro feature reads (`ProAccess.hasProAccess`), so a buyer has it for good and a copy in its free Pro week has it until the week ends; after that the door leads to the Pro sheet. The direct Mac build and Linux sell nothing and gate nothing.
+
+Still open:
+
 - A phone without a Tailscale key knows only remembered machines and cannot say which are on; the window would show those as unknown rather than offline.
 - Whether a machine's real shape can be told apart beyond its system (a desktop Mac from a laptop) without asking the bridge to report its model.
 
