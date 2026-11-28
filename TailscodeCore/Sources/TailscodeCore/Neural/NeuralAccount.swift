@@ -369,6 +369,45 @@ public struct NeuralAccount: Sendable, Equatable {
         self.saidOrder = saidOrder
     }
 
+    /// The part of the account a run of steps covers, one-based and inclusive: the items that
+    /// begin inside it, with the header and a pending ask left as they are. The prompt, the plan
+    /// and the result belong to the whole turn and are left out, and the answer stays only when
+    /// the run reaches the turn's last step. A stage of a telling opens this.
+    public func scoped(to numbers: ClosedRange<Int>) -> NeuralAccount {
+        var kept: [Item] = []
+        for item in items {
+            switch item {
+            case .ask:
+                kept.append(item)
+            case .answer:
+                if numbers.upperBound >= stepIndex.count { kept.append(item) }
+            case .said(let said):
+                if numbers.contains(said.number) { kept.append(item) }
+            case .thought(let thought):
+                if numbers.contains(thought.number) { kept.append(item) }
+            case .work(let work):
+                if let first = work.numbers.first, numbers.contains(first) { kept.append(item) }
+            }
+        }
+        var owners: [String: Int] = [:]
+        var order: [(index: Int, itemIndex: Int)] = []
+        var thoughts = 0
+        for (place, item) in kept.enumerated() {
+            for id in item.stepIDs { owners[id] = place }
+            switch item {
+            case .said(let said): order.append((stepIndex[said.stepID] ?? said.number - 1, place))
+            case .thought: thoughts += 1
+            default: break
+            }
+        }
+        let liveInside = live.flatMap { numbers.contains($0.number) ? $0 : nil }
+        return NeuralAccount(
+            items: kept, needsYou: needsYou, answer: numbers.upperBound >= stepIndex.count ? answer : nil,
+            speaker: speaker, utteranceCount: order.count, thoughtCount: thoughts, revision: revision,
+            header: header, asked: nil, plan: nil, result: nil, live: liveInside, owner: owners,
+            stepIndex: stepIndex, saidOrder: order)
+    }
+
     private static func gapBetween(_ a: Date?, _ b: Date?) -> TimeInterval {
         guard let a, let b else { return 0 }
         return abs(b.timeIntervalSince(a))

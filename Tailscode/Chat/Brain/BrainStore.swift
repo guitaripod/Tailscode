@@ -685,6 +685,8 @@ final class BrainInteraction {
     var replayOnOpen = false
     /// A phone's step list was opened where it stands, past its first few rows.
     var listExpanded = false
+    /// The person chose the steps over the turn in short.
+    var gistTold = false
     /// A zone the card's chip asked to open the brain diving into.
     var pendingDive: NeuralZone?
 }

@@ -33,7 +33,7 @@ extension BrainAccountView {
         let box = max(120, min(region, cap) - padLeft - Self.padRight)
         var y = bodyTop
         var pinned = false
-        for view in [askView, nowView, planView].compactMap({ $0 }) as [AccountBlock] {
+        for view in [askView, gistView, nowView, planView].compactMap({ $0 }) as [AccountBlock] {
             let pinHeight = view.fit(width: box)
             view.frame = CGRect(x: padLeft, y: y + 8, width: box, height: pinHeight)
             y = view.frame.maxY
@@ -42,8 +42,12 @@ extension BrainAccountView {
         pinsBottom = y
         let storyTop = pinned ? y + 8 : bodyTop
         storyRect = CGRect(x: 0, y: storyTop, width: region, height: max(0, bodyTop + bodyHeight - storyTop))
-        scroll.isHidden = holdsBody
+        scroll.isHidden = holdsBody || showsShort
         scroll.frame = storyRect
+        if let gistSwitch {
+            let room = header.accessoryRect
+            gistSwitch.frame.origin = CGPoint(x: room.minX, y: header.frame.minY + room.minY)
+        }
         footerStrip.isHidden = !split
         footerStrip.padLeft = padLeft
         footerStrip.frame = CGRect(x: 0, y: height - footer, width: width, height: footer)

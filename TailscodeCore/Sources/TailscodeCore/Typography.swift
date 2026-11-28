@@ -138,6 +138,9 @@ public enum TypeRole: String, CaseIterable, Sendable {
     case treePath
 
     case headline
+    /// The one sentence a turn told in short leads with: the largest type a transcript sets, and
+    /// medium rather than bold because it is read, not scanned.
+    case lead
     case paneHeadline
     case cardTitle
     case cardBody
@@ -260,6 +263,9 @@ public enum Typography {
         case .headline:
             return TypeSpec(
                 axis: .prose, family: .prose, ratio: 1.15, weight: .bold, tracking: -0.01)
+        case .lead:
+            return TypeSpec(
+                axis: .prose, family: .prose, ratio: 1.5, weight: .medium, tracking: -0.012, lineHeight: 1.1)
         case .cardTitle:
             return TypeSpec(
                 axis: .prose, family: .prose, ratio: 0.95, weight: .semibold, tracking: -0.005)
@@ -387,7 +393,7 @@ public enum Typography {
         case .toolName, .toolDetail, .toolOutput, .code, .codeLabel, .codeAction, .diff, .attachment,
             .treeRow, .treePath:
             return .machine
-        case .headline, .paneHeadline, .cardTitle, .cardBody, .option, .seamLabel, .seamFootnote,
+        case .headline, .lead, .paneHeadline, .cardTitle, .cardBody, .option, .seamLabel, .seamFootnote,
             .responseStat, .pairingCode:
             return .structure
         case .panelTitle, .panelLabel, .panelDetail, .panelFootnote, .control:

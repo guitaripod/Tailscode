@@ -351,6 +351,7 @@ enum ParityManifest {
         case .linkEmbeds: return .implemented("LinkRailLine")
         case .chatDensity: return .implemented("ChatLayout")
         case .neuralTrace: return .implemented("BrainRowView")
+        case .megatronInShort: return .implemented("AccountGistView")
         case .proInvitation:
             return .varies(
                 direct: .notApplicable("the direct build is unlocked and sells nothing"),

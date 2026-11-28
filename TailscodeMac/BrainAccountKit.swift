@@ -18,6 +18,8 @@ struct AccountPaint: Equatable {
     var warn: NSColor { color(palette.warn) }
     var danger: NSColor { color(palette.danger) }
     var info: NSColor { color(palette.info) }
+    /// The ink of words a model the person runs wrote, wherever they stand beside the app's own.
+    var special: NSColor { color(palette.special) }
     var text: NSColor { color(palette.text) }
     /// The quiet ink. Under System the palette's own dim ink is a label colour whose alpha the
     /// palette lost, so it reads as the full ink; there it is the ink a little way into the canvas.

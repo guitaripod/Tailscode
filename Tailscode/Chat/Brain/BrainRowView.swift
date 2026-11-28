@@ -164,11 +164,15 @@ final class BrainRowView: UIView {
     }
 
     private func makeMetrics(width: CGFloat, model: NeuralBrainModel) -> NeuralStageMetrics {
-        let expanded = store?.interaction(for: model.turn.id).listExpanded ?? false
+        let interaction = store?.interaction(for: model.turn.id)
+        let scale = Self.textScale(for: traitCollection)
+        let rows = BrainOpenView.openSlots(
+            model: model, expanded: interaction?.listExpanded ?? false, told: interaction?.gistTold ?? false,
+            width: width, rowHeight: CGFloat((NeuralStageMetrics.phoneRowHeight * Double(scale)).rounded()))
         return NeuralStageMetrics.make(
             width: Double(width), density: ChatDensitySetting.current, input: .touch,
-            zonesWithSteps: max(model.stepList.zoneChips.count, 1), rows: BrainOpenView.compactSlots(model: model, expanded: expanded),
-            viewportHeight: Double(viewport), phone: true, textScale: Double(Self.textScale(for: traitCollection)))
+            zonesWithSteps: max(model.stepList.zoneChips.count, 1), rows: rows,
+            viewportHeight: Double(viewport), phone: true, textScale: Double(scale))
     }
 
     /// How much larger than the design's the reader's type is, for a phone's rows and bar.

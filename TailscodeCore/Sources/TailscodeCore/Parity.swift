@@ -250,6 +250,7 @@ public enum AppCapability: String, CaseIterable, Sendable {
     case linkEmbeds
     case chatDensity
     case neuralTrace
+    case megatronInShort
     case reviewPrompt
     case proUnlock
     case proInvitation

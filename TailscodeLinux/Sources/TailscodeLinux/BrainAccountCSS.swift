@@ -225,6 +225,39 @@ enum BrainAccountCSS {
         .bn-now-silence { \(t(.rowStamp)) color: \(warn); }
         .bn-now-tail { }
 
+        .bn-gs-switch { border: 1px solid \(rule2); border-radius: 13px; margin-right: 4px; }
+        .bn-gs-seg { \(t(.control)) color: \(dim); padding: 3px 12px 3px 12px; border-radius: 12px; }
+        .bn-gs-seg:hover { color: \(text); }
+        .bn-gs-seg-short { color: \(special); background-color: alpha(\(special), 0.14); }
+        .bn-gs-seg-told { color: \(accent); background-color: alpha(\(accent), 0.14); }
+        .bn-gs-head { padding: 4px 0px 0px 0px; }
+        .bn-gs-title { \(t(.sectionLabel)) color: \(special); letter-spacing: 1.4px; }
+        .bn-gs-by { \(t(.rowStamp)) color: \(dim); }
+        .bn-gs-now { \(t(.lead)) color: \(text); }
+        .bn-gs-dim { color: \(dim); }
+        .bn-gs-live { padding: 0px 0px 0px 0px; min-height: 22px; }
+        .bn-gs-live-title { \(t(.rowTitleStrong)) color: \(text); }
+        .bn-gs-stages { outline: none; padding: 2px 0px 0px 0px; }
+        .bn-gs-stages:focus-visible { outline: 2px solid alpha(\(accent), 0.55); outline-offset: 2px; border-radius: 6px; }
+        .bn-gs-row { min-height: 34px; padding: 0px 10px 0px 10px; margin: 0px -10px 0px -10px; border-radius: 8px; }
+        .bn-gs-row:hover { background-color: alpha(\(accent), 0.08); }
+        .bn-gs-row.bn-cursor { background-color: alpha(\(accent), 0.12); }
+        .bn-gs-mark { \(t(.rowStamp)) font-weight: 800; min-width: 18px; min-height: 18px; border-radius: 9px; }
+        .bn-gs-mark-done { color: \(canvas); background-color: \(info); }
+        .bn-gs-mark-now { color: \(accent); background-color: alpha(\(accent), 0.18); }
+        .bn-gs-says { \(t(.rowTitle)) color: \(text); }
+        .bn-gs-says-now { \(t(.rowTitleStrong)) color: \(text); }
+        .bn-gs-fact { \(t(.rowStamp)) color: \(dim); margin-left: 4px; }
+        .bn-gs-fixed { color: \(warn); }
+        .bn-gs-failed { color: \(danger); }
+        .bn-gs-steps { min-width: 64px; }
+        .bn-gs-result { \(t(.rowTitle)) color: \(dim); margin-top: 10px; padding-top: 10px; border-top: 1px solid \(rule); }
+        .bn-gs-skel { background-color: alpha(\(dim), 0.16); border-radius: 6px; min-height: 12px; }
+        .bn-gs-skel-dot { min-width: 18px; min-height: 18px; border-radius: 9px; }
+        .bn-gs-crumb { padding: 0px; }
+        .bn-gs-back { \(t(.control)) color: \(special); }
+        .bn-gs-crumb-says { \(t(.rowTitleStrong)) color: \(text); }
+
         .bn-result {
             background-color: \(raised);
             border: 1px solid \(rule);

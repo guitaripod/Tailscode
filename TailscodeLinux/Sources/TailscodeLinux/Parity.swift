@@ -237,6 +237,7 @@ enum ParityManifest {
         case .linkEmbeds: return .implemented("LinkRailView")
         case .chatDensity: return .implemented("TranscriptGaps")
         case .neuralTrace: return .implemented("BrainView")
+        case .megatronInShort: return .implemented("refreshGistPins")
         case .proInvitation: return .notApplicable("no store and no purchase on Linux — there is nothing to invite anyone to buy")
         case .proWeek: return .notApplicable("Linux sells nothing and is whole, so there is no week to offer")
         case .proUnlock:

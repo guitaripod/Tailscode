@@ -26,6 +26,9 @@ final class YourModelPane: NSObject {
     private let modelsPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     private let modelsCount = MacDialogs.detailLabel("", wraps: false)
     private let studioToggle = NSButton(checkboxWithTitle: YourModelWords.studioTitle, target: nil, action: nil)
+    private let shortToggle = NSButton(checkboxWithTitle: NeuralGistWords.settingTitle, target: nil, action: nil)
+    private let shortSampleLabel = NSTextField(wrappingLabelWithString: "")
+    private var shortTask: Task<Void, Never>?
     private let sampleLabel = MacDialogs.detailLabel("", wraps: true)
     private let agentsTitle = NSTextField(labelWithString: YourModelWords.agentsTitle)
     private let agentsDetail = MacDialogs.detailLabel(YourModelWords.agentsNone, wraps: true)
@@ -129,6 +132,27 @@ final class YourModelPane: NSObject {
         column.addArrangedSubview(indented(sample))
         sampleLabel.isHidden = true
         column.addArrangedSubview(indented(sampleLabel))
+
+        column.addArrangedSubview(spacer(MacTheme.Spacing.s))
+        shortToggle.font = MacTheme.Ramp.font(.panelLabel)
+        shortToggle.state = NeuralGistSetting.isOn ? .on : .off
+        target(shortToggle, #selector(shortChanged))
+        column.addArrangedSubview(shortToggle)
+        column.addArrangedSubview(indented(MacDialogs.detailLabel(NeuralGistWords.settingSubtitle, wraps: true)))
+        let rules = NSTextField(wrappingLabelWithString: YourModelWords.rulesSay + ": " + NeuralGistSample.rulesWords)
+        rules.font = MacTheme.Ramp.font(.panelLabel)
+        let showShort = NSButton(title: YourModelWords.showMe, target: self, action: #selector(showShortSample))
+        showShort.bezelStyle = .rounded
+        showShort.setContentHuggingPriority(.required, for: .horizontal)
+        let shortRow = NSStackView(views: [rules, showShort])
+        shortRow.orientation = .horizontal
+        shortRow.alignment = .firstBaseline
+        shortRow.spacing = MacTheme.Spacing.s
+        column.addArrangedSubview(indented(shortRow))
+        shortSampleLabel.font = MacTheme.Ramp.font(.panelLabel)
+        shortSampleLabel.textColor = .secondaryLabelColor
+        shortSampleLabel.isHidden = true
+        column.addArrangedSubview(indented(shortSampleLabel))
 
         column.addArrangedSubview(spacer(MacTheme.Spacing.m))
         column.addArrangedSubview(MacDialogs.sectionHeader(YourModelWords.agentsTitle))
@@ -357,6 +381,23 @@ final class YourModelPane: NSObject {
 
     @objc private func studioChanged() {
         YourModelStore.setStudio(studioToggle.state == .on)
+    }
+
+    @objc private func shortChanged() {
+        NeuralGistSetting.set(shortToggle.state == .on)
+    }
+
+    @objc private func showShortSample() {
+        guard let filed = YourModelStore.current() else { return }
+        shortTask?.cancel()
+        shortSampleLabel.isHidden = false
+        shortSampleLabel.stringValue = YourModelWords.itSays + ": …"
+        shortTask = Task { [weak self] in
+            let gist = await NeuralGistSample.write(helper: filed)
+            guard !Task.isCancelled else { return }
+            self?.shortSampleLabel.stringValue =
+                gist.map { YourModelWords.itSays + ": " + NeuralGistSample.line($0) } ?? NeuralGistSample.failed
+        }
     }
 
     @objc private func carry() {

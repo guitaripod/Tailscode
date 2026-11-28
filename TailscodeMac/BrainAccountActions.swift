@@ -66,6 +66,7 @@ extension BrainAccountView {
         guard let host, host.brainKeyApplies(event), let key = BrainRowView.browseKey(from: event) else { return false }
         if key == .tab { return false }
         let onButton = window?.firstResponder is AccountButton
+        if !(onButton && key == .enter), gistKey(key) { return true }
         switch key {
         case .enter:
             if onButton { return false }
@@ -169,11 +170,13 @@ extension BrainAccountView {
     func headerContent() -> AccountHeaderView.Content {
         AccountHeaderView.Content(
             header: account.header, vitals: account.vitals(now: Date(), lastActivity: lastActivityAt),
-            filterWord: filterWord, paint: paint, multiline: isAccordion, padLeft: isAccordion ? 16 : 20)
+            filterWord: filterWord, paint: paint, multiline: isAccordion, padLeft: isAccordion ? 16 : 20,
+            trailing: refreshGistSwitch())
     }
 
     func refreshHeader() {
         if header.show(headerContent()) { needsLayout = true }
+        footerStrip.keys = showsShort ? .short : (gistScope != nil ? .stage : .account(hasShort: gistPane != nil))
     }
 
     /// What the header, the pins above the story and the narrow bar say, again.
@@ -190,7 +193,7 @@ extension BrainAccountView {
             narrowBar.setNeedsLayoutIfNeeded()
         }
         followPill.paint = paint
-        followPill.isHidden = !list.showsFollowPill || holdsBody
+        followPill.isHidden = !list.showsFollowPill || holdsBody || showsShort
         footerStrip.paint = paint
         footerStrip.began = beganClock
         updateSecondTimer()
@@ -237,10 +240,11 @@ extension BrainAccountView {
     }
 
     func dropPins() {
-        for view in [askView, nowView, planView] as [NSView?] { view?.removeFromSuperview() }
+        for view in [askView, nowView, planView, gistView] as [NSView?] { view?.removeFromSuperview() }
         askView = nil
         nowView = nil
         planView = nil
+        gistView = nil
         askSignature = ""
         nowSignature = ""
         planSignature = ""
@@ -266,8 +270,10 @@ extension BrainAccountView {
             needsLayout = true
         }
         let vitals = account.vitals(now: Date(), lastActivity: lastActivityAt)
+        refreshGistPin(vitals: vitals, hasAsk: ask != nil)
+        let short = gistLeads
         var nowSig = ""
-        if ask == nil, let live = account.live {
+        if !short, ask == nil, let live = account.live {
             nowSig = "\(live.stepID)|\(live.title)|\(live.argument)|\(live.tail.map(\.text).joined(separator: "\n"))|\(vitals.isSilent)|\(vitals.lastOutputWords ?? "")|\(vitals.silentWords ?? "")|\(width)|\(palette)"
         }
         if nowSig != nowSignature {
@@ -284,7 +290,7 @@ extension BrainAccountView {
         }
         var planSig = ""
         var compact = false
-        if account.header.isRunning, let plan = account.plan {
+        if !short, account.header.isRunning, let plan = account.plan {
             compact = nowView != nil && planNeedsCompaction(plan)
             let open = planOpenOverride ?? true
             planSig = "\(plan.items.map { "\($0.text)\($0.state)" }.joined(separator: "|"))|\(compact)|\(open)|\(width)|\(palette)"

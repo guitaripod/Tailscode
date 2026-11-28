@@ -9,6 +9,8 @@ enum BrainCompactItem: Equatable {
     case earlier(Int)
     case more(Int)
     case less
+    /// The way back to the turn in short, above the steps while a telling is held.
+    case short
 }
 
 /// The step list as a phone shows it: a short column of rows that never scrolls. A turn of forty
@@ -22,6 +24,7 @@ final class BrainCompactListView: UIView {
     var onMore: (() -> Void)?
     var onLess: (() -> Void)?
     var onAsk: (() -> Void)?
+    var onShort: (() -> Void)?
 
     private var rowHeight: CGFloat = CGFloat(NeuralStageMetrics.phoneRowHeight)
     private var scale: CGFloat = 1
@@ -51,12 +54,13 @@ final class BrainCompactListView: UIView {
     /// How many rows the list draws for a model: the slots of its window, or every step and the
     /// row that shuts them again.
     static func items(
-        for list: NeuralStepList, expanded: Bool, slots: Int
+        for list: NeuralStepList, expanded: Bool, slots: Int, short: Bool = false
     ) -> [BrainCompactItem] {
+        let lead: [BrainCompactItem] = short && !list.isFiltered ? [.short] : []
         if expanded {
-            return list.rows(in: 0..<list.visibleCount).map { .step($0) } + [.less]
+            return lead + list.rows(in: 0..<list.visibleCount).map { .step($0) } + [.less]
         }
-        return list.compactWindow(slots: slots).slots.compactMap { slot in
+        return lead + list.compactWindow(slots: slots).slots.compactMap { slot in
             switch slot {
             case .ask(let id): return list.row(id: id).map { .ask($0) }
             case .earlier(let count): return .earlier(count)
@@ -88,7 +92,7 @@ final class BrainCompactListView: UIView {
                 context.scale = scale
                 view.configure(row: row, context: context)
                 views.append(view)
-            case .ask, .earlier, .more, .less:
+            case .ask, .earlier, .more, .less, .short:
                 let view = linkView(linkIndex)
                 linkIndex += 1
                 view.configure(item: item)
@@ -134,6 +138,7 @@ final class BrainCompactListView: UIView {
             case .ask: self.onAsk?()
             case .earlier, .more: self.onMore?()
             case .less: self.onLess?()
+            case .short: self.onShort?()
             case .step: break
             }
         }
@@ -214,6 +219,7 @@ final class BrainLinkRow: UIControl {
         case .more(let count): return NeuralReading.moreSteps(count)
         case .earlier(let count): return NeuralReading.earlierSteps(count)
         case .less: return NeuralReading.showFewerSteps
+        case .short: return "\(NeuralGistWords.mark) \(NeuralGistWords.title)"
         case .ask(let row): return "\(NeuralReading.verdictWaiting): \(row.title)"
         case .step: return nil
         }
@@ -233,6 +239,7 @@ final class BrainLinkRow: UIControl {
         case .more: (asking, symbol) = (false, "chevron.down")
         case .earlier: (asking, symbol) = (false, "chevron.up")
         case .less: (asking, symbol) = (false, "chevron.up")
+        case .short: (asking, symbol) = (false, "chevron.left")
         case .step: (asking, symbol) = (false, "")
         }
         let ink: UIColor = asking ? Theme.Color.label : Theme.Color.accent

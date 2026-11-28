@@ -118,11 +118,15 @@ enum BrainViewChecks {
             checks += 1
         }
         let was = DisplayGate.assumesVisible
+        let muted = NeuralGistDesk.shared.isMuted
         DisplayGate.assumesVisible = true
         BrainPictures.rendersSynchronously = true
+        NeuralGistDesk.shared.isMuted = true
+        NeuralGistDesk.shared.forgetAll()
         defer {
             DisplayGate.assumesVisible = was
             BrainPictures.rendersSynchronously = false
+            NeuralGistDesk.shared.isMuted = muted
         }
         guard MacBrain.isEnabled else { return 0 }
         try BrainOwnChecks.run(expect)

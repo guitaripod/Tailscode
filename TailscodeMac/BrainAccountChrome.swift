@@ -14,8 +14,12 @@ final class AccountHeaderView: AccountBlock {
         var paint: AccountPaint
         var multiline: Bool
         var padLeft: CGFloat
+        /// Room kept before the counts for something the account places there itself.
+        var trailing: CGFloat = 0
     }
 
+    /// Where the room `Content.trailing` asked for is, once laid out.
+    private(set) var accessoryRect = CGRect.zero
     private var content: Content?
     private let pill = AccountPill()
     private let pillDot = AccountPulseDot()
@@ -48,7 +52,7 @@ final class AccountHeaderView: AccountBlock {
         let key = [
             header.speaker, header.pillWord, header.clause ?? "", next.vitals.counts, "\(header.verdict)",
             "\(header.face.effort)", next.filterWord ?? "", "\(next.multiline)", next.paint.inks.palette.name,
-            "\(header.isRunning)", "\(header.face.hollow)", "\(header.face.rainbow)",
+            "\(header.isRunning)", "\(header.face.hollow)", "\(header.face.rainbow)", "\(Int(next.trailing))",
         ].joined(separator: "|")
         let relayout = key != layoutKey
         content = next
@@ -109,7 +113,9 @@ final class AccountHeaderView: AccountBlock {
         let counts = AccountType.width(content.vitals.counts, .rowStamp)
         let chip = filtered.isHidden ? 0 : filtered.fittingSize.width + 10
         let sentence = sentenceWidth(content)
-        let single = !content.multiline && identity + 12 + pillSize.width + 12 + sentence + 12 + chip + counts <= avail
+        let extra = content.trailing > 0 ? content.trailing + 12 : 0
+        let single = !content.multiline
+            && identity + 12 + pillSize.width + 12 + min(sentence, 120) + 12 + chip + extra + counts <= avail
         var height: CGFloat
         if single {
             height = 40
@@ -121,7 +127,9 @@ final class AccountHeaderView: AccountBlock {
                 x = filtered.frame.maxX + 10
             }
             countsRect = CGRect(x: width - padRight - counts, y: 0, width: counts, height: height)
-            sentenceRect = CGRect(x: x, y: 0, width: max(countsRect.minX - 12 - x, 20), height: height)
+            accessoryRect = CGRect(
+                x: countsRect.minX - 12 - content.trailing, y: (height - 24) / 2, width: content.trailing, height: 24)
+            sentenceRect = CGRect(x: x, y: 0, width: max(countsRect.minX - 12 - extra - x, 20), height: height)
         } else {
             var y: CGFloat = 8
             identityOrigin = CGPoint(x: padLeft, y: y + 12)
@@ -131,8 +139,9 @@ final class AccountHeaderView: AccountBlock {
                 filtered.frame.origin = CGPoint(x: x, y: y + (24 - filtered.frame.height) / 2)
                 x = filtered.frame.maxX + 10
             }
-            if x + sentence <= padLeft + avail {
-                sentenceRect = CGRect(x: x, y: y, width: padLeft + avail - x, height: 24)
+            accessoryRect = CGRect(x: padLeft + avail - content.trailing, y: y, width: content.trailing, height: 24)
+            if x + sentence + extra <= padLeft + avail {
+                sentenceRect = CGRect(x: x, y: y, width: padLeft + avail - extra - x, height: 24)
                 y += 24
             } else {
                 y += 24 + 4
@@ -355,8 +364,16 @@ final class AccountNarrowBar: NSView, NSTextFieldDelegate {
 /// The key hints under a wide account, and when the turn began at its right.
 @MainActor
 final class AccountFooterStrip: NSView {
+    /// Which keys the strip names: the account's own, the telling's, or an open stage's.
+    enum Keys: Equatable {
+        case account(hasShort: Bool)
+        case short
+        case stage
+    }
+
     var paint: AccountPaint { didSet { if paint != oldValue { needsDisplay = true } } }
     var began: String? { didSet { if began != oldValue { needsDisplay = true } } }
+    var keys = Keys.account(hasShort: false) { didSet { if keys != oldValue { needsDisplay = true } } }
     var padLeft: CGFloat = 20
 
     init(paint: AccountPaint) {
@@ -392,10 +409,23 @@ final class AccountFooterStrip: NSView {
             x += 3
             x += AccountType.draw(verb, .rowStamp, paint.dim, x: x, midY: mid) + 14
         }
-        hint(["s", "S"], AccountWords.saidVerb)
-        hint(["a"], AccountWords.askVerb)
-        hint(["\u{2191}", "\u{2193}"], AccountWords.itemsVerb)
-        hint(["Enter"], AccountWords.detailVerb)
+        switch keys {
+        case .short:
+            hint(["\u{2191}", "\u{2193}"], NeuralGistWords.stagesHint)
+            hint(["Enter"], NeuralGistWords.openStageHint)
+            hint(["i"], NeuralGistWords.toggleHint)
+        case .stage:
+            hint(["Esc"], NeuralGistWords.title.lowercased())
+            hint(["[", "]"], NeuralGistWords.neighbourHint)
+            hint(["\u{2191}", "\u{2193}"], AccountWords.itemsVerb)
+            hint(["Enter"], AccountWords.detailVerb)
+        case .account(let hasShort):
+            hint(["s", "S"], AccountWords.saidVerb)
+            hint(["a"], AccountWords.askVerb)
+            hint(["\u{2191}", "\u{2193}"], AccountWords.itemsVerb)
+            hint(["Enter"], AccountWords.detailVerb)
+            if hasShort { hint(["i"], NeuralGistWords.toggleHint) }
+        }
         if let began {
             AccountType.draw(began, .rowStamp, paint.dim, x: bounds.width - 12, midY: mid, rightAligned: true)
         }

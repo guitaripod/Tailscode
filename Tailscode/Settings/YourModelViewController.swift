@@ -32,6 +32,9 @@ final class YourModelViewController: UIViewController {
     private let modelsHeader = UILabel()
     private let modelsStack = UIStackView()
     private let studioSwitch = UISwitch()
+    private let shortSwitch = UISwitch()
+    private let shortSampleLabel = UILabel()
+    private var shortTask: Task<Void, Never>?
     private let sampleLabel = UILabel()
     private let agentsTitle = UILabel()
     private let agentsDetail = UILabel()
@@ -101,6 +104,7 @@ final class YourModelViewController: UIViewController {
         stack.addArrangedSubview(modelsHeader)
         stack.addArrangedSubview(modelsStack)
         stack.addArrangedSubview(sectionLabel(YourModelWords.usesTitle))
+        stack.addArrangedSubview(card(shortContent()))
         stack.addArrangedSubview(card(studioContent()))
         stack.addArrangedSubview(sectionLabel(YourModelWords.agentsTitle))
         stack.addArrangedSubview(card(agentsContent()))
@@ -214,6 +218,63 @@ final class YourModelViewController: UIViewController {
         row.spacing = Theme.Spacing.s
         row.isHidden = true
         return row
+    }
+
+    private func shortContent() -> UIView {
+        let title = UILabel()
+        title.text = NeuralGistWords.settingTitle
+        title.font = Theme.Ramp.font(.cardTitle)
+        title.numberOfLines = 0
+        let subtitle = UILabel()
+        subtitle.text = NeuralGistWords.settingSubtitle
+        subtitle.font = Theme.Ramp.font(.panelDetail)
+        subtitle.textColor = Theme.Color.secondaryLabel
+        subtitle.numberOfLines = 0
+        let text = UIStackView(arrangedSubviews: [title, subtitle])
+        text.axis = .vertical
+        text.spacing = 2
+        shortSwitch.isOn = NeuralGistSetting.isOn
+        shortSwitch.accessibilityLabel = NeuralGistWords.settingTitle
+        shortSwitch.addAction(
+            UIAction { [weak self] _ in
+                Theme.Haptics.tap()
+                NeuralGistSetting.set(self?.shortSwitch.isOn ?? true)
+            }, for: .valueChanged)
+        let top = UIStackView(arrangedSubviews: [text, shortSwitch])
+        top.axis = .horizontal
+        top.alignment = .center
+        top.spacing = Theme.Spacing.m
+
+        let rules = UILabel()
+        rules.text = YourModelWords.rulesSay + ": " + NeuralGistSample.rulesWords
+        rules.font = Theme.Ramp.font(.panelLabel)
+        rules.numberOfLines = 0
+        shortSampleLabel.font = Theme.Ramp.font(.cardBody)
+        shortSampleLabel.textColor = Theme.Color.secondaryLabel
+        shortSampleLabel.numberOfLines = 0
+        shortSampleLabel.isHidden = true
+        let show = UIButton(configuration: Theme.Glass.buttonConfiguration())
+        style(show, YourModelWords.showMe) { [weak self] in self?.showShortSample() }
+
+        let column = UIStackView(arrangedSubviews: [top, rules, shortSampleLabel, show])
+        column.axis = .vertical
+        column.spacing = Theme.Spacing.s
+        column.setCustomSpacing(Theme.Spacing.l, after: top)
+        return column
+    }
+
+    private func showShortSample() {
+        guard let filed = YourModelStore.current() else { return }
+        Theme.Haptics.tap()
+        shortTask?.cancel()
+        shortSampleLabel.isHidden = false
+        shortSampleLabel.text = YourModelWords.itSays + ": …"
+        shortTask = Task { [weak self] in
+            let gist = await NeuralGistSample.write(helper: filed)
+            guard !Task.isCancelled else { return }
+            self?.shortSampleLabel.text =
+                gist.map { YourModelWords.itSays + ": " + NeuralGistSample.line($0) } ?? NeuralGistSample.failed
+        }
     }
 
     private func studioContent() -> UIView {

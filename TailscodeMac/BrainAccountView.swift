@@ -49,6 +49,19 @@ final class BrainAccountView: NSView, BrainKeyTaker {
     var askView: AccountAskView?
     var nowView: AccountNowView?
     var planView: AccountPlanView?
+    var gistView: AccountGistView?
+    var gistSwitch: AccountGistSwitch?
+    /// The turn in short, when the person's model tells it; nil is the account as it always was.
+    var gistPane: NeuralGistPane?
+    /// The person chose the account over the telling.
+    var gistTold = false
+    /// The stage whose part of the account is shown, one-based steps.
+    var gistScope: ClosedRange<Int>?
+    /// The stage the keys are on, in short.
+    var gistCursor: Int?
+    var gistObserver: NSObjectProtocol?
+    /// The whole account, which `account` is a stage's part of while one is open.
+    var fullAccount: NeuralAccount
     var askSignature = ""
     var nowSignature = ""
     var planSignature = ""
@@ -111,6 +124,7 @@ final class BrainAccountView: NSView, BrainKeyTaker {
         var following: Bool
         var outcome: NeuralOutcome
         var answer: Int
+        var scope: ClosedRange<Int>?
     }
 
     static let footerHeight: CGFloat = 32
@@ -133,6 +147,7 @@ final class BrainAccountView: NSView, BrainKeyTaker {
         let prompt = host.promptText
         let answer = host.answerText
         account = host.model.account(answer: answer.isEmpty ? nil : answer, prompt: prompt)
+        fullAccount = account
         super.init(frame: .zero)
         wantsLayer = true
         addSubview(header)
@@ -164,11 +179,13 @@ final class BrainAccountView: NSView, BrainKeyTaker {
         setAccessibilityRole(.group)
         setAccessibilityLabel(AccountWords.accountLabel)
         proseProbe = Self.probe()
+        observeGist()
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     isolated deinit {
+        if let gistObserver { NotificationCenter.default.removeObserver(gistObserver) }
         secondTimer?.invalidate()
         if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) }
     }
@@ -258,10 +275,14 @@ final class BrainAccountView: NSView, BrainKeyTaker {
         refreshCount += 1
         let model = host.model
         let list = model.browseState.list
-        let next = model.account(answer: answerOrNil, prompt: promptText)
+        let whole = model.account(answer: answerOrNil, prompt: promptText)
+        fullAccount = whole
+        gistWant()
+        let next = gistScope.map { whole.scoped(to: $0) } ?? whole
         let stamp = ReadStamp(
             reads: model.accountReads, filter: list.filter, total: list.total, visible: list.visibleCount,
-            following: list.isFollowing, outcome: model.turn.outcome, answer: host.answerText.utf8.count)
+            following: list.isFollowing, outcome: model.turn.outcome, answer: host.answerText.utf8.count,
+            scope: gistScope)
         guard stamp != readStamp || entries.isEmpty else {
             followCursor()
             refreshChrome()

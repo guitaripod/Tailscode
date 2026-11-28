@@ -116,6 +116,8 @@ extension BrainAccount {
 
     func teardown() {
         disposed = true
+        if let gistObserver { NotificationCenter.default.removeObserver(gistObserver) }
+        gistObserver = nil
         for id in Array(cells.keys) {
             cells[id]?.teardown()
             cells[id] = nil
@@ -147,11 +149,15 @@ extension BrainAccount {
         lastRefresh = now
         let model = owner.model
         let list = model.browseState.list
-        let next = model.account(
+        let whole = model.account(
             answer: owner.row.answer.isEmpty ? nil : owner.row.answer, prompt: owner.row.prompt)
+        fullAccount = whole
+        gistWant()
+        let next = gistScope.map { whole.scoped(to: $0) } ?? whole
         let stamp = ReadStamp(
             reads: model.accountReads, filter: list.filter, total: list.total, visible: list.visibleCount,
-            following: list.isFollowing, outcome: model.turn.outcome, answer: owner.row.answer.utf8.count)
+            following: list.isFollowing, outcome: model.turn.outcome, answer: owner.row.answer.utf8.count,
+            scope: gistScope)
         guard stamp != readStamp || entries.isEmpty else {
             followCursor()
             clampScroll()

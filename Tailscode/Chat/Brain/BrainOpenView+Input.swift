@@ -56,11 +56,16 @@ extension BrainOpenView {
 
     /// Opens the account in a sheet over the transcript, at a step when there is one. The phone's
     /// open Megatron holds no scroller of its own: this is where a long account is read.
-    func presentReader(focus: String?) {
+    func presentReader(focus: String?, stage: NeuralGistPane.Row? = nil, of stages: Int = 0) {
         guard metrics.isPhone, reader == nil, let controller = nearestViewController(),
             controller.presentedViewController == nil
         else { return }
+        account.scope = stage?.numbers
         let sheet = BrainReaderViewController(account: account, focus: focus ?? browseModel?.pinnedStep)
+        if let stage {
+            sheet.heading = BrainReaderViewController.Heading(
+                title: "\(NeuralGistWords.mark) \(stage.says)", detail: stage.facts(of: stages))
+        }
         sheet.onLayout = { [weak self] width in self?.configureReader(width: width) }
         sheet.onDismiss = { [weak self] in self?.readerDismissed() }
         reader = sheet
@@ -80,6 +85,7 @@ extension BrainOpenView {
 
     private func readerDismissed() {
         reader = nil
+        madeAccount?.scope = nil
         madeAccount?.removeFromSuperview()
     }
 
@@ -88,6 +94,7 @@ extension BrainOpenView {
         guard let reader else { return }
         self.reader = nil
         reader.dismiss(animated: false)
+        madeAccount?.scope = nil
         madeAccount?.removeFromSuperview()
     }
 

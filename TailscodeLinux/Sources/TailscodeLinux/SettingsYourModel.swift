@@ -40,6 +40,7 @@ final class YourModelPanel: @unchecked Sendable {
     private var suggestButton: Gtk.WeakWidget?
     private var suggested: YourModelCandidate?
     private weak var plainWords: PlainWordsSetup?
+    private var shortSample: Gtk.WeakWidget?
     private var modelsGroup: Gtk.WeakWidget?
     private var modelRows: [Gtk.WeakWidget] = []
     private var usesGroup: Gtk.WeakWidget?
@@ -113,6 +114,22 @@ final class YourModelPanel: @unchecked Sendable {
             Gtk.onMain { [weak self] in self?.showStudioSample() }
         }
         SettingsRows.add(studioSample, to: uses)
+        let short = SettingsRows.switchRow(
+            title: NeuralGistWords.settingTitle, subtitle: NeuralGistWords.settingSubtitle,
+            value: NeuralGistSetting.isOn
+        ) { on in
+            NeuralGistSetting.set(on)
+        }
+        adw_action_row_set_subtitle_lines(ptr(short), 0)
+        SettingsRows.add(short, to: uses)
+        let shortSample = Self.sampleRow(
+            title: YourModelWords.rulesSay + ": " + NeuralGistSample.rulesWords
+        ) { [weak self] in
+            Gtk.onMain { [weak self] in self?.showShortSample() }
+        }
+        adw_action_row_set_subtitle_lines(ptr(shortSample), 0)
+        SettingsRows.add(shortSample, to: uses)
+        self.shortSample = Gtk.WeakWidget(shortSample)
         let (words, setup) = SettingsPlainWords.add(to: page)
         plainWords = setup
         let wallSample = Self.sampleRow(
@@ -407,6 +424,20 @@ final class YourModelPanel: @unchecked Sendable {
                     guard let row = weakRow.widget else { return }
                     adw_action_row_set_subtitle(ptr(row), YourModelWords.provingFailed(reason))
                 }
+            }
+        }
+    }
+
+    private func showShortSample() {
+        guard let filed = YourModelStore.current(), let row = shortSample?.widget else { return }
+        adw_action_row_set_subtitle(ptr(row), YourModelWords.itSays + ": …")
+        let weakRow = Gtk.WeakWidget(row)
+        Task {
+            let gist = await NeuralGistSample.write(helper: filed)
+            Gtk.onMain {
+                guard let row = weakRow.widget else { return }
+                adw_action_row_set_subtitle(
+                    ptr(row), gist.map { YourModelWords.itSays + ": " + NeuralGistSample.line($0) } ?? NeuralGistSample.failed)
             }
         }
     }

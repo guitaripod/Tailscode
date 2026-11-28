@@ -22,7 +22,7 @@ extension BrainAccount {
         let box = max(120, min(region, cap) - padLeft - Self.padRight)
         var pins: [(pin: Pin, rect: NeuralRect)] = []
         var cursor = bodyTop
-        for pin in [askPin, nowPin, planPin].compactMap({ $0 }) {
+        for pin in self.pins {
             let rect = NeuralRect(x: padLeft, y: cursor + 8, width: box, height: pin.height)
             pins.append((pin, rect))
             cursor = rect.maxY
@@ -58,7 +58,7 @@ extension BrainAccount {
         frameCache = f
         place(sink, header, NeuralRect(x: 0, y: 0, width: f.width, height: f.header.height))
         for entry in f.pins { place(sink, entry.pin.widget, entry.rect) }
-        let takenOver = owner.readoutHoldsBody
+        let takenOver = owner.readoutHoldsBody || showsShort
         if !takenOver {
             place(sink, story, f.story)
         }
@@ -96,7 +96,7 @@ extension BrainAccount {
     /// after a move.
     func setBodyAlpha(_ alpha: Double) {
         for part in [story, footer, scrollbar] { gtk_widget_set_opacity(part, alpha) }
-        for pin in [askPin, nowPin, planPin].compactMap({ $0 }) { gtk_widget_set_opacity(pin.widget, alpha) }
+        for pin in pins { gtk_widget_set_opacity(pin.widget, alpha) }
     }
 
     /// Says Copied on the note's button for a moment, and on the button of the item that replaces

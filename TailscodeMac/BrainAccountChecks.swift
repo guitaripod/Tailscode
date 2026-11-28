@@ -23,12 +23,130 @@ enum BrainAccountChecks {
         try followRealizes(check)
         try takeover(check)
         try paintsAfterMove(check)
+        try short(check)
         try expect(failures.isEmpty, "account: " + failures.joined(separator: " | "))
         return count
     }
 
 
     private static func rowWidth(_ fixture: BrainFixture) -> CGFloat { fixture.root.frame.width - 48 }
+
+    /// The claims about a turn told in short: a turn nobody told keeps its account; a telling
+    /// stands in the story's place with a row a stage whose steps add up to the turn; a stage opens
+    /// its own part of the account with the cursor on its first step; the brackets, Esc and `i`
+    /// move between them; a narrow account lets the telling lead and keeps its story; and a telling
+    /// taken away leaves the account as it was.
+    private static func short(_ check: (Bool, String) throws -> Void) throws {
+        let fixture = BrainFixture(width: 1440)
+        defer { fixture.tearDown() }
+        guard let (row, account) = opened(fixture, 1) else {
+            try check(false, "the brain opens for the telling")
+            return
+        }
+        let key = account.gistTurnKey
+        defer { NeuralGistDesk.shared.forget(key) }
+        let steps = row.model.steps.count
+        let whole = account.fullAccount.items.count
+        try check(account.gistPane == nil && account.gistView == nil && !account.showsShort, "a turn nobody told keeps its account")
+        guard
+            let ask = NeuralGistAsk.make(
+                account: account.fullAccount, stepCount: steps, running: false, prompt: nil, answer: nil, told: nil),
+            ask.ends.count >= 3
+        else {
+            try check(false, "the film turn is long enough to tell (\(steps) steps)")
+            return
+        }
+        let first = ask.ends[ask.ends.count / 3 - (ask.ends.count >= 6 ? 0 : 1)]
+        let middle = ask.ends[max(2 * ask.ends.count / 3 - 1, ask.ends.count / 3)]
+        guard first < middle, middle < steps,
+            let gist = ask.read(
+                "{\"title\": \"Checking the telling\", \"now\": \"It is told.\", \"stages\": [{\"says\": \"Began the work\", \"to\": \(first)}, {\"says\": \"Did the middle\", \"to\": \(middle)}, {\"says\": \"Finished it\", \"to\": \(steps)}]}",
+                writer: "Check", place: ""),
+            gist.stages.count == 3
+        else {
+            try check(false, "the film turn's items end at \(ask.ends), enough for three stages")
+            return
+        }
+        func land() {
+            account.gistChanged()
+            settle(row)
+        }
+        NeuralGistDesk.shared.place(gist, for: key, model: row.model)
+        land()
+        guard let pane = account.gistPane else {
+            try check(false, "a placed telling makes a pane")
+            return
+        }
+        try check(
+            account.showsShort && account.gistView != nil && account.scroll.isHidden && account.gistSwitch != nil,
+            "a telling stands in the story's place, with the switch in the header")
+        try check(
+            pane.rows.count == 3 && pane.rows.map(\.stepCount).reduce(0, +) == steps && pane.rows.first?.from == 1
+                && pane.rows.last?.to == steps,
+            "a row a stage, and their steps add up to the turn's \(steps) (\(pane.rows.map(\.stepCount)))")
+        try check(
+            pane.rows.map(\.fixed).reduce(0, +) == row.model.verdicts.fixed,
+            "the stages count every error fixed (\(row.model.verdicts.fixed))")
+        _ = account.gistKey(.down)
+        _ = account.gistKey(.down)
+        try check(account.gistCursor == 1, "the arrows walk the stages (\(account.gistCursor ?? -1))")
+        _ = account.gistKey(.enter)
+        settle(row)
+        let second = pane.rows[1]
+        let numbers = account.account.items.compactMap { item -> Int? in
+            switch item {
+            case .said(let said): return said.number
+            case .thought(let thought): return thought.number
+            case .work(let work): return work.numbers.first
+            case .ask, .answer: return nil
+            }
+        }
+        try check(
+            account.gistScope == second.numbers && !account.showsShort && !numbers.isEmpty
+                && numbers.allSatisfy { second.numbers.contains($0) } && !account.scroll.isHidden,
+            "Enter opens the stage: only its part of the account (\(numbers) in \(second.from)-\(second.to))")
+        try check(row.model.pinnedStep == second.firstStepID, "the cursor is on the stage's first step")
+        _ = account.gistKey(.character("]"))
+        settle(row)
+        try check(account.gistScope == pane.rows[2].numbers, "] opens the stage after")
+        _ = account.gistKey(.character("["))
+        _ = account.gistKey(.character("["))
+        settle(row)
+        try check(account.gistScope == pane.rows[0].numbers, "[ opens the stage before, and stops at the first")
+        _ = account.gistKey(.escape)
+        settle(row)
+        try check(
+            account.gistScope == nil && account.showsShort && account.account.items.count == whole,
+            "Esc is the way back to the turn in short")
+        _ = account.gistKey(.character("i"))
+        settle(row)
+        try check(
+            !account.showsShort && account.gistView == nil && !account.scroll.isHidden
+                && account.account.items.count == whole,
+            "i shows what it told you: the whole account, as it always was")
+        _ = account.gistKey(.character("i"))
+        settle(row)
+        try check(account.showsShort, "and i again is the turn in short")
+        NeuralGistDesk.shared.forget(key)
+        land()
+        try check(
+            account.gistPane == nil && account.gistView == nil && account.gistSwitch == nil && !account.scroll.isHidden,
+            "a telling taken away leaves the account as it was")
+
+        let narrow = BrainFixture(width: 700)
+        defer { narrow.tearDown() }
+        guard let (thin, thinAccount) = opened(narrow, 1) else {
+            try check(false, "the brain opens narrow for the telling")
+            return
+        }
+        NeuralGistDesk.shared.place(gist, for: thinAccount.gistTurnKey, model: thin.model)
+        thinAccount.gistChanged()
+        settle(thin)
+        try check(
+            thinAccount.isAccordion && thinAccount.gistLeads && !thinAccount.showsShort && thinAccount.gistView != nil
+                && !thinAccount.scroll.isHidden && thinAccount.gistSwitch == nil,
+            "a narrow account lets the telling lead and keeps its story under it")
+    }
 
     private static func opened(_ fixture: BrainFixture, _ index: Int) -> (BrainRowView, BrainAccountView)? {
         guard let row = fixture.open(index), let account = row.account else { return nil }

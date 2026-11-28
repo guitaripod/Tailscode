@@ -59,8 +59,8 @@ public enum PlainModel {
     /// The command with what looks like a secret taken out, because a command line carries them.
     /// Values after `NAME=` where the name reads as a secret, header values, `--token x`
     /// style flags, passwords in an address and any long unbroken run of letters and digits.
-    public static func redact(_ raw: String) -> String {
-        var text = String(raw.prefix(400))
+    public static func redact(_ raw: String, limit: Int = 400) -> String {
+        var text = String(raw.prefix(limit))
         let patterns: [(String, String)] = [
             ("(?i)(://[^/\\s:@]+:)[^@\\s/]+(@)", "$1…$2"),
             ("(?i)(authorization:\\s*)(bearer\\s+|basic\\s+|token\\s+)?[^\\s'\"]+", "$1$2…"),

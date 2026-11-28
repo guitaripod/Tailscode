@@ -43,7 +43,7 @@ extension BrainAccount {
         let vitals = account.vitals(now: Date(), lastActivity: lastActivityAt)
         let stamp = [
             header.speaker, header.pillWord, vitals.sentence, vitals.counts, "\(header.verdict)", "\(narrow)",
-            "\(header.face.effort)", header.clause ?? "", owner.inks.hex.accent, filterWord ?? "",
+            "\(header.face.effort)", header.clause ?? "", owner.inks.hex.accent, filterWord ?? "", gistStamp,
         ].joined(separator: "|")
         guard stamp != headerStamp else { return }
         headerStamp = stamp
@@ -66,6 +66,7 @@ extension BrainAccount {
             let top = BrainUI.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
             BrainUI.add(top, identity, pill)
             if let word = filterWord { gtk_box_append(ptr(top), filteredChipDetached(word)) }
+            if let switcher = gistSwitcher() { gtk_box_append(ptr(top), switcher) }
             let second = BrainUI.box(GTK_ORIENTATION_HORIZONTAL, spacing: 10)
             gtk_widget_set_hexpand(sentence, 1)
             BrainUI.add(second, sentence)
@@ -81,6 +82,7 @@ extension BrainAccount {
             gtk_box_append(ptr(headerBox), pill)
             gtk_box_append(ptr(headerBox), sentence)
             if let word = filterWord { gtk_box_append(ptr(headerBox), filteredChipDetached(word)) }
+            if let switcher = gistSwitcher() { gtk_box_append(ptr(headerBox), switcher) }
             gtk_box_append(ptr(headerBox), counts)
         }
         tailscode_set_accessible_label(
@@ -206,7 +208,7 @@ extension BrainAccount {
     }
 
     /// The Now line's dot: breathing while it works, still when it is silent.
-    private func nowDot(silent: Bool) -> UnsafeMutablePointer<GtkWidget> {
+    func nowDot(silent: Bool) -> UnsafeMutablePointer<GtkWidget> {
         let holder = NowDot(ref: ref, silent: silent)
         _ = Gtk.releaseInstalled
         let dot = tailscode_canvas_new(

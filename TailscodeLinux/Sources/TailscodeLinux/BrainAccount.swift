@@ -57,6 +57,22 @@ final class BrainAccount: @unchecked Sendable {
     var askPin: Pin?
     var nowPin: Pin?
     var planPin: Pin?
+    var gistPin: Pin?
+    var stagesPin: Pin?
+    /// The pins in the order they stand above the story.
+    var pins: [Pin] { [askPin, gistPin, nowPin, stagesPin, planPin].compactMap { $0 } }
+    /// The turn in short, when the person's model tells it; nil is the account as it always was.
+    var gistPane: NeuralGistPane?
+    /// The person chose the account over the telling.
+    var gistTold = false
+    /// The stage whose part of the account is shown, one-based steps.
+    var gistScope: ClosedRange<Int>?
+    /// The stage the keys are on, in short.
+    var gistCursor: Int?
+    var gistObserver: NSObjectProtocol?
+    var gistRail: Gtk.WeakWidget?
+    /// The whole account, which `account` is a stage's part of while one is open.
+    var fullAccount: NeuralAccount
     var askWidget: UnsafeMutablePointer<GtkWidget>? { askPin?.widget }
     var askHeight: Double { askPin?.height ?? 0 }
     var askSignature: String { askPin?.signature ?? "" }
@@ -123,6 +139,7 @@ final class BrainAccount: @unchecked Sendable {
         var following: Bool
         var outcome: NeuralOutcome
         var answer: Int
+        var scope: ClosedRange<Int>?
     }
     var fonts = BrainListFonts()
     lazy var workFonts = WorkFonts()
@@ -169,6 +186,7 @@ final class BrainAccount: @unchecked Sendable {
         ref = WeakBrainView(owner)
         account = owner.model.account(
             answer: owner.row.answer.isEmpty ? nil : owner.row.answer, prompt: owner.row.prompt)
+        fullAccount = account
         let rootHolder = Holder()
         let storyHolder = Holder()
         _ = Gtk.releaseInstalled
@@ -227,6 +245,7 @@ final class BrainAccount: @unchecked Sendable {
         buildPill()
         for part in [header, story, footer, scrollbar, pill] { tailscode_brain_row_add(root, part) }
         installInput()
+        observeGist()
     }
 
     func buildPill() {

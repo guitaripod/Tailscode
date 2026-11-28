@@ -220,6 +220,7 @@ extension ChatViewController {
         /// Runs `TAILSCODE_NEURAL_CHECK`'s claims against this conversation's brains.
         func startBrainChecks() {
             guard BrainChecks.isEnabled || BrainChecks.isPerf else { return }
+            NeuralGistDesk.shared.isMuted = true
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(2))
                 if BrainChecks.isPerf {

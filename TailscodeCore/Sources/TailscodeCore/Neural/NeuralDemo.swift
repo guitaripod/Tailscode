@@ -142,7 +142,7 @@ public enum NeuralDemo {
             add(3, bash("sed -n 1,60p scripts/film.sh", out: ["#!/usr/bin/env bash", "set -euo pipefail"]))
             add(4, bash("rg -n \"demo\" scripts/dev-linuxapp.sh scripts/run-mac.sh", out: ["scripts/run-mac.sh:41"]))
             add(5, bash("scripts/dev-linuxapp.sh status", out: ["running"]))
-            add(6, .text("Building it from the existing film rig."))
+            add(6, .text(NeuralGistDemo.filmNote))
             add(7,
                 bash("ffmpeg -i \(flac) -af astats -f null -", out: ["Overall RMS"]),
                 bash("python3 scripts/beats.py \(flac)", out: ["tempo 115.0"]))

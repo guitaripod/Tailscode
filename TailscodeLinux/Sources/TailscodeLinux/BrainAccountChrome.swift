@@ -52,10 +52,22 @@ extension BrainAccount {
                 color: inks.dim)
             x += BrainDraw.measure(verb, fonts.status) + 14
         }
-        hint(["s", "S"], BrainWords.saidVerb)
-        hint(["a"], BrainWords.askVerb)
-        hint(["\u{2191}", "\u{2193}"], BrainWords.itemsVerb)
-        hint(["Enter"], BrainWords.detailVerb)
+        if showsShort {
+            hint(["\u{2191}", "\u{2193}"], NeuralGistWords.stagesHint)
+            hint(["Enter"], NeuralGistWords.openStageHint)
+            hint(["i"], NeuralGistWords.toggleHint)
+        } else if gistScope != nil {
+            hint(["Esc"], NeuralGistWords.title.lowercased())
+            hint(["[", "]"], NeuralGistWords.neighbourHint)
+            hint(["\u{2191}", "\u{2193}"], BrainWords.itemsVerb)
+            hint(["Enter"], BrainWords.detailVerb)
+        } else {
+            hint(["s", "S"], BrainWords.saidVerb)
+            hint(["a"], BrainWords.askVerb)
+            hint(["\u{2191}", "\u{2193}"], BrainWords.itemsVerb)
+            hint(["Enter"], BrainWords.detailVerb)
+            if gistPane != nil { hint(["i"], NeuralGistWords.toggleHint) }
+        }
         if let began = beganClock {
             let size = BrainDraw.measure(began, fonts.count)
             BrainDraw.line(
@@ -126,6 +138,12 @@ extension BrainAccount {
         let askSig = ask.map { "\($0.id)|\($0.subject)|\($0.why?.text ?? "")|\(Int(boxWidth))|\(owner.inks.hex.warn)" } ?? ""
         setPin(&askPin, signature: askSig) { ask.map { self.buildAsk($0) } }
         let vitals = account.vitals(now: Date(), lastActivity: lastActivityAt)
+        refreshGistPins()
+        if gistLeads {
+            refreshShortNow(ask: ask != nil, vitals: vitals)
+            setPin(&planPin, signature: "") { nil }
+            return
+        }
         var nowSig = ""
         if ask == nil, let live = account.live {
             nowSig = "\(live.stepID)|\(live.title)|\(live.argument)|\(live.tail.map(\.text).joined(separator: "\n"))|\(vitals.isSilent)|\(vitals.lastOutputWords ?? "")|\(vitals.silentWords ?? "")|\(Int(boxWidth))|\(owner.inks.hex.accent)"
@@ -154,7 +172,7 @@ extension BrainAccount {
         return Double(24 + plan.items.prefix(24).count * 24 + 16) > available
     }
 
-    private func setPin(_ pin: inout Pin?, signature: String, build: () -> UnsafeMutablePointer<GtkWidget>?) {
+    func setPin(_ pin: inout Pin?, signature: String, build: () -> UnsafeMutablePointer<GtkWidget>?) {
         if let held = pin, held.signature == signature { return }
         if let held = pin {
             pin = nil
@@ -170,13 +188,15 @@ extension BrainAccount {
 
     /// Takes every pin off the root, for a change of colours that makes them again.
     func dropPins() {
-        for pin in [askPin, nowPin, planPin].compactMap({ $0 }) {
+        for pin in pins {
             releaseFocus(inside: pin.widget)
             tailscode_brain_row_remove(root, pin.widget)
         }
         askPin = nil
         nowPin = nil
         planPin = nil
+        gistPin = nil
+        stagesPin = nil
     }
 
     /// One line of a role's type as the toolkit lays it out, with its own leading.
@@ -223,7 +243,7 @@ extension BrainAccount {
             changed = true
         }
         let box = pinWidth(rootWidth: width)
-        for pin in [askPin, nowPin, planPin].compactMap({ $0 }) {
+        for pin in pins {
             let next = measure(pin.widget, width: box)
             if abs(next - pin.height) > 0.5 {
                 pin.height = next
@@ -324,6 +344,10 @@ extension BrainAccount {
     }
 
     func focus() {
+        if showsShort, let stages = stagesPin?.widget {
+            gtk_widget_grab_focus(stages)
+            return
+        }
         gtk_widget_grab_focus(story)
     }
 }

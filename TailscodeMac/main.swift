@@ -132,6 +132,7 @@ TailscodeLogging.configure()
 MediaAccounts.install(KeychainSecretStore())
 
 if TranscriptBench.isRequested {
+    NeuralGistDesk.shared.isMuted = true
     TranscriptBench.run()
 }
 

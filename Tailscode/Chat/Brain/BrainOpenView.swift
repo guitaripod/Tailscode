@@ -44,6 +44,10 @@ final class BrainOpenView: UIView, BrainBrowsing {
     }
     let accordionHeader = BrainListHeader()
     let compactList = BrainCompactListView()
+    /// The turn in short, which stands where the compact list does while a telling is shown.
+    let gistView = BrainGistView()
+    var gistPane: NeuralGistPane?
+    var gistObserver: NSObjectProtocol?
     var madeAccount: BrainAccountView?
 
     /// The account, made when something first needs it: a phone's open Megatron never builds one
@@ -114,6 +118,8 @@ final class BrainOpenView: UIView, BrainBrowsing {
         addSubview(wordmark)
         addSubview(chips)
         addSubview(compactList)
+        gistView.isHidden = true
+        addSubview(gistView)
         addSubview(accordionHeader)
         standIn.contentsRect = BrainPicture.cropRect
         standIn.contentsGravity = .resize
@@ -156,9 +162,18 @@ final class BrainOpenView: UIView, BrainBrowsing {
         isAccessibilityElement = false
         accessibilityContainerType = .semanticGroup
         installRotors()
+        gistObserver = NotificationCenter.default.addObserver(
+            forName: NeuralGistDesk.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.gistChanged() }
+        }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    isolated deinit {
+        if let gistObserver { NotificationCenter.default.removeObserver(gistObserver) }
+    }
 
     func wire() {
         compactList.host = self
@@ -169,6 +184,9 @@ final class BrainOpenView: UIView, BrainBrowsing {
             guard let self else { return }
             self.actions?.goToAsk(self.turnID)
         }
+        compactList.onShort = { [weak self] in self?.setGistTold(false) }
+        gistView.onSteps = { [weak self] in self?.setGistTold(true) }
+        gistView.onOpen = { [weak self] index in self?.openStage(index) }
         accordionHeader.host = self
         accordionHeader.onCount = { [weak self] in self?.presentReader(focus: nil) }
         accordionHeader.showsFailed = false
@@ -252,13 +270,16 @@ final class BrainOpenView: UIView, BrainBrowsing {
         let listRect = rect(metrics.list)
         if metrics.isPhone {
             madeList?.isHidden = true
-            compactList.isHidden = false
+            compactList.isHidden = showsShort
+            gistView.isHidden = !showsShort
             accordionHeader.isHidden = false
             accordionHeader.frame = rect(metrics.listHeader)
             compactList.frame = rect(metrics.listRows)
+            gistView.frame = rect(metrics.listRows)
             hairline.isHidden = true
         } else if split {
             compactList.isHidden = true
+            gistView.isHidden = true
             list.isHidden = false
             accordionHeader.isHidden = true
             list.frame = listRect
@@ -267,6 +288,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
             hairline.frame = CGRect(x: CGFloat(metrics.readout.x), y: 0, width: 1, height: CGFloat(metrics.brainHeight))
         } else {
             compactList.isHidden = true
+            gistView.isHidden = true
             madeList?.isHidden = true
             accordionHeader.isHidden = false
             accordionHeader.frame = rect(metrics.listHeader)
@@ -303,7 +325,7 @@ final class BrainOpenView: UIView, BrainBrowsing {
 
     override var accessibilityElements: [Any]? {
         get {
-            if metrics.isPhone { return [stage, accordionHeader, compactList, footer] }
+            if metrics.isPhone { return [stage, accordionHeader, showsShort ? gistView : compactList, footer] }
             var parts: [Any] = [stage, chips]
             parts.append(metrics.arrangement == .split ? list : accordionHeader)
             parts.append(account as UIView)

@@ -41,6 +41,12 @@ extension BrainView {
         else if account.hasFocus == false { account.focus() }
     }
 
+    /// A stage was opened: the cursor goes to its first step, so the list and the head show where
+    /// in the turn it is, and the account keeps the keys.
+    func gistPlaceCursor(on stepID: String) {
+        accountChooseStep(stepID, fromAccount: true)
+    }
+
     func accountHover(_ stepID: String?) {
         guard !disposed else { return }
         if let stepID {
@@ -171,6 +177,7 @@ extension BrainView {
         guard state & reserved == 0, let key = Self.browseKey(keyval) else { return false }
         if key == .tab { return false }
         let onButton = account.focusIsButton
+        if !(onButton && key == .enter), account.gistKey(key) { return true }
         switch key {
         case .enter:
             if onButton { return false }

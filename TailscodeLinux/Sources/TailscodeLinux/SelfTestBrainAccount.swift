@@ -17,6 +17,108 @@ extension SelfTest {
         try timedBrain("account live") { try checkAccountLive(expect) }
         try timedBrain("account huge") { try checkAccountHuge(expect) }
         try timedBrain("account reader") { try checkAccountReader(expect) }
+        try timedBrain("account in short") { try checkAccountShort(expect) }
+    }
+
+    /// The claims about a turn told in short: that a turn nobody told keeps its account, that a
+    /// telling stands in the story's place with a row a stage and counts that add up to the turn,
+    /// that a stage opens its own part of the account with the cursor on its first step, that the
+    /// brackets, Esc and `i` move between them, and that a telling taken away leaves the account
+    /// exactly as it was.
+    private static func checkAccountShort(_ expect: (Bool, String) throws -> Void) throws {
+        let (row, builder) = try accountRow("account")
+        let bed = try BrainBed(row: row, width: 1440, key: "st-short", policy: { builder.brainPolicy })
+        defer { bed.close() }
+        _ = brainPump(10) { bed.view.stage?.hasPicture == true }
+        settleAccount(bed.view)
+        let view = bed.view
+        guard let account = view.account else { throw SelfTestFailure("brain: no account") }
+        let key = account.gistTurnKey
+        defer { NeuralGistDesk.shared.forget(key) }
+        let model = view.model
+        let steps = model.steps.count
+        let whole = account.fullAccount.items.count
+        try expect(
+            account.gistPane == nil && !account.showsShort && account.gistPin == nil && account.stagesPin == nil,
+            "a turn nobody told keeps its account: no telling, no pins of one")
+        guard
+            let ask = NeuralGistAsk.make(
+                account: account.fullAccount, stepCount: steps, running: false, prompt: nil, answer: nil, told: nil),
+            ask.ends.count >= 3
+        else { throw SelfTestFailure("brain: the account demo is too short to tell (\(steps) steps)") }
+        let first = ask.ends[ask.ends.count / 3 - (ask.ends.count >= 6 ? 0 : 1)]
+        let middle = ask.ends[max(2 * ask.ends.count / 3 - 1, ask.ends.count / 3)]
+        guard first < middle, middle < steps,
+            let gist = ask.read(
+                "{\"title\": \"Checking the telling\", \"now\": \"It is told.\", \"stages\": [{\"says\": \"Began the work\", \"to\": \(first)}, {\"says\": \"Did the middle\", \"to\": \(middle)}, {\"says\": \"Finished it\", \"to\": \(steps)}]}",
+                writer: "Check", place: ""),
+            gist.stages.count == 3
+        else { throw SelfTestFailure("brain: the account demo's items end at \(ask.ends), too few for three stages") }
+        NeuralGistDesk.shared.place(gist, for: key, model: model)
+        _ = brainPump(3) { account.gistPane != nil && account.stagesPin != nil }
+        guard let pane = account.gistPane else { throw SelfTestFailure("brain: a placed telling made no pane") }
+        try expect(
+            account.showsShort && account.gistPin != nil && account.stagesPin != nil
+                && gtk_widget_get_child_visible(account.story) == 0,
+            "a telling stands in the story's place: its head and its stages, and the story is not drawn")
+        try expect(
+            pane.title == "Checking the telling" && pane.rows.count == gist.stages.count
+                && pane.rows.map(\.stepCount).reduce(0, +) == steps && pane.rows.first?.from == 1
+                && pane.rows.last?.to == steps,
+            "a row a stage, and their steps add up to the turn's \(steps) (\(pane.rows.map(\.stepCount)))")
+        try expect(
+            abs(pane.rows.map(\.weight).reduce(0, +) - 1) < 0.001
+                && pane.rows.map(\.fixed).reduce(0, +) == model.verdicts.fixed,
+            "the rail's stretches make the whole turn and the stages count every error fixed (\(model.verdicts.fixed))")
+        _ = account.gistKey(.down)
+        _ = account.gistKey(.down)
+        try expect(account.gistCursor == 1, "the arrows walk the stages (\(account.gistCursor ?? -1))")
+        _ = account.gistKey(.enter)
+        _ = brainPump(0.4)
+        let second = pane.rows[1]
+        let numbers = account.account.items.compactMap { item -> Int? in
+            switch item {
+            case .said(let said): return said.number
+            case .thought(let thought): return thought.number
+            case .work(let work): return work.numbers.first
+            case .ask, .answer: return nil
+            }
+        }
+        try expect(
+            account.gistScope == second.numbers && !account.showsShort && !numbers.isEmpty
+                && numbers.allSatisfy { second.numbers.contains($0) }
+                && gtk_widget_get_child_visible(account.story) != 0 && account.stagesPin == nil,
+            "Enter opens the stage: only its part of the account (\(numbers) in \(second.from)-\(second.to)), and the story is back")
+        try expect(
+            view.model.pinnedStep == second.firstStepID,
+            "the cursor is on the stage's first step, so the list and the head show where it is")
+        _ = account.gistKey(.character("]"))
+        _ = brainPump(0.3)
+        try expect(account.gistScope == pane.rows[2].numbers, "] opens the stage after")
+        _ = account.gistKey(.character("["))
+        _ = account.gistKey(.character("["))
+        _ = brainPump(0.3)
+        try expect(account.gistScope == pane.rows[0].numbers, "[ opens the stage before, and stops at the first")
+        _ = account.gistKey(.escape)
+        _ = brainPump(0.3)
+        try expect(
+            account.gistScope == nil && account.showsShort && account.account.items.count == whole,
+            "Esc is the way back to the turn in short, and the account is whole again behind it")
+        _ = account.gistKey(.character("i"))
+        _ = brainPump(0.3)
+        try expect(
+            !account.showsShort && account.gistTold && account.gistPin == nil
+                && gtk_widget_get_child_visible(account.story) != 0 && account.account.items.count == whole,
+            "i shows what it told you: the whole account, as it always was")
+        _ = account.gistKey(.character("i"))
+        _ = brainPump(0.3)
+        try expect(account.showsShort, "and i again is the turn in short")
+        NeuralGistDesk.shared.forget(key)
+        _ = brainPump(2) { account.gistPane == nil }
+        try expect(
+            account.gistPane == nil && account.gistPin == nil && account.stagesPin == nil
+                && gtk_widget_get_child_visible(account.story) != 0,
+            "a telling taken away leaves the account exactly as it was")
     }
 
     static func accountRow(

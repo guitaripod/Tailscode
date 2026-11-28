@@ -42,6 +42,9 @@ final class BrainAccountView: UIView, UICollectionViewDelegate {
     private var readerWasOpen = false
     private var readerLeftFrom: (offset: CGPoint, cursor: String?)?
     private(set) var refreshes = 0
+    /// The stage of the turn in short whose part of the account is shown, one-based steps; nil is
+    /// the whole account.
+    var scope: ClosedRange<Int>?
     private(set) var snapshots = 0
 
     init(env newEnv: BrainAccountEnv) {
@@ -211,7 +214,8 @@ final class BrainAccountView: UIView, UICollectionViewDelegate {
     func refresh(prompt: String?, answer: String, animated: Bool = true) {
         refreshes += 1
         let model = env.model
-        let next = model.account(answer: answer.isEmpty ? nil : answer, prompt: prompt)
+        let whole = model.account(answer: answer.isEmpty ? nil : answer, prompt: prompt)
+        let next = scope.map { whole.scoped(to: $0) } ?? whole
         account = next
         let list = model.stepList
         let made = BrainAccountItems.make(model: model, account: next, list: list)
