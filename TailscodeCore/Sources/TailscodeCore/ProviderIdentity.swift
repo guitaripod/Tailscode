@@ -9,6 +9,7 @@ public enum ProviderIdentity {
         case "ollama": return "Ollama"
         case "ollama-cloud": return "Ollama Cloud"
         case "llama-server", "llamacpp", "llama.cpp": return "llama.cpp"
+        case "sglang": return "SGLang"
         case "lmstudio", "lm-studio": return "LM Studio"
         case "arch": return "Arch"
         case "vllm": return "Arch"
@@ -80,7 +81,7 @@ public enum ProviderIdentity {
         let id = providerID.lowercased()
         return id == "ollama" || id == "arch" || id == "vllm" || id == "llama-server"
             || id == "llamacpp" || id == "llama.cpp" || id == "lmstudio" || id == "lm-studio"
-            || id == "local"
+            || id == "sglang" || id == "local"
     }
 
     /// The brand a provider key bills against, for the quota wall's billing rule — a model
