@@ -86,13 +86,26 @@ def keys_since(rev: str):
         capture_output=True, text=True, check=True,
     ).stdout
     keys = {}
+    for block in added_blocks(diff):
+        for match in LITERAL.finditer(block):
+            key = unescape(match.group(1))
+            if key:
+                keys[key] = rev
+    return keys
+
+
+def added_blocks(diff: str):
+    """Each run of added lines as one text, so a call whose literal sits on the line after its
+    opening parenthesis is still read as one key."""
+    block = []
     for line in diff.splitlines():
         if line.startswith("+") and not line.startswith("+++"):
-            for match in LITERAL.finditer(line):
-                key = unescape(match.group(1))
-                if key:
-                    keys[key] = rev
-    return keys
+            block.append(line[1:])
+        elif block:
+            yield "\n".join(block)
+            block = []
+    if block:
+        yield "\n".join(block)
 
 
 def check(strict: bool, since: str = None):
