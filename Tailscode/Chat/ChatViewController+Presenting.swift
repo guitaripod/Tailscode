@@ -158,7 +158,7 @@ extension ChatViewController {
                 lines.append(String(localized: "\(tokens.formatted()) tokens"))
             }
             if let cost = usage.costUSD {
-                lines.append(String(format: "$%.4f", cost))
+                lines.append(Money.approximate(cost))
             }
             let alert = UIAlertController(
                 title: String(localized: "Last turn usage"),

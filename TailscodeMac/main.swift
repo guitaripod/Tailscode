@@ -133,6 +133,8 @@ MediaAccounts.install(KeychainSecretStore())
 
 if TranscriptBench.isRequested {
     NeuralGistDesk.shared.isMuted = true
+    NeuralListStart.override = .everything
+    Money.speaksDollarsOnly = true
     TranscriptBench.run()
 }
 

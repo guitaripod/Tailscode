@@ -87,6 +87,16 @@ enum SettingsConversationPage {
                 Preferences.setResponseStats(value)
                 onLayoutChanged()
             }, to: transcript)
+        let currencies = MoneySetting.choices
+        SettingsRows.add(
+            SettingsRows.comboRow(
+                title: MoneySetting.title, subtitle: MoneySetting.explanation,
+                options: [MoneySetting.automatic(MoneySetting.regional)] + currencies.map(MoneySetting.label),
+                selected: MoneySetting.chosen.flatMap { currencies.firstIndex(of: $0) }.map { $0 + 1 } ?? 0
+            ) { index in
+                MoneySetting.choose(index == 0 ? nil : currencies[index - 1])
+                onLayoutChanged()
+            }, to: transcript)
         SettingsRows.add(
             SettingsRows.switchRow(
                 title: LinkEmbedsSetting.title,

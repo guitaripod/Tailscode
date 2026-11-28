@@ -55,7 +55,7 @@ extension SettingsViewController {
                     .agentSteps,
                     [.activityStyle, .toggle(.compactActivity), .toggle(.autoExpandThinking)]
                 ),
-                (.answers, [.streamRenderer, .toggle(.responseStats), .toggle(.linkEmbeds)]),
+                (.answers, [.streamRenderer, .toggle(.responseStats), .currency, .toggle(.linkEmbeds)]),
                 (.resume, [.toggle(.autoResume)]),
             ]
         case .appearance:
@@ -307,6 +307,9 @@ extension SettingsViewController {
         case .deskStatus:
             return "\(NoticeRulesWords.deskGroupTitle) "
                 + Localized.text("desk computer mac pc desktop away idle presence quiet phone")
+        case .currency:
+            return "\(MoneySetting.title) \(MoneySetting.explanation) "
+                + String(localized: "money cost price euro dollar spend", comment: "search keywords")
         case .chatDensity:
             return "\(ChatDensitySetting.title) "
                 + String(

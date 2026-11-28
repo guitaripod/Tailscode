@@ -133,6 +133,8 @@ public enum NeuralBrowse {
         public var searchOpen = false
         /// Account effects the reducer raised and no client has taken yet.
         public var outbox: [AccountEffect] = []
+        /// The list took its start (`NeuralListStart`) when the turn's Megatron was first opened.
+        public var started = false
 
         public init(list: NeuralStepList) {
             self.list = list

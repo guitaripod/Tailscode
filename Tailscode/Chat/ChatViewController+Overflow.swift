@@ -64,7 +64,7 @@ extension ChatViewController {
                         String(localized: "\(tokens.formatted(.number.notation(.compactName))) tokens"))
                 }
                 if let cost = usage.costUSD {
-                    parts.append(String(format: "$%.3f", cost))
+                    parts.append(Money.approximate(cost))
                 }
                 guard !parts.isEmpty else { return completion([]) }
                 let item = UIAction(

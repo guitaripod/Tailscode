@@ -18,6 +18,7 @@ extension BrainView {
     ) {
         guard !disposed, stage != nil else { return }
         let effects = model.browse(action)
+        if case .zoneChip = action { SettingsFile.capture() }
         applyBrowse(effects, grabFocus: grabFocus, menuAt: menuAt, menuParent: menuParent)
     }
 

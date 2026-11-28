@@ -105,6 +105,10 @@ public struct NeuralStep: Identifiable, Sendable, Hashable {
     /// The tool call the step was read from; nil for a thought or a note. The readout reads the
     /// full output and an edit's strings from it.
     public var call: NeuralStepCall?
+    /// What the message this step arrived in cost, in dollars as the server priced it, carried by
+    /// the message's first step so a run of steps sums to what its messages cost. Nil for the
+    /// other steps of the message and where the server priced nothing.
+    public var costUSD: Double?
 
     public init(
         id: String, index: Int, zone: NeuralZone, status: NeuralStatus = .ok, group: Int,
@@ -155,12 +159,16 @@ public struct NeuralTurn: Identifiable, Sendable, Hashable {
     public var endedAt: Date?
     public var modelID: String?
     public var effort: String?
+    /// What every message of the turn cost together, the answer's included, in dollars as the
+    /// server priced them: an estimate of the metered price, never a bill. Nil where nothing
+    /// was priced.
+    public var costUSD: Double?
 
     public init(
         id: String, steps: [NeuralStep] = [], answerPartIDs: [String] = [],
         memberPartIDs: Set<String> = [], memberMessageIDs: Set<String> = [],
         outcome: NeuralOutcome = .settled, startedAt: Date? = nil,
-        endedAt: Date? = nil, modelID: String? = nil, effort: String? = nil
+        endedAt: Date? = nil, modelID: String? = nil, effort: String? = nil, costUSD: Double? = nil
     ) {
         self.id = id
         self.steps = steps
@@ -172,6 +180,7 @@ public struct NeuralTurn: Identifiable, Sendable, Hashable {
         self.endedAt = endedAt
         self.modelID = modelID
         self.effort = effort
+        self.costUSD = costUSD
     }
 }
 

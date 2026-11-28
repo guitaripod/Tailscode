@@ -360,6 +360,13 @@ extension PreferencesWindow {
                 title: ResponseStatsSetting.title,
                 subtitle: ResponseStatsSetting.explanation,
                 value: ResponseStatsSetting.isEnabled, action: #selector(responseStatsChanged)))
+        let currencies = MoneySetting.choices
+        column.addArrangedSubview(
+            popUpRow(
+                title: MoneySetting.title, subtitle: MoneySetting.explanation,
+                options: [MoneySetting.automatic(MoneySetting.regional)] + currencies.map(MoneySetting.label),
+                selected: MoneySetting.chosen.flatMap { currencies.firstIndex(of: $0) }.map { $0 + 1 } ?? 0,
+                action: #selector(currencyChanged)))
         column.addArrangedSubview(
             switchRow(
                 title: LinkEmbedsSetting.title,

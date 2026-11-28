@@ -285,6 +285,9 @@ final class AccountGistView: AccountBlock {
         var right = bounds.width
         let steps = AccountType.draw(row.stepsWords, .rowStamp, paint.dim, x: right, midY: mid, rightAligned: true)
         right -= max(steps, 64) + 12
+        if let cost = row.costWords {
+            right -= max(AccountType.draw(cost, .rowStamp, paint.text, x: right, midY: mid, rightAligned: true), 56) + 12
+        }
         if let tally = row.tally {
             right -= AccountType.draw(tally, .rowStamp, paint.dim, x: right, midY: mid, rightAligned: true) + 12
         }
@@ -526,7 +529,7 @@ extension BrainAccountView {
         gistCursor = index
         gistScope = row.numbers
         gistApplied()
-        choose(row.firstStepID, fromAccount: true)
+        if let step = host?.model.firstVisibleStep(in: row.numbers) { choose(step, fromAccount: true) }
     }
 
     func gistBack() {

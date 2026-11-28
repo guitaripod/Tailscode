@@ -11,6 +11,7 @@ extension NeuralBrainModel {
         state.list.cursor = pinnedStep
         let (next, effects) = NeuralBrowse.reduce(state: state, action: action)
         browseState = next
+        if case .zoneChip = action { NeuralListStart.note(next.list.filter) }
         applyCursor(next.cursor)
         hovered = next.hovered.flatMap { indexByID[$0] == nil ? nil : layout.representative(of: $0) }
         refreshSelection()

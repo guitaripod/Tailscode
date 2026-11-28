@@ -56,7 +56,7 @@ final class BrainCompactListView: UIView {
     static func items(
         for list: NeuralStepList, expanded: Bool, slots: Int, short: Bool = false
     ) -> [BrainCompactItem] {
-        let lead: [BrainCompactItem] = short && !list.isFiltered ? [.short] : []
+        let lead: [BrainCompactItem] = short && !list.isNarrowed ? [.short] : []
         if expanded {
             return lead + list.rows(in: 0..<list.visibleCount).map { .step($0) } + [.less]
         }

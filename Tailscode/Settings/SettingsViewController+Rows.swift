@@ -223,7 +223,7 @@ extension SettingsViewController {
             )
             return "\(ActivityStyleSetting.explanation) \(switches)"
         case .answers:
-            return "\(ResponseStatsSetting.explanation) \(LinkEmbedsSetting.explanation)"
+            return "\(ResponseStatsSetting.explanation) \(LinkEmbedsSetting.explanation) \(MoneySetting.explanation)"
         case .resume:
             return AutoResumeSetting.explanation
         case .density:
@@ -514,6 +514,11 @@ extension SettingsViewController {
             content = quiet(.valueCell())
             content.text = ChatDensitySetting.title
             content.secondaryText = ChatDensitySetting.current.title
+            cell.accessories = [.disclosureIndicator()]
+        case .currency:
+            content = quiet(.valueCell())
+            content.text = MoneySetting.title
+            content.secondaryText = MoneySetting.chosen ?? MoneySetting.automatic(MoneySetting.regional)
             cell.accessories = [.disclosureIndicator()]
         case .activityStyle:
             content = quiet(.valueCell())

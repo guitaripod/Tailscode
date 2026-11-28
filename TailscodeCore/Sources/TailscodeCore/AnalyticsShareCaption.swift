@@ -20,7 +20,7 @@ extension AnalyticsShare {
         var lines = [head]
         for module in ShareModule.priority(for: analytics) where shown.contains(module) {
             guard let line = captionLine(for: module) else { continue }
-            let carriesMoney = line.contains("$")
+            let carriesMoney = Money.appears(in: line)
             let candidate = (lines + [line]).joined(separator: "\n")
             let held = estimating || carriesMoney ? reserve : 0
             if Self.xLength(candidate) + held <= Self.captionLimit {

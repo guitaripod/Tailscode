@@ -185,6 +185,8 @@ extension SettingsViewController: UICollectionViewDelegate {
             break
         case .chatDensity:
             chooseDensity()
+        case .currency:
+            chooseCurrency()
         case .activityStyle:
             chooseActivityStyle()
         case .liveActivityLook:

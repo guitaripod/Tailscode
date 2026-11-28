@@ -34,6 +34,9 @@ public struct NeuralGistPane: Sendable, Equatable {
         public let unfixed: Int
         public let added: Int
         public let removed: Int
+        /// What the stage's messages cost in dollars as the server priced them; nil where it
+        /// priced none.
+        public let costUSD: Double?
         /// The stage's share of the turn's steps, for its stretch of the rail.
         public let weight: Double
         public let ticks: [Tick]
@@ -50,11 +53,22 @@ public struct NeuralGistPane: Sendable, Equatable {
         public var tally: String? { NeuralReading.tally(added, removed) }
         /// "steps 92\u{2013}160".
         public var rangeWords: String { NeuralGistWords.range(from, to) }
+        /// What the stage cost, in the person's currency with the mark of an estimate: "~\u{20AC}3.10".
+        public var costWords: String? { costUSD.map(Money.approximate) }
+
+        /// The row with no price: a server that prices a turn as one figure prices no stage, and
+        /// that figure on the first stage alone would say the first stage cost it all.
+        var unpriced: Row {
+            Row(
+                id: id, index: index, says: says, mark: mark, from: from, to: to, stepCount: stepCount, fixed: fixed,
+                unfixed: unfixed, added: added, removed: removed, costUSD: nil, weight: weight, ticks: ticks,
+                firstStepID: firstStepID)
+        }
 
         /// Everything counted about the stage on one line, for a sheet's subtitle and a screen
         /// reader: "stage 3 of 6 \u{00B7} steps 92\u{2013}160 \u{00B7} 2 fixed \u{00B7} +612 \u{2212}48".
         public func facts(of count: Int) -> String {
-            [NeuralGistWords.place(index + 1, of: count), rangeWords, fixedWords, failedWords, tally]
+            [NeuralGistWords.place(index + 1, of: count), rangeWords, fixedWords, failedWords, tally, costWords]
                 .compactMap { $0 }.joined(separator: " \u{00B7} ")
         }
     }
@@ -102,12 +116,14 @@ public struct NeuralGistPane: Sendable, Equatable {
                 var unfixed = 0
                 var added = 0
                 var removed = 0
+                var cost: Double?
                 var ticks: [Tick] = []
                 let count = to - from + 1
                 for number in from...to {
                     let step = steps[number - 1]
                     added += step.added ?? 0
                     removed += step.removed ?? 0
+                    if let price = step.costUSD { cost = (cost ?? 0) + price }
                     guard number - 1 < verdicts.count else { continue }
                     let at = (Double(number - from) + 0.5) / Double(count)
                     switch verdicts[number - 1].verdict {
@@ -128,10 +144,11 @@ public struct NeuralGistPane: Sendable, Equatable {
                     Row(
                         id: "stage:\(from)", index: rows.count, says: stage.says, mark: mark, from: from, to: to,
                         stepCount: count, fixed: fixed, unfixed: unfixed, added: added, removed: removed,
-                        weight: Double(count) / Double(steps.count), ticks: ticks,
+                        costUSD: cost, weight: Double(count) / Double(steps.count), ticks: ticks,
                         firstStepID: steps[from - 1].id))
             }
             guard !rows.isEmpty else { return nil }
+            if rows.contains(where: { $0.costUSD == nil }) { rows = rows.map { $0.unpriced } }
             return NeuralGistPane(
                 phase: .told, title: gist.title, byline: byline, now: gist.now, rows: rows,
                 isRunning: running, isRefreshing: reading.refreshing, stepCount: steps.count)
@@ -220,6 +237,7 @@ public enum NeuralGistWords {
             parts.append(words)
         }
         if let fixed = account.header.fixedWords { parts.append(fixed) }
+        if let cost = account.header.costUSD { parts.append(Money.approximate(cost)) }
         return parts.joined(separator: "  \u{00B7}  ")
     }
 }

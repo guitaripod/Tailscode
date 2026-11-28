@@ -64,6 +64,14 @@ The switch (Tell each turn in short) is on the Your model page, on once a model 
 - Mac: `BrainAccountGist.swift` (`AccountGistView`, `AccountGistSwitch`), `BrainAccountChecks.short`.
 - iOS: `BrainGistView`, the open view's slots, the reader's heading and scope.
 
+## 6a. What it cost, and where the list starts (2026-11-28, second ask)
+
+Asked for: "can megatron neatly show what everything it did cost in the user's local currency etc. the whole thing should localized anyway", and "maybe it should default to said only mode. it's quite clean, right?"
+
+- **Cost.** A turn's price is its messages' prices summed, the answer's included (`NeuralTurn.costUSD`, set in `NeuralTurns.partition`), and it stands beside the counts in the account's header on every client and under the stages once the turn settled. A stage is priced only where the server priced every stage's messages. Looked at on the real turn: Claude Code prices a turn as one figure on one message, so the first stage said it cost everything and the others nothing; such a turn states its total and no stage's. opencode prices each message, so its stages are priced.
+- **Currency.** Every such figure is an estimate priced in dollars, so the currency is presentation: `Money.estimate` converts at the European Central Bank's daily reference rate and writes the amount as the locale writes money. It is the one home (`SessionSpend.money` goes through it), so the status bar under a Megatron never says dollars while the Megatron says euros. The currency is the region's unless chosen (Currency, beside the answer's figures in Settings on all three clients): the desk this was written on is an English system in Finland, where the region says dollars. No table, a table ten days old, or a currency the bank does not quote, is dollars as they were always written. A balance a provider bills is never converted.
+- **Said first.** The step list starts on what the agent said (`NeuralListStart`): it is the outline, and it is what the screenshot the first ask came with was already filtered to by hand. The SAID chip's last state is the start from then on, a turn in which nothing was said starts on every step, and the start is not a filter the header warns of. A stage puts the cursor on its first step the list is showing and never clears the start to do it.
+
 ## 7. What this leaves room for
 
 The head's window is a stage with a character in it; the telling is what the character says. When a 3D model stands there with a name the person gave it, the sentence is its speech, the stages are its journey, the byline is its name, and `NeuralGistPane` already hands a client all three as plain values. Nothing here knows the head is a head.

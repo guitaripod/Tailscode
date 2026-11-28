@@ -187,6 +187,7 @@ public enum NeuralTurns {
                 members.insert(id)
             }
         }
+        let total = price(messages, onto: &steps)
         let first = messages[0]
         let last = messages[messages.count - 1]
         let outcome = readOutcome(
@@ -198,7 +199,27 @@ public enum NeuralTurns {
             outcome: outcome, startedAt: first.createdAt,
             endedAt: outcome == .running ? nil : last.completedAt,
             modelID: messages.reversed().lazy.compactMap(\.modelID).first,
-            effort: messages.reversed().lazy.compactMap(\.reasoningEffort).first)
+            effort: messages.reversed().lazy.compactMap(\.reasoningEffort).first, costUSD: total)
+    }
+
+    /// Sets what each message cost on the first step that arrived in it and answers with the
+    /// turn's whole price, the answer's message included; nil when the server priced none of it.
+    private static func price(_ messages: [ChatMessage], onto steps: inout [NeuralStep]) -> Double? {
+        var total = 0.0
+        var priced = false
+        var firstStep: [String: Int]?
+        for message in messages {
+            guard let cost = message.costUSD, cost > 0 else { continue }
+            priced = true
+            total += cost
+            if firstStep == nil {
+                var map: [String: Int] = [:]
+                for (index, step) in steps.enumerated() where map[step.messageID] == nil { map[step.messageID] = index }
+                firstStep = map
+            }
+            if let index = firstStep?[message.id] { steps[index].costUSD = cost }
+        }
+        return priced ? total : nil
     }
 
     /// A picture or file in a turn is something the reader is meant to see: an agent shows a

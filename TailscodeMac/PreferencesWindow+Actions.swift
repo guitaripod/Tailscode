@@ -117,6 +117,13 @@ extension PreferencesWindow {
         onTranscriptChanged()
     }
 
+    @objc func currencyChanged(_ sender: NSPopUpButton) {
+        let currencies = MoneySetting.choices
+        let index = sender.indexOfSelectedItem
+        MoneySetting.choose(index >= 1 && index <= currencies.count ? currencies[index - 1] : nil)
+        onTranscriptChanged()
+    }
+
     @objc func responseStatsChanged(_ sender: NSButton) {
         ResponseStatsSetting.setEnabled(sender.state == .on)
         onTranscriptChanged()

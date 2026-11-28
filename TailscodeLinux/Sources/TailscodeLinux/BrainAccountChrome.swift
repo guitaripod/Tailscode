@@ -99,7 +99,7 @@ extension BrainAccount {
         let model = owner.model
         let list = model.browseState.list
         let solo = list.filter.zones == [.say] && !list.filter.failedOnly && list.filter.query.isEmpty
-        filterWord = solo ? BrainWords.whatItToldYou : (list.isFiltered ? BrainWords.filtered : nil)
+        filterWord = list.isNarrowed ? (solo ? BrainWords.whatItToldYou : BrainWords.filtered) : nil
         noteActivity()
         refreshEntityHeader()
         refreshPins()

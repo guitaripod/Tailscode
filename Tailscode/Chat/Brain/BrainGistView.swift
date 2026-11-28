@@ -217,7 +217,8 @@ final class BrainGistView: UIView {
         if row.mark == .now {
             right -= drawLine(NeuralReading.nowLabel, .sectionLabel, Theme.Color.accent, x: right, midY: mid, maxWidth: 80, rightAligned: true) + 8
         } else {
-            right -= max(drawLine("\(row.stepCount)", .rowStamp, Theme.Color.secondaryLabel, x: right, midY: mid, maxWidth: 60, rightAligned: true), 22) + 8
+            let figure = row.costWords ?? "\(row.stepCount)"
+            right -= max(drawLine(figure, .rowStamp, Theme.Color.secondaryLabel, x: right, midY: mid, maxWidth: 90, rightAligned: true), 22) + 8
         }
         if row.unfixed > 0 {
             Theme.Color.danger.setFill()

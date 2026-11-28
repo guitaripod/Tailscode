@@ -69,6 +69,7 @@ extension BrainRowView {
 
     private func buildAccount(paced: Bool) {
         guard account == nil else { return }
+        if !updateModel({ $0.startList() }).isEmpty { syncBrowse() }
         let accountView = BrainAccountView(host: self)
         if paced { accountView.makeCap = Self.itemsPerFrame }
         let carrier = BrainCarrierView()

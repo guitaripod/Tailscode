@@ -231,10 +231,10 @@ extension MainWindow {
     /// executable, which makes it a cache rather than storage. `SettingsFile` is the durable copy,
     /// so every change to the list is written through to it.
     func observeMissedActivity() {
-        NotificationCenter.default.addObserver(
-            forName: ActivityInbox.didChange, object: nil, queue: nil
-        ) { _ in
-            SettingsFile.capture()
+        for name in [ActivityInbox.didChange, MoneySetting.didChange] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) { _ in
+                SettingsFile.capture()
+            }
         }
     }
 

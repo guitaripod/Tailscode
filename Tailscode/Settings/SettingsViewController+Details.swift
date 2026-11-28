@@ -134,6 +134,19 @@ extension SettingsViewController {
         }
     }
 
+    func chooseCurrency() {
+        Theme.Haptics.tap()
+        let currencies = MoneySetting.choices
+        push(
+            SettingsChoiceViewController(
+                title: MoneySetting.title,
+                options: [.init(title: MoneySetting.automatic(MoneySetting.regional), detail: nil)]
+                    + currencies.map { .init(title: MoneySetting.label($0), detail: nil) },
+                selected: MoneySetting.chosen.flatMap { currencies.firstIndex(of: $0) }.map { $0 + 1 } ?? 0,
+                footer: MoneySetting.explanation
+            ) { MoneySetting.choose($0 == 0 ? nil : currencies[$0 - 1]) })
+    }
+
     func chooseDensity() {
         Theme.Haptics.tap()
         let densities = ChatDensity.allCases

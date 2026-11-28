@@ -273,6 +273,7 @@ enum ParityManifest {
         case .chatDensity: return .implemented("ChatSpacing")
         case .neuralTrace: return .implemented("NeuralBrainCell")
         case .megatronInShort: return .implemented("BrainGistView")
+        case .localCurrency: return .implemented("chooseCurrency")
         case .proUnlock: return .implemented("ProAccess")
         case .proInvitation: return .implemented("ProInvitationCell")
         case .proWeek: return .implemented("presentRestingChoices")

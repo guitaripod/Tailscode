@@ -6,6 +6,7 @@ extension BrainOpenView {
         store = newStore
         turnID = newID
         actions = newActions
+        newStore.mutate(newID) { $0.startList() }
         env.interaction = newStore.interaction(for: newID)
         stage.configure(store: newStore, turnID: newID)
     }
@@ -198,7 +199,7 @@ extension BrainOpenView {
     var showsShort: Bool {
         guard metrics.isPhone, gistPane != nil, let model = browseModel else { return false }
         if store?.interaction(for: turnID).gistTold == true { return false }
-        return !model.stepList.isFiltered && !model.browseState.searchOpen
+        return !model.stepList.isNarrowed && !model.browseState.searchOpen
     }
 
     /// Says the turn is on screen as it stands, and takes what the desk holds for it.
@@ -227,7 +228,9 @@ extension BrainOpenView {
     /// A stage was pressed: the account's part of it, in the sheet.
     func openStage(_ index: Int) {
         guard let pane = gistPane, pane.rows.indices.contains(index) else { return }
-        presentReader(focus: pane.rows[index].firstStepID, stage: pane.rows[index], of: pane.rows.count)
+        let row = pane.rows[index]
+        presentReader(
+            focus: browseModel?.firstVisibleStep(in: row.numbers) ?? row.firstStepID, stage: row, of: pane.rows.count)
     }
 
     static func gistFallback(_ model: NeuralBrainModel) -> String {
@@ -253,7 +256,7 @@ extension BrainOpenView {
     ) -> Int {
         let list = model.stepList
         let pane = NeuralGistPane.make(reading: NeuralGistDesk.shared.reading(for: model.turn.id), model: model)
-        if let pane, !told, !list.isFiltered, !model.browseState.searchOpen {
+        if let pane, !told, !list.isNarrowed, !model.browseState.searchOpen {
             return gistSlots(pane: pane, fallback: gistFallback(model), width: width, rowHeight: rowHeight)
         }
         let grown = expanded && list.visibleCount > NeuralStageMetrics.phoneRowSlots

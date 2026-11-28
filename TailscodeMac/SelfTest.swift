@@ -22,6 +22,8 @@ enum SelfTest {
 
     static func run() async -> Never {
         NeuralGistDesk.shared.isMuted = true
+        NeuralListStart.override = .everything
+        Money.speaksDollarsOnly = true
         startWatchdog()
         if let only = ProcessInfo.processInfo.environment["TAILSCODE_SELFTEST_ONLY"] { await runOnly(only) }
         var failures = 0

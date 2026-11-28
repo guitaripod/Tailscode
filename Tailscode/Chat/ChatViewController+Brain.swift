@@ -221,6 +221,8 @@ extension ChatViewController {
         func startBrainChecks() {
             guard BrainChecks.isEnabled || BrainChecks.isPerf else { return }
             NeuralGistDesk.shared.isMuted = true
+            NeuralListStart.override = .everything
+            Money.speaksDollarsOnly = true
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(2))
                 if BrainChecks.isPerf {

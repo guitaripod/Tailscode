@@ -415,10 +415,10 @@ public struct StatusFacts: Sendable {
         } else if let lastCostUSD, lastCostUSD > 0 {
             result.append(
                 Segment(
-                    id: "cost", text: String(format: "$%.2f", lastCostUSD), css: "seg-dim",
+                    id: "cost", text: Money.estimate(lastCostUSD), css: "seg-dim",
                     kind: .menu([
                         Segment.Row(
-                            title: Localized.text("Last turn cost %@", String(format: "$%.2f", lastCostUSD)),
+                            title: Localized.text("Last turn cost %@", Money.estimate(lastCostUSD)),
                             detail: lastTurnTokens.map {
                                 Localized.text("%@ tokens", Self.tokens($0))
                             },

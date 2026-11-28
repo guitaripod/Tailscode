@@ -782,6 +782,7 @@ extension NeuralBrainModel {
         hasher.combine(turn.outcome)
         hasher.combine(turn.modelID)
         hasher.combine(turn.answerPartIDs.count)
+        hasher.combine(turn.costUSD)
         hasher.combine(context.providerID)
         return hasher.finalize()
     }

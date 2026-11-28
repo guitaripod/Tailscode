@@ -223,6 +223,7 @@ extension SettingsViewController {
         case streamRenderer
         case appearance
         case chatDensity
+        case currency
         case activityStyle
         case liveActivityLook
         case noticeFinish

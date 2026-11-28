@@ -106,12 +106,14 @@ extension BrainAccount {
                 setPin(&stagesPin, signature: "") { nil }
                 return
             }
-            let rows = pane.rows.map { "\($0.says)\($0.mark)\($0.stepCount)\($0.fixed)\($0.unfixed)\($0.added)\($0.removed)" }
+            let rows = pane.rows.map {
+                "\($0.says)\($0.mark)\($0.stepCount)\($0.fixed)\($0.unfixed)\($0.added)\($0.removed)\($0.costWords ?? "")"
+            }
             let result = gistResultWords()
             let stages = "stages|\(rows.joined(separator: "|"))|\(gistCursor ?? -1)|\(pane.isWriting)|\(result)|\(width)|\(tint)"
             setPin(&stagesPin, signature: stages) { self.buildGistStages(pane, result: result) }
         } else if let scope = gistScope, let row = pane.row(containing: scope.lowerBound) {
-            let crumb = "crumb|\(row.says)|\(row.from)|\(row.to)|\(pane.rows.count)|\(row.fixed)|\(row.unfixed)|\(row.added)|\(row.removed)|\(width)|\(tint)"
+            let crumb = "crumb|\(row.says)|\(row.from)|\(row.to)|\(pane.rows.count)|\(row.fixed)|\(row.unfixed)|\(row.added)|\(row.removed)|\(row.costWords ?? "")|\(width)|\(tint)"
             setPin(&gistPin, signature: crumb) { self.buildGistCrumb(pane, row: row) }
             setPin(&stagesPin, signature: "") { nil }
         } else {
@@ -222,6 +224,11 @@ extension BrainAccount {
             if let words = row.failedWords { gtk_box_append(ptr(line), BrainUI.label(words, "bn-gs-fact", "bn-gs-failed")) }
             if let words = row.fixedWords { gtk_box_append(ptr(line), BrainUI.label(words, "bn-gs-fact", "bn-gs-fixed")) }
             if let tally = row.tally { gtk_box_append(ptr(line), BrainUI.label(tally, "bn-gs-fact")) }
+            if let cost = row.costWords {
+                let money = BrainUI.label(cost, "bn-gs-fact", "bn-gs-cost")
+                gtk_label_set_xalign(op(money), 1)
+                gtk_box_append(ptr(line), money)
+            }
             let steps = BrainUI.label(row.stepsWords, "bn-gs-fact", "bn-gs-steps")
             gtk_label_set_xalign(op(steps), 1)
             gtk_box_append(ptr(line), steps)
@@ -345,7 +352,7 @@ extension BrainAccount {
         gistCursor = index
         gistScope = row.numbers
         gistApplied(focusStages: false)
-        ref.view?.gistPlaceCursor(on: row.firstStepID)
+        if let step = owner.model.firstVisibleStep(in: row.numbers) { ref.view?.gistPlaceCursor(on: step) }
     }
 
     func gistBack() {

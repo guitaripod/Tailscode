@@ -266,6 +266,7 @@ extension BrainView {
 
     func makeList() {
         guard list == nil, stage != nil else { return }
+        if !model.startList().isEmpty { refreshDimming() }
         let listPart = BrainList(owner: self)
         list = listPart
         for part in listPart.widgets { tailscode_brain_row_add(widget, part) }

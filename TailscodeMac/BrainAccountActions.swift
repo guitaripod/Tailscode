@@ -184,7 +184,7 @@ extension BrainAccountView {
         guard let host else { return }
         let list = host.model.browseState.list
         let solo = list.filter.zones == [.say] && !list.filter.failedOnly && list.filter.query.isEmpty
-        filterWord = solo ? AccountWords.whatItToldYou : (list.isFiltered ? AccountWords.filtered : nil)
+        filterWord = list.isNarrowed ? (solo ? AccountWords.whatItToldYou : AccountWords.filtered) : nil
         noteActivity()
         refreshHeader()
         refreshPins()

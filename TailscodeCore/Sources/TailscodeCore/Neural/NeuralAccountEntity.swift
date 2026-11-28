@@ -39,6 +39,8 @@ extension NeuralAccount {
         public let fixedWords: String?
         /// The plain title of the step in flight, while the turn runs.
         public let nowTitle: String?
+        /// What the turn cost so far in dollars, as the server priced it; nil where it priced none.
+        public let costUSD: Double?
     }
 
     /// The header's words for a moment: the status line, the time, the counts, the silence.
@@ -268,6 +270,7 @@ extension NeuralAccount {
                 header.fixedCount == 1
                     ? Localized.text("1 error fixed") : Localized.text("%lld errors fixed", header.fixedCount))
         }
+        if let cost = header.costUSD { parts.append(Money.approximate(cost)) }
         return parts.dropFirst().reduce(parts[0]) { Localized.text("%1$@ · %2$@", $0, $1) }
     }
 
@@ -289,7 +292,8 @@ extension NeuralAccount {
             tone: readings.verdict.pillTone, isRunning: running, startedAt: turn.startedAt,
             endedAt: turn.endedAt, lastStepAt: turn.steps.last?.at, stepCount: turn.steps.count,
             saidCount: said, thoughtCount: thoughts, fixedCount: readings.fixed,
-            unfixedCount: readings.unfixed, fixedWords: readings.onTheWay, nowTitle: nowTitle)
+            unfixedCount: readings.unfixed, fixedWords: readings.onTheWay, nowTitle: nowTitle,
+            costUSD: turn.costUSD)
     }
 
     /// The step in flight: the last one running or waiting, else the last step.

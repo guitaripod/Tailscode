@@ -251,6 +251,7 @@ enum BrainAccountCSS {
         .bn-gs-fixed { color: \(warn); }
         .bn-gs-failed { color: \(danger); }
         .bn-gs-steps { min-width: 64px; }
+        .bn-gs-cost { min-width: 56px; color: \(text); }
         .bn-gs-result { \(t(.rowTitle)) color: \(dim); margin-top: 10px; padding-top: 10px; border-top: 1px solid \(rule); }
         .bn-gs-skel { background-color: alpha(\(dim), 0.16); border-radius: 6px; min-height: 12px; }
         .bn-gs-skel-dot { min-width: 18px; min-height: 18px; border-radius: 9px; }

@@ -676129,7 +676129,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Geschrieben von %@ aus den Notizen und Schritten dieses Durchlaufs. Die Zahlen werden gezählt, nicht geschrieben."
+            "value": "Geschrieben von %@ aus den Notizen und Schritten dieses Zugs. Die Zahlen sind gezählt, nicht geschrieben."
           }
         },
         "es": {
@@ -676177,13 +676177,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "由 %@ 根据本轮的笔记和步骤写成。数字是统计出来的，并非写出来的。"
+            "value": "由 %@ 根据本回合的笔记和步骤写成。数字是统计出来的，并非写出来的。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "由 %@ 根據本輪的筆記和步驟寫成。數字是統計出來的，並非寫出來的。"
+            "value": "由 %@ 根據本回合的筆記和步驟寫成。數字是統計出來的，並非寫出來的。"
           }
         },
         "sv": {
@@ -676195,7 +676195,7 @@
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Skrevet af %@ ud fra denne tur's noter og trin. Tallene tælles, de skrives ikke."
+            "value": "Skrevet af %@ ud fra denne turs noter og trin. Tallene er talt, ikke skrevet."
           }
         },
         "nb": {
@@ -676213,7 +676213,7 @@
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Skrifað af %@ út frá athugasemdum og skrefum þessarar lotu. Tölurnar eru taldar, ekki skrifaðar."
+            "value": "Skrifað af %@ út frá athugasemdum og skrefum þessarar umferðar. Tölurnar eru taldar, ekki skrifaðar."
           }
         }
       }
@@ -676634,7 +676634,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jeden Durchlauf kurz erzählen"
+            "value": "Jeden Zug kurz erzählen"
           }
         },
         "es": {
@@ -676682,13 +676682,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "简要说明每一轮"
+            "value": "简要说明每一回合"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "簡要說明每一輪"
+            "value": "簡要說明每一回合"
           }
         },
         "sv": {
@@ -676718,7 +676718,7 @@
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Segðu frá hverri lotu stuttlega"
+            "value": "Segðu frá hverri umferð í stuttu máli"
           }
         }
       }
@@ -676735,7 +676735,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Megatron öffnet mit dem Zweck eines Durchlaufs, dem, was gerade passiert, und den bisherigen Phasen, geschrieben aus den eigenen Notizen des Agenten. Die Zahlen daneben werden gezählt, nie geschrieben."
+            "value": "Megatron öffnet mit dem Zweck eines Zugs, dem, was gerade passiert, und den bisherigen Phasen, geschrieben aus den eigenen Notizen des Agenten. Die Zahlen daneben werden gezählt, nie geschrieben."
           }
         },
         "es": {
@@ -676783,13 +676783,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Megatron 会从智能体自己的笔记中，先说明这一轮的目的、正在发生的事和目前的阶段。旁边的数字是统计出来的，从不由模型书写。"
+            "value": "Megatron 会从智能体自己的笔记中，先说明这一回合的目的、正在发生的事和目前的阶段。旁边的数字是统计出来的，从不由模型书写。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "Megatron 會從智慧代理自己的筆記中，先說明這一輪的目的、正在發生的事和目前的階段。旁邊的數字是統計出來的，從不由模型書寫。"
+            "value": "Megatron 會從智慧代理自己的筆記中，先說明這一回合的目的、正在發生的事和目前的階段。旁邊的數字是統計出來的，從不由模型書寫。"
           }
         },
         "sv": {
@@ -676819,7 +676819,7 @@
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Megatron opnast á því til hvers lotan er, hvað er að gerast og áföngunum hingað til, skrifað út frá eigin athugasemdum umboðsmannsins. Tölurnar við hliðina eru taldar, aldrei skrifaðar."
+            "value": "Megatron opnast á því til hvers umferðin er, hvað er að gerast og áföngunum hingað til, skrifað út frá eigin athugasemdum umboðsmannsins. Tölurnar við hliðina eru taldar, aldrei skrifaðar."
           }
         }
       }
@@ -677729,6 +677729,410 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld skrár breyttar"
+          }
+        }
+      }
+    },
+    "Currency": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Currency"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Währung"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moneda"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devise"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valuta"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通貨"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "통화"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waluta"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moeda"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "货币"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "貨幣"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valuta"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valuta"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valuta"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valuutta"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjaldmiðill"
+          }
+        }
+      }
+    },
+    "Automatic (%@)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic (%@)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatisch (%@)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automática (%@)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatique (%@)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatica (%@)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動（%@）"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "자동(%@)"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatycznie (%@)"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automática (%@)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动（%@）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自動（%@）"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatisk (%@)"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatisk (%@)"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatisk (%@)"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automaattinen (%@)"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sjálfvirkt (%@)"
+          }
+        }
+      }
+    },
+    "What a turn or a conversation cost is an estimate priced in US dollars. It is shown in this currency at the European Central Bank's daily rate; a balance a provider bills keeps its own.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What a turn or a conversation cost is an estimate priced in US dollars. It is shown in this currency at the European Central Bank's daily rate; a balance a provider bills keeps its own."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Was ein Zug oder eine Unterhaltung gekostet hat, ist eine in US-Dollar bepreiste Schätzung. Sie wird zum Tageskurs der Europäischen Zentralbank in dieser Währung angezeigt; ein Guthaben, das ein Anbieter abrechnet, behält seine eigene."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo que costó un turno o una conversación es una estimación calculada en dólares estadounidenses. Se muestra en esta moneda al tipo diario del Banco Central Europeo; un saldo que factura un proveedor conserva la suya."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le coût d’un tour ou d’une conversation est une estimation chiffrée en dollars américains. Il est affiché dans cette devise au taux quotidien de la Banque centrale européenne ; un solde facturé par un fournisseur garde la sienne."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il costo di un turno o di una conversazione è una stima calcolata in dollari statunitensi. Viene mostrato in questa valuta al tasso giornaliero della Banca centrale europea; un saldo fatturato da un fornitore mantiene la propria."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ターンや会話のコストは、米ドルで算出した見積もりです。欧州中央銀行の日次レートでこの通貨に換算して表示します。プロバイダーが請求する残高は元の通貨のままです。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "턴이나 대화의 비용은 미국 달러로 산정한 추정치입니다. 유럽중앙은행의 일일 환율로 이 통화로 표시하며, 제공업체가 청구하는 잔액은 원래 통화를 유지합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koszt tury lub rozmowy to szacunek wyceniony w dolarach amerykańskich. Jest pokazywany w tej walucie po dziennym kursie Europejskiego Banku Centralnego; saldo rozliczane przez dostawcę zachowuje własną."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O custo de um turno ou de uma conversa é uma estimativa calculada em dólares americanos. Ele é mostrado nesta moeda pela taxa diária do Banco Central Europeu; um saldo cobrado por um provedor mantém a própria."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一个回合或一次对话的花费是按美元计价的估算。它按欧洲央行的每日汇率以此货币显示；提供商计费的余额保持其自身的货币。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一個回合或一次對話的花費是以美元計價的估算。它依歐洲央行的每日匯率以此貨幣顯示；供應商計費的餘額維持其自身的貨幣。"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vad en tur eller en konversation kostade är en uppskattning prissatt i amerikanska dollar. Den visas i den här valutan till Europeiska centralbankens dagskurs; ett saldo som en leverantör fakturerar behåller sin egen."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvad en tur eller en samtale kostede, er et estimat prissat i amerikanske dollar. Det vises i denne valuta til Den Europæiske Centralbanks dagskurs; en saldo, som en udbyder fakturerer, beholder sin egen."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hva en tur eller en samtale kostet, er et anslag priset i amerikanske dollar. Det vises i denne valutaen til Den europeiske sentralbankens dagskurs; en saldo som en leverandør fakturerer, beholder sin egen."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vuoron tai keskustelun hinta on Yhdysvaltain dollareissa hinnoiteltu arvio. Se näytetään tässä valuutassa Euroopan keskuspankin päivän kurssilla; palveluntarjoajan laskuttama saldo säilyttää oman valuuttansa."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Það sem umferð eða samtal kostaði er mat verðlagt í Bandaríkjadölum. Það er sýnt í þessum gjaldmiðli á daggengi Seðlabanka Evrópu; inneign sem þjónustuaðili rukkar heldur sínum eigin."
+          }
+        }
+      }
+    },
+    "money cost price euro dollar spend": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "money cost price euro dollar spend"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "geld kosten preis euro dollar ausgaben"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dinero coste precio euro dólar gasto"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "argent coût prix euro dollar dépense"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "denaro costo prezzo euro dollaro spesa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "お金 コスト 価格 ユーロ ドル 支出"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "돈 비용 가격 유로 달러 지출"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pieniądze koszt cena euro dolar wydatki"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dinheiro custo preço euro dólar gasto"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "钱 花费 价格 欧元 美元 支出"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "錢 花費 價格 歐元 美元 支出"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pengar kostnad pris euro dollar utgift"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "penge omkostning pris euro dollar forbrug"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "penger kostnad pris euro dollar forbruk"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "raha hinta kustannus euro dollari kulutus"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "peningar kostnaður verð evra dalur útgjöld"
           }
         }
       }
