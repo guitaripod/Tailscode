@@ -31,7 +31,7 @@ extension ServerManager {
             self?.addMachine()
         }
         gtk_widget_set_halign(addButton, GTK_ALIGN_START)
-        gtk_widget_set_tooltip_text(addButton, ConnectLinkReading.addMachineDetail)
+        Tip.set(addButton, ConnectLinkReading.addMachineDetail)
         gtk_box_append(ptr(addMachine), addButton)
         gtk_box_append(
             ptr(addMachine),
@@ -49,7 +49,7 @@ extension ServerManager {
         adw_preferences_group_add(ptr(group), ptr(name))
 
         let password = Self.passwordRow(title: Localized.text("Password"))
-        gtk_widget_set_tooltip_text(password, ServerPasswordRule.summary)
+        Tip.set(password, ServerPasswordRule.summary)
         passwordRow = password
         adw_preferences_group_add(ptr(group), ptr(password))
         let passwordHint = Gtk.label(ServerPasswordRule.summary, css: "dim", wrap: true, selectable: false)
@@ -171,7 +171,7 @@ extension ServerManager {
         let refresh = gtk_button_new_from_icon_name("view-refresh-symbolic")!
         Gtk.addClass(refresh, "flat")
         gtk_widget_set_valign(refresh, GTK_ALIGN_CENTER)
-        gtk_widget_set_tooltip_text(refresh, Localized.text("Ask this machine again"))
+        Tip.set(refresh, Localized.text("Ask this machine again"))
         let refreshID = profile.id
         Gtk.connect(UnsafeMutableRawPointer(refresh), "clicked") { [weak self] in
             self?.recheck(refreshID)
@@ -306,7 +306,7 @@ extension ServerManager {
             adw_expander_row_add_row(ptr(row), name)
 
             let password = Self.passwordRow(title: Localized.text("Password"))
-            gtk_widget_set_tooltip_text(
+            Tip.set(
                 password,
                 Localized.text(
                     "A stored password is never shown. Type a new one to replace it, or apply an empty field to connect without one."

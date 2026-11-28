@@ -9,7 +9,7 @@ extension BrainView {
         phase = next
         gtk_widget_set_focusable(widget, next == .closed ? 1 : 0)
         gtk_widget_set_cursor_from_name(widget, next == .closed ? "pointer" : nil)
-        gtk_widget_set_tooltip_text(widget, next == .closed ? card.card.spoken : nil)
+        Tip.set(widget, next == .closed ? card.card.spoken : nil)
         tailscode_set_accessible_expanded(widget, next == .closed ? 0 : 1)
         if next == .closed {
             gtk_widget_add_css_class(widget, "bn-closed")

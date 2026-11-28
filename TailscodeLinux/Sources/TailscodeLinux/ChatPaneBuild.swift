@@ -215,7 +215,7 @@ extension ChatPane {
             if lane == .chat { Gtk.addClass(button, "chip-on") }
             tailscode_set_accessible_label(button, lane.word)
             tailscode_set_accessible_pressed(button, lane == .chat ? 1 : 0)
-            gtk_widget_set_tooltip_text(
+            Tip.set(
                 button, lane == .image ? door.line ?? lane.spoken : lane.spoken)
             gtk_box_append(ptr(laneRow), button)
         }
@@ -269,13 +269,15 @@ extension ChatPane {
         }
         gtk_box_append(ptr(findBar), findEntry)
         gtk_box_append(ptr(findBar), findCountLabel)
-        gtk_box_append(
-            ptr(findBar), Gtk.button("↑", css: ["flat"]) { [weak self] in self?.stepFind(by: -1) })
-        gtk_box_append(
-            ptr(findBar), Gtk.button("↓", css: ["flat"]) { [weak self] in self?.stepFind(by: 1) })
-        gtk_box_append(
-            ptr(findBar),
-            Gtk.button("✕", css: ["flat"]) { [weak self] in self?.setFindShown(false) })
+        let findPrevious = Gtk.button("↑", css: ["flat"]) { [weak self] in self?.stepFind(by: -1) }
+        Tip.set(findPrevious, Localized.text("Previous match"))
+        gtk_box_append(ptr(findBar), findPrevious)
+        let findNext = Gtk.button("↓", css: ["flat"]) { [weak self] in self?.stepFind(by: 1) }
+        Tip.set(findNext, Localized.text("Next match"))
+        gtk_box_append(ptr(findBar), findNext)
+        let findClose = Gtk.button("✕", css: ["flat"]) { [weak self] in self?.setFindShown(false) }
+        Tip.set(findClose, Localized.text("Close search"))
+        gtk_box_append(ptr(findBar), findClose)
         return findBar
     }
 
@@ -340,7 +342,7 @@ extension ChatPane {
         Gtk.addClass(sendButton, "chip-ctl")
         gtk_widget_set_valign(sendButton, GTK_ALIGN_CENTER)
         tailscode_set_accessible_label(sendButton, sendWords[0])
-        gtk_widget_set_tooltip_text(sendButton, sendWords[0])
+        Tip.set(sendButton, sendWords[0])
         Gtk.connect(UnsafeMutableRawPointer(sendButton), "clicked") { [weak self] in
             self?.sendFromComposer()
         }
@@ -367,7 +369,7 @@ extension ChatPane {
         Gtk.addClass(stopButton, "chip-ctl")
         gtk_widget_set_valign(stopButton, GTK_ALIGN_CENTER)
         tailscode_set_accessible_label(stopButton, Localized.text("Stop the turn"))
-        gtk_widget_set_tooltip_text(stopButton, Localized.text("Stop the turn"))
+        Tip.set(stopButton, Localized.text("Stop the turn"))
         Gtk.connect(UnsafeMutableRawPointer(stopButton), "clicked") { [weak self] in
             self?.stopTurn()
         }

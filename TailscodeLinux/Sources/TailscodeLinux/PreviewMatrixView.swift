@@ -113,6 +113,7 @@ final class PreviewMatrixView: PreviewLensView, @unchecked Sendable {
             Gtk.onMain { [weak self] in self?.leaveEnlarged() }
         }
         gtk_widget_set_halign(back, GTK_ALIGN_START)
+        Tip.set(back, Localized.text("Back to the grid"))
         let bigHeader = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 8)
         Gtk.margins(bigHeader, top: 0, bottom: 0, leading: 14, trailing: 14)
         gtk_box_append(ptr(bigHeader), back)

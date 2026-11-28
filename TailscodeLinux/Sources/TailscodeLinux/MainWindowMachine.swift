@@ -13,7 +13,7 @@ extension MainWindow {
         Gtk.addClass(scheduleBox, "usage-footer")
         Gtk.margins(scheduleBox, top: 4, bottom: 2, leading: 10, trailing: 10)
         gtk_widget_set_cursor_from_name(scheduleBox, "pointer")
-        gtk_widget_set_tooltip_text(scheduleBox, ScheduleWords.title)
+        Tip.set(scheduleBox, ScheduleWords.title)
         let glyph = Gtk.label("◷", css: "accent", selectable: false)
         gtk_widget_set_valign(glyph, GTK_ALIGN_START)
         gtk_box_append(ptr(scheduleBox), glyph)

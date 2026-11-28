@@ -322,7 +322,7 @@ final class CaptureSession: @unchecked Sendable {
             let removeButton = Gtk.button("✕", css: ["flat", "circular"]) { [self] in
                 Gtk.onMain { self.remove(spec) }
             }
-            gtk_widget_set_tooltip_text(removeButton, Localized.text("Remove this key"))
+            Tip.set(removeButton, Localized.text("Remove this key"))
             gtk_box_append(ptr(row), removeButton)
             gtk_box_append(ptr(box), row)
         }

@@ -97,7 +97,7 @@ enum SpendPanel {
             let bar = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
             Gtk.addClass(bar, turn.share > 0.66 ? "spend-bar-hot" : "spend-bar")
             gtk_widget_set_size_request(bar, Int32(barWidth), Int32(height))
-            gtk_widget_set_tooltip_text(bar, tooltip(for: turn))
+            Tip.set(bar, tooltip(for: turn))
             gtk_box_append(ptr(column), bar)
             gtk_box_append(ptr(row), column)
         }
@@ -184,7 +184,7 @@ enum SpendPanel {
             gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_END)
             gtk_label_set_xalign(op(label), 0)
             gtk_widget_set_hexpand(label, 1)
-            gtk_widget_set_tooltip_text(label, tooltip(for: turn))
+            Tip.set(label, tooltip(for: turn))
             gtk_box_append(ptr(row), label)
             gtk_box_append(ptr(card), row)
         }

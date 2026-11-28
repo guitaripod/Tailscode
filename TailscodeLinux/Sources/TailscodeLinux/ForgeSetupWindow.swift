@@ -134,7 +134,7 @@ final class ForgeSetupWindow: @unchecked Sendable {
         adw_preferences_group_set_description(ptr(addGroup), ForgeSetup.addressHelp)
 
         gtk_entry_set_placeholder_text(ptr(addressEntry), ForgeSetup.addressPlaceholder)
-        gtk_widget_set_tooltip_text(addressEntry, ForgeSetup.addressHelp)
+        Tip.set(addressEntry, ForgeSetup.addressHelp)
         gtk_widget_set_hexpand(addressEntry, 1)
         Gtk.connect(UnsafeMutableRawPointer(addressEntry), "changed") { [weak self] in
             Gtk.onMain { [weak self] in self?.typed() }
@@ -474,7 +474,7 @@ final class ForgeSetupWindow: @unchecked Sendable {
             let forget = Self.button("✕") { [weak self] in
                 Gtk.onMain { [weak self] in self?.confirmForget(renderer) }
             }
-            gtk_widget_set_tooltip_text(forget, ForgeSetup.forgetTitle)
+            Tip.set(forget, ForgeSetup.forgetTitle)
             adw_action_row_add_suffix(ptr(row), forget)
             Gtk.connect(UnsafeMutableRawPointer(row), "activated") { [weak self] in
                 Gtk.onMain { [weak self] in self?.recall(renderer) }

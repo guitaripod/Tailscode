@@ -71,7 +71,7 @@ extension MainWindow {
         let more = Gtk.label("›", css: "dim-label", selectable: false)
         gtk_box_append(ptr(heading), more)
         gtk_widget_set_cursor_from_name(heading, "pointer")
-        gtk_widget_set_tooltip_text(heading, MasterWords.title)
+        Tip.set(heading, MasterWords.title)
         Gtk.onRelease(heading) { [weak self] in self?.presentMasters() }
         gtk_box_append(ptr(masterShelf), heading)
         for (line, row) in zip(lines, board.rows) {
@@ -124,7 +124,7 @@ extension MainWindow {
             gtk_box_append(ptr(box), count)
         }
         gtk_widget_set_cursor_from_name(box, "pointer")
-        gtk_widget_set_tooltip_text(box, [line.name, line.state.text, row.machine].joined(separator: " · "))
+        Tip.set(box, [line.name, line.state.text, row.machine].joined(separator: " · "))
         tailscode_set_accessible_label(box, [line.name, line.state.text].joined(separator: ", "))
         let profileID = line.profileID
         let expertID = line.expertID

@@ -270,7 +270,7 @@ enum SidebarRow {
     static func masterFlag(_ entry: SessionEntry) -> UnsafeMutablePointer<GtkWidget> {
         let row = MasterDesk.shared.master(for: entry)
         let mark = row.map { MasterMarks.mark($0.master, size: .tiny) } ?? MasterMarks.mark("✦", hue: .gray, size: .tiny)
-        gtk_widget_set_tooltip_text(mark, row.map { Localized.text("A task of %@", $0.master.name) } ?? MasterWords.title)
+        Tip.set(mark, row.map { Localized.text("A task of %@", $0.master.name) } ?? MasterWords.title)
         return mark
     }
 
@@ -280,7 +280,7 @@ enum SidebarRow {
         let word = mark == .scheduled ? mark.glyph : mark.spoken.lowercased()
         let flag = Gtk.label(word, css: "row-flag", selectable: false)
         gtk_label_set_ellipsize(op(flag), PANGO_ELLIPSIZE_NONE)
-        gtk_widget_set_tooltip_text(flag, mark.spoken)
+        Tip.set(flag, mark.spoken)
         return flag
     }
 
@@ -293,10 +293,10 @@ enum SidebarRow {
         case .activity(let activity):
             glyph = Gtk.label(model.state.glyph.text, css: model.state.glyph.css, selectable: false)
             ActivityPulse.apply(activity.icon, to: glyph)
-            gtk_widget_set_tooltip_text(glyph, activity.spoken)
+            Tip.set(glyph, activity.spoken)
         case .unread:
             glyph = Gtk.label("●", css: "unread-dot", selectable: false)
-            gtk_widget_set_tooltip_text(glyph, Localized.text("Unread"))
+            Tip.set(glyph, Localized.text("Unread"))
         case .none:
             glyph = Gtk.label("", css: "glyph-pending", selectable: false)
         }
@@ -345,7 +345,7 @@ enum SidebarRow {
         gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_END)
         gtk_label_set_lines(op(label), Int32(lines))
         gtk_label_set_xalign(op(label), 0)
-        gtk_widget_set_tooltip_text(label, words.joined(separator: " "))
+        Tip.set(label, words.joined(separator: " "))
         gtk_widget_set_name(label, Words.news)
         return label
     }
@@ -413,7 +413,7 @@ enum SidebarRow {
             } else {
                 gtk_label_set_text(op(label), news.lead)
             }
-            gtk_widget_set_tooltip_text(label, words.joined(separator: " "))
+            Tip.set(label, words.joined(separator: " "))
         }
         gtk_label_set_text(op(age), model.facets(vocabulary).age)
         tailscode_set_accessible_label(
@@ -462,7 +462,7 @@ enum SidebarRow {
         if let activity = state.activity {
             glyph = Gtk.label(state.glyph.text, css: state.glyph.css, selectable: false)
             ActivityPulse.apply(activity.icon, to: glyph)
-            gtk_widget_set_tooltip_text(glyph, activity.spoken)
+            Tip.set(glyph, activity.spoken)
         } else if model.unread {
             glyph = Gtk.label("●", css: "unread-dot", selectable: false)
         } else {
@@ -509,7 +509,7 @@ enum SidebarRow {
         gtk_box_append(ptr(row), column)
         gtk_button_set_child(ptr(button), row)
         gtk_widget_set_hexpand(button, 1)
-        gtk_widget_set_tooltip_text(button, Localized.text("Open all of these as one split"))
+        Tip.set(button, Localized.text("Open all of these as one split"))
         tailscode_set_accessible_label(button, model.accessibleLabel)
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked", onOpen)
         let buttonBits = UInt(bitPattern: button)
@@ -551,7 +551,7 @@ enum SidebarRow {
         gtk_box_append(ptr(line), title)
         gtk_button_set_child(ptr(button), line)
         gtk_widget_set_hexpand(button, 1)
-        gtk_widget_set_tooltip_text(button, Localized.text("Open just this chat"))
+        Tip.set(button, Localized.text("Open just this chat"))
         tailscode_set_accessible_label(
             button, Localized.text("Open just %@", model.title))
         Gtk.makeChatDragSource(
@@ -653,7 +653,7 @@ enum SidebarRow {
             marked
             ? Localized.text("Marked — click to unmark; shift-click marks the span to here")
             : Localized.text("Mark this chat — shift-click marks every chat back to it")
-        gtk_widget_set_tooltip_text(button, label)
+        Tip.set(button, label)
         tailscode_set_accessible_label(button, label)
         let buttonBits = UInt(bitPattern: button)
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") {

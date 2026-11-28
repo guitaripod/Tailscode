@@ -30,7 +30,7 @@ enum UsageStrip {
     ) {
         Gtk.removeChildren(of: box)
         gtk_widget_set_visible(box, glance.isEmpty ? 0 : 1)
-        gtk_widget_set_tooltip_text(
+        Tip.set(
             box,
             glance.tooltip.isEmpty ? Localized.text("The full quota picture") : glance.tooltip)
         for line in glance.lines {

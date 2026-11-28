@@ -63,7 +63,7 @@ final class WatchChipView: @unchecked Sendable {
         mark.set(style: context.label(2.0, bold: true, ink: glyph.1))
         words.set(style: context.label(2.0, ink: palette.text))
         gtk_widget_set_sensitive(button, 1)
-        gtk_widget_set_tooltip_text(button, next.outcome == nil ? Localized.text("Watch this one") : nil)
+        Tip.set(button, next.outcome == nil ? Localized.text("Watch this one") : nil)
         tailscode_set_accessible_label(button, next.title + ", " + words.text)
     }
 
@@ -74,7 +74,7 @@ final class WatchChipView: @unchecked Sendable {
         words.set(text: listed ? Localized.text("+%d listed", count) : Localized.text("+%d more", count))
         mark.set(style: context.label(2.0, ink: context.palette.dim))
         words.set(style: context.label(2.0, ink: context.palette.dim))
-        gtk_widget_set_tooltip_text(button, nil)
+        Tip.set(button, nil)
         tailscode_set_accessible_label(button, words.text)
     }
 

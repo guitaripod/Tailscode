@@ -164,7 +164,7 @@ final class PaneCall: @unchecked Sendable {
         if was != visible { host?.callChipChanged() }
         guard visible else { return }
         gtk_widget_set_sensitive(chip, VoiceCallEntryPoint.isEnabled(reach: reach, active: active) ? 1 : 0)
-        gtk_widget_set_tooltip_text(chip, VoiceCallEntryPoint.tooltip(reach: reach, active: active))
+        Tip.set(chip, VoiceCallEntryPoint.tooltip(reach: reach, active: active))
         tailscode_set_accessible_label(chip, VoiceCallEntryPoint.accessibilityLabel(reach: reach, active: active))
         if let word = chipParts.word { gtk_label_set_text(op(word), VoiceCallEntryPoint.label(active: active)) }
         ChatChips.setTone(chipParts.glyph, active ? .danger : (reach.canStart ? nil : reach.tone))

@@ -55,7 +55,7 @@ final class StudioSlotView: @unchecked Sendable {
         gtk_widget_set_halign(remove, GTK_ALIGN_END)
         gtk_widget_set_valign(remove, GTK_ALIGN_START)
         gtk_widget_set_visible(remove, 0)
-        gtk_widget_set_tooltip_text(remove, ImageGenWords.detachHint)
+        Tip.set(remove, ImageGenWords.detachHint)
         tailscode_set_accessible_label(remove, ImageGenWords.detachHint)
         gtk_overlay_add_overlay(op(widget), remove)
     }
@@ -66,7 +66,7 @@ final class StudioSlotView: @unchecked Sendable {
         gtk_widget_set_visible(remove, held == 0 ? 0 : 1)
         gtk_widget_set_visible(count, held > 1 ? 1 : 0)
         gtk_label_set_text(op(count), "\(held)")
-        gtk_widget_set_tooltip_text(button, tooltip)
+        Tip.set(button, tooltip)
         let signature = ["\(held)", "\(bits)", glyph ?? ""]
         guard shown == nil || shown! != signature else { return }
         shown = signature

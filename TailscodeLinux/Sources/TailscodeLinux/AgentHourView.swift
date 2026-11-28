@@ -166,7 +166,7 @@ final class AgentHourView: @unchecked Sendable {
         }
         if words != tooltipFor {
             tooltipFor = words
-            gtk_widget_set_tooltip_text(canvas.widget, words.isEmpty ? nil : words)
+            Tip.set(canvas.widget, words.isEmpty ? nil : words)
         }
     }
 

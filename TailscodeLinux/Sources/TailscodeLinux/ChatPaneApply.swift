@@ -385,7 +385,7 @@ extension ChatPane {
         let sendName = running ? Localized.text("Queue") : Localized.text("Send")
         if let sendWord { gtk_label_set_text(op(sendWord), sendName.lowercased()) }
         tailscode_set_accessible_label(sendButton, sendName)
-        gtk_widget_set_tooltip_text(sendButton, sendName)
+        Tip.set(sendButton, sendName)
         if (gtk_widget_get_visible(stopButton) != 0) != running {
             gtk_widget_set_visible(stopButton, running ? 1 : 0)
             queueLaneFit()

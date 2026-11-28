@@ -130,7 +130,7 @@ final class StudioStageShell: @unchecked Sendable {
         gtk_label_set_text(op(stateLabel), sentence)
         gtk_label_set_text(op(stateDetail), detail.map { " · " + $0 } ?? "")
         gtk_widget_set_visible(stateDetail, detail == nil ? 0 : 1)
-        gtk_widget_set_tooltip_text(stateRow, [sentence, detail].compactMap { $0 }.joined(separator: " · "))
+        Tip.set(stateRow, [sentence, detail].compactMap { $0 }.joined(separator: " · "))
         gtk_widget_set_visible(stateDot, tone == nil ? 0 : 1)
         if let tone, tone != dotTone {
             dotTone = tone
@@ -220,7 +220,7 @@ final class StudioStageShell: @unchecked Sendable {
                 css: ["flat", "studio-verb"] + (verb.isDestructive ? ["danger"] : [])
                     + (verb.isPrimary ? ["studio-verb-lead"] : [])
             ) { [weak self] in Gtk.onMain { [weak self] in self?.press(id) } }
-            gtk_widget_set_tooltip_text(button, verb.hint)
+            Tip.set(button, verb.hint)
             tailscode_set_accessible_label(button, verb.title)
             gtk_box_append(ptr(verbBox), button)
             verbButtons.append(button)

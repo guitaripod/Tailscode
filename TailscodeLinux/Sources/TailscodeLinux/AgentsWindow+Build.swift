@@ -27,7 +27,7 @@ extension AgentsWindow {
         adw_header_bar_pack_end(op(UnsafeMutableRawPointer(bar)), controls.awakeButton)
         adw_header_bar_pack_end(op(UnsafeMutableRawPointer(bar)), styleButton)
         tailscode_set_accessible_label(styleButton, Localized.text("Style"))
-        gtk_widget_set_tooltip_text(styleButton, Localized.text("How the wall looks and moves"))
+        Tip.set(styleButton, Localized.text("How the wall looks and moves"))
         gtk_widget_set_focus_on_click(styleButton, 0)
         let openStyle = hooks.openStyle
         Gtk.connect(UnsafeMutableRawPointer(styleButton), "clicked") { openStyle() }

@@ -124,7 +124,7 @@ final class AgentRegistryWindow: MachineWindow, @unchecked Sendable {
             let busy = installing.contains(agent.id)
             let row = MachineRows.row(reading.title, subtitle: busy ? Localized.text("Installing on %@…", profile.name) : reading.subtitle)
             MachineRows.prefix(MachineAgentReading.registryInitial(agent), css: "heading", on: row)
-            if let description = agent.description { gtk_widget_set_tooltip_text(row, description) }
+            if let description = agent.description { Tip.set(row, description) }
             if let press = reading.press {
                 let id = agent.id
                 MachineRows.suffixButton(

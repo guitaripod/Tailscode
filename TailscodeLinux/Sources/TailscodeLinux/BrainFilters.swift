@@ -155,7 +155,7 @@ final class BrainFilters: @unchecked Sendable {
         guard found != hover else { return }
         hover = found
         gtk_widget_set_cursor_from_name(canvas, found == nil ? nil : "pointer")
-        gtk_widget_set_tooltip_text(canvas, found.map { tooltip(for: $0) })
+        Tip.set(canvas, found.map { tooltip(for: $0) })
         gtk_widget_queue_draw(canvas)
     }
 

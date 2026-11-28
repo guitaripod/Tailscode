@@ -135,7 +135,7 @@ final class ShareCardDialog: @unchecked Sendable {
         for format in ShareFormat.allCases {
             let button = gtk_toggle_button_new_with_label(format.title)!
             if let lead { gtk_toggle_button_set_group(ptr(button), ptr(lead)) } else { lead = button }
-            gtk_widget_set_tooltip_text(button, format.tagline)
+            Tip.set(button, format.tagline)
             tailscode_set_accessible_label(button, format.title)
             tailscode_set_accessible_description(button, format.tagline)
             let hold = Gtk.WeakWidget(button)
@@ -186,7 +186,7 @@ final class ShareCardDialog: @unchecked Sendable {
         let model = gtk_string_list_new(nil)!
         for candidate in CardStyle.all { gtk_string_list_append(model, candidate.name) }
         let picker = gtk_drop_down_new(OpaquePointer(UnsafeMutableRawPointer(model)), nil)!
-        gtk_widget_set_tooltip_text(picker, Localized.text("Card style"))
+        Tip.set(picker, Localized.text("Card style"))
         tailscode_set_accessible_label(picker, Localized.text("Card style"))
         let hold = Gtk.WeakWidget(picker)
         Gtk.onNotify(UnsafeMutableRawPointer(picker), property: "selected") { [weak self] in
@@ -262,7 +262,7 @@ final class ShareCardDialog: @unchecked Sendable {
             }
             gtk_toggle_button_set_active(ptr(chip), on ? 1 : 0)
             gtk_widget_set_sensitive(chip, reason == nil ? 1 : 0)
-            gtk_widget_set_tooltip_text(chip, reason ?? module.title)
+            Tip.set(chip, reason ?? module.title)
             tailscode_set_accessible_description(chip, reason ?? "")
         }
         if let picker = stylePicker {

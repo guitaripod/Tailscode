@@ -68,7 +68,7 @@ extension ChatPane {
         let mark: UnsafeMutablePointer<GtkWidget>
         if let row = masterRow {
             mark = MasterMarks.mark(row.master, size: .tiny)
-            gtk_widget_set_tooltip_text(mark, row.master.name)
+            Tip.set(mark, row.master.name)
         } else {
             mark = MasterMarks.mark("✦", hue: .gray, size: .tiny)
         }

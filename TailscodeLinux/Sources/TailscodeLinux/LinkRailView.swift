@@ -527,7 +527,7 @@ enum LinkRailPlateView {
             gtk_box_append(ptr(line), title)
             gtk_box_append(ptr(line), host)
             gtk_button_set_child(ptr(row), line)
-            gtk_widget_set_tooltip_text(row, item.url)
+            Tip.set(row, item.url)
             gtk_widget_set_cursor_from_name(row, "pointer")
             tailscode_set_accessible_label(row, item.face.spoken)
 

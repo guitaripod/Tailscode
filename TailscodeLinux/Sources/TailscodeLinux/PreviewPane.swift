@@ -566,13 +566,13 @@ final class PreviewPane: @unchecked Sendable {
         Gtk.setTone(keysChip, keysOn ? "preview-chip-on" : nil, from: ["preview-chip-on"])
         tailscode_set_accessible_pressed(touchChip, touchOn ? 1 : 0)
         tailscode_set_accessible_pressed(keysChip, keysOn ? 1 : 0)
-        gtk_widget_set_tooltip_text(
+        Tip.set(
             touchChip,
             touchOn
                 ? Localized.text("The pointer operates the app. Press to only watch.")
                 : Localized.text("The pointer only watches. Press to operate the app."))
-        gtk_widget_set_tooltip_text(homeChip, Localized.text("Send the Home button to the app"))
-        gtk_widget_set_tooltip_text(
+        Tip.set(homeChip, Localized.text("Send the Home button to the app"))
+        Tip.set(
             keysChip,
             keysOn
                 ? Localized.text("Keys are going to the app. Press Esc to stop.")

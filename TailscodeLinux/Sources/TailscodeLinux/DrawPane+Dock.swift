@@ -143,7 +143,7 @@ extension DrawPane {
             machine: machineName)
         let words = ImageGenBrief.words(in: promptText.trimmingCharacters(in: .whitespacesAndNewlines))
         dock.setFoot(estimate, tooltip: ImageGenStudioWords.countLine(words: words, engine: slot.engine))
-        gtk_widget_set_tooltip_text(
+        Tip.set(
             dock.promptView, ImageGenStudioWords.countLine(words: words, engine: slot.engine))
         refreshEnhance()
         refreshSlot()

@@ -156,7 +156,7 @@ final class AgentCardWindow: MachineWindow, @unchecked Sendable {
                 MachineRows.openLink(link)
             }
             gtk_widget_set_halign(button, GTK_ALIGN_START)
-            gtk_widget_set_tooltip_text(button, link)
+            Tip.set(button, link)
             gtk_box_append(ptr(column), button)
         }
         for code in relay.codes {
@@ -314,7 +314,7 @@ final class AgentCardWindow: MachineWindow, @unchecked Sendable {
         if let url = key.url {
             let get = Gtk.button(Localized.text("Get a key"), css: ["flat"]) { MachineRows.openLink(url) }
             gtk_widget_set_halign(get, GTK_ALIGN_START)
-            gtk_widget_set_tooltip_text(get, url)
+            Tip.set(get, url)
             gtk_box_append(ptr(content), get)
         }
         let entry = gtk_password_entry_new()!

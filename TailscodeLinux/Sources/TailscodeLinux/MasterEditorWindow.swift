@@ -438,7 +438,7 @@ final class MasterEditorWindow: MachineWindow, @unchecked Sendable {
         gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
         let mark = MasterMarks.mark(shownGlyph, hue: hue, size: .large)
         gtk_menu_button_set_child(op(button), mark)
-        gtk_widget_set_tooltip_text(button, MasterWords.markAndColour)
+        Tip.set(button, MasterWords.markAndColour)
         tailscode_set_accessible_label(button, MasterWords.markAndColour)
         markLabel = mark
 
@@ -452,7 +452,7 @@ final class MasterEditorWindow: MachineWindow, @unchecked Sendable {
             if option == hue { Gtk.addClass(dot, "master-hue-picked") }
             gtk_button_set_child(ptr(dot), MasterMarks.mark("", hue: option, size: .row))
             tailscode_set_accessible_label(dot, option.name)
-            gtk_widget_set_tooltip_text(dot, option.name)
+            Tip.set(dot, option.name)
             Gtk.connect(UnsafeMutableRawPointer(dot), "clicked") { [weak self] in
                 Gtk.onMain { [weak self] in self?.pick(option) }
             }
@@ -528,7 +528,7 @@ final class MasterEditorWindow: MachineWindow, @unchecked Sendable {
             gtk_label_set_max_width_chars(op(value), 34)
             gtk_label_set_xalign(op(value), 1)
             gtk_widget_set_valign(value, GTK_ALIGN_CENTER)
-            gtk_widget_set_tooltip_text(value, line.value)
+            Tip.set(value, line.value)
             adw_action_row_add_suffix(ptr(row), value)
             let chevron = Gtk.label("›", css: "dim-label", selectable: false)
             gtk_widget_set_valign(chevron, GTK_ALIGN_CENTER)

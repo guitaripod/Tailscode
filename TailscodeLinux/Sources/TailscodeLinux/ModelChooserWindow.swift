@@ -97,7 +97,7 @@ final class ModelChooserWindow: @unchecked Sendable {
             gtk_box_append(ptr(words), detail)
             gtk_box_append(ptr(content), words)
             gtk_button_set_child(ptr(button), content)
-            gtk_widget_set_tooltip_text(button, row.master.purpose)
+            Tip.set(button, row.master.purpose)
             tailscode_set_accessible_label(
                 button, [row.master.name, MasterWords.chooserDetail(row.machine)].joined(separator: ", "))
             Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
@@ -175,7 +175,7 @@ final class ModelChooserWindow: @unchecked Sendable {
         Gtk.addClass(refreshButton, "model-scope")
         gtk_button_set_child(
             ptr(refreshButton), Gtk.label("⟳", css: "model-refresh-glyph", selectable: false))
-        gtk_widget_set_tooltip_text(
+        Tip.set(
             refreshButton, Localized.text("Ask the server for its models again"))
         gtk_widget_set_visible(refreshButton, onRefresh == nil ? 0 : 1)
         band = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
@@ -257,7 +257,7 @@ final class ModelChooserWindow: @unchecked Sendable {
                     + "  <span alpha=\"40%\">⌃\(index + 1)</span>")
             gtk_box_append(ptr(content), tail)
             gtk_button_set_child(ptr(button), content)
-            gtk_widget_set_tooltip_text(button, machine.detail)
+            Tip.set(button, machine.detail)
             let profileID = machine.profileID
             Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
                 Gtk.onMain { [weak self] in
@@ -309,7 +309,7 @@ final class ModelChooserWindow: @unchecked Sendable {
                 mark + PangoMarkdown.escape(door.title) + "  <span alpha=\"60%\">\(door.count)</span>"
                     + key)
             gtk_button_set_child(ptr(button), label)
-            gtk_widget_set_tooltip_text(button, door.detail)
+            Tip.set(button, door.detail)
             let providerID = door.id
             if let providerID {
                 Gtk.onRightClick(button) { [weak self] x, y in
@@ -677,7 +677,7 @@ final class ModelChooserWindow: @unchecked Sendable {
             let note = Gtk.label(QuotaSurface.rowNote(wall), css: "model-wall", selectable: false)
             gtk_label_set_ellipsize(op(note), PANGO_ELLIPSIZE_NONE)
             gtk_widget_set_valign(note, GTK_ALIGN_CENTER)
-            gtk_widget_set_tooltip_text(note, QuotaSurface.bannerBody(wall))
+            Tip.set(note, QuotaSurface.bannerBody(wall))
             gtk_box_append(ptr(trailing), note)
         } else {
             gtk_box_append(ptr(trailing), capabilityMarks(row))
@@ -729,7 +729,7 @@ final class ModelChooserWindow: @unchecked Sendable {
                 Gtk.label(expanded ? "⌄" : "›", css: "model-chevron-glyph", selectable: false))
             gtk_widget_set_valign(chevron, GTK_ALIGN_CENTER)
             gtk_widget_set_size_request(chevron, Self.chevronWidth, -1)
-            gtk_widget_set_tooltip_text(chevron, Localized.text("The other providers that run it"))
+            Tip.set(chevron, Localized.text("The other providers that run it"))
             Gtk.connect(UnsafeMutableRawPointer(chevron), "clicked") { [weak self] in
                 Gtk.onMain { [weak self] in
                     guard let self else { return }
@@ -888,7 +888,7 @@ final class ModelChooserWindow: @unchecked Sendable {
             ptr(button),
             Gtk.label(row.isPinned ? "★" : "☆", css: "model-star-glyph", selectable: false))
         gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
-        gtk_widget_set_tooltip_text(
+        Tip.set(
             button,
             Localized.text(row.isPinned ? "Unstar this model" : "Star this model"))
         if let selection = row.selection {
@@ -917,7 +917,7 @@ final class ModelChooserWindow: @unchecked Sendable {
             let mark = Gtk.label(has ? slot.tag : "", css: "model-mark", selectable: false)
             gtk_label_set_ellipsize(op(mark), PANGO_ELLIPSIZE_NONE)
             gtk_label_set_xalign(op(mark), 0)
-            if has { gtk_widget_set_tooltip_text(mark, slot.label) }
+            if has { Tip.set(mark, slot.label) }
             if index < markColumns.count {
                 gtk_size_group_add_widget(ptr(markColumns[index]), mark)
             }
@@ -931,7 +931,7 @@ final class ModelChooserWindow: @unchecked Sendable {
         Gtk.fitWrap(label, to: fact.tag, ceiling: 24)
         if fact.tag.count <= Self.unbrokenTag { gtk_label_set_wrap(op(label), 0) }
         gtk_widget_set_valign(label, GTK_ALIGN_CENTER)
-        gtk_widget_set_tooltip_text(label, fact.label)
+        Tip.set(label, fact.label)
         switch fact {
         case .local: Gtk.addClass(label, "model-fact-local")
         case .server: Gtk.addClass(label, "model-fact-server")

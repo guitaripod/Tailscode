@@ -207,7 +207,7 @@ final class ForgePane: @unchecked Sendable {
         gtk_widget_set_can_target(sketchBadge, 0)
         gtk_label_set_ellipsize(op(sketchBadge), PANGO_ELLIPSIZE_NONE)
         gtk_overlay_add_overlay(op(sketchOverlay), sketchBadge)
-        gtk_widget_set_tooltip_text(sketchOverlay, ForgeWords.sketchNote)
+        Tip.set(sketchOverlay, ForgeWords.sketchNote)
         gtk_widget_set_hexpand(heldSlot, 1)
         gtk_widget_set_vexpand(heldSlot, 1)
         gtk_stack_add_named(op(art), sketchOverlay, "sketch")

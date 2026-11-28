@@ -66,7 +66,7 @@ final class WatchControls: @unchecked Sendable {
 
     private func configure(_ button: UnsafeMutablePointer<GtkWidget>, icon: String, words: String) {
         gtk_button_set_icon_name(ptr(button), icon)
-        gtk_widget_set_tooltip_text(button, words)
+        Tip.set(button, words)
         tailscode_set_accessible_label(button, words)
         gtk_widget_set_focus_on_click(button, 0)
     }

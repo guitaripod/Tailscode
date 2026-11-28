@@ -66,7 +66,7 @@ final class ChatRowVerbStrip: @unchecked Sendable {
             for (verb, button) in buttons {
                 let title = state.title(verb)
                 gtk_button_set_icon_name(ptr(button), Self.icon(verb, on: state.isOn(verb)))
-                gtk_widget_set_tooltip_text(button, title)
+                Tip.set(button, title)
                 tailscode_set_accessible_label(button, title)
                 if state.isOn(verb) {
                     gtk_widget_add_css_class(button, "row-verb-on")

@@ -28,7 +28,7 @@ extension MainWindow {
     func refreshVideoButton() {
         guard let videoButton else { return }
         let light = ForgeRunner.shared.light
-        gtk_widget_set_tooltip_text(
+        Tip.set(
             videoButton,
             ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil, light: light))
         tailscode_set_accessible_label(videoButton, ForgeEntryPoint.accessibilityLabel(light: light))
@@ -40,69 +40,69 @@ extension MainWindow {
         let header = adw_header_bar_new()!
         adw_header_bar_set_show_end_title_buttons(op(header), 0)
         adw_header_bar_set_title_widget(op(header), makeSidebarTitle())
-        adw_header_bar_pack_start(
-            op(header),
-            Gtk.button("+", css: ["flat"]) { [weak self] in self?.presentNewChat() })
+        let newChat = Gtk.button("+", css: ["flat"]) { [weak self] in self?.presentNewChat() }
+        Tip.set(newChat, Localized.text("New chat"))
+        adw_header_bar_pack_start(op(header), newChat)
         adw_header_bar_pack_start(op(header), makeVideoButton())
-        adw_header_bar_pack_end(
-            op(header),
-            Gtk.menuButton("⚙", css: ["flat"]) { [weak self] in
-                let settings: @Sendable () -> Void = { [weak self] in
-                    Gtk.onMain { [weak self] in self?.presentSettings() }
-                }
-                let servers: @Sendable () -> Void = { [weak self] in
-                    Gtk.onMain { [weak self] in self?.presentServers() }
-                }
-                let software: @Sendable () -> Void = { [weak self] in
-                    Gtk.onMain { [weak self] in self?.presentUpdates() }
-                }
-                let about: @Sendable () -> Void = { [weak self] in
-                    Gtk.onMain { [weak self] in AboutWindow.present(parent: self?.window) }
-                }
-                let quit: @Sendable () -> Void = { [weak self] in
-                    Gtk.onMain { [weak self] in self?.quitCleanly() }
-                }
-                let forge: @Sendable () -> Void = { [weak self] in
-                    Gtk.onMain { [weak self] in _ = self?.presentForge() }
-                }
-                let delegate: @Sendable () -> Void = { [weak self] in
-                    Gtk.onMain { [weak self] in self?.presentDelegate() }
-                }
-                let scheduled: @Sendable () -> Void = { [weak self] in
-                    Gtk.onMain { [weak self] in self?.presentScheduled() }
-                }
-                let masters: @Sendable () -> Void = { [weak self] in
-                    Gtk.onMain { [weak self] in self?.presentMasters() }
-                }
-                let archive: @Sendable () -> Void = { [weak self] in
-                    Gtk.onMain { [weak self] in self?.setArchiveShown(true) }
-                }
-                var rows: [(String, String, @Sendable () -> Void)] = []
-                if let filed = self?.archivedCount(), filed > 0 {
-                    rows.append(
-                        (ChatArchiveRule.door(count: filed), ChatArchiveRule.doorSubtitle, archive))
-                }
-                return rows + [
-                    (ForgeEntryPoint.menuTitle,
-                     ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil), forge),
-                    (DelegateEntryPoint.menuTitle, DelegateEntryPoint.subtitle, delegate),
-                    (ScheduleWords.title + "…",
-                     Localized.text("What your machines ask on their own, and when"), scheduled),
-                    (MasterWords.title + "…",
-                     Localized.text("Standing roles whose every task starts fresh with what they know"), masters),
-                    (Localized.text("Settings…"),
-                     Localized.text("Type sizes, the prompt box, vim mode, layout"), settings),
-                    (Localized.text("Servers…"),
-                     Localized.text("Add, probe, update or remove a server"), servers),
-                    (Localized.text("Software…"),
-                     Localized.text("What this app and every server is running"), software),
-                    (Localized.text("About Tailscode"),
-                     Localized.text("Version, what it was built with, diagnostics to paste"), about),
-                    (Localized.text("Quit Tailscode"),
-                     Localized.text("Closing the window leaves the chord answering; this ends it"),
-                     quit),
-                ]
-            })
+        let gear = Gtk.menuButton("⚙", css: ["flat"]) { [weak self] in
+            let settings: @Sendable () -> Void = { [weak self] in
+                Gtk.onMain { [weak self] in self?.presentSettings() }
+            }
+            let servers: @Sendable () -> Void = { [weak self] in
+                Gtk.onMain { [weak self] in self?.presentServers() }
+            }
+            let software: @Sendable () -> Void = { [weak self] in
+                Gtk.onMain { [weak self] in self?.presentUpdates() }
+            }
+            let about: @Sendable () -> Void = { [weak self] in
+                Gtk.onMain { [weak self] in AboutWindow.present(parent: self?.window) }
+            }
+            let quit: @Sendable () -> Void = { [weak self] in
+                Gtk.onMain { [weak self] in self?.quitCleanly() }
+            }
+            let forge: @Sendable () -> Void = { [weak self] in
+                Gtk.onMain { [weak self] in _ = self?.presentForge() }
+            }
+            let delegate: @Sendable () -> Void = { [weak self] in
+                Gtk.onMain { [weak self] in self?.presentDelegate() }
+            }
+            let scheduled: @Sendable () -> Void = { [weak self] in
+                Gtk.onMain { [weak self] in self?.presentScheduled() }
+            }
+            let masters: @Sendable () -> Void = { [weak self] in
+                Gtk.onMain { [weak self] in self?.presentMasters() }
+            }
+            let archive: @Sendable () -> Void = { [weak self] in
+                Gtk.onMain { [weak self] in self?.setArchiveShown(true) }
+            }
+            var rows: [(String, String, @Sendable () -> Void)] = []
+            if let filed = self?.archivedCount(), filed > 0 {
+                rows.append(
+                    (ChatArchiveRule.door(count: filed), ChatArchiveRule.doorSubtitle, archive))
+            }
+            return rows + [
+                (ForgeEntryPoint.menuTitle,
+                 ForgeEntryPoint.tooltip(configured: ForgeRunner.shared.endpoint != nil), forge),
+                (DelegateEntryPoint.menuTitle, DelegateEntryPoint.subtitle, delegate),
+                (ScheduleWords.title + "…",
+                 Localized.text("What your machines ask on their own, and when"), scheduled),
+                (MasterWords.title + "…",
+                 Localized.text("Standing roles whose every task starts fresh with what they know"), masters),
+                (Localized.text("Settings…"),
+                 Localized.text("Type sizes, the prompt box, vim mode, layout"), settings),
+                (Localized.text("Servers…"),
+                 Localized.text("Add, probe, update or remove a server"), servers),
+                (Localized.text("Software…"),
+                 Localized.text("What this app and every server is running"), software),
+                (Localized.text("About Tailscode"),
+                 Localized.text("Version, what it was built with, diagnostics to paste"), about),
+                (Localized.text("Quit Tailscode"),
+                 Localized.text("Closing the window leaves the chord answering; this ends it"),
+                 quit),
+            ]
+        }
+        Tip.set(gear, Localized.text("Settings and more"))
+        adw_header_bar_pack_end(op(header), gear)
         adw_toolbar_view_add_top_bar(op(toolbar), header)
 
         let column = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 0)
@@ -154,7 +154,7 @@ extension MainWindow {
         Gtk.addClass(updateBox, "update-footer")
         Gtk.margins(updateBox, top: 6, bottom: 6, leading: 0, trailing: 10)
         gtk_widget_set_cursor_from_name(updateBox, "pointer")
-        gtk_widget_set_tooltip_text(updateBox, Localized.text("What every machine is running"))
+        Tip.set(updateBox, Localized.text("What every machine is running"))
         gtk_widget_set_valign(updateGlyph, GTK_ALIGN_CENTER)
         gtk_widget_set_hexpand(updateHeadline, 1)
         gtk_box_append(ptr(updateBox), updateGlyph)
@@ -173,7 +173,7 @@ extension MainWindow {
         Gtk.addClass(usageBox, "usage-footer")
         Gtk.margins(usageBox, top: 6, bottom: 8, leading: 10, trailing: 10)
         gtk_widget_set_cursor_from_name(usageBox, "pointer")
-        gtk_widget_set_tooltip_text(usageBox, Localized.text("The full quota picture"))
+        Tip.set(usageBox, Localized.text("The full quota picture"))
         Gtk.onRelease(usageBox) { [weak self] in self?.presentUsage() }
         NotificationCenter.default.addObserver(
             forName: ChatDensitySetting.didChange, object: nil, queue: nil
@@ -205,7 +205,7 @@ extension MainWindow {
         ) { [weak self] _ in
             Gtk.onMain { [weak self] in self?.renderSidebar() }
         }
-        gtk_widget_set_tooltip_text(orb.widget, OrbPainter.tooltip(Localized.text("Nothing is running")))
+        Tip.set(orb.widget, OrbPainter.tooltip(Localized.text("Nothing is running")))
         Gtk.onPrimaryRelease(orb.widget) { [weak self] in
             Gtk.onMain { [weak self] in self?.orbPressed(secondary: false) }
         }
@@ -287,13 +287,13 @@ extension MainWindow {
         let header = adw_header_bar_new()!
         adw_header_bar_set_show_start_title_buttons(op(header), 0)
         adw_header_bar_set_title_widget(op(header), titleLabel)
-        adw_header_bar_pack_start(
-            op(header),
-            Gtk.button("☰", css: ["flat"]) { [weak self] in self?.togglePane(.sidebar) })
+        let sidebarToggle = Gtk.button("☰", css: ["flat"]) { [weak self] in self?.togglePane(.sidebar) }
+        Tip.set(sidebarToggle, Localized.text("Show or hide the chat list"))
+        adw_header_bar_pack_start(op(header), sidebarToggle)
         adw_header_bar_pack_end(op(header), makeActionsButton())
-        adw_header_bar_pack_end(
-            op(header),
-            Gtk.button("⌨", css: ["flat"]) { [weak self] in self?.togglePane(.terminal) })
+        let terminalToggle = Gtk.button("⌨", css: ["flat"]) { [weak self] in self?.togglePane(.terminal) }
+        Tip.set(terminalToggle, Localized.text("Show or hide the terminal"))
+        adw_header_bar_pack_end(op(header), terminalToggle)
         let chip = Gtk.menuButton("", css: ["flat", "live-chip"]) { [weak self] in
             self?.liveChipSections() ?? []
         }
@@ -309,13 +309,15 @@ extension MainWindow {
     }
 
     func makeActionsButton() -> UnsafeMutablePointer<GtkWidget> {
-        Gtk.menuButton("⋯", css: ["flat"]) { [weak self] in
+        let actions = Gtk.menuButton("⋯", css: ["flat"]) { [weak self] in
             guard let self else { return [] }
             let chat = self.activePane.actionRows().map {
                 Gtk.MenuRow(title: $0.0, detail: $0.1, action: $0.2)
             }
             return [Gtk.MenuSection(heading: nil, rows: chat)] + self.paneMenuSections()
         }
+        Tip.set(actions, Localized.text("Actions for this chat and the layout"))
+        return actions
     }
 
     /// Whether a pane verb that is a switch is on for the focused pane, for the mark in the menu.

@@ -19,7 +19,7 @@ extension TranscriptRow {
             let cell = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 4)
             gtk_box_append(ptr(cell), Self.statLabel(fact.glyph, css: "response-stat-glyph"))
             gtk_box_append(ptr(cell), Self.statLabel(fact.value, css: "response-stat-value"))
-            gtk_widget_set_tooltip_text(cell, "\(fact.label) — \(fact.detail)")
+            Tip.set(cell, "\(fact.label) — \(fact.detail)")
             gtk_box_append(ptr(row), cell)
         }
         return row
@@ -243,7 +243,7 @@ extension TranscriptRow {
         gtk_label_set_ellipsize(op(text), PANGO_ELLIPSIZE_END)
         gtk_label_set_single_line_mode(op(text), 1)
         gtk_box_append(ptr(row), text)
-        gtk_widget_set_tooltip_text(row, line.spoken)
+        Tip.set(row, line.spoken)
         return dividerLine(around: row)
     }
 

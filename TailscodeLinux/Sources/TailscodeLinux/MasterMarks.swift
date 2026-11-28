@@ -68,7 +68,7 @@ enum MasterMarks {
             let widest = trailing.split(separator: "\n").map(\.count).max() ?? trailing.count
             gtk_label_set_width_chars(op(label), Int32(min(widest, 10)))
             gtk_label_set_max_width_chars(op(label), 24)
-            gtk_widget_set_tooltip_text(label, trailing)
+            Tip.set(label, trailing)
             gtk_label_set_justify(op(label), GTK_JUSTIFY_RIGHT)
             gtk_label_set_xalign(op(label), 1)
             gtk_widget_set_valign(label, GTK_ALIGN_CENTER)

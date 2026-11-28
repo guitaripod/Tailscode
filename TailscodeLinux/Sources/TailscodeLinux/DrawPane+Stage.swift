@@ -57,7 +57,7 @@ extension DrawPane {
         gtk_widget_set_can_target(sketchBadge, 0)
         gtk_label_set_ellipsize(op(sketchBadge), PANGO_ELLIPSIZE_NONE)
         gtk_overlay_add_overlay(op(sketchOverlay), sketchBadge)
-        gtk_widget_set_tooltip_text(sketchOverlay, ImageGenPreviewWords.note)
+        Tip.set(sketchOverlay, ImageGenPreviewWords.note)
 
         for child in [mainSlot, heldSlot] {
             gtk_widget_set_hexpand(child, 1)
@@ -112,7 +112,7 @@ extension DrawPane {
             gtk_box_append(ptr(lines), name)
             gtk_box_append(ptr(lines), detail)
             gtk_button_set_child(ptr(card), lines)
-            gtk_widget_set_tooltip_text(card, ImageGenWords.scaffoldHint)
+            Tip.set(card, ImageGenWords.scaffoldHint)
             Gtk.connect(UnsafeMutableRawPointer(card), "clicked") { [weak self] in
                 Gtk.onMain { [weak self] in
                     self?.studio.choose(aspect: aspect)
@@ -313,7 +313,7 @@ extension DrawPane {
                 gtk_widget_set_hexpand(button, 1)
                 gtk_widget_set_vexpand(button, 1)
                 gtk_button_set_child(ptr(button), picture)
-                gtk_widget_set_tooltip_text(button, ImageGenAction.open.hint)
+                Tip.set(button, ImageGenAction.open.hint)
                 Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
                     Gtk.onMain { [weak self] in self?.openStage() }
                 }

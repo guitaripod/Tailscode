@@ -101,7 +101,7 @@ enum MediaTile {
         Gtk.addClass(opener, "media-opener")
         gtk_widget_set_halign(opener, GTK_ALIGN_START)
         gtk_button_set_child(ptr(opener), stage)
-        gtk_widget_set_tooltip_text(opener, Localized.text("Play %@", name))
+        Tip.set(opener, Localized.text("Play %@", name))
         tailscode_set_accessible_label(opener, Localized.text("Play %@", name))
         let play = context.playMedia
         Gtk.connect(UnsafeMutableRawPointer(opener), "clicked") { play?(reference, key) }
@@ -130,7 +130,7 @@ enum MediaTile {
         let button = Gtk.button(running ? "⏸" : "▶", css: ["flat", "media-audio-button"], onClick: {})
         gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
         let label = running ? Localized.text("Pause %@", name) : Localized.text("Play %@", name)
-        gtk_widget_set_tooltip_text(button, label)
+        Tip.set(button, label)
         tailscode_set_accessible_label(button, label)
         gtk_widget_set_sensitive(button, ready == nil ? 0 : 1)
         let play = context.playMedia

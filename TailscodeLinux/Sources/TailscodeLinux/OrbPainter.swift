@@ -93,7 +93,7 @@ final class OrbPainter: @unchecked Sendable {
         guard signal != self.signal else { return }
         self.signal = signal
         field.set(signal: signal)
-        gtk_widget_set_tooltip_text(widget, Self.tooltip(signal.spoken))
+        Tip.set(widget, Self.tooltip(signal.spoken))
         wake()
     }
 

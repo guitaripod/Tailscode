@@ -360,7 +360,7 @@ enum AnalyticsPanel {
             gtk_widget_set_size_request(bar, Int32(barWidth), Int32(height))
             var tip = "\(day.title) · \(day.value)"
             if day.turns > 0 { tip += " · " + Localized.text("%@ turns", "\(day.turns)") }
-            gtk_widget_set_tooltip_text(bar, tip)
+            Tip.set(bar, tip)
             gtk_box_append(ptr(holder), bar)
             gtk_box_append(ptr(row), holder)
         }
@@ -401,7 +401,7 @@ enum AnalyticsPanel {
                 let height = max(
                     2, Int(Double(weekdayChartHeight) * min(max(weekday.share, 0), 1)))
                 gtk_widget_set_size_request(bar, Int32(weekdayBarWidth), Int32(height))
-                if let money = weekday.money { gtk_widget_set_tooltip_text(bar, money) }
+                if let money = weekday.money { Tip.set(bar, money) }
                 gtk_box_append(ptr(columnBox), bar)
                 let label = Gtk.label(weekday.label, css: "spend-caption", selectable: false)
                 gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_NONE)
@@ -424,7 +424,7 @@ enum AnalyticsPanel {
                 Gtk.addClass(bar, "analytics-hour")
                 let height = max(2, Int(Double(hourChartHeight) * min(max(hour.share, 0), 1)))
                 gtk_widget_set_size_request(bar, Int32(hourBarWidth), Int32(height))
-                gtk_widget_set_tooltip_text(
+                Tip.set(
                     bar, "\(hour.label):00 · " + Localized.text("%@ turns", "\(hour.turns)"))
                 gtk_box_append(ptr(holder), bar)
                 gtk_box_append(ptr(clock), holder)

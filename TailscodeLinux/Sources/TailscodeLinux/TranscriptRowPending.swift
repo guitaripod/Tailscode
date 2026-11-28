@@ -40,7 +40,7 @@ extension TranscriptRow {
         Gtk.addClass(button, "queued-row")
         gtk_button_set_child(ptr(button), row)
         gtk_widget_set_hexpand(button, 1)
-        gtk_widget_set_tooltip_text(button, QueueReading.spoken(queued, position: position, of: total))
+        Tip.set(button, QueueReading.spoken(queued, position: position, of: total))
         tailscode_set_accessible_label(
             button, QueueReading.spoken(queued, position: position, of: total))
         let edit = context.editQueued
@@ -213,7 +213,7 @@ extension TranscriptRow {
 
         gtk_box_append(ptr(row), rule)
         gtk_box_append(ptr(row), lines)
-        gtk_widget_set_tooltip_text(row, spoken)
+        Tip.set(row, spoken)
         g_object_set_data(ptr(row), pendingRuleKey, UnsafeMutableRawPointer(rule))
         if let label { g_object_set_data(ptr(row), pendingLabelKey, UnsafeMutableRawPointer(label)) }
         g_object_set_data(ptr(row), pendingStripKey, UnsafeMutableRawPointer(strip))
@@ -378,7 +378,7 @@ extension TranscriptRow {
         let spokenNow =
             plan.map { ResumeReading.spoken($0, words: send.text, now: now) }
             ?? PendingSendReading.spoken(send, now: now)
-        gtk_widget_set_tooltip_text(row, spokenNow)
+        Tip.set(row, spokenNow)
         tailscode_set_accessible_label(row, spokenNow)
     }
 

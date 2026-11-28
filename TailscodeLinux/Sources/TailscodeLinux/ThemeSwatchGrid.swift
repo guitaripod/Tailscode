@@ -67,7 +67,7 @@ final class ThemeSwatchGrid: @unchecked Sendable {
         let button = gtk_button_new()!
         gtk_button_set_child(ptr(button), stack)
         gtk_widget_add_css_class(button, "theme-swatch")
-        gtk_widget_set_tooltip_text(button, theme.blurb)
+        Tip.set(button, theme.blurb)
         let pick = onPick
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
             pick(theme)

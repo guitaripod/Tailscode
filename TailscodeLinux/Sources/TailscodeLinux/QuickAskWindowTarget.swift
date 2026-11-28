@@ -280,7 +280,7 @@ extension QuickAskWindow {
     func refreshTarget() {
         let server = targetServer
         gtk_menu_button_set_label(op(target), "● " + ServerLabel.display(server))
-        gtk_widget_set_tooltip_text(target, ServerLabel.address(server))
+        Tip.set(target, ServerLabel.address(server))
         gtk_widget_set_sensitive(target, servers.count > 1 && !asking ? 1 : 0)
         let levels = effortOptions()
         dropUnofferedEffort(on: server.id, options: levels)

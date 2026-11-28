@@ -110,7 +110,7 @@ final class DialPill: @unchecked Sendable {
     /// of model repaints the pill it already has. The power's word is set letter by letter from
     /// the shared rainbow and its bars each take a stop of it.
     func render(_ face: DialFace, modelTint: String?) {
-        gtk_widget_set_tooltip_text(
+        Tip.set(
             button, face.spoken + " · " + Localized.text("wheel to step the level"))
         tailscode_set_accessible_label(button, face.spoken)
         Self.swapClass(on: dot, among: Self.modelTintClasses, chosen: modelTint)

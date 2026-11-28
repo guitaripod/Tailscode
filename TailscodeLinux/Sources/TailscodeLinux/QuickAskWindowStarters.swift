@@ -263,7 +263,7 @@ extension QuickAskWindow {
             gtk_label_set_ellipsize(op(pill), PANGO_ELLIPSIZE_MIDDLE)
             gtk_label_set_max_width_chars(op(pill), 22)
             gtk_widget_set_valign(pill, GTK_ALIGN_CENTER)
-            gtk_widget_set_tooltip_text(pill, badge)
+            Tip.set(pill, badge)
             gtk_box_append(ptr(line), pill)
         }
         if let digit = item.digit {
@@ -272,7 +272,7 @@ extension QuickAskWindow {
             gtk_box_append(ptr(line), cap)
         }
         gtk_button_set_child(ptr(button), line)
-        if !item.detail.isEmpty { gtk_widget_set_tooltip_text(button, item.detail) }
+        if !item.detail.isEmpty { Tip.set(button, item.detail) }
         let id = item.id
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") {
             Gtk.onMain { QuickAskWindow.open?.activate(id: id) }
@@ -451,7 +451,7 @@ extension QuickAskWindow {
         let aside = Gtk.button("✕", css: ["flat", "ask-copied-close"]) {
             Gtk.onMain { QuickAskWindow.open?.setCopiedAside() }
         }
-        gtk_widget_set_tooltip_text(aside, QuickAskWords.setAside)
+        Tip.set(aside, QuickAskWords.setAside)
         gtk_box_append(ptr(head), aside)
         gtk_box_append(ptr(column), head)
         if let note = section.note {

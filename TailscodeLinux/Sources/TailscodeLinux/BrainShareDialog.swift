@@ -63,7 +63,7 @@ final class BrainShareDialog: @unchecked Sendable {
         gtk_box_append(ptr(pickers), Gtk.label(Localized.text("Poster look"), css: "dim-label"))
         gtk_box_append(ptr(pickers), lookPicker())
         gtk_drop_down_set_selected(op(appearance), dark ? 0 : 1)
-        gtk_widget_set_tooltip_text(appearance, Localized.text("Appearance"))
+        Tip.set(appearance, Localized.text("Appearance"))
         tailscode_set_accessible_label(appearance, Localized.text("Appearance"))
         gtk_widget_set_sensitive(appearance, style.authored == nil ? 1 : 0)
         gtk_box_append(ptr(pickers), appearance)
@@ -112,7 +112,7 @@ final class BrainShareDialog: @unchecked Sendable {
         let picker = gtk_drop_down_new(OpaquePointer(UnsafeMutableRawPointer(model)), nil)!
         let index = NeuralShare.looks.firstIndex { $0.id == style.id } ?? 0
         gtk_drop_down_set_selected(op(picker), guint(index))
-        gtk_widget_set_tooltip_text(picker, Localized.text("Poster look"))
+        Tip.set(picker, Localized.text("Poster look"))
         tailscode_set_accessible_label(picker, Localized.text("Poster look"))
         let hold = Gtk.WeakWidget(picker)
         Gtk.onNotify(UnsafeMutableRawPointer(picker), property: "selected") { [weak self] in

@@ -120,7 +120,7 @@ enum WorkflowCardView {
                 guard let marker = gtk_widget_get_first_child(row) else { return false }
                 setLabel(marker, text: phaseMark(phase, of: run.phases.count, standing: standing))
                 setExclusiveClass(marker, among: Self.phaseClasses, to: standing.css)
-                gtk_widget_set_tooltip_text(marker, standing.spoken)
+                Tip.set(marker, standing.spoken)
             }
         }
 
@@ -245,7 +245,7 @@ enum WorkflowCardView {
             let marker = Gtk.label(
                 phaseMark(phase, of: run.phases.count, standing: standing),
                 css: standing.css, selectable: false)
-            gtk_widget_set_tooltip_text(marker, standing.spoken)
+            Tip.set(marker, standing.spoken)
             gtk_box_append(ptr(row), marker)
             gtk_box_append(ptr(row), Gtk.label(phase.title, css: "workflow-phase-title", selectable: false))
             if let detail = phase.detail {

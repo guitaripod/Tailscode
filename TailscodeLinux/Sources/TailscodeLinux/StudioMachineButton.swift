@@ -53,7 +53,7 @@ final class StudioMachineButton: @unchecked Sendable {
         if text != shown {
             shown = text
             gtk_label_set_text(op(line), text)
-            gtk_widget_set_tooltip_text(widget, text)
+            Tip.set(widget, text)
             tailscode_set_accessible_label(
                 widget, "\(Localized.text("Machine")): \(text)")
         }

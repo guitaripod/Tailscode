@@ -354,7 +354,7 @@ final class PreviewLenses: @unchecked Sendable {
                 Gtk.onMain { [weak self] in self?.select(lens) }
             }
             let words = "\(lens.title) (\(lens.digit))"
-            gtk_widget_set_tooltip_text(chip, words)
+            Tip.set(chip, words)
             tailscode_set_accessible_label(chip, lens.title)
             chips[lens] = chip
             gtk_box_append(ptr(bar), chip)

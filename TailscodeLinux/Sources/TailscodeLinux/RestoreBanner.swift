@@ -28,7 +28,7 @@ final class RestoreBanner {
         let oneByOne = Gtk.button(Localized.text("Resume one by one"), onClick: resumeOneByOne)
         let close = Gtk.button("×", css: ["restore-dismiss"], onClick: dismiss)
         tailscode_set_accessible_label(close, Localized.text("Close"))
-        gtk_widget_set_tooltip_text(close, Localized.text("Close"))
+        Tip.set(close, Localized.text("Close"))
         for button in [all, oneByOne, close] {
             gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
             gtk_box_append(ptr(widget), button)

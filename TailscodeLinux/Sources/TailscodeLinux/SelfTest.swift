@@ -300,6 +300,14 @@ public enum SelfTest {
         }
 
         do {
+            let checks = try checkHoverHelp()
+            report("hover help: \(checks) claims hold — quick, gentle, and never repeating a label")
+        } catch {
+            report("hover help: \(error)")
+            failures += 1
+        }
+
+        do {
             let checks = try checkGit()
             report("git: \(checks) claims hold — the tree reads, the patch colours, the classes exist")
         } catch {

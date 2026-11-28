@@ -140,7 +140,7 @@ enum PendingCards {
                 }
                 gtk_widget_set_halign(row, GTK_ALIGN_START)
                 if !option.description.isEmpty {
-                    gtk_widget_set_tooltip_text(row, option.description)
+                    Tip.set(row, option.description)
                     tailscode_set_accessible_description(row, option.description)
                 }
                 if !single { tailscode_set_accessible_pressed(row, 0) }

@@ -193,7 +193,7 @@ final class DelegateComposerDialog: @unchecked Sendable {
             gtk_label_set_max_width_chars(op(detail), 26)
             gtk_box_append(ptr(lines), detail)
             gtk_button_set_child(ptr(button), lines)
-            gtk_widget_set_tooltip_text(button, choice.path)
+            Tip.set(button, choice.path)
             let path = choice.path
             Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
                 Gtk.onMain { [weak self] in
@@ -278,7 +278,7 @@ final class DelegateComposerDialog: @unchecked Sendable {
             if let model = rung.model, !model.isEmpty {
                 let modelLabel = Gtk.label(DelegateWords.shortModel(model), css: "dg-rung-model", selectable: false)
                 gtk_label_set_ellipsize(op(modelLabel), PANGO_ELLIPSIZE_END)
-                gtk_widget_set_tooltip_text(modelLabel, model)
+                Tip.set(modelLabel, model)
                 gtk_box_append(ptr(card), modelLabel)
             }
             let note = Gtk.label(rung.note ?? "", css: "dg-rung-note", selectable: false)
@@ -325,7 +325,7 @@ final class DelegateComposerDialog: @unchecked Sendable {
         gtk_text_view_set_left_margin(ptr(view), 10)
         gtk_text_view_set_right_margin(ptr(view), 10)
         gtk_widget_set_size_request(view, -1, minHeight)
-        if !placeholder.isEmpty { gtk_widget_set_tooltip_text(view, placeholder) }
+        if !placeholder.isEmpty { Tip.set(view, placeholder) }
         gtk_box_append(ptr(frame), view)
         return frame
     }

@@ -249,7 +249,7 @@ final class AskLaterDialog: @unchecked Sendable {
         if let switches {
             let repeats = sheet.showsRepeatSwitches()
             gtk_widget_set_sensitive(switches, repeats ? 1 : 0)
-            gtk_widget_set_tooltip_text(switches, repeats ? nil : Localized.text("Only a repeat runs more than once"))
+            Tip.set(switches, repeats ? nil : Localized.text("Only a repeat runs more than once"))
         }
         if let confirmButton {
             let ready = sheet.understanding() != nil && (isRuleOnly || sheet.canSave) && !saving

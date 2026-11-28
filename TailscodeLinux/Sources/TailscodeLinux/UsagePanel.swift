@@ -231,7 +231,7 @@ final class UsagePanel: @unchecked Sendable {
             }
             if !choice.isReported { Gtk.addClass(chip, "usage-chip-offer") }
             gtk_toggle_button_set_active(ptr(chip), choice.isHidden ? 0 : 1)
-            gtk_widget_set_tooltip_text(
+            Tip.set(
                 chip,
                 choice.isHidden
                     ? Localized.text("Hidden — press to show %@", choice.name)
@@ -263,7 +263,7 @@ final class UsagePanel: @unchecked Sendable {
                     )
                 }
             })
-        gtk_widget_set_tooltip_text(arrangement, Localized.text("How the cards are arranged"))
+        Tip.set(arrangement, Localized.text("How the cards are arranged"))
         gtk_box_append(ptr(board), arrangement)
 
         let lead = gtk_check_button_new_with_label(Localized.text("Lead with the tightest"))!
@@ -481,12 +481,12 @@ final class UsagePanel: @unchecked Sendable {
         let up = Gtk.button("▲", css: ["usage-move"]) { [weak self] in
             Gtk.onMain { [weak self] in self?.change { $0.move(key, by: -1, among: keys) } }
         }
-        gtk_widget_set_tooltip_text(up, Localized.text("Move up"))
+        Tip.set(up, Localized.text("Move up"))
         gtk_widget_set_sensitive(up, position > 0 ? 1 : 0)
         let down = Gtk.button("▼", css: ["usage-move"]) { [weak self] in
             Gtk.onMain { [weak self] in self?.change { $0.move(key, by: 1, among: keys) } }
         }
-        gtk_widget_set_tooltip_text(down, Localized.text("Move down"))
+        Tip.set(down, Localized.text("Move down"))
         gtk_widget_set_sensitive(down, position < keys.count - 1 ? 1 : 0)
         gtk_box_append(ptr(box), up)
         gtk_box_append(ptr(box), down)

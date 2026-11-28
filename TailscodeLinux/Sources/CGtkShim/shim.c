@@ -1060,6 +1060,7 @@ void tailscode_set_accessible_label(GtkWidget *widget, const char *label) {
     g_object_set_data_full(G_OBJECT(widget), tailscode_accessible_label_key, g_strdup(label), g_free);
     gtk_accessible_update_property(
         GTK_ACCESSIBLE(widget), GTK_ACCESSIBLE_PROPERTY_LABEL, label, -1);
+    if (label && *label) tailscode_tip_follow_name(widget);
 }
 
 double tailscode_widget_offset_y(GtkWidget *widget, GtkWidget *ancestor) {

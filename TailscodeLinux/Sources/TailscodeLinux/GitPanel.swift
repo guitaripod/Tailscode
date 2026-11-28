@@ -151,7 +151,7 @@ enum GitPanel {
             gtk_label_set_ellipsize(op(path), PANGO_ELLIPSIZE_MIDDLE)
             gtk_label_set_xalign(op(path), 0)
             gtk_widget_set_hexpand(path, 1)
-            gtk_widget_set_tooltip_text(row, entry.spoken)
+            Tip.set(row, entry.spoken)
             gtk_box_append(ptr(row), path)
 
             if !entry.detail.isEmpty {
@@ -201,7 +201,7 @@ enum GitPanel {
             gtk_box_append(ptr(row), age)
             var tip = [entry.short, entry.author, entry.age]
             if !entry.refs.isEmpty { tip.append(entry.refs.joined(separator: ", ")) }
-            gtk_widget_set_tooltip_text(row, tip.joined(separator: " · "))
+            Tip.set(row, tip.joined(separator: " · "))
             Gtk.onRelease(row) {
                 Gtk.onMain {
                     guard let held = parentHold.widget else { return }

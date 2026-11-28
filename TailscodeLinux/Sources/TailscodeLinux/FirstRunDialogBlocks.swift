@@ -157,7 +157,7 @@ extension FirstRunDialog {
             ) { [self] in
                 send { await $0.selectAgent(choice.agent) }
             }
-            gtk_widget_set_tooltip_text(button, choice.detail)
+            Tip.set(button, choice.detail)
             gtk_box_append(ptr(row), button)
         }
         return row

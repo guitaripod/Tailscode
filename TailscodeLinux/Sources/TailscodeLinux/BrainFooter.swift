@@ -79,7 +79,7 @@ final class BrainFooter: @unchecked Sendable {
         gtk_widget_set_overflow(chipHost, GTK_OVERFLOW_HIDDEN)
         gtk_widget_set_valign(chipHost, GTK_ALIGN_CENTER)
         gtk_widget_set_visible(chipHost, 0)
-        gtk_widget_set_tooltip_text(share, Localized.text("Share this turn"))
+        Tip.set(share, Localized.text("Share this turn"))
         tailscode_set_accessible_label(share, Localized.text("Share this turn"))
         tailscode_set_accessible_label(close, Localized.text("Close Megatron"))
         tailscode_set_accessible_label(rows, NeuralReading.rowsLabel)
@@ -151,7 +151,7 @@ final class BrainFooter: @unchecked Sendable {
         }
         gtk_button_set_label(ptr(replay), title)
         tailscode_set_accessible_label(replay, playing ? Localized.text("Stop") : NeuralReading.replayLabel)
-        gtk_widget_set_tooltip_text(replay, playing ? Localized.text("Stop") : NeuralReading.replayLabel)
+        Tip.set(replay, playing ? Localized.text("Stop") : NeuralReading.replayLabel)
         gtk_widget_remove_css_class(rows, "on")
         if owner.row.showRows { gtk_widget_add_css_class(rows, "on") }
         tailscode_set_accessible_pressed(rows, owner.row.showRows ? 1 : 0)
@@ -231,7 +231,7 @@ final class BrainFooter: @unchecked Sendable {
             let chip = gtk_button_new_with_label(shown)!
             Gtk.addClass(chip, "brain-chip")
             tailscode_set_accessible_label(chip, text)
-            gtk_widget_set_tooltip_text(chip, text)
+            Tip.set(chip, text)
             let box = Unmanaged.passRetained(ChipBox(text: text, owner: owner)).toOpaque()
             _ = Gtk.releaseInstalled
             tailscode_on_hover_focus(

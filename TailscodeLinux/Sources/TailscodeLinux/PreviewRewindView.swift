@@ -68,8 +68,8 @@ final class PreviewRewindView: PreviewLensView, @unchecked Sendable {
         let next = Gtk.button("▶", css: ["preview-chip"]) { [weak self] in
             Gtk.onMain { [weak self] in self?.step(1) }
         }
-        gtk_widget_set_tooltip_text(previous, Localized.text("Previous frame"))
-        gtk_widget_set_tooltip_text(next, Localized.text("Next frame"))
+        Tip.set(previous, Localized.text("Previous frame"))
+        Tip.set(next, Localized.text("Next frame"))
         Gtk.connect(UnsafeMutableRawPointer(playButton), "clicked") { [weak self] in
             Gtk.onMain { [weak self] in self?.togglePlay() }
         }

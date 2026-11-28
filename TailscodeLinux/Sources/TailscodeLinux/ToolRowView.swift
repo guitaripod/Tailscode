@@ -189,7 +189,7 @@ enum ToolRowView {
             let line = Gtk.label("$ \(command)", css: "code-body", wrap: true)
             Gtk.addClass(line, "command-line")
             gtk_widget_set_cursor_from_name(line, "copy")
-            gtk_widget_set_tooltip_text(line, Localized.text("Click to copy"))
+            Tip.set(line, Localized.text("Click to copy"))
             let toast = context.toast
             let lineBits = UInt(bitPattern: line)
             Gtk.onRelease(line) {

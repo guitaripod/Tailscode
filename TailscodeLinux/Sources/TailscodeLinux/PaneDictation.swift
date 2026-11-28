@@ -541,7 +541,7 @@ final class PaneDictation: @unchecked Sendable {
             Self.mark(send, "chip-on", face == .listening(.held, .send))
             Self.mark(send, "dictation-invite", face == .listening(.held, .none))
         }
-        gtk_widget_set_tooltip_text(chip, DictationReading.tooltip(face, chord: chord))
+        Tip.set(chip, DictationReading.tooltip(face, chord: chord))
         tailscode_set_accessible_label(chip, DictationReading.accessibilityLabel(face))
         drawHint(face)
         host?.dictationEditor.edge.set(

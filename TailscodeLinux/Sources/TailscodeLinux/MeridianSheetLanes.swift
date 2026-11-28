@@ -102,7 +102,7 @@ extension MeridianSheet {
         ) -> UnsafeMutablePointer<GtkWidget> {
             let item = Gtk.button(glyph, css: ["flat", "clock-lane-control"]) { Gtk.onMain(act) }
             tailscode_set_accessible_label(item, label)
-            gtk_widget_set_tooltip_text(item, label)
+            Tip.set(item, label)
             gtk_widget_set_sensitive(item, enabled ? 1 : 0)
             return item
         }

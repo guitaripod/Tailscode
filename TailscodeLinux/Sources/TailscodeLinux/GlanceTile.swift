@@ -74,7 +74,7 @@ final class GlanceTile: @unchecked Sendable {
         gtk_label_set_ellipsize(op(titleLabel), PANGO_ELLIPSIZE_END)
         gtk_widget_set_hexpand(titleLabel, 1)
         gtk_widget_set_visible(pinMark, 0)
-        gtk_widget_set_tooltip_text(pinMark, Localized.text("Keep live"))
+        Tip.set(pinMark, Localized.text("Keep live"))
         Gtk.makePaneDragSource(titleLabel, payload: PaneMovePayload(pane: paneID).encoded)
         Gtk.addClass(actionsRow, "glance-actions")
         for (glyphText, words, tag) in [
@@ -84,7 +84,7 @@ final class GlanceTile: @unchecked Sendable {
             let button = Gtk.button(glyphText, css: ["flat", "glance-action"]) { [weak self] in
                 Gtk.onMain { [weak self] in self?.press(tag) }
             }
-            gtk_widget_set_tooltip_text(button, words)
+            Tip.set(button, words)
             tailscode_set_accessible_label(button, words)
             gtk_box_append(ptr(actionsRow), button)
             if tag == 0 { openFullButton = button }

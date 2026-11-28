@@ -316,7 +316,7 @@ final class StudioSheet: @unchecked Sendable {
         }
         gtk_label_set_text(op(queue), "\(ImageGenMachineWords.queueLabel) \(count)")
         let out = renderIsOut
-        gtk_widget_set_tooltip_text(done, out ? StudioSheetWords.escapeHint : StudioSheetWords.closeLabel)
+        Tip.set(done, out ? StudioSheetWords.escapeHint : StudioSheetWords.closeLabel)
         tailscode_set_accessible_description(done, out ? StudioSheetWords.escapeHint : nil)
     }
 

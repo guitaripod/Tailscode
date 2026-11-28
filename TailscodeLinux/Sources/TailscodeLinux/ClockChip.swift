@@ -143,7 +143,7 @@ final class ClockChip: @unchecked Sendable {
         let reading = ClockWatch.shared.reading()
         gtk_label_set_text(op(time), reading.chipTime)
         MeridianInk.sky(sky, reading.sky)
-        gtk_widget_set_tooltip_text(widget, isShown ? nil : reading.spoken)
+        Tip.set(widget, isShown ? nil : reading.spoken)
         tailscode_set_accessible_label(widget, reading.spoken)
         if isShown { glance?.render(reading) }
     }
@@ -160,7 +160,7 @@ final class ClockChip: @unchecked Sendable {
         glance = view
         gtk_popover_set_child(ptr(popover), view.widget)
         view.render(ClockWatch.shared.reading())
-        gtk_widget_set_tooltip_text(widget, nil)
+        Tip.set(widget, nil)
         gtk_popover_popup(ptr(popover))
     }
 

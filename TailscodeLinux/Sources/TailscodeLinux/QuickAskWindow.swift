@@ -200,6 +200,7 @@ final class QuickAskWindow: @unchecked Sendable {
             Gtk.onMain { QuickAskWindow.open?.submit() }
         }
         gtk_widget_set_valign(send, GTK_ALIGN_START)
+        Tip.set(send, Localized.text("Send"))
         chips = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 6)
         starters = Gtk.box(GTK_ORIENTATION_VERTICAL, spacing: 1)
         Gtk.addClass(starters, "qa-list")

@@ -104,7 +104,7 @@ final class OverflowStrip: @unchecked Sendable {
         Gtk.addClass(button, "flat")
         Gtk.addClass(button, "tile-chip")
         gtk_button_set_child(ptr(button), content)
-        gtk_widget_set_tooltip_text(button, chip.title)
+        Tip.set(button, chip.title)
         tailscode_set_accessible_label(
             button, [chip.title, chip.activity?.spoken].compactMap { $0 }.joined(separator: ", "))
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in

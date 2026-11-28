@@ -85,7 +85,7 @@ final class StudioShelfView: @unchecked Sendable {
         gtk_label_set_ellipsize(op(heading), PANGO_ELLIPSIZE_END)
         gtk_label_set_max_width_chars(op(heading), 10)
         gtk_widget_set_hexpand(heading, 1)
-        gtk_widget_set_tooltip_text(refresh, ImageGenLibraryWords.refresh)
+        Tip.set(refresh, ImageGenLibraryWords.refresh)
         tailscode_set_accessible_label(refresh, ImageGenLibraryWords.refresh)
         Gtk.margins(header, top: 10, bottom: 4, leading: 12, trailing: 6)
         gtk_box_append(ptr(header), heading)
@@ -198,10 +198,10 @@ final class StudioShelfView: @unchecked Sendable {
     /// sentence a machine that cannot list says instead of a silent empty shelf.
     func describe(heading text: String, count line: String?, note sentence: String?) {
         gtk_label_set_text(op(heading), text)
-        gtk_widget_set_tooltip_text(heading, line.map { "\(text) · \($0)" } ?? text)
+        Tip.set(heading, line.map { "\(text) · \($0)" } ?? text)
         gtk_label_set_text(op(note), sentence ?? "")
         gtk_widget_set_visible(note, sentence == nil ? 0 : 1)
-        gtk_widget_set_tooltip_text(note, sentence)
+        Tip.set(note, sentence)
     }
 
     var statusSentence: String? {
@@ -262,7 +262,7 @@ final class StudioShelfView: @unchecked Sendable {
         guard var slot = slots[tile.id] else { return }
         let before = slot.tile
         if tile.words != before.words { tailscode_set_accessible_label(slot.button, tile.words) }
-        if tile.tooltip != before.tooltip { gtk_widget_set_tooltip_text(slot.button, tile.tooltip) }
+        if tile.tooltip != before.tooltip { Tip.set(slot.button, tile.tooltip) }
         if tile.badge != before.badge {
             gtk_label_set_text(op(slot.badge), tile.badge ?? "")
             gtk_widget_set_visible(slot.badge, tile.badge == nil ? 0 : 1)

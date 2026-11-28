@@ -229,7 +229,7 @@ extension ChatPane {
     ) -> UnsafeMutablePointer<GtkWidget> {
         let intent = action.intent
         let button = Gtk.button(action.title, css: css) { Gtk.onMain { onAction(intent) } }
-        gtk_widget_set_tooltip_text(button, action.help)
+        Tip.set(button, action.help)
         return button
     }
 

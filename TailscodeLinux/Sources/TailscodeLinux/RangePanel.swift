@@ -333,7 +333,7 @@ final class RangePanel: @unchecked Sendable {
             Gtk.addClass(band, prefix + slice.id)
             let width = max(2, Int(Double(Self.trackWidth) * min(max(slice.share, 0), 1)))
             gtk_widget_set_size_request(band, Int32(width), 10)
-            gtk_widget_set_tooltip_text(band, "\(slice.label) · \(StatusFacts.tokens(slice.tokens))")
+            Tip.set(band, "\(slice.label) · \(StatusFacts.tokens(slice.tokens))")
             gtk_box_append(ptr(track), band)
         }
         return track

@@ -225,7 +225,7 @@ extension FirstRunDialog {
         gtk_widget_set_visible(demoButton, demo == nil ? 0 : 1)
         if let demo {
             gtk_button_set_label(ptr(demoButton), demo.title)
-            gtk_widget_set_tooltip_text(demoButton, demo.detail)
+            Tip.set(demoButton, demo.detail)
         }
         gtk_button_set_label(ptr(laterButton), next.dismiss)
         if let primary = next.primary {

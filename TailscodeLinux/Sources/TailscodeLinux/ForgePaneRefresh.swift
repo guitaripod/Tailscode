@@ -29,7 +29,7 @@ extension ForgePane {
         dock.setPlaceholder(board.prompt)
         dock.setGo(title: goTitle, stopping: board.isBusy)
         dock.setLocked(board.isBusy)
-        gtk_widget_set_tooltip_text(dock.go, board.expectation ?? board.job.hint)
+        Tip.set(dock.go, board.expectation ?? board.job.hint)
         let about = board.expectation.map { line -> String in
             guard let name = board.endpoint?.shortName else { return line }
             return Localized.text("%@ on %@", line, name)

@@ -61,7 +61,7 @@ final class PartyCardView: @unchecked Sendable {
         gtk_widget_set_valign(badge, GTK_ALIGN_START)
         gtk_widget_set_visible(badge, 0)
         let release = Localized.text("Put back in the box")
-        gtk_widget_set_tooltip_text(badge, release)
+        Tip.set(badge, release)
         tailscode_set_accessible_label(badge, release)
         gtk_overlay_add_overlay(op(cell), badge)
         Gtk.connect(UnsafeMutableRawPointer(badge), "clicked") { [weak self] in
@@ -195,7 +195,7 @@ final class PartyCardView: @unchecked Sendable {
             Gtk.addClass(button, "party-ball-button")
             gtk_button_set_child(ptr(button), ball.widget)
             let words = Localized.text("Change the level")
-            gtk_widget_set_tooltip_text(button, words)
+            Tip.set(button, words)
             tailscode_set_accessible_label(button, words)
             gtk_widget_set_valign(button, GTK_ALIGN_START)
             Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
@@ -308,7 +308,7 @@ final class PartyCardView: @unchecked Sendable {
             gtk_widget_set_visible(machine, words == nil ? 0 : 1)
         }
         if let ballButton {
-            gtk_widget_set_tooltip_text(
+            Tip.set(
                 ballButton, card.takesLevels ? Localized.text("Change the level") : nil)
         }
     }

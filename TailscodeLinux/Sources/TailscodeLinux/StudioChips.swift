@@ -90,7 +90,7 @@ final class StudioChip: @unchecked Sendable {
             gtk_widget_remove_css_class(widget, "studio-chip-warn")
         }
         let note = [reading.warning, tooltip].compactMap { $0 }.joined(separator: "\n")
-        gtk_widget_set_tooltip_text(widget, note.isEmpty ? nil : note)
+        Tip.set(widget, note.isEmpty ? nil : note)
         let spoken = reading.accessibility
         if spoken != base {
             base = spoken

@@ -31,7 +31,7 @@ enum SidebarSelectionBar {
         gtk_widget_set_hexpand(title, 1)
         gtk_box_append(ptr(headline), title)
         let clear = Gtk.button(Localized.text("Clear"), css: ["flat", "dim"], onClick: onClear)
-        gtk_widget_set_tooltip_text(clear, Localized.text("esc clears the marks"))
+        Tip.set(clear, Localized.text("esc clears the marks"))
         gtk_box_append(ptr(headline), clear)
         gtk_box_append(ptr(column), headline)
 
@@ -64,7 +64,7 @@ enum SidebarSelectionBar {
                 let button = Gtk.button(
                     "\(arrangement.glyph) \(arrangement.title)", css: ["flat", "selection-verb"]
                 ) { onSplit(arrangement) }
-                gtk_widget_set_tooltip_text(button, arrangement.caption(count: count))
+                Tip.set(button, arrangement.caption(count: count))
                 tailscode_set_accessible_label(button, arrangement.accessibleLabel(count: count))
                 gtk_flow_box_append(op(row), button)
             }
@@ -95,7 +95,7 @@ enum SidebarSelectionBar {
         let button = Gtk.button(BulkChatCopy.button(action, count: count), css: css) {
             onAction(action)
         }
-        gtk_widget_set_tooltip_text(
+        Tip.set(
             button, action.nudge?.hint ?? BulkChatCopy.confirm(action, count: count))
         tailscode_set_accessible_label(button, BulkChatCopy.button(action, count: count))
         return button

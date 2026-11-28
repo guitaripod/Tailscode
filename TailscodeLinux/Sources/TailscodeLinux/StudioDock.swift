@@ -211,7 +211,7 @@ final class StudioDock: @unchecked Sendable {
     /// learned yet to say it from.
     func setFoot(_ text: String?, tooltip: String? = nil) {
         gtk_label_set_text(op(foot), text ?? "")
-        gtk_widget_set_tooltip_text(foot, tooltip ?? text)
+        Tip.set(foot, tooltip ?? text)
     }
 
     /// The foot keeps its width whether it has anything to say or not, so the chips break their
@@ -247,7 +247,7 @@ final class StudioDock: @unchecked Sendable {
             ptr(enhance),
             "✦ " + (enhancing ? ImageGenWords.enhancingTitle
                 : (canUndo ? ImageGenWords.undoTitle : ImageGenWords.enhanceTitle)))
-        gtk_widget_set_tooltip_text(
+        Tip.set(
             enhance,
             enhancing ? ImageGenRewriteWords.stopTitle
                 : helper.map(ImageGenWords.enhanceHint) ?? ImageGenWords.enhanceLookingHint)
@@ -261,7 +261,7 @@ final class StudioDock: @unchecked Sendable {
             name = ImageGenRewriteWords.chooseTitle
         }
         gtk_menu_button_set_label(op(self.helper), ImageGenRewriteWords.withLine(name))
-        gtk_widget_set_tooltip_text(self.helper, HelperMenu.tooltip(host))
+        Tip.set(self.helper, HelperMenu.tooltip(host))
         reopenHelperMenuIfSurveyLanded(host)
     }
 

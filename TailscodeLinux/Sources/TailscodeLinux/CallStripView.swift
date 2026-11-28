@@ -187,7 +187,7 @@ final class CallStripView: @unchecked Sendable {
             Gtk.onMain { [weak self] in self?.pressMute() }
         }
         mute = muteControl
-        gtk_widget_set_tooltip_text(muteControl.button, VoiceCallReading.muteTooltip)
+        Tip.set(muteControl.button, VoiceCallReading.muteTooltip)
         tailscode_set_accessible_pressed(muteControl.button, 0)
         gtk_box_append(ptr(top), muteControl.button)
 
@@ -197,7 +197,7 @@ final class CallStripView: @unchecked Sendable {
             Gtk.onMain { [weak self] in self?.onHangUp() }
         }
         hangUp = hangControl
-        gtk_widget_set_tooltip_text(hangControl.button, VoiceCallReading.hangUp)
+        Tip.set(hangControl.button, VoiceCallReading.hangUp)
         gtk_box_append(ptr(top), hangControl.button)
         topRow = top
         let topFrame = gtk_overlay_new()!
@@ -418,7 +418,7 @@ final class CallStripView: @unchecked Sendable {
         if let word = control.parts.word {
             gtk_label_set_text(op(word), muted ? VoiceCallReading.unmute : VoiceCallReading.mute)
         }
-        gtk_widget_set_tooltip_text(control.button, muted ? VoiceCallReading.unmuteTooltip : VoiceCallReading.muteTooltip)
+        Tip.set(control.button, muted ? VoiceCallReading.unmuteTooltip : VoiceCallReading.muteTooltip)
         tailscode_set_accessible_label(control.button, muted ? VoiceCallReading.unmuteTooltip : VoiceCallReading.muteTooltip)
         if let glyph = control.parts.glyph { gtk_label_set_text(op(glyph), muted ? "🔇" : "🎙") }
         if muted {

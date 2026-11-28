@@ -192,7 +192,7 @@ final class ServerManager: @unchecked Sendable {
         let row = adw_entry_row_new()!
         adw_preferences_row_set_use_markup(ptr(row), 0)
         adw_preferences_row_set_title(ptr(row), title)
-        if let tooltip { gtk_widget_set_tooltip_text(row, tooltip) }
+        if let tooltip { Tip.set(row, tooltip) }
         return row
     }
 

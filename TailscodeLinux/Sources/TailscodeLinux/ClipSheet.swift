@@ -174,7 +174,7 @@ final class ClipSheet: @unchecked Sendable {
             (muteButton, Localized.text("Sound (m)")),
             (loopButton, Localized.text("Loop")),
         ] {
-            gtk_widget_set_tooltip_text(button, tip)
+            Tip.set(button, tip)
             tailscode_set_accessible_label(button, tip)
             gtk_widget_set_focus_on_click(button, 0)
             gtk_widget_set_valign(button, GTK_ALIGN_CENTER)

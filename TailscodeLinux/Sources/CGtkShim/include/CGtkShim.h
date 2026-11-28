@@ -847,3 +847,4 @@ long tailscode_soak_rows(void);
 #include "wallpaint.h"
 #include "desk.h"
 #include "termview.h"
+#include "hovertip.h"

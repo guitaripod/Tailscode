@@ -41,7 +41,7 @@ enum Keycaps {
     static func key(_ key: ShortcutKey) -> UnsafeMutablePointer<GtkWidget> {
         guard key.isReadable else {
             let bad = cap(key.spec, classes: ["keycap", "keycap-bad"])
-            gtk_widget_set_tooltip_text(bad, Localized.text("Not a shortcut I can read"))
+            Tip.set(bad, Localized.text("Not a shortcut I can read"))
             return bad
         }
         return sequence(key.chords)
@@ -88,7 +88,7 @@ enum KeybindingRows {
             let restore = gtk_button_new_from_icon_name("edit-undo-symbolic")!
             gtk_widget_add_css_class(restore, "flat")
             gtk_widget_set_valign(restore, GTK_ALIGN_CENTER)
-            gtk_widget_set_tooltip_text(restore, Localized.text("Restore the default keys"))
+            Tip.set(restore, Localized.text("Restore the default keys"))
             Gtk.connect(UnsafeMutableRawPointer(restore), "clicked", onRestore)
             adw_action_row_add_suffix(ptr(row), restore)
         }

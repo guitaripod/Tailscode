@@ -77,7 +77,7 @@ final class MachinePermissionsBox: @unchecked Sendable {
             }
 
             if let hint = MachinePermissionReading.accessibility(grant) {
-                gtk_widget_set_tooltip_text(row, hint)
+                Tip.set(row, hint)
             }
             gtk_box_append(ptr(rowsBox), row)
         }

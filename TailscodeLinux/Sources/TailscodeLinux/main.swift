@@ -139,6 +139,9 @@ AppLog.write(
 nonisolated(unsafe) var mainWindow: MainWindow?
 let handlesOpen = GApplicationFlags(rawValue: 1 << 2)
 nonisolated(unsafe) let app = adw_application_new(DesktopIntegration.appID, handlesOpen)!
+tailscode_tip_watch_windows(
+    Localized.text("Minimize"), Localized.text("Maximize"), Localized.text("Restore"),
+    Localized.text("Close"))
 
 /// A pairing link this launch was started with, or one that arrived before the window existed.
 /// It waits here until `activate` has built the window, and is read once.

@@ -135,7 +135,7 @@ final class SettingsTypeSection: @unchecked Sendable {
         let reset = gtk_button_new_from_icon_name("edit-undo-symbolic")!
         gtk_widget_add_css_class(reset, "flat")
         gtk_widget_set_valign(reset, GTK_ALIGN_CENTER)
-        gtk_widget_set_tooltip_text(reset, Localized.text("Back to normal size"))
+        Tip.set(reset, Localized.text("Back to normal size"))
         Gtk.connect(UnsafeMutableRawPointer(reset), "clicked") { [weak self] in
             self?.set(scope, to: 1.0)
             self?.sync()
@@ -171,7 +171,9 @@ final class SettingsTypeSection: @unchecked Sendable {
         let smaller = gtk_button_new_from_icon_name("zoom-out-symbolic")!
         let larger = gtk_button_new_from_icon_name("zoom-in-symbolic")!
         let reset = gtk_button_new_from_icon_name("edit-undo-symbolic")!
-        gtk_widget_set_tooltip_text(reset, Localized.text("Back to normal size"))
+        Tip.set(smaller, Localized.text("Smaller text"))
+        Tip.set(larger, Localized.text("Larger text"))
+        Tip.set(reset, Localized.text("Back to normal size"))
         for button in [smaller, larger] { gtk_box_append(ptr(strip), button) }
         Gtk.connect(UnsafeMutableRawPointer(smaller), "clicked") { [weak self] in
             UIScale.step(-0.1)

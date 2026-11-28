@@ -196,8 +196,8 @@ final class MediaViewer: @unchecked Sendable {
 
         let paging = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 4)
         gtk_widget_set_valign(paging, GTK_ALIGN_CENTER)
-        gtk_widget_set_tooltip_text(previousButton, Localized.text("Previous picture (←)"))
-        gtk_widget_set_tooltip_text(nextButton, Localized.text("Next picture (→)"))
+        Tip.set(previousButton, Localized.text("Previous picture (←)"))
+        Tip.set(nextButton, Localized.text("Next picture (→)"))
         gtk_box_append(ptr(paging), previousButton)
         gtk_box_append(ptr(paging), nextButton)
         gtk_center_box_set_start_widget(op(bar), paging)
@@ -230,7 +230,7 @@ final class MediaViewer: @unchecked Sendable {
         wire(copyButton) { $0.perform(.copy) }
         wire(saveButton) { $0.perform(.save) }
         wire(doneButton) { $0.perform(.close) }
-        gtk_widget_set_tooltip_text(zoomButton, Localized.text("Zoom"))
+        Tip.set(zoomButton, Localized.text("Zoom"))
         return bar
     }
 
@@ -376,7 +376,7 @@ final class MediaViewer: @unchecked Sendable {
         renders += 1
         let item = currentItem
         gtk_label_set_text(op(titleLabel), item.name)
-        gtk_widget_set_tooltip_text(titleLabel, item.tooltip)
+        Tip.set(titleLabel, item.tooltip)
         let paging = pager.canPage
         gtk_widget_set_visible(previousButton, paging ? 1 : 0)
         gtk_widget_set_visible(nextButton, paging ? 1 : 0)

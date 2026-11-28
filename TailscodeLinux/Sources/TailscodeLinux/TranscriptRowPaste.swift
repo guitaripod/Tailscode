@@ -61,7 +61,7 @@ extension TranscriptRow {
         gtk_button_set_child(ptr(press), content)
         gtk_widget_set_halign(press, GTK_ALIGN_START)
         gtk_widget_set_cursor_from_name(press, "pointer")
-        gtk_widget_set_tooltip_text(press, Localized.text("Opens the pasted text"))
+        Tip.set(press, Localized.text("Opens the pasted text"))
         tailscode_set_accessible_label(press, paste.spoken)
         let present = context.presentText
         let title = FoldedPaste.title

@@ -115,7 +115,7 @@ enum DelegateRunView {
         }
         let kind = action.kind
         let button = Gtk.button(action.title, css: css) { Gtk.onMain { onAction(kind) } }
-        if let detail = action.detail { gtk_widget_set_tooltip_text(button, detail) }
+        if let detail = action.detail { Tip.set(button, detail) }
         return button
     }
 
@@ -202,7 +202,7 @@ enum DelegateLadderView {
                 model: rung.model.map(DelegateWords.shortModel), fullModel: rung.model,
                 notes: [(ladder.word(for: rung), rung.state.tone)], state: rung.state)
         })
-        gtk_widget_set_tooltip_text(widget, ladder.spoken)
+        Tip.set(widget, ladder.spoken)
         return widget
     }
 
@@ -231,7 +231,7 @@ enum DelegateLadderView {
         if let model, !model.isEmpty {
             let label = Gtk.label(model, css: "dg-rung-model", selectable: false)
             gtk_label_set_ellipsize(op(label), PANGO_ELLIPSIZE_END)
-            if let fullModel { gtk_widget_set_tooltip_text(label, fullModel) }
+            if let fullModel { Tip.set(label, fullModel) }
             gtk_box_append(ptr(card), label)
         }
         for (text, tone) in notes {

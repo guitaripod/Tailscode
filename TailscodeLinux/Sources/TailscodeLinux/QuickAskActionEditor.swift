@@ -74,7 +74,7 @@ final class QuickAskActionEditor: @unchecked Sendable {
         let naming = adw_preferences_group_new()!
         titleRow = Self.entryRow(Localized.text("Title"), text: action.title)
         glyphRow = Self.entryRow(Localized.text("Glyph"), text: action.glyph)
-        gtk_widget_set_tooltip_text(glyphRow, Localized.text("One or two characters for the tile"))
+        Tip.set(glyphRow, Localized.text("One or two characters for the tile"))
         adw_preferences_group_add(ptr(naming), ptr(titleRow))
         adw_preferences_group_add(ptr(naming), ptr(glyphRow))
         gtk_box_append(ptr(column), naming)
@@ -102,7 +102,7 @@ final class QuickAskActionEditor: @unchecked Sendable {
 
         let placing = adw_preferences_group_new()!
         hostsRow = Self.entryRow(Localized.text("Sites"), text: action.hosts.joined(separator: ", "))
-        gtk_widget_set_tooltip_text(
+        Tip.set(
             hostsRow, Localized.text("Comma-separated, like x.com, youtube.com; empty for any link"))
         let offerRow = SettingsRows.comboRow(
             title: Localized.text("Offered"), subtitle: nil,

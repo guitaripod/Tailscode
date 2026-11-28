@@ -122,6 +122,7 @@ extension TranscriptRow {
             Gtk.addClass(opener, "flat")
             gtk_widget_set_halign(opener, GTK_ALIGN_START)
             gtk_button_set_child(ptr(opener), picture)
+            Tip.set(opener, Localized.text("Open %@", name))
             let open = context.openImage
             Gtk.connect(UnsafeMutableRawPointer(opener), "clicked") {
                 open?(key, name)
@@ -178,7 +179,7 @@ extension TranscriptRow {
         Gtk.addClass(press, "flat")
         Gtk.addClass(press, "seam-line-press")
         gtk_button_set_child(ptr(press), label)
-        gtk_widget_set_tooltip_text(press, Localized.text("Read the summary"))
+        Tip.set(press, Localized.text("Read the summary"))
         gtk_widget_set_cursor_from_name(press, "pointer")
         Gtk.connect(UnsafeMutableRawPointer(press), "clicked") {
             present?(Localized.text("Compaction summary"), header, summary, false)

@@ -267,7 +267,7 @@ final class ModelDialPopover: @unchecked Sendable {
         gtk_box_append(ptr(line), Self.familyDot(for: row))
         let title = Gtk.label(row.title, css: "dial-title", wrap: true, selectable: false)
         Gtk.fitWrap(title, to: row.title, ceiling: 28)
-        gtk_widget_set_tooltip_text(title, row.title)
+        Tip.set(title, row.title)
         gtk_widget_set_valign(title, GTK_ALIGN_CENTER)
         gtk_box_append(ptr(line), title)
         for fact in row.facts where fact == .vision || fact == .pdf || fact == .local {
@@ -275,7 +275,7 @@ final class ModelDialPopover: @unchecked Sendable {
             gtk_label_set_ellipsize(op(chip), PANGO_ELLIPSIZE_NONE)
             if fact == .local { Gtk.addClass(chip, "dial-chip-local") }
             gtk_widget_set_valign(chip, GTK_ALIGN_CENTER)
-            gtk_widget_set_tooltip_text(chip, fact.label)
+            Tip.set(chip, fact.label)
             gtk_box_append(ptr(line), chip)
         }
         let spacer = Gtk.box(GTK_ORIENTATION_HORIZONTAL, spacing: 0)
@@ -285,7 +285,7 @@ final class ModelDialPopover: @unchecked Sendable {
             let note = Gtk.label(
                 QuotaSurface.rowNote(wall), css: "dial-wall", wrap: true, selectable: false)
             Gtk.fitWrap(note, to: QuotaSurface.rowNote(wall), ceiling: 30)
-            gtk_widget_set_tooltip_text(note, QuotaSurface.bannerBody(wall))
+            Tip.set(note, QuotaSurface.bannerBody(wall))
             gtk_widget_set_valign(note, GTK_ALIGN_CENTER)
             gtk_box_append(ptr(line), note)
         }
@@ -295,7 +295,7 @@ final class ModelDialPopover: @unchecked Sendable {
             gtk_label_set_xalign(op(detail), 1)
             gtk_label_set_justify(op(detail), GTK_JUSTIFY_RIGHT)
             Gtk.fitWrap(detail, to: row.detail, ceiling: row.candidate == nil ? 40 : 24)
-            gtk_widget_set_tooltip_text(detail, row.detail)
+            Tip.set(detail, row.detail)
             gtk_widget_set_valign(detail, GTK_ALIGN_CENTER)
             gtk_box_append(ptr(line), detail)
         }
@@ -436,7 +436,7 @@ final class ModelDialPopover: @unchecked Sendable {
         gtk_box_append(ptr(head), word)
         if dial.ladderIsPreview {
             let tag = Gtk.label(Localized.text("preview"), css: "dial-preview-tag", selectable: false)
-            gtk_widget_set_tooltip_text(
+            Tip.set(
                 tag, Localized.text("The ladder shows the levels of the row you are on."))
             gtk_box_append(ptr(head), tag)
         }

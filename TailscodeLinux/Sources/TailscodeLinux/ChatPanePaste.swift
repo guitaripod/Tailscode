@@ -35,7 +35,7 @@ extension ChatPane {
         Gtk.addClass(open, "paste-chip-open")
         gtk_button_set_child(ptr(open), content)
         gtk_widget_set_cursor_from_name(open, "pointer")
-        gtk_widget_set_tooltip_text(open, Localized.text("Opens the pasted text"))
+        Tip.set(open, Localized.text("Opens the pasted text"))
         tailscode_set_accessible_label(open, paste.spoken)
         Gtk.connect(UnsafeMutableRawPointer(open), "clicked") { [weak self] in
             Gtk.onMain { [weak self] in self?.readPaste(id) }
@@ -46,7 +46,7 @@ extension ChatPane {
             Gtk.onMain { [weak self] in self?.removePaste(id) }
         }
         gtk_widget_set_valign(clear, GTK_ALIGN_CENTER)
-        gtk_widget_set_tooltip_text(clear, remove)
+        Tip.set(clear, remove)
         tailscode_set_accessible_label(clear, remove)
 
         gtk_box_append(ptr(chip), open)

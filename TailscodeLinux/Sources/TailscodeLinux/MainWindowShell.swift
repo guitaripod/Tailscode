@@ -39,7 +39,7 @@ extension MainWindow {
         Gtk.setTone(updateGlyph, icon.glyphCSS, from: Self.updateTones)
         ActivityPulse.apply(icon, to: updateGlyph)
         gtk_label_set_text(op(updateHeadline), chip.title)
-        gtk_widget_set_tooltip_text(updateBox, rollup.accessibilityLine())
+        Tip.set(updateBox, rollup.accessibilityLine())
         gtk_widget_set_visible(updateBox, 1)
     }
 

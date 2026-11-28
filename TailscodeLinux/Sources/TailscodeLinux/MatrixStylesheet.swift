@@ -131,6 +131,7 @@ struct MatrixStylesheet {
             masterRules(),
             settingsRules(),
             keycapRules(),
+            tipRules(),
         ]
         return (sections + [sceneryRules()].filter { !$0.isEmpty }).joined(separator: "\n")
     }

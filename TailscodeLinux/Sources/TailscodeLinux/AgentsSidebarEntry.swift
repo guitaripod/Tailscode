@@ -60,7 +60,7 @@ final class AgentsSidebarEntry: @unchecked Sendable {
         gtk_overlay_set_child(op(widget), button)
         gtk_overlay_add_overlay(op(widget), glow.widget)
         Gtk.margins(widget, top: 6, bottom: 2, leading: 6, trailing: 6)
-        gtk_widget_set_tooltip_text(button, Localized.text("What every agent is doing · Ctrl+Shift+A"))
+        Tip.set(button, Localized.text("What every agent is doing · Ctrl+Shift+A"))
         Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { Gtk.onMain { open() } }
         Gtk.connect(UnsafeMutableRawPointer(widget), "map") { [weak self] in
             Gtk.onMain { [weak self] in

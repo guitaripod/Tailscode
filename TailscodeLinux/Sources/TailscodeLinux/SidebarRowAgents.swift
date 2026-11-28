@@ -23,7 +23,7 @@ extension SidebarRow {
         gtk_label_set_width_chars(op(label), 5)
         gtk_button_set_child(ptr(button), label)
         gtk_widget_set_valign(button, GTK_ALIGN_CENTER)
-        gtk_widget_set_tooltip_text(button, Localized.text("What this chat's agents are doing"))
+        Tip.set(button, Localized.text("What this chat's agents are doing"))
         tailscode_set_accessible_label(
             button, words + ", " + Localized.text("What this chat's agents are doing"))
         Gtk.onClaimedClick(button, onOpen)

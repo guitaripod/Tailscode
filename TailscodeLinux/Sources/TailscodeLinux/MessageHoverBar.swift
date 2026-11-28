@@ -82,11 +82,11 @@ final class MessageHoverBar: @unchecked Sendable {
         cancelHide()
         if messageID != shownID || verbs != shownVerbs || branch != shownBranch {
             gtk_label_set_text(op(stamp), verbs.stamp)
-            gtk_widget_set_tooltip_text(stamp, verbs.fullDate)
+            Tip.set(stamp, verbs.fullDate)
             gtk_widget_set_visible(copyButton, verbs.copy ? 1 : 0)
             gtk_widget_set_visible(undoButton, verbs.undo ? 1 : 0)
             gtk_widget_set_visible(branchButton, branch ? 1 : 0)
-            gtk_widget_set_tooltip_text(undoButton, RevertReading.actionTitle)
+            Tip.set(undoButton, RevertReading.actionTitle)
             shownID = messageID
             shownVerbs = verbs
             shownBranch = branch

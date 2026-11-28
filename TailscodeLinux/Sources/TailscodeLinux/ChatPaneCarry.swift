@@ -118,7 +118,7 @@ extension ChatPane {
             Gtk.onMain { [weak self] in self?.clearCarry() }
         }
         gtk_widget_set_valign(clear, GTK_ALIGN_CENTER)
-        gtk_widget_set_tooltip_text(clear, fresh)
+        Tip.set(clear, fresh)
         tailscode_set_accessible_label(clear, fresh)
         gtk_box_append(ptr(chip), glyph)
         gtk_box_append(ptr(chip), text)

@@ -115,12 +115,13 @@ final class DelegateWindow: @unchecked Sendable {
         gtk_box_append(ptr(titleRow), titleWidget)
         gtk_box_append(ptr(titleRow), beta.widget)
         adw_header_bar_set_title_widget(op(UnsafeMutableRawPointer(header)), titleRow)
+        Tip.set(backButton, Localized.text("Back"))
         adw_header_bar_pack_start(op(UnsafeMutableRawPointer(header)), backButton)
-        gtk_widget_set_tooltip_text(refreshButton, Localized.text("Refresh"))
+        Tip.set(refreshButton, Localized.text("Refresh"))
         Gtk.addClass(refreshButton, "flat")
         adw_header_bar_pack_end(op(UnsafeMutableRawPointer(header)), refreshButton)
         machineButton = Gtk.menuButton("", css: ["flat"]) { [weak self] in self?.machineMenu() ?? [] }
-        gtk_widget_set_tooltip_text(machineButton, Localized.text("Machine"))
+        Tip.set(machineButton, Localized.text("Machine"))
         adw_header_bar_pack_end(op(UnsafeMutableRawPointer(header)), machineButton)
         gtk_window_set_titlebar(ptr(window), header)
 
@@ -440,7 +441,7 @@ final class DelegateWindow: @unchecked Sendable {
         let button = gtk_button_new()!
         Gtk.addClass(button, "flat")
         Gtk.addClass(button, "session-row")
-        gtk_widget_set_tooltip_text(button, row.spoken)
+        Tip.set(button, row.spoken)
 
         let glyph = Gtk.label("●", selectable: false)
         DelegateToneCSS.apply(glyph, row.tone)

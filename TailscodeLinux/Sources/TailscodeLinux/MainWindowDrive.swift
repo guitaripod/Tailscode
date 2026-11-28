@@ -888,6 +888,17 @@ extension MainWindow {
                 FileHandle.standardOutput.write(
                     Data("DROP took=\(took) panes=\(self.splitHost.paneCount)\n".utf8))
             }
+        case "tipdisable":
+            let found = Tip.setSensitivity(of: argument, to: false)
+            FileHandle.standardOutput.write(Data("TIPDISABLE \(argument) found=\(found)\n".utf8))
+        case "tipstate":
+            let owner = tailscode_tip_owner().map { String(cString: g_type_name_from_instance(UnsafeMutableRawPointer($0).assumingMemoryBound(to: GTypeInstance.self))) } ?? "-"
+            FileHandle.standardOutput.write(
+                Data("TIPSTATE visible=\(tailscode_tip_visible()) owner=\(owner)\n".utf8))
+        case "tips":
+            let gaps = Tip.allGaps()
+            FileHandle.standardOutput.write(Data("TIPS gaps=\(gaps.count)\n".utf8))
+            for gap in gaps { FileHandle.standardOutput.write(Data("TIPGAP \(gap)\n".utf8)) }
         case "splits":
             let layout = self.splitHost.layout
             let frames = layout.frames()

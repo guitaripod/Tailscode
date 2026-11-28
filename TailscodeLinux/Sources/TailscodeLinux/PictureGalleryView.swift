@@ -119,7 +119,7 @@ enum PictureGalleryView {
 
             let name = PictureGalleryView.filename(of: picture.reference)
             let said = Localized.text("Open %1$@, picture %2$@ of %3$@", name, "\(tile.index + 1)", "\(count)")
-            gtk_widget_set_tooltip_text(opener, name)
+            Tip.set(opener, name)
             tailscode_set_accessible_label(opener, said)
 
             let open = context.openImage

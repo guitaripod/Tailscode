@@ -300,7 +300,7 @@ final class FolderBrowserWindow: @unchecked Sendable {
             let button = gtk_button_new_from_icon_name(icon)!
             Gtk.addClass(button, "flat")
             gtk_widget_set_sensitive(button, enabled ? 1 : 0)
-            gtk_widget_set_tooltip_text(button, label)
+            Tip.set(button, label)
             tailscode_set_accessible_label(button, label)
             Gtk.connect(UnsafeMutableRawPointer(button), "clicked") { [weak self] in
                 Gtk.onMain { [weak self] in self?.run(command) }
@@ -312,7 +312,7 @@ final class FolderBrowserWindow: @unchecked Sendable {
         Gtk.addClass(star, "flat")
         let starLabel =
             browser.isStarredHere ? Localized.text("Unstar this folder") : Localized.text("Star this folder")
-        gtk_widget_set_tooltip_text(star, starLabel)
+        Tip.set(star, starLabel)
         tailscode_set_accessible_label(star, starLabel)
         gtk_widget_set_sensitive(star, browser.current == nil ? 0 : 1)
         Gtk.connect(UnsafeMutableRawPointer(star), "clicked") { [weak self] in

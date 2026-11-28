@@ -154,7 +154,7 @@ final class UpdateCardView: @unchecked Sendable {
         Gtk.setTone(
             headlineLabel, card.stage == .failed ? "pending-text-failed" : nil,
             from: ["pending-text-failed"])
-        gtk_widget_set_tooltip_text(headlineLabel, card.accessibility)
+        Tip.set(headlineLabel, card.accessibility)
 
         gtk_label_set_text(op(versionLabel), card.versionLine ?? "")
         gtk_widget_set_visible(versionLabel, card.versionLine == nil ? 0 : 1)
