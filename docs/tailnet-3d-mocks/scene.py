@@ -28,19 +28,19 @@ FONT_BOLD = "/usr/share/fonts/noto/NotoSans-Bold.ttf"
 FONT_REGULAR = "/usr/share/fonts/noto/NotoSans-Regular.ttf"
 
 MACHINES = [
-    dict(name="arch", kind="tower", state="working", line="2 working · Pennyroyal 179 tok/s", role="host", agents=[CLAUDE, BLUE, GREEN]),
-    dict(name="macbook", kind="laptop", state="needs", line="1 needs you", role="host", agents=[CLAUDE, VIOLET]),
-    dict(name="iphone-air", kind="phone", state="here", line="this iPhone", role="screen"),
-    dict(name="ipad-pro-11", kind="tablet", state="idle", line="watching arch", role="screen"),
-    dict(name="ipad191", kind="tablet", state="idle", line="online", role="screen"),
-    dict(name="iphone-xs", kind="phone", state="idle", line="online", role="screen"),
-    dict(name="apple-tv", kind="puck", state="idle", line="online", role="screen"),
-    dict(name="steamdeck", kind="handheld", state="off", line="offline", role="far"),
-    dict(name="g14", kind="laptop", state="off", line="offline", role="far"),
-    dict(name="x1carbon", kind="laptop", state="off", line="offline", role="far"),
-    dict(name="windows", kind="tower", state="off", line="offline", role="far"),
-    dict(name="iphone-se", kind="phone", state="off", line="offline", role="far"),
-    dict(name="ipad171", kind="tablet", state="off", line="offline", role="far"),
+    dict(name="studio", kind="tower", state="working", line="2 working · local model 179 tok/s", role="host", agents=[CLAUDE, BLUE, GREEN]),
+    dict(name="laptop", kind="laptop", state="needs", line="1 needs you", role="host", agents=[CLAUDE, VIOLET]),
+    dict(name="phone", kind="phone", state="here", line="this iPhone", role="screen"),
+    dict(name="tablet", kind="tablet", state="idle", line="watching studio", role="screen"),
+    dict(name="tablet-mini", kind="tablet", state="idle", line="online", role="screen"),
+    dict(name="old-phone", kind="phone", state="idle", line="online", role="screen"),
+    dict(name="tv", kind="puck", state="idle", line="online", role="screen"),
+    dict(name="handheld", kind="handheld", state="off", line="offline", role="far"),
+    dict(name="gaming-laptop", kind="laptop", state="off", line="offline", role="far"),
+    dict(name="travel-laptop", kind="laptop", state="off", line="offline", role="far"),
+    dict(name="gaming-pc", kind="tower", state="off", line="offline", role="far"),
+    dict(name="spare-phone", kind="phone", state="off", line="offline", role="far"),
+    dict(name="spare-tablet", kind="tablet", state="off", line="offline", role="far"),
 ]
 STATE_COLOR = {"working": TEAL, "needs": AMBER, "here": BLUE, "idle": WHITE, "off": GHOST}
 
@@ -261,18 +261,18 @@ def arc(start, end, lift, color, strength, radius, pulses=0):
 def placements():
     if PORTRAIT:
         return {
-            "arch": (-1.6, 5.2), "macbook": (2.0, 0.8), "iphone-air": (0.2, -4.6),
-            "ipad-pro-11": (-2.9, -1.6), "ipad191": (-2.4, -7.6), "iphone-xs": (2.6, -7.8), "apple-tv": (3.1, -3.6),
-            "steamdeck": (-5.0, 17.0), "g14": (-3.1, 19.6), "x1carbon": (-1.0, 21.0),
-            "windows": (1.2, 21.0), "iphone-se": (3.2, 19.6), "ipad171": (5.0, 17.2),
+            "studio": (-1.6, 5.2), "laptop": (2.0, 0.8), "phone": (0.2, -4.6),
+            "tablet": (-2.9, -1.6), "tablet-mini": (-2.4, -7.6), "old-phone": (2.6, -7.8), "tv": (3.1, -3.6),
+            "handheld": (-5.0, 17.0), "gaming-laptop": (-3.1, 19.6), "travel-laptop": (-1.0, 21.0),
+            "gaming-pc": (1.2, 21.0), "spare-phone": (3.2, 19.6), "spare-tablet": (5.0, 17.2),
         }
     sx, sy = 1.2, 0.8
-    spots = {"arch": (-2.3 * sx, 2.2 * sy), "macbook": (2.6 * sx, 1.6 * sy), "iphone-air": (0.2 * sx, -5.4 * sy)}
-    front = {"ipad-pro-11": 214, "ipad191": 244, "iphone-xs": 300, "apple-tv": 328}
+    spots = {"studio": (-2.3 * sx, 2.2 * sy), "laptop": (2.6 * sx, 1.6 * sy), "phone": (0.2 * sx, -5.4 * sy)}
+    front = {"tablet": 214, "tablet-mini": 244, "old-phone": 300, "tv": 328}
     for name, degrees in front.items():
         angle = math.radians(degrees)
         spots[name] = (6.6 * sx * math.cos(angle), 6.2 * sy * math.sin(angle))
-    back = {"steamdeck": 172, "g14": 156, "x1carbon": 140, "windows": 44, "iphone-se": 27, "ipad171": 10}
+    back = {"handheld": 172, "gaming-laptop": 156, "travel-laptop": 140, "gaming-pc": 44, "spare-phone": 27, "spare-tablet": 10}
     for name, degrees in back.items():
         angle = math.radians(degrees)
         spots[name] = (8.6 * sx * math.cos(angle), 8.9 * sy * math.sin(angle))
@@ -329,7 +329,7 @@ def build():
     tops = {}
     for machine in MACHINES:
         x, y = spots[machine["name"]]
-        scale = {"arch": 1.5, "macbook": 1.45}.get(machine["name"], 1.0 if machine["role"] == "screen" else (1.1 if PORTRAIT else 0.85))
+        scale = {"studio": 1.5, "laptop": 1.45}.get(machine["name"], 1.0 if machine["role"] == "screen" else (1.1 if PORTRAIT else 0.85))
         root = empty(machine["name"], (x, y, 0))
         builder, _ = BUILDERS[machine["kind"]]
         builder(machine, root)
@@ -369,12 +369,12 @@ def build():
 
     def anchor(name):
         x, y, height = tops[name]
-        return (x, y - 0.35, height * 0.62) if name in ("arch", "macbook") else (x, y, height * 0.96)
+        return (x, y - 0.35, height * 0.62) if name in ("studio", "laptop") else (x, y, height * 0.96)
 
-    arc(anchor("arch"), anchor("iphone-air"), 1.5, TEAL, 2.4, 0.02, pulses=3)
-    arc(anchor("arch"), anchor("ipad-pro-11"), 1.3, TEAL, 2.4, 0.02, pulses=2)
-    arc(anchor("macbook"), anchor("iphone-air"), 1.3, AMBER, 2.6, 0.02, pulses=1)
-    arc(anchor("arch"), anchor("macbook"), 0.9, VIOLET, 2.4, 0.016, pulses=2)
+    arc(anchor("studio"), anchor("phone"), 1.5, TEAL, 2.4, 0.02, pulses=3)
+    arc(anchor("studio"), anchor("tablet"), 1.3, TEAL, 2.4, 0.02, pulses=2)
+    arc(anchor("laptop"), anchor("phone"), 1.3, AMBER, 2.6, 0.02, pulses=1)
+    arc(anchor("studio"), anchor("laptop"), 0.9, VIOLET, 2.4, 0.016, pulses=2)
 
     scene.render.engine = "CYCLES"
     prefs = bpy.context.preferences.addons["cycles"].preferences

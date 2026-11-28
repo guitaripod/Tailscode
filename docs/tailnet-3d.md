@@ -2,7 +2,7 @@
 
 Asked for (2026-11-28): "some awesome UI window that shows 3d models of your tailscode network and stuff", using whatever the machines here can help with. This is the look, the reasoning and the plan, in the order the other designs took: look, think, design with rendered mocks, then build. Nothing is built yet.
 
-Mocks: `docs/tailnet-3d-mocks/desk.png` (3840x2160) and `phone.png` (1320x2868), rendered from `scene.py` by Blender 5.3 Cycles on the RTX PRO 6000 in 8 to 26 seconds a frame. They show the real tailnet as it stood that morning: 13 machines, 7 online.
+Mocks: `docs/tailnet-3d-mocks/desk.png` (3840x2160) and `phone.png` (1320x2868), rendered from `scene.py` by Blender 5.3 Cycles on the RTX PRO 6000 in 8 to 26 seconds a frame. They show a tailnet of 13 machines with made-up names, 7 of them online.
 
 ## 1. What exists, and what is missing
 
@@ -31,7 +31,7 @@ One glance should answer three questions: what is on, what is working, what want
 | Orbs above a host | the agent servers it carries | one bead per server in the family's tint: Claude Code, opencode, omp, Your model |
 | Arc | a live stream | from the host that runs a turn to the screen watching it, in the turn's state colour. No stream, no arc: an idle link drawn anyway is the clutter the first mock had |
 | Beads on an arc | traffic | they travel host to screen while events arrive, and stop when the turn waits |
-| Two lines of type | name, then one fact | "arch" over "2 working · Pennyroyal 179 tok/s". Never a third line |
+| Two lines of type | name, then one fact | "studio" over "2 working · local model 179 tok/s". Never a third line |
 
 Hosts stand at the back, larger. The screens stand in an arc at the front with the device in hand front and centre, so every arc ends at "you" without crossing another.
 
