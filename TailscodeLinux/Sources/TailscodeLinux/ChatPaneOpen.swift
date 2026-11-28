@@ -501,7 +501,7 @@ extension ChatPane {
                 self.refreshPills()
             }
         })
-        if let authenticating = backend as? any AuthenticatingBackend {
+        if let authenticating = backend as? any AuthenticatingBackend, !answeredByAnotherAgent {
             track(Task { [weak self] in
                 guard let auth = try? await authenticating.authStatus() else { return }
                 Gtk.onMain { [weak self] in
@@ -511,6 +511,11 @@ extension ChatPane {
             })
         }
     }
+
+    /// Whether this chat's turns go to an agent the machine hosts beside its own. Such a chat is
+    /// answered whether or not Claude is signed in, so the warning that every turn will refuse
+    /// would be false in it.
+    private var answeredByAnotherAgent: Bool { entry?.session.agentID != nil }
 
     func renderAuthBanner(_ auth: ServerAuth, backend: any AuthenticatingBackend) {
         Gtk.removeChildren(of: authBanner)

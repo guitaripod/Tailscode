@@ -229,9 +229,14 @@ extension TranscriptViewController {
     /// A signed-out Claude is a state, not a reply: the CLI answers every turn with "Not logged
     /// in" instead of failing, so the warning lives here — above the prompt box someone is about
     /// to type into — with the one button that fixes it. Never "open a terminal".
+    ///
+    /// A chat with an agent the machine hosts beside its own is answered whether or not Claude is
+    /// signed in, so it never wears the warning.
     func refreshAuthBanner() {
         authGlass?.isHidden = true
-        guard let entry, let authenticating = backend as? any AuthenticatingBackend else { return }
+        guard let entry, entry.session.agentID == nil,
+            let authenticating = backend as? any AuthenticatingBackend
+        else { return }
         let sessionID = entry.session.id
         Task { [weak self] in
             guard let auth = try? await authenticating.authStatus() else { return }
