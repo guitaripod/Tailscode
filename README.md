@@ -26,7 +26,7 @@ Free is the whole core with one server; **Pro** is a one-time $14.99 purchase fo
 
 ## What it does
 
-- **Hermes and any ACP agent** — Hermes, Gemini CLI, Codex, goose, Kimi, Qwen Code, Copilot and the rest of the [ACP registry](https://agentclientprotocol.com/get-started/registry) run through the claude-bridge already on your machine: it finds them, proves each with a real session, gives one with no model a brain from the model server the machine already runs (llama-swap, ollama, LM Studio, vLLM) in one tap, keeps keys on the machine, and puts them in the model pill beside Claude.
+- **Hermes and any ACP agent** — Hermes, Google Antigravity, Gemini CLI, Codex, goose, Kimi, Qwen Code, Copilot and the rest of the [ACP registry](https://agentclientprotocol.com/get-started/registry) run through the claude-bridge already on your machine: it finds them, proves each with a real session, gives one with no model a brain from the model server the machine already runs (llama-swap, ollama, LM Studio, vLLM) in one tap, signs one in from your phone (Antigravity with your Google account: the machine hands you the link and takes the code back), keeps keys on the machine, and puts them in the model pill beside Claude.
 - **The machine keeps the clock** — ask later or every morning (`weekdays 7:30`, `every 2 hours`); the bridge asks with every app closed, keeps one conversation that remembers, stays quiet when nothing changed, and says what it missed while the machine was off.
 - **Every turn, live** — thinking, tool calls, subagents in place, diffs in the code's own colours, pictures the agent looked at. Prose is written out at an even pace, never re-wrapping under you.
 - **A long chat keeps its history** — the server opens a chapter where the topic moved and writes one sentence on what each closed chapter came to; a heading sits above the message a chapter began at, a panel lists them all to jump from, and a chat from before chapters is split once the first time it is opened.
@@ -132,7 +132,7 @@ Exhaustiveness forces disclosure, not implementation — `.gap("later")` compile
 |---|---|
 | [CodingAgentKit](https://github.com/guitaripod/CodingAgentKit) | The engine: Swift 6 package, Linux + Apple, one client over opencode 1.x/2.x, claude-bridge and omp-bridge, SSE streaming, `MessageReducer`, mockable backends, a CLI |
 | [claude-bridge](https://github.com/guitaripod/claude-bridge) | Exposes Claude Code (`claude -p` stream-json) as HTTP sessions with SSE, subagents, compaction, spend, analytics, git and APNs pushes |
-| [claude-bridge](https://github.com/guitaripod/claude-bridge) agents | Hermes, Gemini CLI, Codex and any ACP agent on the same port, and schedules the machine asks itself |
+| [claude-bridge](https://github.com/guitaripod/claude-bridge) agents | Hermes, Antigravity, Gemini CLI, Codex and any ACP agent on the same port, and schedules the machine asks itself |
 | [omp-bridge](https://github.com/guitaripod/omp-bridge) | The same wire protocol over Oh My Pi, schedules included |
 | [voice-bridge](https://github.com/guitaripod/voice-bridge) | The voice gateway: Nemotron VoiceChat on your own NVIDIA GPU, used as an ear that transcribes live and dispatches to the agent |
 | [delegate](https://github.com/guitaripod/delegate) | The daemon that runs packets down a ladder of cheaper models |

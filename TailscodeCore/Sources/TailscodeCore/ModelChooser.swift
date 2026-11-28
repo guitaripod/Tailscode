@@ -226,16 +226,18 @@ public struct ModelChooser: Sendable, Equatable {
     /// because a filter with one answer is chrome pretending to be a control.
     public var doors: [ModelDoor] {
         var counts: [String: Int] = [:]
+        var names: [String: String] = [:]
         var local: Set<String> = []
         for candidate in wholeMachine {
             for offer in candidate.offers {
                 counts[offer.providerID, default: 0] += 1
+                names[offer.providerID] = offer.providerName
                 if offer.isLocal { local.insert(offer.providerID) }
             }
         }
         return counts.map { id, count in
             ModelDoor(
-                providerID: id, title: ProviderIdentity.displayName(id), count: count,
+                providerID: id, title: names[id] ?? ProviderIdentity.displayName(id), count: count,
                 isLocal: local.contains(id))
         }
         .sorted { lhs, rhs in

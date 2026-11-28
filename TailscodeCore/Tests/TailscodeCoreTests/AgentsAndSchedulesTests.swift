@@ -311,6 +311,59 @@ struct MachineAgentReadingTests {
         #expect(rows.last?.subtitle.contains("arch") == true)
     }
 
+    private func antigravity(_ state: MachineAgent.State, source: String = "found", keySet: Bool = false) -> MachineAgent {
+        MachineAgent(
+            id: "antigravity-acp", name: "Antigravity", version: "1.5.18", source: source,
+            added: state != .notAdded, state: state,
+            keys: [MachineAgent.Key(env: "GEMINI_API_KEY", name: "Gemini API key", set: keySet, alternative: true)],
+            signIn: [
+                MachineAgent.SignInMethod(id: "oauth-personal", name: "Log in with Google", kind: "agent"),
+                MachineAgent.SignInMethod(
+                    id: "terminal-login", name: "Log in from the terminal",
+                    description: "Log in with your Google account by pasting a code in a terminal; works over SSH",
+                    kind: "terminal"),
+            ],
+            distribution: "download")
+    }
+
+    @Test("An agent that signs in its own way leads with the sign-in a phone can finish and offers its key after it")
+    func signInFirst() throws {
+        let signedOut = antigravity(.needsSignIn)
+        let steps = MachineAgentReading.steps(signedOut, machine: "arch")
+        #expect(steps.map(\.id) == ["machine", "signin", "key·GEMINI_API_KEY", "answered"])
+        #expect(steps[1].press == .signIn(method: "terminal-login"))
+        #expect(steps[1].state == .next)
+        #expect(steps[2].press == .enterKey(env: "GEMINI_API_KEY"))
+        #expect(steps[2].state == .waiting)
+        #expect(steps[2].detail.contains("GEMINI_API_KEY"))
+        let primary = try #require(MachineAgentReading.primary(signedOut, brains: [], machine: "arch"))
+        #expect(primary.0 == .signIn(method: "terminal-login"))
+        #expect(MachineAgentReading.row(signedOut, machine: "arch").tone == .attention)
+    }
+
+    @Test("Signed in with its account, the key it never needed is not listed; signed in with the key, the key is")
+    func keyOnlyWhenItMatters() {
+        let account = MachineAgentReading.steps(antigravity(.ready), machine: "arch")
+        #expect(account.map(\.id) == ["machine", "answered"])
+        let key = MachineAgentReading.steps(antigravity(.ready, keySet: true), machine: "arch")
+        #expect(key.map(\.id) == ["machine", "key·GEMINI_API_KEY", "answered"])
+        #expect(key[1].state == .done)
+        #expect(key[1].press == nil)
+        let checking = MachineAgentReading.steps(antigravity(.checking), machine: "arch")
+        #expect(checking.map(\.id) == ["machine", "answered"])
+    }
+
+    @Test("An agent the machine would download says so before it is added")
+    func downloads() {
+        let offered = MachineAgentReading.row(antigravity(.notAdded, source: "available"), machine: "arch")
+        #expect(offered.subtitle == "Downloads to arch")
+        #expect(offered.press == .add)
+        let installed = MachineAgentReading.steps(antigravity(.ready, source: "installed"), machine: "arch")
+        #expect(installed.first?.detail == "Antigravity 1.5.18, downloaded to this machine")
+        let found = MachineAgentReading.row(antigravity(.notAdded), machine: "arch")
+        #expect(found.subtitle == "Found on arch · 1.5.18")
+    }
+
     @Test("News is said once per agent")
     func news() {
         let goose = MachineAgent(id: "goose", name: "goose", source: "found", added: false, state: .notAdded)
@@ -337,6 +390,16 @@ struct AgentModelChooserTests {
         let agent = candidates.first { $0.family.title == "Hermes" }
         #expect(agent?.offers.count == 1)
         #expect(candidates.count == 3)
+    }
+
+    @Test("An agent is the door to its models under its own name, never a name made from its id")
+    func agentDoorName() {
+        let neon = ModelInfo(
+            id: "gemini-4-neon", name: "Gemini 4 Neon", providerID: "antigravity-acp", agentName: "Antigravity")
+        #expect(ModelOffer(model: neon).providerName == "Antigravity")
+        #expect(ModelOffer(model: models[0]).providerName == ProviderIdentity.displayName("anthropic"))
+        let folded = ModelChooser.fold([neon] + models)
+        #expect(folded.first { $0.name == "Gemini 4 Neon" }?.providerNames == ["Antigravity"])
     }
 
     @Test("Inside a Claude chat, an agent's model is a carry; inside a fresh chat it is not")

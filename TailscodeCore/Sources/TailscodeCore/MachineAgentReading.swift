@@ -129,7 +129,11 @@ public enum MachineAgentReading {
                     agent.version.map { Localized.text("Found on %@ · %@", machine, $0) }
                         ?? Localized.text("Found on %@", machine), .neutral)
             case "installed": return (Localized.text("Installed on %@", machine), .neutral)
-            default: return (Localized.text("Runs on %@ with %@", machine, agent.distribution ?? "uvx"), .neutral)
+            default:
+                if agent.distribution == "download" {
+                    return (Localized.text("Downloads to %@", machine), .neutral)
+                }
+                return (Localized.text("Runs on %@ with %@", machine, agent.distribution ?? "uvx"), .neutral)
             }
         case .needsBrain: return (Localized.text("Needs a brain"), .attention)
         case .needsKey: return (Localized.text("Needs a key"), .attention)
@@ -154,6 +158,8 @@ public enum MachineAgentReading {
 
     /// The card's checklist, in the order a machine proves an agent: on the machine, a brain when
     /// it needs one, a key or a sign-in when it asks, and the real session that proves it answers.
+    /// An agent whose own sign-in is the usual way in lists its key after the sign-in, as the
+    /// other way in, and only while it is signed out or the key is the way it got in.
     public static func steps(_ agent: MachineAgent, machine: String, now: Date = Date()) -> [AgentSetupStep] {
         var steps: [AgentSetupStep] = []
         let onMachineDone = agent.state != .missingRuntime && agent.state != .installing
@@ -174,16 +180,8 @@ public enum MachineAgentReading {
                     state: has ? .done : (agent.state == .needsBrain ? .next : .waiting),
                     press: has ? nil : .giveBrain, pressTitle: has ? nil : Localized.text("Choose")))
         }
-        for key in agent.keys {
-            steps.append(
-                AgentSetupStep(
-                    id: "key·\(key.env)", title: key.name,
-                    detail: key.set
-                        ? Localized.text("Kept on %@", machine)
-                        : Localized.text("%@ reads it as %@.", agent.name, key.env),
-                    state: key.set ? .done : (agent.state == .needsKey ? .next : .waiting),
-                    press: key.set ? nil : .enterKey(env: key.env),
-                    pressTitle: key.set ? nil : Localized.text("Paste")))
+        for key in agent.keys where key.alternative != true {
+            steps.append(keyStep(key, agent: agent, machine: machine))
         }
         if agent.state == .needsSignIn, let method = agent.signIn.first(where: { $0.kind == "terminal" }) ?? agent.signIn.first {
             steps.append(
@@ -192,8 +190,27 @@ public enum MachineAgentReading {
                     detail: method.description ?? method.name, state: .next,
                     press: .signIn(method: method.id), pressTitle: Localized.text("Sign in")))
         }
+        for key in agent.keys where key.alternative == true && (key.set || agent.state == .needsSignIn) {
+            steps.append(keyStep(key, agent: agent, machine: machine))
+        }
         steps.append(answered(agent, machine: machine, now: now))
         return steps
+    }
+
+    private static func keyStep(_ key: MachineAgent.Key, agent: MachineAgent, machine: String) -> AgentSetupStep {
+        let detail: String
+        if key.set {
+            detail = Localized.text("Kept on %@", machine)
+        } else if key.alternative == true {
+            detail = Localized.text("Another way in: %@ reads it as %@.", agent.name, key.env)
+        } else {
+            detail = Localized.text("%@ reads it as %@.", agent.name, key.env)
+        }
+        return AgentSetupStep(
+            id: "key·\(key.env)", title: key.name, detail: detail,
+            state: key.set ? .done : (agent.state == .needsKey ? .next : .waiting),
+            press: key.set ? nil : .enterKey(env: key.env),
+            pressTitle: key.set ? nil : Localized.text("Paste"))
     }
 
     private static func onMachineDetail(_ agent: MachineAgent, machine: String) -> String {
@@ -203,7 +220,7 @@ public enum MachineAgentReading {
         let version = agent.version.map { " " + $0 } ?? ""
         switch agent.source {
         case "found": return Localized.text("%@%@, already on this machine", agent.name, version)
-        case "installed": return Localized.text("%@%@, installed from the registry", agent.name, version)
+        case "installed": return Localized.text("%@%@, downloaded to this machine", agent.name, version)
         default: return Localized.text("%@%@, run with %@", agent.name, version, agent.distribution ?? "uvx")
         }
     }

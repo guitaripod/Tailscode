@@ -59,8 +59,9 @@ extension DemoWorld {
         ]
     }
 
-    /// The demo machine's agents: Hermes thinking with Bolt on the GPU, Gemini CLI waiting for a
-    /// key, goose found and not yet added; one model server to give a brain from.
+    /// The demo machine's agents: Hermes thinking with Bolt on the GPU, Antigravity waiting to be
+    /// signed in (with its key as the other way in), Gemini CLI waiting for a key, goose found and
+    /// not yet added; one model server to give a brain from.
     static var demoAgents: MachineAgentsReport {
         let brain = LocalBrain(
             id: "llama-swap", name: "llama-swap", baseURL: "http://127.0.0.1:8081/v1",
@@ -83,6 +84,26 @@ extension DemoWorld {
                     currentModel: "custom:bolt",
                     brain: MachineAgent.Brain(kind: "local", name: "llama-swap", baseURL: brain.baseURL, model: "bolt"),
                     brainStyle: "hermes", distribution: "uvx", checkedAt: ago(600)),
+                MachineAgent(
+                    id: "antigravity-acp", name: "Antigravity", version: "1.5.18",
+                    description: "Google's coding agent on Gemini, with your Google AI plan or a Gemini API key.",
+                    website: "https://antigravity.google", source: "found", added: true,
+                    state: .needsSignIn, failure: "Authentication required",
+                    keys: [
+                        MachineAgent.Key(
+                            env: "GEMINI_API_KEY", name: "Gemini API key",
+                            url: "https://aistudio.google.com/apikey", set: false, alternative: true)
+                    ],
+                    signIn: [
+                        MachineAgent.SignInMethod(
+                            id: "oauth-personal", name: "Log in with Google",
+                            description: "Log in with your Google account", kind: "agent"),
+                        MachineAgent.SignInMethod(
+                            id: "terminal-login", name: "Log in from the terminal",
+                            description: "Log in with your Google account by pasting a code in a terminal; works over SSH",
+                            kind: "terminal"),
+                    ],
+                    distribution: "download", checkedAt: ago(1_200)),
                 MachineAgent(
                     id: "gemini", name: "Gemini CLI", version: "0.66.0", source: "found", added: true,
                     state: .needsKey, failure: "GEMINI_API_KEY is not set.",

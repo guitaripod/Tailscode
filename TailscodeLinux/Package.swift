@@ -218,7 +218,8 @@ enum Kit {
     /// what the app shows on every request.
     /// 0.71.0 keeps a transcript's pictures on disk instead of in its messages, receives a
     /// transcript page into a file, and lets go of a bridge's held transcripts when asked.
-    static let version = Version(0, 71, 0)
+    /// 0.72.0 says when an agent's key is the other way in beside its own sign-in.
+    static let version = Version(0, 72, 0)
 
     static var dependency: Package.Dependency {
         let forced = ProcessInfo.processInfo.environment["TAILSCODE_KIT_REMOTE"] ?? ""

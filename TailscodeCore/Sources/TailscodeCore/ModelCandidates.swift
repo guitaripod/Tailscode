@@ -68,6 +68,8 @@ public struct ModelFamily: Sendable, Hashable, Comparable {
 }
 
 /// One provider's willingness to run a model: the same model reached through a different door.
+/// An agent a machine hosts is the door to its own models, and is called what it calls itself:
+/// its id is whatever its registry filed it under (`antigravity-acp`), which is nobody's name.
 public struct ModelOffer: Sendable, Hashable {
     public let model: ModelInfo
     public let providerName: String
@@ -75,7 +77,7 @@ public struct ModelOffer: Sendable, Hashable {
 
     public init(model: ModelInfo) {
         self.model = model
-        self.providerName = ProviderIdentity.displayName(model.providerID)
+        self.providerName = model.agentName ?? ProviderIdentity.displayName(model.providerID)
         self.isLocal = ProviderIdentity.isLocal(model.providerID)
     }
 

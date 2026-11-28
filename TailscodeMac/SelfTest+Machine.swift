@@ -37,8 +37,8 @@ extension SelfTest {
         try expect(
             desk.board.rows.last?.schedule.paused == true, "the paused audit sorts after the waiting ones")
         try expect(
-            desk.reports[demo.id]?.agents.map(\.id) == ["hermes", "gemini", "goose"],
-            "the demo machine hosts Hermes, Gemini CLI and goose")
+            desk.reports[demo.id]?.agents.map(\.id) == ["hermes", "antigravity-acp", "gemini", "goose"],
+            "the demo machine hosts Hermes, Antigravity, Gemini CLI and goose")
 
         let entry = ScheduledSidebarEntry()
         entry.render()
@@ -149,6 +149,22 @@ extension SelfTest {
             gemini.stepStates.contains { $0.1 == .next }, "the step an agent waits on is the next one")
         try expect(gemini.primaryTitle.contains("Gemini API key"), "a keyless agent asks for its key: \(gemini.primaryTitle)")
         host.endSheet(gemini.sheet)
+
+        let antigravity = AgentCardSheet.present(on: host, profile: demo, agentID: "antigravity-acp")
+        antigravity.render()
+        let waiting = antigravity.stepStates
+        try expect(
+            waiting.map(\.0) == [
+                Localized.text("On %@", demo.name), Localized.text("Signed in"), "Gemini API key",
+                Localized.text("Answered"),
+            ],
+            "an agent that signs in its own way lists the sign-in before its key: \(waiting.map(\.0))")
+        try expect(waiting[1].1 == .next, "the sign-in is the step it waits on")
+        try expect(waiting[2].1 == .waiting, "and the key is the other way in, not a step owed")
+        try expect(
+            antigravity.primaryTitle == Localized.text("Sign in to %@", "Antigravity"),
+            "it leads with the sign-in: \(antigravity.primaryTitle)")
+        host.endSheet(antigravity.sheet)
 
         let registry = AgentRegistrySheet.present(on: host, profile: demo)
         for _ in 0..<40 where registry.rowTitles.isEmpty { try? await Task.sleep(for: .milliseconds(50)) }

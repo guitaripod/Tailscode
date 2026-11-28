@@ -215,16 +215,18 @@ extension ModelChooser {
     /// The doors of any machine, not only the shown one, for a briefing opened on another tab.
     private func doors(on profileID: String) -> [ModelDoor] {
         var counts: [String: Int] = [:]
+        var names: [String: String] = [:]
         var local: Set<String> = []
         for candidate in candidates where candidate.profileID == profileID {
             for offer in candidate.offers {
                 counts[offer.providerID, default: 0] += 1
+                names[offer.providerID] = offer.providerName
                 if offer.isLocal { local.insert(offer.providerID) }
             }
         }
         return counts.map { id, count in
             ModelDoor(
-                providerID: id, title: ProviderIdentity.displayName(id), count: count,
+                providerID: id, title: names[id] ?? ProviderIdentity.displayName(id), count: count,
                 isLocal: local.contains(id))
         }
         .sorted { lhs, rhs in

@@ -167,7 +167,7 @@ enum AgentMark {
         if isBuiltIn { return Theme.Color.modelFamily(ModelTint.family("claude-opus", providerID: "anthropic")) }
         switch id {
         case "hermes": return Theme.Color.warning
-        case "gemini": return Theme.Color.info
+        case "gemini", "antigravity-acp": return Theme.Color.info
         case "codex-acp": return Theme.Color.success
         case "goose", "kimi": return Theme.Color.secondaryLabel
         default:

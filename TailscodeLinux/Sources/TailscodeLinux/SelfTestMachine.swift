@@ -24,7 +24,7 @@ extension SelfTest {
         try expect(features.agents, "the demo machine hosts agents")
         let report = try waitFor { try await backend.machineAgents(refreshBrains: false) }
         let rows = MachineAgentReading.rows(report, machine: profile.name, builtIn: .claudeCode)
-        try expect(rows.count == 4, "Claude Code and three agents are listed, not \(rows.count)")
+        try expect(rows.count == 5, "Claude Code and four agents are listed, not \(rows.count)")
         try expect(rows.first?.isBuiltIn == true, "Claude Code leads, built in")
         try expect(rows.contains { $0.id == "goose" && $0.press == .add }, "goose, found, is offered to add")
         let hermes = try unwrap(report?.agents.first { $0.id == "hermes" }, "Hermes is on the machine")
@@ -34,6 +34,16 @@ extension SelfTest {
         let gemini = try unwrap(report?.agents.first { $0.id == "gemini" }, "Gemini CLI is on the machine")
         let geminiPrimary = MachineAgentReading.primary(gemini, brains: [], machine: profile.name)
         try expect(geminiPrimary?.0 == .enterKey(env: "GEMINI_API_KEY"), "Gemini CLI leads with its key")
+        let antigravity = try unwrap(
+            report?.agents.first { $0.id == "antigravity-acp" }, "Antigravity is on the machine")
+        let signedOut = MachineAgentReading.steps(antigravity, machine: profile.name)
+        try expect(
+            signedOut.map(\.id) == ["machine", "signin", "key·GEMINI_API_KEY", "answered"],
+            "Antigravity's sign-in comes before its key: \(signedOut.map(\.id))")
+        try expect(
+            MachineAgentReading.primary(antigravity, brains: [], machine: profile.name)?.0
+                == .signIn(method: "terminal-login"),
+            "and it leads with the sign-in another device can finish")
         let registry = try waitFor { try await backend.agentRegistry() }
         try expect(registry.count == 8, "the registry offers eight agents, not \(registry.count)")
         let codex = try unwrap(registry.first { $0.id == "codex-acp" }, "Codex is in the registry")
@@ -105,7 +115,7 @@ extension SelfTest {
         pump(0.6)
         let shelf = try unwrap(
             MachineWindowRegistry.existing(MachineAgentsWindow.key(profile.id)) as? MachineAgentsWindow, "the agents window opens")
-        try expect(shelf.report?.agents.count == 3, "and reads the machine's agents")
+        try expect(shelf.report?.agents.count == 4, "and reads the machine's agents")
         try expect(shelf.groups.count == 1, "in one group")
         shelf.close()
 
@@ -131,6 +141,26 @@ extension SelfTest {
         pump(1.8)
         try expect(gemini.agent?.state == .ready, "a finished sign-in is proved and the agent is ready")
         gemini.close()
+
+        AgentCardWindow.present(profile: profile, backend: backend, agentID: "antigravity-acp", parent: nil)
+        pump(0.6)
+        let google = try unwrap(
+            MachineWindowRegistry.existing(AgentCardWindow.key(profile.id, "antigravity-acp")) as? AgentCardWindow,
+            "Antigravity's card opens")
+        try expect(google.agent?.state == .needsSignIn, "Antigravity waits to be signed in")
+        try expect(google.agent?.keys.first?.alternative == true, "with its key as the other way in")
+        google.startSignIn("terminal-login")
+        pump(0.6)
+        try expect(google.relay?.method == "terminal-login", "its sign-in is the one run in a terminal")
+        try expect(google.relay?.state == .running, "and waits for the person")
+        google.sendSignIn("4/0Aexample")
+        pump(1.8)
+        try expect(google.agent?.state == .ready, "the code signs Antigravity in and it is proved")
+        let signedIn = MachineAgentReading.steps(try unwrap(google.agent, "its row"), machine: profile.name)
+        try expect(
+            !signedIn.contains { $0.id.hasPrefix("key·") },
+            "signed in with its account, the key it never needed is not listed")
+        google.close()
 
         AgentRegistryWindow.present(profile: profile, backend: backend, parent: nil)
         pump(0.6)
